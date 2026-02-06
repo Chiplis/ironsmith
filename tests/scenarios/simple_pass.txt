@@ -1,0 +1,8 @@
+# Simple test: both players just pass priority until main phase ends
+# This tests the basic replay functionality
+
+# Pass priority repeatedly (empty lines = pass)
+
+
+
+

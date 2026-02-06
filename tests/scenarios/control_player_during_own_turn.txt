@@ -1,0 +1,25 @@
+# Replay: control opponent during your own turn, then cast Tivit to force their vote.
+# 1 = Cast Command the Mind
+1
+# 0 = Target opponent (Bob)
+0
+# 0 = Tap Island for {U}
+0
+# Pass priority so Command the Mind resolves before casting Tivit
+
+# 1 = Cast Tivit, Seller of Secrets
+1
+# Mana payments for Tivit (last is auto-paid if only one option remains)
+0
+0
+0
+0
+# Council's dilemma
+# 1 = Vote an additional time
+1
+# Alice vote 1: evidence
+0
+# Alice vote 2: bribery
+1
+# Bob vote (controlled by Alice): bribery
+1

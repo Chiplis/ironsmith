@@ -1,0 +1,17 @@
+# Test: Play Mountain, cast Lightning Bolt targeting Player 2
+# First blank line is consumed by "Press Enter to continue..."
+
+# 1 = Play Mountain
+1
+# 1 = Cast Lightning Bolt
+1
+# 1 = Target Player 2
+1
+# 0 = Tap Mountain for mana payment
+0
+# Pass priority to let spell resolve
+
+# More passes...
+
+
+

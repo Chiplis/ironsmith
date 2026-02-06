@@ -1,0 +1,5 @@
+name: Buried Alive
+cost_effects: <none>
+spell_effects:
+[0] Effect(SequenceEffect { effects: [Effect(ChooseObjectsEffect { filter: ObjectFilter { zone: None, controller: None, owner: Some(You), targets_player: None, targets_object: None, card_types: [Creature], all_card_types: [], excluded_card_types: [], subtypes: [], excluded_subtypes: [], supertypes: [], excluded_supertypes: [], colors: None, excluded_colors: ColorSet(0), colorless: false, multicolored: false, token: false, nontoken: false, other: false, tapped: false, untapped: false, power: None, toughness: None, mana_value: None, has_mana_cost: false, no_x_in_cost: false, name: None, is_commander: false, tagged_constraints: [], specific: None }, count: ChoiceCount { min: 0, max: Some(3) }, chooser: You, zone: Library, tag: TagKey("searched_0"), description: "cards", is_search: true }), Effect(ForEachTaggedEffect { tag: TagKey("searched_0"), effects: [Effect(MoveToZoneEffect { target: Iterated, zone: Graveyard, to_top: false })] }), Effect(ShuffleLibraryEffect { player: You })] })
+abilities: <none>

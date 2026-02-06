@@ -1,0 +1,111 @@
+//! Modular effect system for MTG.
+//!
+//! This module provides a trait-based architecture for effect execution.
+//! Each effect type implements the `EffectExecutor` trait, allowing for:
+//! - Co-located tests with each effect implementation
+//! - Self-contained effect logic
+//! - Easy addition of new effects without modifying central dispatcher
+//!
+//! # Module Structure
+//!
+//! ```text
+//! effects/
+//!   mod.rs              - This file, module organization
+//!   executor_trait.rs   - EffectExecutor trait definition
+//!   helpers.rs          - Shared utilities (resolve_value, etc.)
+//!   damage/
+//!     mod.rs
+//!     deal_damage.rs    - DealDamageEffect implementation + tests
+//! ```
+//!
+//! # Usage
+//!
+//! Effects can be executed through the `EffectExecutor` trait:
+//!
+//! ```ignore
+//! use ironsmith::effects::{EffectExecutor, DealDamageEffect};
+//!
+//! let effect = DealDamageEffect::new(3, ChooseSpec::AnyTarget);
+//! let result = effect.execute(&mut game, &mut ctx)?;
+//! ```
+//!
+//! # Migration Status
+//!
+//! Effects are being migrated incrementally from the monolithic `execute_effect()`
+//! function in `executor.rs`. During migration:
+//! - The `Effect` enum remains unchanged while modular execution lands
+//! - `execute_effect()` delegates to modular implementations via bridges
+//! - New effects can be added directly to this module
+
+pub mod cards;
+pub mod combat;
+pub mod composition;
+pub mod continuous;
+pub mod control;
+pub mod counters;
+pub mod damage;
+pub mod delayed;
+mod executor_trait;
+pub mod helpers;
+pub mod life;
+pub mod mana;
+pub mod permanents;
+pub mod player;
+pub mod replacement;
+pub mod restrictions;
+pub mod stack;
+pub mod tokens;
+pub mod zones;
+
+// Re-export the trait, modal spec, and cost validation error
+pub use executor_trait::{CostValidationError, EffectExecutor, ModalSpec};
+
+// Re-export effect implementations
+pub use cards::{
+    DiscardEffect, DiscardHandEffect, DrawCardsEffect, LookAtHandEffect, MillEffect,
+    RevealTopEffect, ScryEffect, SearchLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
+};
+pub use combat::{
+    EnterAttackingEffect, FightEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect,
+    ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
+    PreventAllDamageEffect, PreventDamageEffect,
+};
+pub use composition::{
+    ChooseModeEffect, ChooseObjectsEffect, ConditionalEffect, ForEachControllerOfTaggedEffect,
+    ForEachObject, ForEachOpponentEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
+    ForPlayersEffect, IfEffect, MayEffect, SequenceEffect, TagAllEffect, TagAttachedToSourceEffect,
+    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, VoteEffect, VoteOption,
+    WithIdEffect,
+};
+pub use continuous::ApplyContinuousEffect;
+pub use control::{ExchangeControlEffect, GainControlEffect};
+pub use counters::{
+    MoveAllCountersEffect, MoveCountersEffect, ProliferateEffect, PutCountersEffect,
+    RemoveCountersEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect,
+};
+pub use damage::{ClearDamageEffect, DealDamageEffect};
+pub use delayed::ScheduleDelayedTriggerEffect;
+pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, SetLifeTotalEffect};
+pub use mana::{
+    AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
+    AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect,
+};
+pub use permanents::{
+    AttachToEffect, EarthbendEffect, GrantObjectAbilityEffect, MonstrosityEffect, RegenerateEffect,
+    TapEffect, TransformEffect, UntapEffect,
+};
+pub use player::{
+    ControlPlayerEffect, CreateEmblemEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect,
+    ExperienceCountersEffect, ExtraTurnEffect, GrantEffect, GrantPlayFromGraveyardEffect,
+    LoseTheGameEffect, PoisonCountersEffect, SkipDrawStepEffect, SkipTurnEffect, WinTheGameEffect,
+};
+pub use replacement::{ApplyReplacementEffect, ReplacementApplyMode};
+pub use restrictions::CantEffect;
+pub use stack::{ChooseNewTargetsEffect, CopySpellEffect, CounterEffect, CounterUnlessPaysEffect};
+pub use tokens::{CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect};
+pub use zones::{
+    DestroyEffect, ExileEffect, ExileFromHandAsCostEffect, MoveToZoneEffect,
+    PutOntoBattlefieldEffect, ReturnFromGraveyardOrExileToBattlefieldEffect,
+    ReturnFromGraveyardToBattlefieldEffect, ReturnFromGraveyardToHandEffect, ReturnToHandEffect,
+    SacrificeEffect, SacrificeTargetEffect,
+};
