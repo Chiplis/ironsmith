@@ -2357,6 +2357,7 @@ fn resolve_value_with_context(
         // Return 0 as fallback (these are rare in continuous effects anyway)
         Value::XTimes(_)
         | Value::CountPlayers(_)
+        | Value::CountersOn(_, _)
         | Value::PowerOf(_)
         | Value::ToughnessOf(_)
         | Value::LifeTotal(_)

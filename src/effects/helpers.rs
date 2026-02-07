@@ -256,6 +256,21 @@ pub fn resolve_value(
                 Ok(0)
             }
         }
+        Value::CountersOn(spec, counter_type) => {
+            let object_ids = resolve_objects_from_spec(game, spec, ctx)?;
+            let total = object_ids
+                .into_iter()
+                .filter_map(|id| game.object(id))
+                .map(|obj| {
+                    if let Some(counter_type) = counter_type {
+                        obj.counters.get(counter_type).copied().unwrap_or(0) as i32
+                    } else {
+                        obj.counters.values().map(|count| *count as i32).sum()
+                    }
+                })
+                .sum();
+            Ok(total)
+        }
 
         Value::TaggedCount => {
             // Get the count of tagged objects for the current controller

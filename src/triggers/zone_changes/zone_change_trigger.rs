@@ -268,15 +268,16 @@ impl ZoneChangeTrigger {
             PlayerRelation::Any => {}
         }
 
-        // Count mode for batch
-        if self.count_mode == CountMode::OneOrMore {
-            parts.push("one or more".to_string());
-        } else {
-            parts.push("a".to_string());
-        }
-
         // Object filter description
         let filter_desc = self.object_filter.description();
+        let has_article = filter_desc.starts_with("a ")
+            || filter_desc.starts_with("an ")
+            || filter_desc.starts_with("the ");
+        if self.count_mode == CountMode::OneOrMore {
+            parts.push("one or more".to_string());
+        } else if !has_article {
+            parts.push("a".to_string());
+        }
         if filter_desc != "object" {
             parts.push(filter_desc);
         } else {
@@ -720,5 +721,11 @@ mod tests {
 
         let discard = ZoneChangeTrigger::you_discard();
         assert!(discard.display().contains("discard"));
+    }
+
+    #[test]
+    fn test_display_does_not_duplicate_article_for_land_etb() {
+        let trigger = ZoneChangeTrigger::enters_battlefield(ObjectFilter::land());
+        assert_eq!(trigger.display(), "Whenever a land enters the battlefield");
     }
 }

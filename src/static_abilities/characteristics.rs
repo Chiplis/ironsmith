@@ -10,6 +10,7 @@ use crate::continuous::{
 use crate::effect::Value;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::target::PlayerFilter;
 
 /// Characteristic-defining ability for power/toughness.
 ///
@@ -79,6 +80,33 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
 }
 
 fn display_value(value: &Value) -> String {
+    let strip_article = |text: &str| {
+        text.strip_prefix("a ")
+            .or_else(|| text.strip_prefix("an "))
+            .or_else(|| text.strip_prefix("the "))
+            .unwrap_or(text)
+            .to_string()
+    };
+    let pluralize_phrase = |text: &str| {
+        let normalized = text.trim();
+        if normalized.is_empty() {
+            return "objects".to_string();
+        }
+        let mut parts = normalized.splitn(2, ' ');
+        let first = parts.next().unwrap_or_default();
+        let rest = parts.next();
+        let plural_first = if first.ends_with('s') {
+            first.to_string()
+        } else {
+            format!("{first}s")
+        };
+        if let Some(rest) = rest {
+            format!("{plural_first} {rest}")
+        } else {
+            plural_first
+        }
+    };
+
     match value {
         Value::Fixed(n) => n.to_string(),
         Value::X => "X".to_string(),
@@ -91,7 +119,21 @@ fn display_value(value: &Value) -> String {
         }
         Value::SourcePower => "its power".to_string(),
         Value::SourceToughness => "its toughness".to_string(),
-        Value::Count(filter) => format!("the number of {}", filter.description()),
+        Value::Count(filter) => {
+            let desc = strip_article(&filter.description());
+            let mut phrase = pluralize_phrase(&desc);
+            if matches!(filter.controller, Some(PlayerFilter::You))
+                && !phrase.contains("you control")
+            {
+                phrase.push_str(" you control");
+            } else if matches!(filter.controller, Some(PlayerFilter::Opponent))
+                && !phrase.contains("an opponent controls")
+                && !phrase.contains("opponents control")
+            {
+                phrase.push_str(" an opponent controls");
+            }
+            format!("the number of {phrase}")
+        }
         Value::CountPlayers(_) => "the number of players".to_string(),
         _ => format!("{:?}", value),
     }
@@ -100,6 +142,7 @@ fn display_value(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::target::ObjectFilter;
 
     #[test]
     fn test_characteristic_defining_pt() {
@@ -120,5 +163,17 @@ mod tests {
             effects[0].source_type,
             EffectSourceType::CharacteristicDefining
         ));
+    }
+
+    #[test]
+    fn test_display_count_strips_leading_article() {
+        let ability = CharacteristicDefiningPT::new(
+            Value::Count(ObjectFilter::creature().you_control()),
+            Value::Count(ObjectFilter::creature().you_control()),
+        );
+        assert_eq!(
+            ability.display(),
+            "This creature's power and toughness are each equal to the number of creatures you control"
+        );
     }
 }

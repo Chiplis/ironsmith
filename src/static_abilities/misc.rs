@@ -77,6 +77,58 @@ impl StaticAbilityKind for EntersTapped {
     }
 }
 
+/// Enters the battlefield with counters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntersWithCounters {
+    pub counter_type: CounterType,
+    pub count: u32,
+}
+
+impl EntersWithCounters {
+    pub fn new(counter_type: CounterType, count: u32) -> Self {
+        Self {
+            counter_type,
+            count,
+        }
+    }
+}
+
+impl StaticAbilityKind for EntersWithCounters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EnterWithCounters
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Enters the battlefield with {} {:?} counter(s)",
+            self.count, self.counter_type
+        )
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(
+            ReplacementEffect::with_matcher(
+                source,
+                controller,
+                ThisWouldEnterBattlefieldMatcher,
+                ReplacementAction::EnterWithCounters {
+                    counter_type: self.counter_type,
+                    count: Value::Fixed(self.count as i32),
+                },
+            )
+            .self_replacing(),
+        )
+    }
+}
+
 /// If this would be put into a graveyard from anywhere, shuffle into library instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ShuffleIntoLibraryFromGraveyard;

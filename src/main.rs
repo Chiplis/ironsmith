@@ -1,4 +1,4 @@
-//! Maishik - Magic: The Gathering Rules Engine
+//! Ironsmith - Magic: The Gathering Rules Engine
 //!
 //! Interactive CLI for playing MTG with two random decks.
 //!
@@ -642,7 +642,7 @@ fn parse_args() -> GameArgs {
                 i += 1;
             }
             "--help" | "-h" => {
-                println!("Maishik - MTG Rules Engine");
+                println!("Ironsmith - MTG Rules Engine");
                 println!();
                 println!("Usage: ironsmith [OPTIONS]");
                 println!();
@@ -767,7 +767,7 @@ fn main() {
     init_input_manager(record_file.as_deref(), args.replay_file.as_deref());
 
     println!("========================================");
-    println!("   Maishik - MTG Rules Engine");
+    println!("   Ironsmith - MTG Rules Engine");
     println!("========================================\n");
 
     if let Some(path) = record_file.as_deref()

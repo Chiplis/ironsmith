@@ -718,6 +718,13 @@ impl StaticAbility {
         Self::new(EntersTapped)
     }
 
+    pub fn enters_with_counters(
+        counter_type: crate::object::CounterType,
+        count: u32,
+    ) -> Self {
+        Self::new(EntersWithCounters::new(counter_type, count))
+    }
+
     pub fn permanents_enter_tapped() -> Self {
         Self::new(AllPermanentsEnterTapped)
     }

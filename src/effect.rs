@@ -570,6 +570,12 @@ pub enum Value {
     /// The number of counters of a specific type on the source permanent.
     CountersOnSource(CounterType),
 
+    /// The number of counters on object(s) resolved from a choose spec.
+    ///
+    /// When `counter_type` is `Some`, counts only that type.
+    /// When `counter_type` is `None`, counts all counters.
+    CountersOn(Box<ChooseSpec>, Option<CounterType>),
+
     /// The count of tagged objects for the current controller in a ForEachControllerOfTagged loop.
     ///
     /// This is set automatically by `ForEachControllerOfTaggedEffect` during iteration,

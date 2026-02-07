@@ -106,7 +106,7 @@ pub struct AttackerOption {
 }
 
 /// A declared attacker.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttackerDeclaration {
     /// The attacking creature.
     pub creature: ObjectId,
@@ -126,7 +126,7 @@ pub struct BlockerOption {
 }
 
 /// A declared blocker.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockerDeclaration {
     /// The blocking creature.
     pub blocker: ObjectId,

@@ -928,6 +928,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::TimesPaidLabel(_)
         | Value::KickCount
         | Value::CountersOnSource(_)
+        | Value::CountersOn(_, _)
         | Value::WasPaid(_)
         | Value::WasPaidLabel(_)
         | Value::TimesPaid(_)

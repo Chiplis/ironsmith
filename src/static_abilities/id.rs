@@ -98,6 +98,7 @@ pub enum StaticAbilityId {
     // === Other abilities ===
     DoesntUntap,
     EntersTapped,
+    EnterWithCounters,
     ShuffleIntoLibraryFromGraveyard,
     AllPermanentsEnterTapped,
     EnterTappedForFilter,

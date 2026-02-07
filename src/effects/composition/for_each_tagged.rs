@@ -14,8 +14,8 @@ use crate::tag::TagKey;
 
 /// Effect that applies effects once for each tagged object.
 ///
-/// Sets `ctx.iterated_object` for each iteration, allowing inner effects
-/// to reference the current object.
+/// Sets `ctx.iterated_object` for each iteration, and also sets
+/// `ctx.iterated_player` to that object's controller.
 ///
 /// # Fields
 ///
@@ -66,12 +66,16 @@ impl EffectExecutor for ForEachTaggedEffect {
 
         let mut outcomes = Vec::new();
 
-        // Save the original iterated_object to restore after
+        // Save originals to restore after
         let original_iterated_object = ctx.iterated_object;
+        let original_iterated_player = ctx.iterated_player;
 
         for snapshot in &snapshots {
             // Set the iterated object for this iteration
             ctx.iterated_object = Some(snapshot.object_id);
+            // Also expose this object's controller as the iterated player.
+            // This lets inner effects naturally say "its controller" via IteratedPlayer.
+            ctx.iterated_player = Some(snapshot.controller);
 
             // Execute all inner effects for this object
             for effect in &self.effects {
@@ -79,8 +83,9 @@ impl EffectExecutor for ForEachTaggedEffect {
             }
         }
 
-        // Restore the original iterated_object
+        // Restore originals
         ctx.iterated_object = original_iterated_object;
+        ctx.iterated_player = original_iterated_player;
 
         Ok(EffectOutcome::aggregate(outcomes))
     }

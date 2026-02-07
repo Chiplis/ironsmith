@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use crate::cost::OptionalCostsPaid;
 use crate::decision::DecisionMaker;
 use crate::effect::{Effect, EffectId, EffectOutcome, EffectResult, Value};
+use crate::effects::helpers::resolve_objects_from_spec;
 use crate::events::DamageEvent;
 use crate::events::cause::EventCause;
 use crate::filter::ObjectRef;
@@ -764,6 +765,21 @@ pub fn resolve_value(
             } else {
                 Ok(0)
             }
+        }
+        Value::CountersOn(spec, counter_type) => {
+            let object_ids = resolve_objects_from_spec(game, spec, ctx)?;
+            let total = object_ids
+                .into_iter()
+                .filter_map(|id| game.object(id))
+                .map(|obj| {
+                    if let Some(counter_type) = counter_type {
+                        obj.counters.get(counter_type).copied().unwrap_or(0) as i32
+                    } else {
+                        obj.counters.values().map(|count| *count as i32).sum()
+                    }
+                })
+                .sum();
+            Ok(total)
         }
 
         Value::TaggedCount => {

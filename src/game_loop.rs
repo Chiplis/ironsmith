@@ -87,6 +87,11 @@ pub enum GameLoopError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PriorityResponse {
     PriorityAction(LegalAction),
+    Attackers(Vec<AttackerDeclaration>),
+    Blockers {
+        defending_player: PlayerId,
+        declarations: Vec<BlockerDeclaration>,
+    },
     Targets(Vec<Target>),
     XValue(u32),
     NumberChoice(u32),
@@ -1811,6 +1816,9 @@ pub struct PriorityLoopState {
     /// Checkpoint of game state saved when starting an action chain.
     /// If an error occurs during the chain, we restore to this state.
     pub checkpoint: Option<GameState>,
+    /// Whether pip-by-pip mana payment should auto-pick a single legal option.
+    /// CLI/tests can keep this enabled for speed; WASM UI can disable it to require explicit taps.
+    pub auto_choose_single_pip_payment: bool,
 }
 
 impl PriorityLoopState {
@@ -1823,6 +1831,7 @@ impl PriorityLoopState {
             pending_method_selection: None,
             pending_mana_ability: None,
             checkpoint: None,
+            auto_choose_single_pip_payment: true,
         }
     }
 
@@ -1842,6 +1851,11 @@ impl PriorityLoopState {
         self.pending_cast.is_some()
             || self.pending_activation.is_some()
             || self.pending_method_selection.is_some()
+    }
+
+    /// Configure whether single-option pip payments should be auto-selected.
+    pub fn set_auto_choose_single_pip_payment(&mut self, enabled: bool) {
+        self.auto_choose_single_pip_payment = enabled;
     }
 }
 
@@ -1971,9 +1985,49 @@ pub fn apply_priority_response_with_dm(
     response: &PriorityResponse,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    if let PriorityResponse::Attackers(declarations) = response {
+        if game.turn.step != Some(Step::DeclareAttackers) {
+            return Err(GameLoopError::InvalidState(
+                "Attackers response outside Declare Attackers step".to_string(),
+            ));
+        }
+        let mut combat = game.combat.take().unwrap_or_default();
+        let result = apply_attacker_declarations(game, &mut combat, trigger_queue, declarations);
+        game.combat = Some(combat);
+        result?;
+        reset_priority(game, &mut state.tracker);
+        return advance_priority_with_dm(game, trigger_queue, decision_maker);
+    }
+
+    if let PriorityResponse::Blockers {
+        defending_player,
+        declarations,
+    } = response
+    {
+        if game.turn.step != Some(Step::DeclareBlockers) {
+            return Err(GameLoopError::InvalidState(
+                "Blockers response outside Declare Blockers step".to_string(),
+            ));
+        }
+        let mut combat = game.combat.take().ok_or_else(|| {
+            GameLoopError::InvalidState("Combat state missing at declare blockers".to_string())
+        })?;
+        let result = apply_blocker_declarations(
+            game,
+            &mut combat,
+            trigger_queue,
+            declarations,
+            *defending_player,
+        );
+        game.combat = Some(combat);
+        result?;
+        reset_priority(game, &mut state.tracker);
+        return advance_priority_with_dm(game, trigger_queue, decision_maker);
+    }
+
     // Handle replacement effect choice
     if let PriorityResponse::ReplacementChoice(index) = response {
-        return apply_replacement_choice_response(game, trigger_queue, *index);
+        return apply_replacement_choice_response(game, trigger_queue, *index, decision_maker);
     }
 
     // Handle target selection for a pending cast
@@ -2184,7 +2238,7 @@ pub fn apply_priority_response_with_dm(
             }
 
             // Player retains priority after playing a land
-            advance_priority(game, trigger_queue)
+            advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
         LegalAction::CastSpell {
             spell_id,
@@ -2568,7 +2622,7 @@ pub fn apply_priority_response_with_dm(
                 game.push_to_stack(entry);
 
                 reset_priority(game, &mut state.tracker);
-                advance_priority(game, trigger_queue)
+                advance_priority_with_dm(game, trigger_queue, decision_maker)
             }
         }
         LegalAction::ActivateManaAbility {
@@ -2655,7 +2709,7 @@ pub fn apply_priority_response_with_dm(
                     }
 
                     // Player retains priority after activating mana ability
-                    return advance_priority(game, trigger_queue);
+                    return advance_priority_with_dm(game, trigger_queue, decision_maker);
                 } else {
                     // Need to tap lands / activate mana abilities to pay the mana cost
                     // Create a pending mana ability and show PayMana decision
@@ -2708,14 +2762,14 @@ pub fn apply_priority_response_with_dm(
             }
 
             // Player retains priority after activating mana ability
-            advance_priority(game, trigger_queue)
+            advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
         LegalAction::TurnFaceUp { creature_id } => {
             // Turn the creature face up
             game.set_face_up(*creature_id);
 
             // Player retains priority
-            advance_priority(game, trigger_queue)
+            advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
         LegalAction::SpecialAction(special) => {
             let player = game
@@ -2738,7 +2792,7 @@ pub fn apply_priority_response_with_dm(
             }
 
             // Player retains priority after special actions
-            advance_priority(game, trigger_queue)
+            advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
     }
 }
@@ -2751,6 +2805,7 @@ fn apply_replacement_choice_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     chosen_index: usize,
+    decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     use crate::event_processor::{TraitEventResult, process_event_with_chosen_replacement_trait};
 
@@ -2858,7 +2913,7 @@ fn apply_replacement_choice_response(
     }
 
     // Continue with normal game flow
-    advance_priority(game, trigger_queue)
+    advance_priority_with_dm(game, trigger_queue, decision_maker)
 }
 
 /// Apply a Targets response for a pending spell cast.
@@ -3872,7 +3927,7 @@ fn continue_spell_cast_mana_payment(
         // Clear checkpoint - spell cast completed successfully
         state.clear_checkpoint();
         reset_priority(game, &mut state.tracker);
-        return advance_priority(game, trigger_queue);
+        return advance_priority_with_dm(game, trigger_queue, decision_maker);
     }
 
     // Get the first pip to pay
@@ -3899,7 +3954,7 @@ fn continue_spell_cast_mana_payment(
     }
 
     // If only one option, auto-select it
-    if options.len() == 1 {
+    if state.auto_choose_single_pip_payment && options.len() == 1 {
         let action = options[0].action.clone();
         let pip_paid = execute_pip_payment_action(
             game,
@@ -4484,7 +4539,7 @@ fn continue_activation(
             }
 
             // If only one option, auto-select it
-            if options.len() == 1 {
+            if state.auto_choose_single_pip_payment && options.len() == 1 {
                 let action = options[0].action.clone();
                 let pip_paid = execute_pip_payment_action(
                     game,
@@ -4546,7 +4601,7 @@ fn continue_activation(
             state.pending_activation = None;
             state.clear_checkpoint();
             reset_priority(game, &mut state.tracker);
-            advance_priority(game, trigger_queue)
+            advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
     }
 }
@@ -5373,7 +5428,7 @@ fn apply_mana_payment_response_mana_ability(
             // Execute the pending mana ability
             execute_pending_mana_ability(game, trigger_queue, &pending, decision_maker)?;
             // Player retains priority after activating mana ability
-            advance_priority(game, trigger_queue)
+            advance_priority_with_dm(game, trigger_queue, decision_maker)
         } else {
             // Still need more mana, show options again
             let options = compute_mana_ability_payment_options(
@@ -5425,7 +5480,7 @@ fn apply_mana_payment_response_mana_ability(
         // Execute the pending mana ability
         execute_pending_mana_ability(game, trigger_queue, &pending, decision_maker)?;
         // Player retains priority after activating mana ability
-        advance_priority(game, trigger_queue)
+        advance_priority_with_dm(game, trigger_queue, decision_maker)
     }
 }
 
@@ -6600,7 +6655,12 @@ fn apply_decision_context_with_dm<D: DecisionMaker>(
 
             if game.pending_replacement_choice.is_some() {
                 let choice = result.first().copied().unwrap_or(0);
-                return apply_replacement_choice_response(game, trigger_queue, choice);
+                return apply_replacement_choice_response(
+                    game,
+                    trigger_queue,
+                    choice,
+                    decision_maker,
+                );
             }
             if state.pending_method_selection.is_some() {
                 let choice = result.first().copied().unwrap_or(0);

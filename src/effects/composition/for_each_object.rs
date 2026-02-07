@@ -55,14 +55,17 @@ impl EffectExecutor for ForEachObject {
             .collect();
 
         let mut outcomes = Vec::new();
+        let original_iterated_object = ctx.iterated_object;
 
-        // Execute the effects once for each matching object
-        // Note: Effects aren't targeted at specific objects, just executed N times
-        for _ in &matching {
+        // Execute the effects once for each matching object and expose that object via
+        // ctx.iterated_object for inner effects using ChooseSpec::Iterated.
+        for object_id in &matching {
+            ctx.iterated_object = Some(*object_id);
             for effect in &self.effects {
                 outcomes.push(execute_effect(game, effect, ctx)?);
             }
         }
+        ctx.iterated_object = original_iterated_object;
 
         Ok(EffectOutcome::aggregate(outcomes))
     }
@@ -77,9 +80,11 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::EffectResult;
-    use crate::ids::{CardId, PlayerId};
+    use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::CounterType;
     use crate::object::Object;
+    use crate::target::ChooseSpec;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -87,7 +92,7 @@ mod tests {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
     }
 
-    fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) {
+    fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
         let card = CardBuilder::new(CardId::new(), name)
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
             .card_types(vec![CardType::Creature])
@@ -96,6 +101,7 @@ mod tests {
         let id = game.new_object_id();
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
+        id
     }
 
     #[test]
@@ -171,5 +177,33 @@ mod tests {
         let effect = ForEachObject::new(ObjectFilter::creature(), vec![Effect::gain_life(1)]);
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("ForEachObject"));
+    }
+
+    #[test]
+    fn test_for_each_sets_iterated_object_for_inner_effects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let c1 = create_creature(&mut game, "Bear 1", alice);
+        let c2 = create_creature(&mut game, "Bear 2", alice);
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = ForEachObject::new(
+            ObjectFilter::creature().you_control(),
+            vec![Effect::put_counters(
+                CounterType::PlusOnePlusOne,
+                1,
+                ChooseSpec::Iterated,
+            )],
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.result, EffectResult::Count(2));
+        let c1_obj = game.object(c1).expect("c1 should exist");
+        let c2_obj = game.object(c2).expect("c2 should exist");
+        assert_eq!(c1_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
+        assert_eq!(c2_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
     }
 }
