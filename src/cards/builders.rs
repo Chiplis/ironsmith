@@ -1726,6 +1726,9 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_enchanted_has_activated_ability_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(abilities) = parse_equipped_gets_and_has_activated_ability_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(ability) = parse_shuffle_into_library_from_graveyard_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -3328,6 +3331,65 @@ fn parse_equipped_creature_has_line(
     }
 
     Ok(Some(StaticAbility::equipment_grant(abilities)))
+}
+
+fn parse_equipped_gets_and_has_activated_ability_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 4 || line_words[0] != "equipped" || line_words[1] != "creature" {
+        return Ok(None);
+    }
+
+    let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
+        return Ok(None);
+    };
+    if has_idx + 1 >= tokens.len() {
+        return Ok(None);
+    }
+    let ability_tokens = &tokens[has_idx + 1..];
+    let has_colon = ability_tokens
+        .iter()
+        .any(|token| matches!(token, Token::Colon(_)));
+    let Some(parsed) = parse_activated_line(ability_tokens)? else {
+        if has_colon {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported equipped activated-ability grant (clause: '{}')",
+                line_words.join(" ")
+            )));
+        }
+        return Ok(None);
+    };
+
+    let mut static_abilities = Vec::new();
+    if let Some(get_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("get") || token.is_word("gets"))
+        && get_idx < has_idx
+    {
+        let clause_tail_end = if has_idx > get_idx + 2
+            && tokens
+                .get(has_idx - 1)
+                .is_some_and(|token| token.is_word("and"))
+        {
+            has_idx - 1
+        } else {
+            has_idx
+        };
+        let clause = parse_anthem_clause(tokens, get_idx, clause_tail_end)?;
+        static_abilities.push(build_anthem_static_ability(&clause));
+    }
+
+    let mut ability = parsed.ability;
+    if ability.text.is_none() {
+        ability.text = Some(words(ability_tokens).join(" "));
+    }
+    static_abilities.push(StaticAbility::attached_ability_grant(
+        ability,
+        line_words.join(" "),
+    ));
+
+    Ok(Some(static_abilities))
 }
 
 fn parse_doesnt_untap_during_untap_step_line(
@@ -5383,6 +5445,48 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
             return Ok(TriggerSpec::ThisEntersBattlefield);
         }
         let subject_tokens = &tokens[..enters_idx];
+        if let Some(or_idx) = subject_tokens.iter().position(|token| token.is_word("or")) {
+            let left_tokens = &subject_tokens[..or_idx];
+            let mut right_tokens = &subject_tokens[or_idx + 1..];
+            let left_words: Vec<&str> = left_tokens
+                .iter()
+                .filter_map(Token::as_word)
+                .filter(|word| !is_article(word))
+                .collect();
+            if is_source_reference_words(&left_words) && !right_tokens.is_empty() {
+                let mut other = false;
+                if right_tokens.first().is_some_and(|token| {
+                    token.is_word("another") || token.is_word("other")
+                }) {
+                    other = true;
+                    right_tokens = &right_tokens[1..];
+                }
+                if !right_tokens.is_empty()
+                    && let Ok(mut filter) = parse_object_filter(right_tokens, other)
+                {
+                    if words.contains(&"under") && words.contains(&"your") && words.contains(&"control")
+                    {
+                        filter.controller = Some(PlayerFilter::You);
+                    } else if words.contains(&"under")
+                        && (words.contains(&"opponent") || words.contains(&"opponents"))
+                        && words.contains(&"control")
+                    {
+                        filter.controller = Some(PlayerFilter::Opponent);
+                    }
+                    let right_trigger = if words.contains(&"untapped") {
+                        TriggerSpec::EntersBattlefieldUntapped(filter)
+                    } else if words.contains(&"tapped") {
+                        TriggerSpec::EntersBattlefieldTapped(filter)
+                    } else {
+                        TriggerSpec::EntersBattlefield(filter)
+                    };
+                    return Ok(TriggerSpec::Either(
+                        Box::new(TriggerSpec::ThisEntersBattlefield),
+                        Box::new(right_trigger),
+                    ));
+                }
+            }
+        }
         if subject_tokens
             .first()
             .is_some_and(|token| token.is_word("this"))
@@ -5860,6 +5964,12 @@ fn parse_sentence_for_each_exiled_this_way(
     parse_for_each_exiled_this_way_sentence(tokens)
 }
 
+fn parse_sentence_exile_then_return_same_object(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_exile_then_return_same_object_sentence(tokens)
+}
+
 fn parse_sentence_search_library(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -5904,6 +6014,18 @@ fn parse_sentence_vote_extra(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>,
 
 fn parse_sentence_after_turn(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(parse_after_turn_sentence(tokens)?.map(|effect| vec![effect]))
+}
+
+fn parse_sentence_same_name_target_fanout(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_same_name_target_fanout_sentence(tokens)
+}
+
+fn parse_sentence_same_name_gets_fanout(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_same_name_gets_fanout_sentence(tokens)
 }
 
 fn parse_sentence_destroy_or_exile_all_split(
@@ -6183,6 +6305,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parser: parse_sentence_for_each_exiled_this_way,
     },
     SentencePrimitive {
+        name: "exile-then-return-same-object",
+        parser: parse_sentence_exile_then_return_same_object,
+    },
+    SentencePrimitive {
         name: "search-library",
         parser: parse_sentence_search_library,
     },
@@ -6217,6 +6343,14 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "after-turn",
         parser: parse_sentence_after_turn,
+    },
+    SentencePrimitive {
+        name: "same-name-target-fanout",
+        parser: parse_sentence_same_name_target_fanout,
+    },
+    SentencePrimitive {
+        name: "same-name-gets-fanout",
+        parser: parse_sentence_same_name_gets_fanout,
     },
     SentencePrimitive {
         name: "destroy-or-exile-all-split",
@@ -6710,6 +6844,311 @@ fn is_ring_tempts_sentence(tokens: &[Token]) -> bool {
     words.as_slice() == ["the", "ring", "tempts", "you"]
 }
 
+fn find_same_name_reference_span(tokens: &[Token]) -> Result<Option<(usize, usize)>, CardTextError> {
+    for idx in 0..tokens.len() {
+        if !tokens[idx].is_word("with") {
+            continue;
+        }
+        if idx + 6 < tokens.len()
+            && tokens[idx + 1].is_word("the")
+            && tokens[idx + 2].is_word("same")
+            && tokens[idx + 3].is_word("name")
+            && tokens[idx + 4].is_word("as")
+            && tokens[idx + 5].is_word("that")
+        {
+            return Ok(Some((idx, idx + 7)));
+        }
+        if idx + 5 < tokens.len()
+            && tokens[idx + 1].is_word("same")
+            && tokens[idx + 2].is_word("name")
+            && tokens[idx + 3].is_word("as")
+            && tokens[idx + 4].is_word("that")
+        {
+            return Ok(Some((idx, idx + 6)));
+        }
+        if idx + 4 < tokens.len()
+            && tokens[idx + 1].is_word("the")
+            && tokens[idx + 2].is_word("same")
+            && tokens[idx + 3].is_word("name")
+            && tokens[idx + 4].is_word("as")
+        {
+            return Err(CardTextError::ParseError(format!(
+                "missing 'that <object>' in same-name clause (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
+        if idx + 3 < tokens.len()
+            && tokens[idx + 1].is_word("same")
+            && tokens[idx + 2].is_word("name")
+            && tokens[idx + 3].is_word("as")
+        {
+            return Err(CardTextError::ParseError(format!(
+                "missing 'that <object>' in same-name clause (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
+    }
+    Ok(None)
+}
+
+fn strip_same_controller_reference(tokens: &[Token]) -> (Vec<Token>, bool) {
+    let mut cleaned = Vec::with_capacity(tokens.len());
+    let mut idx = 0usize;
+    let mut same_controller = false;
+    while idx < tokens.len() {
+        if idx + 2 < tokens.len()
+            && tokens[idx].is_word("that")
+            && tokens[idx + 1].is_word("player")
+            && (tokens[idx + 2].is_word("control") || tokens[idx + 2].is_word("controls"))
+        {
+            same_controller = true;
+            idx += 3;
+            continue;
+        }
+        if idx + 2 < tokens.len()
+            && tokens[idx].is_word("its")
+            && tokens[idx + 1].is_word("controller")
+            && (tokens[idx + 2].is_word("control") || tokens[idx + 2].is_word("controls"))
+        {
+            same_controller = true;
+            idx += 3;
+            continue;
+        }
+        if idx + 3 < tokens.len()
+            && tokens[idx].is_word("that")
+            && (tokens[idx + 1].is_word("creature")
+                || tokens[idx + 1].is_word("permanent")
+                || tokens[idx + 1].is_word("card"))
+            && tokens[idx + 2].is_word("controller")
+            && (tokens[idx + 3].is_word("control") || tokens[idx + 3].is_word("controls"))
+        {
+            same_controller = true;
+            idx += 4;
+            continue;
+        }
+
+        cleaned.push(tokens[idx].clone());
+        idx += 1;
+    }
+
+    (cleaned, same_controller)
+}
+
+fn parse_same_name_fanout_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some((same_start, same_end)) = find_same_name_reference_span(tokens)? else {
+        return Ok(None);
+    };
+
+    let mut filter_tokens = Vec::with_capacity(tokens.len());
+    filter_tokens.extend_from_slice(&tokens[..same_start]);
+    filter_tokens.extend_from_slice(&tokens[same_end..]);
+    let filter_tokens = trim_commas(&filter_tokens);
+    if filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing object phrase in same-name fanout clause (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    let (cleaned_tokens, same_controller) = strip_same_controller_reference(&filter_tokens);
+    let cleaned_tokens = trim_commas(&cleaned_tokens);
+    if cleaned_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing base object filter in same-name fanout clause (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    let mut filter = parse_object_filter(&cleaned_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported same-name fanout filter (clause: '{}')",
+            words(tokens).join(" ")
+        ))
+    })?;
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(IT_TAG),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(IT_TAG),
+        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+    if same_controller {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::SameControllerAsTagged,
+        });
+    }
+    Ok(Some(filter))
+}
+
+fn parse_same_name_target_fanout_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words_all = words(tokens);
+    let Some(verb) = words_all.first().copied() else {
+        return Ok(None);
+    };
+    if verb != "destroy" && verb != "exile" && verb != "return" {
+        return Ok(None);
+    }
+
+    let and_idx = (0..tokens.len().saturating_sub(2)).find(|idx| {
+        tokens[*idx].is_word("and")
+            && tokens[*idx + 1].is_word("all")
+            && tokens[*idx + 2].is_word("other")
+    });
+    let Some(and_idx) = and_idx else {
+        return Ok(None);
+    };
+    if and_idx <= 1 {
+        return Ok(None);
+    }
+
+    let first_target_tokens = trim_commas(&tokens[1..and_idx]);
+    if first_target_tokens.is_empty()
+        || !first_target_tokens.iter().any(|token| token.is_word("target"))
+    {
+        return Ok(None);
+    }
+
+    let second_clause_tokens = if verb == "return" {
+        let to_idx = tokens
+            .iter()
+            .rposition(|token| token.is_word("to"))
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing return destination in same-name fanout clause (clause: '{}')",
+                    words_all.join(" ")
+                ))
+            })?;
+        if to_idx <= and_idx + 3 {
+            return Err(CardTextError::ParseError(format!(
+                "missing same-name filter before return destination (clause: '{}')",
+                words_all.join(" ")
+            )));
+        }
+        let destination_words = words(&tokens[to_idx + 1..]);
+        if !destination_words.contains(&"hand") && !destination_words.contains(&"hands") {
+            return Ok(None);
+        }
+        tokens[and_idx + 3..to_idx].to_vec()
+    } else {
+        tokens[and_idx + 3..].to_vec()
+    };
+
+    if second_clause_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(filter) = parse_same_name_fanout_filter(&second_clause_tokens)? else {
+        return Ok(None);
+    };
+
+    let first_target = parse_target_phrase(&first_target_tokens)?;
+    let first_effect = match verb {
+        "destroy" => EffectAst::Destroy {
+            target: first_target,
+        },
+        "exile" => EffectAst::Exile {
+            target: first_target,
+        },
+        "return" => EffectAst::ReturnToHand {
+            target: first_target,
+        },
+        _ => unreachable!("verb already filtered"),
+    };
+    let second_effect = match verb {
+        "destroy" => EffectAst::DestroyAll { filter },
+        "exile" => EffectAst::ExileAll { filter },
+        "return" => EffectAst::ReturnAllToHand { filter },
+        _ => unreachable!("verb already filtered"),
+    };
+
+    Ok(Some(vec![first_effect, second_effect]))
+}
+
+fn parse_same_name_gets_fanout_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((verb, verb_idx)) = find_verb(tokens) else {
+        return Ok(None);
+    };
+    if verb != Verb::Get || verb_idx == 0 || verb_idx + 1 >= tokens.len() {
+        return Ok(None);
+    }
+
+    let subject_tokens = &tokens[..verb_idx];
+    let and_idx = (0..subject_tokens.len().saturating_sub(2)).find(|idx| {
+        subject_tokens[*idx].is_word("and")
+            && subject_tokens[*idx + 1].is_word("all")
+            && subject_tokens[*idx + 2].is_word("other")
+    });
+    let Some(and_idx) = and_idx else {
+        return Ok(None);
+    };
+    if and_idx == 0 {
+        return Ok(None);
+    }
+
+    let first_target_tokens = trim_commas(&subject_tokens[..and_idx]);
+    if first_target_tokens.is_empty()
+        || !first_target_tokens
+            .iter()
+            .any(|token| token.is_word("target"))
+    {
+        return Ok(None);
+    }
+    let second_clause_tokens = trim_commas(&subject_tokens[and_idx + 3..]);
+    if second_clause_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Some(filter) = parse_same_name_fanout_filter(&second_clause_tokens)? else {
+        return Ok(None);
+    };
+
+    let modifier_tokens = &tokens[verb_idx + 1..];
+    let modifier_word = modifier_tokens
+        .first()
+        .and_then(Token::as_word)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing modifier in same-name gets clause (clause: '{}')",
+                words(tokens).join(" ")
+            ))
+        })?;
+    let (power, toughness) = parse_pt_modifier(modifier_word).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "invalid power/toughness modifier in same-name gets clause (clause: '{}')",
+            words(tokens).join(" ")
+        ))
+    })?;
+    let modifier_words = words(modifier_tokens);
+    let duration =
+        if modifier_words.contains(&"until") && modifier_words.contains(&"end") && modifier_words.contains(&"turn")
+        {
+            Until::EndOfTurn
+        } else {
+            Until::EndOfTurn
+        };
+
+    let target = parse_target_phrase(&first_target_tokens)?;
+    Ok(Some(vec![
+        EffectAst::Pump {
+            power: Value::Fixed(power),
+            toughness: Value::Fixed(toughness),
+            target,
+            duration: duration.clone(),
+        },
+        EffectAst::PumpAll {
+            filter,
+            power: Value::Fixed(power),
+            toughness: Value::Fixed(toughness),
+            duration,
+        },
+    ]))
+}
+
 fn parse_destroy_or_exile_all_split_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -6761,6 +7200,61 @@ fn parse_destroy_or_exile_all_split_sentence(
     Ok(None)
 }
 
+fn parse_exile_then_return_same_object_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words_all = words(tokens);
+    if words_all.first().copied() != Some("exile")
+        || !words_all.contains(&"then")
+        || !words_all.contains(&"return")
+    {
+        return Ok(None);
+    }
+
+    let split_idx = (0..tokens.len().saturating_sub(2)).find(|idx| {
+        matches!(tokens[*idx], Token::Comma(_))
+            && tokens[*idx + 1].is_word("then")
+            && tokens[*idx + 2].is_word("return")
+    });
+    let Some(split_idx) = split_idx else {
+        return Ok(None);
+    };
+
+    let first_clause = &tokens[..split_idx];
+    let second_clause = &tokens[split_idx + 2..];
+    if first_clause.is_empty() || second_clause.is_empty() {
+        return Ok(None);
+    }
+
+    let mut first_effects = parse_effect_chain_inner(first_clause)?;
+    if !first_effects
+        .iter()
+        .any(|effect| matches!(effect, EffectAst::Exile { .. }))
+    {
+        return Ok(None);
+    }
+
+    let second_effect = parse_effect_clause(second_clause)?;
+    let rewritten_second = match second_effect {
+        EffectAst::ReturnToBattlefield {
+            target: TargetAst::Tagged(tag, _),
+            tapped,
+        } if tag.as_str() == IT_TAG => EffectAst::ReturnToBattlefield {
+            target: TargetAst::Tagged(TagKey::from("exiled_0"), None),
+            tapped,
+        },
+        EffectAst::ReturnToHand {
+            target: TargetAst::Tagged(tag, _),
+        } if tag.as_str() == IT_TAG => EffectAst::ReturnToHand {
+            target: TargetAst::Tagged(TagKey::from("exiled_0"), None),
+        },
+        _ => return Ok(None),
+    };
+
+    first_effects.push(rewritten_second);
+    Ok(Some(first_effects))
+}
+
 fn parse_exile_up_to_one_each_target_type_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -6770,6 +7264,27 @@ fn parse_exile_up_to_one_each_target_type_sentence(
     }
     if !words.starts_with(&["exile", "up", "to", "one", "target"]) {
         return Ok(None);
+    }
+    // This primitive is for repeated clauses like:
+    // "Exile up to one target artifact, up to one target creature, ..."
+    // Not for a single disjunctive target like:
+    // "Exile up to one target artifact, creature, or enchantment ..."
+    let target_positions: Vec<usize> = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| token.is_word("target").then_some(idx))
+        .collect();
+    if target_positions.len() < 2 {
+        return Ok(None);
+    }
+    for pos in target_positions.iter().skip(1) {
+        if *pos < 3
+            || !tokens[*pos - 3].is_word("up")
+            || !tokens[*pos - 2].is_word("to")
+            || !tokens[*pos - 1].is_word("one")
+        {
+            return Ok(None);
+        }
     }
 
     let mut raw_segments: Vec<Vec<Token>> = Vec::new();
@@ -12823,8 +13338,18 @@ fn compile_effect(
         EffectAst::ReturnToBattlefield { target, tapped } => {
             let spec = choose_spec_for_target(target);
             let spec = resolve_choose_spec_it_tag(&spec, ctx)?;
+            let from_exile_tag = matches!(
+                target,
+                TargetAst::Tagged(tag, _) if tag.as_str() == "exiled_0"
+            );
             let effect = tag_object_target_effect(
-                Effect::return_from_graveyard_to_battlefield(spec.clone(), *tapped),
+                if from_exile_tag && !*tapped {
+                    // Blink-style "exile ... then return it" should move the tagged
+                    // exiled object back to the battlefield from exile.
+                    Effect::move_to_zone(spec.clone(), Zone::Battlefield, false)
+                } else {
+                    Effect::return_from_graveyard_to_battlefield(spec.clone(), *tapped)
+                },
                 &spec,
                 ctx,
                 "returned",
@@ -18209,6 +18734,36 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_exile_up_to_one_single_disjunction_stays_single_choice() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Scrollshift Variant")
+            .parse_text(
+                "Exile up to one target artifact, creature, or enchantment you control, then return it to the battlefield under its owner's control.",
+            )
+            .expect("parse single-disjunction exile");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        let choose_count = debug.matches("ChooseObjectsEffect").count();
+        assert!(
+            choose_count <= 1,
+            "single disjunctive target should not fan out into per-type choices, got {choose_count} in {debug}"
+        );
+        assert!(
+            debug.contains("zone: Exile") && debug.contains("zone: Battlefield"),
+            "expected exile-then-return sequence, got {debug}"
+        );
+        assert!(
+            debug.contains("card_types: [Artifact, Creature, Enchantment]")
+                || debug.contains("card_types: [Artifact, Enchantment, Creature]")
+                || debug.contains("card_types: [Creature, Artifact, Enchantment]")
+                || debug.contains("card_types: [Creature, Enchantment, Artifact]")
+                || debug.contains("card_types: [Enchantment, Artifact, Creature]")
+                || debug.contains("card_types: [Enchantment, Creature, Artifact]"),
+            "expected combined disjunctive type filter, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_self_enters_with_counters_as_static_not_spell_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Self ETB Counter Variant")
             .parse_text("This creature enters with four +1/+1 counters on it.")
@@ -18812,6 +19367,36 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_trigger_this_or_another_enchantment_enters() {
+        let tokens = tokenize_line("this creature or another enchantment you control enters", 0);
+        let trigger = parse_trigger_clause(&tokens).expect("parse constellation-style trigger");
+        match trigger {
+            TriggerSpec::Either(left, right) => {
+                assert!(
+                    matches!(*left, TriggerSpec::ThisEntersBattlefield),
+                    "expected left branch to be this-enters trigger, got {left:?}"
+                );
+                match *right {
+                    TriggerSpec::EntersBattlefield(filter) => {
+                        assert!(
+                            filter.card_types.contains(&CardType::Enchantment),
+                            "expected enchantment filter, got {filter:?}"
+                        );
+                        assert_eq!(
+                            filter.controller,
+                            Some(PlayerFilter::You),
+                            "expected you-control filter, got {filter:?}"
+                        );
+                        assert!(filter.other, "expected 'another' filter, got {filter:?}");
+                    }
+                    other => panic!("expected enters-battlefield branch, got {other:?}"),
+                }
+            }
+            other => panic!("expected Either trigger, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_parse_conditional_anthem_and_haste_keeps_pump_and_keyword() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conditional Haste Variant")
             .card_types(vec![CardType::Creature])
@@ -18892,6 +19477,36 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_exile_up_to_one_single_disjunction_stays_single_choice() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Scrollshift Variant")
+            .parse_text(
+                "Exile up to one target artifact, creature, or enchantment you control, then return it to the battlefield under its owner's control.",
+            )
+            .expect("parse single-disjunction exile");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        let choose_count = debug.matches("ChooseObjectsEffect").count();
+        assert!(
+            choose_count <= 1,
+            "single disjunctive target should not fan out into per-type choices, got {choose_count} in {debug}"
+        );
+        assert!(
+            debug.contains("zone: Exile") && debug.contains("zone: Battlefield"),
+            "expected exile-then-return sequence, got {debug}"
+        );
+        assert!(
+            debug.contains("card_types: [Artifact, Creature, Enchantment]")
+                || debug.contains("card_types: [Artifact, Enchantment, Creature]")
+                || debug.contains("card_types: [Creature, Artifact, Enchantment]")
+                || debug.contains("card_types: [Creature, Enchantment, Artifact]")
+                || debug.contains("card_types: [Enchantment, Artifact, Creature]")
+                || debug.contains("card_types: [Enchantment, Creature, Artifact]"),
+            "expected combined disjunctive type filter, got {debug}"
+        );
+    }
+
+    #[test]
     fn test_render_multiple_cycling_variants_preserves_variant_names() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Variant")
             .card_types(vec![CardType::Creature])
@@ -18906,6 +19521,160 @@ mod tests {
         assert!(
             lines.iter().any(|line| line.contains("Forestcycling")),
             "expected forestcycling keyword in render, got {lines:?}"
+        );
+    }
+
+    #[test]
+    fn parse_same_name_destroy_fans_out_to_all_other_matching_objects() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Same Name Destroy Variant")
+            .parse_text(
+                "Destroy target artifact and all other artifacts with the same name as that artifact.",
+            )
+            .expect("parse same-name destroy sentence");
+
+        let effects = def.spell_effect.expect("expected spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("DestroyEffect") && debug.matches("DestroyEffect").count() >= 2,
+            "expected target destroy plus fanout destroy, got {debug}"
+        );
+        assert!(
+            debug.contains("SameNameAsTagged"),
+            "expected same-name tagged relation in fanout filter, got {debug}"
+        );
+        assert!(
+            debug.contains("IsNotTaggedObject"),
+            "expected all-other exclusion relation in fanout filter, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_same_name_exile_with_that_player_controls_keeps_controller_link() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Same Name Exile Variant")
+            .parse_text(
+                "Exile target creature an opponent controls with mana value 2 or less and all other creatures that player controls with the same name as that creature.",
+            )
+            .expect("parse same-name exile sentence");
+
+        let effects = def.spell_effect.expect("expected spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("MoveToZoneEffect") && debug.contains("ExileEffect"),
+            "expected target exile plus fanout exile-all effect, got {debug}"
+        );
+        assert!(
+            debug.contains("SameNameAsTagged"),
+            "expected same-name tagged relation in fanout filter, got {debug}"
+        );
+        assert!(
+            debug.contains("SameControllerAsTagged"),
+            "expected same-controller tagged relation in fanout filter, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_same_name_return_to_hand_keeps_zone_tail() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Same Name Return Variant")
+            .parse_text(
+                "Return target creature card and all other cards with the same name as that card from your graveyard to your hand.",
+            )
+            .expect("parse same-name return sentence");
+
+        let effects = def.spell_effect.expect("expected spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ReturnToHandEffect") && debug.matches("ReturnToHandEffect").count() >= 2,
+            "expected target return plus fanout return, got {debug}"
+        );
+        assert!(
+            debug.contains("zone: Some(Graveyard)"),
+            "expected graveyard zone tail to remain in fanout filter, got {debug}"
+        );
+        assert!(
+            debug.contains("SameNameAsTagged"),
+            "expected same-name tagged relation in fanout filter, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_same_name_fanout_requires_full_reference_tail() {
+        let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Broken Same Name Variant")
+            .parse_text("Destroy target artifact and all other artifacts with the same name as.")
+            .expect_err("same-name clause without full tail should fail");
+        let message = format!("{err:?}");
+        assert!(
+            message.contains("same-name"),
+            "expected actionable same-name parse error, got {message}"
+        );
+    }
+
+    #[test]
+    fn parse_same_name_target_gets_fans_out_to_tagged_filter() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Same Name Gets Variant")
+            .parse_text(
+                "Target creature and all other creatures with the same name as that creature get -3/-3 until end of turn.",
+            )
+            .expect("parse same-name gets sentence");
+
+        let effects = def.spell_effect.expect("expected spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ModifyPowerToughnessEffect")
+                && debug.contains("ModifyPowerToughnessAllEffect"),
+            "expected target pump and fanout pump-all effects, got {debug}"
+        );
+        assert!(
+            debug.contains("SameNameAsTagged") && debug.contains("IsNotTaggedObject"),
+            "expected same-name all-other relations in fanout filter, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_equipped_gets_and_has_activated_grant_as_static_abilities() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Activated Grant Variant")
+            .parse_text(
+                "Equip {1}\nEquipped creature gets +0/+3 and has \"{2}, {T}: Target player mills three cards.\"",
+            )
+            .expect("parse equipped activated grant line");
+
+        assert!(
+            def.spell_effect.is_none(),
+            "equipped activated grant must not compile as one-shot spell effects"
+        );
+
+        let mut has_anthem = false;
+        let mut has_attached_grant = false;
+        for ability in &def.abilities {
+            if let AbilityKind::Static(static_ability) = &ability.kind {
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::Anthem {
+                    has_anthem = true;
+                }
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant
+                {
+                    has_attached_grant = true;
+                }
+            }
+        }
+        assert!(has_anthem, "expected equipped anthem static ability");
+        assert!(
+            has_attached_grant,
+            "expected attached activated-ability grant static ability"
+        );
+    }
+
+    #[test]
+    fn parse_equipped_activated_grant_with_unsupported_cost_errors_instead_of_partial_compile() {
+        let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Unsupported Grant Variant")
+            .parse_text(
+                "Equip {5}\nEquipped creature gets +2/+1 and has \"{T}, Unattach this source: Destroy target creature.\"",
+            )
+            .expect_err("unsupported equipped activated cost should fail");
+        let message = format!("{err:?}");
+        assert!(
+            message.contains("unsupported equipped activated-ability grant")
+                || message.contains("unsupported activation cost segment"),
+            "expected actionable equipped-grant error, got {message}"
         );
     }
 }

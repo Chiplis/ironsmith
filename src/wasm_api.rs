@@ -2039,6 +2039,16 @@ fn describe_effects_inline(
     let mut idx = 0usize;
     while idx < effects.len() {
         if idx + 1 < effects.len()
+            && let Some(tagged) = effects[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(move_back) =
+                effects[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) = describe_exile_then_return(tagged, move_back, &local_tags)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < effects.len()
             && let Some(choose) =
                 effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(for_each) =
@@ -2577,6 +2587,31 @@ fn describe_draw_then_discard(
     }
     text.push('.');
     Some(text)
+}
+
+fn describe_exile_then_return(
+    tagged: &crate::effects::TaggedEffect,
+    move_back: &crate::effects::MoveToZoneEffect,
+    tagged_subjects: &HashMap<String, String>,
+) -> Option<String> {
+    if move_back.zone != Zone::Battlefield {
+        return None;
+    }
+    let crate::target::ChooseSpec::Tagged(return_tag) = &move_back.target else {
+        return None;
+    };
+    if !return_tag.as_str().starts_with("exiled_") || return_tag != &tagged.tag {
+        return None;
+    }
+    let exile_move = tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if exile_move.zone != Zone::Exile {
+        return None;
+    }
+
+    let target = describe_choose_spec(&exile_move.target, tagged_subjects);
+    Some(format!("Exile {target}, then return it to the battlefield"))
 }
 
 enum SearchDestination {
@@ -3752,7 +3787,15 @@ fn describe_move_to_zone(
                 format!("Put {target} on the bottom of its owner's library.")
             }
         }
-        Zone::Battlefield => format!("Put {target} onto the battlefield."),
+        Zone::Battlefield => {
+            if let crate::target::ChooseSpec::Tagged(tag) = &effect.target
+                && tag.as_str().starts_with("exiled_")
+            {
+                format!("Return {target} to the battlefield.")
+            } else {
+                format!("Put {target} onto the battlefield.")
+            }
+        }
         Zone::Stack => format!("Put {target} on the stack."),
         Zone::Command => format!("Move {target} to the command zone."),
     }

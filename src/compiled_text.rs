@@ -499,6 +499,16 @@ fn describe_effect_list(effects: &[Effect]) -> String {
     let mut idx = 0usize;
     while idx < filtered.len() {
         if idx + 1 < filtered.len()
+            && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(move_back) =
+                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) = describe_exile_then_return(tagged, move_back)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(for_each) =
@@ -539,6 +549,29 @@ fn describe_effect_list(effects: &[Effect]) -> String {
     }
     let text = parts.join(". ");
     cleanup_decompiled_text(&text)
+}
+
+fn describe_exile_then_return(
+    tagged: &crate::effects::TaggedEffect,
+    move_back: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    if move_back.zone != Zone::Battlefield {
+        return None;
+    }
+    let crate::target::ChooseSpec::Tagged(return_tag) = &move_back.target else {
+        return None;
+    };
+    if !return_tag.as_str().starts_with("exiled_") || return_tag != &tagged.tag {
+        return None;
+    }
+    let exile_move = tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if exile_move.zone != Zone::Exile {
+        return None;
+    }
+    let target = describe_choose_spec(&exile_move.target);
+    Some(format!("Exile {target}, then return it to the battlefield"))
 }
 
 fn cleanup_decompiled_text(text: &str) -> String {
@@ -909,7 +942,15 @@ fn describe_effect(effect: &Effect) -> String {
                     format!("Put {target} on the bottom of its owner's library")
                 }
             }
-            Zone::Battlefield => format!("Put {target} onto the battlefield"),
+            Zone::Battlefield => {
+                if let crate::target::ChooseSpec::Tagged(tag) = &move_to_zone.target
+                    && tag.as_str().starts_with("exiled_")
+                {
+                    format!("Return {target} to the battlefield")
+                } else {
+                    format!("Put {target} onto the battlefield")
+                }
+            }
             Zone::Stack => format!("Put {target} on the stack"),
             Zone::Command => format!("Move {target} to the command zone"),
         };

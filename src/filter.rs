@@ -301,6 +301,10 @@ pub enum TaggedOpbjectRelation {
     SharesCardType,
     /// The object must share the same stable_id with a tagged object.
     SameStableId,
+    /// The object must have the same name as a tagged object.
+    SameNameAsTagged,
+    /// The object must have the same controller as a tagged object.
+    SameControllerAsTagged,
     /// The object must NOT be one of the tagged objects.
     IsNotTaggedObject,
 }
@@ -1066,6 +1070,22 @@ impl ObjectFilter {
                         return false;
                     }
                 }
+                TaggedOpbjectRelation::SameNameAsTagged => {
+                    if !tagged_snapshots
+                        .iter()
+                        .any(|s| s.name.eq_ignore_ascii_case(&object.name))
+                    {
+                        return false;
+                    }
+                }
+                TaggedOpbjectRelation::SameControllerAsTagged => {
+                    if !tagged_snapshots
+                        .iter()
+                        .any(|s| s.controller == object.controller)
+                    {
+                        return false;
+                    }
+                }
                 TaggedOpbjectRelation::IsNotTaggedObject => {
                     // Object must NOT be one of the tagged objects.
                     if tagged_snapshots.iter().any(|s| s.object_id == object.id) {
@@ -1339,7 +1359,10 @@ impl ObjectFilter {
             let Some(tagged_snapshots) = ctx.tagged_objects.get(constraint.tag.as_str()) else {
                 if matches!(
                     constraint.relation,
-                    TaggedOpbjectRelation::IsTaggedObject | TaggedOpbjectRelation::SameStableId
+                    TaggedOpbjectRelation::IsTaggedObject
+                        | TaggedOpbjectRelation::SameStableId
+                        | TaggedOpbjectRelation::SameNameAsTagged
+                        | TaggedOpbjectRelation::SameControllerAsTagged
                 ) {
                     return false;
                 }
@@ -1376,6 +1399,22 @@ impl ObjectFilter {
                     if !tagged_snapshots
                         .iter()
                         .any(|s| s.stable_id == snapshot.stable_id)
+                    {
+                        return false;
+                    }
+                }
+                TaggedOpbjectRelation::SameNameAsTagged => {
+                    if !tagged_snapshots
+                        .iter()
+                        .any(|s| s.name.eq_ignore_ascii_case(&snapshot.name))
+                    {
+                        return false;
+                    }
+                }
+                TaggedOpbjectRelation::SameControllerAsTagged => {
+                    if !tagged_snapshots
+                        .iter()
+                        .any(|s| s.controller == snapshot.controller)
                     {
                         return false;
                     }
@@ -1483,13 +1522,22 @@ impl ObjectFilter {
             }
         }
         for constraint in &self.tagged_constraints {
-            if constraint.relation != TaggedOpbjectRelation::IsTaggedObject {
-                continue;
-            }
-            match constraint.tag.as_str() {
-                "enchanted" => parts.push("enchanted".to_string()),
-                "equipped" => parts.push("equipped".to_string()),
-                _ => {}
+            match constraint.relation {
+                TaggedOpbjectRelation::IsTaggedObject => match constraint.tag.as_str() {
+                    "enchanted" => parts.push("enchanted".to_string()),
+                    "equipped" => parts.push("equipped".to_string()),
+                    _ => {}
+                },
+                TaggedOpbjectRelation::IsNotTaggedObject => {
+                    parts.push("other".to_string());
+                }
+                TaggedOpbjectRelation::SameNameAsTagged => {
+                    parts.push("with the same name as that object".to_string());
+                }
+                TaggedOpbjectRelation::SameControllerAsTagged => {
+                    parts.push("controlled by that object's controller".to_string());
+                }
+                TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SameStableId => {}
             }
         }
         if !self.excluded_card_types.is_empty() {
