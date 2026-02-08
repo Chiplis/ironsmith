@@ -61,6 +61,8 @@ pub enum StaticAbilityId {
     BelloBardOfTheBrambles,
     CharacteristicDefiningPT,
     AddCardTypes,
+    AddSubtypes,
+    AddColors,
     CopyActivatedAbilities,
     ManascapeRefractor,
     SquirrelNest,
@@ -225,6 +227,10 @@ impl StaticAbilityId {
                 | Humility
                 | BelloBardOfTheBrambles
                 | CharacteristicDefiningPT
+                | AddCardTypes
+                | AddSubtypes
+                | AddColors
+                | SetColors
         )
     }
 }

@@ -534,6 +534,15 @@ pub enum Value {
     /// Number of distinct card types among cards in a player's graveyard
     CardTypesInGraveyard(PlayerFilter),
 
+    /// Devotion to a color for players matching the filter.
+    ///
+    /// Devotion counts the number of colored mana symbols of the chosen color
+    /// in mana costs of permanents that player controls.
+    Devotion {
+        player: PlayerFilter,
+        color: crate::color::Color,
+    },
+
     /// The value from a prior effect's result.
     ///
     /// Used for effects like "Draw cards equal to the damage dealt."

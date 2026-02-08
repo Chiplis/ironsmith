@@ -139,4 +139,52 @@ mod tests {
         );
         assert_eq!(game.player(alice).expect("alice").mana_pool.black, 2);
     }
+
+    #[test]
+    fn test_add_scaled_mana_uses_devotion_value() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        // GG contributes 2 devotion to green.
+        let green_card = CardBuilder::new(CardId::new(), "GG Creature")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![
+                vec![ManaSymbol::Green],
+                vec![ManaSymbol::Green],
+            ]))
+            .build();
+        let green_id = game.new_object_id();
+        let green_obj = Object::from_card(green_id, &green_card, alice, Zone::Battlefield);
+        game.add_object(green_obj);
+
+        // Hybrid G/U contributes 1 devotion to green.
+        let hybrid_card = CardBuilder::new(CardId::new(), "Hybrid Creature")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+                ManaSymbol::Green,
+                ManaSymbol::Blue,
+            ]]))
+            .build();
+        let hybrid_id = game.new_object_id();
+        let hybrid_obj = Object::from_card(hybrid_id, &hybrid_card, alice, Zone::Battlefield);
+        game.add_object(hybrid_obj);
+
+        let effect = AddScaledManaEffect::new(
+            vec![ManaSymbol::Green],
+            Value::Devotion {
+                player: PlayerFilter::You,
+                color: crate::color::Color::Green,
+            },
+            PlayerFilter::You,
+        );
+        let result = effect.execute(&mut game, &mut ctx).expect("execute");
+
+        assert_eq!(
+            result.result,
+            EffectResult::ManaAdded(vec![ManaSymbol::Green, ManaSymbol::Green, ManaSymbol::Green])
+        );
+        assert_eq!(game.player(alice).expect("alice").mana_pool.green, 3);
+    }
 }

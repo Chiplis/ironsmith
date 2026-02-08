@@ -1570,6 +1570,21 @@ fn resolve_value_direct(
             .map(|t| t.base_value())
             .unwrap_or(0),
 
+        Value::Devotion { player, color } => {
+            let owner = match player {
+                crate::target::PlayerFilter::You => Some(controller),
+                crate::target::PlayerFilter::Opponent => game
+                    .players
+                    .iter()
+                    .find(|p| p.id != controller && p.is_in_game())
+                    .map(|p| p.id),
+                _ => None,
+            };
+            owner
+                .map(|pid| game.devotion_to_color(pid, *color) as i32)
+                .unwrap_or(0)
+        }
+
         Value::PowerOf(_target_spec) => {
             // PowerOf requires target resolution which isn't available here
             // In the layer system, these values should have been resolved during spell resolution
@@ -2359,6 +2374,7 @@ fn resolve_value_with_context(
         // Return 0 as fallback (these are rare in continuous effects anyway)
         Value::XTimes(_)
         | Value::CountPlayers(_)
+        | Value::Devotion { .. }
         | Value::CountersOn(_, _)
         | Value::PowerOf(_)
         | Value::ToughnessOf(_)

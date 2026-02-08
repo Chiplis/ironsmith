@@ -213,6 +213,121 @@ fn describe_choice_count(count: &ChoiceCount) -> String {
     }
 }
 
+fn ensure_trailing_period(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.ends_with('.') {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}.")
+    }
+}
+
+fn normalize_modal_text(text: &str) -> String {
+    text.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn modal_text_equivalent(description: &str, compiled: &str) -> bool {
+    normalize_modal_text(description) == normalize_modal_text(compiled)
+}
+
+fn number_word(value: i32) -> Option<&'static str> {
+    match value {
+        1 => Some("one"),
+        2 => Some("two"),
+        3 => Some("three"),
+        4 => Some("four"),
+        5 => Some("five"),
+        _ => None,
+    }
+}
+
+fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> String {
+    match (min, max) {
+        (None, Value::Fixed(value)) if *value > 0 => {
+            if let Some(word) = number_word(*value) {
+                format!("Choose {word} -")
+            } else {
+                format!("Choose {value} mode(s) -")
+            }
+        }
+        (Some(Value::Fixed(1)), Value::Fixed(2)) => "Choose one or both -".to_string(),
+        (Some(min), max) => format!(
+            "Choose between {} and {} mode(s) -",
+            describe_value(min),
+            describe_value(max)
+        ),
+        (None, max) => format!("Choose {} mode(s) -", describe_value(max)),
+    }
+}
+
+fn describe_compact_protection_choice(effect: &Effect) -> Option<String> {
+    let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if choose_mode.min_choose_count.is_some() || !matches!(choose_mode.choose_count, Value::Fixed(1))
+    {
+        return None;
+    }
+
+    let mut target: Option<&ChooseSpec> = None;
+    let mut color_mode_count = 0usize;
+    let mut allow_colorless = false;
+
+    for mode in &choose_mode.modes {
+        if mode.effects.len() != 1 {
+            return None;
+        }
+        let grant = mode.effects[0].downcast_ref::<crate::effects::GrantAbilitiesTargetEffect>()?;
+        if !matches!(grant.duration, Until::EndOfTurn) || grant.abilities.len() != 1 {
+            return None;
+        }
+        match grant.abilities[0].protection_from()? {
+            crate::ability::ProtectionFrom::Colorless => {
+                allow_colorless = true;
+            }
+            crate::ability::ProtectionFrom::Color(colors) => {
+                if colors.count() != 1 {
+                    return None;
+                }
+                color_mode_count += 1;
+            }
+            _ => return None,
+        }
+
+        if let Some(existing) = target {
+            if existing != &grant.target {
+                return None;
+            }
+        } else {
+            target = Some(&grant.target);
+        }
+    }
+
+    if color_mode_count != 5 {
+        return None;
+    }
+    let target_desc = describe_choose_spec(target?);
+    Some(if allow_colorless {
+        format!(
+            "{target_desc} gains protection from colorless or from the color of your choice until end of turn"
+        )
+    } else {
+        format!("{target_desc} gains protection from the color of your choice until end of turn")
+    })
+}
+
 fn describe_mana_symbol(symbol: ManaSymbol) -> String {
     match symbol {
         ManaSymbol::White => "{W}".to_string(),
@@ -294,6 +409,11 @@ fn describe_value(value: &Value) -> String {
         Value::CardTypesInGraveyard(filter) => format!(
             "the number of distinct card types in {}'s graveyard",
             describe_player_filter(filter)
+        ),
+        Value::Devotion { player, color } => format!(
+            "{} devotion to {}",
+            describe_possessive_player_filter(player),
+            format!("{color:?}").to_ascii_lowercase()
         ),
         Value::EffectValue(id) => format!("the count result of effect #{}", id.0),
         Value::WasKicked => "whether this spell was kicked (1 or 0)".to_string(),
@@ -736,6 +856,26 @@ fn with_indefinite_article(noun: &str) -> String {
     format!("{article} {trimmed}")
 }
 
+fn strip_indefinite_article(text: &str) -> &str {
+    let trimmed = text.trim();
+    if let Some(rest) = trimmed.strip_prefix("a ") {
+        return rest;
+    }
+    if let Some(rest) = trimmed.strip_prefix("an ") {
+        return rest;
+    }
+    trimmed
+}
+
+fn pluralize_noun_phrase(phrase: &str) -> String {
+    let base = strip_indefinite_article(phrase);
+    if base.ends_with('s') {
+        base.to_string()
+    } else {
+        format!("{base}s")
+    }
+}
+
 fn sacrifice_uses_chosen_tag(filter: &ObjectFilter, tag: &str) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -778,10 +918,14 @@ fn describe_choose_then_sacrifice(
     choose: &crate::effects::ChooseObjectsEffect,
     sacrifice: &crate::effects::SacrificeEffect,
 ) -> Option<String> {
+    let choose_exact = choose.count.max.filter(|max| *max == choose.count.min)?;
+    let sacrifice_count = match sacrifice.count {
+        Value::Fixed(value) if value > 0 => value as usize,
+        _ => return None,
+    };
     if choose.zone != Zone::Battlefield
         || choose.is_search
-        || !choose.count.is_single()
-        || !matches!(sacrifice.count, Value::Fixed(1))
+        || choose_exact != sacrifice_count
         || sacrifice.player != choose.chooser
         || !sacrifice_uses_chosen_tag(&sacrifice.filter, choose.tag.as_str())
     {
@@ -789,11 +933,18 @@ fn describe_choose_then_sacrifice(
     }
 
     let player = describe_player_filter(&choose.chooser);
-    let chosen = with_indefinite_article(&choose.filter.description());
-    Some(format!(
-        "{player} {} {chosen}",
-        player_verb(&player, "sacrifice", "sacrifices")
-    ))
+    let verb = player_verb(&player, "sacrifice", "sacrifices");
+    let chosen = choose.filter.description();
+    if sacrifice_count == 1 {
+        let chosen = with_indefinite_article(&chosen);
+        Some(format!("{player} {verb} {chosen}"))
+    } else {
+        let count_text = number_word(sacrifice_count as i32)
+            .map(str::to_string)
+            .unwrap_or_else(|| sacrifice_count.to_string());
+        let chosen = pluralize_noun_phrase(&chosen);
+        Some(format!("{player} {verb} {count_text} {chosen}"))
+    }
 }
 
 fn describe_draw_then_discard(
@@ -1200,6 +1351,15 @@ fn describe_effect(effect: &Effect) -> String {
                 describe_mana_pool_owner(&add_scaled.player)
             );
         }
+        if let Value::Devotion { player, color } = &add_scaled.amount {
+            let color_name = format!("{color:?}").to_ascii_lowercase();
+            return format!(
+                "Add an amount of {} equal to {} devotion to {}",
+                mana_text,
+                describe_possessive_player_filter(player),
+                color_name
+            );
+        }
         return format!(
             "Add {} {} time(s) to {}",
             mana_text,
@@ -1464,39 +1624,29 @@ fn describe_effect(effect: &Effect) -> String {
     if let Some(target_only) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
         return format!("Choose {}", describe_choose_spec(&target_only.target));
     }
+    if let Some(compact) = describe_compact_protection_choice(effect) {
+        return compact;
+    }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
-        let choose_text = if let Some(min) = &choose_mode.min_choose_count {
-            format!(
-                "choose {} to {} mode(s)",
-                describe_value(min),
-                describe_value(&choose_mode.choose_count)
-            )
-        } else {
-            format!(
-                "choose {} mode(s)",
-                describe_value(&choose_mode.choose_count)
-            )
-        };
+        let header =
+            describe_mode_choice_header(&choose_mode.choose_count, choose_mode.min_choose_count.as_ref());
         let modes = choose_mode
             .modes
             .iter()
-            .enumerate()
-            .map(|(idx, mode)| {
+            .map(|mode| {
+                let description = ensure_trailing_period(mode.description.trim());
                 let mode_effects = describe_effect_list(&mode.effects);
                 if mode_effects.is_empty() {
-                    format!("mode {} ('{}')", idx + 1, mode.description)
+                    description
+                } else if modal_text_equivalent(&description, &mode_effects) {
+                    description
                 } else {
-                    format!(
-                        "mode {} ('{}'): {}",
-                        idx + 1,
-                        mode.description,
-                        mode_effects
-                    )
+                    format!("{description} [{mode_effects}]")
                 }
             })
             .collect::<Vec<_>>()
-            .join(" | ");
-        return format!("{choose_text}: {modes}");
+            .join(" • ");
+        return format!("{header} {modes}");
     }
     if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         let token_blueprint = describe_token_blueprint(&create_token.token);

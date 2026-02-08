@@ -45,6 +45,52 @@ fn effect_target_for_filter(source: ObjectId, filter: &ObjectFilter) -> EffectTa
     }
 }
 
+fn join_with_and(items: &[String]) -> String {
+    match items.len() {
+        0 => String::new(),
+        1 => items[0].clone(),
+        2 => format!("{} and {}", items[0], items[1]),
+        _ => {
+            let mut out = items[..items.len() - 1].join(", ");
+            out.push_str(", and ");
+            out.push_str(items.last().map(String::as_str).unwrap_or_default());
+            out
+        }
+    }
+}
+
+fn color_list(colors: crate::color::ColorSet) -> Vec<String> {
+    let mut list = Vec::new();
+    if colors.contains(crate::color::Color::White) {
+        list.push("white".to_string());
+    }
+    if colors.contains(crate::color::Color::Blue) {
+        list.push("blue".to_string());
+    }
+    if colors.contains(crate::color::Color::Black) {
+        list.push("black".to_string());
+    }
+    if colors.contains(crate::color::Color::Red) {
+        list.push("red".to_string());
+    }
+    if colors.contains(crate::color::Color::Green) {
+        list.push("green".to_string());
+    }
+    list
+}
+
+fn subject_text(filter: &ObjectFilter) -> String {
+    attached_subject(filter).unwrap_or_else(|| filter.description())
+}
+
+fn subject_verb_and_possessive(subject: &str) -> (&'static str, &'static str) {
+    let singular = subject.starts_with("enchanted ")
+        || subject.starts_with("equipped ")
+        || subject.starts_with("this ")
+        || subject.starts_with("that ");
+    if singular { ("is", "its") } else { ("are", "their") }
+}
+
 /// Anthem effect: "Creatures you control get +N/+M"
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemCountExpression {
@@ -859,7 +905,10 @@ impl StaticAbilityKind for SetColorsForFilter {
     }
 
     fn display(&self) -> String {
-        "Permanents have their colors set".to_string()
+        let subject = subject_text(&self.filter);
+        let (verb, _) = subject_verb_and_possessive(&subject);
+        let colors = join_with_and(&color_list(self.colors));
+        format!("{subject} {verb} {colors}")
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -876,8 +925,61 @@ impl StaticAbilityKind for SetColorsForFilter {
             ContinuousEffect::new(
                 source,
                 controller,
-                EffectTarget::Filter(self.filter.clone()),
+                effect_target_for_filter(source, &self.filter),
                 Modification::SetColors(self.colors),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// Add colors: "Enchanted creature is black in addition to its other colors."
+#[derive(Debug, Clone)]
+pub struct AddColorsForFilter {
+    pub filter: ObjectFilter,
+    pub colors: crate::color::ColorSet,
+}
+
+impl AddColorsForFilter {
+    pub fn new(filter: ObjectFilter, colors: crate::color::ColorSet) -> Self {
+        Self { filter, colors }
+    }
+}
+
+impl PartialEq for AddColorsForFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter && self.colors == other.colors
+    }
+}
+
+impl StaticAbilityKind for AddColorsForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddColors
+    }
+
+    fn display(&self) -> String {
+        let subject = subject_text(&self.filter);
+        let (verb, possessive) = subject_verb_and_possessive(&subject);
+        let colors = join_with_and(&color_list(self.colors));
+        format!("{subject} {verb} {colors} in addition to {possessive} other colors")
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddColors(self.colors),
             )
             .with_source_type(EffectSourceType::StaticAbility),
         ]
@@ -909,7 +1011,17 @@ impl StaticAbilityKind for AddCardTypesForFilter {
     }
 
     fn display(&self) -> String {
-        "Card types are added".to_string()
+        let subject = subject_text(&self.filter);
+        let (verb, possessive) = subject_verb_and_possessive(&subject);
+        let types = self
+            .card_types
+            .iter()
+            .map(|card_type| format!("{card_type:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        format!(
+            "{subject} {verb} {} in addition to {possessive} other types",
+            join_with_and(&types)
+        )
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -926,8 +1038,68 @@ impl StaticAbilityKind for AddCardTypesForFilter {
             ContinuousEffect::new(
                 source,
                 controller,
-                EffectTarget::Filter(self.filter.clone()),
+                effect_target_for_filter(source, &self.filter),
                 Modification::AddCardTypes(self.card_types.clone()),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// Add subtypes: "Enchanted creature is a Zombie in addition to its other types."
+#[derive(Debug, Clone)]
+pub struct AddSubtypesForFilter {
+    pub filter: ObjectFilter,
+    pub subtypes: Vec<Subtype>,
+}
+
+impl AddSubtypesForFilter {
+    pub fn new(filter: ObjectFilter, subtypes: Vec<Subtype>) -> Self {
+        Self { filter, subtypes }
+    }
+}
+
+impl PartialEq for AddSubtypesForFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter && self.subtypes == other.subtypes
+    }
+}
+
+impl StaticAbilityKind for AddSubtypesForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddSubtypes
+    }
+
+    fn display(&self) -> String {
+        let subject = subject_text(&self.filter);
+        let (verb, possessive) = subject_verb_and_possessive(&subject);
+        let subtypes = self
+            .subtypes
+            .iter()
+            .map(|subtype| format!("{subtype:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        format!(
+            "{subject} {verb} {} in addition to {possessive} other types",
+            join_with_and(&subtypes)
+        )
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddSubtypes(self.subtypes.clone()),
             )
             .with_source_type(EffectSourceType::StaticAbility),
         ]
@@ -1008,7 +1180,14 @@ impl StaticAbilityKind for RemoveSupertypesForFilter {
     }
 
     fn display(&self) -> String {
-        "Supertypes are removed".to_string()
+        let subject = self.filter.description();
+        let supertypes = self
+            .supertypes
+            .iter()
+            .map(|supertype| format!("{supertype:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join(" and ");
+        format!("{subject} is no longer {supertypes}")
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -1273,7 +1452,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::ids::CardId;
-    use crate::types::Subtype;
+    use crate::types::{Subtype, Supertype};
     use crate::zone::Zone;
 
     #[test]
@@ -1282,6 +1461,12 @@ mod tests {
         assert_eq!(anthem.id(), StaticAbilityId::Anthem);
         assert!(anthem.is_anthem());
         assert_eq!(anthem.display(), "Affected creatures get +1/+1");
+    }
+
+    #[test]
+    fn test_remove_supertypes_display_mentions_scope_and_supertype() {
+        let remove = RemoveSupertypesForFilter::new(ObjectFilter::land(), vec![Supertype::Snow]);
+        assert_eq!(remove.display(), "land is no longer snow");
     }
 
     #[test]

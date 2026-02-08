@@ -12,6 +12,7 @@
 use crate::color::ColorSet;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::{Object, ObjectKind};
+use crate::static_abilities::StaticAbilityId;
 use crate::tag::TagKey;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -427,6 +428,18 @@ pub struct ObjectFilter {
     /// Require a card to have a specific alternative casting capability.
     pub alternative_cast: Option<AlternativeCastKind>,
 
+    /// Required static ability IDs (object must have all of these).
+    pub static_abilities: Vec<StaticAbilityId>,
+
+    /// Excluded static ability IDs (object must have none of these).
+    pub excluded_static_abilities: Vec<StaticAbilityId>,
+
+    /// Required custom static-ability marker text (case-insensitive match on ability display text).
+    pub custom_static_markers: Vec<String>,
+
+    /// Excluded custom static-ability marker text.
+    pub excluded_custom_static_markers: Vec<String>,
+
     /// If true, must be a commander creature (for Commander format)
     pub is_commander: bool,
 
@@ -738,6 +751,48 @@ impl ObjectFilter {
         self
     }
 
+    /// Require a specific static ability ID.
+    pub fn with_static_ability(mut self, ability_id: StaticAbilityId) -> Self {
+        if !self.static_abilities.contains(&ability_id) {
+            self.static_abilities.push(ability_id);
+        }
+        self
+    }
+
+    /// Exclude objects with a specific static ability ID.
+    pub fn without_static_ability(mut self, ability_id: StaticAbilityId) -> Self {
+        if !self.excluded_static_abilities.contains(&ability_id) {
+            self.excluded_static_abilities.push(ability_id);
+        }
+        self
+    }
+
+    /// Require a custom static marker (for marker-style keyword abilities such as landwalk).
+    pub fn with_custom_static_marker(mut self, marker: impl Into<String>) -> Self {
+        let marker = marker.into();
+        if !self
+            .custom_static_markers
+            .iter()
+            .any(|m| m.eq_ignore_ascii_case(&marker))
+        {
+            self.custom_static_markers.push(marker);
+        }
+        self
+    }
+
+    /// Exclude objects with a custom static marker.
+    pub fn without_custom_static_marker(mut self, marker: impl Into<String>) -> Self {
+        let marker = marker.into();
+        if !self
+            .excluded_custom_static_markers
+            .iter()
+            .any(|m| m.eq_ignore_ascii_case(&marker))
+        {
+            self.excluded_custom_static_markers.push(marker);
+        }
+        self
+    }
+
     /// Add a tagged-object matching rule.
     pub fn match_tagged(mut self, tag: impl Into<TagKey>, relation: TaggedOpbjectRelation) -> Self {
         self.tagged_constraints.push(TaggedObjectConstraint {
@@ -1026,6 +1081,40 @@ impl ObjectFilter {
 
         if let Some(kind) = self.alternative_cast
             && !object_has_alternative_cast_kind(object, kind, game, ctx)
+        {
+            return false;
+        }
+
+        // Required static ability IDs
+        if self
+            .static_abilities
+            .iter()
+            .any(|ability_id| !object_has_static_ability_id(object, *ability_id))
+        {
+            return false;
+        }
+
+        // Excluded static ability IDs
+        if self
+            .excluded_static_abilities
+            .iter()
+            .any(|ability_id| object_has_static_ability_id(object, *ability_id))
+        {
+            return false;
+        }
+
+        // Required/excluded custom marker abilities
+        if self
+            .custom_static_markers
+            .iter()
+            .any(|marker| !object_has_custom_static_marker(object, marker))
+        {
+            return false;
+        }
+        if self
+            .excluded_custom_static_markers
+            .iter()
+            .any(|marker| object_has_custom_static_marker(object, marker))
         {
             return false;
         }
@@ -1350,6 +1439,40 @@ impl ObjectFilter {
             }
         }
 
+        // Required static ability IDs
+        if self
+            .static_abilities
+            .iter()
+            .any(|ability_id| !snapshot_has_static_ability_id(snapshot, *ability_id))
+        {
+            return false;
+        }
+
+        // Excluded static ability IDs
+        if self
+            .excluded_static_abilities
+            .iter()
+            .any(|ability_id| snapshot_has_static_ability_id(snapshot, *ability_id))
+        {
+            return false;
+        }
+
+        // Required/excluded custom marker abilities
+        if self
+            .custom_static_markers
+            .iter()
+            .any(|marker| !snapshot_has_custom_static_marker(snapshot, marker))
+        {
+            return false;
+        }
+        if self
+            .excluded_custom_static_markers
+            .iter()
+            .any(|marker| snapshot_has_custom_static_marker(snapshot, marker))
+        {
+            return false;
+        }
+
         // Commander check
         if self.is_commander && !ctx.your_commanders.contains(&snapshot.object_id) {
             return false;
@@ -1477,7 +1600,11 @@ impl ObjectFilter {
         // Handle controller
         if let Some(ref ctrl) = self.controller {
             match ctrl {
-                PlayerFilter::You => parts.push("a".to_string()),
+                PlayerFilter::You => {
+                    if !self.other {
+                        parts.push("a".to_string());
+                    }
+                }
                 PlayerFilter::Opponent => parts.push("an opponent's".to_string()),
                 PlayerFilter::Any => {}
                 PlayerFilter::Active => parts.push("the active player's".to_string()),
@@ -1486,7 +1613,11 @@ impl ObjectFilter {
                 PlayerFilter::Defending => parts.push("the defending player's".to_string()),
                 PlayerFilter::Attacking => parts.push("an attacking player's".to_string()),
                 PlayerFilter::DamagedPlayer => parts.push("the damaged player's".to_string()),
-                PlayerFilter::IteratedPlayer => parts.push("a".to_string()),
+                PlayerFilter::IteratedPlayer => {
+                    if !self.other {
+                        parts.push("a".to_string());
+                    }
+                }
                 PlayerFilter::Target(_) => parts.push("target player's".to_string()),
                 PlayerFilter::ControllerOf(_) => parts.push("a controller's".to_string()),
                 PlayerFilter::OwnerOf(_) => parts.push("an owner's".to_string()),
@@ -1572,6 +1703,12 @@ impl ObjectFilter {
                 parts.push("nongreen".to_string());
             }
         }
+        if self.colorless {
+            parts.push("colorless".to_string());
+        }
+        if self.multicolored {
+            parts.push("multicolored".to_string());
+        }
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());
         } else if self.attacking {
@@ -1645,6 +1782,22 @@ impl ObjectFilter {
                 "with mana value {}",
                 describe_comparison(mana_value)
             ));
+        }
+        for ability in &self.static_abilities {
+            if let Some(label) = describe_filter_static_ability(*ability) {
+                parts.push(format!("with {}", label));
+            }
+        }
+        for marker in &self.custom_static_markers {
+            parts.push(format!("with {}", marker.to_ascii_lowercase()));
+        }
+        for ability in &self.excluded_static_abilities {
+            if let Some(label) = describe_filter_static_ability(*ability) {
+                parts.push(format!("without {}", label));
+            }
+        }
+        for marker in &self.excluded_custom_static_markers {
+            parts.push(format!("without {}", marker.to_ascii_lowercase()));
         }
         if let Some(kind) = self.alternative_cast {
             parts.push(format!("with {}", describe_alternative_cast_kind(kind)));
@@ -1774,6 +1927,66 @@ fn object_has_alternative_cast_kind(
         .any(|grant| alternative_cast_matches_kind(&grant.method, kind))
 }
 
+fn object_has_static_ability_id(object: &Object, ability_id: StaticAbilityId) -> bool {
+    use crate::ability::AbilityKind;
+
+    let has_regular = object.abilities.iter().any(|ability| {
+        if let AbilityKind::Static(static_ability) = &ability.kind {
+            static_ability.id() == ability_id
+        } else {
+            false
+        }
+    });
+    if has_regular {
+        return true;
+    }
+
+    object
+        .level_granted_abilities()
+        .iter()
+        .any(|ability| ability.id() == ability_id)
+}
+
+fn object_has_custom_static_marker(object: &Object, marker: &str) -> bool {
+    use crate::ability::AbilityKind;
+
+    let has_regular = object.abilities.iter().any(|ability| {
+        if let AbilityKind::Static(static_ability) = &ability.kind {
+            static_ability.id() == StaticAbilityId::Custom
+                && static_ability.display().eq_ignore_ascii_case(marker)
+        } else {
+            false
+        }
+    });
+    if has_regular {
+        return true;
+    }
+
+    object.level_granted_abilities().iter().any(|ability| {
+        ability.id() == StaticAbilityId::Custom && ability.display().eq_ignore_ascii_case(marker)
+    })
+}
+
+fn snapshot_has_static_ability_id(
+    snapshot: &crate::snapshot::ObjectSnapshot,
+    ability_id: StaticAbilityId,
+) -> bool {
+    snapshot.has_static_ability_id(ability_id)
+}
+
+fn snapshot_has_custom_static_marker(snapshot: &crate::snapshot::ObjectSnapshot, marker: &str) -> bool {
+    use crate::ability::AbilityKind;
+
+    snapshot.abilities.iter().any(|ability| {
+        if let AbilityKind::Static(static_ability) = &ability.kind {
+            static_ability.id() == StaticAbilityId::Custom
+                && static_ability.display().eq_ignore_ascii_case(marker)
+        } else {
+            false
+        }
+    })
+}
+
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
     match kind {
         AlternativeCastKind::Flashback => "flashback",
@@ -1781,6 +1994,36 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Escape => "escape",
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
+    }
+}
+
+fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'static str> {
+    use StaticAbilityId::*;
+    match ability_id {
+        Flying => Some("flying"),
+        FirstStrike => Some("first strike"),
+        DoubleStrike => Some("double strike"),
+        Deathtouch => Some("deathtouch"),
+        Defender => Some("defender"),
+        Flash => Some("flash"),
+        Haste => Some("haste"),
+        Hexproof => Some("hexproof"),
+        Indestructible => Some("indestructible"),
+        Intimidate => Some("intimidate"),
+        Lifelink => Some("lifelink"),
+        Menace => Some("menace"),
+        Reach => Some("reach"),
+        Shroud => Some("shroud"),
+        Trample => Some("trample"),
+        Vigilance => Some("vigilance"),
+        Fear => Some("fear"),
+        Flanking => Some("flanking"),
+        Shadow => Some("shadow"),
+        Horsemanship => Some("horsemanship"),
+        Wither => Some("wither"),
+        Infect => Some("infect"),
+        Changeling => Some("changeling"),
+        _ => None,
     }
 }
 

@@ -216,6 +216,15 @@ pub fn resolve_value(
             Ok(types.len() as i32)
         }
 
+        Value::Devotion { player, color } => {
+            let player_ids = resolve_player_filter_to_list(game, player, &ctx.filter_context(game), ctx)?;
+            let devotion: usize = player_ids
+                .iter()
+                .map(|pid| game.devotion_to_color(*pid, *color))
+                .sum();
+            Ok(devotion as i32)
+        }
+
         Value::EffectValue(effect_id) => {
             let result = ctx
                 .get_result(*effect_id)

@@ -2036,6 +2036,36 @@ impl GameState {
             .collect()
     }
 
+    /// Returns devotion to a color for permanents controlled by `controller`.
+    ///
+    /// Devotion counts colored mana symbols in mana costs. Hybrid symbols count
+    /// if they include the queried color.
+    pub fn devotion_to_color(&self, controller: PlayerId, color: crate::color::Color) -> usize {
+        self.permanents_controlled_by(controller)
+            .into_iter()
+            .filter_map(|id| self.object(id))
+            .filter_map(|obj| obj.mana_cost.as_ref())
+            .map(|mana_cost| {
+                mana_cost
+                    .pips()
+                    .iter()
+                    .map(|pip| {
+                        usize::from(pip.iter().copied().any(|symbol| {
+                            matches!(
+                                (symbol, color),
+                                (crate::mana::ManaSymbol::White, crate::color::Color::White)
+                                    | (crate::mana::ManaSymbol::Blue, crate::color::Color::Blue)
+                                    | (crate::mana::ManaSymbol::Black, crate::color::Color::Black)
+                                    | (crate::mana::ManaSymbol::Red, crate::color::Color::Red)
+                                    | (crate::mana::ManaSymbol::Green, crate::color::Color::Green)
+                            )
+                        }))
+                    })
+                    .sum::<usize>()
+            })
+            .sum()
+    }
+
     /// Advances to the next turn.
     ///
     /// Turn order rules:

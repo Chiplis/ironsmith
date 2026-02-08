@@ -795,11 +795,22 @@ impl StaticAbility {
         Self::new(SetColorsForFilter::new(filter, colors))
     }
 
+    pub fn add_colors(filter: crate::target::ObjectFilter, colors: crate::color::ColorSet) -> Self {
+        Self::new(AddColorsForFilter::new(filter, colors))
+    }
+
     pub fn add_card_types(
         filter: crate::target::ObjectFilter,
         card_types: Vec<crate::types::CardType>,
     ) -> Self {
         Self::new(AddCardTypesForFilter::new(filter, card_types))
+    }
+
+    pub fn add_subtypes(
+        filter: crate::target::ObjectFilter,
+        subtypes: Vec<crate::types::Subtype>,
+    ) -> Self {
+        Self::new(AddSubtypesForFilter::new(filter, subtypes))
     }
 
     pub fn make_colorless(filter: crate::target::ObjectFilter) -> Self {

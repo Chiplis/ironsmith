@@ -916,6 +916,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::XTimes(_)
         | Value::Count(_)
         | Value::CountPlayers(_)
+        | Value::Devotion { .. }
         | Value::LifeTotal(_)
         | Value::CardsInHand(_)
         | Value::CardsInGraveyard(_)
