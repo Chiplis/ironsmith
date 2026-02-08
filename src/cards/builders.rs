@@ -6283,6 +6283,33 @@ fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>,
     Ok(None)
 }
 
+fn is_spawn_scion_token_mana_reminder(tokens: &[Token]) -> bool {
+    let words = words(tokens);
+    let starts_with_token_pronoun = words.starts_with(&["they", "have"])
+        || words.starts_with(&["it", "has"])
+        || words.starts_with(&["this", "token", "has"])
+        || words.starts_with(&["those", "tokens", "have"]);
+    starts_with_token_pronoun
+        && words.contains(&"sacrifice")
+        && words.contains(&"add")
+        && words.contains(&"c")
+}
+
+fn token_name_mentions_eldrazi_spawn_or_scion(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    (lower.contains("eldrazi") && lower.contains("spawn"))
+        || (lower.contains("eldrazi") && lower.contains("scion"))
+}
+
+fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::CreateToken { name, .. } | EffectAst::CreateTokenWithMods { name, .. } => {
+            token_name_mentions_eldrazi_spawn_or_scion(name)
+        }
+        _ => false,
+    }
+}
+
 fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
     let mut effects = Vec::new();
 
@@ -6291,6 +6318,20 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
             continue;
         }
         parser_trace("parse_effect_sentences:sentence", &sentence);
+
+        if is_spawn_scion_token_mana_reminder(&sentence) {
+            if effects
+                .last()
+                .is_some_and(effect_creates_eldrazi_spawn_or_scion)
+            {
+                parser_trace("parse_effect_sentences:spawn-scion-reminder", &sentence);
+                continue;
+            }
+            return Err(CardTextError::ParseError(format!(
+                "unsupported standalone token mana reminder clause (clause: '{}')",
+                words(&sentence).join(" ")
+            )));
+        }
 
         let mut sentence_effects = parse_effect_sentence(&sentence)?;
         if try_apply_token_copy_followup(&mut effects, &sentence_effects)? {
@@ -9095,6 +9136,8 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "druid" => Some(Subtype::Druid),
         "dwarf" => Some(Subtype::Dwarf),
         "eldrazi" => Some(Subtype::Eldrazi),
+        "spawn" | "spawns" => Some(Subtype::Spawn),
+        "scion" | "scions" => Some(Subtype::Scion),
         "elemental" => Some(Subtype::Elemental),
         "elephant" => Some(Subtype::Elephant),
         "elf" | "elves" => Some(Subtype::Elf),
@@ -10587,7 +10630,7 @@ fn parse_effect_with_verb(
         Verb::Draw => parse_draw(tokens, subject),
         Verb::Counter => parse_counter(tokens),
         Verb::Destroy => parse_destroy(tokens),
-        Verb::Exile => parse_exile(tokens),
+        Verb::Exile => parse_exile(tokens, subject),
         Verb::Reveal => parse_reveal(tokens, subject),
         Verb::Lose => parse_lose_life(tokens, subject),
         Verb::Gain => {
@@ -11966,7 +12009,7 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     Ok(EffectAst::Destroy { target })
 }
 
-fn parse_exile(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+fn parse_exile(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
     let words = words(tokens);
     if matches!(words.first().copied(), Some("all" | "each")) {
         let filter_tokens = &tokens[1..];
@@ -11986,8 +12029,45 @@ fn parse_exile(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         )));
     }
 
-    let target = parse_target_phrase(tokens)?;
+    let mut target = parse_target_phrase(tokens)?;
+    apply_exile_subject_hand_owner_context(&mut target, subject);
     Ok(EffectAst::Exile { target })
+}
+
+fn apply_exile_subject_hand_owner_context(target: &mut TargetAst, subject: Option<SubjectAst>) {
+    let Some(owner_filter) = exile_subject_owner_filter(subject) else {
+        return;
+    };
+    let Some(filter) = target_object_filter_mut(target) else {
+        return;
+    };
+    if filter.zone != Some(Zone::Hand) {
+        return;
+    }
+    match filter.owner {
+        Some(PlayerFilter::Target(_)) | None => {
+            filter.owner = Some(owner_filter);
+        }
+        _ => {}
+    }
+}
+
+fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
+    match subject {
+        Some(SubjectAst::Player(PlayerAst::Target)) => Some(PlayerFilter::target_player()),
+        Some(SubjectAst::Player(PlayerAst::TargetOpponent)) => {
+            Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
+        }
+        _ => None,
+    }
+}
+
+fn target_object_filter_mut(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+    match target {
+        TargetAst::Object(filter, _, _) => Some(filter),
+        TargetAst::WithCount(inner, _) => target_object_filter_mut(inner),
+        _ => None,
+    }
 }
 
 fn parse_untap(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
@@ -13923,6 +14003,66 @@ fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>, Vec
     (effects, choices)
 }
 
+fn hand_exile_filter_and_count(
+    target: &TargetAst,
+    ctx: &CompileContext,
+) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
+    let (filter, count) = match target {
+        TargetAst::Object(filter, _, _) => (filter, ChoiceCount::exactly(1)),
+        TargetAst::WithCount(inner, count) => match inner.as_ref() {
+            TargetAst::Object(filter, _, _) => (filter, *count),
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+
+    let resolved_filter = resolve_it_tag(filter, ctx)?;
+    if resolved_filter.zone != Some(Zone::Hand) {
+        return Ok(None);
+    }
+    Ok(Some((resolved_filter, count)))
+}
+
+fn lower_hand_exile_target(
+    target: &TargetAst,
+    ctx: &mut CompileContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    let Some((mut filter, count)) = hand_exile_filter_and_count(target, ctx)? else {
+        return Ok(None);
+    };
+
+    let mut chooser = filter
+        .owner
+        .clone()
+        .or_else(|| filter.controller.clone())
+        .unwrap_or(PlayerFilter::You);
+
+    if ctx.iterated_player && matches!(chooser, PlayerFilter::Target(_)) {
+        chooser = PlayerFilter::IteratedPlayer;
+        if matches!(filter.owner, Some(PlayerFilter::Target(_))) {
+            filter.owner = Some(PlayerFilter::IteratedPlayer);
+        }
+        if matches!(filter.controller, Some(PlayerFilter::Target(_))) {
+            filter.controller = Some(PlayerFilter::IteratedPlayer);
+        }
+    }
+
+    let (mut prelude, choices) = target_context_prelude_for_filter(&filter);
+    let tag = ctx.next_tag("exiled");
+    let tag_key: TagKey = tag.as_str().into();
+    ctx.last_object_tag = Some(tag.clone());
+    ctx.last_player_filter = Some(chooser.clone());
+
+    prelude.push(Effect::new(
+        crate::effects::ChooseObjectsEffect::new(filter, count, chooser, tag_key.clone())
+            .in_zone(Zone::Hand),
+    ));
+    prelude.push(Effect::new(crate::effects::ExileEffect::with_spec(
+        ChooseSpec::Tagged(tag_key),
+    )));
+    Ok(Some((prelude, choices)))
+}
+
 fn compile_effect(
     effect: &EffectAst,
     ctx: &mut CompileContext,
@@ -14869,6 +15009,9 @@ fn compile_effect(
             Ok((prelude, choices))
         }
         EffectAst::Exile { target } => {
+            if let Some(compiled) = lower_hand_exile_target(target, ctx)? {
+                return Ok(compiled);
+            }
             let spec = choose_spec_for_target(target);
             let spec = resolve_choose_spec_it_tag(&spec, ctx)?;
             let mut effect = if spec.count().is_single() {
@@ -15678,6 +15821,38 @@ fn tag_object_target_effect(
     }
 }
 
+fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
+    Ability {
+        kind: AbilityKind::Mana(ManaAbility::with_cost_effects(
+            TotalCost::free(),
+            vec![Effect::sacrifice_source()],
+            vec![ManaSymbol::Colorless],
+        )),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some("Sacrifice this creature: Add {C}.".to_string()),
+    }
+}
+
+fn eldrazi_spawn_token_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Eldrazi Spawn")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi, Subtype::Spawn])
+        .power_toughness(PowerToughness::fixed(0, 1))
+        .with_ability(eldrazi_spawn_or_scion_mana_ability())
+        .build()
+}
+
+fn eldrazi_scion_token_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Eldrazi Scion")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi, Subtype::Scion])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .with_ability(eldrazi_spawn_or_scion_mana_ability())
+        .build()
+}
+
 fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let lower = name.trim().to_ascii_lowercase();
     let words: Vec<&str> = lower
@@ -15696,6 +15871,12 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
     }
     if has_word("clue") {
         return Some(crate::cards::tokens::clue_token_definition());
+    }
+    if has_word("eldrazi") && has_word("spawn") {
+        return Some(eldrazi_spawn_token_definition());
+    }
+    if has_word("eldrazi") && has_word("scion") {
+        return Some(eldrazi_scion_token_definition());
     }
     if has_word("food") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Food")
@@ -21593,6 +21774,124 @@ mod tests {
     }
 
     #[test]
+    fn parse_target_opponent_exiles_card_from_their_hand_uses_hand_choice() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Skullcap Snail Variant")
+            .parse_text("Target opponent exiles a card from their hand.")
+            .expect("parse targeted hand exile");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("TargetOnlyEffect"),
+            "expected target-opponent context setup, got {debug}"
+        );
+        assert!(
+            debug.contains("ChooseObjectsEffect"),
+            "expected choose-from-hand effect, got {debug}"
+        );
+        assert!(
+            debug.contains("filter: ObjectFilter { zone: Some(Hand)"),
+            "expected choose-from-hand filter zone, got {debug}"
+        );
+        assert!(
+            debug.contains("chooser: Target(Opponent)"),
+            "expected target opponent chooser, got {debug}"
+        );
+        assert!(
+            debug.contains("ExileEffect") && debug.contains("Tagged(TagKey(\"exiled_0\"))"),
+            "expected exile of chosen tagged card, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_each_opponent_exiles_card_from_their_hand_uses_iterated_chooser() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Each Opponent Hand Exile Variant")
+            .parse_text("Each opponent exiles a card from their hand.")
+            .expect("parse each-opponent hand exile");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ForPlayersEffect"),
+            "expected foreach-opponent wrapper, got {debug}"
+        );
+        assert!(
+            debug.contains("chooser: IteratedPlayer"),
+            "expected iterated chooser for each-opponent hand exile, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_eldrazi_spawn_reminder_sentence_is_not_immediate_sacrifice() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Dread Drone Variant")
+            .parse_text(
+                "When this creature enters, create two 0/1 colorless Eldrazi Spawn creature tokens. They have \"Sacrifice this creature: Add {C}.\"",
+            )
+            .expect("parse eldrazi spawn reminder");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+        assert_eq!(
+            triggered.effects.len(),
+            1,
+            "spawn reminder must not compile as a second immediate effect"
+        );
+
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("Eldrazi Spawn creature token"),
+            "expected spawn token in compiled text, got {joined}"
+        );
+        assert!(
+            !joined.contains("sacrifice"),
+            "spawn reminder must not add immediate sacrifice clause, got {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_eldrazi_scion_reminder_sentence_is_not_immediate_sacrifice() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Scion Variant")
+            .parse_text(
+                "When this creature enters, create a 1/1 colorless Eldrazi Scion creature token. It has \"Sacrifice this creature: Add {C}.\"",
+            )
+            .expect("parse eldrazi scion reminder");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+        let effects = &triggered.effects;
+        assert_eq!(
+            effects.len(),
+            1,
+            "scion reminder must not compile as a second immediate effect"
+        );
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("Eldrazi Scion"),
+            "expected scion token creation, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_spawn_scion_mana_reminder_without_context_fails_strictly() {
+        let _err = CardDefinitionBuilder::new(CardId::new(), "Standalone Spawn Reminder")
+            .parse_text("They have \"Sacrifice this creature: Add {C}.\"")
+            .expect_err("standalone token reminder should fail");
+    }
+
+    #[test]
     fn render_mother_of_runes_compacts_protection_choice_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mother of Runes Variant")
             .parse_text(
@@ -21619,6 +21918,58 @@ mod tests {
         assert!(
             joined.contains("gains protection from colorless or from the color of your choice until end of turn"),
             "expected compact colorless-or-color protection rendering, got {joined}"
+        );
+    }
+
+    #[test]
+    fn render_draw_for_each_creature_uses_oracle_like_wording() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Collective Unconscious Variant")
+            .parse_text("Draw a card for each creature you control.")
+            .expect("draw-for-each should parse");
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("draw a card for each creature you control"),
+            "expected oracle-like draw-for-each wording, got {joined}"
+        );
+    }
+
+    #[test]
+    fn render_draw_for_each_subtype_uses_oracle_like_wording() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Sea Gate Loremaster Variant")
+            .parse_text("{T}: Draw a card for each Ally you control.")
+            .expect("subtype draw-for-each should parse");
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("draw a card for each Ally you control"),
+            "expected subtype draw-for-each wording, got {joined}"
+        );
+    }
+
+    #[test]
+    fn render_create_treasure_token_uses_compact_wording() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Glittermonger Variant")
+            .parse_text("{T}: Create a Treasure token.")
+            .expect("treasure token creation should parse");
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("Create a Treasure token"),
+            "expected compact treasure token wording, got {joined}"
+        );
+    }
+
+    #[test]
+    fn render_create_token_copy_uses_oracle_like_wording() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Myr Propagator Variant")
+            .parse_text("{3}, {T}: Create a token that's a copy of this creature.")
+            .expect("token copy creation should parse");
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("Create a token that's a copy of this source"),
+            "expected oracle-like token-copy wording, got {joined}"
         );
     }
 

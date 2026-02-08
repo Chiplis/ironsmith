@@ -67,6 +67,8 @@ pub enum Subtype {
     Druid,
     Dwarf,
     Eldrazi,
+    Spawn,
+    Scion,
     Elemental,
     Elephant,
     Elf,
@@ -315,6 +317,8 @@ impl Subtype {
                 | Subtype::Druid
                 | Subtype::Dwarf
                 | Subtype::Eldrazi
+                | Subtype::Spawn
+                | Subtype::Scion
                 | Subtype::Elemental
                 | Subtype::Elephant
                 | Subtype::Elf

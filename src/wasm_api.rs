@@ -2683,6 +2683,34 @@ fn pluralize_noun_phrase_ui(phrase: &str) -> String {
     }
 }
 
+fn describe_for_each_filter_ui(
+    filter: &crate::target::ObjectFilter,
+    tagged_subjects: &HashMap<String, String>,
+) -> String {
+    let mut base_filter = filter.clone();
+    base_filter.controller = None;
+
+    let description = base_filter.description();
+    let mut base = strip_indefinite_article_ui(&description).to_string();
+    if let Some(rest) = base.strip_prefix("permanent ") {
+        if filter.controller.is_some() {
+            base = rest.to_string();
+        } else {
+            base = format!("{rest} on the battlefield");
+        }
+    }
+
+    if let Some(controller) = &filter.controller {
+        if matches!(controller, crate::target::PlayerFilter::You) {
+            return format!("{base} you control");
+        }
+        let controller_text = describe_player_filter(controller, tagged_subjects).to_lowercase();
+        return format!("{base} {controller_text} controls");
+    }
+
+    base
+}
+
 fn sacrifice_uses_chosen_tag(filter: &crate::target::ObjectFilter, tag: &str) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -2753,6 +2781,49 @@ fn describe_draw_then_discard(
     }
     text.push('.');
     Some(text)
+}
+
+fn describe_compact_token_count_ui(
+    value: &crate::effect::Value,
+    token_name: &str,
+    tagged_subjects: &HashMap<String, String>,
+) -> String {
+    match value {
+        crate::effect::Value::Fixed(1) => format!("a {token_name} token"),
+        crate::effect::Value::Fixed(n) => format!("{n} {token_name} tokens"),
+        _ => format!("{} {token_name} token(s)", describe_value(value, tagged_subjects)),
+    }
+}
+
+fn describe_compact_create_token_ui(
+    create_token: &crate::effects::CreateTokenEffect,
+    tagged_subjects: &HashMap<String, String>,
+) -> Option<String> {
+    if create_token.enters_tapped
+        || create_token.enters_attacking
+        || create_token.exile_at_end_of_combat
+    {
+        return None;
+    }
+
+    let token_name = create_token.token.name();
+    let is_compact_named_token = matches!(
+        token_name,
+        "Treasure" | "Clue" | "Food" | "Blood" | "Powerstone"
+    );
+    if !is_compact_named_token {
+        return None;
+    }
+
+    let amount = describe_compact_token_count_ui(&create_token.count, token_name, tagged_subjects);
+    if matches!(create_token.controller, crate::target::PlayerFilter::You) {
+        Some(format!("Create {amount}."))
+    } else {
+        Some(format!(
+            "Create {amount} under {} control.",
+            describe_player_filter_possessive(&create_token.controller, tagged_subjects)
+        ))
+    }
 }
 
 fn describe_exile_then_return(
@@ -3219,6 +3290,14 @@ fn describe_effect_core_expanded(
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
         let player = describe_player_filter(&draw.player, tagged_subjects);
         let verb = if player == "You" { "draw" } else { "draws" };
+        if let crate::effect::Value::Count(filter) = &draw.count {
+            return Some(format!(
+                "{} {} a card for each {}.",
+                player,
+                verb,
+                describe_for_each_filter_ui(filter, tagged_subjects)
+            ));
+        }
         return Some(format!(
             "{} {} {} card(s).",
             player,
@@ -3736,6 +3815,9 @@ fn describe_effect_core_expanded(
         ));
     }
     if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
+        if let Some(compact) = describe_compact_create_token_ui(create_token, tagged_subjects) {
+            return Some(compact);
+        }
         let token_blueprint = describe_token_blueprint(&create_token.token);
         let mut text = format!(
             "Create {} {} under {} control",
@@ -3756,12 +3838,25 @@ fn describe_effect_core_expanded(
         return Some(text);
     }
     if let Some(create_copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() {
-        let mut text = format!(
-            "Create {} token copy/copies of {} under {} control",
-            describe_value(&create_copy.count, tagged_subjects),
-            describe_choose_spec(&create_copy.target, tagged_subjects),
-            describe_player_filter_possessive(&create_copy.controller, tagged_subjects)
-        );
+        let target = describe_choose_spec(&create_copy.target, tagged_subjects);
+        let mut text = match create_copy.count {
+            crate::effect::Value::Fixed(1) => {
+                format!("Create a token that's a copy of {target}")
+            }
+            crate::effect::Value::Fixed(n) => {
+                format!("Create {n} tokens that are copies of {target}")
+            }
+            _ => format!(
+                "Create {} token copy/copies of {target}",
+                describe_value(&create_copy.count, tagged_subjects)
+            ),
+        };
+        if !matches!(create_copy.controller, crate::target::PlayerFilter::You) {
+            text.push_str(&format!(
+                " under {} control",
+                describe_player_filter_possessive(&create_copy.controller, tagged_subjects)
+            ));
+        }
         if create_copy.enters_tapped {
             text.push_str(", tapped");
         }
