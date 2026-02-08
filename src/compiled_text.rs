@@ -22,6 +22,13 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
     }
 }
 
+fn strip_leading_article(text: &str) -> &str {
+    text.strip_prefix("a ")
+        .or_else(|| text.strip_prefix("an "))
+        .or_else(|| text.strip_prefix("the "))
+        .unwrap_or(text)
+}
+
 fn describe_mana_pool_owner(filter: &PlayerFilter) -> String {
     let player = describe_player_filter(filter);
     if player == "you" {
@@ -1110,9 +1117,11 @@ fn describe_effect(effect: &Effect) -> String {
         if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
             return compact;
         }
+        let player_filter_text = describe_player_filter(&for_players.filter);
+        let each_player = strip_leading_article(&player_filter_text);
         return format!(
             "For each {}, {}",
-            describe_player_filter(&for_players.filter),
+            each_player,
             describe_effect_list(&for_players.effects)
         );
     }
@@ -1619,6 +1628,10 @@ fn describe_effect(effect: &Effect) -> String {
         );
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(decider) = may.decider.as_ref() {
+            let who = describe_player_filter(decider);
+            return format!("{who} may {}", describe_effect_list(&may.effects));
+        }
         return format!("You may {}", describe_effect_list(&may.effects));
     }
     if let Some(target_only) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
@@ -1794,10 +1807,16 @@ fn describe_effect(effect: &Effect) -> String {
         );
     }
     if let Some(choose_new) = effect.downcast_ref::<crate::effects::ChooseNewTargetsEffect>() {
+        let chooser_text = choose_new
+            .chooser
+            .as_ref()
+            .map(describe_player_filter)
+            .unwrap_or_else(|| "you".to_string());
         return format!(
-            "{}choose new targets for effect #{}",
-            if choose_new.may { "You may " } else { "" },
-            choose_new.from_effect.0
+            "{} {} new targets for effect #{}",
+            chooser_text,
+            if choose_new.may { "may choose" } else { "chooses" },
+            choose_new.from_effect.0,
         );
     }
     if let Some(set_life) = effect.downcast_ref::<crate::effects::SetLifeTotalEffect>() {

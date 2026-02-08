@@ -6,9 +6,10 @@
 use crate::decisions::context::{BooleanContext, TargetRequirementContext, TargetsContext};
 use crate::effect::{ChoiceCount, EffectId, EffectOutcome, EffectResult};
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_player_filter;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry, Target};
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, PlayerFilter};
 use crate::targeting::compute_legal_targets;
 use crate::zone::Zone;
 
@@ -22,17 +23,37 @@ pub struct ChooseNewTargetsEffect {
     pub from_effect: EffectId,
     /// Whether this is optional ("you may choose new targets").
     pub may: bool,
+    /// Optional explicit chooser for "that player may choose new targets".
+    pub chooser: Option<PlayerFilter>,
 }
 
 impl ChooseNewTargetsEffect {
     /// Create a new retargeting effect.
     pub fn new(from_effect: EffectId, may: bool) -> Self {
-        Self { from_effect, may }
+        Self {
+            from_effect,
+            may,
+            chooser: None,
+        }
+    }
+
+    /// Create a new retargeting effect with explicit chooser.
+    pub fn new_for_player(from_effect: EffectId, may: bool, chooser: PlayerFilter) -> Self {
+        Self {
+            from_effect,
+            may,
+            chooser: Some(chooser),
+        }
     }
 
     /// Optional retargeting ("you may choose new targets").
     pub fn may(from_effect: EffectId) -> Self {
         Self::new(from_effect, true)
+    }
+
+    /// Optional retargeting where a specific player chooses.
+    pub fn may_for_player(from_effect: EffectId, chooser: PlayerFilter) -> Self {
+        Self::new_for_player(from_effect, true, chooser)
     }
 
     /// Mandatory retargeting ("choose new targets").
@@ -176,6 +197,12 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 continue;
             }
 
+            let chooser = if let Some(filter) = &self.chooser {
+                resolve_player_filter(game, filter, ctx)?
+            } else {
+                entry.controller
+            };
+
             if self.may {
                 let source_name = game
                     .object(object_id)
@@ -184,7 +211,7 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 let choose = ctx.decision_maker.decide_boolean(
                     game,
                     &BooleanContext::new(
-                        entry.controller,
+                        chooser,
                         Some(object_id),
                         format!("Choose new targets for {source_name}?"),
                     ),
@@ -195,7 +222,7 @@ impl EffectExecutor for ChooseNewTargetsEffect {
             }
 
             let targets_ctx = TargetsContext::new(
-                entry.controller,
+                chooser,
                 object_id,
                 "copy".to_string(),
                 requirements.clone(),

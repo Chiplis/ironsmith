@@ -53,6 +53,8 @@ pub enum EventKind {
     Discard,
     /// A spell was cast
     SpellCast,
+    /// A spell was copied
+    SpellCopied,
     /// A creature attacked
     CreatureAttacked,
     /// A creature blocked

@@ -352,6 +352,11 @@ impl Trigger {
         Self::new(SpellCastTrigger::new(filter, caster))
     }
 
+    /// Create a "when [player] copies a spell" trigger.
+    pub fn spell_copied(filter: Option<ObjectFilter>, copier: PlayerFilter) -> Self {
+        Self::new(SpellCopiedTrigger::new(filter, copier))
+    }
+
     /// Create a "when you cast this spell" trigger.
     pub fn you_cast_this_spell() -> Self {
         Self::new(YouCastThisSpellTrigger)

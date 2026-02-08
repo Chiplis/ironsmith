@@ -184,6 +184,10 @@ enum TriggerSpec {
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
     },
+    SpellCopied {
+        filter: Option<ObjectFilter>,
+        copier: PlayerFilter,
+    },
     EntersBattlefield(ObjectFilter),
     EntersBattlefieldTapped(ObjectFilter),
     EntersBattlefieldUntapped(ObjectFilter),
@@ -416,6 +420,12 @@ enum EffectAst {
         player: PlayerAst,
         object: ObjectRefAst,
     },
+    CopySpell {
+        target: TargetAst,
+        count: Value,
+        player: PlayerAst,
+        may_choose_new_targets: bool,
+    },
     Conditional {
         predicate: PredicateAst,
         if_true: Vec<EffectAst>,
@@ -487,6 +497,10 @@ enum EffectAst {
         player: PlayerAst,
     },
     May {
+        effects: Vec<EffectAst>,
+    },
+    MayByPlayer {
+        player: PlayerAst,
         effects: Vec<EffectAst>,
     },
     MayByTaggedController {
@@ -5876,36 +5890,8 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         return Ok(TriggerSpec::YouCastThisSpell);
     }
 
-    if (words.contains(&"cast") || words.contains(&"casts")) && words.contains(&"spell") {
-        let caster = if words.contains(&"you") {
-            PlayerFilter::You
-        } else if words.contains(&"opponent") || words.contains(&"opponents") {
-            PlayerFilter::Opponent
-        } else {
-            PlayerFilter::Any
-        };
-
-        let cast_idx = tokens
-            .iter()
-            .position(|token| token.is_word("cast") || token.is_word("casts"))
-            .unwrap_or(0);
-        let filter_tokens = if cast_idx + 1 < tokens.len() {
-            &tokens[cast_idx + 1..]
-        } else {
-            &[]
-        };
-        let filter_words: Vec<&str> = filter_tokens.iter().filter_map(Token::as_word).collect();
-        // "a spell" / "spells" means any spell — no filter needed
-        let is_unqualified_spell = filter_words.as_slice() == ["a", "spell"]
-            || filter_words.as_slice() == ["spells"]
-            || filter_words.as_slice() == ["spell"];
-        let filter = if filter_tokens.is_empty() || is_unqualified_spell {
-            None
-        } else {
-            Some(parse_object_filter(filter_tokens, false)?)
-        };
-
-        return Ok(TriggerSpec::SpellCast { filter, caster });
+    if let Some(spell_activity_trigger) = parse_spell_activity_trigger(tokens)? {
+        return Ok(spell_activity_trigger);
     }
 
     if let Some(enters_idx) = tokens
@@ -6191,6 +6177,86 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
             words.join(" ")
         ))),
     }
+}
+
+fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.contains(&"spell") && !clause_words.contains(&"spells") {
+        return Ok(None);
+    }
+
+    let cast_idx = tokens
+        .iter()
+        .position(|token| token.is_word("cast") || token.is_word("casts"));
+    let copy_idx = tokens
+        .iter()
+        .position(|token| token.is_word("copy") || token.is_word("copies"));
+    if cast_idx.is_none() && copy_idx.is_none() {
+        return Ok(None);
+    }
+
+    let actor = if clause_words.contains(&"you") {
+        PlayerFilter::You
+    } else if clause_words.contains(&"opponent") || clause_words.contains(&"opponents") {
+        PlayerFilter::Opponent
+    } else {
+        PlayerFilter::Any
+    };
+
+    let parse_filter = |filter_tokens: &[Token]| -> Result<Option<ObjectFilter>, CardTextError> {
+        let filter_words: Vec<&str> = filter_tokens.iter().filter_map(Token::as_word).collect();
+        let is_unqualified_spell = filter_words.as_slice() == ["a", "spell"]
+            || filter_words.as_slice() == ["spells"]
+            || filter_words.as_slice() == ["spell"];
+        if filter_tokens.is_empty() || is_unqualified_spell {
+            Ok(None)
+        } else {
+            Ok(Some(parse_object_filter(filter_tokens, false)?))
+        }
+    };
+
+    if let (Some(cast), Some(copy)) = (cast_idx, copy_idx) {
+        let (first, second, first_is_cast) = if cast < copy {
+            (cast, copy, true)
+        } else {
+            (copy, cast, false)
+        };
+        let between_words = words(&tokens[first + 1..second]);
+        if between_words.as_slice() == ["or"] {
+            let filter = parse_filter(tokens.get(second + 1..).unwrap_or_default())?;
+            let cast_trigger = TriggerSpec::SpellCast {
+                filter: filter.clone(),
+                caster: actor.clone(),
+            };
+            let copied_trigger = TriggerSpec::SpellCopied {
+                filter,
+                copier: actor,
+            };
+            return Ok(Some(if first_is_cast {
+                TriggerSpec::Either(Box::new(cast_trigger), Box::new(copied_trigger))
+            } else {
+                TriggerSpec::Either(Box::new(copied_trigger), Box::new(cast_trigger))
+            }));
+        }
+    }
+
+    if let Some(cast) = cast_idx {
+        let filter = parse_filter(tokens.get(cast + 1..).unwrap_or_default())?;
+        return Ok(Some(TriggerSpec::SpellCast {
+            filter,
+            caster: actor,
+        }));
+    }
+
+    if let Some(copy) = copy_idx {
+        let filter = parse_filter(tokens.get(copy + 1..).unwrap_or_default())?;
+        return Ok(Some(TriggerSpec::SpellCopied {
+            filter,
+            copier: actor,
+        }));
+    }
+
+    Ok(None)
 }
 
 fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
@@ -9613,6 +9679,12 @@ fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError>
         }]);
     }
 
+    if let Some(player) = parse_leading_player_may(tokens) {
+        let stripped = remove_first_word(tokens, "may");
+        let effects = parse_effect_chain_inner(&stripped)?;
+        return Ok(vec![EffectAst::MayByPlayer { player, effects }]);
+    }
+
     if tokens.iter().any(|token| token.is_word("may")) && !starts_with_each_opponent {
         let stripped = remove_first_word(tokens, "may");
         let effects = parse_effect_chain_inner(&stripped)?;
@@ -9707,6 +9779,48 @@ fn maybe_apply_carried_player(effect: &mut EffectAst, carried_player: PlayerAst)
     }
 }
 
+fn parse_leading_player_may(tokens: &[Token]) -> Option<PlayerAst> {
+    let words = words(tokens);
+    if words.len() < 2 {
+        return None;
+    }
+
+    if words.starts_with(&["you", "may"]) {
+        return Some(PlayerAst::You);
+    }
+    if words.starts_with(&["target", "opponent", "may"])
+        || words.starts_with(&["target", "opponents", "may"])
+    {
+        return Some(PlayerAst::TargetOpponent);
+    }
+    if words.starts_with(&["target", "player", "may"])
+        || words.starts_with(&["target", "players", "may"])
+    {
+        return Some(PlayerAst::Target);
+    }
+    if words.starts_with(&["that", "player", "may"])
+        || words.starts_with(&["that", "players", "may"])
+    {
+        return Some(PlayerAst::That);
+    }
+    if words.starts_with(&["defending", "player", "may"]) {
+        return Some(PlayerAst::Defending);
+    }
+    if words.starts_with(&["its", "controller", "may"])
+        || words.starts_with(&["their", "controller", "may"])
+    {
+        return Some(PlayerAst::ItsController);
+    }
+    if words.starts_with(&["opponent", "may"])
+        || words.starts_with(&["opponents", "may"])
+        || words.starts_with(&["an", "opponent", "may"])
+    {
+        return Some(PlayerAst::Opponent);
+    }
+
+    None
+}
+
 fn remove_first_word(tokens: &[Token], word: &str) -> Vec<Token> {
     let mut removed = false;
     let mut out = Vec::with_capacity(tokens.len());
@@ -9762,6 +9876,9 @@ struct ClausePrimitive {
 
 fn run_clause_primitives(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
+        ClausePrimitive {
+            parser: parse_copy_spell_clause,
+        },
         ClausePrimitive {
             parser: parse_for_each_opponent_clause,
         },
@@ -10134,6 +10251,106 @@ fn parse_double_counters_clause(tokens: &[Token]) -> Result<Option<EffectAst>, C
     Ok(Some(EffectAst::DoubleCountersOnEach {
         counter_type,
         filter,
+    }))
+}
+
+fn parse_copy_spell_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    let Some(copy_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("copy") || token.is_word("copies"))
+    else {
+        return Ok(None);
+    };
+    if !clause_words.contains(&"spell") && !clause_words.contains(&"spells") {
+        return Ok(None);
+    }
+
+    let subject = parse_subject(&tokens[..copy_idx]);
+    let player = match subject {
+        SubjectAst::Player(player) => player,
+        SubjectAst::This => PlayerAst::Implicit,
+    };
+
+    let tail = &tokens[copy_idx + 1..];
+    if tail.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing spell target in copy clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let mut split_idx = None;
+    for idx in 0..tail.len() {
+        if !tail[idx].is_word("and") {
+            continue;
+        }
+        let mut after = words(&tail[idx + 1..]);
+        if after.first().copied() == Some("may") {
+            after.remove(0);
+        }
+        if after.first().copied() == Some("choose")
+            && after.iter().any(|word| *word == "target" || *word == "targets")
+            && after.iter().any(|word| *word == "copy")
+        {
+            split_idx = Some(idx);
+            break;
+        }
+    }
+
+    let copy_target_tokens = trim_commas(if let Some(idx) = split_idx {
+        &tail[..idx]
+    } else {
+        tail
+    });
+    if copy_target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing spell target in copy clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let target_words = words(&copy_target_tokens);
+    let target = if target_words.as_slice() == ["this", "spell"]
+        || target_words.as_slice() == ["that", "spell"]
+    {
+        TargetAst::Source(None)
+    } else {
+        parse_target_phrase(&copy_target_tokens)?
+    };
+
+    let mut may_choose_new_targets = false;
+    if let Some(idx) = split_idx {
+        let mut choose_words = words(&tail[idx + 1..]);
+        if choose_words.first().copied() == Some("may") {
+            may_choose_new_targets = true;
+            choose_words.remove(0);
+        }
+        let has_choose = choose_words.first().copied() == Some("choose");
+        let has_new = choose_words.contains(&"new");
+        let has_target = choose_words
+            .iter()
+            .any(|word| *word == "target" || *word == "targets");
+        let has_copy = choose_words.contains(&"copy");
+        if !has_choose || !has_target || !has_copy {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing copy clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        if !has_new {
+            return Err(CardTextError::ParseError(format!(
+                "missing 'new' in copy retarget clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+    }
+
+    Ok(Some(EffectAst::CopySpell {
+        target,
+        count: Value::Fixed(1),
+        player,
+        may_choose_new_targets,
     }))
 }
 
@@ -12837,6 +13054,7 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
         TriggerSpec::SpellCast { filter, caster } => Trigger::spell_cast(filter, caster),
+        TriggerSpec::SpellCopied { filter, copier } => Trigger::spell_copied(filter, copier),
         TriggerSpec::EntersBattlefield(filter) => Trigger::enters_battlefield(filter),
         TriggerSpec::EntersBattlefieldTapped(filter) => Trigger::enters_battlefield_tapped(filter),
         TriggerSpec::EntersBattlefieldUntapped(filter) => {
@@ -12883,6 +13101,7 @@ fn compile_statement_effects(effects: &[EffectAst]) -> Result<Vec<Effect>, CardT
 fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
         TriggerSpec::SpellCast { caster, .. } => Some(caster.clone()),
+        TriggerSpec::SpellCopied { copier, .. } => Some(copier.clone()),
         TriggerSpec::BeginningOfUpkeep(player)
         | TriggerSpec::BeginningOfDrawStep(player)
         | TriggerSpec::BeginningOfCombat(player)
@@ -12992,10 +13211,14 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         EffectAst::PutIntoHand { object, .. } => {
             matches!(object, ObjectRefAst::It) && tag == IT_TAG
         }
+        EffectAst::CopySpell { target, .. } => {
+            matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
+        }
         EffectAst::CreateTokenCopy { object, .. } => {
             matches!(object, ObjectRefAst::It) && tag == IT_TAG
         }
         EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
@@ -13042,6 +13265,7 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::RevealTop { player }
         | EffectAst::RevealHand { player }
         | EffectAst::PutIntoHand { player, .. }
+        | EffectAst::CopySpell { player, .. }
         | EffectAst::DiscardHand { player }
         | EffectAst::Discard { player, .. }
         | EffectAst::Mill { player, .. }
@@ -13063,6 +13287,9 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
             if_true, if_false, ..
         } => {
             effects_reference_its_controller(if_true) || effects_reference_its_controller(if_false)
+        }
+        EffectAst::MayByPlayer { player, effects } => {
+            matches!(player, PlayerAst::ItsController) || effects_reference_its_controller(effects)
         }
         EffectAst::May { effects }
         | EffectAst::MayByTaggedController { effects, .. }
@@ -13139,8 +13366,12 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 || matches!(to, TargetAst::Tagged(t, _) if t.as_str() == IT_TAG)
         }
         EffectAst::PutIntoHand { object, .. } => matches!(object, ObjectRefAst::It),
+        EffectAst::CopySpell { target, .. } => {
+            matches!(target, TargetAst::Tagged(t, _) if t.as_str() == IT_TAG)
+        }
         EffectAst::CreateTokenCopy { object, .. } => matches!(object, ObjectRefAst::It),
         EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
@@ -13383,6 +13614,7 @@ fn collect_tag_spans_from_effect(
             collect_tag_spans_from_effects_with_context(if_false, annotations, ctx);
         }
         EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
@@ -14360,6 +14592,17 @@ fn compile_effect(
             let effect = Effect::may(inner_effects);
             Ok((vec![effect], inner_choices))
         }
+        EffectAst::MayByPlayer { player, effects } => {
+            let saved_last_effect = ctx.last_effect_id;
+            let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
+            ctx.last_effect_id = saved_last_effect;
+            let player_filter = resolve_non_target_player_filter(*player, ctx)?;
+            if !matches!(*player, PlayerAst::Implicit) {
+                ctx.last_player_filter = Some(player_filter.clone());
+            }
+            let effect = Effect::may_player(player_filter, inner_effects);
+            Ok((vec![effect], inner_choices))
+        }
         EffectAst::UnlessPays {
             effects,
             player,
@@ -14612,6 +14855,46 @@ fn compile_effect(
             }
             let effect = Effect::move_to_zone(ChooseSpec::tagged(tag), Zone::Hand, false);
             Ok((vec![effect], choices))
+        }
+        EffectAst::CopySpell {
+            target,
+            count,
+            player,
+            may_choose_new_targets,
+        } => {
+            let spec = choose_spec_for_target(target);
+            let spec = resolve_choose_spec_it_tag(&spec, ctx)?;
+            let player_filter = resolve_non_target_player_filter(*player, ctx)?;
+            if !matches!(*player, PlayerAst::Implicit) {
+                ctx.last_player_filter = Some(player_filter.clone());
+            }
+            let id = ctx.next_effect_id();
+            ctx.last_effect_id = Some(id);
+            let copy_effect = Effect::with_id(
+                id.0,
+                Effect::new(crate::effects::CopySpellEffect::new_for_player(
+                    spec.clone(),
+                    count.clone(),
+                    player_filter.clone(),
+                )),
+            );
+            let retarget_effect = if *may_choose_new_targets {
+                Some(Effect::may_choose_new_targets_player(
+                    id,
+                    player_filter.clone(),
+                ))
+            } else {
+                None
+            };
+            let mut compiled = vec![copy_effect];
+            if let Some(retarget) = retarget_effect {
+                compiled.push(retarget);
+            }
+            let mut choices = Vec::new();
+            if spec.is_target() {
+                choices.push(spec);
+            }
+            Ok((compiled, choices))
         }
         EffectAst::Conditional {
             predicate,
@@ -20258,6 +20541,76 @@ mod tests {
                 .iter()
                 .any(|line| line == "Keyword ability 1: Prowess"),
             "expected keyword rendering for prowess, got {lines:?}"
+        );
+    }
+
+    #[test]
+    fn test_parse_magecraft_cast_or_copy_trigger_line() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Witherbloom Apprentice")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Magecraft — Whenever you cast or copy an instant or sorcery spell, each opponent loses 1 life and you gain 1 life.",
+            )
+            .expect("parse magecraft cast-or-copy trigger");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|a| match &a.kind {
+                AbilityKind::Triggered(t) => Some(t),
+                _ => None,
+            })
+            .expect("expected magecraft triggered ability");
+
+        let trigger_text = triggered.trigger.display().to_ascii_lowercase();
+        assert!(
+            trigger_text.contains("you cast") && trigger_text.contains("you copy"),
+            "expected trigger display to include cast and copy, got {trigger_text}"
+        );
+        assert!(
+            trigger_text.contains("instant or sorcery"),
+            "expected instant/sorcery filter in trigger display, got {trigger_text}"
+        );
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains("copy"),
+            "expected compiled rendering to include copy trigger, got {joined}"
+        );
+    }
+
+    #[test]
+    fn test_parse_target_player_may_copy_this_spell_and_choose_new_targets() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Reverberate Variant")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(
+                "Target player discards two cards. That player may copy this spell and may choose a new target for that copy.",
+            )
+            .expect("parse targeted copy-this-spell clause");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("DiscardEffect"),
+            "expected discard effect in spell text, got {debug}"
+        );
+        assert!(
+            debug.contains("CopySpellEffect"),
+            "expected copy-spell effect in spell text, got {debug}"
+        );
+        assert!(
+            debug.contains("ChooseNewTargetsEffect"),
+            "expected choose-new-targets effect in spell text, got {debug}"
+        );
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ").to_ascii_lowercase();
+        assert!(
+            joined.contains("may execute") && !joined.contains("you may execute"),
+            "expected copy permission to stay linked to targeted player, got {joined}"
+        );
+        assert!(
+            joined.contains("may choose new targets") && !joined.contains("you may choose new targets"),
+            "expected retarget permission to stay linked to targeted player, got {joined}"
         );
     }
 

@@ -3,9 +3,11 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::ask_may_choice;
 use crate::effect::{Effect, EffectOutcome, EffectResult};
+use crate::effects::helpers::resolve_player_filter;
 use crate::effects::EffectExecutor;
 use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
+use crate::target::PlayerFilter;
 
 /// Effect that offers an optional choice to the player.
 ///
@@ -40,6 +42,8 @@ use crate::game_state::GameState;
 pub struct MayEffect {
     /// The optional effects to execute.
     pub effects: Vec<Effect>,
+    /// Optional explicit decider for "that player may ..." patterns.
+    pub decider: Option<PlayerFilter>,
     /// Strategy when no decision maker is present.
     pub fallback: FallbackStrategy,
 }
@@ -49,6 +53,16 @@ impl MayEffect {
     pub fn new(effects: Vec<Effect>) -> Self {
         Self {
             effects,
+            decider: None,
+            fallback: FallbackStrategy::Decline,
+        }
+    }
+
+    /// Create a new May effect where a specific player decides.
+    pub fn new_for_player(effects: Vec<Effect>, decider: PlayerFilter) -> Self {
+        Self {
+            effects,
+            decider: Some(decider),
             fallback: FallbackStrategy::Decline,
         }
     }
@@ -74,9 +88,13 @@ impl EffectExecutor for MayEffect {
         // Generate a description from the effects
         let description = format!("{:?}", self.effects);
 
-        // Use iterated_player if set (e.g., inside ForEachTaggedPlayer),
-        // otherwise use the controller
-        let deciding_player = ctx.iterated_player.unwrap_or(ctx.controller);
+        // Use explicit decider when present ("that player may ..."), otherwise
+        // preserve legacy behavior: iterated player if set, then controller.
+        let deciding_player = if let Some(decider) = &self.decider {
+            resolve_player_filter(game, decider, ctx)?
+        } else {
+            ctx.iterated_player.unwrap_or(ctx.controller)
+        };
 
         let should_do = ask_may_choice(
             game,
@@ -108,6 +126,7 @@ impl EffectExecutor for MayEffect {
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
+    use crate::target::PlayerFilter;
 
     fn setup_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
@@ -160,5 +179,11 @@ mod tests {
     fn test_may_single_convenience() {
         let effect = MayEffect::single(Effect::gain_life(1));
         assert_eq!(effect.effects.len(), 1);
+    }
+
+    #[test]
+    fn test_may_for_specific_player_constructor() {
+        let effect = MayEffect::new_for_player(vec![Effect::draw(1)], PlayerFilter::target_player());
+        assert!(matches!(effect.decider, Some(PlayerFilter::Target(_))));
     }
 }

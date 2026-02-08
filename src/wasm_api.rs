@@ -2973,6 +2973,13 @@ fn describe_effect_core_expanded(
         ));
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(decider) = may.decider.as_ref() {
+            return Some(format!(
+                "{} may {}.",
+                describe_player_filter(decider, tagged_subjects),
+                describe_effects_inline(&may.effects, tagged_subjects)
+            ));
+        }
         return Some(format!(
             "You may {}.",
             describe_effects_inline(&may.effects, tagged_subjects)
@@ -3045,12 +3052,12 @@ fn describe_effect_core_expanded(
         if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
             return Some(compact);
         }
+        let each_player =
+            strip_leading_article(&describe_player_filter(&for_players.filter, tagged_subjects))
+                .to_ascii_lowercase();
         return Some(format!(
             "For each {}, {}.",
-            pluralize_noun_phrase(&describe_player_filter(
-                &for_players.filter,
-                tagged_subjects
-            )),
+            each_player,
             describe_effects_inline(&for_players.effects, tagged_subjects)
         ));
     }
@@ -3412,12 +3419,18 @@ fn describe_effect_core_expanded(
     if let Some(choose_new_targets) =
         effect.downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
     {
+        let chooser = choose_new_targets
+            .chooser
+            .as_ref()
+            .map(|filter| describe_player_filter(filter, tagged_subjects))
+            .unwrap_or_else(|| "you".to_string());
         return Some(format!(
-            "{} choose new targets for copied effect #{}.",
+            "{} {} new targets for copied effect #{}.",
+            chooser,
             if choose_new_targets.may {
-                "You may"
+                "may choose"
             } else {
-                "Choose"
+                "chooses"
             },
             choose_new_targets.from_effect.0
         ));
@@ -4341,8 +4354,11 @@ fn describe_signed_value(
 
 fn strip_leading_article(text: &str) -> &str {
     text.strip_prefix("a ")
+        .or_else(|| text.strip_prefix("A "))
         .or_else(|| text.strip_prefix("an "))
+        .or_else(|| text.strip_prefix("An "))
         .or_else(|| text.strip_prefix("the "))
+        .or_else(|| text.strip_prefix("The "))
         .unwrap_or(text)
 }
 

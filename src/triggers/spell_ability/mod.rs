@@ -3,9 +3,11 @@
 mod ability_activated;
 mod becomes_targeted;
 mod spell_cast;
+mod spell_copied;
 mod you_cast_this_spell;
 
 pub use ability_activated::AbilityActivatedTrigger;
 pub use becomes_targeted::BecomesTargetedTrigger;
 pub use spell_cast::SpellCastTrigger;
+pub use spell_copied::SpellCopiedTrigger;
 pub use you_cast_this_spell::YouCastThisSpellTrigger;

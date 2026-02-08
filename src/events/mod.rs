@@ -108,7 +108,7 @@ pub use phase::{
     BeginningOfPostcombatMainPhaseEvent, BeginningOfPrecombatMainPhaseEvent,
     BeginningOfUpkeepEvent, EndOfCombatEvent,
 };
-pub use spells::SpellCastEvent;
+pub use spells::{SpellCastEvent, SpellCopiedEvent};
 
 // Re-export matchers
 pub use cards::matchers::*;

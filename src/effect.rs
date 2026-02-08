@@ -1372,6 +1372,12 @@ impl Effect {
         Self::new(ChooseNewTargetsEffect::may(from_effect))
     }
 
+    /// Create a "[player] may choose new targets" effect.
+    pub fn may_choose_new_targets_player(from_effect: EffectId, chooser: PlayerFilter) -> Self {
+        use crate::effects::ChooseNewTargetsEffect;
+        Self::new(ChooseNewTargetsEffect::may_for_player(from_effect, chooser))
+    }
+
     /// Create a "create N tokens" effect.
     pub fn create_tokens(token: crate::cards::CardDefinition, count: impl Into<Value>) -> Self {
         use crate::effects::CreateTokenEffect;
@@ -1935,6 +1941,12 @@ impl Effect {
     pub fn may(effects: Vec<Effect>) -> Self {
         use crate::effects::MayEffect;
         Self::new(MayEffect::new(effects))
+    }
+
+    /// "[player] may X" - wrap effects in a choice made by the specified player.
+    pub fn may_player(player: PlayerFilter, effects: Vec<Effect>) -> Self {
+        use crate::effects::MayEffect;
+        Self::new(MayEffect::new_for_player(effects, player))
     }
 
     /// "You may X" - wrap a single effect in a player choice (convenience).

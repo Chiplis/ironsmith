@@ -2,11 +2,13 @@
 
 use crate::effect::{EffectOutcome, EffectResult, Value};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_from_spec, resolve_value};
+use crate::effects::helpers::{resolve_objects_from_spec, resolve_player_filter, resolve_value};
 use crate::executor::{ExecutionContext, ExecutionError};
+use crate::events::spells::SpellCopiedEvent;
 use crate::game_state::{GameState, StackEntry};
 use crate::object::Object;
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, PlayerFilter};
+use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 /// Effect that copies a spell on the stack.
@@ -33,6 +35,8 @@ pub struct CopySpellEffect {
     pub target: ChooseSpec,
     /// The number of copies to create.
     pub count: Value,
+    /// Which player controls the copies.
+    pub copier: PlayerFilter,
 }
 
 impl CopySpellEffect {
@@ -41,6 +45,20 @@ impl CopySpellEffect {
         Self {
             target,
             count: count.into(),
+            copier: PlayerFilter::You,
+        }
+    }
+
+    /// Create a copy-spell effect for a specific player filter.
+    pub fn new_for_player(
+        target: ChooseSpec,
+        count: impl Into<Value>,
+        copier: PlayerFilter,
+    ) -> Self {
+        Self {
+            target,
+            count: count.into(),
+            copier,
         }
     }
 
@@ -83,6 +101,7 @@ impl EffectExecutor for CopySpellEffect {
             return Ok(EffectOutcome::from_result(EffectResult::TargetInvalid));
         };
 
+        let copier = resolve_player_filter(game, &self.copier, ctx)?;
         let mut created_ids = Vec::with_capacity(copy_count);
 
         for _ in 0..copy_count {
@@ -93,7 +112,7 @@ impl EffectExecutor for CopySpellEffect {
             let target = game
                 .object(target_id)
                 .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-            let mut copy_obj = Object::token_copy_of(target, copy_id, ctx.controller);
+            let mut copy_obj = Object::token_copy_of(target, copy_id, copier);
             copy_obj.zone = Zone::Stack;
             // token_copy_of already sets kind to Token
 
@@ -102,7 +121,7 @@ impl EffectExecutor for CopySpellEffect {
 
             // Create a new stack entry for the copy
             // The copy has the same targets, X value, etc. but is controlled by the copier
-            let mut copy_entry = StackEntry::new(copy_id, ctx.controller);
+            let mut copy_entry = StackEntry::new(copy_id, copier);
             copy_entry.targets = original_entry.targets.clone();
             copy_entry.x_value = original_entry.x_value;
             copy_entry.ability_effects = original_entry.ability_effects.clone();
@@ -112,6 +131,11 @@ impl EffectExecutor for CopySpellEffect {
             // Put the copy on top of the stack
             game.stack.push(copy_entry);
             created_ids.push(copy_id);
+
+            // Copying a spell can trigger magecraft-like abilities.
+            game.queue_trigger_event(TriggerEvent::new(SpellCopiedEvent::new(
+                copy_id, copier,
+            )));
         }
 
         Ok(EffectOutcome::from_result(EffectResult::Objects(
@@ -135,6 +159,7 @@ impl EffectExecutor for CopySpellEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::EventKind;
     use crate::card::CardBuilder;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -227,6 +252,25 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn test_copy_spell_queues_spell_copied_event() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+
+        let spell_id = create_instant_on_stack(&mut game, "Shock", alice);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.targets = vec![crate::executor::ResolvedTarget::Object(spell_id)];
+
+        let effect = CopySpellEffect::single(ChooseSpec::spell());
+        let _ = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let events = game.take_pending_trigger_events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind(), EventKind::SpellCopied);
     }
 
     #[test]
