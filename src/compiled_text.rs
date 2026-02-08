@@ -501,6 +501,21 @@ fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(for_each) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        {
+            let shuffle = filtered
+                .get(idx + 2)
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>());
+            if let Some(compact) = describe_search_choose_for_each(choose, for_each, shuffle) {
+                parts.push(compact);
+                idx += if shuffle.is_some() { 3 } else { 2 };
+                continue;
+            }
+        }
+        if idx + 1 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(sacrifice) =
                 filtered[idx + 1].downcast_ref::<crate::effects::SacrificeEffect>()
             && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
@@ -715,24 +730,24 @@ fn describe_draw_then_discard(
     Some(text)
 }
 
-fn describe_search_sequence(sequence: &crate::effects::SequenceEffect) -> Option<String> {
-    enum SearchDestination {
-        Battlefield { tapped: bool },
-        Hand,
-        LibraryTop,
-    }
+enum SearchDestination {
+    Battlefield { tapped: bool },
+    Hand,
+    LibraryTop,
+}
 
-    if sequence.effects.len() < 2 || sequence.effects.len() > 3 {
-        return None;
-    }
-    let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+fn describe_search_choose_for_each(
+    choose: &crate::effects::ChooseObjectsEffect,
+    for_each: &crate::effects::ForEachTaggedEffect,
+    shuffle: Option<&crate::effects::ShuffleLibraryEffect>,
+) -> Option<String> {
     if !choose.is_search || choose.zone != Zone::Library {
         return None;
     }
-    let for_each = sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
     if for_each.tag != choose.tag || for_each.effects.len() != 1 {
         return None;
     }
+
     let destination = if let Some(put) =
         for_each.effects[0].downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
     {
@@ -750,26 +765,25 @@ fn describe_search_sequence(sequence: &crate::effects::SequenceEffect) -> Option
     } else if let Some(move_to_zone) =
         for_each.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>()
     {
-        if !matches!(move_to_zone.target, ChooseSpec::Iterated)
-            || move_to_zone.zone != Zone::Library
-            || !move_to_zone.to_top
-        {
+        if !matches!(move_to_zone.target, ChooseSpec::Iterated) {
             return None;
         }
-        SearchDestination::LibraryTop
+        if move_to_zone.zone == Zone::Hand {
+            SearchDestination::Hand
+        } else if move_to_zone.zone == Zone::Library && move_to_zone.to_top {
+            SearchDestination::LibraryTop
+        } else {
+            return None;
+        }
     } else {
         return None;
     };
 
-    let shuffle = if sequence.effects.len() == 3 {
-        let shuffle = sequence.effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
-        if shuffle.player != choose.chooser {
-            return None;
-        }
-        true
-    } else {
-        false
-    };
+    if let Some(shuffle) = shuffle
+        && shuffle.player != choose.chooser
+    {
+        return None;
+    }
 
     let filter_text = choose.filter.description();
     let selection_text = if choose.count.is_single() {
@@ -813,10 +827,24 @@ fn describe_search_sequence(sequence: &crate::effects::SequenceEffect) -> Option
             );
         }
     }
-    if shuffle {
+    if shuffle.is_some() {
         text.push_str(", then shuffle");
     }
     Some(text)
+}
+
+fn describe_search_sequence(sequence: &crate::effects::SequenceEffect) -> Option<String> {
+    if sequence.effects.len() < 2 || sequence.effects.len() > 3 {
+        return None;
+    }
+    let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let shuffle = if sequence.effects.len() == 3 {
+        Some(sequence.effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?)
+    } else {
+        None
+    };
+    describe_search_choose_for_each(choose, for_each, shuffle)
 }
 
 fn describe_effect(effect: &Effect) -> String {

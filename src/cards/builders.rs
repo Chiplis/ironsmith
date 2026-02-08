@@ -16194,6 +16194,33 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_activated_search_to_hand_renders_compact_search_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Armillary Sphere Variant")
+            .parse_text(
+                "{2}, {T}, Sacrifice this artifact: Search your library for up to two basic land cards, reveal them, put them into your hand, then shuffle.",
+            )
+            .expect("parse search-to-hand activated ability");
+
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let ability_line = lines
+            .iter()
+            .find(|line| line.starts_with("Activated ability"))
+            .expect("expected activated ability line");
+        assert!(
+            ability_line.contains("Search your library"),
+            "expected compact search wording, got {ability_line}"
+        );
+        assert!(
+            ability_line.contains("put them into hand"),
+            "expected hand destination wording, got {ability_line}"
+        );
+        assert!(
+            !ability_line.contains("chooses up to"),
+            "should not leak choose-object internals in search display: {ability_line}"
+        );
+    }
+
+    #[test]
     fn parse_double_counters_on_each_creature_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Kalonian Hydra Variant")
             .parse_text(

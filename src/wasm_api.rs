@@ -1871,6 +1871,23 @@ fn collect_effect_descriptions(effects: &[crate::effect::Effect]) -> Vec<String>
         }
 
         if idx + 1 < effects.len()
+            && let Some(choose) = effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(for_each) =
+                effects[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        {
+            let shuffle = effects
+                .get(idx + 2)
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>());
+            if let Some(line) =
+                describe_search_choose_for_each(choose, for_each, shuffle, tagged_subjects)
+            {
+                descriptions.push(line);
+                idx += if shuffle.is_some() { 3 } else { 2 };
+                continue;
+            }
+        }
+
+        if idx + 1 < effects.len()
             && let Some(line) = describe_exile_then_gain_life_combo(
                 &effects[idx],
                 &effects[idx + 1],
@@ -2004,6 +2021,23 @@ fn describe_effects_inline(
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < effects.len() {
+        if idx + 1 < effects.len()
+            && let Some(choose) =
+                effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(for_each) =
+                effects[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        {
+            let shuffle = effects
+                .get(idx + 2)
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>());
+            if let Some(compact) =
+                describe_search_choose_for_each(choose, for_each, shuffle, &local_tags)
+            {
+                parts.push(compact.trim_end_matches('.').to_string());
+                idx += if shuffle.is_some() { 3 } else { 2 };
+                continue;
+            }
+        }
         if idx + 1 < effects.len()
             && let Some(choose) =
                 effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -2528,27 +2562,25 @@ fn describe_draw_then_discard(
     Some(text)
 }
 
-fn describe_search_sequence(
-    sequence: &crate::effects::SequenceEffect,
+enum SearchDestination {
+    Battlefield { tapped: bool },
+    Hand,
+    LibraryTop,
+}
+
+fn describe_search_choose_for_each(
+    choose: &crate::effects::ChooseObjectsEffect,
+    for_each: &crate::effects::ForEachTaggedEffect,
+    shuffle: Option<&crate::effects::ShuffleLibraryEffect>,
     tagged_subjects: &HashMap<String, String>,
 ) -> Option<String> {
-    enum SearchDestination {
-        Battlefield { tapped: bool },
-        Hand,
-        LibraryTop,
-    }
-
-    if sequence.effects.len() < 2 || sequence.effects.len() > 3 {
-        return None;
-    }
-    let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if !choose.is_search || choose.zone != crate::zone::Zone::Library {
         return None;
     }
-    let for_each = sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
     if for_each.tag != choose.tag || for_each.effects.len() != 1 {
         return None;
     }
+
     let destination = if let Some(put) =
         for_each.effects[0].downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
     {
@@ -2566,25 +2598,25 @@ fn describe_search_sequence(
     } else if let Some(move_to_zone) =
         for_each.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>()
     {
-        if !matches!(move_to_zone.target, crate::target::ChooseSpec::Iterated)
-            || move_to_zone.zone != crate::zone::Zone::Library
-            || !move_to_zone.to_top
-        {
+        if !matches!(move_to_zone.target, crate::target::ChooseSpec::Iterated) {
             return None;
         }
-        SearchDestination::LibraryTop
+        if move_to_zone.zone == crate::zone::Zone::Hand {
+            SearchDestination::Hand
+        } else if move_to_zone.zone == crate::zone::Zone::Library && move_to_zone.to_top {
+            SearchDestination::LibraryTop
+        } else {
+            return None;
+        }
     } else {
         return None;
     };
-    let shuffle = if sequence.effects.len() == 3 {
-        let shuffle = sequence.effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
-        if shuffle.player != choose.chooser {
-            return None;
-        }
-        true
-    } else {
-        false
-    };
+
+    if let Some(shuffle) = shuffle
+        && shuffle.player != choose.chooser
+    {
+        return None;
+    }
 
     let chooser = describe_player_filter(&choose.chooser, tagged_subjects);
     let library_owner = if chooser == "You" {
@@ -2623,11 +2655,28 @@ fn describe_search_sequence(
             "Search {library_owner} library for {selection_text}, put {pronoun} on top of library"
         ),
     };
-    if shuffle {
+    if shuffle.is_some() {
         text.push_str(", then shuffle");
     }
     text.push('.');
     Some(text)
+}
+
+fn describe_search_sequence(
+    sequence: &crate::effects::SequenceEffect,
+    tagged_subjects: &HashMap<String, String>,
+) -> Option<String> {
+    if sequence.effects.len() < 2 || sequence.effects.len() > 3 {
+        return None;
+    }
+    let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let shuffle = if sequence.effects.len() == 3 {
+        Some(sequence.effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?)
+    } else {
+        None
+    };
+    describe_search_choose_for_each(choose, for_each, shuffle, tagged_subjects)
 }
 
 fn describe_for_players_choose_then_sacrifice(
