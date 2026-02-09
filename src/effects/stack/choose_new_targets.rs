@@ -221,12 +221,8 @@ impl EffectExecutor for ChooseNewTargetsEffect {
                 }
             }
 
-            let targets_ctx = TargetsContext::new(
-                chooser,
-                object_id,
-                "copy".to_string(),
-                requirements.clone(),
-            );
+            let targets_ctx =
+                TargetsContext::new(chooser, object_id, "copy".to_string(), requirements.clone());
             let proposed = ctx.decision_maker.decide_targets(game, &targets_ctx);
             let Some(new_targets) = normalize_target_choice(&requirements, proposed) else {
                 if self.may {

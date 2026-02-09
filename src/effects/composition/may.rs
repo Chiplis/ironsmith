@@ -3,8 +3,8 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::ask_may_choice;
 use crate::effect::{Effect, EffectOutcome, EffectResult};
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_player_filter;
 use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
@@ -183,7 +183,8 @@ mod tests {
 
     #[test]
     fn test_may_for_specific_player_constructor() {
-        let effect = MayEffect::new_for_player(vec![Effect::draw(1)], PlayerFilter::target_player());
+        let effect =
+            MayEffect::new_for_player(vec![Effect::draw(1)], PlayerFilter::target_player());
         assert!(matches!(effect.decider, Some(PlayerFilter::Target(_))));
     }
 }

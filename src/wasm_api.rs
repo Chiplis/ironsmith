@@ -1709,8 +1709,16 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     }
     let cycling_words = words
         .iter()
-        .copied()
-        .filter(|word| word.ends_with("cycling"))
+        .enumerate()
+        .filter_map(|(idx, word)| {
+            if !word.ends_with("cycling") {
+                return None;
+            }
+            let has_cost = words
+                .get(idx + 1)
+                .is_none_or(|next| is_cycling_cost_word(next));
+            has_cost.then_some(*word)
+        })
         .collect::<Vec<_>>();
     if !cycling_words.is_empty() {
         let rendered = cycling_words
@@ -1718,9 +1726,7 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
             .map(|word| {
                 let mut chars = word.chars();
                 match chars.next() {
-                    Some(first) => {
-                        format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
-                    }
+                    Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
                     None => "Cycling".to_string(),
                 }
             })
@@ -1743,6 +1749,17 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(raw_text.to_string());
     }
     None
+}
+
+fn is_cycling_cost_word(word: &str) -> bool {
+    !word.is_empty()
+        && word.chars().all(|ch| {
+            ch.is_ascii_digit()
+                || matches!(
+                    ch,
+                    '{' | '}' | '/' | 'w' | 'u' | 'b' | 'r' | 'g' | 'c' | 'x'
+                )
+        })
 }
 
 fn describe_compiled_ability(index: usize, ability: &Ability) -> Vec<String> {
@@ -2091,8 +2108,17 @@ fn describe_effects_inline(
             continue;
         }
         if idx + 1 < effects.len()
-            && let Some(choose) =
-                effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(tagged) = effects[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(deal) = effects[idx + 1].downcast_ref::<crate::effects::DealDamageEffect>()
+            && let Some(compact) =
+                describe_tagged_target_then_power_damage(tagged, deal, &local_tags)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < effects.len()
+            && let Some(choose) = effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(for_each) =
                 effects[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
         {
@@ -2108,31 +2134,23 @@ fn describe_effects_inline(
             }
         }
         if idx + 2 < effects.len()
-            && let Some(choose) =
-                effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(choose) = effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(shuffle) =
                 effects[idx + 1].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
             && let Some(for_each) =
                 effects[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
-            && let Some(compact) = describe_search_choose_for_each(
-                choose,
-                for_each,
-                Some(shuffle),
-                true,
-                &local_tags,
-            )
+            && let Some(compact) =
+                describe_search_choose_for_each(choose, for_each, Some(shuffle), true, &local_tags)
         {
             parts.push(compact.trim_end_matches('.').to_string());
             idx += 3;
             continue;
         }
         if idx + 1 < effects.len()
-            && let Some(choose) =
-                effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(choose) = effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(sacrifice) =
                 effects[idx + 1].downcast_ref::<crate::effects::SacrificeEffect>()
-            && let Some(compact) =
-                describe_choose_then_sacrifice(choose, sacrifice, &local_tags)
+            && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice, &local_tags)
         {
             parts.push(compact);
             idx += 2;
@@ -2185,6 +2203,41 @@ fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     }
 }
 
+fn describe_tagged_target_then_power_damage(
+    tagged: &crate::effects::TaggedEffect,
+    deal: &crate::effects::DealDamageEffect,
+    tagged_subjects: &HashMap<String, String>,
+) -> Option<String> {
+    let target_only = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let crate::effect::Value::PowerOf(source_spec) = &deal.amount else {
+        return None;
+    };
+    let source_tag = match source_spec.as_ref() {
+        crate::target::ChooseSpec::Tagged(tag) => tag,
+        _ => return None,
+    };
+    if source_tag.as_str() != tagged.tag.as_str() {
+        return None;
+    }
+
+    let source_text = describe_choose_spec(&target_only.target, tagged_subjects);
+    if matches!(
+        deal.target,
+        crate::target::ChooseSpec::Tagged(ref target_tag) if target_tag == source_tag
+    ) {
+        return Some(format!(
+            "{source_text} deals damage to itself equal to its power"
+        ));
+    }
+
+    let target_text = describe_choose_spec(&deal.target, tagged_subjects);
+    Some(format!(
+        "{source_text} deals damage equal to its power to {target_text}"
+    ))
+}
+
 fn describe_cost_list(
     costs: &[crate::costs::Cost],
     tagged_subjects: &HashMap<String, String>,
@@ -2199,7 +2252,8 @@ fn describe_cost_list(
             && let Some(sacrifice) = costs[idx + 1]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::SacrificeEffect>())
-            && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice, tagged_subjects)
+            && let Some(compact) =
+                describe_choose_then_sacrifice(choose, sacrifice, tagged_subjects)
         {
             parts.push(compact.trim_end_matches('.').to_string());
             idx += 2;
@@ -2552,10 +2606,7 @@ fn describe_mode_choice_header_ui(
             describe_value(min, tagged_subjects),
             describe_value(max, tagged_subjects)
         ),
-        (None, max) => format!(
-            "Choose {} mode(s) -",
-            describe_value(max, tagged_subjects)
-        ),
+        (None, max) => format!("Choose {} mode(s) -", describe_value(max, tagged_subjects)),
     }
 }
 
@@ -2718,10 +2769,7 @@ fn with_indefinite_article(noun: &str) -> String {
         || trimmed.starts_with("target ")
         || trimmed.starts_with("each ")
         || trimmed.starts_with("all ")
-        || trimmed
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_digit())
+        || trimmed.chars().next().is_some_and(|ch| ch.is_ascii_digit())
     {
         return trimmed.to_string();
     }
@@ -2862,7 +2910,10 @@ fn describe_compact_token_count_ui(
     match value {
         crate::effect::Value::Fixed(1) => format!("a {token_name} token"),
         crate::effect::Value::Fixed(n) => format!("{n} {token_name} tokens"),
-        _ => format!("{} {token_name} token(s)", describe_value(value, tagged_subjects)),
+        _ => format!(
+            "{} {token_name} token(s)",
+            describe_value(value, tagged_subjects)
+        ),
     }
 }
 
@@ -2991,10 +3042,7 @@ fn describe_search_choose_for_each(
     let library_owner = if chooser == "You" {
         "your".to_string()
     } else {
-        format!(
-            "{}'s",
-            strip_leading_article(&chooser).to_ascii_lowercase()
-        )
+        format!("{}'s", strip_leading_article(&chooser).to_ascii_lowercase())
     };
     let filter_text = choose.filter.description();
     let selection_text = if choose.count.is_single() {
@@ -3072,7 +3120,8 @@ fn describe_search_sequence(
         return None;
     }
     let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    if let Some(for_each) = sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+    if let Some(for_each) =
+        sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
     {
         let shuffle = if sequence.effects.len() == 3 {
             Some(sequence.effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?)
@@ -3082,7 +3131,8 @@ fn describe_search_sequence(
         return describe_search_choose_for_each(choose, for_each, shuffle, false, tagged_subjects);
     }
     if sequence.effects.len() == 3
-        && let Some(shuffle) = sequence.effects[1].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+        && let Some(shuffle) =
+            sequence.effects[1].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
         && let Some(for_each) =
             sequence.effects[2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
     {
@@ -3123,9 +3173,7 @@ fn describe_for_players_choose_then_sacrifice(
         _ => return None,
     };
     let chosen = with_indefinite_article(&choose.filter.description());
-    Some(format!(
-        "{subject} {verb} {chosen} of {possessive} choice."
-    ))
+    Some(format!("{subject} {verb} {chosen} of {possessive} choice."))
 }
 
 fn describe_effect_core_expanded(
@@ -3224,7 +3272,11 @@ fn describe_effect_core_expanded(
     }
     if let Some(choose_objects) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
         let chooser = describe_player_filter(&choose_objects.chooser, tagged_subjects);
-        let choose_verb = if chooser == "You" { "choose" } else { "chooses" };
+        let choose_verb = if chooser == "You" {
+            "choose"
+        } else {
+            "chooses"
+        };
         let search_like = choose_objects.is_search
             || (choose_objects.zone == crate::zone::Zone::Library
                 && choose_objects.tag.as_str().starts_with("searched_"));
@@ -3260,9 +3312,11 @@ fn describe_effect_core_expanded(
         if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
             return Some(compact);
         }
-        let each_player =
-            strip_leading_article(&describe_player_filter(&for_players.filter, tagged_subjects))
-                .to_ascii_lowercase();
+        let each_player = strip_leading_article(&describe_player_filter(
+            &for_players.filter,
+            tagged_subjects,
+        ))
+        .to_ascii_lowercase();
         return Some(format!(
             "For each {}, {}.",
             each_player,
@@ -3547,15 +3601,11 @@ fn describe_effect_core_expanded(
                 format!("{who}'s")
             }
         };
-        return Some(format!(
-            "Look at {owner} hand."
-        ));
+        return Some(format!("Look at {owner} hand."));
     }
     if let Some(reveal_top) = effect.downcast_ref::<crate::effects::RevealTopEffect>() {
         let owner = describe_player_filter_possessive(&reveal_top.player, tagged_subjects);
-        let mut text = format!(
-            "Reveal the top card of {owner} library"
-        );
+        let mut text = format!("Reveal the top card of {owner} library");
         if let Some(tag) = &reveal_top.tag {
             text.push_str(&format!(" and tag it as '{}'", tag.as_str()));
         }
@@ -4554,7 +4604,15 @@ fn describe_value(
     match value {
         crate::effect::Value::Fixed(n) => n.to_string(),
         crate::effect::Value::X => "X".to_string(),
-        crate::effect::Value::XTimes(n) => format!("{n}*X"),
+        crate::effect::Value::XTimes(n) => {
+            if *n == 1 {
+                "X".to_string()
+            } else if *n == -1 {
+                "-X".to_string()
+            } else {
+                format!("{n}*X")
+            }
+        }
         crate::effect::Value::Count(filter) => {
             format!(
                 "the number of {}",
@@ -4637,6 +4695,14 @@ fn describe_signed_value(
 ) -> String {
     match value {
         crate::effect::Value::Fixed(n) if *n > 0 => format!("+{n}"),
+        crate::effect::Value::X => "+X".to_string(),
+        crate::effect::Value::XTimes(n) if *n > 0 => {
+            if *n == 1 {
+                "+X".to_string()
+            } else {
+                format!("+{n}*X")
+            }
+        }
         crate::effect::Value::Fixed(n) => n.to_string(),
         _ => describe_value(value, tagged_subjects),
     }

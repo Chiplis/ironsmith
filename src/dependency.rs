@@ -663,7 +663,7 @@ fn object_matches_filter_with_chars(
         return false;
     }
 
-    if filter.is_commander && !game.commanders.contains(&object.id) {
+    if filter.is_commander && !game.is_commander(object.id) {
         return false;
     }
 

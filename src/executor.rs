@@ -713,7 +713,8 @@ pub fn resolve_value(
         }
 
         Value::Devotion { player, color } => {
-            let player_ids = resolve_player_filter_to_list(game, player, &ctx.filter_context(game), ctx)?;
+            let player_ids =
+                resolve_player_filter_to_list(game, player, &ctx.filter_context(game), ctx)?;
             let devotion: usize = player_ids
                 .iter()
                 .map(|pid| game.devotion_to_color(*pid, *color))

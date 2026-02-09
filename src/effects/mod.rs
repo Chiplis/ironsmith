@@ -76,8 +76,7 @@ pub use composition::{
     ForEachObject, ForEachOpponentEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
     ForPlayersEffect, IfEffect, MayEffect, SequenceEffect, TagAllEffect, TagAttachedToSourceEffect,
     TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
-    UnlessActionEffect,
-    UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
+    UnlessActionEffect, UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
 };
 pub use continuous::ApplyContinuousEffect;
 pub use control::{ExchangeControlEffect, GainControlEffect};

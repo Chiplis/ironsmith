@@ -183,7 +183,11 @@ mod tests {
 
         assert_eq!(
             result.result,
-            EffectResult::ManaAdded(vec![ManaSymbol::Green, ManaSymbol::Green, ManaSymbol::Green])
+            EffectResult::ManaAdded(vec![
+                ManaSymbol::Green,
+                ManaSymbol::Green,
+                ManaSymbol::Green
+            ])
         );
         assert_eq!(game.player(alice).expect("alice").mana_pool.green, 3);
     }

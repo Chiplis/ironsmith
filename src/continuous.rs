@@ -1178,7 +1178,10 @@ fn filter_matches_direct(
     }
 
     // Check if must be a commander
-    if filter.is_commander && !commanders.contains(&object.id) {
+    if filter.is_commander
+        && !commanders.contains(&object.id)
+        && !commanders.contains(&object.stable_id.object_id())
+    {
         return false;
     }
 
@@ -2300,7 +2303,7 @@ fn filter_matches_with_controller(
         return false;
     }
 
-    if filter.is_commander && !game.commanders.contains(&object.id) {
+    if filter.is_commander && !game.is_commander(object.id) {
         return false;
     }
 

@@ -882,9 +882,7 @@ impl ObjectFilter {
             return false;
         }
 
-        if self.source
-            && ctx.source.is_none_or(|source_id| object.id != source_id)
-        {
+        if self.source && ctx.source.is_none_or(|source_id| object.id != source_id) {
             return false;
         }
 
@@ -1137,7 +1135,7 @@ impl ObjectFilter {
         }
 
         // Commander check
-        if self.is_commander && !ctx.your_commanders.contains(&object.id) {
+        if self.is_commander && !game.is_commander(object.id) {
             return false;
         }
 
@@ -1499,7 +1497,7 @@ impl ObjectFilter {
         }
 
         // Commander check
-        if self.is_commander && !ctx.your_commanders.contains(&snapshot.object_id) {
+        if self.is_commander && !snapshot.is_commander {
             return false;
         }
 
@@ -1617,6 +1615,7 @@ impl ObjectFilter {
     pub fn description(&self) -> String {
         let mut parts = Vec::new();
         let mut controller_suffix: Option<String> = None;
+        let mut owner_suffix: Option<String> = None;
 
         // Handle "other" modifier
         if self.other {
@@ -1653,6 +1652,32 @@ impl ObjectFilter {
                 PlayerFilter::ControllerOf(_) => parts.push("a controller's".to_string()),
                 PlayerFilter::OwnerOf(_) => parts.push("an owner's".to_string()),
             }
+        }
+
+        // Handle owner on object-level filters (battlefield/stack/any-zone object references).
+        // Zone-restricted card references (e.g. "in your graveyard") already encode ownership.
+        let owner_conveyed_by_zone = matches!(
+            self.zone,
+            Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile | Zone::Command)
+        );
+        if !owner_conveyed_by_zone && let Some(ref owner) = self.owner {
+            owner_suffix = Some(match owner {
+                PlayerFilter::You => "you own".to_string(),
+                PlayerFilter::Opponent => "an opponent owns".to_string(),
+                PlayerFilter::Any => "a player owns".to_string(),
+                PlayerFilter::Active => "the active player owns".to_string(),
+                PlayerFilter::Specific(_) => "that player owns".to_string(),
+                PlayerFilter::Teammate => "a teammate owns".to_string(),
+                PlayerFilter::Defending => "the defending player owns".to_string(),
+                PlayerFilter::Attacking => "an attacking player owns".to_string(),
+                PlayerFilter::DamagedPlayer => "the damaged player owns".to_string(),
+                PlayerFilter::IteratedPlayer => "that player owns".to_string(),
+                PlayerFilter::Target(inner) => {
+                    format!("target {} owns", describe_player_filter(inner.as_ref()))
+                }
+                PlayerFilter::ControllerOf(_) => "that object's controller owns".to_string(),
+                PlayerFilter::OwnerOf(_) => "that object's owner owns".to_string(),
+            });
         }
 
         // Handle token/nontoken
@@ -1709,12 +1734,15 @@ impl ObjectFilter {
         }
         if !self.excluded_supertypes.is_empty() {
             for supertype in &self.excluded_supertypes {
-                parts.push(format!("non{}", format!("{supertype:?}").to_ascii_lowercase()));
+                parts.push(format!(
+                    "non{}",
+                    format!("{supertype:?}").to_ascii_lowercase()
+                ));
             }
         }
         if !self.excluded_subtypes.is_empty() {
             for subtype in &self.excluded_subtypes {
-                parts.push(format!("non{subtype:?}"));
+                parts.push(format!("non-{subtype:?}"));
             }
         }
         if !self.excluded_colors.is_empty() {
@@ -1739,6 +1767,9 @@ impl ObjectFilter {
         }
         if self.multicolored {
             parts.push("multicolored".to_string());
+        }
+        if self.is_commander {
+            parts.push("commander".to_string());
         }
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());
@@ -1863,6 +1894,9 @@ impl ObjectFilter {
             }
         }
         if let Some(suffix) = controller_suffix {
+            parts.push(suffix);
+        }
+        if let Some(suffix) = owner_suffix {
             parts.push(suffix);
         }
 
@@ -2012,7 +2046,10 @@ fn snapshot_has_static_ability_id(
     snapshot.has_static_ability_id(ability_id)
 }
 
-fn snapshot_has_custom_static_marker(snapshot: &crate::snapshot::ObjectSnapshot, marker: &str) -> bool {
+fn snapshot_has_custom_static_marker(
+    snapshot: &crate::snapshot::ObjectSnapshot,
+    marker: &str,
+) -> bool {
     use crate::ability::AbilityKind;
 
     snapshot.abilities.iter().any(|ability| {
@@ -2156,7 +2193,7 @@ mod tests {
             .without_subtype(crate::types::Subtype::Zombie);
         assert_eq!(
             filter.description(),
-            "nonVampire nonWerewolf nonZombie creature"
+            "non-Vampire non-Werewolf non-Zombie creature"
         );
     }
 
@@ -2167,6 +2204,18 @@ mod tests {
                 .union(ColorSet::from_color(crate::color::Color::Red)),
         );
         assert_eq!(filter.description(), "nonblack nonred creature");
+    }
+
+    #[test]
+    fn test_filter_description_includes_commander_owner_and_controller_distinction() {
+        let filter = ObjectFilter::creature()
+            .commander()
+            .owned_by(PlayerFilter::You)
+            .controlled_by(PlayerFilter::Opponent);
+        assert_eq!(
+            filter.description(),
+            "an opponent's commander creature you own"
+        );
     }
 
     #[test]
@@ -2319,6 +2368,38 @@ mod tests {
         assert!(
             blood_moon_filter.matches(&breeding_pool, &ctx, &game),
             "Blood Moon filter should match Breeding Pool"
+        );
+    }
+
+    #[test]
+    fn test_commander_filter_matches_true_commander_regardless_of_ctx_owner_list() {
+        use crate::card::CardBuilder;
+        use crate::game_state::GameState;
+        use crate::ids::{CardId, ObjectId};
+        use crate::object::Object;
+
+        let you = PlayerId::from_index(0);
+        let opponent = PlayerId::from_index(1);
+
+        let commander_card = CardBuilder::new(CardId::from_raw(99), "Opponent Commander")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let commander_obj = Object::from_card(
+            ObjectId::from_raw(99),
+            &commander_card,
+            opponent,
+            Zone::Battlefield,
+        );
+
+        let mut game = GameState::new(vec!["You".to_string(), "Opponent".to_string()], 20);
+        game.add_object(commander_obj.clone());
+        game.set_as_commander(commander_obj.id, opponent);
+
+        let filter = ObjectFilter::creature().commander();
+        let ctx = FilterContext::new(you).with_your_commanders(Vec::new());
+        assert!(
+            filter.matches(&commander_obj, &ctx, &game),
+            "commander filter should rely on game commander identity, not ctx.your_commanders"
         );
     }
 }

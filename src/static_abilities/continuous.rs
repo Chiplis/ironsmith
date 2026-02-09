@@ -83,23 +83,85 @@ fn subject_text(filter: &ObjectFilter) -> String {
     attached_subject(filter).unwrap_or_else(|| filter.description())
 }
 
-fn grant_subject_text(filter: &ObjectFilter) -> String {
-    if let Some(subject) = attached_subject(filter) {
+fn strip_indefinite_article(text: &str) -> &str {
+    if let Some(rest) = text.strip_prefix("a ") {
+        return rest;
+    }
+    if let Some(rest) = text.strip_prefix("an ") {
+        return rest;
+    }
+    text
+}
+
+fn split_subject_suffix(subject: &str) -> (&str, &str) {
+    const SUFFIXES: &[&str] = &[
+        " you control",
+        " that player controls",
+        " you own",
+        " an opponent owns",
+        " a player owns",
+        " the active player owns",
+        " that player owns",
+        " a teammate owns",
+        " the defending player owns",
+        " an attacking player owns",
+        " the damaged player owns",
+        " target player owns",
+        " target opponent owns",
+        " that object's controller owns",
+        " that object's owner owns",
+    ];
+    for suffix in SUFFIXES {
+        if let Some(base) = subject.strip_suffix(suffix) {
+            return (base, suffix);
+        }
+    }
+    (subject, "")
+}
+
+fn pluralize_terminal_noun(base: &str) -> Option<String> {
+    const NOUNS: &[&str] = &[
+        "permanent",
+        "creature",
+        "artifact",
+        "enchantment",
+        "land",
+        "planeswalker",
+        "battle",
+        "spell",
+        "card",
+        "token",
+    ];
+    for noun in NOUNS {
+        if let Some(stem) = base.strip_suffix(noun) {
+            if stem.is_empty() || stem.ends_with(' ') {
+                return Some(format!("{stem}{noun}s"));
+            }
+        }
+    }
+    None
+}
+
+fn pluralized_subject_text(filter: &ObjectFilter) -> String {
+    let subject = subject_text(filter);
+    if subject.starts_with("enchanted ")
+        || subject.starts_with("equipped ")
+        || subject.starts_with("this ")
+        || subject.starts_with("that ")
+    {
         return subject;
     }
 
-    let creature_like = filter.card_types.contains(&CardType::Creature)
-        || filter.subtypes.iter().any(|subtype| subtype.is_creature_type());
-    if creature_like {
-        return "Affected creatures".to_string();
+    let (base, suffix) = split_subject_suffix(&subject);
+    let base = strip_indefinite_article(base);
+    if let Some(plural_base) = pluralize_terminal_noun(base) {
+        return format!("{plural_base}{suffix}");
     }
+    subject
+}
 
-    if filter.card_types.len() == 1 {
-        let noun = format!("{:?}", filter.card_types[0]).to_ascii_lowercase();
-        return format!("Affected {noun}s");
-    }
-
-    "Affected permanents".to_string()
+fn grant_subject_text(filter: &ObjectFilter) -> String {
+    pluralized_subject_text(filter)
 }
 
 fn subject_verb_and_possessive(subject: &str) -> (&'static str, &'static str) {
@@ -107,7 +169,11 @@ fn subject_verb_and_possessive(subject: &str) -> (&'static str, &'static str) {
         || subject.starts_with("equipped ")
         || subject.starts_with("this ")
         || subject.starts_with("that ");
-    if singular { ("is", "its") } else { ("are", "their") }
+    if singular {
+        ("is", "its")
+    } else {
+        ("are", "their")
+    }
 }
 
 /// Anthem effect: "Creatures you control get +N/+M"
@@ -371,7 +437,7 @@ impl StaticAbilityKind for Anthem {
         let subject = if self.source_only {
             "this creature".to_string()
         } else {
-            subject_text(&self.filter)
+            pluralized_subject_text(&self.filter)
         };
         let singular = self.source_only
             || subject.starts_with("a ")
@@ -545,11 +611,11 @@ impl StaticAbilityKind for GrantAbility {
             format!("this creature has {}", self.ability.display())
         } else {
             let subject = grant_subject_text(&self.filter);
-            let verb = if subject.starts_with("Affected ") {
-                "have"
-            } else {
-                "has"
-            };
+            let singular_subject = subject.starts_with("enchanted ")
+                || subject.starts_with("equipped ")
+                || subject.starts_with("this ")
+                || subject.starts_with("that ");
+            let verb = if singular_subject { "has" } else { "have" };
             format!("{subject} {verb} {}", self.ability.display())
         };
         if let Some(condition) = &self.condition {
@@ -652,7 +718,11 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
     }
 
     fn display(&self) -> String {
-        format!("Affected permanents lose {}", self.ability.display())
+        format!(
+            "{} lose {}",
+            subject_text(&self.filter),
+            self.ability.display()
+        )
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -696,7 +766,7 @@ impl StaticAbilityKind for RemoveAllAbilitiesForFilter {
     }
 
     fn display(&self) -> String {
-        "Affected permanents lose all abilities".to_string()
+        format!("{} lose all abilities", subject_text(&self.filter))
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -1484,7 +1554,7 @@ mod tests {
         let anthem = Anthem::creatures_you_control(1, 1);
         assert_eq!(anthem.id(), StaticAbilityId::Anthem);
         assert!(anthem.is_anthem());
-        assert_eq!(anthem.display(), "a creature you control gets +1/+1");
+        assert_eq!(anthem.display(), "creatures you control get +1/+1");
     }
 
     #[test]
@@ -1678,6 +1748,7 @@ mod tests {
         );
         assert_eq!(grant.id(), StaticAbilityId::GrantAbility);
         assert!(grant.grants_abilities());
+        assert_eq!(grant.display(), "creatures you control have Flying");
     }
 
     #[test]

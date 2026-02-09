@@ -140,7 +140,7 @@ impl ObjectSnapshot {
             attachments: obj.attachments.clone(),
             was_enchanted: false, // Set later via with_enchantment_check if needed
             is_monstrous: game.is_monstrous(obj.id),
-            is_commander: game.is_commander_object(obj.id),
+            is_commander: game.is_commander(obj.id),
             zone: obj.zone,
         }
     }

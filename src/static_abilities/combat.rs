@@ -215,9 +215,7 @@ impl StaticAbilityKind for CantAttackUnlessDefendingPlayerControlsLandSubtype {
         Box::new(*self)
     }
 
-    fn required_defending_player_land_subtype_for_attack(
-        &self,
-    ) -> Option<crate::types::Subtype> {
+    fn required_defending_player_land_subtype_for_attack(&self) -> Option<crate::types::Subtype> {
         Some(self.land_subtype)
     }
 }

@@ -238,10 +238,7 @@ fn semantic_clauses(text: &str) -> Vec<String> {
             continue;
         }
         let line = if trimmed.starts_with('(') && trimmed.ends_with(')') {
-            let inner = trimmed
-                .trim_start_matches('(')
-                .trim_end_matches(')')
-                .trim();
+            let inner = trimmed.trim_start_matches('(').trim_end_matches(')').trim();
             // Keep parenthetical lines only when they carry executable semantics
             // (most notably mana abilities like "({T}: Add {G}.)").
             if inner.contains(':') {
@@ -1352,8 +1349,7 @@ mod tests {
 
     #[test]
     fn test_embedding_mode_catches_dropped_where_plus_semantics() {
-        let oracle =
-            "Hobbit's Sting deals X damage to target creature, where X is the number of creatures you control plus the number of Foods you control.";
+        let oracle = "Hobbit's Sting deals X damage to target creature, where X is the number of creatures you control plus the number of Foods you control.";
         let compiled = vec!["Deal X damage to target creature Food".to_string()];
         let (_oracle_coverage, _compiled_coverage, _line_delta, mismatch) = compare_semantics(
             oracle,

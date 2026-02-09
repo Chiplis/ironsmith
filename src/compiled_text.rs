@@ -334,7 +334,8 @@ fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> String {
 
 fn describe_compact_protection_choice(effect: &Effect) -> Option<String> {
     let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
-    if choose_mode.min_choose_count.is_some() || !matches!(choose_mode.choose_count, Value::Fixed(1))
+    if choose_mode.min_choose_count.is_some()
+        || !matches!(choose_mode.choose_count, Value::Fixed(1))
     {
         return None;
     }
@@ -435,6 +436,8 @@ fn describe_value(value: &Value) -> String {
         Value::XTimes(factor) => {
             if *factor == 1 {
                 "X".to_string()
+            } else if *factor == -1 {
+                "-X".to_string()
             } else {
                 format!("{factor}*X")
             }
@@ -505,6 +508,14 @@ fn describe_value(value: &Value) -> String {
 fn describe_signed_value(value: &Value) -> String {
     match value {
         Value::Fixed(n) if *n >= 0 => format!("+{n}"),
+        Value::X => "+X".to_string(),
+        Value::XTimes(factor) if *factor > 0 => {
+            if *factor == 1 {
+                "+X".to_string()
+            } else {
+                format!("+{factor}*X")
+            }
+        }
         Value::Fixed(n) => n.to_string(),
         _ => describe_value(value),
     }
@@ -743,8 +754,8 @@ fn describe_effect_list(effects: &[Effect]) -> String {
         }
         if idx + 1 < filtered.len()
             && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
-            && let Some(choose_new) = filtered[idx + 1]
-                .downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
+            && let Some(choose_new) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
             && let Some(compact) = describe_with_id_then_choose_new_targets(with_id, choose_new)
         {
             parts.push(compact);
@@ -761,6 +772,15 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(deal) = filtered[idx + 1].downcast_ref::<crate::effects::DealDamageEffect>()
+            && let Some(compact) = describe_tagged_target_then_power_damage(tagged, deal)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(for_each) =
@@ -769,8 +789,7 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             let shuffle = filtered
                 .get(idx + 2)
                 .and_then(|effect| effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>());
-            if let Some(compact) =
-                describe_search_choose_for_each(choose, for_each, shuffle, false)
+            if let Some(compact) = describe_search_choose_for_each(choose, for_each, shuffle, false)
             {
                 parts.push(compact);
                 idx += if shuffle.is_some() { 3 } else { 2 };
@@ -814,8 +833,7 @@ fn describe_effect_list(effects: &[Effect]) -> String {
         }
         if idx + 1 < filtered.len()
             && let Some(draw) = filtered[idx].downcast_ref::<crate::effects::DrawCardsEffect>()
-            && let Some(discard) =
-                filtered[idx + 1].downcast_ref::<crate::effects::DiscardEffect>()
+            && let Some(discard) = filtered[idx + 1].downcast_ref::<crate::effects::DiscardEffect>()
             && let Some(compact) = describe_draw_then_discard(draw, discard)
         {
             parts.push(compact);
@@ -850,6 +868,40 @@ fn describe_exile_then_return(
     }
     let target = describe_choose_spec(&exile_move.target);
     Some(format!("Exile {target}, then return it to the battlefield"))
+}
+
+fn describe_tagged_target_then_power_damage(
+    tagged: &crate::effects::TaggedEffect,
+    deal: &crate::effects::DealDamageEffect,
+) -> Option<String> {
+    let target_only = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let Value::PowerOf(source_spec) = &deal.amount else {
+        return None;
+    };
+    let source_tag = match source_spec.as_ref() {
+        ChooseSpec::Tagged(tag) => tag,
+        _ => return None,
+    };
+    if source_tag.as_str() != tagged.tag.as_str() {
+        return None;
+    }
+
+    let source_text = describe_choose_spec(&target_only.target);
+    if matches!(
+        deal.target,
+        ChooseSpec::Tagged(ref target_tag) if target_tag == source_tag
+    ) {
+        return Some(format!(
+            "{source_text} deals damage to itself equal to its power"
+        ));
+    }
+
+    let target_text = describe_choose_spec(&deal.target);
+    Some(format!(
+        "{source_text} deals damage equal to its power to {target_text}"
+    ))
 }
 
 fn cleanup_decompiled_text(text: &str) -> String {
@@ -957,10 +1009,7 @@ fn with_indefinite_article(noun: &str) -> String {
         || trimmed.starts_with("target ")
         || trimmed.starts_with("each ")
         || trimmed.starts_with("all ")
-        || trimmed
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_digit())
+        || trimmed.chars().next().is_some_and(|ch| ch.is_ascii_digit())
     {
         return trimmed.to_string();
     }
@@ -1037,9 +1086,7 @@ fn describe_for_players_choose_then_sacrifice(
         _ => return None,
     };
     let chosen = with_indefinite_article(&choose.filter.description());
-    Some(format!(
-        "{subject} {verb} {chosen} of {possessive} choice"
-    ))
+    Some(format!("{subject} {verb} {chosen} of {possessive} choice"))
 }
 
 fn describe_choose_then_sacrifice(
@@ -1207,7 +1254,10 @@ fn describe_choose_then_exile_from_hand(
     let chooser = describe_player_filter(&choose.chooser);
     let verb = player_verb(&chooser, "exile", "exiles");
     let filter_text = choose.filter.description();
-    let card_desc = filter_text.split(" in ").next().unwrap_or(filter_text.as_str());
+    let card_desc = filter_text
+        .split(" in ")
+        .next()
+        .unwrap_or(filter_text.as_str());
     let chosen = if choose.count.is_single() {
         with_indefinite_article(card_desc)
     } else if let Some(max) = choose.count.max {
@@ -1284,7 +1334,9 @@ fn describe_with_id_then_if(
     } else {
         match if_effect.predicate {
             EffectPredicate::Happened => "If it happened".to_string(),
-            EffectPredicate::HappenedNotReplaced => "If it happened and wasn't replaced".to_string(),
+            EffectPredicate::HappenedNotReplaced => {
+                "If it happened and wasn't replaced".to_string()
+            }
             _ => format!("If {}", describe_effect_predicate(&if_effect.predicate)),
         }
     };
@@ -1340,8 +1392,8 @@ fn describe_search_choose_for_each(
     shuffle: Option<&crate::effects::ShuffleLibraryEffect>,
     shuffle_before_move: bool,
 ) -> Option<String> {
-    let search_like =
-        choose.is_search || (choose.zone == Zone::Library && choose.tag.as_str().starts_with("searched_"));
+    let search_like = choose.is_search
+        || (choose.zone == Zone::Library && choose.tag.as_str().starts_with("searched_"));
     if !search_like || choose.zone != Zone::Library {
         return None;
     }
@@ -1493,7 +1545,8 @@ fn describe_search_sequence(sequence: &crate::effects::SequenceEffect) -> Option
         return None;
     }
     let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    if let Some(for_each) = sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+    if let Some(for_each) =
+        sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
     {
         let shuffle = if sequence.effects.len() == 3 {
             Some(sequence.effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?)
@@ -1503,7 +1556,8 @@ fn describe_search_sequence(sequence: &crate::effects::SequenceEffect) -> Option
         return describe_search_choose_for_each(choose, for_each, shuffle, false);
     }
     if sequence.effects.len() == 3
-        && let Some(shuffle) = sequence.effects[1].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+        && let Some(shuffle) =
+            sequence.effects[1].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
         && let Some(for_each) =
             sequence.effects[2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
     {
@@ -1552,12 +1606,16 @@ fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
         let chooser = describe_player_filter(&choose.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
-        let search_like =
-            choose.is_search || (choose.zone == Zone::Library && choose.tag.as_str().starts_with("searched_"));
+        let search_like = choose.is_search
+            || (choose.zone == Zone::Library && choose.tag.as_str().starts_with("searched_"));
         return format!(
             "{} {} {} {} in {} and tags it as '{}'",
             chooser,
-            if search_like { "searches for" } else { choose_verb },
+            if search_like {
+                "searches for"
+            } else {
+                choose_verb
+            },
             describe_choice_count(&choose.count),
             choose.filter.description(),
             match choose.zone {
@@ -1669,11 +1727,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             format!("{player} {alt_text}")
         };
-        return format!(
-            "{} unless {}",
-            inner_text,
-            unless_clause
-        );
+        return format!("{} unless {}", inner_text, unless_clause);
     }
     if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
         return format!(
@@ -1889,9 +1943,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(reveal_top) = effect.downcast_ref::<crate::effects::RevealTopEffect>() {
         let owner = describe_possessive_player_filter(&reveal_top.player);
-        let mut text = format!(
-            "Reveal the top card of {owner} library"
-        );
+        let mut text = format!("Reveal the top card of {owner} library");
         if let Some(tag) = &reveal_top.tag {
             text.push_str(&format!(" and tag it as '{}'", tag.as_str()));
         }
@@ -1910,9 +1962,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 format!("{who}'s")
             }
         };
-        return format!(
-            "Look at {owner} hand"
-        );
+        return format!("Look at {owner} hand");
     }
     if let Some(grant_all) = effect.downcast_ref::<crate::effects::GrantAbilitiesAllEffect>() {
         return format!(
@@ -2110,8 +2160,10 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return compact;
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
-        let header =
-            describe_mode_choice_header(&choose_mode.choose_count, choose_mode.min_choose_count.as_ref());
+        let header = describe_mode_choice_header(
+            &choose_mode.choose_count,
+            choose_mode.min_choose_count.as_ref(),
+        );
         let modes = choose_mode
             .modes
             .iter()
@@ -2309,7 +2361,11 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return format!(
             "{} {} new targets for the copy",
             chooser_text,
-            if choose_new.may { "may choose" } else { "chooses" },
+            if choose_new.may {
+                "may choose"
+            } else {
+                "chooses"
+            },
         );
     }
     if let Some(set_life) = effect.downcast_ref::<crate::effects::SetLifeTotalEffect>() {
@@ -2501,8 +2557,16 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     }
     let cycling_words = words
         .iter()
-        .copied()
-        .filter(|word| word.ends_with("cycling"))
+        .enumerate()
+        .filter_map(|(idx, word)| {
+            if !word.ends_with("cycling") {
+                return None;
+            }
+            let has_cost = words
+                .get(idx + 1)
+                .is_none_or(|next| is_cycling_cost_word(next));
+            has_cost.then_some(*word)
+        })
         .collect::<Vec<_>>();
     if !cycling_words.is_empty() {
         let rendered = cycling_words
@@ -2535,6 +2599,17 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(raw_text.to_string());
     }
     None
+}
+
+fn is_cycling_cost_word(word: &str) -> bool {
+    !word.is_empty()
+        && word.chars().all(|ch| {
+            ch.is_ascii_digit()
+                || matches!(
+                    ch,
+                    '{' | '}' | '/' | 'w' | 'u' | 'b' | 'r' | 'g' | 'c' | 'x'
+                )
+        })
 }
 
 fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
@@ -2871,7 +2946,8 @@ pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
             let mut keywords = vec![keyword];
             let mut consumed = 1usize;
             while idx + consumed < stripped.len() {
-                let Some((next_subject, next_keyword)) = split_have_clause(&stripped[idx + consumed])
+                let Some((next_subject, next_keyword)) =
+                    split_have_clause(&stripped[idx + consumed])
                 else {
                     break;
                 };

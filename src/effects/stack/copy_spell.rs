@@ -3,8 +3,8 @@
 use crate::effect::{EffectOutcome, EffectResult, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_from_spec, resolve_player_filter, resolve_value};
-use crate::executor::{ExecutionContext, ExecutionError};
 use crate::events::spells::SpellCopiedEvent;
+use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::object::Object;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -133,9 +133,7 @@ impl EffectExecutor for CopySpellEffect {
             created_ids.push(copy_id);
 
             // Copying a spell can trigger magecraft-like abilities.
-            game.queue_trigger_event(TriggerEvent::new(SpellCopiedEvent::new(
-                copy_id, copier,
-            )));
+            game.queue_trigger_event(TriggerEvent::new(SpellCopiedEvent::new(copy_id, copier)));
         }
 
         Ok(EffectOutcome::from_result(EffectResult::Objects(
@@ -159,8 +157,8 @@ impl EffectExecutor for CopySpellEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::EventKind;
     use crate::card::CardBuilder;
+    use crate::events::EventKind;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::types::CardType;

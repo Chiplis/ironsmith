@@ -165,9 +165,7 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
     }
 
     /// Returns required land subtype for "can't attack unless defending player controls ...".
-    fn required_defending_player_land_subtype_for_attack(
-        &self,
-    ) -> Option<crate::types::Subtype> {
+    fn required_defending_player_land_subtype_for_attack(&self) -> Option<crate::types::Subtype> {
         None
     }
 
@@ -449,8 +447,7 @@ impl StaticAbility {
     pub fn required_defending_player_land_subtype_for_attack(
         &self,
     ) -> Option<crate::types::Subtype> {
-        self.0
-            .required_defending_player_land_subtype_for_attack()
+        self.0.required_defending_player_land_subtype_for_attack()
     }
 
     pub fn has_first_strike(&self) -> bool {

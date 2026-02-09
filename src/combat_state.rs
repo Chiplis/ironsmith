@@ -12,7 +12,9 @@ use crate::ability::AbilityKind;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
-use crate::rules::combat::{can_attack_defending_player, can_block, has_vigilance, minimum_blockers};
+use crate::rules::combat::{
+    can_attack_defending_player, can_block, has_vigilance, minimum_blockers,
+};
 use crate::static_abilities::StaticAbilityId;
 use crate::types::CardType;
 use crate::zone::Zone;

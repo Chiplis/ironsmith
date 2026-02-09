@@ -131,8 +131,7 @@ impl StaticAbilityKind for EntersTappedUnlessControlTwoOrFewerOtherLands {
     }
 
     fn display(&self) -> String {
-        "This enters the battlefield tapped unless you control two or fewer other lands"
-            .to_string()
+        "This enters the battlefield tapped unless you control two or fewer other lands".to_string()
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {

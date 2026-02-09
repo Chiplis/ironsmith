@@ -42,7 +42,10 @@ impl EffectExecutor for TagTriggeringDamageTargetEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        ctx.tag_object(self.tag.clone(), ObjectSnapshot::from_object(target_obj, game));
+        ctx.tag_object(
+            self.tag.clone(),
+            ObjectSnapshot::from_object(target_obj, game),
+        );
         Ok(EffectOutcome::from_result(EffectResult::Count(1)))
     }
 
@@ -50,4 +53,3 @@ impl EffectExecutor for TagTriggeringDamageTargetEffect {
         Box::new(self.clone())
     }
 }
-

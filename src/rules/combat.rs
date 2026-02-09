@@ -281,9 +281,10 @@ pub fn can_attack_defending_player(
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| get_static_abilities(creature));
 
-    for required_land_subtype in abilities.iter().filter_map(|ability| {
-        ability.required_defending_player_land_subtype_for_attack()
-    }) {
+    for required_land_subtype in abilities
+        .iter()
+        .filter_map(|ability| ability.required_defending_player_land_subtype_for_attack())
+    {
         let defending_has_required_land = game
             .battlefield
             .iter()
