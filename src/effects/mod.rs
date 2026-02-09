@@ -108,6 +108,6 @@ pub use tokens::{CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect};
 pub use zones::{
     DestroyEffect, ExileEffect, ExileFromHandAsCostEffect, MoveToZoneEffect,
     PutOntoBattlefieldEffect, ReturnFromGraveyardOrExileToBattlefieldEffect,
-    ReturnFromGraveyardToBattlefieldEffect, ReturnFromGraveyardToHandEffect, ReturnToHandEffect,
-    SacrificeEffect, SacrificeTargetEffect,
+    ReturnFromGraveyardToBattlefieldEffect, ReturnFromGraveyardToHandEffect,
+    ReturnAllToBattlefieldEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
 };

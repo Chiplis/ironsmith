@@ -25,6 +25,7 @@ struct Args {
     embedding_dims: usize,
     embedding_threshold: f32,
     mismatch_names_out: Option<String>,
+    false_positive_names: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +46,7 @@ struct CardAudit {
     compiled_coverage: f32,
     line_delta: isize,
     semantic_mismatch: bool,
+    semantic_false_positive: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,6 +54,7 @@ struct JsonReport {
     cards_processed: usize,
     parse_failures: usize,
     semantic_mismatches: usize,
+    semantic_false_positives: usize,
     clusters_total: usize,
     clusters_reported: usize,
     clusters: Vec<JsonCluster>,
@@ -63,6 +66,7 @@ struct JsonCluster {
     size: usize,
     parse_failures: usize,
     semantic_mismatches: usize,
+    semantic_false_positives: usize,
     parse_failure_rate: f32,
     semantic_mismatch_rate: f32,
     top_errors: Vec<JsonErrorCount>,
@@ -100,6 +104,7 @@ fn parse_args() -> Result<Args, String> {
     let mut embedding_dims = 384usize;
     let mut embedding_threshold = 0.17f32;
     let mut mismatch_names_out = None;
+    let mut false_positive_names = None;
 
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -186,9 +191,15 @@ fn parse_args() -> Result<Args, String> {
                         .ok_or_else(|| "--mismatch-names-out requires a path".to_string())?,
                 );
             }
+            "--false-positive-names" => {
+                false_positive_names = Some(
+                    iter.next()
+                        .ok_or_else(|| "--false-positive-names requires a path".to_string())?,
+                );
+            }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. supported: --cards <path> --limit <n> --min-cluster-size <n> --top-clusters <n> --examples <n> --json-out <path> --parser-trace --trace-name <substring> --allow-unsupported --use-embeddings --embedding-dims <n> --embedding-threshold <f32> --mismatch-names-out <path>"
+                    "unknown argument '{arg}'. supported: --cards <path> --limit <n> --min-cluster-size <n> --top-clusters <n> --examples <n> --json-out <path> --parser-trace --trace-name <substring> --allow-unsupported --use-embeddings --embedding-dims <n> --embedding-threshold <f32> --mismatch-names-out <path> --false-positive-names <path>"
                 ));
             }
         }
@@ -208,6 +219,7 @@ fn parse_args() -> Result<Args, String> {
         embedding_dims,
         embedding_threshold,
         mismatch_names_out,
+        false_positive_names,
     })
 }
 
@@ -812,6 +824,16 @@ fn first_compiled_excerpt(lines: &[String]) -> String {
         .unwrap_or_else(|| "<none>".to_string())
 }
 
+fn read_name_set(path: &str) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
+    let raw = fs::read_to_string(path)?;
+    Ok(raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
+        .collect())
+}
+
 fn pick_field<'a>(card: &'a Value, face: Option<&'a Value>, key: &str) -> Option<&'a str> {
     card.get(key)
         .and_then(Value::as_str)
@@ -996,6 +1018,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let false_positive_names = match args.false_positive_names.as_deref() {
+        Some(path) => read_name_set(path)?,
+        None => HashSet::new(),
+    };
 
     let mut audits = Vec::new();
     for card in cards {
@@ -1038,6 +1064,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     compiled_coverage,
                     line_delta,
                     semantic_mismatch,
+                    semantic_false_positive: false,
                 }
             }
             Err(err) => CardAudit {
@@ -1050,9 +1077,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 compiled_coverage: 0.0,
                 line_delta: 0,
                 semantic_mismatch: false,
+                semantic_false_positive: false,
             },
         };
         audits.push(audit);
+    }
+
+    for audit in &mut audits {
+        if audit.parse_error.is_none()
+            && audit.semantic_mismatch
+            && false_positive_names.contains(&audit.name)
+        {
+            audit.semantic_mismatch = false;
+            audit.semantic_false_positive = true;
+        }
     }
 
     match original_trace {
@@ -1086,6 +1124,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .values()
         .flatten()
         .filter(|audit| audit.parse_error.is_none() && audit.semantic_mismatch)
+        .count();
+    let semantic_false_positives = clusters
+        .values()
+        .flatten()
+        .filter(|audit| audit.parse_error.is_none() && audit.semantic_false_positive)
         .count();
 
     if let Some(path) = args.mismatch_names_out.as_ref() {
@@ -1138,6 +1181,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("- Cards processed: {cards_processed}");
     println!("- Parse failures: {parse_failures}");
     println!("- Semantic mismatches: {semantic_mismatches}");
+    if !false_positive_names.is_empty() {
+        println!("- Marked semantic false positives: {semantic_false_positives}");
+    }
     if let Some(cfg) = embedding_cfg {
         println!(
             "- Embedding audit: enabled (dims={}, threshold={:.2})",
@@ -1208,6 +1254,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .iter()
             .filter(|entry| entry.parse_error.is_none() && entry.semantic_mismatch)
             .count();
+        let semantic_false_positive_count = entries
+            .iter()
+            .filter(|entry| entry.parse_error.is_none() && entry.semantic_false_positive)
+            .count();
         let parse_failure_rate = parse_failures_count as f32 / size.max(1) as f32;
         let semantic_mismatch_rate = semantic_mismatch_count as f32 / size.max(1) as f32;
 
@@ -1233,6 +1283,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             semantic_mismatch_count,
             semantic_mismatch_rate * 100.0
         );
+        if semantic_false_positive_count > 0 {
+            println!("marked false positives: {semantic_false_positive_count}");
+        }
         println!("signature: {signature}");
 
         if !error_counts_vec.is_empty() {
@@ -1288,6 +1341,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             size,
             parse_failures: parse_failures_count,
             semantic_mismatches: semantic_mismatch_count,
+            semantic_false_positives: semantic_false_positive_count,
             parse_failure_rate,
             semantic_mismatch_rate,
             top_errors,
@@ -1300,6 +1354,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cards_processed,
             parse_failures,
             semantic_mismatches,
+            semantic_false_positives,
             clusters_total,
             clusters_reported: json_clusters.len(),
             clusters: json_clusters,

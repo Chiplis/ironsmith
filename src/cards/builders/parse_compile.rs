@@ -187,6 +187,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::SacrificeAll { filter, .. }
         | EffectAst::DestroyAll { filter }
         | EffectAst::ExileAll { filter }
+        | EffectAst::ReturnAllToBattlefield { filter, .. }
         | EffectAst::PumpAll { filter, .. }
         | EffectAst::UntapAll { filter }
         | EffectAst::GrantAbilitiesAll { filter, .. }
@@ -1763,6 +1764,12 @@ fn compile_effect(
         EffectAst::ReturnAllToHand { filter } => {
             Ok((vec![Effect::return_all_to_hand(filter.clone())], Vec::new()))
         }
+        EffectAst::ReturnAllToBattlefield { filter, tapped } => Ok((
+            vec![Effect::new(
+                crate::effects::ReturnAllToBattlefieldEffect::new(filter.clone(), *tapped),
+            )],
+            Vec::new(),
+        )),
         EffectAst::ExchangeControl { filter, count } => {
             let first = ChooseSpec::Object(filter.clone());
             let second = ChooseSpec::Object(filter.clone());

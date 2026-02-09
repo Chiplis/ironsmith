@@ -226,7 +226,9 @@ fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
         ChooseSpec::Target(inner) => {
             let inner_text = describe_choose_spec(inner);
-            if inner_text.starts_with("target ") {
+            if inner_text == "it" {
+                inner_text
+            } else if inner_text.starts_with("target ") {
                 inner_text
             } else {
                 format!("target {inner_text}")
@@ -238,7 +240,13 @@ fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::Source => "this source".to_string(),
         ChooseSpec::SourceController => "you".to_string(),
         ChooseSpec::SourceOwner => "this source's owner".to_string(),
-        ChooseSpec::Tagged(tag) => format!("the tagged object '{}'", tag.as_str()),
+        ChooseSpec::Tagged(tag) => {
+            if is_implicit_reference_tag(tag.as_str()) {
+                "it".to_string()
+            } else {
+                format!("the tagged object '{}'", tag.as_str())
+            }
+        }
         ChooseSpec::All(filter) => format!("all {}", filter.description()),
         ChooseSpec::EachPlayer(filter) => format!("each {}", describe_player_filter(filter)),
         ChooseSpec::SpecificObject(_) => "that object".to_string(),
@@ -521,6 +529,194 @@ fn describe_signed_value(value: &Value) -> String {
     }
 }
 
+fn describe_signed_i32(value: i32) -> String {
+    if value >= 0 {
+        format!("+{value}")
+    } else {
+        value.to_string()
+    }
+}
+
+fn choose_spec_is_plural(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Target(inner) => choose_spec_is_plural(inner),
+        ChooseSpec::All(_) | ChooseSpec::EachPlayer(_) => true,
+        ChooseSpec::WithCount(inner, count) => !count.is_single() || choose_spec_is_plural(inner),
+        _ => false,
+    }
+}
+
+fn describe_apply_continuous_target(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> (String, bool) {
+    if let Some(spec) = &effect.target_spec {
+        return (describe_choose_spec(spec), choose_spec_is_plural(spec));
+    }
+
+    match &effect.target {
+        crate::continuous::EffectTarget::Specific(_) => ("that permanent".to_string(), false),
+        crate::continuous::EffectTarget::Filter(filter) => {
+            (pluralize_noun_phrase(&filter.description()), true)
+        }
+        crate::continuous::EffectTarget::Source => ("this source".to_string(), false),
+        crate::continuous::EffectTarget::AllPermanents => ("all permanents".to_string(), true),
+        crate::continuous::EffectTarget::AllCreatures => ("all creatures".to_string(), true),
+        crate::continuous::EffectTarget::AttachedTo(_) => {
+            ("the attached permanent".to_string(), false)
+        }
+    }
+}
+
+fn describe_apply_continuous_clauses(
+    effect: &crate::effects::ApplyContinuousEffect,
+    plural_target: bool,
+) -> Vec<String> {
+    let gets = if plural_target { "get" } else { "gets" };
+    let gains = if plural_target { "gain" } else { "gains" };
+
+    let mut clauses = Vec::new();
+
+    let mut push_modification = |modification: &crate::continuous::Modification| match modification
+    {
+        crate::continuous::Modification::ModifyPowerToughness { power, toughness } => {
+            clauses.push(format!(
+                "{gets} {}/{}",
+                describe_signed_i32(*power),
+                describe_signed_i32(*toughness)
+            ));
+        }
+        crate::continuous::Modification::ModifyPower(value) => {
+            clauses.push(format!("{gets} {} power", describe_signed_i32(*value)));
+        }
+        crate::continuous::Modification::ModifyToughness(value) => {
+            clauses.push(format!("{gets} {} toughness", describe_signed_i32(*value)));
+        }
+        crate::continuous::Modification::SetPowerToughness {
+            power, toughness, ..
+        } => {
+            clauses.push(format!(
+                "{gets} base power and toughness {}/{}",
+                describe_value(power),
+                describe_value(toughness)
+            ));
+        }
+        crate::continuous::Modification::SetPower { value, .. } => {
+            clauses.push(format!("{gets} base power {}", describe_value(value)));
+        }
+        crate::continuous::Modification::SetToughness { value, .. } => {
+            clauses.push(format!("{gets} base toughness {}", describe_value(value)));
+        }
+        crate::continuous::Modification::AddAbility(ability) => {
+            clauses.push(format!("{gains} {}", ability.display()));
+        }
+        crate::continuous::Modification::AddAbilityGeneric(ability) => {
+            clauses.push(format!("{gains} {}", describe_inline_ability(ability)));
+        }
+        _ => {}
+    };
+
+    if let Some(modification) = &effect.modification {
+        push_modification(modification);
+    }
+    for modification in &effect.additional_modifications {
+        push_modification(modification);
+    }
+    for runtime in &effect.runtime_modifications {
+        match runtime {
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            } => {
+                clauses.push(format!(
+                    "{gets} {}/{}",
+                    describe_signed_value(power),
+                    describe_signed_value(toughness)
+                ));
+            }
+            crate::effects::continuous::RuntimeModification::ModifyPower { value } => {
+                clauses.push(format!("{gets} {} power", describe_signed_value(value)));
+            }
+            crate::effects::continuous::RuntimeModification::ModifyToughness { value } => {
+                clauses.push(format!("{gets} {} toughness", describe_signed_value(value)));
+            }
+            crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController => {
+                clauses.push("changes controller to this effect's controller".to_string());
+            }
+        }
+    }
+
+    clauses
+}
+
+fn describe_apply_continuous_effect(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    let (target, plural_target) = describe_apply_continuous_target(effect);
+    if effect.modification.is_none()
+        && effect.additional_modifications.is_empty()
+        && matches!(
+            effect.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
+        )
+    {
+        let mut text = format!("Gain control of {target}");
+        if !matches!(effect.until, Until::Forever) {
+            text.push(' ');
+            text.push_str(&describe_until(&effect.until));
+        }
+        return Some(text);
+    }
+
+    let clauses = describe_apply_continuous_clauses(effect, plural_target);
+    if clauses.is_empty() {
+        return None;
+    }
+
+    let mut text = format!("{target} {}", join_with_and(&clauses));
+    if !matches!(effect.until, Until::Forever) {
+        text.push(' ');
+        text.push_str(&describe_until(&effect.until));
+    }
+    Some(text)
+}
+
+fn describe_compact_apply_continuous_pair(
+    first: &crate::effects::ApplyContinuousEffect,
+    second: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    if first.target != second.target
+        || first.target_spec != second.target_spec
+        || first.until != second.until
+    {
+        return None;
+    }
+
+    let (target, plural_target) = describe_apply_continuous_target(first);
+    let mut clauses = describe_apply_continuous_clauses(first, plural_target);
+    clauses.extend(describe_apply_continuous_clauses(second, plural_target));
+    if clauses.is_empty() {
+        return None;
+    }
+
+    let mut text = format!("{target} {}", join_with_and(&clauses));
+    if !matches!(first.until, Until::Forever) {
+        text.push(' ');
+        text.push_str(&describe_until(&first.until));
+    }
+    Some(text)
+}
+
+fn is_generated_internal_tag(tag: &str) -> bool {
+    let Some((_, suffix)) = tag.rsplit_once('_') else {
+        return false;
+    };
+    !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
+}
+
+fn is_implicit_reference_tag(tag: &str) -> bool {
+    matches!(tag, "triggering" | "damaged" | "__it__") || is_generated_internal_tag(tag)
+}
+
 fn describe_until(until: &Until) -> String {
     match until {
         Until::Forever => "forever".to_string(),
@@ -743,6 +939,17 @@ fn describe_effect_list(effects: &[Effect]) -> String {
     let mut idx = 0usize;
     while idx < filtered.len() {
         if idx + 1 < filtered.len()
+            && let Some(first_apply) =
+                filtered[idx].downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && let Some(second_apply) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && let Some(compact) = describe_compact_apply_continuous_pair(first_apply, second_apply)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(move_back) =
                 filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
@@ -840,7 +1047,10 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
-        parts.push(describe_effect(filtered[idx]));
+        let rendered = describe_effect(filtered[idx]);
+        if !rendered.is_empty() {
+            parts.push(rendered);
+        }
         idx += 1;
     }
     let text = parts.join(". ");
@@ -906,6 +1116,19 @@ fn describe_tagged_target_then_power_damage(
 
 fn cleanup_decompiled_text(text: &str) -> String {
     let mut out = text.to_string();
+    for (from, to) in [
+        ("you gets", "you get"),
+        ("you puts", "you put"),
+        ("a artifact", "an artifact"),
+        ("a untapped", "an untapped"),
+        ("a opponent", "an opponent"),
+        ("creature are", "creatures are"),
+        ("target any target", "any target"),
+    ] {
+        while out.contains(from) {
+            out = out.replace(from, to);
+        }
+    }
     while out.contains("target target") {
         out = out.replace("target target", "target");
     }
@@ -1766,6 +1989,19 @@ fn describe_effect_impl(effect: &Effect) -> String {
             }
         );
     }
+    if let Some(return_all_to_battlefield) =
+        effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
+    {
+        return format!(
+            "Return all {} to the battlefield{}",
+            describe_for_each_filter(&return_all_to_battlefield.filter),
+            if return_all_to_battlefield.tapped {
+                " tapped"
+            } else {
+                ""
+            }
+        );
+    }
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
         if let Some(dynamic_for_each) = describe_draw_for_each(draw) {
             return dynamic_for_each;
@@ -1865,6 +2101,14 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 mana_text,
                 describe_possessive_player_filter(player),
                 color_name
+            );
+        }
+        if let Value::PowerOf(spec) = &add_scaled.amount {
+            return format!(
+                "Add an amount of {} equal to the power of {} to {}",
+                mana_text,
+                describe_choose_spec(spec),
+                describe_mana_pool_owner(&add_scaled.player)
             );
         }
         return format!(
@@ -1969,6 +2213,11 @@ fn describe_effect_impl(effect: &Effect) -> String {
         };
         return format!("Look at {owner} hand");
     }
+    if let Some(apply_continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
+        if let Some(text) = describe_apply_continuous_effect(apply_continuous) {
+            return text;
+        }
+    }
     if let Some(grant_all) = effect.downcast_ref::<crate::effects::GrantAbilitiesAllEffect>() {
         return format!(
             "{} gains {} {}",
@@ -2063,6 +2312,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Transform {}", describe_choose_spec(&transform.target));
     }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        if is_implicit_reference_tag(tagged.tag.as_str()) {
+            return describe_effect(&tagged.effect);
+        }
         return format!(
             "Tag '{}' then {}",
             tagged.tag.as_str(),
@@ -2070,6 +2322,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        if is_implicit_reference_tag(tag_all.tag.as_str()) {
+            return describe_effect(&tag_all.effect);
+        }
         return format!(
             "Tag all affected objects as '{}' then {}",
             tag_all.tag.as_str(),
@@ -2078,6 +2333,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(tag_triggering) = effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
     {
+        if is_implicit_reference_tag(tag_triggering.tag.as_str()) {
+            return String::new();
+        }
         return format!(
             "Tag the triggering object as '{}'",
             tag_triggering.tag.as_str()
@@ -2086,6 +2344,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(tag_damage_target) =
         effect.downcast_ref::<crate::effects::TagTriggeringDamageTargetEffect>()
     {
+        if is_implicit_reference_tag(tag_damage_target.tag.as_str()) {
+            return String::new();
+        }
         return format!(
             "Tag the triggering damaged object as '{}'",
             tag_damage_target.tag.as_str()
@@ -2304,11 +2565,16 @@ fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(energy) = effect.downcast_ref::<crate::effects::EnergyCountersEffect>() {
+        let player = describe_player_filter(&energy.player);
         return format!(
-            "{} gets {} energy counter(s)",
-            describe_player_filter(&energy.player),
+            "{} {} {} energy counter(s)",
+            player,
+            player_verb(&player, "get", "gets"),
             describe_value(&energy.count)
         );
+    }
+    if let Some(connive) = effect.downcast_ref::<crate::effects::ConniveEffect>() {
+        return format!("{} connives", describe_choose_spec(&connive.target));
     }
     if let Some(extra_turn) = effect.downcast_ref::<crate::effects::ExtraTurnEffect>() {
         return format!(
@@ -2727,7 +2993,41 @@ fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
                 line.push_str(": ");
                 line.push_str(&describe_effect_list(extra_effects));
             }
+            if let Some(condition) = &mana_ability.activation_condition {
+                if !parts.is_empty() || mana_ability.effects.is_some() {
+                    line.push_str(". ");
+                } else {
+                    line.push_str(": ");
+                }
+                line.push_str(&describe_mana_activation_condition(condition));
+            }
             vec![line]
+        }
+    }
+}
+
+fn describe_mana_activation_condition(condition: &crate::ability::ManaAbilityCondition) -> String {
+    match condition {
+        crate::ability::ManaAbilityCondition::ControlLandWithSubtype(subtypes) => {
+            let names = subtypes
+                .iter()
+                .map(|subtype| format!("{subtype:?}"))
+                .collect::<Vec<_>>();
+            match names.len() {
+                0 => "Activate only if you control a land of the required subtype".to_string(),
+                1 => format!("Activate only if you control a {}", names[0]),
+                2 => format!("Activate only if you control a {} or a {}", names[0], names[1]),
+                _ => {
+                    let mut list = names[..names.len() - 1]
+                        .iter()
+                        .map(|name| format!("a {name}"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    list.push_str(", or a ");
+                    list.push_str(names.last().expect("last subtype name"));
+                    format!("Activate only if you control {list}")
+                }
+            }
         }
     }
 }

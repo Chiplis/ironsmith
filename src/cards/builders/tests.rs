@@ -473,7 +473,7 @@ fn test_parse_trigger_this_deals_damage_to_filtered_creature_targets_damage_reci
         "expected trigger to include damaged-object filter, got {joined}"
     );
     assert!(
-        joined.contains("tagged object 'damaged'"),
+        joined.contains("destroy it"),
         "expected effects to target tagged damaged object instead of source, got {joined}"
     );
 }
@@ -2319,7 +2319,7 @@ fn parse_triggered_sacrifice_this_then_destroy_that_creature_uses_triggering_obj
         "expected source sacrifice, got {joined}"
     );
     assert!(
-        joined.contains("tagged object 'triggering'"),
+        joined.contains("Destroy it"),
         "expected 'that creature' to resolve to triggering object, got {joined}"
     );
     assert!(
@@ -2342,7 +2342,7 @@ fn parse_triggered_sacrifice_this_then_damage_that_creature_uses_triggering_obje
         "expected source sacrifice, got {joined}"
     );
     assert!(
-        joined.contains("Deal 4 damage to the tagged object 'triggering'"),
+        joined.contains("Deal 4 damage to it"),
         "expected damage to triggering object, got {joined}"
     );
     assert!(
@@ -2494,5 +2494,48 @@ fn render_multi_sacrifice_artifacts_cost_uses_compact_filter_text() {
     assert!(
         joined.contains("sacrifice two artifacts"),
         "expected compact multi-artifact sacrifice rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_target_creature_pump_uses_oracle_like_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Antagonize Variant")
+        .parse_text("Target creature gets +4/+3 until end of turn.")
+        .expect("targeted pump spell should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("target creature gets +4/+3 until end of turn"),
+        "expected oracle-like targeted pump text, got {joined}"
+    );
+}
+
+#[test]
+fn render_target_creature_pump_and_trample_uses_oracle_like_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Awaken the Bear Variant")
+        .parse_text("Target creature gets +3/+3 and gains trample until end of turn.")
+        .expect("pump + trample spell should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("target creature gets +3/+3 and gains Trample until end of turn"),
+        "expected oracle-like pump + trample rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_pump_all_hides_internal_tag_wrapper() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Charge Variant")
+        .parse_text("Creatures you control get +1/+1 until end of turn.")
+        .expect("team pump spell should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("creatures you control get +1/+1 until end of turn"),
+        "expected oracle-like team pump rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("Tag all affected objects"),
+        "internal tag wrappers should not leak into compiled text: {joined}"
     );
 }

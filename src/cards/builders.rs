@@ -505,6 +505,10 @@ enum EffectAst {
     ReturnAllToHand {
         filter: ObjectFilter,
     },
+    ReturnAllToBattlefield {
+        filter: ObjectFilter,
+        tapped: bool,
+    },
     ExchangeControl {
         filter: ObjectFilter,
         count: u32,
@@ -2229,9 +2233,10 @@ mod effect_parse_tests {
         DrawCardsEffect, ExchangeControlEffect, ExileEffect, ExileInsteadOfGraveyardEffect,
         ForEachObject, GainControlEffect, GrantPlayFromGraveyardEffect, LookAtHandEffect,
         ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, PutCountersEffect,
-        RemoveUpToAnyCountersEffect, ReturnFromGraveyardToBattlefieldEffect, ReturnToHandEffect,
-        SacrificeEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipDrawStepEffect,
-        SkipTurnEffect, SurveilEffect, TapEffect, TargetOnlyEffect, TransformEffect,
+        RemoveUpToAnyCountersEffect, ReturnAllToBattlefieldEffect,
+        ReturnFromGraveyardToBattlefieldEffect, ReturnToHandEffect, SacrificeEffect,
+        SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipDrawStepEffect, SkipTurnEffect,
+        SurveilEffect, TapEffect, TargetOnlyEffect, TransformEffect,
     };
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -2407,6 +2412,37 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_exile_target_players_graveyard_as_all_filter() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Boggart Bog Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text("When this creature enters, exile target player's graveyard.")
+            .expect("parse target player's graveyard exile");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+
+        let exile = triggered
+            .effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<ExileEffect>())
+            .expect("expected exile effect");
+        let ChooseSpec::All(filter) = &exile.spec else {
+            panic!("expected non-targeted all-filter exile, got {:?}", exile.spec);
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(
+            filter.controller,
+            Some(PlayerFilter::Target(Box::new(PlayerFilter::Any)))
+        );
+    }
+
+    #[test]
     fn parse_tap_all_spirits_compiles_as_non_targeted_all() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Probe Tap All Spirits")
             .parse_text("Tap all Spirits.")
@@ -2467,6 +2503,22 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_return_all_from_graveyards_to_battlefield_tapped_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Planar Birth Variant")
+            .parse_text(
+                "Return all basic land cards from all graveyards to the battlefield tapped under their owners' control.",
+            )
+            .expect("parse return all cards to battlefield");
+
+        let effects = def.spell_effect.as_ref().expect("spell effect");
+        let return_all = effects
+            .iter()
+            .find_map(|e| e.downcast_ref::<ReturnAllToBattlefieldEffect>())
+            .expect("should include return-all-to-battlefield effect");
+        assert!(return_all.tapped, "expected tapped return-all effect");
+    }
+
+    #[test]
     fn parse_exchange_control_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Switcheroo")
             .parse_text("Exchange control of two target creatures.")
@@ -2502,6 +2554,33 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             !activated_line.contains("you discards"),
             "discard should not default to you: {activated_line}"
+        );
+    }
+
+    #[test]
+    fn parse_target_player_loses_then_reveals_shares_player() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Thoughtcutter Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text("{U}{B}, {T}: Target player loses 1 life and reveals their hand.")
+            .expect("parse target-player lose-and-reveal ability");
+
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let activated_line = lines
+            .iter()
+            .find(|line| line.contains("Activated ability"))
+            .expect("expected activated ability line");
+
+        assert!(
+            activated_line.contains("target a player loses 1 life"),
+            "expected carried target player in lose clause, got {activated_line}"
+        );
+        assert!(
+            activated_line.contains("Look at a player's hand"),
+            "expected carried target player in reveal clause, got {activated_line}"
+        );
+        assert!(
+            !activated_line.contains("your hand"),
+            "reveal should not default to your hand: {activated_line}"
         );
     }
 

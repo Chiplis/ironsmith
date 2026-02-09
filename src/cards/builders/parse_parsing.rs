@@ -313,6 +313,8 @@ fn is_labeled_ability_word_prefix(prefix: &str) -> bool {
             | ["fateful", "hour"]
             | ["join", "forces"]
             | ["pack", "tactics"]
+            | ["leading", "from", "the", "front"]
+            | ["summary", "execution"]
             | ["will", "of", "the", "council"]
             | ["guardian", "protocols"]
             | ["jolly", "gutpipes"]
@@ -795,12 +797,102 @@ fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
     Some((value, Some(value)))
 }
 
+fn reject_known_partial_parse_line(normalized: &str, line: &str) -> Result<(), CardTextError> {
+    let unsupported_pattern = normalized.contains("cumulative upkeep")
+        || normalized.contains("morph—pay ")
+        || normalized.contains("morph—return ")
+        || normalized.contains("during each other player's untap step")
+        || normalized
+            .contains("activated abilities of nontoken rebels cost an additional \"sacrifice a land\"")
+        || normalized.contains("except it has \"{u}{b}, {t}: destroy target creature with the same name as this creature")
+        || normalized.contains("except it has \"{2}{u}{u}: return this creature to its owner's hand")
+        || normalized.contains("except it has \"whenever this creature attacks, it connives")
+        || normalized.contains("except it's an artifact and it has \"{t}: add {u}")
+        || normalized.contains("create a 1/1 blue fish creature token with \"this token can't be blocked")
+        || normalized.contains("create a 0/1 black wizard creature token with \"whenever you cast a noncreature spell")
+        || normalized.contains("it has trample, haste, and \"at the beginning of the end step, sacrifice this token")
+        || normalized.contains("it has \"when this token dies, it deals 1 damage to any target")
+        || normalized.contains("then do the same for vampire, dinosaur, and merfolk")
+        || normalized.contains("villainous choice")
+        || normalized.contains("for each mana in this ability's activation cost, you may tap an untapped creature you control")
+        || normalized.contains("sacrifice any number of lands, then add that much {c}")
+        || normalized
+            .contains("for each artifact or creature card in target opponent's graveyard, add {c} and you gain 1 life")
+        || normalized.contains("return x cards at random from your graveyard to your hand")
+        || normalized.contains("an amount of {b} equal to the sacrificed artifact's mana value")
+        || normalized.contains("where x is the amount of {s} spent to cast this spell")
+        || normalized.contains("where x is that creature's power")
+        || normalized.contains("shares at least one creature type with it")
+        || normalized.contains("blocked or was blocked this turn")
+        || normalized.contains("cloak those cards")
+        || normalized.contains("it perpetually gets -1/-1")
+        || normalized.contains("it perpetually gains \"this creature attacks each combat if able")
+        || normalized.contains("activate only if you control a dragon")
+        || normalized.contains("target opponent or battle and you gain x life")
+        || normalized.contains("target opponent exiles a creature they control and their graveyard")
+        || normalized.contains("for each land sacrificed this way, draw a card")
+        || normalized.contains("you may play x additional lands this turn")
+        || normalized.contains(
+            "create three tokens that are copies of it, except they're 3/3 creatures in addition to their other types and they have vigilance and menace",
+        )
+        || normalized.contains(
+            "all creatures get -1/-1 until end of turn. creatures that are green and/or white get an additional -2/-2 until end of turn",
+        )
+        || normalized.contains("tempting offer")
+        || normalized.contains("scry x, where x is the amount of {s} spent to cast this spell")
+        || normalized.contains("target player shuffles their graveyard into their library. prevent all combat damage that would be dealt this turn")
+        || normalized.contains("look at the top five cards of your library. you may exile a creature card from among them")
+        || normalized.contains("reveals cards from the top of their library until they reveal a card that shares a card type with it")
+        || normalized.contains("prevent the next 1 damage that would be dealt to each creature and each player this turn")
+        || normalized.contains("sacrifice a snow land: prevent all combat damage that would be dealt this turn")
+        || normalized.contains("copy target creature spell you control, except it isn't legendary if the spell is legendary")
+        || normalized.contains("creatures played by your opponents enter tapped")
+        || normalized.contains(
+            "this creature gets +1/+0 and has first strike as long as there are four or more card types among cards in your graveyard",
+        )
+        || normalized.contains("target player draws a card, then up to one target creature you control connives")
+        || normalized.contains("until end of turn, creatures you control gain \"{1}: regenerate this creature")
+        || normalized.contains("you may cast dinosaur spells this turn as though they had flash")
+        || normalized.contains(
+            "exile a creature card from your graveyard: create a 3/1 black and red graveborn creature token with haste. sacrifice it at the beginning of the next end step",
+        )
+        || normalized.contains(
+            "{2}{b}, {t}, exile a creature you control: return target creature card from your graveyard to the battlefield",
+        )
+        || normalized.contains(
+            "whenever this creature attacks, each opponent loses x life, where x is the number of other attacking creatures",
+        )
+        || normalized.contains(
+            "create a token that's a copy of target creature card exiled with this artifact, except it's a 6/6 green dinosaur creature with trample",
+        )
+        || normalized.contains("{t}: add {w}. activate only if you control an island")
+        || normalized.contains("{t}: add {u}. activate only if you control a plains")
+        || normalized.contains("other cats you control get +2/+1")
+        || normalized.contains("ward—pay 2 life")
+        || normalized.contains("exhaust — {2}{u}{b}, {t}, exile x artifact cards from your graveyard")
+        || normalized.contains(
+            "create a token that's a copy of another target creature you control. it gains haste. sacrifice it at the beginning of the next end step",
+        )
+        || normalized.contains(
+            "create five tokens that are copies of another target creature you control. they gain haste. sacrifice them at the beginning of the next end step",
+        );
+
+    if unsupported_pattern {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported partial-parse-prone clause (line: '{line}')"
+        )));
+    }
+
+    Ok(())
+}
+
 fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     parser_trace_line("parse_line:entry", line);
     let normalized = line
         .trim()
         .trim_start_matches(|c: char| !c.is_ascii_alphanumeric())
         .to_ascii_lowercase();
+    reject_known_partial_parse_line(&normalized, line)?;
     if normalized.contains("creature token") {
         let starts_with_pt = normalized.split_whitespace().next().is_some_and(|token| {
             let mut chars = token.chars();
@@ -10201,7 +10293,9 @@ fn explicit_player_for_carry(effect: &EffectAst) -> Option<PlayerAst> {
         | EffectAst::LoseLife { player, .. }
         | EffectAst::Scry { player, .. }
         | EffectAst::Surveil { player, .. }
-        | EffectAst::Mill { player, .. } => *player,
+        | EffectAst::Mill { player, .. }
+        | EffectAst::RevealTop { player }
+        | EffectAst::RevealHand { player } => *player,
         _ => return None,
     };
 
@@ -10220,7 +10314,9 @@ fn maybe_apply_carried_player(effect: &mut EffectAst, carried_player: PlayerAst)
         | EffectAst::LoseLife { player, .. }
         | EffectAst::Scry { player, .. }
         | EffectAst::Surveil { player, .. }
-        | EffectAst::Mill { player, .. } => {
+        | EffectAst::Mill { player, .. }
+        | EffectAst::RevealTop { player }
+        | EffectAst::RevealHand { player } => {
             if matches!(*player, PlayerAst::Implicit) {
                 *player = carried_player;
             }
@@ -12337,7 +12433,11 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             ));
         }
         let filter = parse_object_filter(&target_tokens[1..], false)?;
-        return Ok(EffectAst::ReturnAllToHand { filter });
+        return if is_battlefield {
+            Ok(EffectAst::ReturnAllToBattlefield { filter, tapped })
+        } else {
+            Ok(EffectAst::ReturnAllToHand { filter })
+        };
     }
 
     let target = parse_target_phrase(target_tokens)?;
@@ -13050,6 +13150,9 @@ fn parse_exile(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAs
         let filter = parse_object_filter(filter_tokens, false)?;
         return Ok(EffectAst::ExileAll { filter });
     }
+    if let Some(filter) = parse_target_player_graveyard_filter(tokens) {
+        return Ok(EffectAst::ExileAll { filter });
+    }
 
     if clause_words.contains(&"dealt")
         && clause_words.contains(&"damage")
@@ -13078,6 +13181,25 @@ fn parse_exile(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAs
     let mut target = parse_target_phrase(tokens)?;
     apply_exile_subject_hand_owner_context(&mut target, subject);
     Ok(EffectAst::Exile { target })
+}
+
+fn parse_target_player_graveyard_filter(tokens: &[Token]) -> Option<ObjectFilter> {
+    let words = words(tokens);
+    if words.as_slice() == ["target", "player", "graveyard"]
+        || words.as_slice() == ["target", "players", "graveyard"]
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        filter.controller = Some(PlayerFilter::target_player());
+        return Some(filter);
+    }
+    if words.as_slice() == ["target", "opponent", "graveyard"]
+        || words.as_slice() == ["target", "opponents", "graveyard"]
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        filter.controller = Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)));
+        return Some(filter);
+    }
+    None
 }
 
 fn apply_exile_subject_hand_owner_context(target: &mut TargetAst, subject: Option<SubjectAst>) {
