@@ -16,6 +16,7 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::DealsDamage(filter) => Trigger::deals_damage(filter),
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
         TriggerSpec::YouGainLife => Trigger::you_gain_life(),
+        TriggerSpec::PlayerLosesLife(player) => Trigger::player_loses_life(player),
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
         TriggerSpec::SpellCast { filter, caster } => Trigger::spell_cast(filter, caster),
@@ -48,6 +49,7 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
 
 fn compile_statement_effects(effects: &[EffectAst]) -> Result<Vec<Effect>, CardTextError> {
     let mut ctx = CompileContext::new();
+    ctx.allow_life_event_value = false;
     let mut prelude = Vec::new();
     for tag in ["equipped", "enchanted"] {
         if effects_reference_tag(effects, tag) {
@@ -70,6 +72,7 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
     match trigger {
         TriggerSpec::SpellCast { caster, .. } => Some(caster.clone()),
         TriggerSpec::SpellCopied { copier, .. } => Some(copier.clone()),
+        TriggerSpec::PlayerLosesLife(player) => Some(player.clone()),
         TriggerSpec::BeginningOfUpkeep(player)
         | TriggerSpec::BeginningOfDrawStep(player)
         | TriggerSpec::BeginningOfCombat(player)
@@ -89,12 +92,27 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
     }
 }
 
+fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
+    match spec {
+        EventValueSpec::LifeAmount => match trigger {
+            TriggerSpec::YouGainLife | TriggerSpec::PlayerLosesLife(_) => true,
+            TriggerSpec::Either(left, right) => {
+                trigger_supports_event_value(left, spec) && trigger_supports_event_value(right, spec)
+            }
+            _ => false,
+        },
+    }
+}
+
 fn compile_trigger_effects(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let mut ctx = CompileContext::new();
     ctx.last_player_filter = trigger.and_then(inferred_trigger_player_filter);
+    ctx.allow_life_event_value = trigger
+        .map(|trigger| trigger_supports_event_value(trigger, &EventValueSpec::LifeAmount))
+        .unwrap_or(false);
     let mut prelude = Vec::new();
     for tag in ["equipped", "enchanted"] {
         if effects_reference_tag(effects, tag) {
@@ -1214,7 +1232,9 @@ fn compile_effect(
             }
             Ok((vec![effect], choices))
         }
-        EffectAst::LoseLife { amount, player } => match player {
+        EffectAst::LoseLife { amount, player } => {
+            let amount = resolve_value_it_tag(amount, ctx)?;
+            match player {
             PlayerAst::Target => Ok((vec![Effect::lose_life_target(amount.clone())], {
                 ctx.last_player_filter = Some(PlayerFilter::target_player());
                 vec![ChooseSpec::target_player()]
@@ -1244,6 +1264,7 @@ fn compile_effect(
                 }
                 Ok((vec![effect], Vec::new()))
             }
+        }
         },
         EffectAst::GainLife { amount, player } => {
             let amount = resolve_value_it_tag(amount, ctx)?;
@@ -2885,6 +2906,14 @@ fn resolve_value_it_tag(value: &Value, ctx: &CompileContext) -> Result<Value, Ca
         Value::ToughnessOf(spec) => Ok(Value::ToughnessOf(Box::new(resolve_choose_spec_it_tag(
             spec, ctx,
         )?))),
+        Value::EventValue(EventValueSpec::LifeAmount) => {
+            if !ctx.allow_life_event_value {
+                return Err(CardTextError::ParseError(
+                    "event-derived life amount requires a life gain/loss trigger".to_string(),
+                ));
+            }
+            Ok(value.clone())
+        }
         _ => Ok(value.clone()),
     }
 }

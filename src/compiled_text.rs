@@ -2,7 +2,9 @@ use std::cell::Cell;
 
 use crate::ability::{Ability, AbilityKind, ActivationTiming};
 use crate::alternative_cast::AlternativeCastingMethod;
-use crate::effect::{ChoiceCount, Comparison, Condition, EffectPredicate, Until, Value};
+use crate::effect::{
+    ChoiceCount, Comparison, Condition, EffectPredicate, EventValueSpec, Until, Value,
+};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::{CardDefinition, CardType, Effect, ManaSymbol, Zone};
 
@@ -684,6 +686,7 @@ fn describe_value(value: &Value) -> String {
             format!("{color:?}").to_ascii_lowercase()
         ),
         Value::EffectValue(id) => format!("the count result of effect #{}", id.0),
+        Value::EventValue(EventValueSpec::LifeAmount) => "that much".to_string(),
         Value::WasKicked => "whether this spell was kicked (1 or 0)".to_string(),
         Value::WasBoughtBack => "whether buyback was paid (1 or 0)".to_string(),
         Value::WasEntwined => "whether entwine was paid (1 or 0)".to_string(),

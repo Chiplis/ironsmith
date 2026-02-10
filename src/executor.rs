@@ -9,9 +9,11 @@ use std::collections::HashMap;
 
 use crate::cost::OptionalCostsPaid;
 use crate::decision::DecisionMaker;
-use crate::effect::{Effect, EffectId, EffectOutcome, EffectResult, Value};
+use crate::effect::{Effect, EffectId, EffectOutcome, EffectResult, EventValueSpec, Value};
 use crate::effects::helpers::resolve_objects_from_spec;
 use crate::events::DamageEvent;
+use crate::events::life::LifeGainEvent;
+use crate::events::life::LifeLossEvent;
 use crate::events::cause::EventCause;
 use crate::filter::ObjectRef;
 use crate::game_event::DamageTarget;
@@ -727,6 +729,23 @@ pub fn resolve_value(
                 .get_result(*effect_id)
                 .ok_or(ExecutionError::EffectNotFound(*effect_id))?;
             Ok(result.count_or_zero())
+        }
+
+        Value::EventValue(EventValueSpec::LifeAmount) => {
+            let Some(triggering_event) = &ctx.triggering_event else {
+                return Err(ExecutionError::UnresolvableValue(
+                    "EventValue(LifeAmount) requires a triggering event".to_string(),
+                ));
+            };
+            if let Some(life_loss_event) = triggering_event.downcast::<LifeLossEvent>() {
+                return Ok(life_loss_event.amount as i32);
+            }
+            if let Some(life_gain_event) = triggering_event.downcast::<LifeGainEvent>() {
+                return Ok(life_gain_event.amount as i32);
+            }
+            Err(ExecutionError::UnresolvableValue(
+                "EventValue(LifeAmount) requires a life gain or life loss event".to_string(),
+            ))
         }
 
         Value::WasKicked => {

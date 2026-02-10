@@ -12,7 +12,8 @@ use crate::card::{CardBuilder, PowerToughness, PtValue};
 use crate::color::ColorSet;
 use crate::cost::{OptionalCost, TotalCost};
 use crate::effect::{
-    ChoiceCount, Condition, Effect, EffectId, EffectMode, EffectPredicate, Until, Value,
+    ChoiceCount, Condition, Effect, EffectId, EffectMode, EffectPredicate, EventValueSpec, Until,
+    Value,
 };
 use crate::effects::VoteOption;
 use crate::filter::AlternativeCastKind;
@@ -184,6 +185,7 @@ enum TriggerSpec {
     DealsDamage(ObjectFilter),
     ThisIsDealtDamage,
     YouGainLife,
+    PlayerLosesLife(PlayerFilter),
     YouDrawCard,
     Dies(ObjectFilter),
     SpellCast {

@@ -933,7 +933,8 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::WasPaid(_)
         | Value::WasPaidLabel(_)
         | Value::TimesPaid(_)
-        | Value::TaggedCount => false,
+        | Value::TaggedCount
+        | Value::EventValue(_) => false,
     }
 }
 

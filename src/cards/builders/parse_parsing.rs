@@ -6950,6 +6950,30 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         return Ok(TriggerSpec::YouGainLife);
     }
 
+    if words.ends_with(&["lose", "life"]) || words.ends_with(&["loses", "life"]) {
+        let subject = &words[..words.len().saturating_sub(2)];
+        let player = if subject == ["you"] {
+            Some(PlayerFilter::You)
+        } else if subject == ["a", "player"]
+            || subject == ["any", "player"]
+            || subject == ["player"]
+            || subject == ["one", "or", "more", "players"]
+        {
+            Some(PlayerFilter::Any)
+        } else if subject == ["an", "opponent"]
+            || subject == ["opponent"]
+            || subject == ["opponents"]
+            || subject == ["one", "or", "more", "opponents"]
+        {
+            Some(PlayerFilter::Opponent)
+        } else {
+            None
+        };
+        if let Some(player) = player {
+            return Ok(TriggerSpec::PlayerLosesLife(player));
+        }
+    }
+
     if words.as_slice() == ["you", "draw", "a", "card"] {
         return Ok(TriggerSpec::YouDrawCard);
     }
@@ -12687,6 +12711,13 @@ fn parse_lose_life(
         return Ok(EffectAst::LoseGame { player });
     }
 
+    if words == ["that", "much", "life"] {
+        return Ok(EffectAst::LoseLife {
+            amount: Value::EventValue(EventValueSpec::LifeAmount),
+            player,
+        });
+    }
+
     let (amount, used) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing life loss amount (clause: '{}')",
@@ -12717,10 +12748,18 @@ fn parse_gain_life(
         _ => PlayerAst::Implicit,
     };
 
+    let gain_words = words(tokens);
+    if gain_words == ["that", "much", "life"] {
+        return Ok(EffectAst::GainLife {
+            amount: Value::EventValue(EventValueSpec::LifeAmount),
+            player,
+        });
+    }
+
     let (amount, used) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing life gain amount (clause: '{}')",
-            words(tokens).join(" ")
+            gain_words.join(" ")
         ))
     })?;
 
@@ -15525,6 +15564,7 @@ struct CompileContext {
     last_player_filter: Option<PlayerFilter>,
     iterated_player: bool,
     auto_tag_object_targets: bool,
+    allow_life_event_value: bool,
 }
 
 impl CompileContext {
@@ -15537,6 +15577,7 @@ impl CompileContext {
             last_player_filter: None,
             iterated_player: false,
             auto_tag_object_targets: false,
+            allow_life_event_value: false,
         }
     }
 

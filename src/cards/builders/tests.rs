@@ -3056,6 +3056,44 @@ fn parse_damage_redirect_to_source_line() {
 }
 
 #[test]
+fn parse_opponent_loses_life_trigger_with_that_much_gain() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Life Trigger Variant")
+        .parse_text("Whenever an opponent loses life, you gain that much life.")
+        .expect("opponent-loses-life trigger with that-much gain should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("whenever an opponent loses life")
+            && joined.contains("you gain that much life"),
+        "expected life-loss trigger and mirrored gain rendering, got {joined}"
+    );
+}
+
+#[test]
+fn parse_you_gain_life_trigger_with_target_opponent_loses_that_much() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Life Trigger Reverse Variant")
+        .parse_text("Whenever you gain life, target opponent loses that much life.")
+        .expect("you-gain-life trigger with that-much life loss should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("whenever you gain life")
+            && joined.contains("target opponent loses that much life"),
+        "expected gain-life trigger and mirrored loss rendering, got {joined}"
+    );
+}
+
+#[test]
+fn reject_event_value_life_amount_without_life_trigger() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Event Value Invalid Variant")
+        .parse_text("Target opponent loses that much life.")
+        .expect_err("standalone event-derived amount should fail parse");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("event-derived life amount requires a life gain/loss trigger"),
+        "expected event-value context rejection, got {message}"
+    );
+}
+
+#[test]
 fn reject_singleton_partial_parse_clauses_030() {
     assert_partial_parse_rejected(
         "Kwain Variant",

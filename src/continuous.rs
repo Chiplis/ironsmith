@@ -2396,7 +2396,8 @@ fn resolve_value_with_context(
         | Value::TimesPaidLabel(_)
         | Value::TimesPaid(_)
         | Value::KickCount
-        | Value::TaggedCount => 0,
+        | Value::TaggedCount
+        | Value::EventValue(_) => 0,
     }
 }
 

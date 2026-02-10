@@ -549,6 +549,9 @@ pub enum Value {
     /// References an effect that was labeled with `Effect::WithId`.
     EffectValue(EffectId),
 
+    /// Value pulled from the triggering event payload.
+    EventValue(EventValueSpec),
+
     /// 1 if the spell was kicked (any "Kicker" or "Multikicker" cost was paid), 0 otherwise.
     WasKicked,
 
@@ -603,6 +606,13 @@ pub enum Value {
     /// ])
     /// ```
     TaggedCount,
+}
+
+/// Event payload fields that can be referenced by [`Value::EventValue`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EventValueSpec {
+    /// The amount from a triggering life gain/loss event.
+    LifeAmount,
 }
 
 /// A rule restriction ("can't" effect) specification.

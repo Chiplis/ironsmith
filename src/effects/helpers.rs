@@ -6,8 +6,10 @@
 //! - Target finding and validation
 
 use crate::cost::OptionalCostsPaid;
-use crate::effect::Value;
+use crate::effect::{EventValueSpec, Value};
 use crate::events::DamageEvent;
+use crate::events::life::LifeGainEvent;
+use crate::events::life::LifeLossEvent;
 use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_event::DamageTarget;
 use crate::game_state::GameState;
@@ -233,6 +235,23 @@ pub fn resolve_value(
             Ok(result.count_or_zero())
         }
 
+        Value::EventValue(EventValueSpec::LifeAmount) => {
+            let Some(triggering_event) = &ctx.triggering_event else {
+                return Err(ExecutionError::UnresolvableValue(
+                    "EventValue(LifeAmount) requires a triggering event".to_string(),
+                ));
+            };
+            if let Some(life_loss_event) = triggering_event.downcast::<LifeLossEvent>() {
+                return Ok(life_loss_event.amount as i32);
+            }
+            if let Some(life_gain_event) = triggering_event.downcast::<LifeGainEvent>() {
+                return Ok(life_gain_event.amount as i32);
+            }
+            Err(ExecutionError::UnresolvableValue(
+                "EventValue(LifeAmount) requires a life gain or life loss event".to_string(),
+            ))
+        }
+
         Value::WasKicked => {
             // Check if kicker or multikicker was paid
             // First check ctx, then fall back to source object (for ETB triggers)
@@ -311,9 +330,9 @@ pub fn resolve_value(
             if let Some(result) = ctx.get_result(crate::effect::EffectId::TAGGED_COUNT) {
                 Ok(result.count_or_zero())
             } else {
-                Err(ExecutionError::UnresolvableValue(
+                return Err(ExecutionError::UnresolvableValue(
                     "TaggedCount used outside ForEachControllerOfTagged loop".to_string(),
-                ))
+                ));
             }
         }
     }
