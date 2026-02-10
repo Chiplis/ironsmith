@@ -1946,29 +1946,52 @@ fn parse_mana_trigger_additional_clause_high_tide_fails_strictly() {
 }
 
 #[test]
-fn parse_enters_tapped_with_trailing_choose_clause_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Thriving Variant")
+fn parse_enters_tapped_with_choose_color_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Thriving Variant")
         .card_types(vec![CardType::Land])
         .parse_text("This land enters tapped. As it enters, choose a color other than black.")
-        .expect_err("unsupported trailing enters-tapped clause should fail parse");
-    let message = format!("{err:?}");
+        .expect("choose-color clause should parse");
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
     assert!(
-        message.contains("unsupported trailing enters-tapped clause"),
-        "expected strict trailing enters-tapped parse error, got {message}"
+        ids.contains(&crate::static_abilities::StaticAbilityId::EntersTapped),
+        "expected enters-tapped ability, got {ids:?}"
+    );
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::ChooseColorAsEnters),
+        "expected choose-color ability, got {ids:?}"
+    );
+    let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        compiled.contains("this enters tapped"),
+        "expected enters-tapped in compiled text, got {compiled}"
+    );
+    assert!(
+        compiled.contains("as it enters, choose a color other than black"),
+        "expected choose-color clause in compiled text, got {compiled}"
     );
 }
 
 #[test]
-fn parse_add_mana_chosen_color_tail_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Thriving Mana Variant")
+fn parse_add_mana_chosen_color_tail() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Thriving Mana Variant")
         .card_types(vec![CardType::Land])
         .parse_text("{T}: Add {B} or one mana of the chosen color.")
-        .expect_err("unsupported chosen-color mana tail should fail parse");
-    let message = format!("{err:?}");
+        .expect("chosen-color mana tail should parse");
+    let lines = compiled_lines(&def);
+    let mana_line = lines
+        .iter()
+        .find(|line| line.contains("Mana ability"))
+        .expect("expected mana ability line");
     assert!(
-        message.contains("unsupported mana output option segment")
-            || message.contains("unsupported trailing mana clause"),
-        "expected strict trailing-mana parse error, got {message}"
+        mana_line.contains("Add {B} or one mana of the chosen color"),
+        "expected chosen-color mana render, got {mana_line}"
     );
 }
 
@@ -2874,5 +2897,377 @@ fn render_pump_all_hides_internal_tag_wrapper() {
     assert!(
         !joined.contains("Tag all affected objects"),
         "internal tag wrappers should not leak into compiled text: {joined}"
+    );
+}
+
+#[test]
+fn render_enchanted_creatures_you_control_pluralizes() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "A Tale Variant")
+        .parse_text("Enchanted creatures you control get +2/+2.")
+        .expect("enchanted-creature anthem should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("enchanted creatures you control get +2/+2"),
+        "expected plural enchanted creatures rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_allies_you_control_pluralizes() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Allied Teamwork Variant")
+        .parse_text("Allies you control get +1/+1.")
+        .expect("allies anthem should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("allies you control get +1/+1"),
+        "expected plural allies rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_tapped_token_from_create_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Illustrious Historian Variant")
+        .parse_text("Create a tapped 3/2 red and white Spirit creature token.")
+        .expect("tapped token creation should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        (joined.contains("create 1 3/2 red and white spirit creature token")
+            || joined.contains("create 1 3/2 white and red spirit creature token"))
+            && joined.contains("tapped"),
+        "expected tapped token rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_tap_or_untap_mode_compacts() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Hyperion Blacksmith Variant")
+        .parse_text("{T}: You may tap or untap target artifact an opponent controls.")
+        .expect("tap or untap should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("tap or untap target opponent's artifact")
+            || joined.contains("tap or untap target artifact an opponent controls"),
+        "expected compact tap/untap rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_equipped_gets_and_has_line_as_static() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Spare Dagger Variant")
+        .parse_text(
+            "Equipped creature gets +1/+0 and has \"Whenever this creature attacks, you may sacrifice this artifact. When you do, this creature deals 1 damage to any target.\"",
+        )
+        .expect("equipped creature gets/has line should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("equipped creature gets +1/+0")
+            && joined.contains("equipped creature has"),
+        "expected equipped gets/has rendering, got {joined}"
+    );
+}
+
+fn assert_partial_parse_rejected(name: &str, text: &str) {
+    let err = CardDefinitionBuilder::new(CardId::new(), name)
+        .parse_text(text)
+        .expect_err("unsupported partial-parse-prone clause should fail parse");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported partial-parse-prone clause")
+            || message.contains("unsupported standalone token mana reminder clause")
+            || message.contains("could not find verb in effect clause"),
+        "expected partial-parse rejection, got {message}"
+    );
+}
+
+#[test]
+fn render_search_library_for_card_uses_card_noun() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Search Variant")
+        .parse_text("Search your library for a card, reveal it, put it into your hand, then shuffle.")
+        .expect("search clause should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("search your library for a card"),
+        "expected search filter to render as card, got {joined}"
+    );
+}
+
+#[test]
+fn render_powerstone_token_name() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Powerstone Variant")
+        .parse_text("Create a tapped Powerstone token.")
+        .expect("powerstone token clause should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("powerstone artifact token") && joined.contains("tapped"),
+        "expected powerstone token name in compiled text, got {joined}"
+    );
+}
+
+#[test]
+fn parse_damage_not_removed_during_cleanup_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ancient Adamantoise Variant")
+        .parse_text("Damage isn't removed from this creature during cleanup steps.")
+        .expect("damage-not-removed clause should parse");
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::DamageNotRemovedDuringCleanup),
+        "expected damage-not-removed static ability, got {ids:?}"
+    );
+    let compiled = compiled_lines(&def).join(" ");
+    assert!(
+        compiled
+            .to_ascii_lowercase()
+            .contains("damage isn't removed from this creature during cleanup steps"),
+        "expected compiled text to include damage-not-removed clause, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_damage_redirect_to_source_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ancient Adamantoise Variant")
+        .parse_text("All damage that would be dealt to you and other permanents you control is dealt to this creature instead.")
+        .expect("damage redirect clause should parse");
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::RedirectDamageToSource),
+        "expected damage redirect static ability, got {ids:?}"
+    );
+    let compiled = compiled_lines(&def).join(" ");
+    assert!(
+        compiled
+            .to_ascii_lowercase()
+            .contains("all damage that would be dealt to you and other permanents you control is dealt to this creature instead"),
+        "expected compiled text to include damage redirect clause, got {compiled}"
+    );
+}
+
+#[test]
+fn reject_singleton_partial_parse_clauses_030() {
+    assert_partial_parse_rejected(
+        "Kwain Variant",
+        "{T}: Each player may draw a card, then each player who drew a card this way gains 1 life.",
+    );
+    assert_partial_parse_rejected(
+        "Unified Will Variant",
+        "Counter target spell if you control more creatures than that spell's controller.",
+    );
+    assert_partial_parse_rejected(
+        "Forbidden Friendship Variant",
+        "Create a 1/1 red Dinosaur creature token with haste and a 1/1 white Human Soldier creature token.",
+    );
+    assert_partial_parse_rejected(
+        "Heat Shimmer Variant",
+        "Create a token that's a copy of target creature, except it has haste and \"At the beginning of the end step, exile this token.\"",
+    );
+    assert_partial_parse_rejected(
+        "Dream Cache Variant",
+        "Draw three cards, then put two cards from your hand both on top of your library or both on the bottom of your library.",
+    );
+    assert_partial_parse_rejected(
+        "Dark Deal Variant",
+        "Each player discards all the cards in their hand, then draws that many cards minus one.",
+    );
+    assert_partial_parse_rejected(
+        "Kjeldoran Home Guard Variant",
+        "At end of combat, if this creature attacked or blocked this combat, put a -0/-1 counter on this creature and create a 0/1 white Deserter creature token.",
+    );
+    assert_partial_parse_rejected(
+        "Unified Strike Variant",
+        "Exile target attacking creature if its power is less than or equal to the number of Soldiers on the battlefield.",
+    );
+    assert_partial_parse_rejected(
+        "Time to Reflect Variant",
+        "Exile target creature that blocked or was blocked by a Zombie this turn.",
+    );
+    assert_partial_parse_rejected(
+        "Flame Wave Variant",
+        "Flame Wave deals 4 damage to target player or planeswalker and each creature that player or that planeswalker's controller controls.",
+    );
+    assert_partial_parse_rejected(
+        "Arena Athlete Variant",
+        "Heroic — Whenever you cast a spell that targets this creature, target creature an opponent controls can't block this turn.",
+    );
+    assert_partial_parse_rejected(
+        "Chocobo Racetrack Variant",
+        "Landfall — Whenever a land you control enters, create a 2/2 green Bird creature token with \"Whenever a land you control enters, this token gets +1/+0 until end of turn.\"",
+    );
+    assert_partial_parse_rejected("Putrid Raptor Variant", "Morph—Discard a Zombie card.");
+    assert_partial_parse_rejected(
+        "Hubris Variant",
+        "Return target creature and all Auras attached to it to their owners' hands.",
+    );
+    assert_partial_parse_rejected(
+        "Word of Undoing Variant",
+        "Return target creature and all white Auras you own attached to it to their owners' hands.",
+    );
+    assert_partial_parse_rejected(
+        "Hellion Eruption Variant",
+        "Sacrifice all creatures you control, then create that many 4/4 red Hellion creature tokens.",
+    );
+    assert_partial_parse_rejected(
+        "Ugin's Insight Variant",
+        "Scry X, where X is the greatest mana value among permanents you control, then draw three cards.",
+    );
+    assert_partial_parse_rejected(
+        "Stunted Growth Variant",
+        "Target player chooses three cards from their hand and puts them on top of their library in any order.",
+    );
+    assert_partial_parse_rejected(
+        "Stag Beetle Variant",
+        "This creature enters with X +1/+1 counters on it, where X is the number of other creatures on the battlefield.",
+    );
+    assert_partial_parse_rejected(
+        "Vesuva Variant",
+        "You may have this land enter tapped as a copy of any land on the battlefield.",
+    );
+    assert_partial_parse_rejected(
+        "Chocobo Racetrack Variant",
+        "Landfall — Whenever a land you control enters, create a 2/2 green Bird creature token with \"Whenever a land you control enters, this token gets +1/+0 until end of turn.\"",
+    );
+    assert_partial_parse_rejected(
+        "Dryad Arbor Variant",
+        "This land isn't a spell, it's affected by summoning sickness, and it has \"{T}: Add {G}.\"",
+    );
+    assert_partial_parse_rejected("Waning Wurm Variant", "Vanishing 2");
+    assert_partial_parse_rejected(
+        "Mogg Bombers Variant",
+        "When another creature enters, sacrifice this creature and it deals 3 damage to target player or planeswalker.",
+    );
+    assert_partial_parse_rejected(
+        "Reef Worm Variant",
+        "When this creature dies, create a 3/3 blue Fish creature token with \"When this token dies, create a 6/6 blue Whale creature token with 'When this token dies, create a 9/9 blue Kraken creature token.\"",
+    );
+    assert_partial_parse_rejected(
+        "Keldon Firebombers Variant",
+        "When this creature enters, each player sacrifices all lands they control except for three.",
+    );
+    assert_partial_parse_rejected(
+        "Azra Bladeseeker Variant",
+        "When this creature enters, each player on your team may discard a card, then each player who discarded a card this way draws a card.",
+    );
+    assert_partial_parse_rejected(
+        "Boggart Trawler Variant",
+        "When this creature enters, exile target player's graveyard.",
+    );
+    assert_partial_parse_rejected(
+        "Barrow Witches Variant",
+        "When this creature enters, return target Knight card from your graveyard to your hand.",
+    );
+    assert_partial_parse_rejected(
+        "Loaming Shaman Variant",
+        "When this creature enters, target player shuffles any number of target cards from their graveyard into their library.",
+    );
+    assert_partial_parse_rejected(
+        "Invasion of Ravnica Variant",
+        "When this Siege enters, exile target nonland permanent an opponent controls that isn't exactly two colors.",
+    );
+    assert_partial_parse_rejected(
+        "Captain Vargus Wrath Variant",
+        "Whenever Captain Vargus Wrath attacks, Pirates you control get +1/+1 until end of turn for each time you've cast a commander from the command zone this game.",
+    );
+    assert_partial_parse_rejected(
+        "Carnival of Souls Variant",
+        "Whenever a creature enters, you lose 1 life and add {B}.",
+    );
+    assert_partial_parse_rejected(
+        "Skrelv's Hive Variant",
+        "At the beginning of your upkeep, you lose 1 life and create a 1/1 colorless Phyrexian Mite artifact creature token with toxic 1 and \"This token can't block.\"",
+    );
+    assert_partial_parse_rejected(
+        "Constant Mists Variant",
+        "Buyback—Sacrifice a land.",
+    );
+    assert_partial_parse_rejected(
+        "Dig Up the Body Variant",
+        "Casualty 1 (As you cast this spell, you may sacrifice a creature with power 1 or greater. When you do, copy this spell.)",
+    );
+    assert_partial_parse_rejected(
+        "Cataclysmic Prospecting Variant",
+        "For each mana from a Desert spent to cast this spell, create a tapped Treasure token.",
+    );
+    assert_partial_parse_rejected(
+        "Skittering Invasion Variant",
+        "They have \"Sacrifice this token: Add {C}.\"",
+    );
+    assert_partial_parse_rejected(
+        "Sound the Call Variant",
+        "It has \"This token gets +1/+1 for each card named Sound the Call in each graveyard.\"",
+    );
+    assert_partial_parse_rejected(
+        "All Suns' Dawn Variant",
+        "For each color, return up to one target card of that color from your graveyard to your hand.",
+    );
+    assert_partial_parse_rejected(
+        "Spark Rupture Variant",
+        "Each planeswalker is a creature with power and toughness each equal to the number of loyalty counters on it.",
+    );
+    assert_partial_parse_rejected(
+        "Ill-Gotten Gains Variant",
+        "Each player discards their hand, then returns up to three cards from their graveyard to their hand.",
+    );
+    assert_partial_parse_rejected(
+        "Declaration in Stone Variant",
+        "That player investigates for each nontoken creature exiled this way.",
+    );
+    assert_partial_parse_rejected(
+        "Legion's End Variant",
+        "Then that player reveals their hand and exiles all cards with that name from their hand and graveyard.",
+    );
+    assert_partial_parse_rejected(
+        "The Mending of Dominaria Variant",
+        "Return all land cards from your graveyard to the battlefield, then shuffle your graveyard into your library.",
+    );
+    assert_partial_parse_rejected(
+        "Reckless Blaze Variant",
+        "Whenever a creature you control dealt damage this way dies this turn, add {R}.",
+    );
+    assert_partial_parse_rejected("Torens Variant", "Training");
+    assert_partial_parse_rejected("Crack in Time Variant", "Vanishing 3");
+    assert_partial_parse_rejected(
+        "Simulacrum Synthesizer Variant",
+        "Whenever another artifact you control with mana value 3 or greater enters, create a 0/0 colorless Construct artifact creature token.",
+    );
+    assert_partial_parse_rejected(
+        "Wurmwall Sweeper Variant",
+        "When this Spacecraft enters, surveil 2.",
+    );
+    assert_partial_parse_rejected("Patron of the Orochi Variant", "Snake offering");
+    assert_partial_parse_rejected(
+        "Scion of Halaster Variant",
+        "The first time you would draw a card each turn, instead look at the top two cards of your library. Put one of them into your graveyard and the other back on top of your library.",
+    );
+    assert_partial_parse_rejected(
+        "Roadside Assistance Variant",
+        "Enchanted permanent gets +1/+1 and has lifelink.",
+    );
+    assert_partial_parse_rejected(
+        "Trusty Boomerang Variant",
+        "Equipped creature has \"{1}, {T}: Tap target creature.\"",
+    );
+    assert_partial_parse_rejected(
+        "Tiller Engine Variant",
+        "Whenever a land you control enters tapped, choose one — Tap target nonland permanent an opponent controls; or untap that land.",
+    );
+    assert_partial_parse_rejected(
+        "Surge of Acclaim Variant",
+        "Choose one. If you have max speed, choose both instead.",
+    );
+    assert_partial_parse_rejected(
+        "Glamermite Variant",
+        "When this creature enters, choose one — Tap target creature; or untap target creature.",
     );
 }

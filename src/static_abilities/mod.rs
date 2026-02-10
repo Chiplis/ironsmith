@@ -219,6 +219,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
         false
     }
 
+    /// Returns info for "as this enters, choose a color" abilities.
+    fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
+        None
+    }
+
     /// Returns true if this grants indestructible.
     fn has_indestructible(&self) -> bool {
         false
@@ -358,6 +363,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
     }
 }
 
+/// Spec for "as this enters, choose a color" abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChooseColorAsEntersSpec {
+    pub excluded: Option<crate::color::Color>,
+}
+
 // Implement Clone for Box<dyn StaticAbilityKind>
 impl Clone for Box<dyn StaticAbilityKind> {
     fn clone(&self) -> Self {
@@ -388,6 +399,10 @@ impl StaticAbility {
     /// Get the ability's unique identifier.
     pub fn id(&self) -> StaticAbilityId {
         self.0.id()
+    }
+
+    pub fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
+        self.0.color_choice_as_enters()
     }
 
     /// Get the display text for this ability.
@@ -938,6 +953,27 @@ impl StaticAbility {
 
     pub fn no_maximum_hand_size() -> Self {
         Self::new(NoMaximumHandSize)
+    }
+
+    pub fn damage_not_removed_during_cleanup() -> Self {
+        Self::new(DamageNotRemovedDuringCleanup)
+    }
+
+    pub fn choose_color_as_enters(
+        excluded: Option<crate::color::Color>,
+        display: String,
+    ) -> Self {
+        Self::new(ChooseColorAsEnters::new(excluded, display))
+    }
+
+    pub fn redirect_damage_from_you_and_other_permanents_to_source() -> Self {
+        Self::new(RedirectDamageToSource::new(
+            crate::target::PlayerFilter::You,
+            crate::target::ObjectFilter::permanent()
+                .you_control()
+                .other(),
+            "All damage that would be dealt to you and other permanents you control is dealt to this creature instead.".to_string(),
+        ))
     }
 
     pub fn players_cant_cycle() -> Self {

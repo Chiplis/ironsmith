@@ -829,8 +829,23 @@ fn read_name_set(path: &str) -> Result<HashSet<String>, Box<dyn std::error::Erro
     Ok(raw
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(str::to_string)
+        .filter_map(|line| {
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            if let Some(rest) = line.strip_prefix("Name:") {
+                let name = rest.trim();
+                if name.is_empty() {
+                    None
+                } else {
+                    Some(name.to_string())
+                }
+            } else if line.contains(':') {
+                None
+            } else {
+                Some(line.to_string())
+            }
+        })
         .collect())
 }
 

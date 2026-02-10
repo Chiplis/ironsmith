@@ -101,8 +101,11 @@ pub enum StaticAbilityId {
     CantBeCountered,
     PlayersCantCycle,
     PlayersSkipUpkeep,
+    DamageNotRemovedDuringCleanup,
 
     // === Other abilities ===
+    ChooseColorAsEnters,
+    RedirectDamageToSource,
     DoesntUntap,
     EntersTapped,
     EntersTappedUnlessControlTwoOrMoreOtherLands,

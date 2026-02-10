@@ -835,6 +835,12 @@ pub struct GameState {
     /// Damage marked on creatures (cleared at cleanup step).
     pub damage_marked: HashMap<ObjectId, u32>,
 
+    /// Permanents whose damage is not removed during cleanup.
+    pub damage_persists: HashSet<ObjectId>,
+
+    /// Chosen colors for permanents ("as this enters, choose a color").
+    pub chosen_colors: HashMap<ObjectId, crate::color::Color>,
+
     /// Regeneration shields on permanents (expires at end of turn).
     pub regeneration_shields: HashMap<ObjectId, u32>,
 
@@ -918,6 +924,8 @@ impl GameState {
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
             damage_marked: HashMap::new(),
+            damage_persists: HashSet::new(),
+            chosen_colors: HashMap::new(),
             regeneration_shields: HashMap::new(),
             monstrous: HashSet::new(),
             flipped: HashSet::new(),
@@ -1318,6 +1326,47 @@ impl GameState {
         for (counter_type, count) in &result.enters_with_counters {
             if let Some(obj) = self.object_mut(new_id) {
                 *obj.counters.entry(*counter_type).or_insert(0) += count;
+            }
+        }
+
+        // Apply "as this enters, choose a color" selections.
+        let choose_color_abilities = self
+            .object(new_id)
+            .map(|obj| (obj.controller, obj.abilities.clone()));
+        if let Some((controller, abilities)) = choose_color_abilities {
+            for ability in abilities {
+                if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
+                    if let Some(spec) = static_ability.color_choice_as_enters() {
+                        let mut options = vec![
+                            crate::color::Color::White,
+                            crate::color::Color::Blue,
+                            crate::color::Color::Black,
+                            crate::color::Color::Red,
+                            crate::color::Color::Green,
+                        ];
+                        if let Some(excluded) = spec.excluded {
+                            options.retain(|color| *color != excluded);
+                        }
+                        if options.is_empty() {
+                            continue;
+                        }
+                        let choice_spec = crate::decisions::specs::ManaColorsSpec::restricted(
+                            new_id,
+                            1,
+                            true,
+                            options.clone(),
+                        );
+                        let mut chosen = crate::decisions::make_decision(
+                            self,
+                            decision_maker,
+                            controller,
+                            Some(new_id),
+                            choice_spec,
+                        );
+                        let chosen_color = chosen.pop().unwrap_or(options[0]);
+                        self.set_chosen_color(new_id, chosen_color);
+                    }
+                }
             }
         }
 
@@ -1830,6 +1879,7 @@ impl GameState {
         // Clear existing tracker
         self.cant_effects.clear();
         self.mana_spend_effects.clear();
+        self.damage_persists.clear();
 
         // First, collect all static abilities from permanents on the battlefield
         // (We need to collect first to avoid borrow conflicts)
@@ -1881,6 +1931,10 @@ impl GameState {
             );
         }
         self.cant_effects.merge(restriction_tracker);
+    }
+
+    pub fn keep_damage_marked(&mut self, object: ObjectId) {
+        self.damage_persists.insert(object);
     }
 
     /// Update continuous effects from static abilities on the battlefield.
@@ -2789,12 +2843,25 @@ impl GameState {
         self.face_down.remove(&id);
         self.phased_out.remove(&id);
         self.imprinted_cards.remove(&id);
+        self.chosen_colors.remove(&id);
         // Note: saga_final_chapter_resolved and commanders persist across zone changes
     }
 
     /// Clear exile state for an object (when leaving exile).
     pub fn clear_exile_state(&mut self, id: ObjectId) {
         self.madness_exiled.remove(&id);
+    }
+
+    // === Chosen color helpers ===
+
+    /// Record a chosen color for a permanent.
+    pub fn set_chosen_color(&mut self, permanent_id: ObjectId, color: crate::color::Color) {
+        self.chosen_colors.insert(permanent_id, color);
+    }
+
+    /// Get a chosen color for a permanent, if any.
+    pub fn chosen_color(&self, permanent_id: ObjectId) -> Option<crate::color::Color> {
+        self.chosen_colors.get(&permanent_id).copied()
     }
 
     // === Imprint helpers ===

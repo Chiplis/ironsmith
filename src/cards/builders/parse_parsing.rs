@@ -824,6 +824,7 @@ fn reject_known_partial_parse_line(normalized: &str, line: &str) -> Result<(), C
         || normalized.contains("where x is that creature's power")
         || normalized.contains("shares at least one creature type with it")
         || normalized.contains("blocked or was blocked this turn")
+        || normalized.contains("blocked or was blocked by")
         || normalized.contains("cloak those cards")
         || normalized.contains("it perpetually gets -1/-1")
         || normalized.contains("it perpetually gains \"this creature attacks each combat if able")
@@ -883,6 +884,8 @@ fn reject_known_partial_parse_line(normalized: &str, line: &str) -> Result<(), C
         || normalized.contains("sacrifice it unless you discard")
         || normalized.contains("unless you return a basic land card from your graveyard to your hand")
         || normalized.contains("discard all the cards in your hand, then draw that many cards")
+        || normalized.contains("then draws that many cards minus one")
+        || normalized.contains("each player who drew a card this way gains")
         || normalized
             .contains("each player discards all the cards in their hand, then creates that many")
         || normalized.contains("divided as you choose among one, two, or three target")
@@ -890,6 +893,7 @@ fn reject_known_partial_parse_line(normalized: &str, line: &str) -> Result<(), C
             .contains("divided evenly, rounded down, among all creatures target opponent controls")
         || normalized.contains("at random from your graveyard to your hand")
         || normalized.contains("target player chooses a card in their hand and discards the rest")
+        || normalized.contains("target player chooses three cards from their hand and puts them on top of their library in any order")
         || normalized.contains("each player sacrifices all permanents they control that are one or more colors")
         || normalized.contains("destroy each creature that isn't all colors")
         || normalized.contains("from among them to your hand")
@@ -927,6 +931,74 @@ fn reject_known_partial_parse_line(normalized: &str, line: &str) -> Result<(), C
             .contains("you take the initiative, gain 3 life, draw a card, and create a treasure token")
         || normalized
             .contains("return target enchantment card that isn't a god from your graveyard to your hand")
+        || normalized.contains("if you control more creatures than that spell's controller")
+        || normalized.contains("create a 1/1 red dinosaur creature token with haste and a 1/1 white human soldier creature token")
+        || normalized.contains("draw three cards, then put two cards from your hand both on top of your library or both on the bottom of your library")
+        || normalized.contains("if this creature attacked or blocked this combat")
+        || normalized.contains("if its power is less than or equal to the number of soldiers on the battlefield")
+        || normalized.contains("each creature that player or that planeswalker's controller controls")
+        || normalized.contains("whenever you cast a spell that targets this creature")
+        || normalized.contains("create a 2/2 green bird creature token with \"whenever a land you control enters, this token gets")
+        || normalized.contains("morph—discard ")
+        || normalized.contains("and all auras attached to it")
+        || normalized.contains("auras you own attached to it")
+        || normalized.contains("then create that many 4/4 red hellion creature tokens")
+        || normalized.contains("scry x, where x is the greatest mana value among permanents you control")
+        || normalized.contains("enters with x +1/+1 counters on it, where x is the number of other creatures on the battlefield")
+        || normalized.contains("as a copy of any land on the battlefield")
+        || (normalized.contains("create a token that's a copy of target creature")
+            && normalized.contains("beginning of the end step")
+            && normalized.contains("exile this token"))
+        || normalized.contains("this land isn't a spell, it's affected by summoning sickness")
+        || normalized.contains("this land isnt a spell, its affected by summoning sickness")
+        || normalized.contains("vanishing ")
+        || normalized.contains("when another creature enters, sacrifice this creature and it deals")
+        || normalized.contains("create a 3/3 blue fish creature token with \"when this token dies")
+        || normalized.contains("each player sacrifices all lands they control except")
+        || normalized.contains("each player on your team may discard a card, then each player who discarded")
+        || normalized.contains("exile target player's graveyard")
+        || normalized.contains("return target knight card from your graveyard to your hand")
+        || normalized.contains("shuffles any number of target cards from their graveyard into their library")
+        || normalized.contains("isn't exactly two colors")
+        || normalized.contains("for each time you've cast a commander from the command zone this game")
+        || normalized.contains("whenever a creature enters, you lose 1 life and add {b}")
+        || normalized.contains("phyrexian mite artifact creature token with toxic 1 and \"this token can't block")
+        || normalized.contains("buyback—sacrifice a land")
+        || normalized.contains("casualty 1 (as you cast this spell")
+        || normalized.contains("casualty 1")
+        || normalized.contains("each mana from a desert spent to cast this spell")
+        || normalized.contains("eldrazi spawn creature tokens. they have \"sacrifice this token: add {c}")
+        || normalized.contains("create a 5/5 blue wall creature token with defender")
+        || normalized.contains("it has \"this token gets +1/+1 for each card named sound the call in each graveyard")
+        || normalized.contains("for each color, return up to one target card of that color from your graveyard to your hand")
+        || normalized.contains("each planeswalker with one or more loyalty counters on it loses all abilities and is a creature with power and toughness each equal to the number of loyalty counters on it")
+        || normalized.contains("each player discards their hand, then returns up to three cards from their graveyard to their hand")
+        || normalized.contains("that player investigates for each nontoken creature exiled this way")
+        || normalized.contains("then that player reveals their hand and exiles all cards with that name from their hand and graveyard")
+        || normalized.contains("i, ii — mill two cards, then you may return a creature card from your graveyard to your hand")
+        || normalized.contains("return all land cards from your graveyard to the battlefield, then shuffle your graveyard into your library")
+        || normalized.contains("whenever a creature you control dealt damage this way dies this turn, add {r}")
+        || normalized.contains("training")
+        || normalized.contains("when this enchantment enters and at the beginning of your first main phase, exile target creature an opponent controls until this enchantment leaves the battlefield")
+        || normalized.contains("whenever another artifact you control with mana value 3 or greater enters, create a 0/0 colorless construct artifact creature token")
+        || normalized.contains("when this spacecraft enters, surveil 2")
+        || normalized.contains("snake offering")
+        || normalized.contains("first time you would draw a card each turn, instead look at the top")
+        || normalized.contains("enchanted permanent gets +1/+1 and has lifelink")
+        || normalized.contains("equipped creature has \"{1}, {t}: tap target creature")
+        || normalized.contains("return trusty boomerang to its owner's hand")
+        || normalized.contains("whenever a land you control enters tapped, choose one")
+        || normalized.contains("if you have max speed, choose both instead")
+        || normalized.contains("seek a card from your spellbook named start your engine")
+        || normalized.contains("when this creature enters, choose one —")
+        || normalized.contains("• tap target creature.")
+        || normalized.contains("• untap target creature.")
+        || normalized.contains("whenever a land you control enters tapped, choose one —")
+        || normalized.contains("• untap that land.")
+        || normalized.contains("• tap target nonland permanent an opponent controls.")
+        || normalized.contains("choose one. if you have max speed, choose both instead.")
+        || normalized.contains("• seek a card with start your engines!")
+        || normalized.contains("• seek a nonland card.")
         || normalized.contains(
             "when that mana is spent to cast a creature spell that shares a creature type with your commander, scry 1",
         )
@@ -1446,6 +1518,18 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
 fn parse_static_ability_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some(abilities) = parse_enters_tapped_with_choose_color_line(tokens)? {
+        return Ok(Some(abilities));
+    }
+    if let Some(ability) = parse_damage_not_removed_cleanup_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
+    if let Some(ability) = parse_choose_color_as_enters_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
+    if let Some(ability) = parse_damage_redirect_to_source_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(ability) = parse_characteristic_defining_pt_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -1551,6 +1635,9 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_equipped_creature_has_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(abilities) = parse_attached_gets_and_has_ability_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(ability) = parse_attacks_each_combat_if_able_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -1598,6 +1685,198 @@ fn parse_static_ability_line(
     }
     if let Some(abilities) = parse_cant_clauses(tokens)? {
         return Ok(Some(abilities));
+    }
+    Ok(None)
+}
+
+fn parse_enters_tapped_with_choose_color_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.first().copied() != Some("this")
+        || !clause_words.contains(&"enters")
+        || !clause_words.contains(&"tapped")
+    {
+        return Ok(None);
+    }
+    let tapped_word_idx = clause_words
+        .iter()
+        .position(|word| *word == "tapped")
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing tapped keyword in enters-tapped clause (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+    let tapped_token_idx = token_index_for_word_index(tokens, tapped_word_idx).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unable to map tapped keyword in enters-tapped clause (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    let trailing = &tokens[tapped_token_idx + 1..];
+    if trailing.is_empty() {
+        return Ok(None);
+    }
+    let Some(color_choice) = parse_choose_color_as_enters_line(trailing)? else {
+        return Ok(None);
+    };
+    Ok(Some(vec![
+        StaticAbility::enters_tapped_ability(),
+        color_choice,
+    ]))
+}
+
+fn parse_damage_not_removed_cleanup_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.len() != 9 {
+        return Ok(None);
+    }
+    if words[0] != "damage" || words[2] != "removed" {
+        return Ok(None);
+    }
+    let is_not = words[1] == "isnt" || words[1] == "isn't";
+    let matches = is_not
+        && words[3] == "from"
+        && words[4] == "this"
+        && words[5] == "creature"
+        && words[6] == "during"
+        && words[7] == "cleanup"
+        && words[8] == "steps";
+    if matches {
+        return Ok(Some(StaticAbility::damage_not_removed_during_cleanup()));
+    }
+    Ok(None)
+}
+
+fn parse_choose_color_as_enters_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.len() < 6 || words[0] != "as" {
+        return Ok(None);
+    }
+
+    let mut idx = 1;
+    let subject = if words.get(idx) == Some(&"this") {
+        idx += 1;
+        if words.get(idx) == Some(&"land") {
+            idx += 1;
+            "this land"
+        } else {
+            "this"
+        }
+    } else if words.get(idx) == Some(&"it") {
+        idx += 1;
+        "it"
+    } else {
+        return Ok(None);
+    };
+
+    if words.get(idx) != Some(&"enters") {
+        return Ok(None);
+    }
+    idx += 1;
+
+    if words.get(idx) == Some(&"the") && words.get(idx + 1) == Some(&"battlefield") {
+        idx += 2;
+    }
+
+    if words.get(idx) != Some(&"choose") {
+        return Ok(None);
+    }
+    idx += 1;
+    if words.get(idx) == Some(&"a") {
+        idx += 1;
+    }
+    if words.get(idx) != Some(&"color") {
+        return Ok(None);
+    }
+    idx += 1;
+
+    let mut excluded = None;
+    if words.get(idx) == Some(&"other") && words.get(idx + 1) == Some(&"than") {
+        let Some(color_word) = words.get(idx + 2) else {
+            return Ok(None);
+        };
+        let color_set = parse_color(color_word).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported color choice '{}' (clause: '{}')",
+                color_word,
+                words.join(" ")
+            ))
+        })?;
+        let color = color_from_color_set(color_set).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "ambiguous color choice '{}' (clause: '{}')",
+                color_word,
+                words.join(" ")
+            ))
+        })?;
+        excluded = Some(color);
+        idx += 3;
+    }
+
+    if idx != words.len() {
+        return Ok(None);
+    }
+
+    let display = if subject == "this land" {
+        match excluded {
+            Some(color) => format!(
+                "As this land enters, choose a color other than {}.",
+                format!("{color:?}").to_ascii_lowercase()
+            ),
+            None => "As this land enters, choose a color.".to_string(),
+        }
+    } else {
+        match excluded {
+            Some(color) => format!(
+                "As it enters, choose a color other than {}.",
+                format!("{color:?}").to_ascii_lowercase()
+            ),
+            None => "As it enters, choose a color.".to_string(),
+        }
+    };
+
+    Ok(Some(StaticAbility::choose_color_as_enters(
+        excluded,
+        display,
+    )))
+}
+
+fn parse_damage_redirect_to_source_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.len() != 19 {
+        return Ok(None);
+    }
+    let matches = words[0] == "all"
+        && words[1] == "damage"
+        && words[2] == "that"
+        && words[3] == "would"
+        && words[4] == "be"
+        && words[5] == "dealt"
+        && words[6] == "to"
+        && words[7] == "you"
+        && words[8] == "and"
+        && words[9] == "other"
+        && (words[10] == "permanents" || words[10] == "permanent")
+        && words[11] == "you"
+        && words[12] == "control"
+        && words[13] == "is"
+        && words[14] == "dealt"
+        && words[15] == "to"
+        && words[16] == "this"
+        && words[17] == "creature"
+        && words[18] == "instead";
+    if matches {
+        return Ok(Some(
+            StaticAbility::redirect_damage_from_you_and_other_permanents_to_source(),
+        ));
     }
     Ok(None)
 }
@@ -1768,6 +2047,15 @@ fn parse_spells_cost_modifier_line(
     let clause_words = words(tokens);
     if clause_words.len() < 4 {
         return Ok(None);
+    }
+    if clause_words.contains(&"first")
+        && clause_words.contains(&"each")
+        && clause_words.contains(&"turn")
+    {
+        return Ok(Some(StaticAbility::custom(
+            "first_spell_cost_modifier",
+            clause_words.join(" "),
+        )));
     }
 
     let spells_idx = clause_words
@@ -3490,6 +3778,65 @@ fn parse_equipped_creature_has_line(
     Ok(Some(StaticAbility::equipment_grant(abilities)))
 }
 
+fn parse_attached_gets_and_has_ability_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 6 {
+        return Ok(None);
+    }
+    let is_enchanted = line_words.starts_with(&["enchanted", "creature"]);
+    let is_equipped = line_words.starts_with(&["equipped", "creature"]);
+    if !is_enchanted && !is_equipped {
+        return Ok(None);
+    }
+
+    let Some(get_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("get") || token.is_word("gets"))
+    else {
+        return Ok(None);
+    };
+    let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
+        return Ok(None);
+    };
+    let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    if !(get_idx < and_idx && and_idx < has_idx) {
+        return Ok(None);
+    }
+
+    let clause = parse_anthem_clause(tokens, get_idx, and_idx)?;
+    let anthem = build_anthem_static_ability(&clause);
+
+    let ability_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
+    if ability_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing attached ability after 'has' (clause: '{}')",
+            line_words.join(" ")
+        )));
+    }
+    let ability_text = words(&ability_tokens).join(" ");
+    let ability = Ability {
+        kind: AbilityKind::Static(StaticAbility::custom(
+            "attached_grant",
+            ability_text.clone(),
+        )),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(ability_text.clone()),
+    };
+    let subject = if is_enchanted {
+        "enchanted creature"
+    } else {
+        "equipped creature"
+    };
+    let display = format!("{subject} has {ability_text}");
+    let grant = StaticAbility::attached_ability_grant(ability, display);
+
+    Ok(Some(vec![anthem, grant]))
+}
+
 fn parse_equipped_gets_and_has_activated_ability_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -4414,11 +4761,12 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
                     || mana_words.contains(&"type")
                     || has_any_combination_mana);
             let has_or_choice_mana = mana_words.contains(&"or");
+            let has_chosen_color = mana_words.contains(&"chosen") && mana_words.contains(&"color");
             let uses_commander_identity = mana_words
                 .iter()
                 .any(|word| *word == "commander" || *word == "commanders")
                 && mana_words.contains(&"identity");
-            if has_imprinted_colors || has_any_choice_mana || uses_commander_identity {
+            if has_imprinted_colors || has_any_choice_mana || uses_commander_identity || has_chosen_color {
                 let mana_ast = parse_add_mana(mana_tokens, None)?;
                 let mut compile_ctx = CompileContext::new();
                 let (mut effects, choices) = compile_effect(&mana_ast, &mut compile_ctx)?;
@@ -13325,6 +13673,41 @@ fn parse_add_mana(
         } else {
             Vec::new()
         };
+        if !trailing_words.is_empty() {
+            let chosen_color_tail = trailing_words.starts_with(&[
+                "or", "one", "mana", "of", "the", "chosen", "color",
+            ]);
+            let pool_tail = if chosen_color_tail {
+                trailing_words[7..].to_vec()
+            } else {
+                Vec::new()
+            };
+            let has_only_pool_tail = chosen_color_tail
+                && (pool_tail.is_empty()
+                    || pool_tail
+                        .iter()
+                        .all(|word| matches!(*word, "to" | "your" | "mana" | "pool")));
+            if chosen_color_tail && has_only_pool_tail {
+                if mana.len() != 1 {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported chosen-color mana clause with multiple symbols (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+                let Some(color) = mana_symbol_to_color(mana[0]) else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported chosen-color mana clause with non-colored symbol (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                };
+                parser_trace_stack("parse_add_mana:chosen-color-option", tokens);
+                return Ok(EffectAst::AddManaChosenColor {
+                    amount: Value::Fixed(1),
+                    player,
+                    fixed_option: Some(color),
+                });
+            }
+        }
         let has_only_pool_tail = !trailing_words.is_empty()
             && trailing_words
                 .iter()
@@ -13541,7 +13924,7 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         .position(|word| *word == "token" || *word == "tokens")
         .ok_or_else(|| CardTextError::ParseError("create clause missing token".to_string()))?;
 
-    let name_words: Vec<&str> = remaining_words[..token_idx]
+    let mut name_words: Vec<&str> = remaining_words[..token_idx]
         .iter()
         .copied()
         .filter(|word| !is_article(word))
@@ -13554,6 +13937,19 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
             clause_words.join(" ")
         )));
     }
+    let mut tapped = false;
+    let mut attacking = false;
+    name_words.retain(|word| {
+        if *word == "tapped" {
+            tapped = true;
+            return false;
+        }
+        if *word == "attacking" {
+            attacking = true;
+            return false;
+        }
+        true
+    });
     if name_words.is_empty() {
         if tail_words
             .iter()
@@ -13602,8 +13998,8 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         }
     }
 
-    let tapped = tail_words.contains(&"tapped");
-    let attacking = tail_words.contains(&"attacking");
+    tapped |= tail_words.contains(&"tapped");
+    attacking |= tail_words.contains(&"attacking");
 
     Ok(EffectAst::CreateTokenWithMods {
         name,

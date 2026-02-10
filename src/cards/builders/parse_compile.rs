@@ -246,6 +246,7 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::AddManaScaled { player, .. }
         | EffectAst::AddManaAnyColor { player, .. }
         | EffectAst::AddManaAnyOneColor { player, .. }
+        | EffectAst::AddManaChosenColor { player, .. }
         | EffectAst::AddManaFromLandCouldProduce { player, .. }
         | EffectAst::AddManaCommanderIdentity { player, .. }
         | EffectAst::Scry { player, .. }
@@ -1387,6 +1388,31 @@ fn compile_effect(
                 Effect::add_mana_of_any_one_color(amount.clone())
             } else {
                 Effect::add_mana_of_any_one_color_player(amount.clone(), filter.clone())
+            };
+            if !matches!(*player, PlayerAst::Implicit) {
+                ctx.last_player_filter = Some(filter);
+            }
+            Ok((vec![effect], Vec::new()))
+        }
+        EffectAst::AddManaChosenColor {
+            amount,
+            player,
+            fixed_option,
+        } => {
+            let filter = resolve_non_target_player_filter(*player, ctx)?;
+            let effect = if let Some(fixed) = fixed_option {
+                Effect::new(
+                    crate::effects::mana::AddManaOfChosenColorEffect::with_fixed_option(
+                        amount.clone(),
+                        filter.clone(),
+                        *fixed,
+                    ),
+                )
+            } else {
+                Effect::new(crate::effects::mana::AddManaOfChosenColorEffect::new(
+                    amount.clone(),
+                    filter.clone(),
+                ))
             };
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(filter);

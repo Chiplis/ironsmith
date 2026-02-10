@@ -2,10 +2,12 @@
 //!
 //! This module contains static abilities that don't fit neatly into other categories.
 
-use super::{StaticAbilityId, StaticAbilityKind};
+use super::{ChooseColorAsEntersSpec, StaticAbilityId, StaticAbilityKind};
 use crate::ability::LevelAbility;
+use crate::color::Color;
 use crate::effect::Value;
 use crate::events::cards::matchers::WouldDiscardMatcher;
+use crate::events::damage::matchers::DamageToPlayerOrObjectMatcher;
 use crate::events::traits::{EventKind, ReplacementMatcher, ReplacementPriority, downcast_event};
 use crate::events::zones::matchers::{
     ThisWouldEnterBattlefieldMatcher, ThisWouldGoToGraveyardMatcher, WouldEnterBattlefieldMatcher,
@@ -15,8 +17,8 @@ use crate::game_state::GameState;
 use crate::grant::GrantSpec;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::replacement::{ReplacementAction, ReplacementEffect};
-use crate::target::ObjectFilter;
+use crate::replacement::{ReplacementAction, ReplacementEffect, RedirectTarget, RedirectWhich};
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 fn describe_counter_type(counter_type: CounterType) -> String {
@@ -680,6 +682,112 @@ impl StaticAbilityKind for SpendManaAsAnyColorForSourceActivation {
         game.mana_spend_effects
             .any_color_activation_sources
             .insert(source);
+    }
+}
+
+/// "Damage isn't removed from this creature during cleanup steps."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DamageNotRemovedDuringCleanup;
+
+impl StaticAbilityKind for DamageNotRemovedDuringCleanup {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DamageNotRemovedDuringCleanup
+    }
+
+    fn display(&self) -> String {
+        "Damage isn't removed from this creature during cleanup steps.".to_string()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
+        game.keep_damage_marked(source);
+    }
+}
+
+/// "As this enters, choose a color other than [color]."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChooseColorAsEnters {
+    pub excluded: Option<Color>,
+    pub display: String,
+}
+
+impl ChooseColorAsEnters {
+    pub fn new(excluded: Option<Color>, display: String) -> Self {
+        Self { excluded, display }
+    }
+}
+
+impl StaticAbilityKind for ChooseColorAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ChooseColorAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
+        Some(ChooseColorAsEntersSpec {
+            excluded: self.excluded,
+        })
+    }
+}
+
+/// "All damage that would be dealt to you and other permanents you control is dealt to this creature instead."
+#[derive(Debug, Clone, PartialEq)]
+pub struct RedirectDamageToSource {
+    pub player_filter: PlayerFilter,
+    pub object_filter: ObjectFilter,
+    pub display: String,
+}
+
+impl RedirectDamageToSource {
+    pub fn new(player_filter: PlayerFilter, object_filter: ObjectFilter, display: String) -> Self {
+        Self {
+            player_filter,
+            object_filter,
+            display,
+        }
+    }
+}
+
+impl StaticAbilityKind for RedirectDamageToSource {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::RedirectDamageToSource
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageToPlayerOrObjectMatcher::new(
+                self.player_filter.clone(),
+                self.object_filter.clone(),
+            ),
+            ReplacementAction::Redirect {
+                target: RedirectTarget::ToSource,
+                which: RedirectWhich::First,
+            },
+        ))
     }
 }
 

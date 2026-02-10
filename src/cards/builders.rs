@@ -387,6 +387,11 @@ enum EffectAst {
         amount: Value,
         player: PlayerAst,
     },
+    AddManaChosenColor {
+        amount: Value,
+        player: PlayerAst,
+        fixed_option: Option<crate::color::Color>,
+    },
     AddManaFromLandCouldProduce {
         amount: Value,
         player: PlayerAst,

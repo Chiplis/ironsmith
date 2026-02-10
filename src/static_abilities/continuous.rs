@@ -18,6 +18,9 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 fn attached_subject(filter: &ObjectFilter) -> Option<String> {
+    if filter.controller.is_some() || filter.owner.is_some() || filter.other {
+        return None;
+    }
     let attachment = filter.tagged_constraints.iter().find_map(|constraint| {
         if constraint.relation != TaggedOpbjectRelation::IsTaggedObject {
             return None;
@@ -132,10 +135,31 @@ fn pluralize_terminal_noun(base: &str) -> Option<String> {
         "card",
         "token",
     ];
+    let pluralize_word = |word: &str| {
+        let lower = word.to_ascii_lowercase();
+        if lower.ends_with('y')
+            && lower.len() > 1
+            && !matches!(
+                lower.chars().nth(lower.len() - 2),
+                Some('a' | 'e' | 'i' | 'o' | 'u')
+            )
+        {
+            return format!("{}ies", &word[..word.len() - 1]);
+        }
+        if lower.ends_with('s')
+            || lower.ends_with('x')
+            || lower.ends_with('z')
+            || lower.ends_with("ch")
+            || lower.ends_with("sh")
+        {
+            return format!("{word}es");
+        }
+        format!("{word}s")
+    };
     for noun in NOUNS {
         if let Some(stem) = base.strip_suffix(noun) {
             if stem.is_empty() || stem.ends_with(' ') {
-                return Some(format!("{stem}{noun}s"));
+                return Some(format!("{stem}{}", pluralize_word(noun)));
             }
         }
     }
@@ -147,8 +171,12 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     if subject.starts_with("another ") {
         subject = subject.replacen("another ", "other ", 1);
     }
-    if subject.starts_with("enchanted ")
-        || subject.starts_with("equipped ")
+    let should_preserve_singular = (subject.starts_with("enchanted ")
+        || subject.starts_with("equipped "))
+        && filter.controller.is_none()
+        && filter.owner.is_none()
+        && !filter.other;
+    if should_preserve_singular
         || subject.starts_with("this ")
         || subject.starts_with("that ")
     {
@@ -160,7 +188,50 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     if let Some(plural_base) = pluralize_terminal_noun(base) {
         return format!("{plural_base}{suffix}");
     }
-    subject
+    if let Some((head, tail)) = base.rsplit_once(' ') {
+        let plural_head = pluralize_terminal_noun(head).unwrap_or_else(|| {
+            let lower = head.to_ascii_lowercase();
+            if lower.ends_with('y')
+                && lower.len() > 1
+                && !matches!(
+                    lower.chars().nth(lower.len() - 2),
+                    Some('a' | 'e' | 'i' | 'o' | 'u')
+                )
+            {
+                format!("{}ies", &head[..head.len() - 1])
+            } else if lower.ends_with('s')
+                || lower.ends_with('x')
+                || lower.ends_with('z')
+                || lower.ends_with("ch")
+                || lower.ends_with("sh")
+            {
+                format!("{head}es")
+            } else {
+                format!("{head}s")
+            }
+        });
+        return format!("{plural_head} {tail}{suffix}");
+    }
+    let lower = base.to_ascii_lowercase();
+    let plural_base = if lower.ends_with('y')
+        && lower.len() > 1
+        && !matches!(
+            lower.chars().nth(lower.len() - 2),
+            Some('a' | 'e' | 'i' | 'o' | 'u')
+        )
+    {
+        format!("{}ies", &base[..base.len() - 1])
+    } else if lower.ends_with('s')
+        || lower.ends_with('x')
+        || lower.ends_with('z')
+        || lower.ends_with("ch")
+        || lower.ends_with("sh")
+    {
+        format!("{base}es")
+    } else {
+        format!("{base}s")
+    };
+    format!("{plural_base}{suffix}")
 }
 
 fn grant_subject_text(filter: &ObjectFilter) -> String {
@@ -460,13 +531,24 @@ impl StaticAbilityKind for Anthem {
         } else {
             pluralized_subject_text(&self.filter)
         };
+        let subject_mentions_plural = subject.contains("creatures")
+            || subject.contains("tokens")
+            || subject.contains("permanents")
+            || subject.contains("artifacts")
+            || subject.contains("enchantments")
+            || subject.contains("lands")
+            || subject.contains("planeswalkers")
+            || subject.contains("battles")
+            || subject.contains("spells")
+            || subject.contains("cards")
+            || subject.contains("allies");
         let singular = self.source_only
             || subject.starts_with("a ")
             || subject.starts_with("an ")
             || subject.starts_with("this ")
             || subject.starts_with("that ")
-            || subject.starts_with("enchanted ")
-            || subject.starts_with("equipped ");
+            || ((subject.starts_with("enchanted ") || subject.starts_with("equipped "))
+                && !subject_mentions_plural);
         let verb = if singular { "gets" } else { "get" };
 
         let signed = |value: i32| {

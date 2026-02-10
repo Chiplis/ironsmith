@@ -414,7 +414,9 @@ pub fn execute_cleanup_step(game: &mut GameState) {
 
     // Remove all damage marked on creatures and clear regeneration shields
     for &id in &game.battlefield.clone() {
-        game.clear_damage(id);
+        if !game.damage_persists.contains(&id) {
+            game.clear_damage(id);
+        }
         game.clear_regeneration_shields(id);
     }
 

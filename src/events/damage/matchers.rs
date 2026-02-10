@@ -121,6 +121,56 @@ impl ReplacementMatcher for DamageToObjectMatcher {
     }
 }
 
+/// Matches damage events where the target is a player or object matching the filters.
+#[derive(Debug, Clone)]
+pub struct DamageToPlayerOrObjectMatcher {
+    pub player_filter: PlayerFilter,
+    pub object_filter: ObjectFilter,
+}
+
+impl DamageToPlayerOrObjectMatcher {
+    pub fn new(player_filter: PlayerFilter, object_filter: ObjectFilter) -> Self {
+        Self {
+            player_filter,
+            object_filter,
+        }
+    }
+}
+
+impl ReplacementMatcher for DamageToPlayerOrObjectMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        match damage.target {
+            DamageTarget::Player(player_id) => self
+                .player_filter
+                .matches_player(player_id, &ctx.filter_ctx),
+            DamageTarget::Object(object_id) => {
+                if let Some(obj) = ctx.game.object(object_id) {
+                    self.object_filter
+                        .matches(obj, &ctx.filter_ctx, ctx.game)
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn ReplacementMatcher> {
+        Box::new(self.clone())
+    }
+
+    fn display(&self) -> String {
+        "When damage would be dealt to a player or permanent".to_string()
+    }
+}
+
 /// Matches combat damage events.
 #[derive(Debug, Clone)]
 pub struct CombatDamageMatcher;

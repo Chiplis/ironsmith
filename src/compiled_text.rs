@@ -4,7 +4,7 @@ use crate::ability::{Ability, AbilityKind, ActivationTiming};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::effect::{ChoiceCount, Comparison, Condition, EffectPredicate, Until, Value};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-use crate::{CardDefinition, Effect, ManaSymbol, Zone};
+use crate::{CardDefinition, CardType, Effect, ManaSymbol, Zone};
 
 thread_local! {
     static EFFECT_RENDER_DEPTH: Cell<usize> = const { Cell::new(0) };
@@ -167,6 +167,15 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
         parts.push(colors);
     }
 
+    if card.subtypes.is_empty()
+        && !card.is_creature()
+        && card.card_types.contains(&CardType::Artifact)
+        && !card.name.trim().is_empty()
+        && card.name.to_ascii_lowercase() != "token"
+    {
+        parts.push(card.name.clone());
+    }
+
     if !card.subtypes.is_empty() {
         parts.push(
             card.subtypes
@@ -193,27 +202,22 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
     let mut keyword_texts = Vec::new();
     let mut extra_ability_texts = Vec::new();
     for ability in &token.abilities {
-        if let AbilityKind::Static(static_ability) = &ability.kind {
-            if static_ability.is_keyword() {
-                keyword_texts.push(static_ability.display().to_ascii_lowercase());
-                continue;
+        match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                if static_ability.is_keyword() {
+                    keyword_texts.push(static_ability.display().to_ascii_lowercase());
+                    continue;
+                }
+                if let Some(text) = ability.text.as_ref() {
+                    extra_ability_texts.push(text.trim().to_string());
+                } else {
+                    extra_ability_texts.push(static_ability.display());
+                }
             }
-            let display = if let Some(text) = ability.text.as_ref() {
-                text.to_ascii_lowercase()
-            } else {
-                static_ability.display().to_ascii_lowercase()
-            };
-            if display.contains("can't block")
-                || display.contains("can block only creatures with flying")
-            {
-                extra_ability_texts.push(display);
-            }
-            continue;
-        }
-        if let Some(text) = ability.text.as_ref() {
-            let lowered = text.to_ascii_lowercase();
-            if lowered.contains("counter target noncreature spell unless its controller pays") {
-                extra_ability_texts.push(lowered);
+            AbilityKind::Triggered(_) | AbilityKind::Activated(_) | AbilityKind::Mana(_) => {
+                if let Some(text) = ability.text.as_ref() {
+                    extra_ability_texts.push(text.trim().to_string());
+                }
             }
         }
     }
@@ -274,6 +278,48 @@ fn describe_card_count(value: &Value) -> String {
     }
 }
 
+fn is_generic_owned_card_search_filter(filter: &ObjectFilter) -> bool {
+    filter.zone.is_none()
+        && filter.controller.is_none()
+        && matches!(filter.owner, Some(PlayerFilter::You))
+        && filter.targets_player.is_none()
+        && filter.targets_object.is_none()
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.excluded_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.excluded_subtypes.is_empty()
+        && filter.supertypes.is_empty()
+        && filter.excluded_supertypes.is_empty()
+        && filter.colors.is_none()
+        && filter.excluded_colors.is_empty()
+        && !filter.colorless
+        && !filter.multicolored
+        && !filter.token
+        && !filter.nontoken
+        && !filter.other
+        && !filter.tapped
+        && !filter.untapped
+        && !filter.attacking
+        && !filter.blocking
+        && filter.power.is_none()
+        && filter.toughness.is_none()
+        && filter.mana_value.is_none()
+        && !filter.has_mana_cost
+        && !filter.has_tap_activated_ability
+        && !filter.no_x_in_cost
+        && filter.name.is_none()
+        && filter.alternative_cast.is_none()
+        && filter.static_abilities.is_empty()
+        && filter.excluded_static_abilities.is_empty()
+        && filter.custom_static_markers.is_empty()
+        && filter.excluded_custom_static_markers.is_empty()
+        && !filter.is_commander
+        && filter.tagged_constraints.is_empty()
+        && filter.specific.is_none()
+        && !filter.source
+}
+
 fn describe_object_count(value: &Value) -> String {
     match value {
         Value::Fixed(1) => "a".to_string(),
@@ -286,6 +332,8 @@ fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::Target(inner) => {
             let inner_text = describe_choose_spec(inner);
             if inner_text == "it" {
+                inner_text
+            } else if inner_text.starts_with("this ") {
                 inner_text
             } else if inner_text.starts_with("target ") {
                 inner_text
@@ -1446,23 +1494,41 @@ fn strip_indefinite_article(text: &str) -> &str {
     trimmed
 }
 
+fn pluralize_word(word: &str) -> String {
+    let lower = word.to_ascii_lowercase();
+    if lower.ends_with('y')
+        && lower.len() > 1
+        && !matches!(
+            lower.chars().nth(lower.len() - 2),
+            Some('a' | 'e' | 'i' | 'o' | 'u')
+        )
+    {
+        return format!("{}ies", &word[..word.len() - 1]);
+    }
+    if lower.ends_with('s')
+        || lower.ends_with('x')
+        || lower.ends_with('z')
+        || lower.ends_with("ch")
+        || lower.ends_with("sh")
+    {
+        return format!("{word}es");
+    }
+    format!("{word}s")
+}
+
 fn pluralize_noun_phrase(phrase: &str) -> String {
     let base = strip_indefinite_article(phrase);
     for suffix in [" you control", " that player controls"] {
         if let Some(head) = base.strip_suffix(suffix) {
             let head = head.trim_end();
-            let head_plural = if head.ends_with('s') {
-                head.to_string()
-            } else {
-                format!("{head}s")
-            };
+            let head_plural = pluralize_word(head);
             return format!("{head_plural}{suffix}");
         }
     }
     if base.ends_with('s') {
         base.to_string()
     } else {
-        format!("{base}s")
+        pluralize_word(base)
     }
 }
 
@@ -2065,6 +2131,47 @@ fn describe_effect(effect: &Effect) -> String {
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
 
+fn describe_tap_or_untap_mode(
+    choose_mode: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if choose_mode.modes.len() != 2 {
+        return None;
+    }
+    let is_choose_one = matches!(choose_mode.choose_count, Value::Fixed(1))
+        && choose_mode
+            .min_choose_count
+            .as_ref()
+            .is_none_or(|value| matches!(value, Value::Fixed(1)));
+    if !is_choose_one {
+        return None;
+    }
+    let mut target = None;
+    let mut saw_tap = false;
+    let mut saw_untap = false;
+    for mode in &choose_mode.modes {
+        if mode.effects.len() != 1 {
+            return None;
+        }
+        let effect = &mode.effects[0];
+        if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
+            saw_tap = true;
+            target = Some(describe_choose_spec(&tap.spec));
+            continue;
+        }
+        if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
+            saw_untap = true;
+            target = Some(describe_choose_spec(&untap.spec));
+            continue;
+        }
+        return None;
+    }
+    if saw_tap && saw_untap {
+        let target = target.unwrap_or_else(|| "that object".to_string());
+        return Some(format!("Tap or untap {target}"));
+    }
+    None
+}
+
 fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) = describe_search_sequence(sequence) {
@@ -2511,18 +2618,23 @@ fn describe_effect_impl(effect: &Effect) -> String {
             Zone::Stack => "onto the stack",
             Zone::Command => "into the command zone",
         };
+        let filter_desc = if is_generic_owned_card_search_filter(&search_library.filter) {
+            "a card".to_string()
+        } else {
+            search_library.filter.description()
+        };
         if search_library.reveal && search_library.destination != Zone::Battlefield {
             return format!(
                 "Search {} library for {}, reveal it, put it {}, then shuffle",
                 describe_possessive_player_filter(&search_library.player),
-                search_library.filter.description(),
+                filter_desc,
                 destination
             );
         }
         return format!(
             "Search {} library for {}, put it {}, then shuffle",
             describe_possessive_player_filter(&search_library.player),
-            search_library.filter.description(),
+            filter_desc,
             destination
         );
     }
@@ -2751,6 +2863,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return compact;
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        if let Some(compact) = describe_tap_or_untap_mode(choose_mode) {
+            return compact;
+        }
         let header = describe_mode_choice_header(
             &choose_mode.choose_count,
             choose_mode.min_choose_count.as_ref(),
@@ -3025,6 +3140,30 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_mana_pool_owner(&add_one.player)
         );
     }
+    if let Some(add_chosen) =
+        effect.downcast_ref::<crate::effects::mana::AddManaOfChosenColorEffect>()
+    {
+        let pool = describe_mana_pool_owner(&add_chosen.player);
+        let amount = describe_value(&add_chosen.amount);
+        if let Some(fixed) = add_chosen.fixed_option {
+            let fixed_symbol =
+                describe_mana_symbol(crate::mana::ManaSymbol::from_color(fixed));
+            if matches!(add_chosen.amount, Value::Fixed(1)) {
+                return format!(
+                    "Add {} or one mana of the chosen color to {}",
+                    fixed_symbol, pool
+                );
+            }
+            return format!(
+                "Add {} or {} mana of the chosen color to {}",
+                fixed_symbol, amount, pool
+            );
+        }
+        if matches!(add_chosen.amount, Value::Fixed(1)) {
+            return format!("Add one mana of the chosen color to {}", pool);
+        }
+        return format!("Add {} mana of the chosen color to {}", amount, pool);
+    }
     if let Some(add_land_produced) =
         effect.downcast_ref::<crate::effects::AddManaOfLandProducedTypesEffect>()
     {
@@ -3129,14 +3268,14 @@ fn describe_effect_impl(effect: &Effect) -> String {
         effect.downcast_ref::<crate::effects::ExileInsteadOfGraveyardEffect>()
     {
         return format!(
-            "Cards {} puts into a graveyard are exiled instead",
+            "If a card would be put into {}'s graveyard, exile it instead",
             describe_player_filter(&exile_instead.player)
         );
     }
     if let Some(grant_play) = effect.downcast_ref::<crate::effects::GrantPlayFromGraveyardEffect>()
     {
         return format!(
-            "{} may play cards from their graveyard",
+            "{} may play lands and cast spells from their graveyard",
             describe_player_filter(&grant_play.player)
         );
     }
@@ -3265,6 +3404,12 @@ fn is_cycling_cost_word(word: &str) -> bool {
         })
 }
 
+fn choices_are_simple_targets(choices: &[ChooseSpec]) -> bool {
+    choices.iter().all(|choice| {
+        matches!(choice, ChooseSpec::Target(_) | ChooseSpec::AnyTarget)
+    })
+}
+
 fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
     if let Some(keyword) = describe_keyword_ability(ability) {
         return vec![format!("Keyword ability {index}: {keyword}")];
@@ -3299,7 +3444,10 @@ fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
         AbilityKind::Triggered(triggered) => {
             let mut line = format!("Triggered ability {index}: {}", triggered.trigger.display());
             let mut clauses = Vec::new();
-            if !triggered.choices.is_empty() {
+            if !triggered.choices.is_empty()
+                && !( !triggered.effects.is_empty()
+                    && choices_are_simple_targets(&triggered.choices))
+            {
                 let choices = triggered
                     .choices
                     .iter()
@@ -3326,7 +3474,10 @@ fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
             if !activated.mana_cost.costs().is_empty() {
                 pre.push(describe_cost_list(activated.mana_cost.costs()));
             }
-            if !activated.choices.is_empty() {
+            if !activated.choices.is_empty()
+                && !( !activated.effects.is_empty()
+                    && choices_are_simple_targets(&activated.choices))
+            {
                 pre.push(format!(
                     "choose {}",
                     activated
