@@ -69,7 +69,7 @@ fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
             continue;
         }
 
-        if ch == '\'' {
+        if ch == '\'' || ch == '’' || ch == '‘' {
             if word_start.is_some() {
                 word_end = byte_idx + ch.len_utf8();
             }
@@ -875,7 +875,136 @@ fn reject_known_partial_parse_line(normalized: &str, line: &str) -> Result<(), C
         )
         || normalized.contains(
             "create five tokens that are copies of another target creature you control. they gain haste. sacrifice them at the beginning of the next end step",
-        );
+        )
+        || normalized.contains("as a copy of any land card in a graveyard")
+        || normalized.contains("shuffles their graveyard into their library")
+        || normalized.contains("target player shuffles up to")
+        || normalized.contains("target player shuffles their library")
+        || normalized.contains("sacrifice it unless you discard")
+        || normalized.contains("unless you return a basic land card from your graveyard to your hand")
+        || normalized.contains("discard all the cards in your hand, then draw that many cards")
+        || normalized
+            .contains("each player discards all the cards in their hand, then creates that many")
+        || normalized.contains("divided as you choose among one, two, or three target")
+        || normalized
+            .contains("divided evenly, rounded down, among all creatures target opponent controls")
+        || normalized.contains("at random from your graveyard to your hand")
+        || normalized.contains("target player chooses a card in their hand and discards the rest")
+        || normalized.contains("each player sacrifices all permanents they control that are one or more colors")
+        || normalized.contains("destroy each creature that isn't all colors")
+        || normalized.contains("from among them to your hand")
+        || normalized
+            .contains("any number of target creature cards that each have a different mana value")
+        || normalized.contains("if a nontoken creature would enter and it wasn't cast, exile it instead")
+        || normalized.contains("phases out until this enchantment leaves the battlefield")
+        || normalized.contains("target opponent exiles the top four cards of their library")
+        || normalized.contains("you may have this creature enter as a copy of any creature on the battlefield")
+        || normalized.contains("target player untaps all basic lands they control")
+        || normalized.contains("equal to the sacrificed creature's mana value")
+        || normalized.contains("unless its controller pays {1} and 1 life")
+        || normalized.contains("target opponent sacrifices a creature of their choice, discards three cards")
+        || normalized.contains("target player loses 1 life and reveals their hand")
+        || normalized.contains("untap another target snow permanent")
+        || normalized.contains("return target permanent you both own and control to your hand")
+        || normalized.contains("destroy all auras and equipment attached to target creature")
+        || normalized
+            .contains("when this siege enters, target player sacrifices a creature or planeswalker of their choice and loses 1 life")
+        || normalized.contains("when this creature enters, each player may scry 1")
+        || normalized.contains("when this creature enters, sacrifice a permanent that's one or more colors")
+        || normalized
+            .contains("when this creature enters, scry x, where x is the number of creatures in your party")
+        || normalized.contains("deals 1 damage to each opponent and each creature they control")
+        || normalized
+            .contains("prevent all combat damage that would be dealt by creatures other than target creature this turn")
+        || normalized
+            .contains("become a copy of target creature, except it has this ability")
+        || normalized.contains(
+            "create x tokens that are copies of target creature you control, except they have \"when this token enters, it fights up to one target creature you don't control",
+        )
+        || normalized
+            .contains("up to three target creatures can't block this turn. destroy any of them that are walls")
+        || normalized
+            .contains("you take the initiative, gain 3 life, draw a card, and create a treasure token")
+        || normalized
+            .contains("return target enchantment card that isn't a god from your graveyard to your hand")
+        || normalized.contains(
+            "when that mana is spent to cast a creature spell that shares a creature type with your commander, scry 1",
+        )
+        || normalized.contains(
+            "when that mana is spent to cast a red instant or sorcery spell, copy that spell and you may choose new targets for the copy",
+        )
+        || normalized.contains("when you spend this mana to cast a dragon creature spell, scry 2")
+        || normalized
+            .contains("when this artifact enters, put a -1/-1 counter on each creature target player controls")
+        || normalized.contains("with a finality counter on it")
+        || normalized
+            .contains("{t}: create your choice of a blood token, a clue token, or a food token")
+        || normalized.contains(
+            "create three 1/1 green boar creature tokens with \"when this token dies, create a food token",
+        )
+        || normalized.contains(
+            "when you sacrifice one or more zombies this way, each opponent sacrifices that many creatures of their choice",
+        )
+        || normalized.contains(
+            "exile any number of historic cards from your graveyard with total mana value 30 or greater",
+        )
+        || normalized
+            .contains("as long as you control a demon, this creature has \"{b}: regenerate this creature")
+        || normalized.contains(
+            "all slivers have \"if this permanent would be put into a graveyard, you may put it on top of its owner's library instead",
+        )
+        || normalized.contains(
+            "when stangg enters, create stangg twin, a legendary 3/4 red and green human warrior creature token. exile that token when stangg leaves the battlefield. sacrifice stangg when that token leaves the battlefield",
+        )
+        || normalized.contains(
+            "enchanted creature has \"at the beginning of your upkeep, sacrifice this creature unless you discard a card",
+        )
+        || normalized.contains(
+            "you may exile a blue card with mana value x from your hand rather than pay this spell's mana cost",
+        )
+        || normalized.contains(
+            "return target creature or vehicle card from your graveyard to the battlefield. create a 1/1 colorless pilot creature token with \"this token saddles mounts and crews vehicles as though its power were 2 greater",
+        )
+        || normalized.contains(
+            "domain — {3}{g}: until end of turn, this creature gets +1/+1 for each basic land type among lands you control",
+        )
+        || normalized.contains("{t}: untap two other target legendary creatures")
+        || normalized.contains("warriors your team controls have haste")
+        || normalized
+            .contains("sacrifice a snow mountain: prevent all combat damage that would be dealt this turn")
+        || normalized.contains("exile this creature from your hand: add {g}")
+        || normalized.contains(
+            "corrupted — when this creature enters, sacrifice a creature unless an opponent has three or more poison counters",
+        )
+        || normalized.contains("untap two other target legendary creatures")
+        || normalized.contains("sacrifice an artifact: target creature can't block this turn")
+        || normalized.contains("target creature can't block this turn. activate only as a sorcery")
+        || normalized.contains("create your choice of a blood token, a clue token, or a food token")
+        || normalized.contains("when stangg enters, create stangg twin")
+        || normalized.contains("when this enters, create this twin")
+        || normalized.contains(
+            "then if an opponent has 0 or less life, draw seven cards. otherwise, exile this saga and you may cast it this turn",
+        )
+        || normalized.contains(
+            "until end of turn, this creature gets +1/+1 for each basic land type among lands you control",
+        )
+        || normalized.contains(
+            "animal may-ham — other spiders, boars, bats, bears, birds, cats, dogs, frogs, jackals, lizards, mice, otters, rabbits, raccoons, rats, squirrels, turtles, and wolves you control get +1/+1",
+        )
+        || normalized.contains("other kobold creatures you control get +1/+0")
+        || normalized.contains("other elves you control get +1/+1")
+        || normalized.contains("other snake creatures you control get +0/+1")
+        || normalized.contains("when this creature enters, mill two cards, then you may return a permanent card from your graveyard to your hand")
+        || normalized.contains("when this creature enters, mill three cards, then you may return a land card from your graveyard to your hand")
+        || normalized.contains("mill three cards, then you may return a creature card from your graveyard to your hand")
+        || normalized.contains("mill three cards, then you may return a creature or land card from your graveyard to your hand")
+        || normalized.contains("mill four cards, then return a creature card and a land card from your graveyard to your hand")
+        || normalized.contains("mill four cards, then you may return a permanent card from among them to your hand")
+        || normalized.contains("when this creature enters, return a zombie card at random from your graveyard to your hand")
+        || normalized
+            .contains("when this creature enters, return target creature card of an opponent's choice from your graveyard to your hand")
+        || normalized.contains("seek ")
+        || normalized.contains("perpetually");
 
     if unsupported_pattern {
         return Err(CardTextError::ParseError(format!(
@@ -926,6 +1055,27 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     if normalized.starts_with("play x random fast effects") {
         return Err(CardTextError::ParseError(format!(
             "unsupported debug-only line (line: '{line}')"
+        )));
+    }
+    if normalized.starts_with("escape") {
+        return Ok(LineAst::StaticAbility(StaticAbility::custom(
+            "escape",
+            line.trim().to_string(),
+        )));
+    }
+    if normalized == "unearth" || normalized.starts_with("unearth ") {
+        return Ok(LineAst::StaticAbility(StaticAbility::custom(
+            "unearth",
+            line.trim().to_string(),
+        )));
+    }
+    if normalized.starts_with("other")
+        && normalized.contains("have")
+        && normalized.contains("add one mana of any color")
+    {
+        return Ok(LineAst::StaticAbility(StaticAbility::custom(
+            "granted_quoted_ability",
+            line.to_string(),
         )));
     }
     if normalized.starts_with("activate only as a sorcery") {
@@ -1108,6 +1258,14 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
             ));
         }
         return Ok(LineAst::StaticAbilities(abilities));
+    }
+
+    if line_words.first().copied() == Some("haunt") {
+        parser_trace("parse_line:branch=keyword-haunt", &tokens);
+        return Ok(LineAst::StaticAbility(StaticAbility::custom(
+            "haunt",
+            "Haunt".to_string(),
+        )));
     }
 
     if let Some(actions) = parse_ability_line(&tokens) {
@@ -1630,12 +1788,57 @@ fn parse_spells_cost_modifier_line(
 
     let mut filter = parse_spell_filter(&tokens[..spells_idx]);
 
+    let between_tokens = &tokens[spells_idx + 1..cost_idx];
     let between_words = &clause_words[spells_idx + 1..cost_idx];
     if between_words
         .windows(2)
         .any(|window| window == ["you", "cast"])
     {
         filter.controller = Some(PlayerFilter::You);
+    }
+    if between_words
+        .iter()
+        .any(|word| *word == "opponent" || *word == "opponents")
+        && between_words
+            .iter()
+            .any(|word| *word == "cast" || *word == "casts")
+    {
+        filter.controller = Some(PlayerFilter::Opponent);
+    }
+
+    let mut target_player: Option<PlayerFilter> = None;
+    let mut target_object: Option<ObjectFilter> = None;
+    let mut targets_idx = None;
+    for (idx, token) in between_tokens.iter().enumerate() {
+        if token.is_word("target") || token.is_word("targets") {
+            if idx > 0 && between_tokens[idx - 1].is_word("that") {
+                targets_idx = Some(idx);
+                break;
+            }
+        }
+    }
+    if let Some(targets_idx) = targets_idx {
+        let target_tokens = &between_tokens[targets_idx + 1..];
+        if target_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing target in spells-cost modifier clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let target_words = words(target_tokens);
+        if target_words.starts_with(&["you"]) {
+            target_player = Some(PlayerFilter::You);
+        } else if target_words.starts_with(&["opponent"])
+            || target_words.starts_with(&["opponents"])
+        {
+            target_player = Some(PlayerFilter::Opponent);
+        } else if target_words.starts_with(&["player"]) || target_words.starts_with(&["players"]) {
+            target_player = Some(PlayerFilter::Any);
+        } else {
+            target_object = Some(parse_object_filter(target_tokens, false)?);
+        }
+        filter.targets_player = target_player;
+        filter.targets_object = target_object;
     }
 
     let amount_tokens = &tokens[cost_idx + 1..];
@@ -2186,8 +2389,19 @@ fn parse_best_object_filter_suffix(tokens: &[Token]) -> Option<ObjectFilter> {
         if tokens[start].as_word().is_none() {
             continue;
         }
-        let candidate = &tokens[start..];
-        let Ok(filter) = parse_object_filter(candidate, false) else {
+        let mut other = false;
+        let mut candidate = &tokens[start..];
+        if candidate
+            .first()
+            .is_some_and(|token| token.is_word("other") || token.is_word("another"))
+        {
+            other = true;
+            candidate = &candidate[1..];
+        }
+        if candidate.is_empty() {
+            continue;
+        }
+        let Ok(filter) = parse_object_filter(candidate, other) else {
             continue;
         };
         let score = object_filter_specificity_score(&filter);
@@ -2311,6 +2525,12 @@ fn parse_static_condition_clause(tokens: &[Token]) -> Result<StaticCondition, Ca
         || clause_words == ["it", "is", "equipped"]
     {
         return Ok(StaticCondition::SourceIsEquipped);
+    }
+    if clause_words == ["equipped", "creature", "is", "tapped"] {
+        return Ok(StaticCondition::EquippedCreatureTapped);
+    }
+    if clause_words == ["equipped", "creature", "is", "untapped"] {
+        return Ok(StaticCondition::EquippedCreatureUntapped);
     }
     if clause_words == ["it", "is", "your", "turn"] || clause_words == ["its", "your", "turn"] {
         return Ok(StaticCondition::YourTurn);
@@ -3028,6 +3248,10 @@ fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
 fn parse_where_x_is_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
     let words = words(tokens);
     if !words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+
+    if words.contains(&"creature") && words.contains(&"type") && words.contains(&"common") {
         return None;
     }
 
@@ -4010,7 +4234,6 @@ fn parse_filter_has_granted_ability_line(
     if subject_words
         .first()
         .is_some_and(|word| *word == "enchanted" || *word == "equipped")
-        || is_source_reference_words(&subject_words)
     {
         return Ok(None);
     }
@@ -4080,8 +4303,9 @@ fn parse_filter_has_granted_ability_line(
         Ok(subject) => subject,
         Err(_) => return Ok(None),
     };
-    let AnthemSubjectAst::Filter(filter) = subject else {
-        return Ok(None);
+    let filter = match subject {
+        AnthemSubjectAst::Filter(filter) => filter,
+        AnthemSubjectAst::Source => ObjectFilter::source(),
     };
     if let Some(static_ability) = granted_static {
         return Ok(Some(StaticAbility::grant_ability(filter, static_ability)));
@@ -4189,11 +4413,45 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
                 && (mana_words.contains(&"color")
                     || mana_words.contains(&"type")
                     || has_any_combination_mana);
+            let has_or_choice_mana = mana_words.contains(&"or");
             let uses_commander_identity = mana_words
                 .iter()
                 .any(|word| *word == "commander" || *word == "commanders")
                 && mana_words.contains(&"identity");
             if has_imprinted_colors || has_any_choice_mana || uses_commander_identity {
+                let mana_ast = parse_add_mana(mana_tokens, None)?;
+                let mut compile_ctx = CompileContext::new();
+                let (mut effects, choices) = compile_effect(&mana_ast, &mut compile_ctx)?;
+                if !choices.is_empty() {
+                    return Err(CardTextError::ParseError(
+                        "unsupported target choice in mana ability".to_string(),
+                    ));
+                }
+                effects.extend(extra_effects);
+                let mut ability = Ability {
+                    kind: AbilityKind::Mana(ManaAbility {
+                        mana_cost,
+                        mana: Vec::new(),
+                        effects: Some(effects),
+                        activation_condition: None,
+                    }),
+                    functional_zones: functional_zones.clone(),
+                    text: None,
+                };
+                if let Some(condition) = activation_condition
+                    && let AbilityKind::Mana(ref mut mana_ability) = ability.kind
+                {
+                    mana_ability.activation_condition = Some(condition);
+                }
+                let mut effects_ast = vec![mana_ast];
+                effects_ast.extend(extra_effects_ast);
+                return Ok(Some(ParsedAbility {
+                    ability,
+                    effects_ast: Some(effects_ast),
+                }));
+            }
+
+            if has_or_choice_mana && !extra_effects.is_empty() {
                 let mana_ast = parse_add_mana(mana_tokens, None)?;
                 let mut compile_ctx = CompileContext::new();
                 let (mut effects, choices) = compile_effect(&mana_ast, &mut compile_ctx)?;
@@ -4810,6 +5068,7 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
 
             let mut filter_tokens = &segment[1..];
             let mut generic_count = 1usize;
+            let mut top_only = false;
             if let Some((value, used)) = parse_number(filter_tokens) {
                 generic_count = value as usize;
                 filter_tokens = &filter_tokens[used..];
@@ -4823,7 +5082,9 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
                 .first()
                 .is_some_and(|token| token.is_word("top"))
             {
-                // "Exile the top ... card of your graveyard" still maps through object filters.
+                // "Exile the top ... card of your graveyard" should select only the
+                // top-most matching object in that ordered zone.
+                top_only = true;
                 filter_tokens = &filter_tokens[1..];
             }
             while filter_tokens.first().is_some_and(|token| {
@@ -4877,15 +5138,17 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
             let tag = format!("exile_cost_{exile_tag_id}");
             exile_tag_id += 1;
             let choice_zone = filter.zone.unwrap_or(Zone::Battlefield);
-            cost_effects.push(Effect::new(
-                crate::effects::ChooseObjectsEffect::new(
-                    filter,
-                    generic_count,
-                    PlayerFilter::You,
-                    tag.clone(),
-                )
-                .in_zone(choice_zone),
-            ));
+            let mut choose_effect = crate::effects::ChooseObjectsEffect::new(
+                filter,
+                generic_count,
+                PlayerFilter::You,
+                tag.clone(),
+            )
+            .in_zone(choice_zone);
+            if top_only {
+                choose_effect = choose_effect.top_only();
+            }
+            cost_effects.push(Effect::new(choose_effect));
             cost_effects.push(Effect::exile(ChooseSpec::tagged(tag)));
             continue;
         }
@@ -5440,7 +5703,7 @@ fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility>, CardText
 
 fn parse_cant_restrictions(
     tokens: &[Token],
-) -> Result<Option<Vec<crate::effect::Restriction>>, CardTextError> {
+) -> Result<Option<Vec<ParsedCantRestriction>>, CardTextError> {
     if find_negation_span(tokens).is_none() {
         return Ok(None);
     }
@@ -5470,7 +5733,7 @@ fn parse_cant_restrictions(
 
 fn parse_cant_restriction_clause(
     tokens: &[Token],
-) -> Result<Option<crate::effect::Restriction>, CardTextError> {
+) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
 
     let normalized = words(tokens)
@@ -5527,12 +5790,15 @@ fn parse_cant_restriction_clause(
         _ => return parse_negated_object_restriction_clause(tokens),
     };
 
-    Ok(Some(restriction))
+    Ok(Some(ParsedCantRestriction {
+        restriction,
+        target: None,
+    }))
 }
 
 fn parse_negated_object_restriction_clause(
     tokens: &[Token],
-) -> Result<Option<crate::effect::Restriction>, CardTextError> {
+) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
 
     let Some((neg_start, neg_end)) = find_negation_span(tokens) else {
@@ -5546,11 +5812,33 @@ fn parse_negated_object_restriction_clause(
         )));
     }
 
-    let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported subject in negated restriction clause (clause: '{}')",
-            words(tokens).join(" ")
-        )));
+    let (filter, target) = if starts_with_target_indicator(&subject_tokens) {
+        let target = parse_target_phrase(&subject_tokens)?;
+        let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported target restriction subject (clause: '{}')",
+                words(tokens).join(" ")
+            ))
+        })?;
+        if !filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        {
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        }
+        (filter, Some(target))
+    } else {
+        let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported subject in negated restriction clause (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        };
+        (filter, None)
     };
 
     let remainder_tokens = trim_commas(&tokens[neg_end..]);
@@ -5579,7 +5867,55 @@ fn parse_negated_object_restriction_clause(
         }
     };
 
-    Ok(Some(restriction))
+    Ok(Some(ParsedCantRestriction { restriction, target }))
+}
+
+#[derive(Debug, Clone)]
+struct ParsedCantRestriction {
+    restriction: crate::effect::Restriction,
+    target: Option<TargetAst>,
+}
+
+fn starts_with_target_indicator(tokens: &[Token]) -> bool {
+    let mut idx = 0usize;
+    if tokens.get(idx).is_some_and(|token| token.is_word("any"))
+        && tokens
+            .get(idx + 1)
+            .is_some_and(|token| token.is_word("number"))
+        && tokens.get(idx + 2).is_some_and(|token| token.is_word("of"))
+    {
+        idx += 3;
+    }
+
+    if tokens.get(idx).is_some_and(|token| token.is_word("up"))
+        && tokens.get(idx + 1).is_some_and(|token| token.is_word("to"))
+    {
+        idx += 2;
+        if let Some((_, used)) = parse_number(&tokens[idx..]) {
+            idx += used;
+        }
+    } else if let Some((_, used)) = parse_target_count_range_prefix(&tokens[idx..]) {
+        idx += used;
+    } else if let Some((_, used)) = parse_number(&tokens[idx..])
+        && tokens
+            .get(idx + used)
+            .is_some_and(|token| token.is_word("target"))
+    {
+        idx += used;
+    }
+
+    if tokens.get(idx).is_some_and(|token| token.is_word("on")) {
+        idx += 1;
+    }
+
+    if tokens
+        .get(idx)
+        .is_some_and(|token| token.is_word("another"))
+    {
+        idx += 1;
+    }
+
+    tokens.get(idx).is_some_and(|token| token.is_word("target"))
 }
 
 fn find_negation_span(tokens: &[Token]) -> Option<(usize, usize)> {
@@ -5587,10 +5923,10 @@ fn find_negation_span(tokens: &[Token]) -> Option<(usize, usize)> {
         let Some(word) = token.as_word() else {
             continue;
         };
-        if matches!(word, "cant" | "cannot" | "doesnt") {
+        if matches!(word, "cant" | "cannot" | "doesnt" | "dont") {
             return Some((idx, idx + 1));
         }
-        if (word == "does" || word == "can")
+        if (word == "does" || word == "do" || word == "can")
             && tokens.get(idx + 1).is_some_and(|next| next.is_word("not"))
         {
             return Some((idx, idx + 2));
@@ -5939,6 +6275,17 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
     )))
 }
 
+fn strip_leading_trigger_intro(tokens: &[Token]) -> &[Token] {
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("when") || token.is_word("whenever") || token.is_word("at"))
+    {
+        &tokens[1..]
+    } else {
+        tokens
+    }
+}
+
 fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> {
     let words = words(tokens);
 
@@ -5962,6 +6309,23 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
     if let Some(or_idx) = tokens.iter().position(|token| token.is_word("or")) {
         let left_tokens = &tokens[..or_idx];
         let right_tokens = &tokens[or_idx + 1..];
+        if !left_tokens.is_empty()
+            && !right_tokens.is_empty()
+            && let (Ok(left), Ok(right)) = (
+                parse_trigger_clause(left_tokens),
+                parse_trigger_clause(right_tokens),
+            )
+        {
+            return Ok(TriggerSpec::Either(Box::new(left), Box::new(right)));
+        }
+    }
+    if let Some(and_idx) = tokens.iter().position(|token| token.is_word("and"))
+        && tokens
+            .get(and_idx + 1)
+            .is_some_and(|token| token.is_word("whenever") || token.is_word("when") || token.is_word("at"))
+    {
+        let left_tokens = strip_leading_trigger_intro(&tokens[..and_idx]);
+        let right_tokens = strip_leading_trigger_intro(&tokens[and_idx + 1..]);
         if !left_tokens.is_empty()
             && !right_tokens.is_empty()
             && let (Ok(left), Ok(right)) = (
@@ -6431,7 +6795,18 @@ fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>,
         if filter_tokens.is_empty() || is_unqualified_spell {
             Ok(None)
         } else {
-            Ok(Some(parse_object_filter(filter_tokens, false)?))
+            match parse_object_filter(filter_tokens, false) {
+                Ok(filter) => Ok(Some(filter)),
+                Err(err) => {
+                    if filter_words.contains(&"graveyard") || filter_words.contains(&"exile") {
+                        // Cast/copy origin zones (e.g. "from your graveyard") are not modeled in
+                        // trigger object filters yet; keep trigger semantics without dropping line.
+                        Ok(None)
+                    } else {
+                        Err(err)
+                    }
+                }
+            }
         }
     };
 
@@ -7027,6 +7402,15 @@ fn parse_sentence_unless_pays(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>
     if before_words.first() == Some(&"counter") {
         return Ok(None);
     }
+    // Ignore "unless ... pays" that appears inside quoted token rules text.
+    // Example: create token with "{1}, Sacrifice this token: Counter ... unless ...".
+    if before_words.first() == Some(&"create")
+        && before_words.contains(&"token")
+        && before_words.contains(&"sacrifice")
+        && before_words.contains(&"counter")
+    {
+        return Ok(None);
+    }
 
     // Handle "each opponent/player ... unless" by wrapping in ForEachOpponent/ForEachPlayer.
     // Structure: ForEachOpponent { [UnlessPays/UnlessAction { per-player effects }] }
@@ -7485,7 +7869,9 @@ fn is_negated_untap_clause(words: &[&str]) -> bool {
     }
     let has_untap = words.contains(&"untap") || words.contains(&"untaps");
     let has_negation = words.contains(&"doesnt")
+        || words.contains(&"dont")
         || words.windows(2).any(|pair| pair == ["does", "not"])
+        || words.windows(2).any(|pair| pair == ["do", "not"])
         || words.contains(&"cant")
         || words.windows(2).any(|pair| pair == ["can", "not"]);
     has_untap && has_negation
@@ -9205,13 +9591,29 @@ fn parse_cant_effect_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>
         )));
     };
 
-    let effects = restrictions
-        .into_iter()
-        .map(|restriction| EffectAst::Cant {
-            restriction,
+    let mut target: Option<TargetAst> = None;
+    let mut effects = Vec::new();
+    for parsed in restrictions {
+        if let Some(parsed_target) = parsed.target {
+            if let Some(existing) = &target {
+                if *existing != parsed_target {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported mixed restriction targets (clause: '{}')",
+                        words(&clause_tokens).join(" ")
+                    )));
+                }
+            } else {
+                target = Some(parsed_target);
+            }
+        }
+        effects.push(EffectAst::Cant {
+            restriction: parsed.restriction,
             duration: duration.clone(),
-        })
-        .collect();
+        });
+    }
+    if let Some(target) = target {
+        effects.insert(0, EffectAst::TargetOnly { target });
+    }
 
     Ok(Some(effects))
 }
@@ -9570,6 +9972,7 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "forest" => Some(Subtype::Forest),
         "urzas" => Some(Subtype::Urzas),
         "gate" | "gates" => Some(Subtype::Gate),
+        "locus" | "loci" => Some(Subtype::Locus),
         "advisor" => Some(Subtype::Advisor),
         "ally" | "allies" => Some(Subtype::Ally),
         "angel" => Some(Subtype::Angel),
@@ -9654,6 +10057,7 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "mole" => Some(Subtype::Mole),
         "monk" => Some(Subtype::Monk),
         "moonfolk" => Some(Subtype::Moonfolk),
+        "mount" | "mounts" => Some(Subtype::Mount),
         "mouse" => Some(Subtype::Mouse),
         "mutant" => Some(Subtype::Mutant),
         "myr" => Some(Subtype::Myr),
@@ -10064,6 +10468,12 @@ fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPredicate> {
             return Some(IfResultPredicate::DidNot);
         }
     }
+    if words.len() >= 2 && words[0] == "you" && words[1] == "cant" {
+        return Some(IfResultPredicate::DidNot);
+    }
+    if words.len() >= 3 && words[0] == "you" && words[1] == "can" && words[2] == "not" {
+        return Some(IfResultPredicate::DidNot);
+    }
     if words.len() >= 2 && words[0] == "they" && (words[1] == "dont" || words[1] == "do") {
         if words.len() >= 3 && words[2] == "not" {
             return Some(IfResultPredicate::DidNot);
@@ -10071,6 +10481,12 @@ fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPredicate> {
         if words[1] == "dont" {
             return Some(IfResultPredicate::DidNot);
         }
+    }
+    if words.len() >= 2 && words[0] == "they" && words[1] == "cant" {
+        return Some(IfResultPredicate::DidNot);
+    }
+    if words.len() >= 3 && words[0] == "they" && words[1] == "can" && words[2] == "not" {
+        return Some(IfResultPredicate::DidNot);
     }
 
     None
@@ -10624,6 +11040,17 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     }
 
     let clause_words = words(tokens);
+    if clause_words
+        .iter()
+        .any(|word| *word == "choose" || *word == "chooses")
+        && clause_words.contains(&"creature")
+        && clause_words.contains(&"type")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported creature-type choice clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     if is_mana_replacement_clause_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported mana replacement clause (clause: '{}')",
@@ -10805,6 +11232,13 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     }
 
     let subject_tokens = &tokens[..verb_idx];
+    let subject_words = words(subject_tokens);
+    if is_target_player_dealt_damage_by_this_turn_subject(&subject_words) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported combat-history player subject (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
     if matches!(verb, Verb::Gain) && !subject_tokens.is_empty() {
         let rest_words = words(&tokens[verb_idx + 1..]);
         let has_protection = rest_words.contains(&"protection");
@@ -10823,6 +11257,20 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     let rest = &tokens[verb_idx + 1..];
 
     parse_effect_with_verb(verb, Some(subject), rest)
+}
+
+fn is_target_player_dealt_damage_by_this_turn_subject(words: &[&str]) -> bool {
+    if words.len() < 8 {
+        return false;
+    }
+    if !(words.starts_with(&["target", "player"]) || words.starts_with(&["target", "players"])) {
+        return false;
+    }
+    words.windows(6)
+        .any(|window| window == ["dealt", "damage", "by", "this", "creature", "this"])
+        && words
+            .windows(2)
+            .any(|window| window == ["this", "turn"])
 }
 
 fn is_mana_replacement_clause_words(words: &[&str]) -> bool {
@@ -11459,38 +11907,53 @@ fn parse_subject(tokens: &[Token]) -> SubjectAst {
         return SubjectAst::This;
     }
 
-    if words.starts_with(&["you"]) {
+    let mut start = 0usize;
+    if words.starts_with(&["any", "number", "of"]) {
+        start = 3;
+    }
+
+    let mut slice = &words[start..];
+    if let Some(have_idx) = slice
+        .iter()
+        .position(|word| *word == "have" || *word == "has")
+    {
+        if have_idx + 1 < slice.len() {
+            slice = &slice[have_idx + 1..];
+        }
+    }
+
+    if slice.starts_with(&["you"]) {
         return SubjectAst::Player(PlayerAst::You);
     }
 
-    if words.starts_with(&["target", "opponent"]) || words.starts_with(&["target", "opponents"]) {
+    if slice.starts_with(&["target", "opponent"]) || slice.starts_with(&["target", "opponents"]) {
         return SubjectAst::Player(PlayerAst::TargetOpponent);
     }
 
-    if words.starts_with(&["target", "player"]) || words.starts_with(&["target", "players"]) {
+    if slice.starts_with(&["target", "player"]) || slice.starts_with(&["target", "players"]) {
         return SubjectAst::Player(PlayerAst::Target);
     }
 
-    if words.starts_with(&["opponent"])
-        || words.starts_with(&["opponents"])
-        || words.starts_with(&["an", "opponent"])
+    if slice.starts_with(&["opponent"])
+        || slice.starts_with(&["opponents"])
+        || slice.starts_with(&["an", "opponent"])
     {
         return SubjectAst::Player(PlayerAst::Opponent);
     }
 
-    if words.starts_with(&["defending", "player"]) {
+    if slice.starts_with(&["defending", "player"]) {
         return SubjectAst::Player(PlayerAst::Defending);
     }
 
-    if words.starts_with(&["that", "player"]) {
+    if slice.starts_with(&["that", "player"]) {
         return SubjectAst::Player(PlayerAst::That);
     }
 
-    if words.starts_with(&["its", "controller"]) {
+    if slice.starts_with(&["its", "controller"]) {
         return SubjectAst::Player(PlayerAst::ItsController);
     }
 
-    if words.starts_with(&["this"]) || words.starts_with(&["thiss"]) {
+    if slice.starts_with(&["this"]) || slice.starts_with(&["thiss"]) {
         return SubjectAst::This;
     }
 
@@ -11647,6 +12110,31 @@ fn parse_deal_damage_with_amount(
         });
     }
 
+    if target_words.starts_with(&["each", "opponent", "and", "each"])
+        && target_words.contains(&"creature")
+        && target_words.contains(&"planeswalker")
+        && (target_words.windows(2).any(|pair| pair == ["they", "control"])
+            || target_words
+                .windows(3)
+                .any(|triplet| triplet == ["that", "player", "controls"]))
+    {
+        let mut filter = ObjectFilter::default();
+        filter.card_types = vec![CardType::Creature, CardType::Planeswalker];
+        filter.controller = Some(PlayerFilter::IteratedPlayer);
+        return Ok(EffectAst::ForEachOpponent {
+            effects: vec![
+                EffectAst::DealDamage {
+                    amount: amount.clone(),
+                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                },
+                EffectAst::DealDamageEach {
+                    amount: amount.clone(),
+                    filter,
+                },
+            ],
+        });
+    }
+
     if matches!(target_words.first(), Some(&"each") | Some(&"all")) {
         if target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
@@ -11753,6 +12241,16 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
 }
 
 fn parse_counter(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.contains(&"ability")
+        && (clause_words.contains(&"activated") || clause_words.contains(&"triggered"))
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported counter-ability target clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
     if let Some(unless_idx) = tokens.iter().position(|token| token.is_word("unless")) {
         let target_tokens = &tokens[..unless_idx];
         let target = parse_target_phrase(target_tokens)?;
@@ -12220,6 +12718,18 @@ fn parse_counter_target_count_prefix(
         }
     }
 
+    if each_prefix
+        && tokens.get(idx).is_some_and(|token| token.is_word("x"))
+        && tokens
+            .get(idx + 1)
+            .is_some_and(|token| token.is_word("target"))
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic target count 'each of X target' (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
     if each_prefix && tokens.get(idx).is_some_and(|token| token.is_word("target")) {
         return Ok(Some((ChoiceCount::any_number(), idx)));
     }
@@ -12384,6 +12894,14 @@ fn parse_discard(
 }
 
 fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.contains(&"unless") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported return-unless clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
     let to_idx = tokens
         .iter()
         .rposition(|token| token.is_word("to"))
@@ -12423,6 +12941,19 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     }
 
     let target_words = words(target_tokens);
+    if let Some(and_idx) = target_tokens.iter().position(|token| token.is_word("and"))
+        && and_idx > 0
+    {
+        let tail_words = words(&target_tokens[and_idx + 1..]);
+        let starts_multi_target = tail_words.first() == Some(&"target")
+            || (tail_words.starts_with(&["up", "to"]) && tail_words.contains(&"target"));
+        if starts_multi_target {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported multi-target return clause (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
+    }
     if target_words
         .first()
         .is_some_and(|word| *word == "all" || *word == "each")
@@ -12648,6 +13179,14 @@ fn parse_add_mana(
         });
     }
 
+    if let Some(available_colors) = parse_or_mana_color_choices(tokens)? {
+        return Ok(EffectAst::AddManaAnyColor {
+            amount: Value::Fixed(1),
+            player,
+            available_colors: Some(available_colors),
+        });
+    }
+
     let any_one = clause_words
         .windows(3)
         .any(|window| window == ["any", "one", "color"] || window == ["any", "one", "type"]);
@@ -12817,6 +13356,46 @@ fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::Color> {
     }
 }
 
+fn parse_or_mana_color_choices(
+    tokens: &[Token],
+) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.contains(&"or") {
+        return Ok(None);
+    }
+
+    let mut colors = Vec::new();
+    let mut has_or = false;
+    for token in tokens {
+        let Some(word) = token.as_word() else {
+            continue;
+        };
+        if word == "or" {
+            has_or = true;
+            continue;
+        }
+        if matches!(word, "to" | "your" | "their" | "its" | "mana" | "pool") {
+            continue;
+        }
+        if let Ok(symbol) = parse_mana_symbol(word) {
+            let Some(color) = mana_symbol_to_color(symbol) else {
+                return Ok(None);
+            };
+            if !colors.contains(&color) {
+                colors.push(color);
+            }
+            continue;
+        }
+        return Ok(None);
+    }
+
+    if !has_or || colors.len() < 2 {
+        return Ok(None);
+    }
+
+    Ok(Some(colors))
+}
+
 fn parse_any_combination_mana_colors(
     tokens: &[Token],
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
@@ -12969,6 +13548,12 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         .collect();
     let tail_tokens = &tokens[idx + token_idx + 1..];
     let tail_words = remaining_words[token_idx + 1..].to_vec();
+    if tail_words.starts_with(&["for", "each"]) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic token count in create clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     if name_words.is_empty() {
         if tail_words
             .iter()
@@ -13510,6 +14095,13 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
     } else if let Some((count, used)) = parse_target_count_range_prefix(&tokens[idx..]) {
         target_count = Some(count);
         idx += used;
+    } else if let Some((count, used)) = parse_number(&tokens[idx..])
+        && tokens
+            .get(idx + used)
+            .is_some_and(|token| token.is_word("target"))
+    {
+        target_count = Some(ChoiceCount::exactly(count as usize));
+        idx += used;
     }
 
     if tokens.get(idx).is_some_and(|token| token.is_word("x"))
@@ -13764,6 +14356,10 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         all_words.remove(0);
     }
 
+    if is_source_reference_words(&all_words) {
+        filter.source = true;
+    }
+
     if all_words.len() == 1 && (all_words[0] == "it" || all_words[0] == "them") {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
@@ -13834,6 +14430,18 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                 ["that", "player", "own"] | ["that", "player", "owns"] => {
                     filter.owner = Some(PlayerFilter::IteratedPlayer);
                 }
+                ["target", "player", "control"] | ["target", "player", "controls"] => {
+                    filter.controller = Some(PlayerFilter::target_player());
+                }
+                ["target", "opponent", "control"] | ["target", "opponent", "controls"] => {
+                    filter.controller = Some(PlayerFilter::target_opponent());
+                }
+                ["target", "player", "own"] | ["target", "player", "owns"] => {
+                    filter.owner = Some(PlayerFilter::target_player());
+                }
+                ["target", "opponent", "own"] | ["target", "opponent", "owns"] => {
+                    filter.owner = Some(PlayerFilter::target_opponent());
+                }
                 ["you", "dont", "control"] => {
                     filter.controller = Some(PlayerFilter::Opponent);
                 }
@@ -13894,6 +14502,16 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         }
 
         without_idx += 1;
+    }
+
+    let has_tap_activated_ability = all_words
+        .windows(9)
+        .any(|window| window == ["has", "an", "activated", "ability", "with", "t", "in", "its", "cost"])
+        || all_words
+            .windows(8)
+            .any(|window| window == ["has", "activated", "ability", "with", "t", "in", "its", "cost"]);
+    if has_tap_activated_ability {
+        filter.has_tap_activated_ability = true;
     }
 
     for idx in 0..all_words.len() {
@@ -14046,6 +14664,12 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             filter.colors = Some(existing.union(color));
         }
 
+        if let Some(supertype) = parse_supertype_word(word)
+            && !filter.supertypes.contains(&supertype)
+        {
+            filter.supertypes.push(supertype);
+        }
+
         if let Some(card_type) = parse_card_type(word)
             && is_permanent_type(card_type)
         {
@@ -14100,8 +14724,14 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             filter.card_types = any_types;
         }
     } else if let Some(types) = segment_types.into_iter().next() {
+        let has_and = all_words.contains(&"and");
+        let has_or = all_words.contains(&"or");
         if types.len() > 1 {
-            filter.all_card_types = types;
+            if has_and && !has_or {
+                filter.card_types = types;
+            } else {
+                filter.all_card_types = types;
+            }
         } else if types.len() == 1 {
             filter.card_types = types;
         }
@@ -14153,6 +14783,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
         || filter.name.is_some()
+        || filter.source
         || filter.alternative_cast.is_some()
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
@@ -14188,6 +14819,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
         || filter.name.is_some()
+        || filter.source
         || filter.alternative_cast.is_some()
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()

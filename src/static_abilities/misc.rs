@@ -27,6 +27,49 @@ fn describe_counter_type(counter_type: CounterType) -> String {
     }
 }
 
+fn card_type_word(card_type: crate::types::CardType) -> &'static str {
+    match card_type {
+        crate::types::CardType::Artifact => "artifact",
+        crate::types::CardType::Battle => "battle",
+        crate::types::CardType::Creature => "creature",
+        crate::types::CardType::Enchantment => "enchantment",
+        crate::types::CardType::Instant => "instant",
+        crate::types::CardType::Kindred => "kindred",
+        crate::types::CardType::Land => "land",
+        crate::types::CardType::Planeswalker => "planeswalker",
+        crate::types::CardType::Sorcery => "sorcery",
+    }
+}
+
+fn pluralize(word: &str) -> String {
+    if word.ends_with('s') {
+        word.to_string()
+    } else {
+        format!("{word}s")
+    }
+}
+
+fn join_with_and(items: &[String]) -> String {
+    match items.len() {
+        0 => String::new(),
+        1 => items[0].clone(),
+        2 => format!("{} and {}", items[0], items[1]),
+        _ => {
+            let mut out = items[..items.len() - 1].join(", ");
+            out.push_str(", and ");
+            out.push_str(&items[items.len() - 1]);
+            out
+        }
+    }
+}
+
+fn capitalize_first(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+        None => String::new(),
+    }
+}
 /// Doesn't untap during your untap step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DoesntUntap;
@@ -59,7 +102,7 @@ impl StaticAbilityKind for EntersTapped {
     }
 
     fn display(&self) -> String {
-        "Enters the battlefield tapped".to_string()
+        "This enters tapped".to_string()
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -658,6 +701,41 @@ impl StaticAbilityKind for EnterTappedForFilter {
     }
 
     fn display(&self) -> String {
+        let filter = &self.filter;
+        let is_simple_type_list = !filter.card_types.is_empty()
+            && filter.all_card_types.is_empty()
+            && filter.subtypes.is_empty()
+            && filter.supertypes.is_empty()
+            && filter.colors.is_none()
+            && filter.excluded_card_types.is_empty()
+            && filter.excluded_subtypes.is_empty()
+            && filter.excluded_supertypes.is_empty()
+            && filter.excluded_colors.is_empty()
+            && !filter.token
+            && !filter.nontoken
+            && !filter.tapped
+            && !filter.untapped
+            && !filter.attacking
+            && !filter.blocking
+            && filter.controller.is_none()
+            && filter.owner.is_none()
+            && matches!(filter.zone, None | Some(Zone::Battlefield))
+            && filter.tagged_constraints.is_empty()
+            && filter.targets_object.is_none()
+            && filter.targets_player.is_none()
+            && filter.custom_static_markers.is_empty()
+            && filter.excluded_custom_static_markers.is_empty();
+
+        if is_simple_type_list && filter.card_types.len() >= 2 {
+            let words = filter
+                .card_types
+                .iter()
+                .map(|card_type| pluralize(card_type_word(*card_type)))
+                .collect::<Vec<_>>();
+            let list = join_with_and(&words);
+            return format!("{} enter tapped", capitalize_first(&list));
+        }
+
         format!("{} enter the battlefield tapped", self.filter.description())
     }
 

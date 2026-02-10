@@ -79,11 +79,32 @@ pub(super) fn parse_text_with_annotations(
             continue;
         }
 
-        if !allow_unsupported && let Some(pending) = pending_modal.as_mut() {
+        if let Some(pending) = pending_modal.as_mut() {
             if is_bullet_line(info.raw_line.as_str()) {
                 let tokens = tokenize_line(&info.normalized.normalized, info.line_index);
-                let effects_ast = parse_effect_sentences(&tokens)?;
+                let effects_ast = match parse_effect_sentences(&tokens) {
+                    Ok(effects_ast) => effects_ast,
+                    Err(err) if allow_unsupported => {
+                        builder = push_unsupported_marker(
+                            builder,
+                            info.raw_line.as_str(),
+                            format!("{err:?}"),
+                        );
+                        idx += 1;
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                };
                 if effects_ast.is_empty() {
+                    if allow_unsupported {
+                        builder = push_unsupported_marker(
+                            builder,
+                            info.raw_line.as_str(),
+                            "modal bullet line produced no effects".to_string(),
+                        );
+                        idx += 1;
+                        continue;
+                    }
                     return Err(CardTextError::ParseError(format!(
                         "modal bullet line produced no effects: '{}'",
                         info.raw_line
@@ -95,7 +116,19 @@ pub(super) fn parse_text_with_annotations(
                     &mut annotations,
                     &info.normalized,
                 );
-                let effects = compile_statement_effects(&effects_ast)?;
+                let effects = match compile_statement_effects(&effects_ast) {
+                    Ok(effects) => effects,
+                    Err(err) if allow_unsupported => {
+                        builder = push_unsupported_marker(
+                            builder,
+                            info.raw_line.as_str(),
+                            format!("{err:?}"),
+                        );
+                        idx += 1;
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                };
                 let description = info
                     .raw_line
                     .trim_start()
@@ -114,12 +147,12 @@ pub(super) fn parse_text_with_annotations(
             continue;
         }
 
-        if !allow_unsupported {
-            let next_is_bullet = line_infos
-                .get(idx + 1)
-                .is_some_and(|next| is_bullet_line(next.raw_line.as_str()));
-            if next_is_bullet {
-                if let Some(header) = parse_modal_header(info)? {
+        let next_is_bullet = line_infos
+            .get(idx + 1)
+            .is_some_and(|next| is_bullet_line(next.raw_line.as_str()));
+        if next_is_bullet {
+            match parse_modal_header(info) {
+                Ok(Some(header)) => {
                     pending_modal = Some(PendingModal {
                         header,
                         modes: Vec::new(),
@@ -127,6 +160,14 @@ pub(super) fn parse_text_with_annotations(
                     idx += 1;
                     continue;
                 }
+                Ok(None) => {}
+                Err(err) if allow_unsupported => {
+                    builder =
+                        push_unsupported_marker(builder, info.raw_line.as_str(), format!("{err:?}"));
+                    idx += 1;
+                    continue;
+                }
+                Err(err) => return Err(err),
             }
         }
 

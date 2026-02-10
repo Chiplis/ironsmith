@@ -271,8 +271,28 @@ pub struct SpellFilter {
     /// Colors the spell must have
     pub colors: Option<ColorSet>,
 
+    /// If set, only match spells that target a player matching this filter.
+    pub targets_player: Option<PlayerFilter>,
+
+    /// If set, only match spells that target an object matching this filter.
+    pub targets_object: Option<ObjectFilter>,
+
     /// Controller filter
     pub controller: Option<PlayerFilter>,
+}
+
+impl SpellFilter {
+    pub fn description(&self) -> String {
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(Zone::Stack);
+        filter.card_types = self.card_types.clone();
+        filter.subtypes = self.subtypes.clone();
+        filter.colors = self.colors;
+        filter.controller = self.controller.clone();
+        filter.targets_player = self.targets_player.clone();
+        filter.targets_object = self.targets_object.clone().map(Box::new);
+        filter.description()
+    }
 }
 
 // === Triggered Abilities ===

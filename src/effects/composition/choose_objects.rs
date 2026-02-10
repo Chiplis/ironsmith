@@ -66,6 +66,8 @@ pub struct ChooseObjectsEffect {
     pub description: &'static str,
     /// Whether this choice represents a library search.
     pub is_search: bool,
+    /// Restrict selection to only the top-most matching object in ordered zones.
+    pub top_only: bool,
 }
 
 impl ChooseObjectsEffect {
@@ -84,6 +86,7 @@ impl ChooseObjectsEffect {
             tag: tag.into(),
             description: "Choose",
             is_search: false,
+            top_only: false,
         }
     }
 
@@ -102,6 +105,12 @@ impl ChooseObjectsEffect {
     /// Mark this choice as a library search (respects search restrictions).
     pub fn as_search(mut self) -> Self {
         self.is_search = true;
+        self
+    }
+
+    /// Restrict selection to the top-most matching object in ordered zones.
+    pub fn top_only(mut self) -> Self {
+        self.top_only = true;
         self
     }
 }
@@ -132,7 +141,7 @@ impl EffectExecutor for ChooseObjectsEffect {
         // Find candidates based on the zone - check the filter's zone if set
         let search_zone = self.filter.zone.unwrap_or(self.zone);
 
-        let candidate_count = match search_zone {
+        let mut candidate_count = match search_zone {
             Zone::Battlefield => game
                 .battlefield
                 .iter()
@@ -165,17 +174,33 @@ impl EffectExecutor for ChooseObjectsEffect {
             }
             Zone::Graveyard => {
                 if let Some(player) = game.player(chooser_id) {
-                    player
-                        .graveyard
-                        .iter()
-                        .filter_map(|&id| game.object(id))
-                        .filter(|obj| {
-                            if self.filter.other && obj.id == source {
-                                return false;
-                            }
-                            self.filter.matches(obj, &filter_ctx, game)
-                        })
-                        .count()
+                    if self.top_only {
+                        player
+                            .graveyard
+                            .iter()
+                            .rev()
+                            .filter_map(|&id| game.object(id))
+                            .find(|obj| {
+                                if self.filter.other && obj.id == source {
+                                    return false;
+                                }
+                                self.filter.matches(obj, &filter_ctx, game)
+                            })
+                            .map(|_| 1usize)
+                            .unwrap_or(0usize)
+                    } else {
+                        player
+                            .graveyard
+                            .iter()
+                            .filter_map(|&id| game.object(id))
+                            .filter(|obj| {
+                                if self.filter.other && obj.id == source {
+                                    return false;
+                                }
+                                self.filter.matches(obj, &filter_ctx, game)
+                            })
+                            .count()
+                    }
                 } else {
                     0
                 }
@@ -194,6 +219,10 @@ impl EffectExecutor for ChooseObjectsEffect {
                     .count()
             }
         };
+
+        if self.top_only && candidate_count > 1 {
+            candidate_count = 1;
+        }
 
         if candidate_count < self.count.min {
             return Err(CostValidationError::Other(format!(
@@ -253,13 +282,24 @@ impl EffectExecutor for ChooseObjectsEffect {
                 let player = game
                     .player(chooser_id)
                     .ok_or(ExecutionError::PlayerNotFound(chooser_id))?;
-                player
-                    .graveyard
-                    .iter()
-                    .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                    .filter(|(_, obj)| self.filter.matches(obj, &filter_ctx, game))
-                    .map(|(id, _)| id)
-                    .collect()
+                if self.top_only {
+                    player
+                        .graveyard
+                        .iter()
+                        .rev()
+                        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                        .find(|(_, obj)| self.filter.matches(obj, &filter_ctx, game))
+                        .map(|(id, _)| vec![id])
+                        .unwrap_or_default()
+                } else {
+                    player
+                        .graveyard
+                        .iter()
+                        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                        .filter(|(_, obj)| self.filter.matches(obj, &filter_ctx, game))
+                        .map(|(id, _)| id)
+                        .collect()
+                }
             }
             _ => {
                 // For other zones, use the generic objects_in_zone method

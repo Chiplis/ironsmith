@@ -449,7 +449,7 @@ fn test_parse_trigger_deals_combat_damage_with_subject_filter() {
     );
     let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        joined.contains("whenever a permanent vampire you control deals combat damage to a player")
+        joined.contains("whenever a vampire you control deals combat damage to a player")
             && !joined.contains("whenever this creature deals combat damage to a player"),
         "expected trigger subject to remain filtered, got {joined}"
     );
@@ -469,7 +469,7 @@ fn test_parse_trigger_this_deals_damage_to_filtered_creature_targets_damage_reci
     );
     let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        joined.contains("whenever this permanent deals damage to permanent vampire"),
+        joined.contains("whenever this permanent deals damage to vampire"),
         "expected trigger to include damaged-object filter, got {joined}"
     );
     assert!(
@@ -822,6 +822,163 @@ Phasing",
 }
 
 #[test]
+fn test_parse_unearth_keyword_line_without_fallback() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Unearth Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: You may tap or untap another target permanent.\n\
+Unearth {U} ({U}: Return this card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. Unearth only as a sorcery.)",
+        )
+        .expect("parse unearth keyword line");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("unearth"),
+        "expected unearth marker in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("unearth {u}"),
+        "expected unearth cost in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "unearth keyword line should not hit fallback, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_other_anthem_subject_keeps_other() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Other Anthem Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Other Soldier creatures you control get +0/+1")
+        .expect("parse other-anthem line");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("other soldier creatures you control get +0/+1"),
+        "expected other-anthem text in compiled output, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_other_anthem_subject_rejects_temporary() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Other Anthem Reject Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Other Soldier creatures you control get +0/+1 until end of turn")
+        .expect("parse temporary other-anthem line");
+    assert!(
+        def.abilities.is_empty(),
+        "expected temporary other-anthem line to avoid static abilities, got {:?}",
+        def.abilities
+    );
+    assert!(
+        def.spell_effect.is_some(),
+        "expected temporary other-anthem line to compile as a spell effect"
+    );
+}
+
+#[test]
+fn test_peek_targets_player_hand() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Peek Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Look at target player's hand.\nDraw a card.")
+        .expect("parse peek probe");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("look at target player's hand"),
+        "expected target player wording in compiled output, got {rendered}"
+    );
+}
+
+#[test]
+fn test_untap_another_target_permanent_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Untap Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Untap another target permanent.")
+        .expect("parse untap probe");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("another target permanent"),
+        "expected 'another target permanent' in compiled output, got {rendered}"
+    );
+}
+
+#[test]
+fn test_counter_unless_pays_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell unless its controller pays {1}.")
+        .expect("parse counter probe");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("counter target spell unless its controller pays {1}"),
+        "expected counter-unless-pays text in compiled output, got {rendered}"
+    );
+}
+
+#[test]
+fn test_power_damage_exchange_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Power Exchange Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: This creature deals damage equal to its power to target creature. \
+That creature deals damage equal to its power to this creature.",
+        )
+        .expect("parse power exchange probe");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("this creature deals damage equal to its power to target creature"),
+        "expected first power damage clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("that creature deals damage equal to its power to this creature"),
+        "expected reciprocal power damage clause, got {rendered}"
+    );
+}
+
+#[test]
+fn test_prevent_all_combat_damage_from_target_rendering() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Prevent Combat Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "{2}{W}: Prevent all combat damage that would be dealt by target creature this turn.",
+        )
+        .expect("parse prevent combat probe");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("prevent all combat damage that would be dealt by target creature this turn"),
+        "expected prevent combat damage text, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_modal_choose_one_header_without_fallback() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Modal Header Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose one -\n\
+- Target opponent exiles a creature they control.\n\
+- Target opponent exiles an enchantment they control.",
+        )
+        .expect("parse choose-one modal spell");
+
+    let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("choose one -"),
+        "expected choose-one rendering, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "choose-one modal header should not hit fallback, got {rendered}"
+    );
+}
+
+#[test]
 fn test_keyword_marker_rejects_partial_trailing_clause() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Bad Unleash")
         .card_types(vec![CardType::Creature])
@@ -1122,6 +1279,20 @@ fn test_render_multiple_cycling_variants_preserves_variant_names() {
     assert!(
         lines.iter().any(|line| line.contains("Forestcycling")),
         "expected forestcycling keyword in render, got {lines:?}"
+    );
+}
+
+#[test]
+fn test_render_cycling_includes_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Cost Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Cycling {2}{U} ({2}{U}, Discard this card: Draw a card.)")
+        .expect("parse cycling with cost");
+
+    let lines = compiled_lines(&def);
+    assert!(
+        lines.iter().any(|line| line.contains("Cycling {2}{U}")),
+        "expected cycling cost in render, got {lines:?}"
     );
 }
 
@@ -1802,6 +1973,28 @@ fn parse_add_mana_chosen_color_tail_fails_strictly() {
 }
 
 #[test]
+fn parse_add_mana_or_colors_preserves_choice() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dual Mana Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text("{T}: Add {R} or {G}.")
+        .expect("add mana or-colors should parse");
+
+    let lines = compiled_lines(&def);
+    let mana_line = lines
+        .iter()
+        .find(|line| line.contains("Mana ability"))
+        .expect("expected mana ability line");
+    assert!(
+        mana_line.contains("Add {R} or {G}"),
+        "expected or-choice mana render, got {mana_line}"
+    );
+    assert!(
+        !mana_line.contains("{R}{G}"),
+        "expected not to add both colors, got {mana_line}"
+    );
+}
+
+#[test]
 fn parse_reveal_hand_clause_with_trailing_effect_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Retraced Image Variant")
             .parse_text(
@@ -2477,7 +2670,7 @@ fn render_multi_sacrifice_cost_uses_compact_filter_text() {
         .parse_text("{1}, Sacrifice two lands: Destroy target land.")
         .expect("multi-sacrifice activated cost should parse");
     let lines = crate::compiled_text::compiled_lines(&def);
-    let joined = lines.join("\n");
+    let joined = lines.join("\n").to_ascii_lowercase();
     assert!(
         joined.contains("sacrifice two lands"),
         "expected compact multi-sacrifice rendering, got {joined}"
@@ -2490,10 +2683,154 @@ fn render_multi_sacrifice_artifacts_cost_uses_compact_filter_text() {
         .parse_text("{R}, Sacrifice two artifacts: Destroy target artifact.")
         .expect("multi-artifact-sacrifice activated cost should parse");
     let lines = crate::compiled_text::compiled_lines(&def);
-    let joined = lines.join("\n");
+    let joined = lines.join("\n").to_ascii_lowercase();
     assert!(
         joined.contains("sacrifice two artifacts"),
         "expected compact multi-artifact sacrifice rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_sacrifice_artifact_or_land_cost_uses_oracle_article() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Scrapchomper Variant")
+        .parse_text("{1}{R}, {T}, Sacrifice an artifact or land: Draw a card.")
+        .expect("artifact-or-land sacrifice activated cost should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n").to_ascii_lowercase();
+    assert!(
+        joined.contains("sacrifice an artifact or land"),
+        "expected oracle-like sacrifice article rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_return_from_graveyard_uses_from_your_graveyard() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Reanimate Variant")
+        .parse_text("Return target creature card from your graveyard to the battlefield.")
+        .expect("return-from-graveyard spell should parse");
+    let lines = compiled_lines(&def);
+    let spell_line = lines
+        .iter()
+        .find(|line| line.starts_with("Spell effects:"))
+        .expect("expected spell effects line");
+    assert!(
+        spell_line.contains("Return target creature card from your graveyard to the battlefield"),
+        "expected oracle-like return text, got {spell_line}"
+    );
+}
+
+#[test]
+fn render_surveil_uses_keyword_action_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Surveil Variant")
+        .parse_text("Surveil 1.")
+        .expect("surveil spell should parse");
+    let lines = compiled_lines(&def);
+    let spell_line = lines
+        .iter()
+        .find(|line| line.starts_with("Spell effects:"))
+        .expect("expected spell effects line");
+    assert!(
+        spell_line.contains("Surveil 1"),
+        "expected oracle-like surveil text, got {spell_line}"
+    );
+}
+
+#[test]
+fn render_tap_target_spirit_uses_subtype_noun() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Spirit Tapper Variant")
+        .parse_text("{T}: Tap target Spirit.")
+        .expect("tap target Spirit should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("target spirit"),
+        "expected Spirit subtype noun rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("permanent spirit"),
+        "unexpected permanent noun for Spirit subtype, got {joined}"
+    );
+}
+
+#[test]
+fn render_tap_target_wall_uses_subtype_noun() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Wall Tapper Variant")
+        .parse_text("{R}: Tap target Wall.")
+        .expect("tap target Wall should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("target wall"),
+        "expected Wall subtype noun rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("permanent wall"),
+        "unexpected permanent noun for Wall subtype, got {joined}"
+    );
+}
+
+#[test]
+fn render_untap_target_snow_land_includes_supertype() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Snow Untapper Variant")
+        .parse_text("{T}: Untap target snow land.")
+        .expect("untap target snow land should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("snow land"),
+        "expected snow supertype rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_artifacts_and_lands_enter_tapped_uses_union_types() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Root Maze Variant")
+        .parse_text("Artifacts and lands enter the battlefield tapped.")
+        .expect("artifacts and lands enter tapped should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("artifacts and lands enter tapped"),
+        "expected union type rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("artifact land enter the battlefield tapped"),
+        "unexpected artifact-land intersection rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_for_each_object_strips_article() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "End Festivities Variant")
+        .parse_text(
+            "This spell deals 1 damage to each opponent and each creature and planeswalker they control.",
+        )
+        .expect("end the festivities spell should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("deal 1 damage to each opponent and each creature and planeswalker they control")
+            || joined.contains("deal 1 damage to each opponent and each creature or planeswalker they control"),
+        "expected compact damage rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_mount_or_vehicle_target() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Daring Mechanic Variant")
+        .parse_text("{3}{W}: Put a +1/+1 counter on target Mount or Vehicle.")
+        .expect("mount or vehicle target should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("target mount or vehicle"),
+        "expected mount or vehicle target rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_tap_cost_ability_filter_phrase() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Magewright Stone Variant")
+        .parse_text("{1}, {T}: Untap target creature that has an activated ability with {T} in its cost.")
+        .expect("tap-cost activated-ability filter should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("untap target creature that has an activated ability with {t} in its cost"),
+        "expected activated-ability tap-cost filter rendering, got {joined}"
     );
 }
 

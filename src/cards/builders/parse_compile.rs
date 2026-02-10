@@ -2933,10 +2933,10 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         .collect();
     let has_word = |needle: &str| words.iter().any(|word| *word == needle);
 
-    if has_word("treasure") {
+    if has_word("treasure") && !words.contains(&"creature") {
         return Some(crate::cards::tokens::treasure_token_definition());
     }
-    if has_word("clue") {
+    if has_word("clue") && !words.contains(&"creature") {
         return Some(crate::cards::tokens::clue_token_definition());
     }
     if has_word("eldrazi") && has_word("spawn") {
@@ -2945,20 +2945,20 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
     if has_word("eldrazi") && has_word("scion") {
         return Some(eldrazi_scion_token_definition());
     }
-    if has_word("food") {
+    if has_word("food") && !words.contains(&"creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Food")
             .token()
             .card_types(vec![CardType::Artifact])
             .subtypes(vec![Subtype::Food]);
         return Some(builder.build());
     }
-    if has_word("blood") {
+    if has_word("blood") && !words.contains(&"creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Blood")
             .token()
             .card_types(vec![CardType::Artifact]);
         return Some(builder.build());
     }
-    if has_word("powerstone") {
+    if has_word("powerstone") && !words.contains(&"creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Powerstone")
             .token()
             .card_types(vec![CardType::Artifact]);
@@ -3154,6 +3154,52 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
         if words.contains(&"double") && words.contains(&"strike") {
             builder = builder.double_strike();
+        }
+        if words.contains(&"cant") && words.contains(&"block") {
+            builder = builder.with_ability(Ability::static_ability(StaticAbility::cant_block()));
+        }
+        if words.contains(&"can")
+            && words.contains(&"block")
+            && words.contains(&"only")
+            && words.contains(&"creatures")
+            && words.contains(&"flying")
+        {
+            builder =
+                builder.with_ability(Ability::static_ability(StaticAbility::can_block_only_flying()));
+        }
+        if words.contains(&"counter")
+            && words.contains(&"noncreature")
+            && words.contains(&"spell")
+            && words.contains(&"sacrifice")
+            && words.contains(&"token")
+            && words.contains(&"unless")
+            && words.contains(&"controller")
+            && words.contains(&"pays")
+            && words.contains(&"1")
+        {
+            let target = ChooseSpec::target(ChooseSpec::Object(
+                ObjectFilter::spell().without_type(CardType::Creature),
+            ));
+            let counter_ability = Ability {
+                kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                    mana_cost: crate::ability::merge_cost_effects(
+                        TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]])),
+                        vec![Effect::sacrifice_source()],
+                    ),
+                    effects: vec![Effect::counter_unless_pays(
+                        target.clone(),
+                        vec![ManaSymbol::Generic(1)],
+                    )],
+                    choices: vec![target],
+                    timing: crate::ability::ActivationTiming::AnyTime,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+                text: Some(
+                    "{1}, Sacrifice this token: Counter target noncreature spell unless its controller pays {1}."
+                        .to_string(),
+                ),
+            };
+            builder = builder.with_ability(counter_ability);
         }
         if words.contains(&"changeling") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));

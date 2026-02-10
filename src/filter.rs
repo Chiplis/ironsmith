@@ -419,6 +419,9 @@ pub struct ObjectFilter {
     /// Cards like suspend-only cards or back faces may not have a mana cost
     pub has_mana_cost: bool,
 
+    /// If true, object must have an activated ability with {T} in its cost.
+    pub has_tap_activated_ability: bool,
+
     /// If true, the mana cost must not contain X
     pub no_x_in_cost: bool,
 
@@ -796,6 +799,12 @@ impl ObjectFilter {
         self
     }
 
+    /// Require an activated ability with {T} in its cost.
+    pub fn with_tap_activated_ability(mut self) -> Self {
+        self.has_tap_activated_ability = true;
+        self
+    }
+
     /// Add a tagged-object matching rule.
     pub fn match_tagged(mut self, tag: impl Into<TagKey>, relation: TaggedOpbjectRelation) -> Self {
         self.tagged_constraints.push(TaggedObjectConstraint {
@@ -1131,6 +1140,10 @@ impl ObjectFilter {
             .iter()
             .any(|marker| object_has_custom_static_marker(object, marker))
         {
+            return false;
+        }
+
+        if self.has_tap_activated_ability && !object_has_tap_activated_ability(object) {
             return false;
         }
 
@@ -1496,6 +1509,10 @@ impl ObjectFilter {
             return false;
         }
 
+        if self.has_tap_activated_ability && !snapshot_has_tap_activated_ability(snapshot) {
+            return false;
+        }
+
         // Commander check
         if self.is_commander && !snapshot.is_commander {
             return false;
@@ -1621,6 +1638,13 @@ impl ObjectFilter {
         if self.other {
             parts.push("another".to_string());
         }
+        let has_target_tag = self.tagged_constraints.iter().any(|constraint| {
+            matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                && constraint.tag.as_str().starts_with("targeted")
+        });
+        if has_target_tag {
+            parts.push("target".to_string());
+        }
         if self.source {
             parts.push("this".to_string());
         }
@@ -1648,7 +1672,14 @@ impl ObjectFilter {
                     }
                     controller_suffix = Some("that player controls".to_string())
                 }
-                PlayerFilter::Target(_) => parts.push("target player's".to_string()),
+                PlayerFilter::Target(inner) => {
+                    let inner_desc = describe_player_filter(inner.as_ref());
+                    if inner_desc == "player" {
+                        parts.push("target player's".to_string());
+                    } else {
+                        parts.push(format!("target {inner_desc}'s"));
+                    }
+                }
                 PlayerFilter::ControllerOf(_) => parts.push("a controller's".to_string()),
                 PlayerFilter::OwnerOf(_) => parts.push("an owner's".to_string()),
             }
@@ -1727,6 +1758,11 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SameStableId => {}
             }
         }
+        if !self.supertypes.is_empty() {
+            for supertype in &self.supertypes {
+                parts.push(format!("{supertype:?}").to_ascii_lowercase());
+            }
+        }
         if !self.excluded_card_types.is_empty() {
             for card_type in &self.excluded_card_types {
                 parts.push(format!("non{}", describe_card_type_word(*card_type)));
@@ -1786,24 +1822,30 @@ impl ObjectFilter {
             parts.push("untapped".to_string());
         }
 
-        // Handle card types
-        if !self.all_card_types.is_empty() {
-            let types_str = self
-                .all_card_types
-                .iter()
-                .map(|t| format!("{:?}", t).to_lowercase())
-                .collect::<Vec<_>>()
-                .join(" ");
-            parts.push(types_str);
+        let subtype_implies_type = !self.subtypes.is_empty()
+            && matches!(self.zone, None | Some(Zone::Battlefield))
+            && self.all_card_types.is_empty()
+            && self.card_types.is_empty();
+
+        let mut type_phrase = if !self.all_card_types.is_empty() {
+            Some((
+                true,
+                self.all_card_types
+                    .iter()
+                    .map(|t| format!("{:?}", t).to_lowercase())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ))
         } else if !self.card_types.is_empty() {
-            let types_str = self
-                .card_types
-                .iter()
-                .map(|t| format!("{:?}", t).to_lowercase())
-                .collect::<Vec<_>>()
-                .join(" or ");
-            parts.push(types_str);
-        } else if !self.token {
+            Some((
+                true,
+                self.card_types
+                    .iter()
+                    .map(|t| format!("{:?}", t).to_lowercase())
+                    .collect::<Vec<_>>()
+                    .join(" or "),
+            ))
+        } else if !self.token && !subtype_implies_type {
             // Default noun depends on zone context.
             let default_noun = if self.source {
                 "source"
@@ -1818,18 +1860,49 @@ impl ObjectFilter {
                     | Some(Zone::Command) => "card",
                 }
             };
-            parts.push(default_noun.to_string());
+            Some((false, default_noun.to_string()))
+        } else {
+            None
+        };
+
+        let subtype_phrase = if !self.subtypes.is_empty() {
+            Some(
+                self.subtypes
+                    .iter()
+                    .map(|t| format!("{:?}", t))
+                    .collect::<Vec<_>>()
+                    .join(" or "),
+            )
+        } else {
+            None
+        };
+
+        if let Some((type_is_card_type, phrase)) = type_phrase.as_mut()
+            && *type_is_card_type
+            && matches!(
+                self.zone,
+                Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile | Zone::Command)
+            )
+            && !phrase.ends_with(" card")
+        {
+            phrase.push_str(" card");
         }
 
-        // Handle subtypes
-        if !self.subtypes.is_empty() {
-            let subtypes_str = self
-                .subtypes
-                .iter()
-                .map(|t| format!("{:?}", t))
-                .collect::<Vec<_>>()
-                .join(" or ");
-            parts.push(subtypes_str);
+        let creature_only = self.all_card_types.is_empty()
+            && self.card_types.len() == 1
+            && self.card_types[0] == CardType::Creature;
+        match (type_phrase, subtype_phrase) {
+            (Some((_, type_phrase)), Some(subtype_phrase)) if creature_only => {
+                parts.push(subtype_phrase);
+                parts.push(type_phrase);
+            }
+            (Some((_, type_phrase)), Some(subtype_phrase)) => {
+                parts.push(type_phrase);
+                parts.push(subtype_phrase);
+            }
+            (Some((_, type_phrase)), None) => parts.push(type_phrase),
+            (None, Some(subtype_phrase)) => parts.push(subtype_phrase),
+            (None, None) => {}
         }
 
         // Handle name
@@ -1868,6 +1941,9 @@ impl ObjectFilter {
         if let Some(kind) = self.alternative_cast {
             parts.push(format!("with {}", describe_alternative_cast_kind(kind)));
         }
+        if self.has_tap_activated_ability {
+            parts.push("that has an activated ability with {T} in its cost".to_string());
+        }
 
         if let Some(zone) = self.zone {
             let zone_name = match zone {
@@ -1890,7 +1966,8 @@ impl ObjectFilter {
                     parts.push(format!("in {}", zone_name));
                 }
             } else if zone == Zone::Stack {
-                parts.push("on stack".to_string());
+                // "on stack" is usually implicit in Oracle text (e.g., "target spell").
+                // Avoid adding it to reduce render-only mismatches.
             }
         }
         if let Some(suffix) = controller_suffix {
@@ -1898,6 +1975,22 @@ impl ObjectFilter {
         }
         if let Some(suffix) = owner_suffix {
             parts.push(suffix);
+        }
+
+        let mut target_fragments = Vec::new();
+        if let Some(player_filter) = &self.targets_player {
+            target_fragments.push(describe_player_filter(player_filter));
+        }
+        if let Some(object_filter) = &self.targets_object {
+            target_fragments.push(object_filter.description());
+        }
+        if !target_fragments.is_empty() {
+            let target_text = if target_fragments.len() == 2 {
+                format!("{} and {}", target_fragments[0], target_fragments[1])
+            } else {
+                target_fragments[0].clone()
+            };
+            parts.push(format!("that targets {target_text}"));
         }
 
         parts.join(" ")
@@ -2039,6 +2132,23 @@ fn object_has_custom_static_marker(object: &Object, marker: &str) -> bool {
     })
 }
 
+fn object_has_tap_activated_ability(object: &Object) -> bool {
+    use crate::ability::AbilityKind;
+    object.abilities.iter().any(|ability| match &ability.kind {
+        AbilityKind::Activated(activated) => activated
+            .mana_cost
+            .costs()
+            .iter()
+            .any(|cost| cost.requires_tap()),
+        AbilityKind::Mana(mana) => mana
+            .mana_cost
+            .costs()
+            .iter()
+            .any(|cost| cost.requires_tap()),
+        _ => false,
+    })
+}
+
 fn snapshot_has_static_ability_id(
     snapshot: &crate::snapshot::ObjectSnapshot,
     ability_id: StaticAbilityId,
@@ -2059,6 +2169,23 @@ fn snapshot_has_custom_static_marker(
         } else {
             false
         }
+    })
+}
+
+fn snapshot_has_tap_activated_ability(snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
+    use crate::ability::AbilityKind;
+    snapshot.abilities.iter().any(|ability| match &ability.kind {
+        AbilityKind::Activated(activated) => activated
+            .mana_cost
+            .costs()
+            .iter()
+            .any(|cost| cost.requires_tap()),
+        AbilityKind::Mana(mana) => mana
+            .mana_cost
+            .costs()
+            .iter()
+            .any(|cost| cost.requires_tap()),
+        _ => false,
     })
 }
 

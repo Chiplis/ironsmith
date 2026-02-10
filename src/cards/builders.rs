@@ -3299,19 +3299,19 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             lines
                 .iter()
-                .any(|line| line.contains("Pay {U/R}, Tap this source, Add {U}{U}")),
+                .any(|line| line.contains("{U/R}, {T}, Add {U}{U}")),
             "missing {{U}}{{U}} filtered output: {lines:?}"
         );
         assert!(
             lines
                 .iter()
-                .any(|line| line.contains("Pay {U/R}, Tap this source, Add {U}{R}")),
+                .any(|line| line.contains("{U/R}, {T}, Add {U}{R}")),
             "missing {{U}}{{R}} filtered output: {lines:?}"
         );
         assert!(
             lines
                 .iter()
-                .any(|line| line.contains("Pay {U/R}, Tap this source, Add {R}{R}")),
+                .any(|line| line.contains("{U/R}, {T}, Add {R}{R}")),
             "missing {{R}}{{R}} filtered output: {lines:?}"
         );
     }
@@ -5213,6 +5213,175 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             !cost_debug.contains("RemoveAnyCountersAmongCost"),
             "expected no distributed remove-counter fallback, got {cost_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_return_two_target_cards_uses_exact_target_count() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Soul Strings Count Variant")
+            .parse_text("Return two target creature cards from your graveyard to your hand.")
+            .expect("parse exact-count return target");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ChoiceCount { min: 2, max: Some(2) }"),
+            "expected exact two-target choice count, got {debug}"
+        );
+    }
+
+    #[test]
+    fn reject_unless_any_player_pays_clause() {
+        let err = CardDefinitionBuilder::new(CardId::new(), "Soul Strings Unless Variant")
+            .parse_text("Return two target creature cards from your graveyard to your hand unless any player pays {X}.")
+            .expect_err("unless any player pays should fail until multi-payer semantics are supported");
+
+        let message = format!("{err:?}");
+        assert!(
+            message.contains("unsupported return-unless clause"),
+            "expected strict return-unless error, got {message}"
+        );
+    }
+
+    #[test]
+    fn reject_multi_target_return_clause() {
+        let err = CardDefinitionBuilder::new(CardId::new(), "Peel Variant")
+            .parse_text(
+                "Return target creature you control and target creature you don't control to their owners' hands.",
+            )
+            .expect_err("multi-target return should fail until split-target semantics are supported");
+
+        let message = format!("{err:?}");
+        assert!(
+            message.contains("unsupported multi-target return clause"),
+            "expected strict multi-target return error, got {message}"
+        );
+    }
+
+    #[test]
+    fn parse_if_you_cant_as_if_result_did_not() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ravenous Demon Predicate Variant")
+            .parse_text(
+                "At the beginning of your upkeep, sacrifice a Human. If you can't, tap this creature and it deals 9 damage to you.",
+            )
+            .expect("parse if-you-cant conditional");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+        let debug = format!("{:?}", triggered.effects);
+        assert!(
+            debug.contains("IfResultEffect") && debug.contains("DidNot"),
+            "expected if-result DidNot conditional, got {debug}"
+        );
+    }
+
+    #[test]
+    fn reject_target_player_dealt_damage_by_this_turn_subject() {
+        let err = CardDefinitionBuilder::new(CardId::new(), "Wicked Akuba Subject Variant")
+            .parse_text("{B}: Target player dealt damage by this creature this turn loses 1 life.")
+            .expect_err(
+                "combat-history player subject should fail until per-source turn history is modeled",
+            );
+
+        let message = format!("{err:?}");
+        assert!(
+            message.contains("unsupported combat-history player subject"),
+            "expected strict combat-history subject error, got {message}"
+        );
+    }
+
+    #[test]
+    fn parse_static_condition_equipped_creature_tapped_or_untapped() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Sword Condition Variant")
+            .parse_text(
+                "As long as equipped creature is tapped, tapped creatures you control get +2/+0.\nAs long as equipped creature is untapped, untapped creatures you control get +0/+2.",
+            )
+            .expect("parse equipped-creature tapped/untapped static conditions");
+
+        let displays = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.display()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            displays
+                .iter()
+                .any(|display| display.contains("as long as equipped creature is tapped")),
+            "missing tapped equipped-creature condition in displays: {displays:?}"
+        );
+        assert!(
+            displays
+                .iter()
+                .any(|display| display.contains("as long as equipped creature is untapped")),
+            "missing untapped equipped-creature condition in displays: {displays:?}"
+        );
+    }
+
+    #[test]
+    fn reject_counter_ability_target_clause() {
+        let err = CardDefinitionBuilder::new(CardId::new(), "Tales End Variant")
+            .parse_text("Counter target activated ability, triggered ability, or legendary spell.")
+            .expect_err("countering abilities should fail until ability-target semantics are implemented");
+
+        let message = format!("{err:?}");
+        assert!(
+            message.contains("unsupported counter-ability target clause"),
+            "expected strict counter-ability target error, got {message}"
+        );
+    }
+
+    #[test]
+    fn reject_dynamic_create_for_each_clause() {
+        let err = CardDefinitionBuilder::new(CardId::new(), "Mysterio Create Variant")
+            .parse_text(
+                "When this creature enters, create a 3/3 blue Illusion creature token for each nontoken Villain you control.",
+            )
+            .expect_err("dynamic create-for-each token count should fail until modeled");
+
+        let message = format!("{err:?}");
+        assert!(
+            message.contains("unsupported dynamic token count"),
+            "expected dynamic-token-count parse error, got {message}"
+        );
+    }
+
+    #[test]
+    fn reject_curly_apostrophe_negated_untap_clause() {
+        let err = CardDefinitionBuilder::new(CardId::new(), "Kill Switch Apostrophe Variant")
+            .parse_text(
+                "{2}, {T}: Tap all other artifacts. They don’t untap during their controllers’ untap steps for as long as this artifact remains tapped.",
+            )
+            .expect_err("negated untap clause should fail strictly");
+
+        let message = format!("{err:?}");
+        assert!(
+            message.contains("unsupported negated untap clause"),
+            "expected strict negated-untap parse error, got {message}"
+        );
+    }
+
+    #[test]
+    fn create_creature_token_with_food_reminder_stays_creature_token() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Wolf Quarry Token Variant")
+            .parse_text(
+                "Create three 1/1 green Boar creature tokens with \"When this token dies, create a Food token.\"",
+            )
+            .expect("parse boar token creation with food reminder");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("Boar") && !debug.contains("name: \"Food\""),
+            "expected creature token to remain Boar rather than Food, got {debug}"
         );
     }
 }

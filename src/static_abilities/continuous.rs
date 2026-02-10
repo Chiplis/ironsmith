@@ -143,7 +143,10 @@ fn pluralize_terminal_noun(base: &str) -> Option<String> {
 }
 
 fn pluralized_subject_text(filter: &ObjectFilter) -> String {
-    let subject = subject_text(filter);
+    let mut subject = subject_text(filter);
+    if subject.starts_with("another ") {
+        subject = subject.replacen("another ", "other ", 1);
+    }
     if subject.starts_with("enchanted ")
         || subject.starts_with("equipped ")
         || subject.starts_with("this ")
@@ -223,6 +226,10 @@ pub enum StaticCondition {
     YourTurn,
     /// "As long as this creature is equipped"
     SourceIsEquipped,
+    /// "As long as equipped creature is tapped"
+    EquippedCreatureTapped,
+    /// "As long as equipped creature is untapped"
+    EquippedCreatureUntapped,
     /// Count-based condition ("as long as you control three or more artifacts", etc.)
     CountComparison {
         count: AnthemCountExpression,
@@ -272,6 +279,12 @@ fn describe_static_condition(condition: &StaticCondition) -> String {
     match condition {
         StaticCondition::YourTurn => "as long as it's your turn".to_string(),
         StaticCondition::SourceIsEquipped => "as long as this creature is equipped".to_string(),
+        StaticCondition::EquippedCreatureTapped => {
+            "as long as equipped creature is tapped".to_string()
+        }
+        StaticCondition::EquippedCreatureUntapped => {
+            "as long as equipped creature is untapped".to_string()
+        }
         StaticCondition::CountComparison {
             count,
             comparison,
@@ -368,6 +381,14 @@ fn static_condition_is_active(
                     .is_some_and(|obj| obj.subtypes.contains(&Subtype::Equipment))
             })
         }),
+        StaticCondition::EquippedCreatureTapped => game
+            .object(source)
+            .and_then(|source_obj| source_obj.attached_to)
+            .is_some_and(|attached| game.is_tapped(attached)),
+        StaticCondition::EquippedCreatureUntapped => game
+            .object(source)
+            .and_then(|source_obj| source_obj.attached_to)
+            .is_some_and(|attached| !game.is_tapped(attached)),
         StaticCondition::CountComparison {
             count, comparison, ..
         } => comparison.evaluate(resolve_anthem_count_expression(

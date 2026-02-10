@@ -31,6 +31,7 @@ pub enum Subtype {
     // Non-basic land types
     Urzas,
     Gate,
+    Locus,
 
     // Creature types (alphabetical, common ones)
     Advisor,
@@ -117,6 +118,7 @@ pub enum Subtype {
     Mole,
     Monk,
     Moonfolk,
+    Mount,
     Mouse,
     Mutant,
     Myr,
@@ -368,6 +370,7 @@ impl Subtype {
                 | Subtype::Mole
                 | Subtype::Monk
                 | Subtype::Moonfolk
+                | Subtype::Mount
                 | Subtype::Mouse
                 | Subtype::Mutant
                 | Subtype::Myr

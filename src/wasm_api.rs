@@ -1707,31 +1707,44 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if text == "toxic" || text.starts_with("toxic ") {
         return Some(raw_text.to_string());
     }
-    let cycling_words = words
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, word)| {
-            if !word.ends_with("cycling") {
-                return None;
+    let mut cycling_rendered = Vec::new();
+    for (idx, word) in words.iter().enumerate() {
+        if !word.ends_with("cycling") {
+            continue;
+        }
+        let next = words.get(idx + 1);
+        let has_cost = next.is_none_or(|next| is_cycling_cost_word(next));
+        if !has_cost {
+            continue;
+        }
+        let mut chars = word.chars();
+        let base = match chars.next() {
+            Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+            None => "Cycling".to_string(),
+        };
+        let mut cost_tokens = Vec::new();
+        let mut j = idx + 1;
+        while let Some(word) = words.get(j) {
+            if is_cycling_cost_word(word) {
+                cost_tokens.push(*word);
+                j += 1;
+            } else {
+                break;
             }
-            let has_cost = words
-                .get(idx + 1)
-                .is_none_or(|next| is_cycling_cost_word(next));
-            has_cost.then_some(*word)
-        })
-        .collect::<Vec<_>>();
-    if !cycling_words.is_empty() {
-        let rendered = cycling_words
-            .into_iter()
-            .map(|word| {
-                let mut chars = word.chars();
-                match chars.next() {
-                    Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
-                    None => "Cycling".to_string(),
-                }
-            })
-            .collect::<Vec<_>>();
-        return Some(rendered.join(", "));
+        }
+        if cost_tokens.is_empty() {
+            cycling_rendered.push(base);
+        } else {
+            let cost = cost_tokens
+                .iter()
+                .map(|word| format!("{{{}}}", word.to_ascii_uppercase()))
+                .collect::<Vec<_>>()
+                .join("");
+            cycling_rendered.push(format!("{} {}", base, cost));
+        }
+    }
+    if !cycling_rendered.is_empty() {
+        return Some(cycling_rendered.join(", "));
     }
     if text == "prowess" {
         return Some("Prowess".to_string());
@@ -3863,11 +3876,23 @@ fn describe_effect_core_expanded(
     }
     if let Some(add_any_color) = effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>() {
         if let Some(colors) = &add_any_color.available_colors {
+            if matches!(add_any_color.amount, crate::effect::Value::Fixed(1)) {
+                let options = colors
+                    .iter()
+                    .copied()
+                    .map(crate::mana::ManaSymbol::from_color)
+                    .collect::<Vec<_>>();
+                return Some(format!(
+                    "Add {} to {} mana pool.",
+                    describe_mana_alternatives(&options),
+                    describe_player_filter(&add_any_color.player, tagged_subjects)
+                ));
+            }
             let options = colors
                 .iter()
                 .copied()
                 .map(crate::mana::ManaSymbol::from_color)
-                .map(mana_symbol_text)
+                .map(mana_symbol_to_oracle)
                 .collect::<Vec<_>>()
                 .join(" and/or ");
             return Some(format!(
@@ -4766,6 +4791,25 @@ fn mana_symbol_to_oracle(symbol: ManaSymbol) -> String {
         ManaSymbol::Snow => "{S}".to_string(),
         ManaSymbol::Life(_) => "{P}".to_string(),
         ManaSymbol::X => "{X}".to_string(),
+    }
+}
+
+fn describe_mana_alternatives(symbols: &[ManaSymbol]) -> String {
+    let rendered = symbols
+        .iter()
+        .copied()
+        .map(mana_symbol_to_oracle)
+        .collect::<Vec<_>>();
+    match rendered.len() {
+        0 => "{0}".to_string(),
+        1 => rendered[0].clone(),
+        2 => format!("{} or {}", rendered[0], rendered[1]),
+        _ => {
+            let mut text = rendered[..rendered.len() - 1].join(", ");
+            text.push_str(", or ");
+            text.push_str(rendered.last().map(String::as_str).unwrap_or("{0}"));
+            text
+        }
     }
 }
 

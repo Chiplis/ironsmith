@@ -5,6 +5,70 @@
 use super::{StaticAbilityId, StaticAbilityKind};
 use crate::ability::SpellFilter;
 use crate::effect::Value;
+use crate::filter::ObjectFilter;
+use crate::target::PlayerFilter;
+
+fn strip_indefinite_article(text: &str) -> &str {
+    let trimmed = text.trim();
+    if let Some(rest) = trimmed.strip_prefix("a ") {
+        return rest;
+    }
+    if let Some(rest) = trimmed.strip_prefix("an ") {
+        return rest;
+    }
+    trimmed
+}
+
+fn pluralize_spell_filter_text(text: &str) -> String {
+    let mut out = strip_indefinite_article(text).to_string();
+    if out.starts_with("spell ") {
+        out = out.replacen("spell ", "spells ", 1);
+    } else if out.contains(" spell") {
+        out = out.replacen(" spell", " spells", 1);
+    } else if out == "spell" {
+        out = "spells".to_string();
+    }
+    out = out.replace(" that targets ", " that target ");
+    out = out.replace(" that targets", " that target");
+    out
+}
+
+fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
+    match amount {
+        Value::Fixed(n) => (format!("{{{n}}}"), None),
+        Value::X => ("{X}".to_string(), None),
+        Value::Count(filter) => (
+            "{1}".to_string(),
+            Some(format!("for each {}", filter.description())),
+        ),
+        Value::CardTypesInGraveyard(player) => {
+            let owner = match player {
+                PlayerFilter::You => "your",
+                PlayerFilter::Opponent => "an opponent's",
+                _ => "a player's",
+            };
+            (
+                "{1}".to_string(),
+                Some(format!(
+                    "for each card type among cards in {owner} graveyard"
+                )),
+            )
+        }
+        _ => ("{X}".to_string(), None),
+    }
+}
+
+fn describe_spell_filter(filter: &SpellFilter) -> String {
+    let mut object_filter = ObjectFilter::default();
+    object_filter.zone = Some(crate::zone::Zone::Stack);
+    object_filter.card_types = filter.card_types.clone();
+    object_filter.subtypes = filter.subtypes.clone();
+    object_filter.colors = filter.colors;
+    object_filter.controller = filter.controller.clone();
+    object_filter.targets_player = filter.targets_player.clone();
+    object_filter.targets_object = filter.targets_object.clone().map(Box::new);
+    pluralize_spell_filter_text(&object_filter.description())
+}
 
 /// Affinity for artifacts - This spell costs {1} less to cast for each artifact you control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -129,7 +193,17 @@ impl StaticAbilityKind for CostReduction {
     }
 
     fn display(&self) -> String {
-        "Spells cost less to cast".to_string()
+        let (amount_text, tail) = describe_cost_modifier_amount(&self.reduction);
+        let mut line = format!(
+            "{} cost {} less to cast",
+            describe_spell_filter(&self.filter),
+            amount_text
+        );
+        if let Some(tail) = tail {
+            line.push(' ');
+            line.push_str(&tail);
+        }
+        line
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -164,7 +238,17 @@ impl StaticAbilityKind for CostIncrease {
     }
 
     fn display(&self) -> String {
-        "Spells cost more to cast".to_string()
+        let (amount_text, tail) = describe_cost_modifier_amount(&self.increase);
+        let mut line = format!(
+            "{} cost {} more to cast",
+            describe_spell_filter(&self.filter),
+            amount_text
+        );
+        if let Some(tail) = tail {
+            line.push(' ');
+            line.push_str(&tail);
+        }
+        line
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
