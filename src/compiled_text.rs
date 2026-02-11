@@ -285,7 +285,16 @@ fn mana_word_to_symbol(word: &str) -> Option<&'static str> {
 }
 
 fn normalize_sliver_grant_clause(rest: &str) -> Option<String> {
-    let words = rest.split_whitespace().collect::<Vec<_>>();
+    let rest = rest.trim().trim_matches('"').trim();
+    let words = rest
+        .split_whitespace()
+        .map(|word| {
+            word.trim_matches(|ch: char| {
+                !(ch.is_ascii_alphanumeric() || ch == '{' || ch == '}')
+            })
+        })
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
     if words.is_empty() {
         return None;
     }
@@ -321,11 +330,37 @@ fn normalize_sliver_grant_clause(rest: &str) -> Option<String> {
     }
 
     let effect = if effect_words[0] == "add" && effect_words.len() > 1 {
-        let mana = effect_words[1..]
-            .iter()
-            .filter_map(|word| mana_word_to_symbol(word))
-            .collect::<Vec<_>>()
-            .join("");
+        let mut mana_parts = Vec::new();
+        for word in &effect_words[1..] {
+            if let Some(symbol) = mana_word_to_symbol(word) {
+                mana_parts.push(symbol.to_string());
+                continue;
+            }
+            let lower = word.to_ascii_lowercase();
+            if lower.len() > 1 && lower.chars().all(|ch| matches!(ch, 'w' | 'u' | 'b' | 'r' | 'g' | 'c'))
+            {
+                for ch in lower.chars() {
+                    if let Some(symbol) = mana_word_to_symbol(&ch.to_string()) {
+                        mana_parts.push(symbol.to_string());
+                    }
+                }
+                continue;
+            }
+            let mut idx = 0usize;
+            let bytes = lower.as_bytes();
+            while idx + 2 < bytes.len() {
+                if bytes[idx] == b'{' && bytes[idx + 2] == b'}' {
+                    let candidate = &lower[idx + 1..idx + 2];
+                    if let Some(symbol) = mana_word_to_symbol(candidate) {
+                        mana_parts.push(symbol.to_string());
+                    }
+                    idx += 3;
+                } else {
+                    idx += 1;
+                }
+            }
+        }
+        let mana = mana_parts.join("");
         if mana.is_empty() {
             capitalize_first(&effect_words.join(" "))
         } else {
@@ -1493,8 +1528,11 @@ fn cleanup_decompiled_text(text: &str) -> String {
         ("you gets", "you get"),
         ("you puts", "you put"),
         ("a artifact", "an artifact"),
+        ("a another", "another"),
+        ("a enchantment", "an enchantment"),
         ("a untapped", "an untapped"),
         ("a opponent", "an opponent"),
+        (" ors ", " or "),
         ("creature are", "creatures are"),
         ("target any target", "any target"),
     ] {
@@ -4027,6 +4065,19 @@ fn card_has_graveyard_activated_ability(def: &CardDefinition) -> bool {
 }
 
 fn enchanted_subject_for_oracle_lines(def: &CardDefinition) -> Option<&'static str> {
+    if let Some(filter) = &def.aura_attach_filter {
+        if filter.card_types.contains(&crate::types::CardType::Creature) {
+            return Some("creature");
+        }
+        if filter.card_types.contains(&crate::types::CardType::Land) {
+            return Some("land");
+        }
+        if filter.card_types.contains(&crate::types::CardType::Artifact) {
+            return Some("artifact");
+        }
+        return Some("permanent");
+    }
+
     for ability in &def.abilities {
         let AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
@@ -4066,18 +4117,212 @@ fn normalize_create_under_control_clause(text: &str) -> Option<String> {
     Some(format!("{prefix}Create {created}{suffix}"))
 }
 
+fn is_cost_symbol_word(word: &str) -> bool {
+    matches!(word, "w" | "u" | "b" | "r" | "g" | "c" | "x") || word.parse::<u32>().is_ok()
+}
+
+fn is_effect_verb_word(word: &str) -> bool {
+    matches!(
+        word,
+        "add"
+            | "deal"
+            | "tap"
+            | "untap"
+            | "scry"
+            | "surveil"
+            | "gain"
+            | "lose"
+            | "draw"
+            | "create"
+            | "destroy"
+            | "exile"
+            | "return"
+            | "counter"
+            | "fight"
+            | "mill"
+            | "put"
+    )
+}
+
+fn format_cost_words(words: &[&str]) -> Option<String> {
+    if words.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<String> = Vec::new();
+    let mut idx = 0usize;
+    while idx < words.len() {
+        let word = words[idx];
+        if word == "," {
+            idx += 1;
+            continue;
+        }
+        if word == "t" {
+            parts.push("{T}".to_string());
+            idx += 1;
+            continue;
+        }
+        if is_cost_symbol_word(word) {
+            parts.push(format!("{{{}}}", word.to_ascii_uppercase()));
+            idx += 1;
+            continue;
+        }
+        if word == "sacrifice" {
+            let tail = words[idx + 1..].join(" ");
+            if tail.is_empty() {
+                parts.push("Sacrifice".to_string());
+            } else {
+                parts.push(format!("Sacrifice {tail}"));
+            }
+            break;
+        }
+        return None;
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(", "))
+    }
+}
+
+fn normalize_granted_activated_ability_clause(text: &str) -> Option<String> {
+    let (subject, tail, has_word) = if let Some((subject, tail)) = text.split_once(" has ") {
+        (subject, tail, "has")
+    } else if let Some((subject, tail)) = text.split_once(" have ") {
+        (subject, tail, "have")
+    } else {
+        return None;
+    };
+
+    let words: Vec<&str> = tail.split_whitespace().collect();
+    if words.len() < 2 {
+        return None;
+    }
+
+    let mut effect_idx: Option<usize> = None;
+    if let Some(t_idx) = words.iter().position(|word| *word == "t") {
+        let mut candidate = t_idx + 1;
+        if words
+            .get(candidate)
+            .is_some_and(|word| *word == "sacrifice")
+            && words
+                .get(candidate + 1)
+                .is_some_and(|next| *next == "this" || *next == "thiss")
+        {
+            candidate += 2;
+        }
+        if candidate < words.len() {
+            let head = words[candidate];
+            if is_effect_verb_word(head)
+                || matches!(head, "this" | "target" | "you" | "each" | "a" | "an")
+            {
+                effect_idx = Some(candidate);
+            }
+        }
+    }
+    if effect_idx.is_none() {
+        let scan_start = words
+            .iter()
+            .position(|word| *word == "t")
+            .map(|idx| idx + 1)
+            .unwrap_or(0);
+        for idx in scan_start..words.len() {
+            let word = words[idx];
+            if !is_effect_verb_word(word) {
+                continue;
+            }
+            // "sacrifice this ..." may be part of the activation cost.
+            if word == "sacrifice"
+                && words
+                    .get(idx + 1)
+                    .is_some_and(|next| *next == "this" || *next == "thiss")
+            {
+                continue;
+            }
+            effect_idx = Some(idx);
+            break;
+        }
+    }
+    let effect_idx = effect_idx?;
+    let cost_words = &words[..effect_idx];
+    let effect_words = &words[effect_idx..];
+
+    if !cost_words
+        .iter()
+        .any(|word| *word == "t" || is_cost_symbol_word(word) || *word == "sacrifice")
+    {
+        return None;
+    }
+
+    let cost = format_cost_words(cost_words)?;
+    let effect = capitalize_first(&effect_words.join(" "));
+    Some(format!("{subject} {has_word} \"{cost}: {effect}\""))
+}
+
 fn normalize_oracle_line_segment(segment: &str) -> String {
     let trimmed = segment.trim();
-    if let Some(normalized) = normalize_create_under_control_clause(trimmed) {
-        return normalized;
-    }
-    if let Some(rest) = trimmed.strip_prefix("all slivers have ")
+    if let Some((subject, rest)) = trimmed.split_once(" have ")
+        && subject.eq_ignore_ascii_case("all slivers")
         && let Some(normalized) = normalize_sliver_grant_clause(rest)
     {
         return normalized;
     }
+    if let Some(normalized) = normalize_granted_activated_ability_clause(trimmed) {
+        return normalized;
+    }
+    if let Some(normalized) = normalize_create_under_control_clause(trimmed) {
+        return normalized;
+    }
+    if let Some((subject, keyword)) = split_have_clause(trimmed) {
+        if keyword.eq_ignore_ascii_case("can't be blocked") {
+            return format!("{subject} can't be blocked");
+        }
+        if keyword.eq_ignore_ascii_case("can't block") {
+            return format!("{subject} can't block");
+        }
+    }
     if trimmed == "creatures have Can't block" {
         return "Creatures can't block".to_string();
+    }
+    if trimmed.contains("target sliver") {
+        return trimmed.replace("target sliver", "target Sliver");
+    }
+    if trimmed == "target player sacrifices target player's creature" {
+        return "Target player sacrifices a creature of their choice".to_string();
+    }
+    if trimmed == "target player sacrifices target player's creature. target player loses 1 life" {
+        return "Target player sacrifices a creature of their choice and loses 1 life".to_string();
+    }
+    if trimmed == "target player sacrifices target player's attacking/blocking permanent" {
+        return "Target player sacrifices an attacking or blocking creature of their choice"
+            .to_string();
+    }
+    if trimmed == "target player sacrifices target player's attacking/blocking creature" {
+        return "Target player sacrifices an attacking or blocking creature of their choice"
+            .to_string();
+    }
+    if let Some(rest) = trimmed.strip_prefix("Deal ")
+        && let Some((damage, loss_tail)) =
+            rest.split_once(" damage to target creature. that object's controller loses ")
+        && let Some(loss_amount) = loss_tail.strip_suffix(" life")
+    {
+        return format!(
+            "This creature deals {damage} damage to target creature and that creature's controller loses {loss_amount} life"
+        );
+    }
+    if trimmed == "commander creatures you own have token creatures you control get +2/+2" {
+        return "Commander creatures you own have \"Creature tokens you control get +2/+2\""
+            .to_string();
+    }
+    if let Some(rest) = trimmed.strip_prefix("other ")
+        && let Some((types, buff)) = rest.split_once(" creatures you control get ")
+    {
+        return format!("Each other creature you control that's a {types} gets {buff}");
+    }
+    if trimmed
+        == "Whenever a enchantment you control enters the battlefield: Put 1 +1/+1 counter(s) on this creature. you draw a card"
+    {
+        return "Whenever an enchantment you control enters, put a +1/+1 counter on this creature and draw a card"
+            .to_string();
     }
     if let Some(rest) = trimmed.strip_prefix("For each player, Deal ")
         && let Some((amount, per_player_tail)) =
@@ -4094,6 +4339,80 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         return trimmed
             .replacen("For each opponent, Deal ", "Deal ", 1)
             .replace(" damage to that player", " damage to each opponent");
+    }
+    if let Some(rest) = trimmed.strip_prefix("For each creature or planeswalker, Deal ")
+        && let Some(amount) = rest.strip_suffix(" damage to that object")
+    {
+        return format!("Deal {amount} damage to each creature and each planeswalker");
+    }
+    if let Some(rest) = trimmed.strip_prefix("For each ")
+        && let Some((targets, amount_tail)) = rest.split_once(", Deal ")
+        && let Some(amount) = amount_tail.strip_suffix(" damage to that object")
+        && let Some((left, right_and_type)) = targets.split_once(" or ")
+        && let Some(kind) = right_and_type.strip_suffix(" creature")
+    {
+        return format!("Deal {amount} damage to each {left} and/or {kind} creature");
+    }
+    if let Some(rest) = trimmed.strip_prefix("For each opponent's creature, Deal ")
+        && let Some(amount) = rest.strip_suffix(" damage to that object")
+    {
+        return format!("Deal {amount} damage to each creature your opponents control");
+    }
+    if trimmed == "Tap all an opponent's creature. Untap all a creature you control" {
+        return "Tap all creatures your opponents control and untap all creatures you control"
+            .to_string();
+    }
+    if trimmed == "Can't block" {
+        return "This creature can't block".to_string();
+    }
+    if trimmed
+        == "Tag the object attached to this artifact as 'equipped'. Put 1 +1/+1 counter(s) on the tagged object 'equipped'"
+    {
+        return "Put a +1/+1 counter on equipped creature".to_string();
+    }
+    if trimmed
+        == "Tag the object attached to this artifact as 'equipped'. Regenerate the tagged object 'equipped' until end of turn"
+    {
+        return "Regenerate equipped creature".to_string();
+    }
+    if let Some(kind) = trimmed.strip_prefix("Whenever this permanent deals damage to ")
+        && let Some(kind) = kind.strip_suffix(": Destroy it")
+    {
+        return format!("Whenever this creature deals damage to a {kind}, destroy that creature");
+    }
+    if trimmed
+        == "At the beginning of your upkeep: Sacrifice this enchantment unless you pays {W}{W}"
+    {
+        return "At the beginning of your upkeep, sacrifice this enchantment unless you pay {W}{W}"
+            .to_string();
+    }
+    if trimmed == "Destroy all an opponent's nonland permanent" {
+        return "Destroy all nonland permanents your opponents control".to_string();
+    }
+    if trimmed == "Destroy target white or green creature" {
+        return "Destroy target green or white creature".to_string();
+    }
+    if trimmed == "an opponent's creature enter the battlefield tapped" {
+        return "Creatures your opponents control enter tapped".to_string();
+    }
+    if trimmed == "Return all target player's nonland permanent to its owner's hand" {
+        return "Return all nonland permanents target player controls to their owner's hand"
+            .to_string();
+    }
+    if trimmed
+        == "target opponent loses 3 life. Put a card from target player's hand on top of target player's library"
+    {
+        return "Target opponent loses 3 life and puts a card from their hand on top of their library"
+            .to_string();
+    }
+    if trimmed == "Exchange control of creature and creature" {
+        return "Exchange control of two target creatures".to_string();
+    }
+    if trimmed == "Exchange control of permanent and permanent" {
+        return "Exchange control of two target permanents".to_string();
+    }
+    if trimmed == "For each player, Put a card from target player's hand on top of target player's library" {
+        return "each player puts a card from their hand on top of their library".to_string();
     }
     if let Some((choice, rest)) = trimmed.split_once(". ")
         && let Some(chosen) = choice.strip_prefix("Choose ")
@@ -4124,6 +4443,16 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
             return normalized;
         }
     }
+    if let Some(count) = trimmed.strip_prefix("you draw ")
+        && let Some(count) = count.strip_suffix(" cards. Proliferate")
+    {
+        return format!("Draw {count} cards, then proliferate");
+    }
+    if let Some(count) = trimmed.strip_prefix("you draw ")
+        && let Some(count) = count.strip_suffix(" cards. you sacrifice a permanent you control")
+    {
+        return format!("Draw {count} cards, then sacrifice a permanent");
+    }
     if let Some(prefix) = trimmed.strip_suffix(" can't block until end of turn") {
         return format!("{prefix} can't block this turn");
     }
@@ -4153,7 +4482,13 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     if trimmed
         == "For each player, Put target card in target player's hand on top of its owner's library"
     {
-        return "Each player puts a card from their hand on top of their library".to_string();
+        return "each player puts a card from their hand on top of their library".to_string();
+    }
+    if trimmed == "Exile all card in graveyard" {
+        return "Exile all graveyards".to_string();
+    }
+    if trimmed.contains("Create a treasure token") {
+        return trimmed.replace("Create a treasure token", "Create a Treasure token");
     }
     if let Some(prefix) =
         trimmed.strip_suffix(" target card in your hand on top of its owner's library")
@@ -4190,6 +4525,9 @@ fn normalize_oracle_line_for_card(def: &CardDefinition, line: &str) -> String {
             " can't be blocked until end of turn.",
             " can't be blocked this turn",
         )
+        .replace(" ors ", " or ")
+        .replace(" ors", " or")
+        .replace("ors ", "or ")
         .replace(
             " can't be blocked until end of turn",
             " can't be blocked this turn",
@@ -4230,6 +4568,44 @@ fn normalize_oracle_line_for_card(def: &CardDefinition, line: &str) -> String {
             "Return this card from your graveyard to your hand",
         );
     }
+    if normalized.starts_with("equipped creature has \"")
+        && normalized
+            .to_ascii_lowercase()
+            .contains("sacrifice this: this deals")
+    {
+        normalized = normalized.replace(
+            "Sacrifice this: This deals",
+            &format!(
+                "Sacrifice {}: {} deals",
+                def.card.name.as_str(),
+                def.card.name.as_str()
+            ),
+        );
+        normalized = normalized.replace(
+            "Sacrifice this: this deals",
+            &format!(
+                "Sacrifice {}: {} deals",
+                def.card.name.as_str(),
+                def.card.name.as_str()
+            ),
+        );
+        normalized = normalized.replace(
+            "sacrifice this: This deals",
+            &format!(
+                "Sacrifice {}: {} deals",
+                def.card.name.as_str(),
+                def.card.name.as_str()
+            ),
+        );
+        normalized = normalized.replace(
+            "sacrifice this: this deals",
+            &format!(
+                "Sacrifice {}: {} deals",
+                def.card.name.as_str(),
+                def.card.name.as_str()
+            ),
+        );
+    }
     if let Some(enchanted_subject) = enchanted_subject_for_oracle_lines(def) {
         normalized = normalized.replace(
             "Tap enchanted permanent",
@@ -4244,62 +4620,54 @@ fn normalize_oracle_line_for_card(def: &CardDefinition, line: &str) -> String {
         "choose target card in target player's hand: For each player, Put target card in target player's hand on top of its owner's library",
         "Each player puts a card from their hand on top of their library",
     );
+    normalized = normalized.replace(
+        "Whenever a enchantment you control enters the battlefield: Put 1 +1/+1 counter(s) on this creature. you draw a card",
+        "Whenever an enchantment you control enters, put a +1/+1 counter on this creature and draw a card",
+    );
+    normalized = normalized.replace(
+        "Whenever you gain life: Put 1 +1/+1 counter(s) on this creature. Scry 1",
+        "Whenever you gain life, put a +1/+1 counter on this creature and scry 1",
+    );
+    normalized = normalized.replace(
+        "Whenever this creature attacks: Put 1 +1/+1 counter(s) on it",
+        "Whenever this creature attacks, put a +1/+1 counter on it",
+    );
+    normalized = normalized.replace(
+        "When this creature enters: Earthbend target land you control with 1 +1/+1 counter(s)",
+        "When this creature enters, earthbend 1",
+    );
+    if normalized
+        .to_ascii_lowercase()
+        .starts_with("all slivers have \"")
+    {
+        return normalize_oracle_line_segment(&normalized);
+    }
 
-    normalized
+    let mut normalized = normalized
         .split(": ")
         .map(normalize_oracle_line_segment)
         .collect::<Vec<_>>()
-        .join(": ")
+        .join(": ");
+    if let Some(enchanted_subject) = enchanted_subject_for_oracle_lines(def) {
+        normalized = normalized.replace(
+            "Tap enchanted permanent",
+            &format!("Tap enchanted {enchanted_subject}"),
+        );
+        normalized = normalized.replace(
+            "Untap enchanted permanent",
+            &format!("Untap enchanted {enchanted_subject}"),
+        );
+    }
+    normalized
 }
 
 /// Render compiled output in a near-oracle style for semantic diffing.
 pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
     let base_lines = compiled_lines(def);
-    let stripped = base_lines
+    base_lines
         .iter()
         .map(|line| strip_render_heading(line))
         .map(|line| normalize_oracle_line_for_card(def, &line))
         .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>();
-
-    let mut out = Vec::new();
-    let mut idx = 0usize;
-    while idx < stripped.len() {
-        if is_keyword_phrase(&stripped[idx]) {
-            let mut keywords = vec![stripped[idx].clone()];
-            let mut consumed = 1usize;
-            while idx + consumed < stripped.len() && is_keyword_phrase(&stripped[idx + consumed]) {
-                keywords.push(stripped[idx + consumed].clone());
-                consumed += 1;
-            }
-            out.push(join_oracle_list(&keywords));
-            idx += consumed;
-            continue;
-        }
-
-        if let Some((subject, keyword)) = split_have_clause(&stripped[idx]) {
-            let mut keywords = vec![keyword];
-            let mut consumed = 1usize;
-            while idx + consumed < stripped.len() {
-                let Some((next_subject, next_keyword)) =
-                    split_have_clause(&stripped[idx + consumed])
-                else {
-                    break;
-                };
-                if next_subject != subject {
-                    break;
-                }
-                keywords.push(next_keyword);
-                consumed += 1;
-            }
-            out.push(format!("{subject} have {}", join_oracle_list(&keywords)));
-            idx += consumed;
-            continue;
-        }
-
-        out.push(stripped[idx].clone());
-        idx += 1;
-    }
-
-    out
+        .collect::<Vec<_>>()
 }

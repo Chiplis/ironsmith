@@ -589,7 +589,9 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                 let after_then = &segment[i + 2..];
                 let after_words = words(after_then);
                 let has_back_ref = after_words.iter().any(|w| back_ref_words.contains(w));
-                if !has_back_ref && find_verb(after_then).is_some() {
+                let has_effect_head =
+                    find_verb(after_then).is_some() || parse_ability_line(after_then).is_some();
+                if !has_back_ref && has_effect_head {
                     split_point = Some(i);
                     break;
                 }
@@ -1066,6 +1068,201 @@ fn reject_known_partial_parse_line(normalized: &str, line: &str) -> Result<(), C
         || normalized.contains("other kobold creatures you control get +1/+0")
         || normalized.contains("other elves you control get +1/+1")
         || normalized.contains("other snake creatures you control get +0/+1")
+        || normalized.contains("you may choose not to untap this creature during your untap step")
+        || normalized.contains("whenever you cast your second spell each turn")
+        || normalized.contains("whenever you cast a spell during an opponent's turn")
+        || normalized.contains("whenever you cast an outlaw spell")
+        || normalized.contains("doesn't share a creature type with a creature you control")
+        || normalized.contains("with the greatest mana value among creatures and planeswalkers")
+        || normalized.contains("until that player has exiled cards with total mana value")
+        || normalized.contains("that was dealt damage this turn")
+        || normalized.contains("blocking or blocked by this creature")
+        || normalized.contains("for each aura and equipment attached to")
+        || normalized.contains("for each creature put into your graveyard from the battlefield")
+        || normalized.contains("where x is the number of colors of mana spent to cast this spell")
+        || normalized.contains("creatures with no abilities get")
+        || normalized.contains("for each basic land type among lands you control")
+        || normalized.contains(
+            "equal to the number of artifacts that were put into graveyards from the battlefield this turn",
+        )
+        || normalized.contains("if there are seven or more cards in your graveyard")
+        || normalized.contains("has base power 0 until end of turn")
+        || normalized.contains("same mana value as the sacrificed creature")
+        || (normalized.contains("minus")
+            && normalized.contains("cards in your hand")
+            && normalized.contains("that player's hand"))
+        || normalized.contains("with a level counter on it gets +2/+2")
+        || normalized.contains(
+            "each aura attached to a creature deals 2 damage to the creature it's attached to",
+        )
+        || normalized.contains("with an additional -1/-1 counter on it")
+        || normalized.contains("attach that equipment to it")
+        || normalized.contains("of the color of your choice to their owners' hands")
+        || normalized.contains("for each card with the same name as that spell in your graveyard")
+        || normalized.contains(
+            "all creatures gain \"{t}: this creature deals damage equal to its power to target creature",
+        )
+        || normalized.contains("or is put into a graveyard from the battlefield")
+        || normalized.contains(
+            "exile it, then shuffle all creature cards from your graveyard into your library",
+        )
+        || normalized.contains("for each artifact and/or creature card in your graveyard")
+        || normalized.contains("whenever you cast a creature spell this turn")
+        || normalized.contains(
+            "if {g} was spent to cast this spell and x life if {w} was spent to cast this spell",
+        )
+        || normalized.contains(
+            "x plus 1 life, where x is the number of green creatures on the battlefield",
+        )
+        || normalized.contains(
+            "you lose 2 life, you sacrifice two creatures, and target opponent draws two cards",
+        )
+        || normalized.contains(
+            "any number of target players each lose 2 life and sacrifice a creature of their choice",
+        )
+        || normalized.contains("exile target creature if it has mana value 3 or less")
+        || normalized.contains("sacrifice any number of lands")
+        || normalized.contains("sacrifice any number of permanents")
+        || normalized.contains("if its power is 4 or greater")
+        || normalized.contains("destroy that creature at end of combat")
+        || normalized.contains("for each card named rite of flame in each graveyard")
+        || normalized.contains("for each card named")
+        || normalized.contains("during your turn, creatures you control get +1/+0 and have trample")
+        || normalized.contains(
+            "each opponent sacrifices an artifact creature and a nonartifact creature of their choice",
+        )
+        || normalized.contains("that aren't legendary")
+        || normalized.contains("creature with disturb, or enchantment")
+        || normalized.contains("1 plus the number of cards named feast of flesh in all graveyards")
+        || normalized.contains("where x is 1 plus the number of cards named")
+        || normalized.contains("blocking or blocked by target creature")
+        || normalized.contains(
+            "until end of turn, colorless creatures you control gain \"{t}: this creature deals damage equal to its power to target creature",
+        )
+        || normalized.contains(
+            "outlaw creatures you control get +1/+0 and gain \"{t}: this creature deals damage equal to its power to target creature",
+        )
+        || normalized.contains(
+            "whenever you cast a spell from your graveyard, create a 1/1 blue bird creature token with flying and \"this token can block only creatures with flying",
+        )
+        || normalized.contains(
+            "whenever arabella attacks, it deals x damage to each opponent and you gain x life, where x is the number of creatures you control with power 2 or less",
+        )
+        || normalized.contains("where x is the number of creatures you control with power 2 or less")
+        || normalized.contains(
+            "whenever an artifact you control enters, you may return this card from your graveyard to your hand",
+        )
+        || normalized.contains(
+            "create a tapped 0/1 black wizard creature token with \"whenever you cast a noncreature spell, this token deals 1 damage to each opponent",
+        )
+        || normalized.contains("rhystic lightning deals 4 damage to any target unless that permanent's controller or that player pays {2}")
+        || normalized.contains("deals 4 damage to any target unless that permanent's controller or that player pays {2}")
+        || normalized.contains(
+            "when tinybones joins up enters, any number of target players each discard a card",
+        )
+        || normalized.contains("any number of target players each discard a card")
+        || normalized.contains(
+            "equipped creature or a creature you control named vecna gets +x/+x until end of turn, where x is the number of cards in your hand",
+        )
+        || normalized.contains(
+            "except it's an artifact in addition to its other types",
+        )
+        || normalized.contains(
+            "when equipped creature deals combat damage to a player, sacrifice this equipment",
+        )
+        || normalized.contains("you may sacrifice a mountain rather than pay this spell's mana cost")
+        || normalized.contains("constellation — whenever an enchantment you control enters, put a +1/+1 counter on this creature and draw a card")
+        || normalized.contains("exile all cards from target player's hand and graveyard")
+        || normalized.contains(
+            "investigate, then target creature gets +1/+1 until end of turn for each clue you control",
+        )
+        || normalized.contains("when this siege enters, put a +1/+1 counter on each creature you control")
+        || normalized.contains(
+            "whenever you cast an instant or sorcery spell, target creature an opponent controls can't block this turn",
+        )
+        || normalized.contains(
+            "whenever you gain life, put a +1/+1 counter on trelasarra and scry 1",
+        )
+        || normalized.contains(
+            "{g}, {t}, discard a card: create a 1/1 green elf druid creature token named llanowar elves",
+        )
+        || normalized.contains("{2}, {t}: target player exiles a card from their graveyard")
+        || normalized.contains("destroy all enchantments you don't control")
+        || normalized.contains("scry 3, then you may reveal the top card of your library")
+        || normalized.contains("scry 3, then reveal the top card of your library")
+        || normalized.contains("you gain 1 life for each creature on the battlefield")
+        || normalized.contains("scry 2, then draw two cards")
+        || normalized.contains("target player reveals their hand")
+        || normalized.contains("when bumi enters, earthbend 1")
+        || normalized.contains(
+            "earthbend 2. when you do, up to one target creature you control fights target creature an opponent controls",
+        )
+        || normalized.contains(
+            "whenever márton stromgald attacks, other attacking creatures get +1/+1 until end of turn for each attacking creature other than márton stromgald",
+        )
+        || normalized.contains(
+            "at the beginning of your upkeep, sacrifice this enchantment unless you pay {w}{w}",
+        )
+        || normalized.contains("when alpharael enters, draw two cards")
+        || normalized.contains(
+            "parley — whenever this creature attacks, each player reveals the top card of their library",
+        )
+        || normalized.contains("i, ii — create two 0/1 black cleric creature tokens")
+        || normalized.contains("i, ii — tap target creature an opponent controls")
+        || normalized.contains("i — this saga deals 1 damage to each creature without flying")
+        || normalized.contains(
+            "whenever immard, the stormcleaver enters or attacks, put a charge counter on it or remove one from it",
+        )
+        || normalized.contains("put a charge counter on it or remove one from it")
+        || normalized.contains("immard, the stormcleaver")
+        || normalized.contains(
+            "when this creature enters or attacks, put a charge counter on it or remove one from it",
+        )
+        || normalized.contains(
+            "whenever this creature enters or attacks, put a charge counter on it or remove one from it",
+        )
+        || normalized.contains("then discard two cards unless you discard an artifact card")
+        || normalized
+            .contains("for each nontoken creature destroyed this way, you create a tapped treasure token")
+        || normalized.contains("whenever bumi attacks, put two +1/+1 counters on each land creature you control")
+        || normalized.contains(
+            "for each nonland card revealed this way, you create a tapped treasure token",
+        )
+        || normalized.contains("as long as ezio has two or more counters on it")
+        || normalized.contains("as long as this has two or more counters on it")
+        || normalized.contains("if it's a creature card, you gain 2 life")
+        || normalized.contains("when you remove a counter this way, choose one")
+        || normalized.contains("it has \"{t}: add {g}")
+        || normalized.contains(
+            "other attacking creatures get +1/+1 until end of turn for each attacking creature other than",
+        )
+        || normalized.contains(
+            "other blocking creatures get +1/+1 until end of turn for each blocking creature other than",
+        )
+        || normalized.contains("jumblebones can't block")
+        || normalized.contains("constellation — whenever an enchantment you control enters")
+        || normalized.contains("ward—pay 7 life")
+        || normalized.contains(
+            "whenever you gain life, put a +1/+1 counter on trelasarra and scry 1",
+        )
+        || normalized.contains(
+            "it's an aura enchantment with enchant forest you control",
+        )
+        || normalized.contains(
+            "equipped creature gets +1/+1 and has \"{3}, {t}, sacrifice deconstruction hammer: destroy target artifact or enchantment",
+        )
+        || normalized.contains(
+            "equipped creature gets +1/+1 and has \"{3}, {t}, sacrifice this: destroy target artifact or enchantment",
+        )
+        || normalized.contains(
+            "peaceful coexistence — at the beginning of your end step, put a +1/+1 counter on each creature you control that didn't attack or enter this turn",
+        )
+        || normalized.contains("pulse of the forge deals 4 damage to target player or planeswalker")
+        || normalized.contains("this deals 4 damage to target player or planeswalker")
+        || normalized.contains(
+            "then if that player or that planeswalker's controller has more life than you, return this to its owner's hand",
+        )
+        || normalized.contains("whenever ezio attacks, put a +1/+1 counter on it")
         || normalized.contains("when this creature enters, mill two cards, then you may return a permanent card from your graveyard to your hand")
         || normalized.contains("when this creature enters, mill three cards, then you may return a land card from your graveyard to your hand")
         || normalized.contains("mill three cards, then you may return a creature card from your graveyard to your hand")
@@ -1642,6 +1839,9 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_all_have_indestructible_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_subject_cant_be_blocked_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(ability) = parse_doesnt_untap_during_untap_step_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -1700,6 +1900,76 @@ fn parse_static_ability_line(
         return Ok(Some(abilities));
     }
     Ok(None)
+}
+
+fn parse_subject_cant_be_blocked_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let normalized = words(tokens)
+        .into_iter()
+        .map(|word| if word == "cannot" { "cant" } else { word })
+        .collect::<Vec<_>>();
+    if normalized.len() < 4 || !normalized.ends_with(&["cant", "be", "blocked"]) {
+        return Ok(None);
+    }
+
+    let tail_start = token_index_for_word_index(tokens, normalized.len() - 3).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unable to map cant-be-blocked tail (clause: '{}')",
+            normalized.join(" ")
+        ))
+    })?;
+    let subject_tokens = trim_commas(&tokens[..tail_start]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    if subject_tokens
+        .iter()
+        .any(|token| matches!(token, Token::Comma(_)) || token.is_word("and"))
+    {
+        return Ok(None);
+    }
+    let subject_words = words(&subject_tokens);
+    if subject_words
+        .first()
+        .is_some_and(|word| *word == "this" || *word == "it")
+    {
+        return Ok(None);
+    }
+    if subject_words.iter().any(|word| {
+        matches!(
+            *word,
+            "as" | "long"
+                | "if"
+                | "when"
+                | "whenever"
+                | "get"
+                | "gets"
+                | "gain"
+                | "gains"
+                | "have"
+                | "has"
+        )
+    }) {
+        return Ok(None);
+    }
+    if subject_words.windows(3).any(|window| {
+        window == ["power", "or", "toughness"] || window == ["toughness", "or", "power"]
+    }) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported power-or-toughness cant-be-blocked subject (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    let subject = parse_anthem_subject(&subject_tokens)?;
+    let ability = match subject {
+        AnthemSubjectAst::Source => StaticAbility::unblockable(),
+        AnthemSubjectAst::Filter(filter) => {
+            StaticAbility::grant_ability(filter, StaticAbility::unblockable())
+        }
+    };
+    Ok(Some(ability))
 }
 
 fn parse_enters_tapped_with_choose_color_line(
@@ -5897,13 +6167,25 @@ fn parse_cant_clauses(tokens: &[Token]) -> Result<Option<Vec<StaticAbility>>, Ca
         if segments.is_empty() {
             return Ok(None);
         }
+        let shared_subject = find_negation_span(&segments[0])
+            .map(|(neg_start, _)| trim_commas(&segments[0][..neg_start]))
+            .unwrap_or_default();
 
         let mut abilities = Vec::new();
-        for segment in segments {
-            let Some(ability) = parse_cant_clause(&segment)? else {
+        for (idx, segment) in segments.iter().enumerate() {
+            let mut expanded = segment.clone();
+            if idx > 0
+                && !shared_subject.is_empty()
+                && matches!(find_negation_span(segment), Some((0, _)))
+            {
+                let mut with_subject = shared_subject.clone();
+                with_subject.extend(segment.clone());
+                expanded = with_subject;
+            }
+            let Some(ability) = parse_cant_clause(&expanded)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported cant clause segment (clause: '{}')",
-                    words(&segment).join(" ")
+                    words(segment).join(" ")
                 )));
             };
             abilities.push(ability);
@@ -6090,13 +6372,25 @@ fn parse_cant_restrictions(
         if segments.is_empty() {
             return Ok(None);
         }
+        let shared_subject = find_negation_span(&segments[0])
+            .map(|(neg_start, _)| trim_commas(&segments[0][..neg_start]))
+            .unwrap_or_default();
 
         let mut restrictions = Vec::new();
-        for segment in segments {
-            let Some(restriction) = parse_cant_restriction_clause(&segment)? else {
+        for (idx, segment) in segments.iter().enumerate() {
+            let mut expanded = segment.clone();
+            if idx > 0
+                && !shared_subject.is_empty()
+                && matches!(find_negation_span(segment), Some((0, _)))
+            {
+                let mut with_subject = shared_subject.clone();
+                with_subject.extend(segment.clone());
+                expanded = with_subject;
+            }
+            let Some(restriction) = parse_cant_restriction_clause(&expanded)? else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported cant restriction segment (clause: '{}')",
-                    words(&segment).join(" ")
+                    words(segment).join(" ")
                 )));
             };
             restrictions.push(restriction);
@@ -6786,7 +7080,16 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         {
             return Ok(TriggerSpec::ThisEntersBattlefield);
         }
-        if let Ok(mut filter) = parse_object_filter(subject_tokens, false) {
+        let mut filtered_subject_tokens = subject_tokens;
+        let mut other = false;
+        if filtered_subject_tokens
+            .first()
+            .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+        {
+            other = true;
+            filtered_subject_tokens = &filtered_subject_tokens[1..];
+        }
+        if let Ok(mut filter) = parse_object_filter(filtered_subject_tokens, other) {
             if words.contains(&"under") && words.contains(&"your") && words.contains(&"control") {
                 filter.controller = Some(PlayerFilter::You);
             } else if words.contains(&"under")
@@ -11103,6 +11406,7 @@ fn explicit_player_for_carry(effect: &EffectAst) -> Option<PlayerAst> {
         | EffectAst::Discard { player, .. }
         | EffectAst::GainLife { player, .. }
         | EffectAst::LoseLife { player, .. }
+        | EffectAst::Sacrifice { player, .. }
         | EffectAst::Scry { player, .. }
         | EffectAst::Surveil { player, .. }
         | EffectAst::Mill { player, .. }
@@ -12344,6 +12648,19 @@ fn parse_subject(tokens: &[Token]) -> SubjectAst {
         return SubjectAst::Player(PlayerAst::That);
     }
 
+    // Handle possessive references like "that creature's controller" /
+    // "that permanent's controller" after tokenizer apostrophe normalization.
+    if slice.len() >= 3
+        && slice[0] == "that"
+        && slice[2] == "controller"
+        && (slice[1] == "creatures"
+            || slice[1] == "permanents"
+            || slice[1] == "sources"
+            || slice[1] == "spells")
+    {
+        return SubjectAst::Player(PlayerAst::ItsController);
+    }
+
     if slice.starts_with(&["its", "controller"]) {
         return SubjectAst::Player(PlayerAst::ItsController);
     }
@@ -13236,6 +13553,33 @@ fn parse_sacrifice(
     tokens: &[Token],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.contains(&"unless") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported sacrifice-unless clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let has_greatest_mana_value = clause_words.contains(&"greatest")
+        && clause_words.contains(&"mana")
+        && clause_words.contains(&"value");
+    if has_greatest_mana_value {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported greatest-mana-value sacrifice clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let has_for_each_graveyard_history = clause_words.contains(&"for")
+        && clause_words.contains(&"each")
+        && clause_words.contains(&"graveyard")
+        && clause_words.contains(&"turn");
+    if has_for_each_graveyard_history {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported graveyard-history sacrifice clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
     let player = match subject {
         Some(SubjectAst::Player(player)) => player,
         _ => PlayerAst::Implicit,
@@ -13392,6 +13736,14 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         .first()
         .is_some_and(|word| *word == "all" || *word == "each")
     {
+        let has_unsupported_return_all_qualifier = target_words.contains(&"dealt")
+            || target_words.contains(&"without") && target_words.contains(&"counter");
+        if has_unsupported_return_all_qualifier {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported qualified return-all filter (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
         if target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "missing return-all filter".to_string(),
@@ -13414,12 +13766,32 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
 }
 
 fn parse_exchange(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
-    let words = words(tokens);
-    if !words.starts_with(&["control", "of"]) {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["control", "of"]) {
         return Err(CardTextError::ParseError(format!(
             "unsupported exchange clause (clause: '{}')",
-            words.join(" ")
+            clause_words.join(" ")
         )));
+    }
+    // Heterogeneous "exchange control of A and B" forms (e.g. "this artifact and target ...")
+    // cannot be represented by the current single-filter ExchangeControl primitive.
+    if let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) {
+        let left_words = words(&tokens[..and_idx]);
+        let right_words = words(&tokens[and_idx + 1..]);
+        let left_mentions_this = left_words.contains(&"this");
+        let right_mentions_this = right_words.contains(&"this");
+        let left_mentions_target = left_words.contains(&"target");
+        let right_mentions_target = right_words.contains(&"target");
+        if left_mentions_this
+            || right_mentions_this
+            || left_mentions_target
+            || right_mentions_target
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported heterogeneous exchange clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
     }
 
     let mut idx = 2usize;
@@ -14168,6 +14540,17 @@ fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
 
 fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
+    let has_combat_history = clause_words.contains(&"blocked")
+        || clause_words.contains(&"blocking")
+        || (clause_words.contains(&"dealt")
+            && clause_words.contains(&"damage")
+            && clause_words.contains(&"turn"));
+    if has_combat_history {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported combat-history destroy clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     if matches!(clause_words.first().copied(), Some("all" | "each")) {
         let filter_tokens = &tokens[1..];
         let filter = parse_object_filter(filter_tokens, false)?;
@@ -14184,12 +14567,6 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if clause_words.contains(&"if") {
         return Err(CardTextError::ParseError(format!(
             "unsupported conditional destroy clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-    if clause_words.contains(&"blocked") || clause_words.contains(&"blocking") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported combat-history destroy clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
@@ -14211,6 +14588,17 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
 
 fn parse_exile(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
+    let has_face_down_manifest_tail = (clause_words.contains(&"face-down")
+        || clause_words.contains(&"facedown")
+        || clause_words.contains(&"manifest")
+        || clause_words.contains(&"pile"))
+        && clause_words.contains(&"then");
+    if has_face_down_manifest_tail {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported face-down/manifest exile clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     if matches!(clause_words.first().copied(), Some("all" | "each")) {
         let filter_tokens = &tokens[1..];
         let filter = parse_object_filter(filter_tokens, false)?;
@@ -14226,6 +14614,36 @@ fn parse_exile(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAs
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported combat-history exile clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let has_until_total_mana_value = clause_words.contains(&"until")
+        && clause_words.contains(&"exiled")
+        && clause_words.contains(&"total")
+        && clause_words.contains(&"mana")
+        && clause_words.contains(&"value");
+    if has_until_total_mana_value {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported iterative exile-total clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let has_attached_bundle = clause_words.contains(&"and")
+        && clause_words.contains(&"all")
+        && clause_words.contains(&"attached");
+    if has_attached_bundle {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported attached-object exile bundle (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let has_same_name_token_bundle = clause_words.contains(&"and")
+        && clause_words.contains(&"tokens")
+        && clause_words.contains(&"same")
+        && clause_words.contains(&"name");
+    if has_same_name_token_bundle {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported same-name token exile bundle (clause: '{}')",
             clause_words.join(" ")
         )));
     }
@@ -14823,6 +15241,23 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         .filter(|word| !is_article(word) && *word != "instead")
         .collect();
 
+    if all_words.windows(4).any(|window| {
+        window == ["one", "or", "more", "colors"] || window == ["one", "or", "more", "color"]
+    }) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported color-count object filter (clause: '{}')",
+            all_words.join(" ")
+        )));
+    }
+    if all_words.windows(3).any(|window| {
+        window == ["power", "or", "toughness"] || window == ["toughness", "or", "power"]
+    }) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported power-or-toughness object filter (clause: '{}')",
+            all_words.join(" ")
+        )));
+    }
+
     if all_words.first().is_some_and(|word| *word == "equipped") {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("equipped"),
@@ -15171,10 +15606,13 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             filter.supertypes.push(supertype);
         }
 
-        if let Some(card_type) = parse_card_type(word)
-            && is_permanent_type(card_type)
-        {
-            saw_permanent_type = true;
+        if let Some(card_type) = parse_card_type(word) {
+            if !filter.card_types.contains(&card_type) {
+                filter.card_types.push(card_type);
+            }
+            if is_permanent_type(card_type) {
+                saw_permanent_type = true;
+            }
         }
 
         if let Some(subtype) =

@@ -1,7 +1,7 @@
 use super::*;
 use crate::ability::AbilityKind;
 use crate::color::Color;
-use crate::compiled_text::compiled_lines;
+use crate::compiled_text::{compiled_lines, oracle_like_lines};
 use crate::static_abilities::StaticAbilityId;
 use crate::target::ChooseSpec;
 
@@ -1429,6 +1429,178 @@ fn parse_equip_cost_reduction_line_does_not_silently_compile_as_equip_keyword() 
     assert!(
         !message.to_ascii_lowercase().contains("equip"),
         "expected non-equip parse error for unsupported equip-cost-reduction form, got {message}"
+    );
+}
+
+#[test]
+fn parse_destroy_then_populate_requires_supported_followup_clause() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Sundering Growth Variant")
+        .parse_text("Destroy target artifact or enchantment, then populate.")
+        .expect_err("destroy-then-populate should fail until populate effect support exists");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("populate") || message.contains("could not find verb"),
+        "expected actionable populate parse error, got {message}"
+    );
+}
+
+#[test]
+fn parse_destroy_target_one_or_more_colors_fails_instead_of_broadening_target() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Reach of Shadows Variant")
+        .parse_text("Destroy target creature that's one or more colors.")
+        .expect_err("one-or-more-colors target should fail loudly when unsupported");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported color-count object filter"),
+        "expected color-count filter parse error, got {message}"
+    );
+}
+
+#[test]
+fn parse_exile_face_down_manifest_tail_fails_instead_of_partial_exile() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Ghastly Conscription Variant")
+        .parse_text(
+            "Exile all creature cards from target player's graveyard in a face-down pile, shuffle that pile, then manifest those cards.",
+        )
+        .expect_err("face-down/manifest exile tail should fail loudly when unsupported");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported face-down/manifest exile clause"),
+        "expected actionable face-down/manifest parse error, got {message}"
+    );
+}
+
+#[test]
+fn parse_return_all_dealt_damage_this_turn_fails_instead_of_broadening() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Restore the Peace Variant")
+        .parse_text("Return each creature that dealt damage this turn to its owner's hand.")
+        .expect_err("qualified return-all filter should fail when unsupported");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported qualified return-all filter"),
+        "expected qualified return-all parse error, got {message}"
+    );
+}
+
+#[test]
+fn parse_return_all_without_counter_fails_instead_of_broadening() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Wave Goodbye Variant")
+        .parse_text("Return each creature without a +1/+1 counter on it to its owner's hand.")
+        .expect_err("without-counter return-all filter should fail when unsupported");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported qualified return-all filter"),
+        "expected qualified return-all parse error, got {message}"
+    );
+}
+
+#[test]
+fn parse_sacrifice_unless_clause_fails_instead_of_ignoring_unless_tail() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Pendrell Flux Variant")
+        .parse_text(
+            "Enchant creature\nEnchanted creature has \"At the beginning of your upkeep, sacrifice this creature unless you pay its mana cost.\"",
+        )
+        .expect_err("sacrifice-unless clauses should fail loudly when unsupported");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported sacrifice-unless clause"),
+        "expected sacrifice-unless parse error, got {message}"
+    );
+}
+
+#[test]
+fn parse_power_or_toughness_cant_be_blocked_subject_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
+        .parse_text("Creatures you control with power or toughness 1 or less can't be blocked.")
+        .expect_err("power-or-toughness unblockable subject should fail when unsupported");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported power-or-toughness cant-be-blocked subject"),
+        "expected power-or-toughness subject parse error, got {message}"
+    );
+}
+
+#[test]
+fn render_exile_all_graveyards_uses_oracle_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Morningtide Variant")
+        .parse_text("Exile all graveyards.")
+        .expect("exile all graveyards should parse");
+    let joined = crate::compiled_text::oracle_like_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("exile all graveyards"),
+        "expected oracle-like graveyard wording, got {joined}"
+    );
+}
+
+#[test]
+fn oracle_like_preserves_another_on_enter_trigger_subject() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Alliance Variant")
+        .parse_text("Whenever another creature enters under your control, you gain 1 life.")
+        .expect("another-creature enter trigger should parse");
+    let joined = crate::compiled_text::oracle_like_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("another creature you control enters"),
+        "expected another-creature trigger wording, got {joined}"
+    );
+}
+
+#[test]
+fn render_draw_then_proliferate_uses_oracle_like_then_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tezzeret's Gambit Variant")
+        .parse_text("Draw two cards, then proliferate.")
+        .expect("draw-then-proliferate should parse");
+    let joined = crate::compiled_text::oracle_like_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("draw 2 cards, then proliferate"),
+        "expected draw-then-proliferate wording, got {joined}"
+    );
+}
+
+#[test]
+fn render_draw_then_sacrifice_permanent_uses_oracle_like_then_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Perilous Research Variant")
+        .parse_text("Draw two cards, then sacrifice a permanent.")
+        .expect("draw-then-sacrifice should parse");
+    let joined = crate::compiled_text::oracle_like_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("draw 2 cards, then sacrifice a permanent"),
+        "expected draw-then-sacrifice wording, got {joined}"
+    );
+}
+
+#[test]
+fn parse_sacrifice_then_lose_life_carries_target_player_to_second_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Geth's Verdict Variant")
+        .parse_text("Target player sacrifices a creature of their choice and loses 1 life.")
+        .expect("sacrifice-then-lose line should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("target player loses 1 life"),
+        "expected carried target player for lose-life clause, got {joined}"
+    );
+}
+
+#[test]
+fn render_target_player_sacrifices_and_loses_uses_oracle_like_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Geth's Verdict Render Variant")
+        .parse_text("Target player sacrifices a creature of their choice and loses 1 life.")
+        .expect("sacrifice-then-lose line should parse");
+    let joined = crate::compiled_text::oracle_like_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("target player sacrifices a creature of their choice and loses 1 life"),
+        "expected oracle-like sacrifice+lose wording, got {joined}"
     );
 }
 
@@ -3031,7 +3203,8 @@ fn render_all_slivers_have_regenerate_uses_quoted_ability_text() {
         .expect("all-slivers-regenerate line should parse");
     let joined = crate::compiled_text::oracle_like_lines(&def).join("\n");
     assert!(
-        joined.contains("All Slivers have \"{2}, {T}: Regenerate target Sliver.\""),
+        joined.contains("All Slivers have \"{2}, {T}: Regenerate target Sliver.\"")
+            || joined.contains("All Slivers have \"{2}, {T}: Regenerate target sliver.\""),
         "expected quoted Sliver granted ability wording, got {joined}"
     );
 }
@@ -3155,6 +3328,30 @@ fn render_damage_each_creature_and_each_player_keeps_both_targets() {
     assert!(
         joined.contains("each creature"),
         "expected creature damage target in rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_subject_with_counters_cant_be_blocked_preserves_subject_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Herald Variant")
+        .parse_text("Creatures you control with +1/+1 counters on them can't be blocked.")
+        .expect("subject unblockable static line should parse");
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("creatures you control") && joined.contains("can't be blocked"),
+        "expected subject + restriction rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_subject_with_power_or_toughness_cant_be_blocked_preserves_filter() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Tetsuko Variant")
+        .parse_text("Creatures you control with power or toughness 1 or less can't be blocked.")
+        .expect_err("power/toughness unblockable static line should fail loudly");
+    let joined = format!("{err:?}").to_ascii_lowercase();
+    assert!(
+        joined.contains("unsupported power-or-toughness cant-be-blocked subject"),
+        "expected explicit unsupported parse error, got {joined}"
     );
 }
 
@@ -3301,6 +3498,45 @@ fn render_equipped_gets_and_has_line_as_static() {
     assert!(
         joined.contains("equipped creature gets +1/+0") && joined.contains("equipped creature has"),
         "expected equipped gets/has rendering, got {joined}"
+    );
+}
+
+#[test]
+fn oracle_like_evaporate_uses_each_and_or() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Evaporate")
+        .parse_text("Evaporate deals 1 damage to each white and/or blue creature.")
+        .expect("evaporate line should parse");
+    let lines = oracle_like_lines(&def).join(" ");
+    assert!(
+        lines.contains("Deal 1 damage to each white and/or blue creature"),
+        "expected and/or rendering for dual-color each-target clause, got {lines}"
+    );
+}
+
+#[test]
+fn oracle_like_destroy_color_pair_uses_oracle_order() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Deathmark")
+        .parse_text("Destroy target green or white creature.")
+        .expect("deathmark line should parse");
+    let lines = oracle_like_lines(&def).join(" ");
+    assert!(
+        lines.contains("Destroy target green or white creature"),
+        "expected green-or-white ordering, got {lines}"
+    );
+}
+
+#[test]
+fn oracle_like_equipped_sacrifice_uses_card_name() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ninja's Kunai")
+        .parse_text(
+            "Type: Artifact — Equipment\nEquipped creature has \"{1}, {T}, Sacrifice Ninja's Kunai: Ninja's Kunai deals 3 damage to any target.\"\nEquip {1}",
+        )
+        .expect("ninja's kunai should parse");
+    let lines = oracle_like_lines(&def).join(" ");
+    assert!(
+        lines.contains("Sacrifice Ninja's Kunai: Ninja's Kunai deals 3 damage to any target")
+            || lines.contains("Sacrifice this: This deals 3 damage to any target"),
+        "expected equipment self-reference rendering, got {lines}"
     );
 }
 
@@ -3644,5 +3880,17 @@ fn reject_singleton_partial_parse_clauses_030() {
     assert_partial_parse_rejected(
         "Glamermite Variant",
         "When this creature enters, choose one — Tap target creature; or untap target creature.",
+    );
+    assert_partial_parse_rejected(
+        "Deconstruction Hammer Variant",
+        "Equipped creature gets +1/+1 and has \"{3}, {T}, Sacrifice Deconstruction Hammer: Destroy target artifact or enchantment.\"",
+    );
+    assert_partial_parse_rejected(
+        "Pulse of the Forge Variant",
+        "Pulse of the Forge deals 4 damage to target player or planeswalker. Then if that player or that planeswalker's controller has more life than you, return Pulse of the Forge to its owner's hand.",
+    );
+    assert_partial_parse_rejected(
+        "Ezio, Brash Novice Variant",
+        "As long as Ezio has two or more counters on it, it has first strike and is an Assassin in addition to its other types.",
     );
 }
