@@ -116,7 +116,11 @@ impl ChooseSpec {
     /// - "Choose a creature you control" → `ChooseSpec::Object(ObjectFilter::creature().you_control())`
     /// - "Sacrifice a creature" → use ChooseObjectsEffect + Tagged
     pub fn target(inner: ChooseSpec) -> Self {
-        Self::Target(Box::new(inner))
+        if inner.is_target() {
+            inner
+        } else {
+            Self::Target(Box::new(inner))
+        }
     }
 
     /// Returns true if this spec represents a target (can fizzle, checks hexproof).
@@ -155,7 +159,10 @@ impl ChooseSpec {
     ///
     /// Example: `ChooseSpec::target_creature().with_count(ChoiceCount::up_to(2))`
     pub fn with_count(self, count: ChoiceCount) -> Self {
-        Self::WithCount(Box::new(self), count)
+        match self {
+            Self::WithCount(inner, _) => Self::WithCount(inner, count),
+            other => Self::WithCount(Box::new(other), count),
+        }
     }
 
     /// Get the count for this spec.

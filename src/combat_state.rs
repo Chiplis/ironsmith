@@ -13,7 +13,7 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
 use crate::rules::combat::{
-    can_attack_defending_player, can_block, has_vigilance, minimum_blockers,
+    can_attack_defending_player, can_block, has_vigilance, maximum_blockers, minimum_blockers,
 };
 use crate::static_abilities::StaticAbilityId;
 use crate::types::CardType;
@@ -62,6 +62,12 @@ pub enum CombatError {
     NotEnoughBlockers {
         attacker: ObjectId,
         required: usize,
+        provided: usize,
+    },
+    /// Too many blockers were assigned to an attacker with a max-blockers restriction.
+    TooManyBlockers {
+        attacker: ObjectId,
+        maximum: usize,
         provided: usize,
     },
     /// The attack target is invalid (player not in game, planeswalker doesn't exist, etc.).
@@ -113,6 +119,17 @@ impl std::fmt::Display for CombatError {
                     f,
                     "Attacker {:?} requires {} blockers but only {} provided",
                     attacker, required, provided
+                )
+            }
+            CombatError::TooManyBlockers {
+                attacker,
+                maximum,
+                provided,
+            } => {
+                write!(
+                    f,
+                    "Attacker {:?} allows at most {} blockers but {} provided",
+                    attacker, maximum, provided
                 )
             }
             CombatError::InvalidAttackTarget(target) => {
@@ -400,7 +417,7 @@ pub fn declare_blockers(
             .push(*blocker_id);
     }
 
-    // Second pass: validate minimum blockers (menace)
+    // Second pass: validate minimum/maximum blockers.
     for (attacker_id, blocker_list) in &blockers_by_attacker {
         let attacker = game.object(*attacker_id).unwrap();
         let min_blockers = minimum_blockers(attacker);
@@ -410,6 +427,16 @@ pub fn declare_blockers(
             return Err(CombatError::NotEnoughBlockers {
                 attacker: *attacker_id,
                 required: min_blockers,
+                provided: blocker_list.len(),
+            });
+        }
+
+        if let Some(max_blockers) = maximum_blockers(attacker, game)
+            && blocker_list.len() > max_blockers
+        {
+            return Err(CombatError::TooManyBlockers {
+                attacker: *attacker_id,
+                maximum: max_blockers,
                 provided: blocker_list.len(),
             });
         }
@@ -619,10 +646,13 @@ pub fn get_attacking_player(combat: &CombatState, game: &GameState) -> Option<Pl
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::card::PtValue;
     use crate::color::ColorSet;
     use crate::cost::OptionalCostsPaid;
     use crate::ids::StableId;
+    use crate::static_abilities::StaticAbility;
+    use crate::types::Subtype;
     use std::collections::HashMap;
 
     fn make_creature(id: u64, owner: u8, name: &str) -> Object {
@@ -1475,6 +1505,109 @@ mod tests {
         assert!(
             result.is_ok(),
             "Horsemanship creatures can block other horsemanship creatures"
+        );
+    }
+
+    #[test]
+    fn test_landwalk_unblockable_when_defender_controls_matching_land() {
+        use crate::cards::definitions::grizzly_bears;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let bob = PlayerId::from_index(1);
+
+        // Attacker with swampwalk.
+        let mut attacker = make_creature(100, 0, "Swampwalker");
+        attacker
+            .abilities
+            .push(Ability::static_ability(StaticAbility::landwalk(Subtype::Swamp)));
+        let attacker_id = attacker.id;
+        game.add_object(attacker);
+        game.remove_summoning_sickness(attacker_id);
+
+        // Bob controls a Swamp.
+        let mut swamp = make_creature(101, 1, "Swamp");
+        swamp.card_types = vec![CardType::Land];
+        swamp.subtypes = vec![Subtype::Swamp];
+        swamp.base_power = None;
+        swamp.base_toughness = None;
+        game.add_object(swamp);
+
+        // Bob also controls a normal blocker.
+        let bears_def = grizzly_bears();
+        let blocker_id = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+        game.remove_summoning_sickness(blocker_id);
+
+        let mut combat = new_combat();
+        let attacker_declarations = vec![(attacker_id, AttackTarget::Player(bob))];
+        declare_attackers(&mut game, &mut combat, attacker_declarations).unwrap();
+
+        let blocker_declarations = vec![(blocker_id, attacker_id)];
+        let result = declare_blockers(&game, &mut combat, blocker_declarations);
+        assert!(
+            matches!(result, Err(CombatError::CreatureCannotBlock { .. })),
+            "landwalk attacker should be unblockable when defender controls matching land"
+        );
+
+        // If the defending player doesn't control the required subtype, blocking should be legal.
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let mut attacker = make_creature(200, 0, "Swampwalker");
+        attacker
+            .abilities
+            .push(Ability::static_ability(StaticAbility::landwalk(Subtype::Swamp)));
+        let attacker_id = attacker.id;
+        game.add_object(attacker);
+        game.remove_summoning_sickness(attacker_id);
+        let blocker_id = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+        game.remove_summoning_sickness(blocker_id);
+
+        let mut combat = new_combat();
+        let attacker_declarations = vec![(attacker_id, AttackTarget::Player(bob))];
+        declare_attackers(&mut game, &mut combat, attacker_declarations).unwrap();
+        let blocker_declarations = vec![(blocker_id, attacker_id)];
+        let result = declare_blockers(&game, &mut combat, blocker_declarations);
+        assert!(
+            result.is_ok(),
+            "without matching land subtype, landwalk should not prevent blocking"
+        );
+    }
+
+    #[test]
+    fn test_cant_be_blocked_by_more_than_one_creature() {
+        use crate::cards::definitions::grizzly_bears;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature(300, 0, "Solo Target");
+        attacker.abilities.push(Ability::static_ability(
+            StaticAbility::cant_be_blocked_by_more_than(1),
+        ));
+        let attacker_id = attacker.id;
+        game.add_object(attacker);
+        game.remove_summoning_sickness(attacker_id);
+
+        let bears_def = grizzly_bears();
+        let blocker1 = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+        let blocker2 = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+        game.remove_summoning_sickness(blocker1);
+        game.remove_summoning_sickness(blocker2);
+
+        let mut combat = new_combat();
+        let attacker_declarations = vec![(attacker_id, AttackTarget::Player(bob))];
+        declare_attackers(&mut game, &mut combat, attacker_declarations).unwrap();
+
+        let blocker_declarations = vec![(blocker1, attacker_id), (blocker2, attacker_id)];
+        let result = declare_blockers(&game, &mut combat, blocker_declarations);
+        assert!(
+            matches!(
+                result,
+                Err(CombatError::TooManyBlockers {
+                    maximum: 1,
+                    provided: 2,
+                    ..
+                })
+            ),
+            "max-blockers restriction should reject too many blockers"
         );
     }
 

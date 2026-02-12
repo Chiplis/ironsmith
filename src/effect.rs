@@ -51,6 +51,8 @@ pub struct ChoiceCount {
     pub min: usize,
     /// Maximum number to choose. None means unlimited ("any number").
     pub max: Option<usize>,
+    /// Whether this count came from a dynamic `X target ...` clause.
+    pub dynamic_x: bool,
 }
 
 impl Default for ChoiceCount {
@@ -65,17 +67,26 @@ impl ChoiceCount {
         Self {
             min: n,
             max: Some(n),
+            dynamic_x: false,
         }
     }
 
     /// Any number (0 or more, unlimited).
     pub const fn any_number() -> Self {
-        Self { min: 0, max: None }
+        Self {
+            min: 0,
+            max: None,
+            dynamic_x: false,
+        }
     }
 
     /// At least N (N or more, unlimited).
     pub const fn at_least(n: usize) -> Self {
-        Self { min: n, max: None }
+        Self {
+            min: n,
+            max: None,
+            dynamic_x: false,
+        }
     }
 
     /// Up to N (0 to N).
@@ -83,17 +94,31 @@ impl ChoiceCount {
         Self {
             min: 0,
             max: Some(n),
+            dynamic_x: false,
+        }
+    }
+
+    /// Dynamic X-target count (rendered as `X target ...`).
+    pub const fn dynamic_x() -> Self {
+        Self {
+            min: 0,
+            max: None,
+            dynamic_x: true,
         }
     }
 
     /// Returns true if this is "any number" (min 0, no max).
     pub fn is_any_number(&self) -> bool {
-        self.min == 0 && self.max.is_none()
+        self.min == 0 && self.max.is_none() && !self.dynamic_x
     }
 
     /// Returns true if this is exactly 1.
     pub fn is_single(&self) -> bool {
         self.min == 1 && self.max == Some(1)
+    }
+
+    pub const fn is_dynamic_x(&self) -> bool {
+        self.dynamic_x
     }
 }
 
@@ -611,8 +636,13 @@ pub enum Value {
 /// Event payload fields that can be referenced by [`Value::EventValue`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventValueSpec {
+    /// Generic "that much" amount from triggering life gain/loss or damage events.
+    Amount,
     /// The amount from a triggering life gain/loss event.
     LifeAmount,
+    /// Number of blockers beyond the first from a creature-becomes-blocked event,
+    /// scaled by `multiplier`.
+    BlockersBeyondFirst { multiplier: i32 },
 }
 
 /// A rule restriction ("can't" effect) specification.
@@ -1103,6 +1133,9 @@ pub enum Condition {
     /// You cast a spell this turn
     CastSpellThisTurn,
 
+    /// You attacked with one or more creatures this turn
+    AttackedThisTurn,
+
     /// No spells were cast last turn
     NoSpellsWereCastLastTurn,
 
@@ -1190,6 +1223,48 @@ impl Effect {
     pub fn connive(target: ChooseSpec) -> Self {
         use crate::effects::ConniveEffect;
         Self::new(ConniveEffect::new(target))
+    }
+
+    /// Create an "explore" effect for a chosen object.
+    pub fn explore(target: ChooseSpec) -> Self {
+        use crate::effects::ExploreEffect;
+        Self::new(ExploreEffect::new(target))
+    }
+
+    /// Create an "open an Attraction" effect.
+    pub fn open_attraction() -> Self {
+        use crate::effects::OpenAttractionEffect;
+        Self::new(OpenAttractionEffect::new())
+    }
+
+    /// Create a "manifest dread" effect.
+    pub fn manifest_dread() -> Self {
+        use crate::effects::ManifestDreadEffect;
+        Self::new(ManifestDreadEffect::new())
+    }
+
+    /// Create a "bolster N" effect.
+    pub fn bolster(amount: u32) -> Self {
+        use crate::effects::BolsterEffect;
+        Self::new(BolsterEffect::new(amount))
+    }
+
+    /// Create a "support N" effect.
+    pub fn support(amount: u32) -> Self {
+        use crate::effects::SupportEffect;
+        Self::new(SupportEffect::new(amount))
+    }
+
+    /// Create an "adapt N" effect.
+    pub fn adapt(amount: u32) -> Self {
+        use crate::effects::AdaptEffect;
+        Self::new(AdaptEffect::new(amount))
+    }
+
+    /// Create a "counter target activated or triggered ability" effect.
+    pub fn counter_activated_or_triggered_ability() -> Self {
+        use crate::effects::CounterAbilityEffect;
+        Self::new(CounterAbilityEffect::new())
     }
 
     /// Create a "gain N life" effect.

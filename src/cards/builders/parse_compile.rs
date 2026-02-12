@@ -11,6 +11,8 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::ThisBecomesUntapped => Trigger::becomes_untapped(),
+        TriggerSpec::ThisTurnedFaceUp => Trigger::this_is_turned_face_up(),
+        TriggerSpec::ThisBecomesTargeted => Trigger::becomes_targeted(),
         TriggerSpec::ThisDealsDamage => Trigger::this_deals_damage(),
         TriggerSpec::ThisDealsDamageTo(filter) => Trigger::this_deals_damage_to(filter),
         TriggerSpec::DealsDamage(filter) => Trigger::deals_damage(filter),
@@ -40,6 +42,9 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::YouCastThisSpell => Trigger::you_cast_this_spell(),
         TriggerSpec::KeywordAction { action, player } => Trigger::keyword_action(action, player),
+        TriggerSpec::Custom(description) => {
+            Trigger::custom("unimplemented_trigger", description)
+        }
         TriggerSpec::SagaChapter(chapters) => Trigger::saga_chapter(chapters),
         TriggerSpec::Either(left, right) => {
             Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right))
@@ -79,6 +84,7 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
         | TriggerSpec::BeginningOfEndStep(player)
         | TriggerSpec::BeginningOfPrecombatMain(player)
         | TriggerSpec::KeywordAction { player, .. } => Some(player.clone()),
+        TriggerSpec::Custom(_) => None,
         TriggerSpec::Either(left, right) => {
             let left_filter = inferred_trigger_player_filter(left);
             let right_filter = inferred_trigger_player_filter(right);
@@ -94,8 +100,15 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
 
 fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
     match spec {
-        EventValueSpec::LifeAmount => match trigger {
+        EventValueSpec::Amount | EventValueSpec::LifeAmount => match trigger {
             TriggerSpec::YouGainLife | TriggerSpec::PlayerLosesLife(_) => true,
+            TriggerSpec::Either(left, right) => {
+                trigger_supports_event_value(left, spec) && trigger_supports_event_value(right, spec)
+            }
+            _ => false,
+        },
+        EventValueSpec::BlockersBeyondFirst { .. } => match trigger {
+            TriggerSpec::ThisBecomesBlocked => true,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec) && trigger_supports_event_value(right, spec)
             }
@@ -111,7 +124,7 @@ fn compile_trigger_effects(
     let mut ctx = CompileContext::new();
     ctx.last_player_filter = trigger.and_then(inferred_trigger_player_filter);
     ctx.allow_life_event_value = trigger
-        .map(|trigger| trigger_supports_event_value(trigger, &EventValueSpec::LifeAmount))
+        .map(|trigger| trigger_supports_event_value(trigger, &EventValueSpec::Amount))
         .unwrap_or(false);
     let mut prelude = Vec::new();
     for tag in ["equipped", "enchanted"] {
@@ -169,6 +182,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         }
         EffectAst::DealDamage { target, .. }
         | EffectAst::Counter { target }
+        | EffectAst::Explore { target }
         | EffectAst::PutCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
@@ -338,6 +352,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         }
         EffectAst::DealDamage { target, .. }
         | EffectAst::Counter { target }
+        | EffectAst::Explore { target }
         | EffectAst::PutCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
@@ -584,6 +599,7 @@ fn collect_tag_spans_from_line(
             collect_tag_spans_from_effects_with_context(effects, annotations, ctx);
         }
         LineAst::AlternativeCost { .. }
+        | LineAst::AlternativeCastingMethod(_)
         | LineAst::StaticAbility(_)
         | LineAst::StaticAbilities(_)
         | LineAst::Ability(_)
@@ -620,6 +636,7 @@ fn collect_tag_spans_from_effect(
         }
         EffectAst::DealDamage { target, .. }
         | EffectAst::Counter { target }
+        | EffectAst::Explore { target }
         | EffectAst::PutCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
@@ -1234,6 +1251,19 @@ fn compile_effect(
             ));
             Ok((vec![effect], vec![spec]))
         }
+        EffectAst::Explore { target } => {
+            let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            Ok((vec![Effect::explore(spec)], choices))
+        }
+        EffectAst::OpenAttraction => Ok((vec![Effect::open_attraction()], Vec::new())),
+        EffectAst::ManifestDread => Ok((vec![Effect::manifest_dread()], Vec::new())),
+        EffectAst::Bolster { amount } => Ok((vec![Effect::bolster(*amount)], Vec::new())),
+        EffectAst::Support { amount } => Ok((vec![Effect::support(*amount)], Vec::new())),
+        EffectAst::Adapt { amount } => Ok((vec![Effect::adapt(*amount)], Vec::new())),
+        EffectAst::CounterActivatedOrTriggeredAbility => Ok((
+            vec![Effect::counter_activated_or_triggered_ability()],
+            Vec::new(),
+        )),
         EffectAst::Draw { count, player } => compile_player_effect(
             *player,
             ctx,
@@ -1950,6 +1980,7 @@ fn compile_effect(
                     Condition::TaggedObjectMatches(tag.clone(), resolved)
                 }
                 PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
+                PredicateAst::YouAttackedThisTurn => Condition::AttackedThisTurn,
                 PredicateAst::NoSpellsWereCastLastTurn => Condition::NoSpellsWereCastLastTurn,
                 PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
                     Condition::ManaSpentToCastThisSpellAtLeast {
@@ -2556,10 +2587,10 @@ fn resolve_value_it_tag(value: &Value, ctx: &CompileContext) -> Result<Value, Ca
         Value::ToughnessOf(spec) => Ok(Value::ToughnessOf(Box::new(resolve_choose_spec_it_tag(
             spec, ctx,
         )?))),
-        Value::EventValue(EventValueSpec::LifeAmount) => {
+        Value::EventValue(EventValueSpec::Amount) | Value::EventValue(EventValueSpec::LifeAmount) => {
             if !ctx.allow_life_event_value {
                 return Err(CardTextError::ParseError(
-                    "event-derived life amount requires a life gain/loss trigger".to_string(),
+                    "event-derived amount requires a compatible trigger".to_string(),
                 ));
             }
             Ok(value.clone())
@@ -2897,6 +2928,7 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     )],
                     choices: vec![target],
                     timing: crate::ability::ActivationTiming::AnyTime,
+                    additional_restrictions: vec![],
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(

@@ -9,6 +9,7 @@ mod markers_changed;
 mod permanent_tapped;
 mod permanent_untapped;
 mod players_finished_voting;
+mod turned_face_up;
 mod transformed;
 
 pub use became_monstrous::BecameMonstrousEvent;
@@ -20,4 +21,5 @@ pub use markers_changed::{MarkerChangeType, MarkersChangedEvent};
 pub use permanent_tapped::PermanentTappedEvent;
 pub use permanent_untapped::PermanentUntappedEvent;
 pub use players_finished_voting::{PlayerVote, PlayersFinishedVotingEvent};
+pub use turned_face_up::TurnedFaceUpEvent;
 pub use transformed::TransformedEvent;

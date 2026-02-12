@@ -16,6 +16,7 @@ use crate::events::zones::{EnterBattlefieldEvent, ZoneChangeEvent};
 use crate::game_state::GameState;
 use crate::grant::GrantSpec;
 use crate::ids::{ObjectId, PlayerId};
+use crate::mana::ManaCost;
 use crate::object::CounterType;
 use crate::replacement::{RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -72,6 +73,79 @@ fn capitalize_first(text: &str) -> String {
         None => String::new(),
     }
 }
+
+/// Morph keyword ability (turn face up by paying morph cost as a special action).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Morph {
+    pub cost: ManaCost,
+}
+
+impl Morph {
+    pub fn new(cost: ManaCost) -> Self {
+        Self { cost }
+    }
+}
+
+impl StaticAbilityKind for Morph {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Morph
+    }
+
+    fn display(&self) -> String {
+        format!("Morph {}", self.cost.to_oracle())
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn turn_face_up_cost(&self) -> Option<&ManaCost> {
+        Some(&self.cost)
+    }
+}
+
+/// Megamorph keyword ability (turn face up by paying megamorph cost as a special action).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Megamorph {
+    pub cost: ManaCost,
+}
+
+impl Megamorph {
+    pub fn new(cost: ManaCost) -> Self {
+        Self { cost }
+    }
+}
+
+impl StaticAbilityKind for Megamorph {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Megamorph
+    }
+
+    fn display(&self) -> String {
+        format!("Megamorph {}", self.cost.to_oracle())
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn turn_face_up_cost(&self) -> Option<&ManaCost> {
+        Some(&self.cost)
+    }
+
+    fn is_megamorph(&self) -> bool {
+        true
+    }
+}
+
 /// Doesn't untap during your untap step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DoesntUntap;
@@ -508,6 +582,97 @@ fn matches_this_would_enter_battlefield(
     };
 
     ctx.source == Some(object_id)
+}
+
+/// Bloodthirst N.
+///
+/// If an opponent was dealt damage this turn, this creature enters
+/// the battlefield with N +1/+1 counters on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Bloodthirst {
+    pub amount: u32,
+}
+
+impl Bloodthirst {
+    pub const fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
+impl StaticAbilityKind for Bloodthirst {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Bloodthirst
+    }
+
+    fn display(&self) -> String {
+        format!("Bloodthirst {}", self.amount)
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(
+            ReplacementEffect::with_matcher(
+                source,
+                controller,
+                ThisWouldEnterWithBloodthirstMatcher,
+                ReplacementAction::EnterWithCounters {
+                    counter_type: CounterType::PlusOnePlusOne,
+                    count: Value::Fixed(self.amount as i32),
+                },
+            )
+            .self_replacing(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct ThisWouldEnterWithBloodthirstMatcher;
+
+impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
+    fn matches_event(
+        &self,
+        event: &dyn crate::events::traits::GameEventType,
+        ctx: &crate::events::EventContext,
+    ) -> bool {
+        if !matches_this_would_enter_battlefield(event, ctx) {
+            return false;
+        }
+
+        ctx.game.players.iter().any(|player| {
+            player.is_in_game()
+                && player.id != ctx.controller
+                && ctx
+                    .game
+                    .damage_to_players_this_turn
+                    .get(&player.id)
+                    .copied()
+                    .unwrap_or(0)
+                    > 0
+        })
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::SelfReplacement
+    }
+
+    fn clone_box(&self) -> Box<dyn ReplacementMatcher> {
+        Box::new(*self)
+    }
+
+    fn display(&self) -> String {
+        "When this would enter with bloodthirst counters".to_string()
+    }
 }
 
 /// Enters the battlefield with counters.
@@ -1387,6 +1552,9 @@ impl StaticAbilityKind for Custom {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::EventContext;
+    use crate::events::zones::ZoneChangeEvent;
+    use crate::zone::Zone;
 
     #[test]
     fn test_doesnt_untap() {
@@ -1413,5 +1581,71 @@ mod tests {
         let ability = Custom::new("test_ability", "Test description".to_string());
         assert_eq!(ability.id(), StaticAbilityId::Custom);
         assert_eq!(ability.display(), "Test description");
+    }
+
+    #[test]
+    fn test_morph_static_ability_reports_turn_face_up_cost() {
+        let cost = ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(3)]]);
+        let ability = Morph::new(cost.clone());
+        assert_eq!(ability.id(), StaticAbilityId::Morph);
+        assert_eq!(ability.turn_face_up_cost(), Some(&cost));
+        assert!(!ability.is_megamorph());
+    }
+
+    #[test]
+    fn test_megamorph_static_ability_reports_turn_face_up_cost() {
+        let cost = ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Green]]);
+        let ability = Megamorph::new(cost.clone());
+        assert_eq!(ability.id(), StaticAbilityId::Megamorph);
+        assert_eq!(ability.turn_face_up_cost(), Some(&cost));
+        assert!(ability.is_megamorph());
+    }
+
+    #[test]
+    fn test_bloodthirst_replacement_matches_when_opponent_was_dealt_damage() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source = ObjectId::from_raw(42);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.damage_to_players_this_turn.insert(bob, 3);
+
+        let ability = Bloodthirst::new(2);
+        let replacement = ability
+            .generate_replacement_effect(source, alice)
+            .expect("bloodthirst should create replacement");
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("bloodthirst replacement must have matcher");
+        let event = ZoneChangeEvent::new(source, Zone::Stack, Zone::Battlefield, None);
+        let ctx = EventContext::for_replacement_effect(alice, source, &game);
+
+        assert!(
+            matcher.matches_event(&event, &ctx),
+            "bloodthirst should match when an opponent was dealt damage"
+        );
+    }
+
+    #[test]
+    fn test_bloodthirst_replacement_does_not_match_without_opponent_damage() {
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source = ObjectId::from_raw(42);
+        let alice = PlayerId::from_index(0);
+
+        let ability = Bloodthirst::new(2);
+        let replacement = ability
+            .generate_replacement_effect(source, alice)
+            .expect("bloodthirst should create replacement");
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("bloodthirst replacement must have matcher");
+        let event = ZoneChangeEvent::new(source, Zone::Stack, Zone::Battlefield, None);
+        let ctx = EventContext::for_replacement_effect(alice, source, &game);
+
+        assert!(
+            !matcher.matches_event(&event, &ctx),
+            "bloodthirst should not match when no opponent was dealt damage"
+        );
     }
 }

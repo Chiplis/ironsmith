@@ -813,6 +813,10 @@ pub struct GameState {
     /// Reset at the start of each turn.
     pub spells_cast_this_turn: HashMap<PlayerId, u32>,
 
+    /// Players who attacked with at least one creature this turn.
+    /// Reset at the start of each turn.
+    pub players_attacked_this_turn: HashSet<PlayerId>,
+
     /// Total number of spells cast during the immediately previous turn.
     /// Updated when turn advances.
     pub spells_cast_last_turn_total: u32,
@@ -828,6 +832,10 @@ pub struct GameState {
     /// Damage dealt to each player by creatures this turn.
     /// Used for trap conditions like Summoning Trap.
     pub creature_damage_to_players_this_turn: HashMap<PlayerId, u32>,
+
+    /// Damage dealt to each player this turn (from any source).
+    /// Used for mechanics like Bloodthirst.
+    pub damage_to_players_this_turn: HashMap<PlayerId, u32>,
 
     /// Active restriction effects (spell/ability-based "can't" effects).
     pub restriction_effects: Vec<RestrictionEffectInstance>,
@@ -926,10 +934,12 @@ impl GameState {
             triggers_fired_this_turn: HashMap::new(),
             turn_counters: TurnCounterTracker::default(),
             spells_cast_this_turn: HashMap::new(),
+            players_attacked_this_turn: HashSet::new(),
             spells_cast_last_turn_total: 0,
             library_searches_this_turn: HashSet::new(),
             creatures_entered_this_turn: HashMap::new(),
             creature_damage_to_players_this_turn: HashMap::new(),
+            damage_to_players_this_turn: HashMap::new(),
             restriction_effects: Vec::new(),
             // Battlefield state extension maps
             tapped_permanents: HashSet::new(),
@@ -2224,9 +2234,11 @@ impl GameState {
         self.turn_counters.clear();
         self.spells_cast_last_turn_total = self.spells_cast_this_turn.values().sum();
         self.spells_cast_this_turn.clear();
+        self.players_attacked_this_turn.clear();
         self.library_searches_this_turn.clear();
         self.creatures_entered_this_turn.clear();
         self.creature_damage_to_players_this_turn.clear();
+        self.damage_to_players_this_turn.clear();
 
         // Activate any pending player-control effects for the new active player.
         self.activate_pending_player_control(next_player);

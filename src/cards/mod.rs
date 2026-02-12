@@ -19,11 +19,12 @@ mod generated_registry {
     include!(concat!(env!("OUT_DIR"), "/generated_registry.rs"));
 }
 
-use crate::ability::Ability;
+use crate::ability::{Ability, AbilityKind};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::card::Card;
 use crate::cost::OptionalCost;
 use crate::effect::Effect;
+use crate::static_abilities::StaticAbilityId;
 use crate::target::ObjectFilter;
 use std::collections::HashMap;
 
@@ -307,6 +308,9 @@ impl CardRegistry {
 
     /// Register a card definition.
     pub fn register(&mut self, def: CardDefinition) {
+        if !generated_definition_is_supported(&def) {
+            return;
+        }
         self.cards.insert(def.card.name.clone(), def);
     }
 
@@ -346,9 +350,32 @@ impl CardRegistry {
     }
 }
 
+const UNSUPPORTED_PARSER_LINE_FALLBACK_PREFIX: &str = "Unsupported parser line fallback:";
+
+/// Returns true when a generated parser definition can be safely included in the registry.
+///
+/// Generated wasm/demo registries should not include parser fallback placeholders that only
+/// exist because unsupported mode swallowed a real parse failure.
+pub(crate) fn generated_definition_is_supported(definition: &CardDefinition) -> bool {
+    !definition.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::Custom
+                    && static_ability
+                        .display()
+                        .starts_with(UNSUPPORTED_PARSER_LINE_FALLBACK_PREFIX)
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::static_abilities::StaticAbility;
+    use crate::types::CardType;
 
     #[test]
     fn test_card_definition_creation() {
@@ -397,5 +424,68 @@ mod tests {
     fn test_registry_count() {
         let registry = CardRegistry::with_builtin_cards();
         assert!(registry.len() > 10);
+    }
+
+    #[test]
+    fn generated_definition_support_accepts_regular_definition() {
+        let card = CardBuilder::new(CardId::new(), "Support Probe")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let mut definition = CardDefinition::new(card);
+        definition
+            .abilities
+            .push(Ability::static_ability(StaticAbility::flying()));
+
+        assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn generated_definition_support_rejects_parser_fallback_markers() {
+        let card = CardBuilder::new(CardId::new(), "Fallback Probe")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let fallback = Ability::static_ability(StaticAbility::custom(
+            "unsupported_line",
+            "Unsupported parser line fallback: probe text (ParseError(\"mock\"))".to_string(),
+        ))
+        .with_text("probe text");
+        let mut definition = CardDefinition::new(card);
+        definition.abilities.push(fallback);
+
+        assert!(!generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn generated_definition_support_keeps_non_fallback_custom_static_abilities() {
+        let card = CardBuilder::new(CardId::new(), "Custom Probe")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let custom = Ability::static_ability(StaticAbility::custom(
+            "probe_custom",
+            "Probe custom rule text".to_string(),
+        ));
+        let mut definition = CardDefinition::new(card);
+        definition.abilities.push(custom);
+
+        assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn registry_skips_parser_fallback_definitions() {
+        let card = CardBuilder::new(CardId::new(), "Skipped Fallback")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let fallback = Ability::static_ability(StaticAbility::custom(
+            "unsupported_line",
+            "Unsupported parser line fallback: skip me (ParseError(\"mock\"))".to_string(),
+        ));
+        let mut definition = CardDefinition::new(card);
+        definition.abilities.push(fallback);
+
+        let mut registry = CardRegistry::new();
+        registry.register(definition);
+
+        assert_eq!(registry.len(), 0);
+        assert!(registry.get("Skipped Fallback").is_none());
     }
 }

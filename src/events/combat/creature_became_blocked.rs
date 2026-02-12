@@ -15,12 +15,17 @@ use crate::snapshot::ObjectSnapshot;
 pub struct CreatureBecameBlockedEvent {
     /// The attacking creature that became blocked
     pub attacker: ObjectId,
+    /// Number of creatures currently blocking the attacker.
+    pub blocker_count: u32,
 }
 
 impl CreatureBecameBlockedEvent {
     /// Create a new creature became blocked event.
-    pub fn new(attacker: ObjectId) -> Self {
-        Self { attacker }
+    pub fn new(attacker: ObjectId, blocker_count: u32) -> Self {
+        Self {
+            attacker,
+            blocker_count,
+        }
     }
 }
 
@@ -74,13 +79,14 @@ mod tests {
 
     #[test]
     fn test_creature_became_blocked_event_creation() {
-        let event = CreatureBecameBlockedEvent::new(ObjectId::from_raw(1));
+        let event = CreatureBecameBlockedEvent::new(ObjectId::from_raw(1), 2);
         assert_eq!(event.attacker, ObjectId::from_raw(1));
+        assert_eq!(event.blocker_count, 2);
     }
 
     #[test]
     fn test_creature_became_blocked_event_kind() {
-        let event = CreatureBecameBlockedEvent::new(ObjectId::from_raw(1));
+        let event = CreatureBecameBlockedEvent::new(ObjectId::from_raw(1), 1);
         assert_eq!(event.event_kind(), EventKind::CreatureBecameBlocked);
     }
 }

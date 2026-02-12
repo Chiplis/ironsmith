@@ -88,6 +88,8 @@ struct JsonExample {
     line_delta: isize,
     oracle_excerpt: String,
     compiled_excerpt: String,
+    oracle_text: String,
+    compiled_lines: Vec<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -265,7 +267,9 @@ fn semantic_clauses(text: &str) -> Vec<String> {
         for ch in line.chars() {
             if matches!(ch, '.' | ';' | '\n') {
                 let trimmed = current.trim();
-                if !trimmed.is_empty() {
+                if !trimmed.is_empty()
+                    && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric())
+                {
                     clauses.push(trimmed.to_string());
                 }
                 current.clear();
@@ -274,7 +278,7 @@ fn semantic_clauses(text: &str) -> Vec<String> {
             }
         }
         let trimmed = current.trim();
-        if !trimmed.is_empty() {
+        if !trimmed.is_empty() && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric()) {
             clauses.push(trimmed.to_string());
         }
     }
@@ -707,16 +711,23 @@ fn directional_coverage(from: &[Vec<String>], to: &[Vec<String>]) -> f32 {
     total / from.len() as f32
 }
 
+fn is_compiled_heading_prefix(prefix: &str) -> bool {
+    let prefix = prefix.trim().to_ascii_lowercase();
+    prefix == "spell effects"
+        || prefix.starts_with("activated ability ")
+        || prefix.starts_with("triggered ability ")
+        || prefix.starts_with("static ability ")
+        || prefix.starts_with("keyword ability ")
+        || prefix.starts_with("mana ability ")
+        || prefix.starts_with("ability ")
+        || prefix.starts_with("alternative cast ")
+}
+
 fn strip_compiled_prefix(line: &str) -> &str {
     let Some((prefix, rest)) = line.split_once(':') else {
         return line;
     };
-    let prefix = prefix.trim().to_ascii_lowercase();
-    let looks_like_heading = prefix.contains("ability")
-        || prefix.contains("effects")
-        || prefix.starts_with("spell")
-        || prefix.starts_with("cost");
-    if looks_like_heading {
+    if is_compiled_heading_prefix(prefix) {
         rest.trim()
     } else {
         line
@@ -1348,6 +1359,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 line_delta: entry.line_delta,
                 oracle_excerpt: first_oracle_excerpt(&entry.oracle_text),
                 compiled_excerpt: first_compiled_excerpt(&entry.compiled_lines),
+                oracle_text: entry.oracle_text.clone(),
+                compiled_lines: entry.compiled_lines.clone(),
             })
             .collect::<Vec<_>>();
 
@@ -1434,4 +1447,5 @@ mod tests {
             "embedding mode should flag lost where/plus value semantics"
         );
     }
+
 }

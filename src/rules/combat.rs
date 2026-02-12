@@ -184,6 +184,25 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
         }
     }
 
+    // Landwalk: unblockable if defending player controls the required land subtype.
+    for required_land_subtype in attacker_abilities
+        .iter()
+        .filter_map(|ability| ability.required_defending_player_land_subtype_for_unblockable())
+    {
+        let defending_has_required_land = game
+            .battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .any(|obj| {
+                obj.controller == blocker.controller
+                    && obj.has_card_type(CardType::Land)
+                    && obj.subtypes.contains(&required_land_subtype)
+            });
+        if defending_has_required_land {
+            return false;
+        }
+    }
+
     // "Can block only creatures with flying"
     if blocker_has(StaticAbilityId::CanBlockOnlyFlying) && !attacker_has(StaticAbilityId::Flying) {
         return false;
@@ -227,6 +246,19 @@ pub fn minimum_blockers(attacker: &Object) -> usize {
     } else {
         1
     }
+}
+
+/// Returns the maximum number of blockers allowed for an attacker, if restricted.
+pub fn maximum_blockers(
+    attacker: &Object,
+    game: &crate::game_state::GameState,
+) -> Option<usize> {
+    let abilities = game
+        .calculated_characteristics(attacker.id)
+        .map(|c| c.static_abilities)
+        .unwrap_or_else(|| get_static_abilities(attacker));
+
+    abilities.iter().filter_map(|a| a.maximum_blockers()).min()
 }
 
 /// Check if a creature can attack this turn.

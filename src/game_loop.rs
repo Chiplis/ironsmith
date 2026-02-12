@@ -45,6 +45,7 @@ use crate::object::CounterType;
 use crate::player::ManaPool;
 use crate::rules::combat::{
     deals_first_strike_damage_with_game, deals_regular_combat_damage_with_game,
+    maximum_blockers, minimum_blockers,
 };
 use crate::rules::damage::{
     DamageResult, DamageTarget, calculate_damage, distribute_trample_damage,
@@ -190,6 +191,26 @@ fn queue_triggers_from_event(
     event: TriggerEvent,
     include_delayed: bool,
 ) {
+    if let Some(damage_event) = event.downcast::<DamageEvent>()
+        && let EventDamageTarget::Player(player_id) = damage_event.target
+    {
+        *game
+            .damage_to_players_this_turn
+            .entry(player_id)
+            .or_insert(0) += damage_event.amount;
+
+        if game
+            .object(damage_event.source)
+            .map(|o| o.is_creature())
+            .unwrap_or(false)
+        {
+            *game
+                .creature_damage_to_players_this_turn
+                .entry(player_id)
+                .or_insert(0) += damage_event.amount;
+        }
+    }
+
     game.record_trigger_event_kind(event.kind());
     queue_triggers_for_event(game, trigger_queue, event.clone());
 
@@ -203,12 +224,12 @@ fn queue_triggers_from_event(
 
 /// Queue trigger matches for each event in this list.
 fn queue_triggers_for_events(
-    game: &GameState,
+    game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     events: Vec<TriggerEvent>,
 ) {
     for event in events {
-        queue_triggers_for_event(game, trigger_queue, event);
+        queue_triggers_from_event(game, trigger_queue, event, false);
     }
 }
 
@@ -2974,8 +2995,22 @@ pub fn apply_priority_response_with_dm(
             advance_priority_with_dm(game, trigger_queue, decision_maker)
         }
         LegalAction::TurnFaceUp { creature_id } => {
-            // Turn the creature face up
-            game.set_face_up(*creature_id);
+            let player = game
+                .turn
+                .priority_player
+                .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
+
+            let action = crate::special_actions::SpecialAction::TurnFaceUp {
+                permanent_id: *creature_id,
+            };
+            crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
+                .map_err(|e| {
+                    GameLoopError::InvalidState(format!("Cannot turn face up: {:?}", e))
+                })?;
+            crate::special_actions::perform(action, game, player, &mut *decision_maker).map_err(
+                |e| GameLoopError::InvalidState(format!("Failed to turn face up: {:?}", e)),
+            )?;
+            drain_pending_trigger_events(game, trigger_queue);
 
             // Player retains priority
             advance_priority_with_dm(game, trigger_queue, decision_maker)
@@ -7551,6 +7586,10 @@ pub fn apply_attacker_declarations(
 
     // Clear any existing attackers
     combat.attackers.clear();
+    if !declarations.is_empty() {
+        game.players_attacked_this_turn
+            .insert(game.turn.active_player);
+    }
 
     for decl in declarations {
         // Validate the attacker
@@ -7655,8 +7694,16 @@ pub fn apply_blocker_declarations(
 ) -> Result<(), GameLoopError> {
     // Clear existing blockers
     combat.blockers.clear();
+    let mut seen_blockers = std::collections::HashSet::new();
 
     for decl in declarations {
+        if !seen_blockers.insert(decl.blocker) {
+            return Err(ResponseError::InvalidBlockers(
+                "A creature can't block multiple attackers".to_string(),
+            )
+            .into());
+        }
+
         // Validate the blocker
         let Some(blocker) = game.object(decl.blocker) else {
             return Err(ResponseError::InvalidBlockers(format!(
@@ -7677,6 +7724,23 @@ pub fn apply_blocker_declarations(
             return Err(ResponseError::InvalidBlockers("Not a creature".to_string()).into());
         }
 
+        // Validate the attacker
+        let Some(attacker) = game.object(decl.blocking) else {
+            return Err(ResponseError::InvalidBlockers(format!(
+                "Attacker {:?} not found",
+                decl.blocking
+            ))
+            .into());
+        };
+
+        if !crate::rules::combat::can_block(attacker, blocker, game) {
+            return Err(ResponseError::InvalidBlockers(format!(
+                "{:?} can't block {:?}",
+                decl.blocker, decl.blocking
+            ))
+            .into());
+        }
+
         // Add to combat blockers
         combat
             .blockers
@@ -7695,11 +7759,42 @@ pub fn apply_blocker_declarations(
     // Generate "becomes blocked" triggers for blocked attackers
     for (attacker_id, blockers) in &combat.blockers {
         if !blockers.is_empty() {
-            let event = TriggerEvent::new(CreatureBecameBlockedEvent::new(*attacker_id));
+            let event = TriggerEvent::new(CreatureBecameBlockedEvent::new(
+                *attacker_id,
+                blockers.len() as u32,
+            ));
             let triggers = check_triggers(game, &event);
             for trigger in triggers {
                 trigger_queue.add(trigger);
             }
+        }
+    }
+
+    for (attacker_id, blockers) in &combat.blockers {
+        let Some(attacker) = game.object(*attacker_id) else {
+            return Err(
+                ResponseError::InvalidBlockers(format!("Attacker {:?} not found", attacker_id))
+                    .into(),
+            );
+        };
+
+        let min = minimum_blockers(attacker);
+        if !blockers.is_empty() && blockers.len() < min {
+            return Err(ResponseError::InvalidBlockers(format!(
+                "{:?} needs at least {} blockers",
+                attacker_id, min
+            ))
+            .into());
+        }
+
+        if let Some(max) = maximum_blockers(attacker, game)
+            && blockers.len() > max
+        {
+            return Err(ResponseError::InvalidBlockers(format!(
+                "{:?} can't be blocked by more than {} creature(s)",
+                attacker_id, max
+            ))
+            .into());
         }
     }
 
@@ -7975,21 +8070,6 @@ fn generate_damage_triggers(
     trigger_queue: &mut TriggerQueue,
 ) {
     for event in events {
-        // Track creature damage to players for trap conditions (Summoning Trap)
-        if let DamageEventTarget::Player(player_id) = event.target {
-            // Check if source is a creature
-            if game
-                .object(event.source)
-                .map(|o| o.is_creature())
-                .unwrap_or(false)
-            {
-                *game
-                    .creature_damage_to_players_this_turn
-                    .entry(player_id)
-                    .or_insert(0) += event.amount;
-            }
-        }
-
         let damage_target = match event.target {
             DamageEventTarget::Player(p) => EventDamageTarget::Player(p),
             DamageEventTarget::Object(o) => EventDamageTarget::Object(o),
@@ -8055,6 +8135,67 @@ mod tests {
         assert_eq!(
             game.trigger_event_kind_count_this_turn(EventKind::LifeLoss),
             1
+        );
+        assert_eq!(game.damage_to_players_this_turn.get(&PlayerId::from_index(1)), Some(&3));
+    }
+
+    #[test]
+    fn test_turn_face_up_action_puts_turned_face_up_trigger_on_stack() {
+        use crate::decision::{LegalAction, SelectFirstDecisionMaker};
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::static_abilities::StaticAbility;
+        use crate::triggers::Trigger;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let card = CardBuilder::new(CardId::from_raw(42), "Face-Up Trigger Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+
+        if let Some(obj) = game.object_mut(creature_id) {
+            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
+                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+            )));
+            obj.abilities.push(Ability::triggered(
+                Trigger::this_is_turned_face_up(),
+                vec![Effect::draw(1)],
+            ));
+        }
+        game.set_face_down(creature_id);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .mana_pool
+            .add(ManaSymbol::Green, 1);
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut state = PriorityLoopState::new(game.players_in_game());
+        let mut dm = SelectFirstDecisionMaker;
+        let response = PriorityResponse::PriorityAction(LegalAction::TurnFaceUp { creature_id });
+        let result = apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &response,
+            &mut dm,
+        );
+        assert!(result.is_ok(), "turn-face-up action should succeed");
+
+        let top = game.stack.last().expect("triggered ability should be on stack");
+        assert!(top.is_ability, "turned-face-up trigger should use ability stack entry");
+        assert_eq!(top.object_id, creature_id);
+        assert!(
+            top.triggering_event
+                .as_ref()
+                .is_some_and(|event| event.kind() == EventKind::TurnedFaceUp),
+            "trigger stack entry should carry TurnedFaceUp trigger event"
         );
     }
 

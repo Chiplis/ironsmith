@@ -72,9 +72,11 @@ pub use combat::{
     SetBasePowerToughnessEffect,
 };
 pub use composition::{
-    ChooseModeEffect, ChooseObjectsEffect, ConditionalEffect, ForEachControllerOfTaggedEffect,
-    ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect,
-    MayEffect, SequenceEffect, TagAllEffect, TagAttachedToSourceEffect,
+    AdaptEffect, BolsterEffect, ChooseModeEffect, ChooseObjectsEffect, ConditionalEffect,
+    CounterAbilityEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
+    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect,
+    ManifestDreadEffect, MayEffect, OpenAttractionEffect, SequenceEffect, SupportEffect,
+    TagAllEffect, TagAttachedToSourceEffect,
     TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
     UnlessActionEffect, UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
 };

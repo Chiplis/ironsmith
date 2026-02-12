@@ -18,8 +18,7 @@ pub(super) fn parse_text_with_annotations(
     builder: CardDefinitionBuilder,
     text: String,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let (mut builder, mut annotations, line_infos, oracle_lines) =
-        collect_line_infos(builder, text.as_str())?;
+    let (mut builder, mut annotations, line_infos) = collect_line_infos(builder, text.as_str())?;
 
     let mut level_abilities: Vec<LevelAbility> = Vec::new();
     let mut pending_modal: Option<PendingModal> = None;
@@ -209,9 +208,6 @@ pub(super) fn parse_text_with_annotations(
 
     builder = finalize_pending_modal(builder, &mut pending_modal);
 
-    if !oracle_lines.is_empty() {
-        builder = builder.oracle_text(oracle_lines.join("\n"));
-    }
     if !level_abilities.is_empty() {
         builder = builder.with_level_abilities(level_abilities);
     }
@@ -222,16 +218,7 @@ pub(super) fn parse_text_with_annotations(
 fn collect_line_infos(
     mut builder: CardDefinitionBuilder,
     text: &str,
-) -> Result<
-    (
-        CardDefinitionBuilder,
-        ParseAnnotations,
-        Vec<LineInfo>,
-        Vec<String>,
-    ),
-    CardTextError,
-> {
-    let mut oracle_lines = Vec::new();
+) -> Result<(CardDefinitionBuilder, ParseAnnotations, Vec<LineInfo>), CardTextError> {
 
     let card_name = builder.card_builder.name_ref().to_string();
     let short_name = card_name
@@ -257,8 +244,6 @@ fn collect_line_infos(
             continue;
         }
 
-        oracle_lines.push(line.to_string());
-
         let Some(normalized) =
             normalize_line_for_parse(line, full_lower.as_str(), short_lower.as_str())
         else {
@@ -281,7 +266,116 @@ fn collect_line_infos(
         });
     }
 
-    Ok((builder, annotations, line_infos, oracle_lines))
+    Ok((builder, annotations, line_infos))
+}
+
+fn title_case_words(text: &str) -> String {
+    text.split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn color_set_name(colors: ColorSet) -> Option<&'static str> {
+    if colors == ColorSet::WHITE {
+        return Some("white");
+    }
+    if colors == ColorSet::BLUE {
+        return Some("blue");
+    }
+    if colors == ColorSet::BLACK {
+        return Some("black");
+    }
+    if colors == ColorSet::RED {
+        return Some("red");
+    }
+    if colors == ColorSet::GREEN {
+        return Some("green");
+    }
+    None
+}
+
+fn keyword_action_line_text(action: &KeywordAction) -> String {
+    match action {
+        KeywordAction::Flying => "Flying".to_string(),
+        KeywordAction::Menace => "Menace".to_string(),
+        KeywordAction::Hexproof => "Hexproof".to_string(),
+        KeywordAction::Haste => "Haste".to_string(),
+        KeywordAction::Improvise => "Improvise".to_string(),
+        KeywordAction::Convoke => "Convoke".to_string(),
+        KeywordAction::AffinityForArtifacts => "Affinity for artifacts".to_string(),
+        KeywordAction::Delve => "Delve".to_string(),
+        KeywordAction::FirstStrike => "First strike".to_string(),
+        KeywordAction::DoubleStrike => "Double strike".to_string(),
+        KeywordAction::Deathtouch => "Deathtouch".to_string(),
+        KeywordAction::Lifelink => "Lifelink".to_string(),
+        KeywordAction::Vigilance => "Vigilance".to_string(),
+        KeywordAction::Trample => "Trample".to_string(),
+        KeywordAction::Reach => "Reach".to_string(),
+        KeywordAction::Defender => "Defender".to_string(),
+        KeywordAction::Flash => "Flash".to_string(),
+        KeywordAction::Phasing => "Phasing".to_string(),
+        KeywordAction::Indestructible => "Indestructible".to_string(),
+        KeywordAction::Shroud => "Shroud".to_string(),
+        KeywordAction::Ward(amount) => format!("Ward {{{amount}}}"),
+        KeywordAction::Wither => "Wither".to_string(),
+        KeywordAction::Infect => "Infect".to_string(),
+        KeywordAction::Undying => "Undying".to_string(),
+        KeywordAction::Persist => "Persist".to_string(),
+        KeywordAction::Prowess => "Prowess".to_string(),
+        KeywordAction::Exalted => "Exalted".to_string(),
+        KeywordAction::Storm => "Storm".to_string(),
+        KeywordAction::Toxic(amount) => format!("Toxic {amount}"),
+        KeywordAction::Fear => "Fear".to_string(),
+        KeywordAction::Intimidate => "Intimidate".to_string(),
+        KeywordAction::Shadow => "Shadow".to_string(),
+        KeywordAction::Horsemanship => "Horsemanship".to_string(),
+        KeywordAction::Flanking => "Flanking".to_string(),
+        KeywordAction::Landwalk(subtype) => {
+            let mut subtype = format!("{subtype:?}").to_ascii_lowercase();
+            subtype.push_str("walk");
+            title_case_words(&subtype)
+        }
+        KeywordAction::Bloodthirst(amount) => format!("Bloodthirst {amount}"),
+        KeywordAction::Rampage(amount) => format!("Rampage {amount}"),
+        KeywordAction::Bushido(amount) => format!("Bushido {amount}"),
+        KeywordAction::Changeling => "Changeling".to_string(),
+        KeywordAction::ProtectionFrom(colors) => {
+            if let Some(color_name) = color_set_name(*colors) {
+                return format!("Protection from {color_name}");
+            }
+            "Protection from colors".to_string()
+        }
+        KeywordAction::ProtectionFromAllColors => "Protection from all colors".to_string(),
+        KeywordAction::ProtectionFromColorless => "Protection from colorless".to_string(),
+        KeywordAction::ProtectionFromCardType(card_type) => {
+            format!("Protection from {:?}", card_type).to_ascii_lowercase()
+        }
+        KeywordAction::ProtectionFromSubtype(subtype) => {
+            format!("Protection from {:?}", subtype).to_ascii_lowercase()
+        }
+        KeywordAction::Unblockable => "This creature can't be blocked".to_string(),
+        KeywordAction::Devoid => "Devoid".to_string(),
+        KeywordAction::Marker(name) => title_case_words(name),
+        KeywordAction::MarkerText(text) => text.clone(),
+    }
+}
+
+fn keyword_actions_line_text(actions: &[KeywordAction], separator: &str) -> Option<String> {
+    if actions.is_empty() {
+        return None;
+    }
+    let parts = actions
+        .iter()
+        .map(keyword_action_line_text)
+        .collect::<Vec<_>>();
+    Some(parts.join(separator))
 }
 
 fn apply_line_ast(
@@ -293,8 +387,21 @@ fn apply_line_ast(
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     match parsed {
         LineAst::Abilities(actions) => {
+            let keyword_segment = info.raw_line.split('(').next().unwrap_or(info.raw_line.as_str());
+            let separator = if keyword_segment.contains(';') {
+                "; "
+            } else {
+                ", "
+            };
+            let line_text = keyword_actions_line_text(&actions, separator);
             for action in actions {
+                let ability_count_before = builder.abilities.len();
                 builder = builder.apply_keyword_action(action);
+                if let Some(line_text) = line_text.as_ref() {
+                    for ability in &mut builder.abilities[ability_count_before..] {
+                        ability.text = Some(line_text.clone());
+                    }
+                }
             }
         }
         LineAst::StaticAbility(ability) => {
@@ -425,7 +532,14 @@ fn apply_line_ast(
                     cost_effects,
                 ));
         }
-        LineAst::Triggered { trigger, effects } => {
+        LineAst::AlternativeCastingMethod(method) => {
+            builder.alternative_casts.push(method);
+        }
+        LineAst::Triggered {
+            trigger,
+            effects,
+            once_each_turn,
+        } => {
             let (compiled_effects, choices) =
                 match compile_trigger_effects(Some(&trigger), &effects) {
                     Ok(compiled) => compiled,
@@ -446,6 +560,7 @@ fn apply_line_ast(
                     effects: compiled_effects,
                     choices,
                     intervening_if: None,
+                    once_each_turn,
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(info.raw_line.clone()),
@@ -594,6 +709,7 @@ fn finalize_pending_modal(
                 effects: vec![modal_effect],
                 choices: Vec::new(),
                 intervening_if: None,
+                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(pending.header.line_text),

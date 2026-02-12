@@ -169,6 +169,18 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
         None
     }
 
+    /// Returns required land subtype for "can't be blocked as long as defending player controls ...".
+    fn required_defending_player_land_subtype_for_unblockable(
+        &self,
+    ) -> Option<crate::types::Subtype> {
+        None
+    }
+
+    /// Returns the maximum number of blockers this creature can be blocked by.
+    fn maximum_blockers(&self) -> Option<usize> {
+        None
+    }
+
     /// Returns true if this is a first/double strike ability.
     fn has_first_strike(&self) -> bool {
         false
@@ -269,6 +281,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
         None
     }
 
+    /// Get turn-face-up cost if this is a morph/megamorph ability.
+    fn turn_face_up_cost(&self) -> Option<&crate::mana::ManaCost> {
+        None
+    }
+
+    /// Returns true if this is a megamorph ability.
+    fn is_megamorph(&self) -> bool {
+        false
+    }
+
     /// Returns true if this is an anthem effect.
     fn is_anthem(&self) -> bool {
         false
@@ -331,6 +353,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
 
     /// Returns true if this is changeling (all creature types).
     fn is_changeling(&self) -> bool {
+        false
+    }
+
+    /// Returns true if this is Devoid.
+    fn is_devoid(&self) -> bool {
         false
     }
 
@@ -465,6 +492,17 @@ impl StaticAbility {
         self.0.required_defending_player_land_subtype_for_attack()
     }
 
+    pub fn required_defending_player_land_subtype_for_unblockable(
+        &self,
+    ) -> Option<crate::types::Subtype> {
+        self.0
+            .required_defending_player_land_subtype_for_unblockable()
+    }
+
+    pub fn maximum_blockers(&self) -> Option<usize> {
+        self.0.maximum_blockers()
+    }
+
     pub fn has_first_strike(&self) -> bool {
         self.0.has_first_strike()
     }
@@ -541,6 +579,14 @@ impl StaticAbility {
         self.0.ward_cost()
     }
 
+    pub fn turn_face_up_cost(&self) -> Option<&crate::mana::ManaCost> {
+        self.0.turn_face_up_cost()
+    }
+
+    pub fn is_megamorph(&self) -> bool {
+        self.0.is_megamorph()
+    }
+
     pub fn cost_reduction(&self) -> Option<&CostReduction> {
         self.0.cost_reduction()
     }
@@ -591,6 +637,10 @@ impl StaticAbility {
 
     pub fn is_changeling(&self) -> bool {
         self.0.is_changeling()
+    }
+
+    pub fn is_devoid(&self) -> bool {
+        self.0.is_devoid()
     }
 
     pub fn cant_be_countered(&self) -> bool {
@@ -762,8 +812,28 @@ impl StaticAbility {
         Self::new(CanBlockOnlyFlying)
     }
 
+    pub fn landwalk(land_subtype: crate::types::Subtype) -> Self {
+        Self::new(Landwalk::new(land_subtype))
+    }
+
+    pub fn bloodthirst(amount: u32) -> Self {
+        Self::new(Bloodthirst::new(amount))
+    }
+
+    pub fn morph(cost: crate::mana::ManaCost) -> Self {
+        Self::new(Morph::new(cost))
+    }
+
+    pub fn megamorph(cost: crate::mana::ManaCost) -> Self {
+        Self::new(Megamorph::new(cost))
+    }
+
     pub fn cant_be_blocked_by_power_or_less(threshold: i32) -> Self {
         Self::new(CantBeBlockedByPowerOrLess::new(threshold))
+    }
+
+    pub fn cant_be_blocked_by_more_than(max_blockers: usize) -> Self {
+        Self::new(CantBeBlockedByMoreThan::new(max_blockers))
     }
 
     pub fn can_attack_as_though_no_defender() -> Self {

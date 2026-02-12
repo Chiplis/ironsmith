@@ -319,6 +319,7 @@ struct TrackerDigest {
     library_searches_this_turn: Vec<GamePlayerId>,
     creatures_entered_this_turn: Vec<(GamePlayerId, u32)>,
     creature_damage_to_players_this_turn: Vec<(GamePlayerId, u32)>,
+    damage_to_players_this_turn: Vec<(GamePlayerId, u32)>,
     extra_turns: Vec<GamePlayerId>,
     skip_next_turn: Vec<GamePlayerId>,
     creatures_died_this_turn: u32,
@@ -364,6 +365,7 @@ impl CanonicalEncode for TrackerDigest {
         self.library_searches_this_turn.encode(out);
         self.creatures_entered_this_turn.encode(out);
         self.creature_damage_to_players_this_turn.encode(out);
+        self.damage_to_players_this_turn.encode(out);
         self.extra_turns.encode(out);
         self.skip_next_turn.encode(out);
         self.creatures_died_this_turn.encode(out);
@@ -714,6 +716,7 @@ fn hash_trackers_state(game: &GameState) -> Hash32 {
         creature_damage_to_players_this_turn: sort_player_counts(
             game.creature_damage_to_players_this_turn.iter(),
         ),
+        damage_to_players_this_turn: sort_player_counts(game.damage_to_players_this_turn.iter()),
         extra_turns: game.extra_turns.iter().copied().map(Into::into).collect(),
         skip_next_turn: sort_players(game.skip_next_turn.iter().copied()),
         creatures_died_this_turn: game.creatures_died_this_turn,

@@ -17,13 +17,45 @@ use crate::triggers::TriggerEvent;
 use crate::types::CardType;
 use crate::zone::Zone;
 
+#[derive(Debug, Clone, PartialEq)]
+struct TurnFaceUpSpec {
+    cost: crate::cost::TotalCost,
+    megamorph: bool,
+}
+
+fn turn_face_up_spec(object: &crate::object::Object) -> Option<TurnFaceUpSpec> {
+    let mut chosen: Option<TurnFaceUpSpec> = None;
+    for ability in &object.abilities {
+        if !ability.functions_in(&Zone::Battlefield) {
+            continue;
+        }
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        let Some(cost) = static_ability.turn_face_up_cost() else {
+            continue;
+        };
+        let candidate = TurnFaceUpSpec {
+            cost: crate::cost::TotalCost::mana(cost.clone()),
+            megamorph: static_ability.is_megamorph(),
+        };
+        if chosen
+            .as_ref()
+            .is_none_or(|current| !current.megamorph && candidate.megamorph)
+        {
+            chosen = Some(candidate);
+        }
+    }
+    chosen
+}
+
 /// A special action that can be performed without using the stack.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpecialAction {
     /// Play a land from hand to the battlefield.
     PlayLand { card_id: ObjectId },
 
-    /// Turn a face-down permanent face up (morph/manifest/disguise).
+    /// Turn a face-down permanent face up via a turn-face-up special action.
     TurnFaceUp { permanent_id: ObjectId },
 
     /// Suspend a card from hand (pay suspend cost, exile with time counters).
@@ -150,7 +182,7 @@ pub fn perform(
             perform_play_land(game, player, card_id, decision_maker)
         }
         SpecialAction::TurnFaceUp { permanent_id } => {
-            perform_turn_face_up(game, player, permanent_id)
+            perform_turn_face_up(game, player, permanent_id, &mut *decision_maker)
         }
         SpecialAction::Suspend { card_id } => perform_suspend(game, player, card_id),
         SpecialAction::Foretell { card_id } => perform_foretell(game, player, card_id),
@@ -254,6 +286,13 @@ fn can_turn_face_up(
     player: PlayerId,
     permanent_id: ObjectId,
 ) -> Result<(), ActionError> {
+    use crate::costs::{CostCheckContext, can_pay_with_check_context};
+
+    // Must have priority to take a special action.
+    if game.turn.priority_player != Some(player) {
+        return Err(ActionError::NotYourPriority);
+    }
+
     // Check the permanent exists and is on the battlefield
     let object = game
         .object(permanent_id)
@@ -275,27 +314,51 @@ fn can_turn_face_up(
         return Err(ActionError::InvalidTarget);
     }
 
-    // Note: In full implementation, would check if player can pay morph cost
-    // For now, we allow turning face up if the permanent is face-down
+    let Some(spec) = turn_face_up_spec(object) else {
+        return Err(ActionError::NoSuchAbility);
+    };
+
+    // Check whether the player can currently pay the turn-face-up cost.
+    // (Unlike spell casting, this path currently doesn't open a mana-payment subflow.)
+    let check_ctx = CostCheckContext::new(permanent_id, player);
+    for cost in spec.cost.costs() {
+        can_pay_with_check_context(&*cost.0, game, &check_ctx)
+            .map_err(cost_error_to_action_error)?;
+    }
 
     Ok(())
 }
 
 fn perform_turn_face_up(
     game: &mut GameState,
-    _player: PlayerId,
+    player: PlayerId,
     permanent_id: ObjectId,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    // Verify the object exists
-    if game.object(permanent_id).is_none() {
-        return Err(ActionError::ObjectNotFound);
+    let spec = game
+        .object(permanent_id)
+        .ok_or(ActionError::ObjectNotFound)
+        .and_then(|object| turn_face_up_spec(object).ok_or(ActionError::NoSuchAbility))?;
+
+    // Pay the morph/megamorph turn-face-up cost.
+    let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker);
+    for cost in spec.cost.costs() {
+        pay_cost_component_with_choice(game, cost, &mut cost_ctx)
+            .map_err(cost_error_to_action_error)?;
     }
 
     game.set_face_up(permanent_id);
 
-    // In a full implementation, this would:
-    // 1. Pay the morph/megamorph/disguise cost
-    // 2. Apply any "when this turns face up" triggers
+    if spec.megamorph
+        && let Some(object) = game.object_mut(permanent_id)
+    {
+        object.add_counters(crate::object::CounterType::PlusOnePlusOne, 1);
+    }
+
+    game.queue_trigger_event(TriggerEvent::new(crate::events::TurnedFaceUpEvent::new(
+        permanent_id,
+        player,
+    )));
 
     Ok(())
 }
@@ -579,6 +642,25 @@ fn check_mana_ability_condition(
                 }
             })
         }
+        crate::ability::ManaAbilityCondition::Timing(timing) => match timing {
+            crate::ability::ActivationTiming::AnyTime => true,
+            crate::ability::ActivationTiming::DuringCombat => {
+                matches!(game.turn.phase, Phase::Combat)
+            }
+            crate::ability::ActivationTiming::SorcerySpeed => {
+                game.turn.active_player == player
+                    && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
+                    && game.stack_is_empty()
+            }
+            crate::ability::ActivationTiming::OncePerTurn => true,
+            crate::ability::ActivationTiming::DuringYourTurn => game.turn.active_player == player,
+            crate::ability::ActivationTiming::DuringOpponentsTurn => {
+                game.turn.active_player != player
+            }
+        },
+        crate::ability::ManaAbilityCondition::All(conditions) => conditions
+            .iter()
+            .all(|inner| check_mana_ability_condition(game, player, inner)),
     }
 }
 
@@ -1284,11 +1366,23 @@ mod tests {
 
     #[test]
     fn test_turn_face_up() {
+        use crate::static_abilities::StaticAbility;
+
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
 
         let bears = grizzly_bears();
         let obj_id = game.create_object_from_card(&bears, alice, Zone::Battlefield);
+
+        if let Some(obj) = game.object_mut(obj_id) {
+            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
+                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+            )));
+        }
+        if let Some(player) = game.player_mut(alice) {
+            player.mana_pool.green = 1;
+        }
+        game.turn.priority_player = Some(alice);
 
         // Make the creature face-down
         game.set_face_down(obj_id);
@@ -1305,6 +1399,126 @@ mod tests {
     }
 
     #[test]
+    fn test_turn_face_up_megamorph_adds_counter() {
+        use crate::object::CounterType;
+        use crate::static_abilities::StaticAbility;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let bears = grizzly_bears();
+        let obj_id = game.create_object_from_card(&bears, alice, Zone::Battlefield);
+
+        if let Some(obj) = game.object_mut(obj_id) {
+            obj.abilities
+                .push(Ability::static_ability(StaticAbility::megamorph(
+                    ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+                )));
+        }
+        if let Some(player) = game.player_mut(alice) {
+            player.mana_pool.green = 1;
+        }
+        game.turn.priority_player = Some(alice);
+        game.set_face_down(obj_id);
+
+        let action = SpecialAction::TurnFaceUp {
+            permanent_id: obj_id,
+        };
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        assert!(perform(action, &mut game, alice, &mut dm).is_ok());
+
+        let counters = game
+            .object(obj_id)
+            .and_then(|obj| obj.counters.get(&CounterType::PlusOnePlusOne))
+            .copied()
+            .unwrap_or(0);
+        assert_eq!(counters, 1, "megamorph should add a +1/+1 counter");
+    }
+
+    #[test]
+    fn test_turn_face_up_is_special_action_not_stack_action() {
+        use crate::static_abilities::StaticAbility;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let bears = grizzly_bears();
+        let obj_id = game.create_object_from_card(&bears, alice, Zone::Battlefield);
+        if let Some(obj) = game.object_mut(obj_id) {
+            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
+                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+            )));
+        }
+        if let Some(player) = game.player_mut(alice) {
+            player.mana_pool.green = 1;
+        }
+        game.turn.priority_player = Some(alice);
+        game.set_face_down(obj_id);
+
+        // Keep a spell on stack to verify turning face up does not use/modify it.
+        let instant = CardBuilder::new(CardId::from_raw(77), "Test Instant")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&instant, alice, Zone::Stack);
+        game.stack
+            .push(crate::game_state::StackEntry::new(spell_id, alice));
+        let stack_len_before = game.stack.len();
+
+        let action = SpecialAction::TurnFaceUp {
+            permanent_id: obj_id,
+        };
+        assert!(
+            can_perform_check(&action, &game, alice).is_ok(),
+            "turn-face-up should be legal with a non-empty stack when player has priority"
+        );
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        assert!(perform(action, &mut game, alice, &mut dm).is_ok());
+
+        assert!(!game.is_face_down(obj_id), "creature should be face up");
+        assert_eq!(
+            game.stack.len(),
+            stack_len_before,
+            "turning face up should not add/remove stack entries"
+        );
+    }
+
+    #[test]
+    fn test_turn_face_up_queues_turned_face_up_event() {
+        use crate::events::EventKind;
+        use crate::static_abilities::StaticAbility;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let bears = grizzly_bears();
+        let obj_id = game.create_object_from_card(&bears, alice, Zone::Battlefield);
+        if let Some(obj) = game.object_mut(obj_id) {
+            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
+                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+            )));
+        }
+        if let Some(player) = game.player_mut(alice) {
+            player.mana_pool.green = 1;
+        }
+        game.turn.priority_player = Some(alice);
+        game.set_face_down(obj_id);
+
+        let action = SpecialAction::TurnFaceUp {
+            permanent_id: obj_id,
+        };
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        assert!(perform(action, &mut game, alice, &mut dm).is_ok());
+
+        let events = game.take_pending_trigger_events();
+        assert!(
+            events.iter().any(|event| {
+                event.kind() == EventKind::TurnedFaceUp && event.object_id() == Some(obj_id)
+            }),
+            "turn-face-up special action should queue a TurnedFaceUp event"
+        );
+    }
+
+    #[test]
     fn test_turn_face_up_not_face_down() {
         let mut game = GameState::new(vec!["Alice".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -1317,6 +1531,26 @@ mod tests {
         };
         let result = can_perform_check(&action, &game, alice);
         assert!(matches!(result, Err(ActionError::NotFaceDown)));
+    }
+
+    #[test]
+    fn test_turn_face_up_requires_morph_or_megamorph() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let bears = grizzly_bears();
+        let obj_id = game.create_object_from_card(&bears, alice, Zone::Battlefield);
+        game.turn.priority_player = Some(alice);
+        game.set_face_down(obj_id);
+
+        let action = SpecialAction::TurnFaceUp {
+            permanent_id: obj_id,
+        };
+        let result = can_perform_check(&action, &game, alice);
+        assert!(
+            matches!(result, Err(ActionError::NoSuchAbility)),
+            "expected NoSuchAbility when face-down permanent has no morph/megamorph"
+        );
     }
 
     #[test]

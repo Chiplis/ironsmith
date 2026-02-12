@@ -462,6 +462,17 @@ impl Object {
 
     /// Returns the colors of this object.
     pub fn colors(&self) -> ColorSet {
+        // Devoid applies in all functional zones of the ability.
+        if self.abilities.iter().any(|ability| {
+            ability.functions_in(&self.zone)
+                && matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability) if static_ability.is_devoid()
+                )
+        }) {
+            return ColorSet::COLORLESS;
+        }
+
         if let Some(override_colors) = self.color_override {
             return override_colors;
         }
@@ -827,9 +838,12 @@ impl Object {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
     use crate::card::CardBuilder;
     use crate::color::Color;
     use crate::mana::ManaSymbol;
+    use crate::static_abilities::StaticAbility;
+    use crate::target::ObjectFilter;
 
     #[test]
     fn test_object_from_card() {
@@ -876,6 +890,68 @@ mod tests {
         assert_eq!(token.toughness(), Some(1));
         assert!(token.colors().contains(Color::White));
         // Note: summoning_sick is now tracked in GameState::summoning_sick
+    }
+
+    #[test]
+    fn test_devoid_applies_in_hand() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Devoid Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Blue],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 1))
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Hand,
+        );
+        obj.abilities.push(
+            Ability::static_ability(StaticAbility::make_colorless(ObjectFilter::source())).in_zones(
+                vec![
+                    Zone::Battlefield,
+                    Zone::Stack,
+                    Zone::Hand,
+                    Zone::Library,
+                    Zone::Graveyard,
+                    Zone::Exile,
+                    Zone::Command,
+                ],
+            ),
+        );
+
+        assert!(obj.colors().is_empty(), "devoid object in hand should be colorless");
+    }
+
+    #[test]
+    fn test_make_colorless_ability_respects_functional_zone() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Color Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Blue],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 1))
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Hand,
+        );
+        obj.abilities
+            .push(Ability::static_ability(StaticAbility::make_colorless(
+                ObjectFilter::source(),
+            )));
+
+        assert!(
+            obj.colors().contains(Color::Blue),
+            "battlefield-only make-colorless should not apply in hand"
+        );
     }
 
     #[test]

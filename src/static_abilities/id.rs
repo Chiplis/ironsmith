@@ -31,6 +31,10 @@ pub enum StaticAbilityId {
     Ward,
     Fear,
     Flanking,
+    Landwalk,
+    Bloodthirst,
+    Morph,
+    Megamorph,
     Shadow,
     Horsemanship,
     Phasing,
@@ -44,6 +48,7 @@ pub enum StaticAbilityId {
     CanBlockFlying,
     CanBlockOnlyFlying,
     CantBeBlockedByPowerOrLess,
+    CantBeBlockedByMoreThan,
     CanAttackAsThoughNoDefender,
     MustAttack,
     MustBlock,
@@ -172,6 +177,10 @@ impl StaticAbilityId {
                 | Ward
                 | Fear
                 | Flanking
+                | Landwalk
+                | Bloodthirst
+                | Morph
+                | Megamorph
                 | Shadow
                 | Horsemanship
                 | Phasing
@@ -193,6 +202,8 @@ impl StaticAbilityId {
                 | Intimidate
                 | FlyingRestriction
                 | CantBeBlockedByPowerOrLess
+                | CantBeBlockedByMoreThan
+                | Landwalk
         )
     }
 
@@ -213,6 +224,7 @@ impl StaticAbilityId {
                 | Vigilance
                 | Fear
                 | Flanking
+                | Landwalk
                 | Shadow
                 | Horsemanship
                 | Unblockable
@@ -220,6 +232,7 @@ impl StaticAbilityId {
                 | CanBlockFlying
                 | CanBlockOnlyFlying
                 | CantBeBlockedByPowerOrLess
+                | CantBeBlockedByMoreThan
                 | CanAttackAsThoughNoDefender
                 | MustAttack
                 | MustBlock

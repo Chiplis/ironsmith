@@ -471,6 +471,14 @@ impl Trigger {
         ))
     }
 
+    /// Create a "when this permanent is turned face up" trigger.
+    pub fn this_is_turned_face_up() -> Self {
+        Self::new(ThisEventObjectTrigger::new(
+            EventKind::TurnedFaceUp,
+            "When this permanent is turned face up",
+        ))
+    }
+
     /// Create a "whenever players finish voting" trigger.
     ///
     /// This is represented as a keyword-action trigger on "vote".

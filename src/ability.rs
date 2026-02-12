@@ -55,6 +55,7 @@ impl Ability {
                 effects,
                 choices: vec![],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -69,6 +70,7 @@ impl Ability {
                 effects,
                 choices: vec![],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -92,6 +94,7 @@ impl Ability {
                 effects,
                 choices: vec![],
                 timing,
+                additional_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -110,6 +113,7 @@ impl Ability {
                 effects,
                 choices: vec![],
                 timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -319,6 +323,9 @@ pub struct TriggeredAbility {
     /// - If not enchanted when it dies, doesn't trigger at all
     /// - If enchanted when it dies but not when resolving (somehow), does nothing
     pub intervening_if: Option<InterveningIfCondition>,
+
+    /// Restriction marker for "This ability triggers only once each turn."
+    pub once_each_turn: bool,
 }
 
 impl TriggeredAbility {
@@ -386,6 +393,9 @@ pub struct ActivatedAbility {
 
     /// Timing restriction
     pub timing: ActivationTiming,
+
+    /// Additional textual activation restrictions not modeled by `timing`.
+    pub additional_restrictions: Vec<String>,
 }
 
 impl ActivatedAbility {
@@ -486,6 +496,12 @@ pub enum ManaAbilityCondition {
     /// Controller must control a land with at least one of these subtypes.
     /// Used for verge lands (e.g., "Activate only if you control a Plains or a Swamp").
     ControlLandWithSubtype(Vec<crate::types::Subtype>),
+
+    /// Activation timing restriction for mana abilities.
+    Timing(ActivationTiming),
+
+    /// Conjunction of multiple activation restrictions.
+    All(Vec<ManaAbilityCondition>),
 }
 
 impl ManaAbility {

@@ -87,7 +87,7 @@ pub enum LegalAction {
         ability_index: usize,
     },
 
-    /// Turn a face-down creature face up (morph/manifest).
+    /// Turn a face-down creature face up (e.g., morph/megamorph).
     TurnFaceUp { creature_id: ObjectId },
 
     /// Special action (suspend, foretell, etc.).
@@ -587,6 +587,17 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
         if let Some(perm) = game.object(perm_id) {
             if perm.controller != player {
                 continue;
+            }
+
+            if game.is_face_down(perm_id) {
+                let action = SpecialAction::TurnFaceUp {
+                    permanent_id: perm_id,
+                };
+                if can_perform_check(&action, game, player).is_ok() {
+                    actions.push(LegalAction::TurnFaceUp {
+                        creature_id: perm_id,
+                    });
+                }
             }
 
             for (i, ability) in perm.abilities.iter().enumerate() {
@@ -1563,6 +1574,25 @@ fn check_mana_ability_condition_for_potential(
                 }
             })
         }
+        crate::ability::ManaAbilityCondition::Timing(timing) => match timing {
+            crate::ability::ActivationTiming::AnyTime => true,
+            crate::ability::ActivationTiming::DuringCombat => {
+                matches!(game.turn.phase, Phase::Combat)
+            }
+            crate::ability::ActivationTiming::SorcerySpeed => {
+                game.turn.active_player == player
+                    && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
+                    && game.stack_is_empty()
+            }
+            crate::ability::ActivationTiming::OncePerTurn => true,
+            crate::ability::ActivationTiming::DuringYourTurn => game.turn.active_player == player,
+            crate::ability::ActivationTiming::DuringOpponentsTurn => {
+                game.turn.active_player != player
+            }
+        },
+        crate::ability::ManaAbilityCondition::All(conditions) => conditions
+            .iter()
+            .all(|inner| check_mana_ability_condition_for_potential(game, player, inner)),
     }
 }
 
@@ -5699,6 +5729,44 @@ mod tests {
                 .iter()
                 .any(|a| matches!(a, LegalAction::ActivateManaAbility { source, .. } if *source == creature_id)),
             "Creature with haste should be able to use tap mana abilities despite summoning sickness"
+        );
+    }
+
+    #[test]
+    fn test_compute_legal_actions_includes_turn_face_up_for_morph() {
+        use crate::ability::Ability;
+        use crate::static_abilities::StaticAbility;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.priority_player = Some(alice);
+
+        let creature = CardBuilder::new(CardId::from_raw(101), "Morph Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build();
+        let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        game.object_mut(creature_id)
+            .unwrap()
+            .abilities
+            .push(Ability::static_ability(StaticAbility::morph(
+                crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Green]]),
+            )));
+        game.set_face_down(creature_id);
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(crate::mana::ManaSymbol::Green, 1);
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, LegalAction::TurnFaceUp { creature_id: id } if *id == creature_id)),
+            "face-down creature with payable morph cost should have TurnFaceUp legal action"
         );
     }
 

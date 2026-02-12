@@ -43,7 +43,7 @@ mod tests {
         let trigger = ThisBecomesBlockedTrigger;
         let ctx = TriggerContext::for_source(source_id, alice, &game);
 
-        let event = TriggerEvent::new(CreatureBecameBlockedEvent::new(source_id));
+        let event = TriggerEvent::new(CreatureBecameBlockedEvent::new(source_id, 2));
         assert!(trigger.matches(&event, &ctx));
     }
 }

@@ -43,7 +43,7 @@ pub enum CardTextError {
     ParseError(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum KeywordAction {
     Flying,
     Menace,
@@ -79,6 +79,9 @@ enum KeywordAction {
     Shadow,
     Horsemanship,
     Flanking,
+    Landwalk(Subtype),
+    Bloodthirst(u32),
+    Rampage(u32),
     Bushido(u32),
     Changeling,
     ProtectionFrom(ColorSet),
@@ -87,7 +90,9 @@ enum KeywordAction {
     ProtectionFromCardType(CardType),
     ProtectionFromSubtype(Subtype),
     Unblockable,
+    Devoid,
     Marker(&'static str),
+    MarkerText(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -148,6 +153,7 @@ enum LineAst {
     Triggered {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,
+        once_each_turn: bool,
     },
     Statement {
         effects: Vec<EffectAst>,
@@ -159,6 +165,7 @@ enum LineAst {
         mana_cost: Option<ManaCost>,
         cost_effects: Vec<Effect>,
     },
+    AlternativeCastingMethod(AlternativeCastingMethod),
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +187,8 @@ enum TriggerSpec {
     ThisBecomesMonstrous,
     ThisBecomesTapped,
     ThisBecomesUntapped,
+    ThisTurnedFaceUp,
+    ThisBecomesTargeted,
     ThisDealsDamage,
     ThisDealsDamageTo(ObjectFilter),
     DealsDamage(ObjectFilter),
@@ -212,6 +221,7 @@ enum TriggerSpec {
         action: crate::events::KeywordActionKind,
         player: PlayerFilter,
     },
+    Custom(String),
     SagaChapter(Vec<u32>),
     Either(Box<TriggerSpec>, Box<TriggerSpec>),
 }
@@ -250,6 +260,7 @@ enum PredicateAst {
     ItMatches(ObjectFilter),
     TaggedMatches(TagKey, ObjectFilter),
     SourceIsTapped,
+    YouAttackedThisTurn,
     NoSpellsWereCastLastTurn,
     ManaSpentToCastThisSpellAtLeast {
         amount: u32,
@@ -371,6 +382,21 @@ enum EffectAst {
     Earthbend {
         counters: u32,
     },
+    Explore {
+        target: TargetAst,
+    },
+    OpenAttraction,
+    ManifestDread,
+    Bolster {
+        amount: u32,
+    },
+    Support {
+        amount: u32,
+    },
+    Adapt {
+        amount: u32,
+    },
+    CounterActivatedOrTriggeredAbility,
     AddMana {
         mana: Vec<ManaSymbol>,
         player: PlayerAst,
@@ -949,6 +975,11 @@ impl CardDefinitionBuilder {
             KeywordAction::Flanking => {
                 self.with_ability(Ability::static_ability(StaticAbility::flanking()))
             }
+            KeywordAction::Landwalk(subtype) => {
+                self.with_ability(Ability::static_ability(StaticAbility::landwalk(subtype)))
+            }
+            KeywordAction::Bloodthirst(amount) => self.bloodthirst(amount),
+            KeywordAction::Rampage(amount) => self.rampage(amount),
             KeywordAction::Bushido(amount) => self.bushido(amount),
             KeywordAction::Changeling => {
                 self.with_ability(Ability::static_ability(StaticAbility::changeling()))
@@ -965,8 +996,23 @@ impl CardDefinitionBuilder {
             }
             KeywordAction::ProtectionFromSubtype(subtype) => self.protection_from_subtype(subtype),
             KeywordAction::Unblockable => self.unblockable(),
+            KeywordAction::Devoid => self.with_ability(
+                Ability::static_ability(StaticAbility::make_colorless(ObjectFilter::source()))
+                    .in_zones(vec![
+                        Zone::Battlefield,
+                        Zone::Stack,
+                        Zone::Hand,
+                        Zone::Library,
+                        Zone::Graveyard,
+                        Zone::Exile,
+                        Zone::Command,
+                    ]),
+            ),
             KeywordAction::Marker(name) => self.with_ability(Ability::static_ability(
                 StaticAbility::custom(name, name.to_string()),
+            )),
+            KeywordAction::MarkerText(text) => self.with_ability(Ability::static_ability(
+                StaticAbility::custom("keyword_marker", text),
             )),
         }
     }
@@ -1330,6 +1376,7 @@ impl CardDefinitionBuilder {
                 effects,
                 choices: vec![],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             // Functions from both zones because triggers can be checked at different points:
             // - From Battlefield: SBAs check triggers BEFORE moving object to graveyard
@@ -1386,6 +1433,7 @@ impl CardDefinitionBuilder {
                 effects,
                 choices: vec![],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             // Functions from both zones because triggers can be checked at different points:
             // - From Battlefield: SBAs check triggers BEFORE moving object to graveyard
@@ -1468,6 +1516,7 @@ impl CardDefinitionBuilder {
                 ],
                 choices: vec![],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Stack],
             text: Some("Storm".to_string()),
@@ -1511,6 +1560,41 @@ impl CardDefinitionBuilder {
                 vec![Effect::pump(
                     amount,
                     amount,
+                    ChooseSpec::Source,
+                    Until::EndOfTurn,
+                )],
+            )
+            .with_text(&text),
+        )
+    }
+
+    /// Add bloodthirst N.
+    ///
+    /// Bloodthirst means "If an opponent was dealt damage this turn, this creature enters
+    /// the battlefield with N +1/+1 counters on it."
+    pub fn bloodthirst(self, amount: u32) -> Self {
+        let text = format!("Bloodthirst {amount}");
+        self.with_ability(
+            Ability::static_ability(StaticAbility::bloodthirst(amount)).with_text(&text),
+        )
+    }
+
+    /// Add rampage N.
+    ///
+    /// Rampage means "Whenever this creature becomes blocked, it gets +N/+N until end of turn
+    /// for each creature blocking it beyond the first."
+    pub fn rampage(self, amount: u32) -> Self {
+        let text = format!("Rampage {amount}");
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_becomes_blocked(),
+                vec![Effect::pump(
+                    Value::EventValue(EventValueSpec::BlockersBeyondFirst {
+                        multiplier: amount as i32,
+                    }),
+                    Value::EventValue(EventValueSpec::BlockersBeyondFirst {
+                        multiplier: amount as i32,
+                    }),
                     ChooseSpec::Source,
                     Until::EndOfTurn,
                 )],
@@ -1648,6 +1732,7 @@ impl CardDefinitionBuilder {
                 effects,
                 choices: vec![target_spec],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -1670,6 +1755,7 @@ impl CardDefinitionBuilder {
                 effects,
                 choices: vec![],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -1766,6 +1852,7 @@ impl CardDefinitionBuilder {
                 effects: vec![Effect::may_cast_for_miracle_cost()],
                 choices: vec![],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             functional_zones: vec![crate::zone::Zone::Hand], // Only triggers from hand
             text: Some("Miracle".to_string()),
@@ -1900,6 +1987,7 @@ impl CardDefinitionBuilder {
                 effects: vec![Effect::put_counters_on_source(CounterType::Level, 1)],
                 choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(level_up_text),
@@ -4394,11 +4482,13 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert_eq!(def.abilities.len(), 1);
         let ability = &def.abilities[0];
         assert!(matches!(ability.kind, AbilityKind::Activated(_)));
-        assert_eq!(ability.text.as_deref(), Some("Equip"));
+        assert_eq!(ability.text.as_deref(), Some("Equip {1}"));
 
         let lines = compiled_lines(&def);
         assert!(
-            lines.iter().any(|line| line == "Keyword ability 1: Equip"),
+            lines
+                .iter()
+                .any(|line| line == "Keyword ability 1: Equip {1}"),
             "expected keyword ability line, got {:?}",
             lines
         );
@@ -5116,7 +5206,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected one choose per permanent type plus follow-up search chooser (at least 6 total), got {choose_count} in {debug}"
         );
         assert!(
-            debug.contains("count: ChoiceCount { min: 0, max: Some(1) }"),
+            debug.contains("count: ChoiceCount { min: 0, max: Some(1)")
+                && debug.contains("dynamic_x: false"),
             "expected up-to-one selection count for type picks, got {debug}"
         );
         assert!(
@@ -5235,7 +5326,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let effects = def.spell_effect.expect("spell effects");
         let debug = format!("{effects:?}");
         assert!(
-            debug.contains("ChoiceCount { min: 2, max: Some(2) }"),
+            debug.contains("ChoiceCount { min: 2, max: Some(2)")
+                && debug.contains("dynamic_x: false"),
             "expected exact two-target choice count, got {debug}"
         );
     }

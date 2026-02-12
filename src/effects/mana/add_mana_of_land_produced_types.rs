@@ -156,19 +156,35 @@ fn mana_ability_condition_met(
     source: &Object,
     mana_ability: &ManaAbility,
 ) -> bool {
-    match &mana_ability.activation_condition {
-        None => true,
-        Some(ManaAbilityCondition::ControlLandWithSubtype(required_subtypes)) => {
-            game.battlefield.iter().any(|&perm_id| {
-                let Some(perm) = game.object(perm_id) else {
-                    return false;
-                };
-                perm.controller == source.controller
-                    && perm.is_land()
-                    && required_subtypes.iter().any(|st| perm.has_subtype(*st))
-            })
+    fn condition_met(
+        game: &GameState,
+        source: &Object,
+        condition: &ManaAbilityCondition,
+    ) -> bool {
+        match condition {
+            ManaAbilityCondition::ControlLandWithSubtype(required_subtypes) => {
+                game.battlefield.iter().any(|&perm_id| {
+                    let Some(perm) = game.object(perm_id) else {
+                        return false;
+                    };
+                    perm.controller == source.controller
+                        && perm.is_land()
+                        && required_subtypes.iter().any(|st| perm.has_subtype(*st))
+                })
+            }
+            // For mana-production inference we only care about what colors can be
+            // produced, not whether the ability is currently activatable by timing.
+            ManaAbilityCondition::Timing(_) => true,
+            ManaAbilityCondition::All(conditions) => conditions
+                .iter()
+                .all(|inner| condition_met(game, source, inner)),
         }
     }
+
+    mana_ability
+        .activation_condition
+        .as_ref()
+        .is_none_or(|condition| condition_met(game, source, condition))
 }
 
 fn infer_symbols_from_mana_effect(

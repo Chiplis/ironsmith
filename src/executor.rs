@@ -11,6 +11,7 @@ use crate::cost::OptionalCostsPaid;
 use crate::decision::DecisionMaker;
 use crate::effect::{Effect, EffectId, EffectOutcome, EffectResult, EventValueSpec, Value};
 use crate::effects::helpers::resolve_objects_from_spec;
+use crate::events::combat::CreatureBecameBlockedEvent;
 use crate::events::DamageEvent;
 use crate::events::cause::EventCause;
 use crate::events::life::LifeGainEvent;
@@ -744,10 +745,11 @@ pub fn resolve_value(
             Ok(result.count_or_zero())
         }
 
-        Value::EventValue(EventValueSpec::LifeAmount) => {
+        Value::EventValue(EventValueSpec::Amount)
+        | Value::EventValue(EventValueSpec::LifeAmount) => {
             let Some(triggering_event) = &ctx.triggering_event else {
                 return Err(ExecutionError::UnresolvableValue(
-                    "EventValue(LifeAmount) requires a triggering event".to_string(),
+                    "EventValue(Amount) requires a triggering event".to_string(),
                 ));
             };
             if let Some(life_loss_event) = triggering_event.downcast::<LifeLossEvent>() {
@@ -756,8 +758,27 @@ pub fn resolve_value(
             if let Some(life_gain_event) = triggering_event.downcast::<LifeGainEvent>() {
                 return Ok(life_gain_event.amount as i32);
             }
+            if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
+                return Ok(damage_event.amount as i32);
+            }
             Err(ExecutionError::UnresolvableValue(
-                "EventValue(LifeAmount) requires a life gain or life loss event".to_string(),
+                "EventValue(Amount) requires a life gain/loss or damage event".to_string(),
+            ))
+        }
+
+        Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier }) => {
+            let Some(triggering_event) = &ctx.triggering_event else {
+                return Err(ExecutionError::UnresolvableValue(
+                    "EventValue(BlockersBeyondFirst) requires a triggering event".to_string(),
+                ));
+            };
+            if let Some(event) = triggering_event.downcast::<CreatureBecameBlockedEvent>() {
+                let beyond_first = event.blocker_count.saturating_sub(1) as i32;
+                return Ok(beyond_first * *multiplier);
+            }
+            Err(ExecutionError::UnresolvableValue(
+                "EventValue(BlockersBeyondFirst) requires a creature-becomes-blocked event"
+                    .to_string(),
             ))
         }
 
@@ -1162,10 +1183,13 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cost::{OptionalCost, TotalCost};
     use crate::effect::EffectPredicate;
+    use crate::events::combat::CreatureBecameBlockedEvent;
+    use crate::events::life::LifeLossEvent;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;
     use crate::target::ObjectFilter;
+    use crate::triggers::TriggerEvent;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
@@ -1237,6 +1261,31 @@ mod tests {
         let value = Value::Count(filter);
         let result = resolve_value(&game, &value, &ctx);
         assert_eq!(result.unwrap(), 3);
+    }
+
+    #[test]
+    fn test_resolve_event_value_amount_from_life_loss_event() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(1);
+        let event = TriggerEvent::new(LifeLossEvent::new(alice, 4, true));
+        let ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
+
+        let result = resolve_value(&game, &Value::EventValue(EventValueSpec::Amount), &ctx);
+        assert_eq!(result.unwrap(), 4);
+    }
+
+    #[test]
+    fn test_resolve_event_value_blockers_beyond_first() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(7);
+        let event = TriggerEvent::new(CreatureBecameBlockedEvent::new(source, 3));
+        let ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
+
+        let value = Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier: 2 });
+        let result = resolve_value(&game, &value, &ctx);
+        assert_eq!(result.unwrap(), 4);
     }
 
     #[test]

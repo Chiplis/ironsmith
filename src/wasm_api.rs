@@ -3100,6 +3100,31 @@ fn describe_mana_condition(condition: &crate::ability::ManaAbilityCondition) -> 
                 format!("you control a land with subtype {names}")
             }
         }
+        crate::ability::ManaAbilityCondition::Timing(timing) => match timing {
+            crate::ability::ActivationTiming::AnyTime => {
+                "you may activate any time you could cast an instant".to_string()
+            }
+            crate::ability::ActivationTiming::SorcerySpeed => "activate only as a sorcery".to_string(),
+            crate::ability::ActivationTiming::DuringCombat => "activate only during combat".to_string(),
+            crate::ability::ActivationTiming::OncePerTurn => "activate only once each turn".to_string(),
+            crate::ability::ActivationTiming::DuringYourTurn => {
+                "activate only during your turn".to_string()
+            }
+            crate::ability::ActivationTiming::DuringOpponentsTurn => {
+                "activate only during an opponent's turn".to_string()
+            }
+        },
+        crate::ability::ManaAbilityCondition::All(conditions) => {
+            let clauses = conditions
+                .iter()
+                .map(describe_mana_condition)
+                .collect::<Vec<_>>();
+            if clauses.is_empty() {
+                "no condition".to_string()
+            } else {
+                clauses.join(" and ")
+            }
+        }
     }
 }
 
@@ -3148,6 +3173,7 @@ fn describe_condition(
         crate::effect::Condition::YourTurn => "it is your turn".to_string(),
         crate::effect::Condition::CreatureDiedThisTurn => "a creature died this turn".to_string(),
         crate::effect::Condition::CastSpellThisTurn => "you cast a spell this turn".to_string(),
+        crate::effect::Condition::AttackedThisTurn => "you attacked this turn".to_string(),
         crate::effect::Condition::NoSpellsWereCastLastTurn => {
             "no spells were cast last turn".to_string()
         }
@@ -5461,8 +5487,18 @@ fn describe_value(
             )
         }
         crate::effect::Value::EffectValue(_) => "a prior effect value".to_string(),
-        crate::effect::Value::EventValue(crate::effect::EventValueSpec::LifeAmount) => {
+        crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+        | crate::effect::Value::EventValue(crate::effect::EventValueSpec::LifeAmount) => {
             "that much".to_string()
+        }
+        crate::effect::Value::EventValue(
+            crate::effect::EventValueSpec::BlockersBeyondFirst { multiplier },
+        ) => {
+            if *multiplier == 1 {
+                "the number of blockers beyond the first".to_string()
+            } else {
+                format!("{multiplier} times the number of blockers beyond the first")
+            }
         }
         crate::effect::Value::WasKicked => "1 if kicked, else 0".to_string(),
         crate::effect::Value::WasBoughtBack => "1 if buyback was paid, else 0".to_string(),

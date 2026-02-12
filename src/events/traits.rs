@@ -97,6 +97,8 @@ pub enum EventKind {
     PlayersFinishedVoting,
     /// A permanent transformed
     Transformed,
+    /// A permanent was turned face up
+    TurnedFaceUp,
 }
 
 /// A target within an event that can potentially be redirected.

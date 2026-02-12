@@ -164,6 +164,7 @@ fn evaluate_condition_simple(
         Condition::YourTurn => game.turn.active_player == controller,
         Condition::CreatureDiedThisTurn => game.creatures_died_this_turn > 0,
         Condition::CastSpellThisTurn => game.spells_cast_this_turn.values().any(|&count| count > 0),
+        Condition::AttackedThisTurn => game.players_attacked_this_turn.contains(&controller),
         Condition::NoSpellsWereCastLastTurn => game.spells_cast_last_turn_total == 0,
         Condition::YouControlCommander => {
             // Check if the player controls a commander on the battlefield
@@ -275,6 +276,7 @@ fn evaluate_condition(
             // Check if any spell was cast this turn by anyone
             Ok(game.spells_cast_this_turn.values().any(|&count| count > 0))
         }
+        Condition::AttackedThisTurn => Ok(game.players_attacked_this_turn.contains(&ctx.controller)),
         Condition::NoSpellsWereCastLastTurn => Ok(game.spells_cast_last_turn_total == 0),
         Condition::TargetIsTapped => {
             // Check if the target is tapped

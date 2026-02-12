@@ -122,6 +122,46 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
     }
 }
 
+/// Landwalk: can't be blocked as long as defending player controls a land of the given subtype.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Landwalk {
+    pub land_subtype: crate::types::Subtype,
+}
+
+impl Landwalk {
+    pub const fn new(land_subtype: crate::types::Subtype) -> Self {
+        Self { land_subtype }
+    }
+}
+
+impl StaticAbilityKind for Landwalk {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Landwalk
+    }
+
+    fn display(&self) -> String {
+        format!("{:?}walk", self.land_subtype)
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn grants_evasion(&self) -> bool {
+        true
+    }
+
+    fn required_defending_player_land_subtype_for_unblockable(
+        &self,
+    ) -> Option<crate::types::Subtype> {
+        Some(self.land_subtype)
+    }
+}
+
 /// Can't be blocked by creatures with power N or less.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CantBeBlockedByPowerOrLess {
@@ -156,6 +196,45 @@ impl StaticAbilityKind for CantBeBlockedByPowerOrLess {
 
     fn cant_be_blocked_by_power_or_less(&self) -> Option<i32> {
         Some(self.threshold)
+    }
+}
+
+/// Can't be blocked by more than N creatures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CantBeBlockedByMoreThan {
+    pub max_blockers: usize,
+}
+
+impl CantBeBlockedByMoreThan {
+    pub const fn new(max_blockers: usize) -> Self {
+        Self { max_blockers }
+    }
+}
+
+impl StaticAbilityKind for CantBeBlockedByMoreThan {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantBeBlockedByMoreThan
+    }
+
+    fn display(&self) -> String {
+        let noun = if self.max_blockers == 1 {
+            "creature"
+        } else {
+            "creatures"
+        };
+        format!("Can't be blocked by more than {} {}", self.max_blockers, noun)
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn grants_evasion(&self) -> bool {
+        true
+    }
+
+    fn maximum_blockers(&self) -> Option<usize> {
+        Some(self.max_blockers)
     }
 }
 
@@ -303,7 +382,7 @@ impl StaticAbilityKind for CantBlock {
 define_combat_ability!(
     MayAssignDamageAsUnblocked,
     MayAssignDamageAsUnblocked,
-    "May assign combat damage as though it weren't blocked"
+    "You may have this creature assign its combat damage as though it weren't blocked"
 );
 
 #[cfg(test)]

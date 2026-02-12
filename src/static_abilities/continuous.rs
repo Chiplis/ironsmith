@@ -1334,11 +1334,19 @@ impl StaticAbilityKind for MakeColorlessForFilter {
     }
 
     fn display(&self) -> String {
-        "Permanents are colorless".to_string()
+        if self.filter == ObjectFilter::source() {
+            "Devoid".to_string()
+        } else {
+            "Permanents are colorless".to_string()
+        }
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
         Box::new(self.clone())
+    }
+
+    fn is_devoid(&self) -> bool {
+        self.filter == ObjectFilter::source()
     }
 
     fn generate_effects(

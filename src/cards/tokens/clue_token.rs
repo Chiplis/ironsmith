@@ -21,6 +21,7 @@ pub fn clue_token_definition() -> CardDefinition {
             effects: vec![Effect::draw(1)],
             choices: vec![],
             timing: ActivationTiming::AnyTime,
+            additional_restrictions: vec![],
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some("{2}, Sacrifice this artifact: Draw a card.".to_string()),
