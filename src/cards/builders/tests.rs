@@ -5278,16 +5278,15 @@ fn render_spell_dual_damage_clauses_join_when_second_not_greater() {
 }
 
 #[test]
-fn parse_counter_unless_where_x_keeps_single_x_symbol() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rethink Variant")
+fn parse_counter_unless_where_x_fails_strictly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Rethink Variant")
         .card_types(vec![CardType::Instant])
         .parse_text("Counter target spell unless its controller pays {X}, where X is its mana value.")
-        .expect("parse counter-unless-where-x clause");
-
-    let joined = oracle_like_lines(&def).join(" ");
+        .expect_err("where-x unless-payment should fail strict parse");
+    let joined = format!("{err:?}");
     assert!(
-        joined.contains("pays {X}") && !joined.contains("{X}{X}"),
-        "expected single {X} payment symbol in rendered clause, got {joined}"
+        joined.contains("unsupported where-x clause"),
+        "expected where-x strict parse error, got {joined}"
     );
 }
 
@@ -5346,5 +5345,105 @@ fn render_destroy_all_artifacts_and_enchantments_combines_split_sentence() {
     assert!(
         joined.contains("Destroy all artifacts and enchantments"),
         "expected combined destroy-all wording, got {joined}"
+    );
+}
+
+#[test]
+fn render_activation_typed_discard_cost_keeps_card_type() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tortured Existence Variant")
+        .parse_text("{B}, Discard a creature card: Return target creature card from your graveyard to your hand.")
+        .expect("typed discard activation cost should parse");
+
+    let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("discard a creature card"),
+        "expected typed discard activation cost wording, got {joined}"
+    );
+}
+
+#[test]
+fn render_activation_discard_hand_cost_keeps_full_hand_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Null Brooch Variant")
+        .parse_text("{2}, {T}, Discard your hand: Counter target noncreature spell.")
+        .expect("discard-hand activation cost should parse");
+
+    let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("discard your hand"),
+        "expected discard-your-hand activation cost wording, got {joined}"
+    );
+}
+
+#[test]
+fn render_activation_return_cost_preserves_numeric_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Flooded Shoreline Variant")
+        .parse_text("{U}{U}, Return two Islands you control to their owner's hand: Return target creature to its owner's hand.")
+        .expect("counted return cost should parse");
+
+    let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("return two islands you control to their owner's hand"),
+        "expected counted return activation cost wording, got {joined}"
+    );
+}
+
+#[test]
+fn parse_delayed_return_at_end_of_combat_fails_strictly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Kaijin Variant")
+        .parse_text("Return target creature to its owner's hand at end of combat.")
+        .expect_err("delayed return timing should fail strict parse");
+    assert!(
+        format!("{err:?}").contains("unsupported delayed return timing clause"),
+        "expected delayed return timing parse error, got {err:?}"
+    );
+}
+
+#[test]
+fn parse_counter_unless_or_mana_choice_fails_strictly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Thrull Wizard Variant")
+        .parse_text("Counter target black spell unless that spell's controller pays {B} or {3}.")
+        .expect_err("alternative mana unless-payment should fail strict parse");
+    let debug = format!("{err:?}");
+    assert!(
+        debug.contains("unsupported trailing counter-unless payment clause")
+            || debug.contains("unsupported trailing unless-payment clause"),
+        "expected strict trailing unless-payment parse error, got {debug}"
+    );
+}
+
+#[test]
+fn parse_filter_with_counter_on_it_fails_strictly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Razorfin Variant")
+        .parse_text("{1}{U}, {T}: Return target creature with a counter on it to its owner's hand.")
+        .expect_err("counter-state object filter should fail strict parse");
+    assert!(
+        format!("{err:?}").contains("unsupported counter-state object filter"),
+        "expected unsupported counter-state filter parse error, got {err:?}"
+    );
+}
+
+#[test]
+fn render_named_count_filter_keeps_named_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Powerstone Shard Variant")
+        .parse_text("{T}: Add {C} for each artifact you control named Powerstone Shard.")
+        .expect("named count filter should parse");
+
+    let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("named powerstone shard"),
+        "expected named count filter wording, got {joined}"
+    );
+}
+
+#[test]
+fn render_nonsnow_filter_keeps_non_supertype() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hallowed Ground Variant")
+        .parse_text("{W}{W}: Return target nonsnow land you control to its owner's hand.")
+        .expect("nonsnow target filter should parse");
+
+    let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("nonsnow land you control"),
+        "expected nonsnow target filter wording, got {joined}"
     );
 }
