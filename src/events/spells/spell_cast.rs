@@ -6,6 +6,7 @@ use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
+use crate::zone::Zone;
 
 /// A spell cast event.
 ///
@@ -17,12 +18,18 @@ pub struct SpellCastEvent {
     pub spell: ObjectId,
     /// The player who cast the spell
     pub caster: PlayerId,
+    /// The zone the spell was cast from.
+    pub from_zone: Zone,
 }
 
 impl SpellCastEvent {
     /// Create a new spell cast event.
-    pub fn new(spell: ObjectId, caster: PlayerId) -> Self {
-        Self { spell, caster }
+    pub fn new(spell: ObjectId, caster: PlayerId, from_zone: Zone) -> Self {
+        Self {
+            spell,
+            caster,
+            from_zone,
+        }
     }
 }
 
@@ -74,20 +81,25 @@ mod tests {
 
     #[test]
     fn test_spell_cast_event_creation() {
-        let event = SpellCastEvent::new(ObjectId::from_raw(1), PlayerId::from_index(0));
+        let event = SpellCastEvent::new(ObjectId::from_raw(1), PlayerId::from_index(0), Zone::Hand);
         assert_eq!(event.spell, ObjectId::from_raw(1));
         assert_eq!(event.caster, PlayerId::from_index(0));
+        assert_eq!(event.from_zone, Zone::Hand);
     }
 
     #[test]
     fn test_spell_cast_event_kind() {
-        let event = SpellCastEvent::new(ObjectId::from_raw(1), PlayerId::from_index(0));
+        let event = SpellCastEvent::new(ObjectId::from_raw(1), PlayerId::from_index(0), Zone::Hand);
         assert_eq!(event.event_kind(), EventKind::SpellCast);
     }
 
     #[test]
     fn test_spell_cast_accessors() {
-        let event = SpellCastEvent::new(ObjectId::from_raw(42), PlayerId::from_index(1));
+        let event = SpellCastEvent::new(
+            ObjectId::from_raw(42),
+            PlayerId::from_index(1),
+            Zone::Graveyard,
+        );
         assert_eq!(event.object_id(), Some(ObjectId::from_raw(42)));
         assert_eq!(event.player(), Some(PlayerId::from_index(1)));
         assert_eq!(event.controller(), Some(PlayerId::from_index(1)));

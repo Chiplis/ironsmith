@@ -161,11 +161,20 @@ enum LineAst {
     AdditionalCost {
         effects: Vec<EffectAst>,
     },
+    AdditionalCostChoice {
+        options: Vec<AdditionalCostChoiceOptionAst>,
+    },
     AlternativeCost {
         mana_cost: Option<ManaCost>,
         cost_effects: Vec<Effect>,
     },
     AlternativeCastingMethod(AlternativeCastingMethod),
+}
+
+#[derive(Debug, Clone)]
+struct AdditionalCostChoiceOptionAst {
+    description: String,
+    effects: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
@@ -200,6 +209,9 @@ enum TriggerSpec {
     SpellCast {
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
+        during_turn: Option<PlayerFilter>,
+        min_spells_this_turn: Option<u32>,
+        from_not_hand: bool,
     },
     SpellCopied {
         filter: Option<ObjectFilter>,
@@ -271,6 +283,9 @@ enum PredicateAst {
     SourceIsTapped,
     YouAttackedThisTurn,
     NoSpellsWereCastLastTurn,
+    TargetWasKicked,
+    TargetSpellCastOrderThisTurn(u32),
+    TargetHasGreatestPowerAmongCreatures,
     ManaSpentToCastThisSpellAtLeast {
         amount: u32,
         symbol: Option<ManaSymbol>,
@@ -487,6 +502,9 @@ enum EffectAst {
         player: PlayerFilter,
         effects: Vec<EffectAst>,
     },
+    DelayedUntilEndOfCombat {
+        effects: Vec<EffectAst>,
+    },
     DelayedWhenLastObjectDiesThisTurn {
         effects: Vec<EffectAst>,
     },
@@ -581,6 +599,12 @@ enum EffectAst {
     SkipTurn {
         player: PlayerAst,
     },
+    SkipCombatPhases {
+        player: PlayerAst,
+    },
+    SkipNextCombatPhaseThisTurn {
+        player: PlayerAst,
+    },
     SkipDrawStep {
         player: PlayerAst,
     },
@@ -622,6 +646,9 @@ enum EffectAst {
         effects: Vec<EffectAst>,
     },
     ForEachOpponentDoesNot {
+        effects: Vec<EffectAst>,
+    },
+    ForEachPlayerDoesNot {
         effects: Vec<EffectAst>,
     },
     ForEachTaggedPlayer {
@@ -2362,8 +2389,9 @@ mod effect_parse_tests {
         ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, PutCountersEffect,
         RemoveUpToAnyCountersEffect, ReturnAllToBattlefieldEffect,
         ReturnFromGraveyardToBattlefieldEffect, ReturnToHandEffect, SacrificeEffect,
-        SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipDrawStepEffect, SkipTurnEffect,
-        SurveilEffect, TapEffect, TargetOnlyEffect, TransformEffect,
+        SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipCombatPhasesEffect,
+        SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect,
+        TapEffect, TargetOnlyEffect, TransformEffect,
     };
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -4557,6 +4585,126 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_skip_combat_phases_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "False Peace")
+            .parse_text("Target player skips all combat phases of their next turn.")
+            .expect("parse skip combat phases");
+
+        let effects = def.spell_effect.expect("spell effect");
+        assert!(
+            effects
+                .iter()
+                .any(|e| e.downcast_ref::<SkipCombatPhasesEffect>().is_some()),
+            "should include skip combat phases effect"
+        );
+    }
+
+    #[test]
+    fn parse_skip_next_combat_phase_this_turn_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Moment of Silence")
+            .parse_text("Target player skips their next combat phase this turn.")
+            .expect("parse skip next combat phase this turn");
+
+        let effects = def.spell_effect.expect("spell effect");
+        assert!(
+            effects.iter().any(|e| e
+                .downcast_ref::<SkipNextCombatPhaseThisTurnEffect>()
+                .is_some()),
+            "should include skip-next-combat-phase-this-turn effect"
+        );
+    }
+
+    #[test]
+    fn parse_exile_all_mixed_zones_split_clause() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Decree of Annihilation Probe")
+            .parse_text(
+                "Exile all artifacts, creatures, and lands from the battlefield, all cards from all graveyards, and all cards from all hands.",
+            )
+            .expect("parse mixed-zone exile-all split clause");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains("Exile all artifact")
+                && joined.contains("Exile all creature")
+                && joined.contains("Exile all land"),
+            "expected battlefield-type exile split coverage, got {joined}"
+        );
+        assert!(
+            joined.contains("Exile all card from a graveyard"),
+            "expected graveyard exile segment, got {joined}"
+        );
+        assert!(
+            joined.contains("Exile all card in hand"),
+            "expected hand exile segment, got {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_spell_cast_from_graveyard_trigger_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Secrets of the Dead Probe")
+            .parse_text("Whenever you cast a spell from your graveyard, draw a card.")
+            .expect("parse spell-cast-from-graveyard trigger");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains("Whenever you cast a spell from your graveyard"),
+            "expected graveyard origin qualifier in trigger text, got {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_spell_cast_another_during_your_turn_trigger_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Geralf Qualifier Probe")
+            .parse_text(
+                "Whenever you cast a spell during your turn other than your first spell that turn, draw a card.",
+            )
+            .expect("parse qualified spell-cast trigger");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains("Whenever you cast another spell during your turn"),
+            "expected spell-order + turn qualifier in trigger text, got {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_put_counter_for_each_filter_on_target() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Moldgraf Millipede Probe")
+            .parse_text(
+                "When this creature enters, mill three cards, then put a +1/+1 counter on this creature for each creature card in your graveyard.",
+            )
+            .expect("parse put counter for-each filter on target");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains(
+                "Put a +1/+1 counter on this creature for each creature card in your graveyard"
+            ),
+            "expected counter target + graveyard count phrase, got {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_pest_token_subtype_in_token_rendering() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Pest Summoning Probe")
+            .parse_text(
+                "Create two 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life.\"",
+            )
+            .expect("parse pest token creation with dies lifegain text");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains("Pest creature token"),
+            "expected Pest subtype to be retained in token rendering, got {joined}"
+        );
+    }
+
+    #[test]
     fn parse_gain_control_target_creature_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Threaten")
             .parse_text("Gain control of target creature until end of turn.")
@@ -5524,7 +5672,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[test]
     fn parse_for_each_player_put_from_graveyard_keeps_choice_non_targeted() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Exhume Variant")
-            .parse_text("Each player puts a creature card from their graveyard onto the battlefield.")
+            .parse_text(
+                "Each player puts a creature card from their graveyard onto the battlefield.",
+            )
             .expect("for-each player put-from-graveyard should parse");
 
         let joined = crate::compiled_text::compiled_lines(&def).join(" ");

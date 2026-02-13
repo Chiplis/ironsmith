@@ -649,9 +649,7 @@ fn check_mana_ability_condition(
                 .filter_map(|&id| game.object(id))
                 .filter(|obj| {
                     obj.controller == player
-                        && obj
-                            .card_types
-                            .contains(&crate::types::CardType::Artifact)
+                        && obj.card_types.contains(&crate::types::CardType::Artifact)
                 })
                 .count() as u32;
             controlled_artifacts >= *required_count
@@ -665,6 +663,23 @@ fn check_mana_ability_condition(
                 .count() as u32;
             controlled_lands >= *required_count
         }
+        crate::ability::ManaAbilityCondition::CardInYourGraveyard {
+            card_types,
+            subtypes,
+        } => game.player(player).is_some_and(|player_state| {
+            player_state.graveyard.iter().any(|&card_id| {
+                let Some(card) = game.object(card_id) else {
+                    return false;
+                };
+                let card_type_match = card_types.is_empty()
+                    || card_types
+                        .iter()
+                        .any(|card_type| card.card_types.contains(card_type));
+                let subtype_match = subtypes.is_empty()
+                    || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
+                card_type_match && subtype_match
+            })
+        }),
         crate::ability::ManaAbilityCondition::Timing(timing) => match timing {
             crate::ability::ActivationTiming::AnyTime => true,
             crate::ability::ActivationTiming::DuringCombat => {
@@ -1398,9 +1413,10 @@ mod tests {
         let obj_id = game.create_object_from_card(&bears, alice, Zone::Battlefield);
 
         if let Some(obj) = game.object_mut(obj_id) {
-            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
-                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
-            )));
+            obj.abilities
+                .push(Ability::static_ability(StaticAbility::morph(
+                    ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+                )));
         }
         if let Some(player) = game.player_mut(alice) {
             player.mana_pool.green = 1;
@@ -1468,9 +1484,10 @@ mod tests {
         let bears = grizzly_bears();
         let obj_id = game.create_object_from_card(&bears, alice, Zone::Battlefield);
         if let Some(obj) = game.object_mut(obj_id) {
-            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
-                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
-            )));
+            obj.abilities
+                .push(Ability::static_ability(StaticAbility::morph(
+                    ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+                )));
         }
         if let Some(player) = game.player_mut(alice) {
             player.mana_pool.green = 1;
@@ -1516,9 +1533,10 @@ mod tests {
         let bears = grizzly_bears();
         let obj_id = game.create_object_from_card(&bears, alice, Zone::Battlefield);
         if let Some(obj) = game.object_mut(obj_id) {
-            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
-                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
-            )));
+            obj.abilities
+                .push(Ability::static_ability(StaticAbility::morph(
+                    ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+                )));
         }
         if let Some(player) = game.player_mut(alice) {
             player.mana_pool.green = 1;

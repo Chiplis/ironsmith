@@ -249,10 +249,7 @@ pub fn minimum_blockers(attacker: &Object) -> usize {
 }
 
 /// Returns the maximum number of blockers allowed for an attacker, if restricted.
-pub fn maximum_blockers(
-    attacker: &Object,
-    game: &crate::game_state::GameState,
-) -> Option<usize> {
+pub fn maximum_blockers(attacker: &Object, game: &crate::game_state::GameState) -> Option<usize> {
     let abilities = game
         .calculated_characteristics(attacker.id)
         .map(|c| c.static_abilities)

@@ -276,6 +276,356 @@ fn strip_parenthetical(text: &str) -> String {
     out
 }
 
+fn looks_like_reminder_quote(content: &str) -> bool {
+    let lower = content
+        .trim()
+        .trim_matches('"')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    lower.starts_with("{t}, sacrifice this artifact: add one mana of any color")
+        || lower.starts_with("sacrifice this token: add {c}")
+        || lower.starts_with("sacrifice this creature: add {c}")
+        || lower.starts_with("{2}, {t}, sacrifice this token: draw a card")
+        || lower.starts_with("{2}, sacrifice this token: you gain 3 life")
+        || lower.starts_with("when this token dies")
+        || lower.starts_with("when this token leaves the battlefield")
+}
+
+fn strip_reminder_like_quotes(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_quote = false;
+    let mut quoted = String::new();
+
+    for ch in text.chars() {
+        if ch == '"' {
+            if in_quote {
+                if !looks_like_reminder_quote(&quoted) {
+                    out.push('"');
+                    out.push_str(&quoted);
+                    out.push('"');
+                } else {
+                    for prefix in ["It has ", "it has ", "They have ", "they have ", "with ", "With "] {
+                        if out.ends_with(prefix) {
+                            let keep = out.len().saturating_sub(prefix.len());
+                            if out.is_char_boundary(keep) {
+                                out.truncate(keep);
+                            }
+                            break;
+                        }
+                    }
+                }
+                quoted.clear();
+                in_quote = false;
+            } else {
+                in_quote = true;
+            }
+            continue;
+        }
+        if in_quote {
+            quoted.push(ch);
+        } else {
+            out.push(ch);
+        }
+    }
+
+    if in_quote {
+        out.push('"');
+        out.push_str(&quoted);
+    }
+
+    out
+}
+
+fn strip_inline_token_reminders(text: &str) -> String {
+    text.replace(
+        " with Sacrifice this creature: Add {C}. under your control",
+        "",
+    )
+    .replace(
+        " with Sacrifice this token: Add {C}. under your control",
+        "",
+    )
+    .replace(
+        " with {T}, Sacrifice this artifact: Add one mana of any color. tapped under your control",
+        "",
+    )
+    .replace(
+        " with {T}, Sacrifice this artifact: Add one mana of any color. under your control, tapped",
+        "",
+    )
+    .replace(
+        " It has \"{T}, Sacrifice this artifact: Add one mana of any color.\"",
+        "",
+    )
+    .replace(" It has \"Sacrifice this token: Add {C}.\"", "")
+    .replace(" It has \"Sacrifice this creature: Add {C}.\"", "")
+}
+
+fn parenthetical_segments(text: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut depth = 0u32;
+    let mut current = String::new();
+
+    for ch in text.chars() {
+        if ch == '(' {
+            if depth > 0 {
+                current.push(ch);
+            }
+            depth += 1;
+            continue;
+        }
+        if ch == ')' {
+            if depth == 0 {
+                continue;
+            }
+            depth -= 1;
+            if depth == 0 {
+                let segment = current.trim();
+                if !segment.is_empty() {
+                    segments.push(segment.to_string());
+                }
+                current.clear();
+            } else {
+                current.push(ch);
+            }
+            continue;
+        }
+        if depth > 0 {
+            current.push(ch);
+        }
+    }
+
+    segments
+}
+
+fn push_semantic_clauses(line: &str, clauses: &mut Vec<String>) {
+    let mut current = String::new();
+    for ch in line.chars() {
+        if matches!(ch, '.' | ';' | '\n') {
+            let trimmed = current.trim();
+            if !trimmed.is_empty() && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric()) {
+                clauses.push(strip_ability_word_prefix(trimmed));
+            }
+            current.clear();
+        } else {
+            current.push(ch);
+        }
+    }
+    let trimmed = current.trim();
+    if !trimmed.is_empty() && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric()) {
+        clauses.push(strip_ability_word_prefix(trimmed));
+    }
+}
+
+fn normalize_trigger_subject_for_compare(line: &str) -> String {
+    let trimmed = line.trim();
+    for prefix in ["When ", "Whenever "] {
+        if !trimmed.starts_with(prefix) {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        let marker = [
+            " becomes ",
+            " become ",
+            " enters",
+            " attacks",
+            " blocks",
+            " dies",
+            " deals ",
+            " is turned face up",
+        ]
+        .iter()
+        .filter_map(|needle| lower.find(needle))
+        .min();
+        let Some(idx) = marker else {
+            continue;
+        };
+        if idx <= prefix.len() {
+            continue;
+        }
+        let subject = trimmed[prefix.len()..idx].trim();
+        if subject.is_empty() {
+            continue;
+        }
+        let subject_lower = subject.to_ascii_lowercase();
+        let starts_with_generic = [
+            "a ",
+            "an ",
+            "the ",
+            "this ",
+            "that ",
+            "target ",
+            "another ",
+            "other ",
+            "each ",
+            "all ",
+            "any ",
+            "up to ",
+            "one or more ",
+        ]
+        .iter()
+        .any(|start| subject_lower.starts_with(start));
+        if starts_with_generic {
+            continue;
+        }
+        let contains_generic_noun = [
+            " creature",
+            " permanent",
+            " land",
+            " artifact",
+            " enchantment",
+            " planeswalker",
+            " battle",
+            " token",
+            " player",
+            " opponent",
+            " spell",
+            " card",
+        ]
+        .iter()
+        .any(|needle| subject_lower.contains(needle));
+        if contains_generic_noun {
+            continue;
+        }
+        if !subject
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            continue;
+        }
+        let tail = &trimmed[idx..];
+        let replacement_subject = if tail.starts_with(" enters") {
+            "this permanent"
+        } else {
+            "this creature"
+        };
+        return format!("{prefix}{replacement_subject}{tail}");
+    }
+    trimmed.to_string()
+}
+
+fn split_common_semantic_conjunctions(line: &str) -> String {
+    let mut normalized = line.to_string();
+    normalized = normalized.replace(
+        "Whenever another creature enters under your control",
+        "Whenever another creature you control enters",
+    );
+    normalized = normalized.replace(
+        "whenever another creature enters under your control",
+        "whenever another creature you control enters",
+    );
+    if normalized.starts_with("You draw ") {
+        normalized = normalized.replace(" and you lose ", " and lose ");
+        normalized = normalized.replace(" and you gain ", " and gain ");
+    }
+    if normalized.contains(", you draw ") && normalized.contains(" and lose ") {
+        normalized = normalized.replace(" and lose ", " and you lose ");
+    }
+    if normalized.contains(", you draw ") && normalized.contains(" and gain ") {
+        normalized = normalized.replace(" and gain ", " and you gain ");
+    }
+    let lower = normalized.to_ascii_lowercase();
+    if let Some(rest) = lower.strip_prefix("for each player, you may that player ")
+        && let Some((first, second)) = rest.split_once(". if you don't, that player ")
+    {
+        normalized = format!(
+            "Each player may {}. Each player who doesn't {}",
+            first.trim_end_matches('.'),
+            second.trim_end_matches('.')
+        );
+    } else if let Some(rest) = lower.strip_prefix("for each opponent, you may that player ")
+        && let Some((first, second)) = rest.split_once(". if you don't, that player ")
+    {
+        normalized = format!(
+            "Each opponent may {}. Each opponent who doesn't {}",
+            first.trim_end_matches('.'),
+            second.trim_end_matches('.')
+        );
+    } else if let Some(amount) = lower
+        .strip_prefix("for each opponent, deal ")
+        .and_then(|rest| rest.strip_suffix(" damage to that player"))
+    {
+        normalized = format!("This spell deals {amount} damage to each opponent");
+    } else if let Some(rest) = lower.strip_prefix("for each opponent, that player ") {
+        normalized = format!("Each opponent {rest}");
+    } else if let Some(rest) = lower.strip_prefix("for each player, that player ") {
+        normalized = format!("Each player {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Choose one — ") {
+        normalized = format!("Choose one —. {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Choose one or both — ") {
+        normalized = format!("Choose one or both —. {rest}");
+    }
+
+    normalized
+        .replace(" • ", ". ")
+        .replace("• ", ". ")
+        .replace(" and untap it", ". Untap it")
+        .replace(" and untap that creature", ". Untap it")
+        .replace(" and untap that permanent", ". Untap it")
+        .replace(" and untap them", ". Untap them")
+        .replace(" and investigate", ". Investigate")
+        .replace(" and draw a card", ". Draw a card")
+        .replace(" and discard a card", ". Discard a card")
+        .replace(" and this creature deals ", ". Deal ")
+        .replace(" and this permanent deals ", ". Deal ")
+        .replace(" and this spell deals ", ". Deal ")
+        .replace(" and it deals ", ". Deal ")
+        .replace(" and you gain ", ". You gain ")
+        .replace(" and you lose ", ". You lose ")
+        .replace(" and you draw ", ". You draw ")
+        .replace(" and you discard ", ". You discard ")
+        .replace(" and each opponent loses ", ". Each opponent loses ")
+        .replace(" and each opponent discards ", ". Each opponent discards ")
+        .replace(" and each player loses ", ". Each player loses ")
+        .replace(" and each player discards ", ". Each player discards ")
+        .replace(" and target opponent loses ", ". Target opponent loses ")
+        .replace(" and target opponent discards ", ". Target opponent discards ")
+}
+
+fn normalize_for_each_player_conditional_for_compare(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    let player_prefix = "for each player, if that player ";
+    if lower.starts_with(player_prefix)
+        && let Some((condition, action)) = line[player_prefix.len()..].split_once(", that player ")
+    {
+        return format!("Each player who {} {}", condition.trim(), action.trim());
+    }
+
+    let opponent_prefix = "for each opponent, if that player ";
+    if lower.starts_with(opponent_prefix)
+        && let Some((condition, action)) = line[opponent_prefix.len()..].split_once(", that player ")
+    {
+        return format!("Each opponent who {} {}", condition.trim(), action.trim());
+    }
+
+    line.to_string()
+}
+
+fn normalize_explicit_damage_source_for_compare(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    for prefix in [
+        "this creature deals ",
+        "this permanent deals ",
+        "this spell deals ",
+        "this enchantment deals ",
+        "this artifact deals ",
+        "this land deals ",
+        "this token deals ",
+        "that creature deals ",
+        "that permanent deals ",
+        "it deals ",
+    ] {
+        if lower.starts_with(prefix) {
+            let rest = line[prefix.len()..].trim_start();
+            return format!("Deal {rest}");
+        }
+    }
+    line.to_string()
+}
+
 fn semantic_clauses(text: &str) -> Vec<String> {
     let mut clauses = Vec::new();
     for raw_line in text.lines() {
@@ -284,37 +634,99 @@ fn semantic_clauses(text: &str) -> Vec<String> {
             continue;
         }
         let line = if trimmed.starts_with('(') && trimmed.ends_with(')') {
-            let inner = trimmed.trim_start_matches('(').trim_end_matches(')').trim();
-            // Keep parenthetical lines only when they carry executable semantics
-            // (most notably mana abilities like "({T}: Add {G}.)").
-            if inner.contains(':') {
-                inner.to_string()
-            } else {
-                continue;
-            }
+            // Oracle parentheticals are reminder/rules-help text for audit purposes.
+            // Exclude them from semantic similarity scoring.
+            continue;
         } else {
-            strip_parenthetical(raw_line)
+            let no_parenthetical = strip_parenthetical(raw_line);
+            let no_inline_reminders = strip_inline_token_reminders(&no_parenthetical);
+            strip_reminder_like_quotes(&no_inline_reminders)
         };
-        let mut current = String::new();
-        for ch in line.chars() {
-            if matches!(ch, '.' | ';' | '\n') {
-                let trimmed = current.trim();
-                if !trimmed.is_empty()
-                    && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric())
-                {
-                    clauses.push(trimmed.to_string());
-                }
-                current.clear();
-            } else {
-                current.push(ch);
-            }
-        }
-        let trimmed = current.trim();
-        if !trimmed.is_empty() && trimmed.chars().any(|ch| ch.is_ascii_alphanumeric()) {
-            clauses.push(trimmed.to_string());
-        }
+        let line = normalize_trigger_subject_for_compare(&line);
+        let line = split_common_semantic_conjunctions(&line);
+        let line = normalize_for_each_player_conditional_for_compare(&line);
+        let line = normalize_explicit_damage_source_for_compare(&line);
+        push_semantic_clauses(&line, &mut clauses);
     }
     clauses
+}
+
+fn reminder_clauses(text: &str) -> Vec<String> {
+    let mut clauses = Vec::new();
+    for segment in parenthetical_segments(text) {
+        push_semantic_clauses(&segment, &mut clauses);
+    }
+    clauses
+}
+
+fn is_chapter_style_prefix(prefix: &str) -> bool {
+    let lower = prefix.trim().to_ascii_lowercase();
+    if lower.contains("chapter") || lower.contains("chapters") {
+        return true;
+    }
+    let has_roman = lower.chars().any(|ch| matches!(ch, 'i' | 'v' | 'x'));
+    has_roman
+        && lower
+            .chars()
+            .all(|ch| matches!(ch, 'i' | 'v' | 'x' | ',' | ' '))
+}
+
+fn strip_ability_word_prefix(clause: &str) -> String {
+    let trimmed = clause.trim();
+    let Some((prefix, tail)) = trimmed.split_once('—') else {
+        return trimmed.to_string();
+    };
+    if is_chapter_style_prefix(prefix) {
+        return trimmed.to_string();
+    }
+    let tail = tail.trim();
+    if tail.is_empty() {
+        return trimmed.to_string();
+    }
+    let tail_lower = tail.to_ascii_lowercase();
+    let semantic_tail = tail_lower.starts_with("when ")
+        || tail_lower.starts_with("whenever ")
+        || tail_lower.starts_with("at the beginning ")
+        || tail_lower.starts_with("until ")
+        || tail_lower.starts_with("each ")
+        || tail_lower.starts_with("target ")
+        || tail_lower.starts_with("draw ")
+        || tail_lower.starts_with("destroy ")
+        || tail_lower.starts_with("create ")
+        || tail_lower.starts_with("put ")
+        || tail_lower.starts_with("exile ")
+        || tail_lower.starts_with("return ")
+        || tail_lower.starts_with("you ")
+        || tail_lower.starts_with("this ")
+        || tail_lower.starts_with("counter ");
+    if semantic_tail {
+        tail.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn is_internal_compiled_scaffolding_clause(clause: &str) -> bool {
+    let lower = clause.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+
+    if lower.contains("tag the object") || lower.contains("tags it as '") {
+        return true;
+    }
+
+    if lower.starts_with("you choose ")
+        && (lower.contains(" in the battlefield")
+            || lower.contains(" in your graveyard")
+            || lower.contains(" in exile")
+            || lower.contains(" and tag")
+            || lower.contains(" and tags "))
+    {
+        return true;
+    }
+
+    false
 }
 
 fn tokenize_text(text: &str) -> Vec<String> {
@@ -412,11 +824,44 @@ fn normalize_word(token: &str) -> Option<String> {
     }
 
     let mut base = token.trim_matches('\'').to_string();
+    if base == "can't" || base == "cannot" {
+        base = "cant".to_string();
+    }
     if base.ends_with("'s") {
+        base.truncate(base.len().saturating_sub(2));
+    }
+    if base.ends_with("ies") && base.len() > 4 {
+        base.truncate(base.len().saturating_sub(3));
+        base.push('y');
+    } else if base.ends_with("ing") && base.len() > 5 {
+        base.truncate(base.len().saturating_sub(3));
+    } else if base.ends_with("ed") && base.len() > 4 {
         base.truncate(base.len().saturating_sub(2));
     }
     if base.len() > 4 && base.ends_with('s') {
         base.pop();
+    }
+    base = match base.as_str() {
+        "whenever" => "when".to_string(),
+        "enters" | "entering" | "entered" => "enter".to_string(),
+        "becomes" | "becoming" | "became" => "become".to_string(),
+        "dies" | "died" | "dying" => "die".to_string(),
+        "casts" | "casting" | "casted" => "cast".to_string(),
+        "controls" | "controlled" | "controlling" => "control".to_string(),
+        "sacrifices" | "sacrificed" | "sacrificing" => "sacrifice".to_string(),
+        "draws" | "drawing" | "drew" => "draw".to_string(),
+        "discards" | "discarded" | "discarding" => "discard".to_string(),
+        "gains" | "gaining" | "gained" => "gain".to_string(),
+        "loses" | "losing" | "lost" => "lose".to_string(),
+        "deals" | "dealing" | "dealt" => "deal".to_string(),
+        "matches" | "matched" | "matching" => "match".to_string(),
+        _ => base,
+    };
+    if matches!(
+        base.as_str(),
+        "tag" | "tagged" | "object" | "attached" | "match" | "otherwise" | "appropriate"
+    ) {
+        return None;
     }
     if base.is_empty() { None } else { Some(base) }
 }
@@ -426,6 +871,17 @@ fn is_stopword(token: &str) -> bool {
         token,
         "a" | "an"
             | "the"
+            | "this"
+            | "that"
+            | "those"
+            | "these"
+            | "it"
+            | "its"
+            | "them"
+            | "their"
+            | "they"
+            | "you"
+            | "your"
             | "to"
             | "of"
             | "and"
@@ -440,6 +896,14 @@ fn is_stopword(token: &str) -> bool {
             | "onto"
             | "up"
             | "down"
+            | "as"
+            | "by"
+            | "during"
+            | "while"
+            | "through"
+            | "under"
+            | "then"
+            | "though"
     )
 }
 
@@ -449,6 +913,18 @@ fn comparison_tokens(clause: &str) -> Vec<String> {
         .filter_map(|token| normalize_word(&token))
         .filter(|token| !is_stopword(token))
         .collect()
+}
+
+fn tokens_match_subsetish(tokens: &[String], reference: &[String]) -> bool {
+    if tokens.is_empty() || reference.is_empty() {
+        return false;
+    }
+    let reference_set: HashSet<&str> = reference.iter().map(String::as_str).collect();
+    let overlap = tokens
+        .iter()
+        .filter(|token| reference_set.contains(token.as_str()))
+        .count();
+    (overlap as f32 / tokens.len() as f32) >= 0.80
 }
 
 fn is_cluster_keyword(token: &str) -> bool {
@@ -632,13 +1108,13 @@ fn embed_clause(clause: &str, dims: usize) -> Vec<f32> {
         add_feature(&mut vec, &format!("u:{token}"), 1.0);
     }
     for window in tokens.windows(2) {
-        add_feature(&mut vec, &format!("b:{}|{}", window[0], window[1]), 1.35);
+        add_feature(&mut vec, &format!("b:{}|{}", window[0], window[1]), 0.85);
     }
     for window in tokens.windows(3) {
         add_feature(
             &mut vec,
             &format!("t:{}|{}|{}", window[0], window[1], window[2]),
-            1.65,
+            1.0,
         );
     }
 
@@ -658,7 +1134,7 @@ fn embed_clause(clause: &str, dims: usize) -> Vec<f32> {
     let chars: Vec<char> = compact.chars().collect();
     for ngram in chars.windows(4).take(200) {
         let key = ngram.iter().collect::<String>();
-        add_feature(&mut vec, &format!("c:{key}"), 0.35);
+        add_feature(&mut vec, &format!("c:{key}"), 0.2);
     }
 
     l2_normalize(&mut vec);
@@ -766,13 +1242,52 @@ fn strip_compiled_prefix(line: &str) -> &str {
     }
 }
 
+fn normalize_card_self_references(text: &str, card_name: &str) -> String {
+    let full_name = card_name.trim();
+    if full_name.is_empty() {
+        return text.to_string();
+    }
+
+    let left_half = full_name
+        .split("//")
+        .next()
+        .map(str::trim)
+        .unwrap_or(full_name);
+    let short_name = left_half
+        .split(',')
+        .next()
+        .map(str::trim)
+        .unwrap_or(left_half);
+
+    let mut names = vec![full_name, left_half, short_name];
+    names.sort_by_key(|name| std::cmp::Reverse(name.len()));
+    names.dedup();
+
+    let mut normalized = text.to_string();
+    for name in names {
+        if name.len() < 3 {
+            continue;
+        }
+        normalized = normalized.replace(name, "this");
+    }
+    normalized
+}
+
 fn compare_semantics(
+    card_name: &str,
     oracle_text: &str,
     compiled_lines: &[String],
     embedding: Option<EmbeddingConfig>,
 ) -> (f32, f32, f32, isize, bool) {
-    let oracle_clauses = semantic_clauses(oracle_text);
-    let compiled_clauses = compiled_lines
+    let normalized_oracle = normalize_card_self_references(oracle_text, card_name);
+    let normalized_compiled_lines = compiled_lines
+        .iter()
+        .map(|line| normalize_card_self_references(line, card_name))
+        .collect::<Vec<_>>();
+
+    let oracle_clauses = semantic_clauses(&normalized_oracle);
+    let reminder_clauses = reminder_clauses(&normalized_oracle);
+    let raw_compiled_clauses = normalized_compiled_lines
         .iter()
         .flat_map(|line| semantic_clauses(strip_compiled_prefix(line)))
         .collect::<Vec<_>>();
@@ -782,10 +1297,39 @@ fn compare_semantics(
         .map(|clause| comparison_tokens(clause))
         .filter(|tokens| !tokens.is_empty())
         .collect();
-    let compiled_tokens: Vec<Vec<String>> = compiled_clauses
+    let reminder_tokens: Vec<Vec<String>> = reminder_clauses
         .iter()
         .map(|clause| comparison_tokens(clause))
         .filter(|tokens| !tokens.is_empty())
+        .collect();
+
+    let mut compiled_pairs = raw_compiled_clauses
+        .iter()
+        .map(|clause| (clause.clone(), comparison_tokens(clause)))
+        .filter(|(_, tokens)| !tokens.is_empty())
+        .collect::<Vec<_>>();
+
+    compiled_pairs.retain(|(clause, _)| !is_internal_compiled_scaffolding_clause(clause));
+
+    // If oracle reminder text is excluded, also exclude compiled-only clauses
+    // that are clearly just reminder-surface equivalents.
+    compiled_pairs.retain(|(_, tokens)| {
+        let matches_oracle = oracle_tokens
+            .iter()
+            .any(|oracle| tokens_match_subsetish(tokens, oracle));
+        let matches_reminder = reminder_tokens
+            .iter()
+            .any(|reminder| tokens_match_subsetish(tokens, reminder));
+        !(matches_reminder && !matches_oracle)
+    });
+
+    let compiled_clauses = compiled_pairs
+        .iter()
+        .map(|(clause, _)| clause.clone())
+        .collect::<Vec<_>>();
+    let compiled_tokens: Vec<Vec<String>> = compiled_pairs
+        .into_iter()
+        .map(|(_, tokens)| tokens)
         .collect();
 
     // Parenthetical-only oracle text (typically reminder text) carries no
@@ -824,7 +1368,13 @@ fn compare_semantics(
         }
     }
 
-    (oracle_coverage, compiled_coverage, similarity_score, line_delta, mismatch)
+    (
+        oracle_coverage,
+        compiled_coverage,
+        similarity_score,
+        line_delta,
+        mismatch,
+    )
 }
 
 fn normalize_parse_error(error: &str) -> String {
@@ -1123,7 +1673,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     similarity_score,
                     line_delta,
                     semantic_mismatch,
-                ) = compare_semantics(&card_input.oracle_text, &compiled, embedding_cfg);
+                ) = compare_semantics(
+                    &card_input.name,
+                    &card_input.oracle_text,
+                    &compiled,
+                    embedding_cfg,
+                );
                 CardAudit {
                     name: card_input.name,
                     oracle_text: card_input.oracle_text,
@@ -1523,7 +2078,7 @@ mod tests {
         let oracle = "Draw a card. Target player discards a card.";
         let compiled = vec!["you gain 2 life".to_string()];
         let (oracle_coverage, compiled_coverage, _similarity_score, line_delta, mismatch) =
-            compare_semantics(oracle, &compiled, None);
+            compare_semantics("", oracle, &compiled, None);
         assert!(mismatch);
         assert!(oracle_coverage < 0.75);
         assert!(compiled_coverage <= 0.25);
@@ -1535,11 +2090,33 @@ mod tests {
         let oracle = "({T}: Add {B} or {R}.)";
         let compiled = vec!["Mana ability 1: Tap this source, Add {B} or {R}".to_string()];
         let (_oracle_coverage, _compiled_coverage, _similarity_score, _line_delta, mismatch) =
-            compare_semantics(oracle, &compiled, None);
+            compare_semantics("", oracle, &compiled, None);
         assert!(
             !mismatch,
             "parenthetical-only oracle reminder text should not count as semantic mismatch"
         );
+    }
+
+    #[test]
+    fn test_semantic_clauses_ignore_parenthetical_lines_with_colon() {
+        let oracle = "Create a Treasure token.\n(It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")";
+        let clauses = semantic_clauses(oracle);
+        assert_eq!(clauses, vec!["Create a Treasure token".to_string()]);
+    }
+
+    #[test]
+    fn test_compare_semantics_excludes_compiled_clause_matched_only_by_reminder() {
+        let oracle = "({T}: Add {R} or {W}.) This land enters tapped.";
+        let compiled = vec![
+            "Mana ability 1: {T}: Add {R}.".to_string(),
+            "Mana ability 2: {T}: Add {W}.".to_string(),
+            "Static ability 3: This land enters tapped.".to_string(),
+        ];
+        let (oracle_coverage, compiled_coverage, _similarity_score, _line_delta, mismatch) =
+            compare_semantics("", oracle, &compiled, None);
+        assert!(!mismatch);
+        assert_eq!(oracle_coverage, 1.0);
+        assert_eq!(compiled_coverage, 1.0);
     }
 
     #[test]
@@ -1548,17 +2125,93 @@ mod tests {
         let compiled = vec!["Deal X damage to target creature Food".to_string()];
         let (_oracle_coverage, _compiled_coverage, _similarity_score, _line_delta, mismatch) =
             compare_semantics(
-            oracle,
-            &compiled,
-            Some(EmbeddingConfig {
-                dims: 384,
-                mismatch_threshold: 0.55,
-            }),
-        );
+                "",
+                oracle,
+                &compiled,
+                Some(EmbeddingConfig {
+                    dims: 384,
+                    mismatch_threshold: 0.55,
+                }),
+            );
         assert!(
             mismatch,
             "embedding mode should flag lost where/plus value semantics"
         );
     }
 
+    #[test]
+    fn test_semantic_clauses_normalize_named_trigger_subject() {
+        let clauses = semantic_clauses("Whenever Tui and La become tapped, draw a card.");
+        assert_eq!(
+            clauses,
+            vec!["Whenever this creature becomes tapped, draw a card".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_semantic_clauses_split_and_you_gain_chain() {
+        let clauses = semantic_clauses("Destroy target creature and you lose 2 life.");
+        assert_eq!(
+            clauses,
+            vec![
+                "Destroy target creature".to_string(),
+                "You lose 2 life".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_semantic_clauses_split_you_draw_and_lose_chain() {
+        let clauses =
+            semantic_clauses("Whenever this creature attacks, you draw a card and lose 1 life.");
+        assert_eq!(
+            clauses,
+            vec![
+                "Whenever this creature attacks, you draw a card".to_string(),
+                "You lose 1 life".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_semantic_clauses_normalize_explicit_damage_source_prefix() {
+        let clauses = semantic_clauses(
+            "When this creature leaves the battlefield, this creature deals 1 damage to you.",
+        );
+        assert_eq!(
+            clauses,
+            vec!["When this creature leaves the battlefield, Deal 1 damage to you".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_semantic_clauses_normalize_for_each_player_conditional_phrase() {
+        let clauses = semantic_clauses(
+            "For each player, if that player controls a multicolored creature, that player draws a card.",
+        );
+        assert_eq!(
+            clauses,
+            vec!["Each player who controls a multicolored creature draws a card".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_comparison_tokens_drop_internal_tag_scaffolding() {
+        let tokens = comparison_tokens("Tag the object attached to this Aura as 'enchanted'.");
+        assert!(!tokens.iter().any(|token| token == "tag"));
+        assert!(!tokens.iter().any(|token| token == "object"));
+        assert!(!tokens.iter().any(|token| token == "attached"));
+        assert!(tokens.iter().any(|token| token == "enchanted"));
+    }
+
+    #[test]
+    fn test_compare_semantics_normalizes_card_name_self_reference() {
+        let oracle = "{2}, Sacrifice Five Hundred Year Diary: Draw a card.";
+        let compiled = vec!["Activated ability 1: {2}, Sacrifice this artifact: Draw a card.".to_string()];
+        let (oracle_coverage, compiled_coverage, _similarity_score, _line_delta, mismatch) =
+            compare_semantics("Five Hundred Year Diary", oracle, &compiled, None);
+        assert!(!mismatch);
+        assert!(oracle_coverage >= 0.95);
+        assert!(compiled_coverage >= 0.95);
+    }
 }

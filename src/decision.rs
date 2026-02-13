@@ -1581,9 +1581,7 @@ fn check_mana_ability_condition_for_potential(
                 .filter_map(|&perm_id| game.object(perm_id))
                 .filter(|perm| {
                     perm.controller == player
-                        && perm
-                            .card_types
-                            .contains(&crate::types::CardType::Artifact)
+                        && perm.card_types.contains(&crate::types::CardType::Artifact)
                 })
                 .count() as u32;
             controlled_artifacts >= *required_count
@@ -1597,6 +1595,23 @@ fn check_mana_ability_condition_for_potential(
                 .count() as u32;
             controlled_lands >= *required_count
         }
+        crate::ability::ManaAbilityCondition::CardInYourGraveyard {
+            card_types,
+            subtypes,
+        } => game.player(player).is_some_and(|player_state| {
+            player_state.graveyard.iter().any(|&card_id| {
+                let Some(card) = game.object(card_id) else {
+                    return false;
+                };
+                let card_type_match = card_types.is_empty()
+                    || card_types
+                        .iter()
+                        .any(|card_type| card.card_types.contains(card_type));
+                let subtype_match = subtypes.is_empty()
+                    || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
+                card_type_match && subtype_match
+            })
+        }),
         crate::ability::ManaAbilityCondition::Timing(timing) => match timing {
             crate::ability::ActivationTiming::AnyTime => true,
             crate::ability::ActivationTiming::DuringCombat => {
@@ -5786,9 +5801,9 @@ mod tests {
 
         let actions = compute_legal_actions(&game, alice);
         assert!(
-            actions
-                .iter()
-                .any(|a| matches!(a, LegalAction::TurnFaceUp { creature_id: id } if *id == creature_id)),
+            actions.iter().any(
+                |a| matches!(a, LegalAction::TurnFaceUp { creature_id: id } if *id == creature_id)
+            ),
             "face-down creature with payable morph cost should have TurnFaceUp legal action"
         );
     }

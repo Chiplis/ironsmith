@@ -21,7 +21,19 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerLosesLife(player) => Trigger::player_loses_life(player),
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
-        TriggerSpec::SpellCast { filter, caster } => Trigger::spell_cast(filter, caster),
+        TriggerSpec::SpellCast {
+            filter,
+            caster,
+            during_turn,
+            min_spells_this_turn,
+            from_not_hand,
+        } => Trigger::spell_cast_qualified(
+            filter,
+            caster,
+            during_turn,
+            min_spells_this_turn,
+            from_not_hand,
+        ),
         TriggerSpec::SpellCopied { filter, copier } => Trigger::spell_copied(filter, copier),
         TriggerSpec::EntersBattlefield(filter) => Trigger::enters_battlefield(filter),
         TriggerSpec::EntersBattlefieldTapped(filter) => Trigger::enters_battlefield_tapped(filter),
@@ -141,7 +153,9 @@ fn compile_trigger_effects(
             prelude.push(Effect::tag_attached_to_source(tag));
         }
     }
-    if ctx.last_object_tag.is_none() && effects_reference_it_tag(effects) {
+    if ctx.last_object_tag.is_none()
+        && (effects_reference_it_tag(effects) || effects_reference_its_controller(effects))
+    {
         let default_tag = if matches!(trigger, Some(TriggerSpec::ThisDealsDamageTo(_))) {
             "damaged"
         } else {
@@ -258,12 +272,14 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
+        | EffectAst::ForEachPlayerDoesNot { effects }
         | EffectAst::UnlessPays { effects, .. } => effects_reference_tag(effects, tag),
         EffectAst::ForEachObject { filter, effects } => {
             filter
@@ -344,6 +360,8 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::Mill { player, .. }
         | EffectAst::SetLifeTotal { player, .. }
         | EffectAst::SkipTurn { player }
+        | EffectAst::SkipCombatPhases { player }
+        | EffectAst::SkipNextCombatPhaseThisTurn { player }
         | EffectAst::SkipDrawStep { player }
         | EffectAst::PoisonCounters { player, .. }
         | EffectAst::EnergyCounters { player, .. }
@@ -370,12 +388,14 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
         EffectAst::May { effects }
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
+        | EffectAst::ForEachPlayerDoesNot { effects }
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. }
         | EffectAst::UnlessPays { effects, .. } => effects_reference_its_controller(effects),
@@ -474,12 +494,14 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
+        | EffectAst::ForEachPlayerDoesNot { effects }
         | EffectAst::UnlessPays { effects, .. } => effects_reference_it_tag(effects),
         EffectAst::ForEachObject { filter, effects } => {
             filter
@@ -557,6 +579,18 @@ fn compile_effects(
         }
 
         if idx + 1 < effects.len()
+            && let Some((effect_sequence, effect_choices)) =
+                compile_if_do_with_player_doesnt(&effects[idx], &effects[idx + 1], ctx)?
+        {
+            compiled.extend(effect_sequence);
+            for choice in effect_choices {
+                push_choice(&mut choices, choice);
+            }
+            idx += 2;
+            continue;
+        }
+
+        if idx + 1 < effects.len()
             && let EffectAst::CreateTokenWithMods {
                 name,
                 count,
@@ -597,7 +631,10 @@ fn compile_effects(
         let next_is_if_result_with_opponent_doesnt = next_is_if_result
             && idx + 2 < effects.len()
             && matches!(effects[idx + 2], EffectAst::ForEachOpponentDoesNot { .. });
-        if next_is_if_result_with_opponent_doesnt {
+        let next_is_if_result_with_player_doesnt = next_is_if_result
+            && idx + 2 < effects.len()
+            && matches!(effects[idx + 2], EffectAst::ForEachPlayerDoesNot { .. });
+        if next_is_if_result_with_opponent_doesnt || next_is_if_result_with_player_doesnt {
             let (mut effect_list, effect_choices) = compile_effect(&effects[idx], ctx)?;
             if !effect_list.is_empty() {
                 let id = ctx.next_effect_id();
@@ -669,6 +706,11 @@ fn collect_tag_spans_from_line(
         | LineAst::Statement { effects }
         | LineAst::AdditionalCost { effects } => {
             collect_tag_spans_from_effects_with_context(effects, annotations, ctx);
+        }
+        LineAst::AdditionalCostChoice { options } => {
+            for option in options {
+                collect_tag_spans_from_effects_with_context(&option.effects, annotations, ctx);
+            }
         }
         LineAst::AlternativeCost { .. }
         | LineAst::AlternativeCastingMethod(_)
@@ -745,12 +787,14 @@ fn collect_tag_spans_from_effect(
         | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
+        | EffectAst::ForEachPlayerDoesNot { effects }
         | EffectAst::UnlessPays { effects, .. } => {
             collect_tag_spans_from_effects_with_context(effects, annotations, ctx);
         }
@@ -798,17 +842,34 @@ fn compile_if_do_with_opponent_doesnt(
     second: &EffectAst,
     ctx: &mut CompileContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let EffectAst::IfResult {
-        predicate: IfResultPredicate::Did,
-        effects: first_effects,
-    } = first
+    let EffectAst::ForEachOpponentDoesNot {
+        effects: second_effects,
+    } = second
     else {
         return Ok(None);
     };
 
-    let EffectAst::ForEachOpponentDoesNot {
-        effects: second_effects,
-    } = second
+    if let EffectAst::ForEachOpponent {
+        effects: opponent_effects,
+    } = first
+    {
+        let mut merged_opponent_effects = opponent_effects.clone();
+        merged_opponent_effects.push(EffectAst::IfResult {
+            predicate: IfResultPredicate::DidNot,
+            effects: second_effects.clone(),
+        });
+
+        let merged = EffectAst::ForEachOpponent {
+            effects: merged_opponent_effects,
+        };
+        let (effects, choices) = compile_effect(&merged, ctx)?;
+        return Ok(Some((effects, choices)));
+    }
+
+    let EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: first_effects,
+    } = first
     else {
         return Ok(None);
     };
@@ -830,6 +891,67 @@ fn compile_if_do_with_opponent_doesnt(
         predicate: IfResultPredicate::Did,
         effects: vec![EffectAst::ForEachOpponent {
             effects: merged_opponent_effects,
+        }],
+    };
+
+    let (effects, choices) = compile_effect(&merged, ctx)?;
+    Ok(Some((effects, choices)))
+}
+
+fn compile_if_do_with_player_doesnt(
+    first: &EffectAst,
+    second: &EffectAst,
+    ctx: &mut CompileContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    let EffectAst::ForEachPlayerDoesNot {
+        effects: second_effects,
+    } = second
+    else {
+        return Ok(None);
+    };
+
+    if let EffectAst::ForEachPlayer {
+        effects: player_effects,
+    } = first
+    {
+        let mut merged_player_effects = player_effects.clone();
+        merged_player_effects.push(EffectAst::IfResult {
+            predicate: IfResultPredicate::DidNot,
+            effects: second_effects.clone(),
+        });
+
+        let merged = EffectAst::ForEachPlayer {
+            effects: merged_player_effects,
+        };
+        let (effects, choices) = compile_effect(&merged, ctx)?;
+        return Ok(Some((effects, choices)));
+    }
+
+    let EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: first_effects,
+    } = first
+    else {
+        return Ok(None);
+    };
+
+    let Some(EffectAst::ForEachPlayer {
+        effects: player_effects,
+    }) = first_effects.first()
+    else {
+        return Ok(None);
+    };
+
+    let mut merged_player_effects = player_effects.clone();
+    merged_player_effects.push(EffectAst::IfResult {
+        predicate: IfResultPredicate::DidNot,
+        effects: second_effects.clone(),
+    });
+
+    let merged = EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: vec![EffectAst::ForEachPlayer {
+            effects: merged_player_effects,
         }],
     };
 
@@ -1647,6 +1769,18 @@ fn compile_effect(
             ));
             Ok((vec![effect], choices))
         }
+        EffectAst::DelayedUntilEndOfCombat { effects } => {
+            let (delayed_effects, choices) =
+                compile_effects_preserving_last_effect(effects, ctx)?;
+            let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+                Trigger::end_of_combat(),
+                delayed_effects,
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            ));
+            Ok((vec![effect], choices))
+        }
         EffectAst::DelayedWhenLastObjectDiesThisTurn { effects } => {
             let target_tag = ctx.last_object_tag.clone().ok_or_else(|| {
                 CardTextError::ParseError(
@@ -1838,6 +1972,18 @@ fn compile_effect(
             true,
             Effect::skip_turn_player,
         ),
+        EffectAst::SkipCombatPhases { player } => compile_player_effect_from_filter(
+            *player,
+            ctx,
+            true,
+            Effect::skip_combat_phases_player,
+        ),
+        EffectAst::SkipNextCombatPhaseThisTurn { player } => compile_player_effect_from_filter(
+            *player,
+            ctx,
+            true,
+            Effect::skip_next_combat_phase_this_turn_player,
+        ),
         EffectAst::SkipDrawStep { player } => compile_player_effect_from_filter(
             *player,
             ctx,
@@ -1990,6 +2136,9 @@ fn compile_effect(
         }
         EffectAst::ForEachOpponentDoesNot { .. } => Err(CardTextError::ParseError(
             "for each opponent who doesn't must follow an opponent clause".to_string(),
+        )),
+        EffectAst::ForEachPlayerDoesNot { .. } => Err(CardTextError::ParseError(
+            "for each player who doesn't must follow a player clause".to_string(),
         )),
         EffectAst::Destroy { target } => {
             compile_tagged_effect_for_target(target, ctx, "destroyed", Effect::destroy)
@@ -2172,6 +2321,13 @@ fn compile_effect(
                 PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
                 PredicateAst::YouAttackedThisTurn => Condition::AttackedThisTurn,
                 PredicateAst::NoSpellsWereCastLastTurn => Condition::NoSpellsWereCastLastTurn,
+                PredicateAst::TargetWasKicked => Condition::TargetWasKicked,
+                PredicateAst::TargetSpellCastOrderThisTurn(order) => {
+                    Condition::TargetSpellCastOrderThisTurn(*order)
+                }
+                PredicateAst::TargetHasGreatestPowerAmongCreatures => {
+                    Condition::TargetHasGreatestPowerAmongCreatures
+                }
                 PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
                     Condition::ManaSpentToCastThisSpellAtLeast {
                         amount: *amount,
@@ -2854,6 +3010,304 @@ fn eldrazi_scion_token_definition() -> CardDefinition {
         .build()
 }
 
+fn parse_number_word(word: &str) -> Option<i32> {
+    match word {
+        "zero" => Some(0),
+        "one" => Some(1),
+        "two" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        "six" => Some(6),
+        "seven" => Some(7),
+        "eight" => Some(8),
+        "nine" => Some(9),
+        "ten" => Some(10),
+        _ => word.parse::<i32>().ok(),
+    }
+}
+
+fn parse_deals_damage_amount(words: &[&str]) -> Option<i32> {
+    for window in words.windows(3) {
+        if window[0] == "deals" && window[2] == "damage" {
+            return parse_number_word(window[1]);
+        }
+    }
+    None
+}
+
+fn parse_crew_amount(words: &[&str]) -> Option<u32> {
+    let crew_idx = words.iter().position(|word| *word == "crew")?;
+    let amount_word = words.get(crew_idx + 1)?;
+    let amount = parse_number_word(amount_word)?;
+    u32::try_from(amount).ok()
+}
+
+fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
+    let target = ChooseSpec::AnyTarget;
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_dies(),
+            effects: vec![Effect::deal_damage(Value::Fixed(amount), target.clone())],
+            choices: vec![target],
+            intervening_if: None,
+            once_each_turn: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(format!(
+            "When this token dies, it deals {amount} damage to any target."
+        )),
+    }
+}
+
+fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
+    let target = ChooseSpec::AnyTarget;
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_leaves_battlefield(),
+            effects: vec![Effect::deal_damage(Value::Fixed(amount), target.clone())],
+            choices: vec![target],
+            intervening_if: None,
+            once_each_turn: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(format!(
+            "When this token leaves the battlefield, it deals {amount} damage to any target."
+        )),
+    }
+}
+
+fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability {
+    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_dies(),
+            effects: vec![Effect::pump(-1, -1, target.clone(), Until::EndOfTurn)],
+            choices: vec![target],
+            intervening_if: None,
+            once_each_turn: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(
+            "When this token dies, target creature gets -1/-1 until end of turn.".to_string(),
+        ),
+    }
+}
+
+fn token_red_pump_ability() -> Ability {
+    Ability {
+        kind: AbilityKind::Activated(ActivatedAbility {
+            mana_cost: ability::merge_cost_effects(
+                TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Red]])),
+                Vec::new(),
+            ),
+            effects: vec![Effect::pump(1, 0, ChooseSpec::Source, Until::EndOfTurn)],
+            choices: Vec::new(),
+            timing: ActivationTiming::AnyTime,
+            additional_restrictions: Vec::new(),
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some("{R}: This creature gets +1/+0 until end of turn.".to_string()),
+    }
+}
+
+fn token_white_tap_target_creature_ability() -> Ability {
+    let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+    Ability {
+        kind: AbilityKind::Activated(ActivatedAbility {
+            mana_cost: ability::merge_cost_effects(
+                TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::White]])),
+                vec![Effect::tap_source()],
+            ),
+            effects: vec![Effect::tap(target.clone())],
+            choices: vec![target],
+            timing: ActivationTiming::AnyTime,
+            additional_restrictions: Vec::new(),
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some("{W}, {T}: Tap target creature.".to_string()),
+    }
+}
+
+fn token_damage_to_player_poison_counter_ability() -> Ability {
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_deals_combat_damage_to_player(),
+            effects: vec![Effect::poison_counters_player(1, PlayerFilter::DamagedPlayer)],
+            choices: Vec::new(),
+            intervening_if: None,
+            once_each_turn: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(
+            "Whenever this creature deals damage to a player, that player gets a poison counter."
+                .to_string(),
+        ),
+    }
+}
+
+fn parse_token_mana_symbol(word: &str) -> Option<ManaSymbol> {
+    match word {
+        "w" => Some(ManaSymbol::White),
+        "u" => Some(ManaSymbol::Blue),
+        "b" => Some(ManaSymbol::Black),
+        "r" => Some(ManaSymbol::Red),
+        "g" => Some(ManaSymbol::Green),
+        "c" => Some(ManaSymbol::Colorless),
+        "x" => Some(ManaSymbol::X),
+        _ => word
+            .parse::<u8>()
+            .ok()
+            .map(ManaSymbol::Generic),
+    }
+}
+
+fn title_case_words(words: &[&str]) -> String {
+    words.iter()
+        .filter(|word| !word.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            if let Some(first) = chars.next() {
+                let mut out = first.to_uppercase().to_string();
+                out.push_str(chars.as_str());
+                out
+            } else {
+                String::new()
+            }
+        })
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn extract_named_card_name(words: &[&str]) -> Option<String> {
+    let named_idx = words.iter().position(|word| *word == "named")?;
+    let stop_words = [
+        "from", "to", "and", "with", "that", "it", "at", "until", "if", "where",
+    ];
+    let mut end = named_idx + 1;
+    while end < words.len() && !stop_words.contains(&words[end]) {
+        end += 1;
+    }
+    if end <= named_idx + 1 {
+        return None;
+    }
+    Some(title_case_words(&words[named_idx + 1..end]))
+}
+
+fn token_sacrifice_return_named_from_graveyard_ability(
+    card_name: &str,
+    mana_symbols: Vec<ManaSymbol>,
+    tap_cost: bool,
+) -> Ability {
+    let mut cost_effects = Vec::new();
+    if tap_cost {
+        cost_effects.push(Effect::tap_source());
+    }
+    cost_effects.push(Effect::sacrifice_source());
+    let mana_cost = if mana_symbols.is_empty() {
+        ManaCost::new()
+    } else {
+        ManaCost::from_pips(mana_symbols.into_iter().map(|symbol| vec![symbol]).collect())
+    };
+    let mut cost_parts = Vec::new();
+    if !mana_cost.is_empty() {
+        cost_parts.push(mana_cost.to_oracle());
+    }
+    if tap_cost {
+        cost_parts.push("{T}".to_string());
+    }
+    cost_parts.push("Sacrifice this token".to_string());
+    let cost_text = cost_parts.join(", ");
+    let target = ChooseSpec::Object(
+        ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .named(card_name.to_string()),
+    );
+    Ability {
+        kind: AbilityKind::Activated(ActivatedAbility {
+            mana_cost: ability::merge_cost_effects(TotalCost::mana(mana_cost), cost_effects),
+            effects: vec![Effect::return_from_graveyard_to_battlefield(
+                target.clone(),
+                false,
+            )],
+            choices: Vec::new(),
+            timing: ActivationTiming::AnyTime,
+            additional_restrictions: Vec::new(),
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(format!(
+            "{cost_text}: Return a card named {card_name} from your graveyard to the battlefield."
+        )),
+    }
+}
+
+fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
+    card_name: &str,
+    grants_haste: bool,
+) -> Ability {
+    let target = ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .named(card_name.to_string()),
+    ));
+    let mut effects = vec![
+        Effect::sacrifice_source(),
+        Effect::return_from_graveyard_to_battlefield(target.clone(), false),
+    ];
+    if grants_haste {
+        effects.push(Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+            target.clone(),
+            crate::continuous::Modification::AddAbility(StaticAbility::haste()),
+            Until::EndOfTurn,
+        )));
+    }
+    let mut text = format!(
+        "At the beginning of your upkeep, sacrifice this token and return target card named {card_name} from your graveyard to the battlefield."
+    );
+    if grants_haste {
+        text.push_str(" It gains haste until end of turn.");
+    }
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
+            effects,
+            choices: vec![target],
+            intervening_if: None,
+            once_each_turn: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(text),
+    }
+}
+
+fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
+    let dragon = CardDefinitionBuilder::new(CardId::new(), "Dragon")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .color_indicator(ColorSet::RED)
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .flying()
+        .with_ability(token_red_pump_ability())
+        .build();
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_dies(),
+            effects: vec![Effect::create_tokens(dragon, Value::Fixed(1))],
+            choices: Vec::new(),
+            intervening_if: None,
+            once_each_turn: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(
+            "When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'".to_string(),
+        ),
+    }
+}
+
 fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let lower = name.trim().to_ascii_lowercase();
     let words: Vec<&str> = lower
@@ -2899,6 +3353,80 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .card_types(vec![CardType::Artifact]);
         return Some(builder.build());
     }
+    if has_word("vehicle") && has_word("artifact") && !words.contains(&"creature") {
+        let mut builder = CardDefinitionBuilder::new(CardId::new(), "Vehicle")
+            .token()
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Vehicle]);
+        if let Some((power, toughness)) = words.iter().find_map(|word| parse_token_pt(word)) {
+            builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
+        }
+        if let Some(crew_amount) = parse_crew_amount(&words) {
+            builder = builder.with_ability(Ability::static_ability(StaticAbility::custom(
+                "crew",
+                format!("crew {crew_amount}"),
+            )));
+        }
+        return Some(builder.build());
+    }
+    if has_word("artifact") && !words.contains(&"creature") && !has_explicit_pt {
+        let mut subtypes = Vec::new();
+        for word in &words {
+            if let Some(subtype) = parse_subtype_word(word)
+                && !subtype.is_creature_type()
+                && !subtypes.contains(&subtype)
+            {
+                subtypes.push(subtype);
+            }
+        }
+        let token_name = words
+            .iter()
+            .find(|word| {
+                !matches!(
+                    **word,
+                    "artifact"
+                        | "token"
+                        | "tokens"
+                        | "named"
+                        | "colorless"
+                        | "white"
+                        | "blue"
+                        | "black"
+                        | "red"
+                        | "green"
+                )
+            })
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    Some(first) => {
+                        let mut name = first.to_uppercase().to_string();
+                        name.push_str(chars.as_str());
+                        name
+                    }
+                    None => "Artifact".to_string(),
+                }
+            })
+            .unwrap_or_else(|| "Artifact".to_string());
+        let mut builder = CardDefinitionBuilder::new(CardId::new(), token_name)
+            .token()
+            .card_types(vec![CardType::Artifact]);
+        if !subtypes.is_empty() {
+            builder = builder.subtypes(subtypes);
+        }
+        if words.contains(&"when")
+            && words.contains(&"token")
+            && words.contains(&"leaves")
+            && words.contains(&"battlefield")
+            && words.contains(&"deals")
+            && words.contains(&"damage")
+            && words.contains(&"target")
+            && let Some(amount) = parse_deals_damage_amount(&words)
+        {
+            builder = builder.with_ability(token_leaves_deals_damage_any_target_ability(amount));
+        }
+        return Some(builder.build());
+    }
     if has_word("angel") && !has_explicit_pt {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Angel")
             .token()
@@ -2929,6 +3457,28 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .subtypes(vec![Subtype::Squirrel])
             .color_indicator(ColorSet::GREEN)
             .power_toughness(PowerToughness::fixed(1, 1));
+        return Some(builder.build());
+    }
+    let is_dragon_egg_death_spawn_pattern = has_word("dragon")
+        && has_word("egg")
+        && lower.contains("0/2")
+        && words.contains(&"when")
+        && words.contains(&"token")
+        && words.contains(&"dies")
+        && words.contains(&"create")
+        && words.contains(&"2/2")
+        && words.contains(&"flying")
+        && words.contains(&"r")
+        && words.contains(&"+1/+0");
+    if is_dragon_egg_death_spawn_pattern {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Dragon Egg")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Dragon])
+            .color_indicator(ColorSet::RED)
+            .power_toughness(PowerToughness::fixed(0, 2))
+            .defender()
+            .with_ability(token_dies_create_dragon_with_firebreathing_ability());
         return Some(builder.build());
     }
     if has_word("elephant") && lower.contains("3/3") && lower.contains("green") {
@@ -2985,6 +3535,9 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         let mut card_types = vec![CardType::Creature];
         if words.contains(&"artifact") {
             card_types.insert(0, CardType::Artifact);
+        }
+        if words.contains(&"enchantment") {
+            card_types.insert(0, CardType::Enchantment);
         }
 
         let (power, toughness) = words.iter().find_map(|word| parse_token_pt(word))?;
@@ -3062,6 +3615,145 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
         if words.contains(&"indestructible") {
             builder = builder.indestructible();
+        }
+        if words.contains(&"sacrifice")
+            && words.contains(&"this")
+            && words.contains(&"token")
+            && words.contains(&"return")
+            && words.contains(&"named")
+            && words.contains(&"graveyard")
+            && words.contains(&"battlefield")
+            && !words.contains(&"beginning")
+            && let Some(card_name) = extract_named_card_name(&words)
+            && let Some(sacrifice_idx) = words.iter().position(|word| *word == "sacrifice")
+        {
+            let mut mana_symbols = Vec::new();
+            let mut tap_cost = false;
+            for word in &words[..sacrifice_idx] {
+                if *word == "t" {
+                    tap_cost = true;
+                    continue;
+                }
+                if let Some(symbol) = parse_token_mana_symbol(word) {
+                    mana_symbols.push(symbol);
+                }
+            }
+            builder = builder.with_ability(token_sacrifice_return_named_from_graveyard_ability(
+                &card_name,
+                mana_symbols,
+                tap_cost,
+            ));
+        }
+        if words.windows(5).any(|window| window == ["at", "the", "beginning", "of", "your"])
+            && words.contains(&"upkeep")
+            && words.contains(&"sacrifice")
+            && words.contains(&"this")
+            && words.contains(&"token")
+            && words.contains(&"return")
+            && words.contains(&"named")
+            && words.contains(&"graveyard")
+            && words.contains(&"battlefield")
+            && let Some(card_name) = extract_named_card_name(&words)
+        {
+            builder = builder.with_ability(
+                token_upkeep_sacrifice_return_named_from_graveyard_ability(
+                    &card_name,
+                    words.contains(&"haste"),
+                ),
+            );
+        }
+        if words.contains(&"when")
+            && words.contains(&"token")
+            && words.contains(&"dies")
+            && words.contains(&"create")
+            && words.contains(&"2/2")
+            && words.contains(&"red")
+            && words.contains(&"dragon")
+            && words.contains(&"flying")
+            && words.contains(&"r")
+            && words.contains(&"+1/+0")
+        {
+            builder = builder.with_ability(token_dies_create_dragon_with_firebreathing_ability());
+        }
+        if words.contains(&"when")
+            && words.contains(&"token")
+            && words.contains(&"dies")
+            && words.contains(&"deals")
+            && words.contains(&"damage")
+            && words.contains(&"target")
+            && let Some(amount) = parse_deals_damage_amount(&words)
+        {
+            builder = builder.with_ability(token_dies_deals_damage_any_target_ability(amount));
+        }
+        if words.contains(&"when")
+            && words.contains(&"token")
+            && words.contains(&"dies")
+            && words.contains(&"target")
+            && words.contains(&"creature")
+            && words.contains(&"gets")
+            && words.contains(&"-1/-1")
+        {
+            builder = builder.with_ability(token_dies_target_creature_gets_minus_one_minus_one_ability());
+        }
+        if words.contains(&"bands")
+            && words.contains(&"other")
+            && words.contains(&"creatures")
+            && words.contains(&"named")
+            && words.contains(&"wolves")
+        {
+            builder = builder.with_ability(Ability::static_ability(StaticAbility::custom(
+                "bands_with_other",
+                "bands with other creatures named Wolves of the Hunt".to_string(),
+            )));
+        }
+        if words.contains(&"r")
+            && words.contains(&"this")
+            && words.contains(&"creature")
+            && words.contains(&"gets")
+            && words.contains(&"+1/+0")
+            && !(words.contains(&"when")
+                && words.contains(&"token")
+                && words.contains(&"dies")
+                && words.contains(&"create"))
+        {
+            builder = builder.with_ability(token_red_pump_ability());
+        }
+        if words.contains(&"w")
+            && words.contains(&"t")
+            && words.contains(&"tap")
+            && words.contains(&"target")
+            && words.contains(&"creature")
+        {
+            builder = builder.with_ability(token_white_tap_target_creature_ability());
+        }
+        if words.contains(&"deals")
+            && words.contains(&"damage")
+            && words.contains(&"player")
+            && words.contains(&"poison")
+            && words.contains(&"counter")
+        {
+            builder = builder.with_ability(token_damage_to_player_poison_counter_ability());
+        }
+        if has_word("pest")
+            && words.contains(&"when")
+            && words.contains(&"token")
+            && words.contains(&"dies")
+            && words.contains(&"gain")
+            && words.contains(&"1")
+            && words.contains(&"life")
+        {
+            let ability = Ability {
+                kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                    trigger: Trigger::this_dies(),
+                    effects: vec![Effect::gain_life(1)],
+                    choices: Vec::new(),
+                    intervening_if: None,
+                    once_each_turn: false,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+                text: Some("When this token dies, you gain 1 life.".to_string()),
+            };
+            builder = builder.with_ability(ability);
         }
         if words.contains(&"first") && words.contains(&"strike") {
             builder = builder.first_strike();

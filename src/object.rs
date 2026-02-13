@@ -910,8 +910,8 @@ mod tests {
             Zone::Hand,
         );
         obj.abilities.push(
-            Ability::static_ability(StaticAbility::make_colorless(ObjectFilter::source())).in_zones(
-                vec![
+            Ability::static_ability(StaticAbility::make_colorless(ObjectFilter::source()))
+                .in_zones(vec![
                     Zone::Battlefield,
                     Zone::Stack,
                     Zone::Hand,
@@ -919,11 +919,13 @@ mod tests {
                     Zone::Graveyard,
                     Zone::Exile,
                     Zone::Command,
-                ],
-            ),
+                ]),
         );
 
-        assert!(obj.colors().is_empty(), "devoid object in hand should be colorless");
+        assert!(
+            obj.colors().is_empty(),
+            "devoid object in hand should be colorless"
+        );
     }
 
     #[test]

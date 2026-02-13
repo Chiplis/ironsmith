@@ -1519,7 +1519,9 @@ mod tests {
         let mut attacker = make_creature(100, 0, "Swampwalker");
         attacker
             .abilities
-            .push(Ability::static_ability(StaticAbility::landwalk(Subtype::Swamp)));
+            .push(Ability::static_ability(StaticAbility::landwalk(
+                Subtype::Swamp,
+            )));
         let attacker_id = attacker.id;
         game.add_object(attacker);
         game.remove_summoning_sickness(attacker_id);
@@ -1553,7 +1555,9 @@ mod tests {
         let mut attacker = make_creature(200, 0, "Swampwalker");
         attacker
             .abilities
-            .push(Ability::static_ability(StaticAbility::landwalk(Subtype::Swamp)));
+            .push(Ability::static_ability(StaticAbility::landwalk(
+                Subtype::Swamp,
+            )));
         let attacker_id = attacker.id;
         game.add_object(attacker);
         game.remove_summoning_sickness(attacker_id);

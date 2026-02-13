@@ -1133,9 +1133,7 @@ pub enum Condition {
     },
 
     /// A specific player has less life than you.
-    PlayerHasLessLifeThanYou {
-        player: PlayerFilter,
-    },
+    PlayerHasLessLifeThanYou { player: PlayerFilter },
 
     /// Your life total is N or less
     LifeTotalOrLess(i32),
@@ -1166,6 +1164,15 @@ pub enum Condition {
 
     /// Target is attacking
     TargetIsAttacking,
+
+    /// The targeted spell was kicked.
+    TargetWasKicked,
+
+    /// The targeted spell was the Nth spell cast this turn.
+    TargetSpellCastOrderThisTurn(u32),
+
+    /// The targeted creature has the greatest power among creatures on the battlefield.
+    TargetHasGreatestPowerAmongCreatures,
 
     /// Source object is tapped
     SourceIsTapped,
@@ -2463,6 +2470,30 @@ impl Effect {
     pub fn skip_turn_player(player: PlayerFilter) -> Self {
         use crate::effects::SkipTurnEffect;
         Self::new(SkipTurnEffect::new(player))
+    }
+
+    /// Create a "skip all combat phases of next turn" effect for the controller.
+    pub fn skip_combat_phases() -> Self {
+        use crate::effects::SkipCombatPhasesEffect;
+        Self::new(SkipCombatPhasesEffect::you())
+    }
+
+    /// Create a "skip all combat phases of next turn" effect for a specific player.
+    pub fn skip_combat_phases_player(player: PlayerFilter) -> Self {
+        use crate::effects::SkipCombatPhasesEffect;
+        Self::new(SkipCombatPhasesEffect::new(player))
+    }
+
+    /// Create a "skip next combat phase this turn" effect for the controller.
+    pub fn skip_next_combat_phase_this_turn() -> Self {
+        use crate::effects::SkipNextCombatPhaseThisTurnEffect;
+        Self::new(SkipNextCombatPhaseThisTurnEffect::you())
+    }
+
+    /// Create a "skip next combat phase this turn" effect for a specific player.
+    pub fn skip_next_combat_phase_this_turn_player(player: PlayerFilter) -> Self {
+        use crate::effects::SkipNextCombatPhaseThisTurnEffect;
+        Self::new(SkipNextCombatPhaseThisTurnEffect::new(player))
     }
 
     /// Create a "skip next draw step" effect for the controller.

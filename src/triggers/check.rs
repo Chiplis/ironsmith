@@ -304,7 +304,9 @@ pub fn check_delayed_triggers(
                 .map(|o| o.name.clone())
                 .or_else(|| {
                     if trigger_event.object_id() == Some(source) {
-                        trigger_event.snapshot().map(|snapshot| snapshot.name.clone())
+                        trigger_event
+                            .snapshot()
+                            .map(|snapshot| snapshot.name.clone())
                     } else {
                         None
                     }

@@ -22,8 +22,8 @@ mod for_each_object;
 mod for_each_tagged;
 mod for_players;
 mod if_effect;
-mod mechanic_actions;
 mod may;
+mod mechanic_actions;
 mod sequence;
 mod tag_attached_to_source;
 mod tag_triggering_damage_target;
@@ -44,11 +44,11 @@ pub use for_each_tagged::{
 };
 pub use for_players::ForPlayersEffect;
 pub use if_effect::IfEffect;
+pub use may::MayEffect;
 pub use mechanic_actions::{
     AdaptEffect, BolsterEffect, CounterAbilityEffect, ExploreEffect, ManifestDreadEffect,
     OpenAttractionEffect, SupportEffect,
 };
-pub use may::MayEffect;
 pub use sequence::SequenceEffect;
 pub use tag_attached_to_source::TagAttachedToSourceEffect;
 pub use tag_triggering_damage_target::TagTriggeringDamageTargetEffect;

@@ -26,6 +26,7 @@ fn main() -> Result<(), String> {
     let mut trace = false;
     let mut allow_unsupported = false;
     let mut detailed = false;
+    let mut raw = false;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -53,9 +54,12 @@ fn main() -> Result<(), String> {
             "--detailed" => {
                 detailed = true;
             }
+            "--raw" => {
+                raw = true;
+            }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --name <value>, --text <value>, --trace, --allow-unsupported, --detailed, and/or --stacktrace"
+                    "unknown argument '{arg}'. expected --name <value>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, and/or --stacktrace"
                 ));
             }
         }
@@ -96,6 +100,10 @@ fn main() -> Result<(), String> {
             .join(" ")
     );
     println!("Compiled abilities/effects");
+    if raw {
+        println!("- {:#?}", def);
+        return Ok(());
+    }
     let lines = if detailed {
         compiled_lines(&def)
     } else {

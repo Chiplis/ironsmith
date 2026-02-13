@@ -4,34 +4,95 @@
 
 use super::{StaticAbilityId, StaticAbilityKind};
 use crate::ability::SpellFilter;
+use crate::color::{Color, ColorSet};
 use crate::effect::Value;
-use crate::filter::ObjectFilter;
-use crate::filter::AlternativeCastKind;
+use crate::filter::{AlternativeCastKind, Comparison};
 use crate::target::PlayerFilter;
+use crate::types::CardType;
 
-fn strip_indefinite_article(text: &str) -> &str {
-    let trimmed = text.trim();
-    if let Some(rest) = trimmed.strip_prefix("a ") {
-        return rest;
+fn join_with_and(parts: &[String]) -> String {
+    match parts.len() {
+        0 => String::new(),
+        1 => parts[0].clone(),
+        2 => format!("{} and {}", parts[0], parts[1]),
+        _ => {
+            let mut out = String::new();
+            for (idx, part) in parts.iter().enumerate() {
+                if idx > 0 {
+                    out.push_str(" and ");
+                }
+                out.push_str(part);
+            }
+            out
+        }
     }
-    if let Some(rest) = trimmed.strip_prefix("an ") {
-        return rest;
-    }
-    trimmed
 }
 
-fn pluralize_spell_filter_text(text: &str) -> String {
-    let mut out = strip_indefinite_article(text).to_string();
-    if out.starts_with("spell ") {
-        out = out.replacen("spell ", "spells ", 1);
-    } else if out.contains(" spell") {
-        out = out.replacen(" spell", " spells", 1);
-    } else if out == "spell" {
-        out = "spells".to_string();
+fn describe_comparison(cmp: &Comparison) -> String {
+    match cmp {
+        Comparison::Equal(v) => v.to_string(),
+        Comparison::NotEqual(v) => format!("not equal to {v}"),
+        Comparison::LessThan(v) => format!("less than {v}"),
+        Comparison::LessThanOrEqual(v) => format!("{v} or less"),
+        Comparison::GreaterThan(v) => format!("greater than {v}"),
+        Comparison::GreaterThanOrEqual(v) => format!("{v} or greater"),
     }
-    out = out.replace(" that targets ", " that target ");
-    out = out.replace(" that targets", " that target");
-    out
+}
+
+fn describe_card_type(card_type: CardType) -> &'static str {
+    match card_type {
+        CardType::Artifact => "artifact",
+        CardType::Battle => "battle",
+        CardType::Creature => "creature",
+        CardType::Enchantment => "enchantment",
+        CardType::Instant => "instant",
+        CardType::Land => "land",
+        CardType::Planeswalker => "planeswalker",
+        CardType::Sorcery => "sorcery",
+        CardType::Kindred => "kindred",
+    }
+}
+
+fn describe_colors(colors: ColorSet) -> String {
+    let mut words = Vec::new();
+    if colors.contains(Color::White) {
+        words.push("white".to_string());
+    }
+    if colors.contains(Color::Blue) {
+        words.push("blue".to_string());
+    }
+    if colors.contains(Color::Black) {
+        words.push("black".to_string());
+    }
+    if colors.contains(Color::Red) {
+        words.push("red".to_string());
+    }
+    if colors.contains(Color::Green) {
+        words.push("green".to_string());
+    }
+    join_with_and(&words)
+}
+
+fn describe_player_filter_for_spell_target(filter: &PlayerFilter) -> String {
+    match filter {
+        PlayerFilter::You => "you".to_string(),
+        PlayerFilter::Opponent => "an opponent".to_string(),
+        PlayerFilter::Any => "a player".to_string(),
+        PlayerFilter::Target(inner) => {
+            format!("target {}", describe_player_filter_for_spell_target(inner))
+        }
+        _ => "a player".to_string(),
+    }
+}
+
+fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
+    match kind {
+        AlternativeCastKind::Flashback => "flashback",
+        AlternativeCastKind::JumpStart => "jump-start",
+        AlternativeCastKind::Escape => "escape",
+        AlternativeCastKind::Madness => "madness",
+        AlternativeCastKind::Miracle => "miracle",
+    }
 }
 
 fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
@@ -60,23 +121,80 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
 }
 
 fn describe_spell_filter(filter: &SpellFilter) -> String {
-    let mut object_filter = ObjectFilter::default();
-    object_filter.zone = Some(crate::zone::Zone::Stack);
-    object_filter.card_types = filter.card_types.clone();
-    object_filter.subtypes = filter.subtypes.clone();
-    object_filter.colors = filter.colors;
-    object_filter.controller = filter.controller.clone();
-    object_filter.alternative_cast = filter.alternative_cast;
-    object_filter.targets_player = filter.targets_player.clone();
-    object_filter.targets_object = filter.targets_object.clone().map(Box::new);
-    pluralize_spell_filter_text(&object_filter.description())
+    let mut qualifiers = Vec::<String>::new();
+    if let Some(colors) = filter.colors {
+        let color_text = describe_colors(colors);
+        if !color_text.is_empty() {
+            qualifiers.push(color_text);
+        }
+    }
+    for card_type in &filter.excluded_card_types {
+        qualifiers.push(format!("non{}", describe_card_type(*card_type)));
+    }
+    if !filter.subtypes.is_empty() {
+        let subtypes = filter
+            .subtypes
+            .iter()
+            .map(|subtype| format!("{subtype:?}"))
+            .collect::<Vec<_>>();
+        qualifiers.push(join_with_and(&subtypes));
+    }
+    if !filter.card_types.is_empty() {
+        let types = filter
+            .card_types
+            .iter()
+            .map(|card_type| describe_card_type(*card_type).to_string())
+            .collect::<Vec<_>>();
+        qualifiers.push(join_with_and(&types));
+    }
+
+    let mut description = if qualifiers.is_empty() {
+        "spells".to_string()
+    } else {
+        format!("{} spells", qualifiers.join(" "))
+    };
+    match filter.controller.as_ref() {
+        Some(PlayerFilter::You) => description.push_str(" you cast"),
+        Some(PlayerFilter::Opponent) => description.push_str(" your opponents cast"),
+        _ => {}
+    }
+    if let Some(power) = &filter.power {
+        description.push_str(" with power ");
+        description.push_str(&describe_comparison(power));
+    }
+    if let Some(toughness) = &filter.toughness {
+        description.push_str(" with toughness ");
+        description.push_str(&describe_comparison(toughness));
+    }
+    if let Some(mana_value) = &filter.mana_value {
+        description.push_str(" with mana value ");
+        description.push_str(&describe_comparison(mana_value));
+    }
+    if let Some(player_filter) = &filter.targets_player {
+        description.push_str(" that target ");
+        description.push_str(&describe_player_filter_for_spell_target(player_filter));
+    }
+    if let Some(object_filter) = &filter.targets_object {
+        description.push_str(" that target ");
+        description.push_str(&object_filter.description());
+    }
+    if let Some(kind) = filter.alternative_cast {
+        description.push_str(" with ");
+        description.push_str(describe_alternative_cast_kind(kind));
+    }
+
+    description
 }
 
 fn describe_flashback_cost_subject(filter: &SpellFilter) -> Option<&'static str> {
     if filter.alternative_cast != Some(AlternativeCastKind::Flashback)
         || !filter.card_types.is_empty()
+        || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
         || filter.colors.is_some()
+        || filter.power.is_some()
+        || filter.toughness.is_some()
+        || filter.mana_value.is_some()
         || filter.targets_player.is_some()
         || filter.targets_object.is_some()
     {

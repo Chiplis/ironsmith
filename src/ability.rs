@@ -9,7 +9,7 @@
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
 use crate::effect::Effect;
-use crate::filter::AlternativeCastKind;
+use crate::filter::{AlternativeCastKind, Comparison};
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
 use crate::static_abilities::StaticAbility as NewStaticAbility;
@@ -270,11 +270,23 @@ pub struct SpellFilter {
     /// Card types the spell must have
     pub card_types: Vec<CardType>,
 
+    /// Card types the spell must not have
+    pub excluded_card_types: Vec<CardType>,
+
     /// Subtypes the spell must have
     pub subtypes: Vec<crate::types::Subtype>,
 
     /// Colors the spell must have
     pub colors: Option<ColorSet>,
+
+    /// Power comparison for creature spells (if applicable).
+    pub power: Option<Comparison>,
+
+    /// Toughness comparison for creature spells (if applicable).
+    pub toughness: Option<Comparison>,
+
+    /// Mana value comparison.
+    pub mana_value: Option<Comparison>,
 
     /// If set, only match spells that target a player matching this filter.
     pub targets_player: Option<PlayerFilter>,
@@ -294,8 +306,12 @@ impl SpellFilter {
         let mut filter = ObjectFilter::default();
         filter.zone = Some(Zone::Stack);
         filter.card_types = self.card_types.clone();
+        filter.excluded_card_types = self.excluded_card_types.clone();
         filter.subtypes = self.subtypes.clone();
         filter.colors = self.colors;
+        filter.power = self.power.clone();
+        filter.toughness = self.toughness.clone();
+        filter.mana_value = self.mana_value.clone();
         filter.controller = self.controller.clone();
         filter.alternative_cast = self.alternative_cast;
         filter.targets_player = self.targets_player.clone();
@@ -509,6 +525,13 @@ pub enum ManaAbilityCondition {
     /// Controller must control at least N lands.
     /// Used for conditions like "Activate only if you control five or more lands."
     ControlAtLeastLands(u32),
+
+    /// Controller must have a matching card in their graveyard.
+    /// Used for clauses like "Activate only if there is an Elf card in your graveyard."
+    CardInYourGraveyard {
+        card_types: Vec<crate::types::CardType>,
+        subtypes: Vec<crate::types::Subtype>,
+    },
 
     /// Activation timing restriction for mana abilities.
     Timing(ActivationTiming),

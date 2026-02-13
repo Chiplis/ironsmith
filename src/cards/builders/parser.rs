@@ -219,7 +219,6 @@ fn collect_line_infos(
     mut builder: CardDefinitionBuilder,
     text: &str,
 ) -> Result<(CardDefinitionBuilder, ParseAnnotations, Vec<LineInfo>), CardTextError> {
-
     let card_name = builder.card_builder.name_ref().to_string();
     let short_name = card_name
         .split(',')
@@ -296,14 +295,27 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
 
     let marker = ". when you spend this mana to cast ";
     let marker_compact = ".when you spend this mana to cast ";
-    let split_at = lower
-        .find(marker)
-        .or_else(|| lower.find(marker_compact));
+    let split_at = lower.find(marker).or_else(|| lower.find(marker_compact));
     if let Some(idx) = split_at {
         let first = line[..=idx].trim();
         let second = line[idx + 1..].trim();
         if first.contains(':') && !second.is_empty() {
             return vec![first.to_string(), second.to_string()];
+        }
+    }
+
+    for marker in [
+        ". this cost is reduced by ",
+        ".this cost is reduced by ",
+        ". this spell costs ",
+        ".this spell costs ",
+    ] {
+        if let Some(idx) = lower.find(marker) {
+            let first = line[..=idx].trim();
+            let second = line[idx + 1..].trim();
+            if !first.is_empty() && !second.is_empty() {
+                return vec![first.to_string(), second.to_string()];
+            }
         }
     }
     vec![line.to_string()]
@@ -427,7 +439,11 @@ fn apply_line_ast(
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     match parsed {
         LineAst::Abilities(actions) => {
-            let keyword_segment = info.raw_line.split('(').next().unwrap_or(info.raw_line.as_str());
+            let keyword_segment = info
+                .raw_line
+                .split('(')
+                .next()
+                .unwrap_or(info.raw_line.as_str());
             let separator = if keyword_segment.contains(';') {
                 "; "
             } else {
@@ -559,6 +575,55 @@ fn apply_line_ast(
             };
 
             builder.cost_effects.extend(compiled);
+        }
+        LineAst::AdditionalCostChoice { options } => {
+            if options.len() < 2 {
+                if allow_unsupported {
+                    return Ok(push_unsupported_marker(
+                        builder,
+                        info.raw_line.as_str(),
+                        "additional cost choice requires at least two options".to_string(),
+                    ));
+                }
+                return Err(CardTextError::ParseError(format!(
+                    "line parsed to invalid additional-cost choice (line: '{}')",
+                    info.raw_line
+                )));
+            }
+
+            let mut modes = Vec::new();
+            for option in options {
+                if option.effects.is_empty() {
+                    if allow_unsupported {
+                        return Ok(push_unsupported_marker(
+                            builder,
+                            info.raw_line.as_str(),
+                            "additional cost choice option produced no effects".to_string(),
+                        ));
+                    }
+                    return Err(CardTextError::ParseError(format!(
+                        "line parsed to empty additional-cost option (line: '{}')",
+                        info.raw_line
+                    )));
+                }
+
+                let compiled = match compile_statement_effects(&option.effects) {
+                    Ok(compiled) => compiled,
+                    Err(err) if allow_unsupported => {
+                        return Ok(push_unsupported_marker(
+                            builder,
+                            info.raw_line.as_str(),
+                            format!("{err:?}"),
+                        ));
+                    }
+                    Err(err) => return Err(err),
+                };
+                modes.push(EffectMode {
+                    description: option.description.trim().to_string(),
+                    effects: compiled,
+                });
+            }
+            builder.cost_effects.push(Effect::choose_one(modes));
         }
         LineAst::AlternativeCost {
             mana_cost,

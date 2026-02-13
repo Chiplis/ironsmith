@@ -155,7 +155,14 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
 
     let current_phase = game.turn.phase;
 
-    if let Some(next) = next_phase(current_phase) {
+    if let Some(mut next) = next_phase(current_phase) {
+        if matches!(next, Phase::Combat)
+            && game
+                .skip_next_combat_phases
+                .remove(&game.turn.active_player)
+        {
+            next = Phase::NextMain;
+        }
         game.turn.phase = next;
         game.turn.step = first_step_of_phase(next);
         game.turn.priority_player = Some(game.turn.active_player);

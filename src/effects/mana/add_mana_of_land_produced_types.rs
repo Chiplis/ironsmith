@@ -156,11 +156,7 @@ fn mana_ability_condition_met(
     source: &Object,
     mana_ability: &ManaAbility,
 ) -> bool {
-    fn condition_met(
-        game: &GameState,
-        source: &Object,
-        condition: &ManaAbilityCondition,
-    ) -> bool {
+    fn condition_met(game: &GameState, source: &Object, condition: &ManaAbilityCondition) -> bool {
         match condition {
             ManaAbilityCondition::ControlLandWithSubtype(required_subtypes) => {
                 game.battlefield.iter().any(|&perm_id| {
@@ -179,9 +175,7 @@ fn mana_ability_condition_met(
                     .filter_map(|&perm_id| game.object(perm_id))
                     .filter(|perm| {
                         perm.controller == source.controller
-                            && perm
-                                .card_types
-                                .contains(&crate::types::CardType::Artifact)
+                            && perm.card_types.contains(&crate::types::CardType::Artifact)
                     })
                     .count() as u32;
                 count >= *required_count
@@ -195,6 +189,23 @@ fn mana_ability_condition_met(
                     .count() as u32;
                 count >= *required_count
             }
+            ManaAbilityCondition::CardInYourGraveyard {
+                card_types,
+                subtypes,
+            } => game.player(source.controller).is_some_and(|player_state| {
+                player_state.graveyard.iter().any(|&card_id| {
+                    let Some(card) = game.object(card_id) else {
+                        return false;
+                    };
+                    let card_type_match = card_types.is_empty()
+                        || card_types
+                            .iter()
+                            .any(|card_type| card.card_types.contains(card_type));
+                    let subtype_match = subtypes.is_empty()
+                        || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
+                    card_type_match && subtype_match
+                })
+            }),
             // For mana-production inference we only care about what colors can be
             // produced, not whether the ability is currently activatable by timing.
             ManaAbilityCondition::Timing(_) => true,

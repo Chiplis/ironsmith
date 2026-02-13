@@ -3114,13 +3114,43 @@ fn describe_mana_condition(condition: &crate::ability::ManaAbilityCondition) -> 
                 format!("you control {count} or more lands")
             }
         }
+        crate::ability::ManaAbilityCondition::CardInYourGraveyard {
+            card_types,
+            subtypes,
+        } => {
+            let mut descriptors = Vec::new();
+            for subtype in subtypes {
+                descriptors.push(split_camel_case(&format!("{subtype:?}")));
+            }
+            for card_type in card_types {
+                descriptors.push(split_camel_case(&format!("{card_type:?}")).to_ascii_lowercase());
+            }
+            descriptors.retain(|entry| !entry.is_empty());
+            descriptors.dedup();
+
+            if descriptors.is_empty() {
+                "there is a card in your graveyard".to_string()
+            } else if descriptors.len() == 1 {
+                format!("there is an {} card in your graveyard", descriptors[0])
+            } else {
+                let head = descriptors[..descriptors.len() - 1].join(" ");
+                let tail = descriptors.last().expect("descriptor tail");
+                format!("there is a {head} {tail} card in your graveyard")
+            }
+        }
         crate::ability::ManaAbilityCondition::Timing(timing) => match timing {
             crate::ability::ActivationTiming::AnyTime => {
                 "you may activate any time you could cast an instant".to_string()
             }
-            crate::ability::ActivationTiming::SorcerySpeed => "activate only as a sorcery".to_string(),
-            crate::ability::ActivationTiming::DuringCombat => "activate only during combat".to_string(),
-            crate::ability::ActivationTiming::OncePerTurn => "activate only once each turn".to_string(),
+            crate::ability::ActivationTiming::SorcerySpeed => {
+                "activate only as a sorcery".to_string()
+            }
+            crate::ability::ActivationTiming::DuringCombat => {
+                "activate only during combat".to_string()
+            }
+            crate::ability::ActivationTiming::OncePerTurn => {
+                "activate only once each turn".to_string()
+            }
             crate::ability::ActivationTiming::DuringYourTurn => {
                 "activate only during your turn".to_string()
             }
@@ -3205,6 +3235,17 @@ fn describe_condition(
             "no spells were cast last turn".to_string()
         }
         crate::effect::Condition::TargetIsTapped => "the target is tapped".to_string(),
+        crate::effect::Condition::TargetWasKicked => "the target spell was kicked".to_string(),
+        crate::effect::Condition::TargetSpellCastOrderThisTurn(2) => {
+            "the target spell was the second spell cast this turn".to_string()
+        }
+        crate::effect::Condition::TargetSpellCastOrderThisTurn(order) => {
+            format!("the target spell was spell number {order} cast this turn")
+        }
+        crate::effect::Condition::TargetHasGreatestPowerAmongCreatures => {
+            "the target creature has the greatest power among creatures on the battlefield"
+                .to_string()
+        }
         crate::effect::Condition::SourceIsTapped => "this source is tapped".to_string(),
         crate::effect::Condition::TargetIsAttacking => "the target is attacking".to_string(),
         crate::effect::Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
@@ -5122,6 +5163,20 @@ fn describe_effect_core_expanded(
             describe_player_filter(&skip_draw.player, tagged_subjects)
         ));
     }
+    if let Some(skip_combat) = effect.downcast_ref::<crate::effects::SkipCombatPhasesEffect>() {
+        return Some(format!(
+            "{} skips all combat phases of their next turn.",
+            describe_player_filter(&skip_combat.player, tagged_subjects)
+        ));
+    }
+    if let Some(skip_combat) =
+        effect.downcast_ref::<crate::effects::SkipNextCombatPhaseThisTurnEffect>()
+    {
+        return Some(format!(
+            "{} skips their next combat phase this turn.",
+            describe_player_filter(&skip_combat.player, tagged_subjects)
+        ));
+    }
     if let Some(extra_turn) = effect.downcast_ref::<crate::effects::ExtraTurnEffect>() {
         return Some(format!(
             "{} takes an extra turn after this one.",
@@ -5538,9 +5593,9 @@ fn describe_value(
         | crate::effect::Value::EventValue(crate::effect::EventValueSpec::LifeAmount) => {
             "that much".to_string()
         }
-        crate::effect::Value::EventValue(
-            crate::effect::EventValueSpec::BlockersBeyondFirst { multiplier },
-        ) => {
+        crate::effect::Value::EventValue(crate::effect::EventValueSpec::BlockersBeyondFirst {
+            multiplier,
+        }) => {
             if *multiplier == 1 {
                 "the number of blockers beyond the first".to_string()
             } else {

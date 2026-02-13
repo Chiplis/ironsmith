@@ -792,6 +792,9 @@ pub struct GameState {
     /// Players who will skip their next draw step.
     /// Checked and cleared when a player would draw in draw step.
     pub skip_next_draw_step: HashSet<PlayerId>,
+    /// Players who will skip all combat phases on their next turn.
+    /// Checked and cleared when entering combat phase.
+    pub skip_next_combat_phases: HashSet<PlayerId>,
 
     /// Active and pending player-control effects.
     pub player_control_effects: Vec<PlayerControlEffect>,
@@ -812,6 +815,14 @@ pub struct GameState {
     /// Number of spells cast this turn per player.
     /// Reset at the start of each turn.
     pub spells_cast_this_turn: HashMap<PlayerId, u32>,
+
+    /// Total number of spells cast this turn.
+    /// Reset at the start of each turn.
+    pub spells_cast_this_turn_total: u32,
+
+    /// Cast order for spells cast this turn (object id -> 1-based cast index).
+    /// Cleared at the start of each turn.
+    pub spell_cast_order_this_turn: HashMap<ObjectId, u32>,
 
     /// Players who attacked with at least one creature this turn.
     /// Reset at the start of each turn.
@@ -928,12 +939,15 @@ impl GameState {
             extra_turns: Vec::new(),
             skip_next_turn: HashSet::new(),
             skip_next_draw_step: HashSet::new(),
+            skip_next_combat_phases: HashSet::new(),
             player_control_effects: Vec::new(),
             player_control_timestamp: 0,
             creatures_died_this_turn: 0,
             triggers_fired_this_turn: HashMap::new(),
             turn_counters: TurnCounterTracker::default(),
             spells_cast_this_turn: HashMap::new(),
+            spells_cast_this_turn_total: 0,
+            spell_cast_order_this_turn: HashMap::new(),
             players_attacked_this_turn: HashSet::new(),
             spells_cast_last_turn_total: 0,
             library_searches_this_turn: HashSet::new(),
@@ -2232,8 +2246,10 @@ impl GameState {
         self.creatures_died_this_turn = 0;
         self.triggers_fired_this_turn.clear();
         self.turn_counters.clear();
-        self.spells_cast_last_turn_total = self.spells_cast_this_turn.values().sum();
+        self.spells_cast_last_turn_total = self.spells_cast_this_turn_total;
         self.spells_cast_this_turn.clear();
+        self.spells_cast_this_turn_total = 0;
+        self.spell_cast_order_this_turn.clear();
         self.players_attacked_this_turn.clear();
         self.library_searches_this_turn.clear();
         self.creatures_entered_this_turn.clear();

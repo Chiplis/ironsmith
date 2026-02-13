@@ -7,8 +7,8 @@
 
 use crate::cost::OptionalCostsPaid;
 use crate::effect::{EventValueSpec, Value};
-use crate::events::combat::CreatureBecameBlockedEvent;
 use crate::events::DamageEvent;
+use crate::events::combat::CreatureBecameBlockedEvent;
 use crate::events::life::LifeGainEvent;
 use crate::events::life::LifeLossEvent;
 use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};

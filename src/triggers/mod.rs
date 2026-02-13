@@ -362,6 +362,23 @@ impl Trigger {
         Self::new(SpellCastTrigger::new(filter, caster))
     }
 
+    /// Create a qualified spell-cast trigger.
+    pub fn spell_cast_qualified(
+        filter: Option<ObjectFilter>,
+        caster: PlayerFilter,
+        during_turn: Option<PlayerFilter>,
+        min_spells_this_turn: Option<u32>,
+        from_not_hand: bool,
+    ) -> Self {
+        Self::new(SpellCastTrigger::qualified(
+            filter,
+            caster,
+            during_turn,
+            min_spells_this_turn,
+            from_not_hand,
+        ))
+    }
+
     /// Create a "when [player] copies a spell" trigger.
     pub fn spell_copied(filter: Option<ObjectFilter>, copier: PlayerFilter) -> Self {
         Self::new(SpellCopiedTrigger::new(filter, copier))

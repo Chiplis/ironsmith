@@ -247,9 +247,12 @@ fn evaluate_condition_simple(
                 || evaluate_condition_simple(game, b, controller, source)
         }
         // Target-dependent conditions default to false during casting
-        Condition::TargetIsTapped | Condition::TargetIsAttacking | Condition::SourceIsTapped => {
-            false
-        }
+        Condition::TargetIsTapped
+        | Condition::TargetIsAttacking
+        | Condition::TargetWasKicked
+        | Condition::TargetSpellCastOrderThisTurn(_)
+        | Condition::TargetHasGreatestPowerAmongCreatures
+        | Condition::SourceIsTapped => false,
     }
 }
 
@@ -355,7 +358,9 @@ fn evaluate_condition(
             // Check if any spell was cast this turn by anyone
             Ok(game.spells_cast_this_turn.values().any(|&count| count > 0))
         }
-        Condition::AttackedThisTurn => Ok(game.players_attacked_this_turn.contains(&ctx.controller)),
+        Condition::AttackedThisTurn => {
+            Ok(game.players_attacked_this_turn.contains(&ctx.controller))
+        }
         Condition::NoSpellsWereCastLastTurn => Ok(game.spells_cast_last_turn_total == 0),
         Condition::TargetIsTapped => {
             // Check if the target is tapped
@@ -363,6 +368,55 @@ fn evaluate_condition(
                 return Ok(game.is_tapped(*id));
             }
             Ok(false)
+        }
+        Condition::TargetWasKicked => {
+            for target in &ctx.targets {
+                if let crate::executor::ResolvedTarget::Object(id) = target
+                    && let Some(obj) = game.object(*id)
+                {
+                    return Ok(obj.optional_costs_paid.was_kicked());
+                }
+            }
+            Ok(false)
+        }
+        Condition::TargetSpellCastOrderThisTurn(order) => {
+            for target in &ctx.targets {
+                if let crate::executor::ResolvedTarget::Object(id) = target {
+                    let actual = game
+                        .spell_cast_order_this_turn
+                        .get(id)
+                        .copied()
+                        .unwrap_or(0);
+                    return Ok(actual == *order);
+                }
+            }
+            Ok(false)
+        }
+        Condition::TargetHasGreatestPowerAmongCreatures => {
+            let target_id = ctx.targets.iter().find_map(|target| match target {
+                crate::executor::ResolvedTarget::Object(id) => Some(*id),
+                _ => None,
+            });
+            let Some(target_id) = target_id else {
+                return Ok(false);
+            };
+            let Some(target_obj) = game.object(target_id) else {
+                return Ok(false);
+            };
+            if !target_obj.is_creature() {
+                return Ok(false);
+            }
+            let Some(target_power) = target_obj.power() else {
+                return Ok(false);
+            };
+            let max_power = game
+                .battlefield
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| obj.is_creature())
+                .filter_map(|obj| obj.power())
+                .max();
+            Ok(max_power.is_some_and(|max| target_power >= max))
         }
         Condition::SourceIsTapped => Ok(game.is_tapped(ctx.source)),
         Condition::TargetIsAttacking => {

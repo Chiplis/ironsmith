@@ -134,6 +134,7 @@ mod tests {
         let event = TriggerEvent::new(SpellCastEvent::new(
             ObjectId::from_raw(1),
             PlayerId::from_index(0),
+            Zone::Hand,
         ));
         assert_eq!(event.kind(), EventKind::SpellCast);
     }
@@ -150,6 +151,7 @@ mod tests {
         let event = TriggerEvent::new(SpellCastEvent::new(
             ObjectId::from_raw(42),
             PlayerId::from_index(1),
+            Zone::Hand,
         ));
 
         let spell_cast = event.downcast::<SpellCastEvent>();
@@ -170,6 +172,7 @@ mod tests {
         let event = TriggerEvent::new(SpellCastEvent::new(
             ObjectId::from_raw(99),
             PlayerId::from_index(2),
+            Zone::Hand,
         ));
 
         assert_eq!(event.object_id(), Some(ObjectId::from_raw(99)));

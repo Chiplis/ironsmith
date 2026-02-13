@@ -76,9 +76,9 @@ pub use composition::{
     CounterAbilityEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
     ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect,
     ManifestDreadEffect, MayEffect, OpenAttractionEffect, SequenceEffect, SupportEffect,
-    TagAllEffect, TagAttachedToSourceEffect,
-    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
-    UnlessActionEffect, UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
+    TagAllEffect, TagAttachedToSourceEffect, TagTriggeringDamageTargetEffect,
+    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
+    UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
 };
 pub use continuous::ApplyContinuousEffect;
 pub use control::{ExchangeControlEffect, GainControlEffect};
@@ -101,7 +101,8 @@ pub use permanents::{
 pub use player::{
     ControlPlayerEffect, CreateEmblemEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect,
     ExperienceCountersEffect, ExtraTurnEffect, GrantEffect, GrantPlayFromGraveyardEffect,
-    LoseTheGameEffect, PoisonCountersEffect, SkipDrawStepEffect, SkipTurnEffect, WinTheGameEffect,
+    LoseTheGameEffect, PoisonCountersEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
+    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, WinTheGameEffect,
 };
 pub use replacement::{ApplyReplacementEffect, ReplacementApplyMode};
 pub use restrictions::CantEffect;

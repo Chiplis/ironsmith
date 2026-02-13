@@ -36,6 +36,7 @@ pub enum Subtype {
     // Creature types (alphabetical, common ones)
     Advisor,
     Ally,
+    Alien,
     Angel,
     Ape,
     Archer,
@@ -45,6 +46,7 @@ pub enum Subtype {
     Avatar,
     Barbarian,
     Bard,
+    Bat,
     Bear,
     Beast,
     Berserker,
@@ -71,6 +73,7 @@ pub enum Subtype {
     Drake,
     Druid,
     Dwarf,
+    Elder,
     Eldrazi,
     Spawn,
     Scion,
@@ -85,6 +88,7 @@ pub enum Subtype {
     Gargoyle,
     Giant,
     Gnome,
+    Glimmer,
     Goat,
     Goblin,
     God,
@@ -106,6 +110,7 @@ pub enum Subtype {
     Illusion,
     Imp,
     Insect,
+    Inkling,
     Jellyfish,
     Kavu,
     Kirin,
@@ -123,6 +128,7 @@ pub enum Subtype {
     Minotaur,
     Mole,
     Monk,
+    Monkey,
     Moonfolk,
     Mount,
     Mouse,
@@ -140,6 +146,7 @@ pub enum Subtype {
     Ox,
     Oyster,
     Peasant,
+    Pest,
     Pegasus,
     Phyrexian,
     Phoenix,
@@ -191,6 +198,7 @@ pub enum Subtype {
     Tiefling,
     Toy,
     Treefolk,
+    Triskelavite,
     Trilobite,
     Troll,
     Turtle,
@@ -298,6 +306,7 @@ impl Subtype {
             self,
             Subtype::Advisor
                 | Subtype::Ally
+                | Subtype::Alien
                 | Subtype::Angel
                 | Subtype::Ape
                 | Subtype::Archer
@@ -332,6 +341,7 @@ impl Subtype {
                 | Subtype::Drake
                 | Subtype::Druid
                 | Subtype::Dwarf
+                | Subtype::Elder
                 | Subtype::Eldrazi
                 | Subtype::Spawn
                 | Subtype::Scion
@@ -346,6 +356,7 @@ impl Subtype {
                 | Subtype::Gargoyle
                 | Subtype::Giant
                 | Subtype::Gnome
+                | Subtype::Glimmer
                 | Subtype::Goat
                 | Subtype::Goblin
                 | Subtype::God
@@ -367,6 +378,7 @@ impl Subtype {
                 | Subtype::Illusion
                 | Subtype::Imp
                 | Subtype::Insect
+                | Subtype::Inkling
                 | Subtype::Jellyfish
                 | Subtype::Kavu
                 | Subtype::Kirin
@@ -384,6 +396,7 @@ impl Subtype {
                 | Subtype::Minotaur
                 | Subtype::Mole
                 | Subtype::Monk
+                | Subtype::Monkey
                 | Subtype::Moonfolk
                 | Subtype::Mount
                 | Subtype::Mouse
@@ -451,6 +464,7 @@ impl Subtype {
                 | Subtype::Tiefling
                 | Subtype::Toy
                 | Subtype::Treefolk
+                | Subtype::Triskelavite
                 | Subtype::Trilobite
                 | Subtype::Troll
                 | Subtype::Turtle

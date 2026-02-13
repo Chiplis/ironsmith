@@ -44,8 +44,8 @@ type CostStep = ();
 use crate::object::CounterType;
 use crate::player::ManaPool;
 use crate::rules::combat::{
-    deals_first_strike_damage_with_game, deals_regular_combat_damage_with_game,
-    maximum_blockers, minimum_blockers,
+    deals_first_strike_damage_with_game, deals_regular_combat_damage_with_game, maximum_blockers,
+    minimum_blockers,
 };
 use crate::rules::damage::{
     DamageResult, DamageTarget, calculate_damage, distribute_trample_damage,
@@ -4195,6 +4195,7 @@ fn continue_spell_cast_mana_payment(
             trigger_queue,
             state,
             pending.spell_id,
+            pending.from_zone,
             pending.caster,
             pending.chosen_targets,
             pending.x_value,
@@ -4211,7 +4212,11 @@ fn continue_spell_cast_mana_payment(
         )?;
 
         // Generate SpellCast event and check for triggers
-        let event = TriggerEvent::new(SpellCastEvent::new(result.new_id, result.caster));
+        let event = TriggerEvent::new(SpellCastEvent::new(
+            result.new_id,
+            result.caster,
+            result.from_zone,
+        ));
         let triggers = check_triggers(game, &event);
         for trigger in triggers {
             trigger_queue.add(trigger);
@@ -6572,6 +6577,8 @@ struct SpellCastResult {
     new_id: ObjectId,
     /// Who cast the spell
     caster: PlayerId,
+    /// Which zone the spell was cast from.
+    from_zone: Zone,
 }
 
 /// Finalize a spell cast by paying remaining costs and creating the stack entry.
@@ -6583,6 +6590,7 @@ fn finalize_spell_cast(
     trigger_queue: &mut TriggerQueue,
     _state: &mut PriorityLoopState,
     spell_id: ObjectId,
+    from_zone: Zone,
     caster: PlayerId,
     targets: Vec<Target>,
     x_value: Option<u32>,
@@ -6967,8 +6975,15 @@ fn finalize_spell_cast(
 
     // Track that a spell was cast this turn (per-caster)
     *game.spells_cast_this_turn.entry(caster).or_insert(0) += 1;
+    game.spells_cast_this_turn_total = game.spells_cast_this_turn_total.saturating_add(1);
+    game.spell_cast_order_this_turn
+        .insert(new_id, game.spells_cast_this_turn_total);
 
-    Ok(SpellCastResult { new_id, caster })
+    Ok(SpellCastResult {
+        new_id,
+        caster,
+        from_zone,
+    })
 }
 
 /// Run the priority loop using a DecisionMaker (convenience wrapper).
@@ -7796,10 +7811,11 @@ pub fn apply_blocker_declarations(
 
     for (attacker_id, blockers) in &combat.blockers {
         let Some(attacker) = game.object(*attacker_id) else {
-            return Err(
-                ResponseError::InvalidBlockers(format!("Attacker {:?} not found", attacker_id))
-                    .into(),
-            );
+            return Err(ResponseError::InvalidBlockers(format!(
+                "Attacker {:?} not found",
+                attacker_id
+            ))
+            .into());
         };
 
         let min = minimum_blockers(attacker);
@@ -8160,7 +8176,11 @@ mod tests {
             game.trigger_event_kind_count_this_turn(EventKind::LifeLoss),
             1
         );
-        assert_eq!(game.damage_to_players_this_turn.get(&PlayerId::from_index(1)), Some(&3));
+        assert_eq!(
+            game.damage_to_players_this_turn
+                .get(&PlayerId::from_index(1)),
+            Some(&3)
+        );
     }
 
     #[test]
@@ -8185,9 +8205,10 @@ mod tests {
         let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
 
         if let Some(obj) = game.object_mut(creature_id) {
-            obj.abilities.push(Ability::static_ability(StaticAbility::morph(
-                ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
-            )));
+            obj.abilities
+                .push(Ability::static_ability(StaticAbility::morph(
+                    ManaCost::from_pips(vec![vec![ManaSymbol::Green]]),
+                )));
             obj.abilities.push(Ability::triggered(
                 Trigger::this_is_turned_face_up(),
                 vec![Effect::draw(1)],
@@ -8212,8 +8233,14 @@ mod tests {
         );
         assert!(result.is_ok(), "turn-face-up action should succeed");
 
-        let top = game.stack.last().expect("triggered ability should be on stack");
-        assert!(top.is_ability, "turned-face-up trigger should use ability stack entry");
+        let top = game
+            .stack
+            .last()
+            .expect("triggered ability should be on stack");
+        assert!(
+            top.is_ability,
+            "turned-face-up trigger should use ability stack entry"
+        );
         assert_eq!(top.object_id, creature_id);
         assert!(
             top.triggering_event
@@ -13363,6 +13390,7 @@ mod tests {
             &mut trigger_queue,
             &mut state,
             spell_id,
+            Zone::Hand,
             alice,
             Vec::new(),
             None,

@@ -222,7 +222,10 @@ impl StaticAbilityKind for CantBeBlockedByMoreThan {
         } else {
             "creatures"
         };
-        format!("Can't be blocked by more than {} {}", self.max_blockers, noun)
+        format!(
+            "Can't be blocked by more than {} {}",
+            self.max_blockers, noun
+        )
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {

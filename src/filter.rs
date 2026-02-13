@@ -300,6 +300,8 @@ pub enum TaggedOpbjectRelation {
     IsTaggedObject,
     /// The object must share at least one card type with any tagged object.
     SharesCardType,
+    /// The object must share at least one subtype with any tagged object.
+    SharesSubtypeWithTagged,
     /// The object must share at least one color with any tagged object.
     SharesColorWithTagged,
     /// The object must share the same stable_id with a tagged object.
@@ -429,6 +431,10 @@ pub struct ObjectFilter {
 
     /// If true, must be blocking
     pub blocking: bool,
+
+    /// If true, must have entered since your last turn ended.
+    /// This is currently approximated via summoning-sick state.
+    pub entered_since_your_last_turn_ended: bool,
 
     /// Power comparison (creature must satisfy)
     pub power: Option<Comparison>,
@@ -899,6 +905,11 @@ impl ObjectFilter {
         self.match_tagged(tag, TaggedOpbjectRelation::SharesColorWithTagged)
     }
 
+    /// Require the object to share at least one subtype with tagged objects.
+    pub fn shares_subtype_with_tagged(self, tag: impl Into<TagKey>) -> Self {
+        self.match_tagged(tag, TaggedOpbjectRelation::SharesSubtypeWithTagged)
+    }
+
     /// Filter to only match objects that share the same stable_id with a tagged object.
     pub fn same_stable_id_as_tagged(self, tag: impl Into<TagKey>) -> Self {
         self.match_tagged(tag, TaggedOpbjectRelation::SameStableId)
@@ -969,6 +980,10 @@ impl ObjectFilter {
         }
 
         if self.source && ctx.source.is_none_or(|source_id| object.id != source_id) {
+            return false;
+        }
+
+        if self.entered_since_your_last_turn_ended && !game.is_summoning_sick(object.id) {
             return false;
         }
 
@@ -1213,12 +1228,9 @@ impl ObjectFilter {
         if let Some(counter_requirement) = self.with_counter {
             let has_counter = match counter_requirement {
                 CounterConstraint::Any => object.counters.values().any(|count| *count > 0),
-                CounterConstraint::Typed(counter_type) => object
-                    .counters
-                    .get(&counter_type)
-                    .copied()
-                    .unwrap_or(0)
-                    > 0,
+                CounterConstraint::Typed(counter_type) => {
+                    object.counters.get(&counter_type).copied().unwrap_or(0) > 0
+                }
             };
             if !has_counter {
                 return false;
@@ -1227,12 +1239,9 @@ impl ObjectFilter {
         if let Some(counter_exclusion) = self.without_counter {
             let has_excluded_counter = match counter_exclusion {
                 CounterConstraint::Any => object.counters.values().any(|count| *count > 0),
-                CounterConstraint::Typed(counter_type) => object
-                    .counters
-                    .get(&counter_type)
-                    .copied()
-                    .unwrap_or(0)
-                    > 0,
+                CounterConstraint::Typed(counter_type) => {
+                    object.counters.get(&counter_type).copied().unwrap_or(0) > 0
+                }
             };
             if has_excluded_counter {
                 return false;
@@ -1312,6 +1321,15 @@ impl ObjectFilter {
                         .flat_map(|s| s.card_types.iter().cloned())
                         .collect();
                     if !object.card_types.iter().any(|t| tagged_types.contains(t)) {
+                        return false;
+                    }
+                }
+                TaggedOpbjectRelation::SharesSubtypeWithTagged => {
+                    let tagged_subtypes: std::collections::HashSet<Subtype> = tagged_snapshots
+                        .iter()
+                        .flat_map(|s| s.subtypes.iter().cloned())
+                        .collect();
+                    if !object.subtypes.iter().any(|t| tagged_subtypes.contains(t)) {
                         return false;
                     }
                 }
@@ -1415,6 +1433,12 @@ impl ObjectFilter {
             && ctx
                 .source
                 .is_none_or(|source_id| snapshot.object_id != source_id)
+        {
+            return false;
+        }
+
+        if self.entered_since_your_last_turn_ended
+            && !game.is_summoning_sick(snapshot.object_id)
         {
             return false;
         }
@@ -1628,12 +1652,9 @@ impl ObjectFilter {
         if let Some(counter_requirement) = self.with_counter {
             let has_counter = match counter_requirement {
                 CounterConstraint::Any => snapshot.counters.values().any(|count| *count > 0),
-                CounterConstraint::Typed(counter_type) => snapshot
-                    .counters
-                    .get(&counter_type)
-                    .copied()
-                    .unwrap_or(0)
-                    > 0,
+                CounterConstraint::Typed(counter_type) => {
+                    snapshot.counters.get(&counter_type).copied().unwrap_or(0) > 0
+                }
             };
             if !has_counter {
                 return false;
@@ -1642,12 +1663,9 @@ impl ObjectFilter {
         if let Some(counter_exclusion) = self.without_counter {
             let has_excluded_counter = match counter_exclusion {
                 CounterConstraint::Any => snapshot.counters.values().any(|count| *count > 0),
-                CounterConstraint::Typed(counter_type) => snapshot
-                    .counters
-                    .get(&counter_type)
-                    .copied()
-                    .unwrap_or(0)
-                    > 0,
+                CounterConstraint::Typed(counter_type) => {
+                    snapshot.counters.get(&counter_type).copied().unwrap_or(0) > 0
+                }
             };
             if has_excluded_counter {
                 return false;
@@ -1711,6 +1729,7 @@ impl ObjectFilter {
                 if matches!(
                     constraint.relation,
                     TaggedOpbjectRelation::IsTaggedObject
+                        | TaggedOpbjectRelation::SharesSubtypeWithTagged
                         | TaggedOpbjectRelation::SharesColorWithTagged
                         | TaggedOpbjectRelation::SameStableId
                         | TaggedOpbjectRelation::SameNameAsTagged
@@ -1736,6 +1755,19 @@ impl ObjectFilter {
                         .flat_map(|s| s.card_types.iter().cloned())
                         .collect();
                     if !snapshot.card_types.iter().any(|t| tagged_types.contains(t)) {
+                        return false;
+                    }
+                }
+                TaggedOpbjectRelation::SharesSubtypeWithTagged => {
+                    let tagged_subtypes: std::collections::HashSet<Subtype> = tagged_snapshots
+                        .iter()
+                        .flat_map(|s| s.subtypes.iter().cloned())
+                        .collect();
+                    if !snapshot
+                        .subtypes
+                        .iter()
+                        .any(|t| tagged_subtypes.contains(t))
+                    {
                         return false;
                     }
                 }
@@ -1950,11 +1982,14 @@ impl ObjectFilter {
                     post_noun_qualifiers.push("with the same name as that object".to_string());
                 }
                 TaggedOpbjectRelation::SameControllerAsTagged => {
-                    post_noun_qualifiers
-                        .push("controlled by that object's controller".to_string());
+                    post_noun_qualifiers.push("controlled by that object's controller".to_string());
                 }
                 TaggedOpbjectRelation::SharesColorWithTagged => {
                     post_noun_qualifiers.push("that shares a color with that object".to_string());
+                }
+                TaggedOpbjectRelation::SharesSubtypeWithTagged => {
+                    post_noun_qualifiers
+                        .push("that shares a creature type with that object".to_string());
                 }
                 TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SameStableId => {}
             }
@@ -2045,6 +2080,9 @@ impl ObjectFilter {
             parts.push("tapped".to_string());
         } else if self.untapped {
             parts.push("untapped".to_string());
+        }
+        if self.entered_since_your_last_turn_ended {
+            post_noun_qualifiers.push("that entered since your last turn ended".to_string());
         }
 
         let subtype_implies_type = !self.subtypes.is_empty()
@@ -2631,6 +2669,19 @@ mod tests {
     }
 
     #[test]
+    fn test_filter_description_includes_entered_since_last_turn_ended_clause() {
+        let filter = ObjectFilter {
+            card_types: vec![CardType::Creature],
+            entered_since_your_last_turn_ended: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            filter.description(),
+            "creature that entered since your last turn ended"
+        );
+    }
+
+    #[test]
     fn test_filter_description_includes_commander_owner_and_controller_distinction() {
         let filter = ObjectFilter::creature()
             .commander()
@@ -2860,14 +2911,26 @@ mod tests {
         game.add_object(creature_obj.clone());
 
         let ctx = FilterContext::new(you);
-        assert!(ObjectFilter::permanent().historic().matches(&artifact_obj, &ctx, &game));
-        assert!(!ObjectFilter::permanent().historic().matches(&creature_obj, &ctx, &game));
-        assert!(ObjectFilter::permanent()
-            .nonhistoric()
-            .matches(&creature_obj, &ctx, &game));
-        assert!(!ObjectFilter::permanent()
-            .nonhistoric()
-            .matches(&artifact_obj, &ctx, &game));
+        assert!(
+            ObjectFilter::permanent()
+                .historic()
+                .matches(&artifact_obj, &ctx, &game)
+        );
+        assert!(
+            !ObjectFilter::permanent()
+                .historic()
+                .matches(&creature_obj, &ctx, &game)
+        );
+        assert!(
+            ObjectFilter::permanent()
+                .nonhistoric()
+                .matches(&creature_obj, &ctx, &game)
+        );
+        assert!(
+            !ObjectFilter::permanent()
+                .nonhistoric()
+                .matches(&artifact_obj, &ctx, &game)
+        );
     }
 
     #[test]
