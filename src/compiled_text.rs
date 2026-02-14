@@ -2306,50 +2306,8 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized == "target creature gains Deathtouch and gains Indestructible until end of turn" {
         return "Target creature gains deathtouch and indestructible until end of turn".to_string();
     }
-    if normalized
-        == "When this creature enters, exile target nonland permanent an opponent controls"
-    {
-        return "When this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield".to_string();
-    }
-    if normalized
-        == "When this enchantment enters, exile target nonland permanent an opponent controls"
-    {
-        return "When this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield".to_string();
-    }
     if normalized == "When this Aura enters, tap enchanted creature" {
         return "When this Aura enters, tap enchanted creature.".to_string();
-    }
-    if normalized.starts_with("When this enchantment enters, exile target ")
-        && !normalized.contains("until this enchantment leaves the battlefield")
-    {
-        return format!("{normalized} until this enchantment leaves the battlefield");
-    }
-    if lower.starts_with("when this enchantment enters, exile target ")
-        && !lower.contains("until this enchantment leaves the battlefield")
-    {
-        let base = normalized.trim_end_matches('.');
-        return format!("{base} until this enchantment leaves the battlefield");
-    }
-    if normalized
-        .starts_with("When this creature enters, exile target creature an opponent controls")
-        && !normalized.contains("until this creature leaves the battlefield")
-    {
-        return format!("{normalized} until this creature leaves the battlefield");
-    }
-    if lower.starts_with("when this creature enters, exile target creature")
-        && lower.contains("an opponent controls")
-        && !lower.contains("until this creature leaves the battlefield")
-    {
-        let base = normalized.trim_end_matches('.');
-        return format!("{base} until this creature leaves the battlefield");
-    }
-    if let Some(rest) = normalized.strip_prefix("When this land enters, you sacrifice it unless you Return target land you control to its owner's hand")
-    {
-        return format!("When this land enters, sacrifice it unless you return a non-Lair land you control to its owner's hand{rest}");
-    }
-    if let Some(rest) = normalized.strip_prefix("When this land enters, you sacrifice it unless you return target land you control to its owner's hand")
-    {
-        return format!("When this land enters, sacrifice it unless you return a non-Lair land you control to its owner's hand{rest}");
     }
     if normalized == "Doesn't untap during your untap step" {
         return "This creature doesn't untap during your untap step".to_string();
@@ -9497,23 +9455,12 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return "Permanents enter tapped this turn. Draw a card.".to_string();
     }
-    if normalized_lower == "creatures you control get +1/+1 for each commander permanent."
-        || normalized_lower == "creatures you control get +1/+1 for each commander permanent"
-    {
-        return "Creatures you control get +1/+1 for each time you've cast your commander from the command zone this game.".to_string();
-    }
     if normalized_lower
         == "when this creature dies, put the number of creature -1/-1 counter(s) on target creature."
         || normalized_lower
             == "when this creature dies, put the number of creature -1/-1 counter(s) on target creature"
     {
         return "When this creature dies, put a -1/-1 counter on target creature for each -1/-1 counter on this creature.".to_string();
-    }
-    if normalized_lower.contains("cards in exile gain suspend")
-        && normalized_lower.contains("put three time counters on it")
-        && normalized_lower.contains("if you do, exile up to one target creature")
-    {
-        return "When this creature dies, you may exile it and put three time counters on it. If you do, exile up to one target creature and put three time counters on it. Each card exiled this way that doesn't have suspend gains suspend.".to_string();
     }
     if normalized_lower.contains("whenever a creature with haste attacks")
         && normalized_lower.contains("treasure artifact token")
@@ -9605,12 +9552,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         return "Create two tapped 1/1 colorless Robot artifact creature tokens with flying."
             .to_string();
     }
-    if normalized_lower.contains("target creature you control gets +1/+0")
-        && normalized_lower.contains("gains deathtouch until end of turn")
-        && normalized_lower.contains("you lose 2 life")
-    {
-        return "Target creature you control gets +1/+0 and gains deathtouch until end of turn. Whenever a creature dealt damage by that creature dies this turn, its controller loses 2 life.".to_string();
-    }
     if normalized_lower.contains(
         "whenever a zombie you control enters, put the number of another zombie +1/+1 counter",
     ) {
@@ -9677,13 +9618,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             == "whenever a nontoken creature you control dies, deal 1 damage to you. draw a card"
     {
         return "Whenever a nontoken creature you control dies, this creature deals 1 damage to you and you draw a card.".to_string();
-    }
-    if normalized_lower
-        == "whenever an opponent's nontoken creature enters, create a token that's a copy of it."
-        || normalized_lower
-            == "whenever an opponent's nontoken creature enters, create a token that's a copy of it"
-    {
-        return "Whenever a nontoken creature an opponent controls enters this turn, create a token that's a copy of that creature.".to_string();
     }
     if normalized_lower.contains("deal 2 damage to any target.")
         && (normalized_lower.contains("for each target opponent's nonartifact creature")
@@ -9783,10 +9717,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         && normalized_lower.contains("create 1 1/3 black demon creature token")
     {
         return "When enchanted creature dies, return this card to its owner's hand and you create a 1/3 black Demon creature token named Plaguebearer of Nurgle.".to_string();
-    }
-    if normalized_lower.contains("you draw two cards. for each opponent, that player draws a card")
-    {
-        return "When this creature leaves the battlefield, you draw two cards and each opponent draws a card.".to_string();
     }
     if normalized_lower.contains("create 1 1/1 blue thopter artifact creature token with flying")
         && normalized_lower.contains("you gain 1 life")
@@ -11911,13 +11841,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     {
         return "During your turn, this creature gets +2/+2.".to_string();
     }
-    if lower_normalized
-        == "when this enchantment enters, exile target opponent's nonland enchantment. when this enchantment enters, you gain 2 life. create 1 powerstone artifact token under your control, tapped."
-        || lower_normalized
-            == "when this enchantment enters, exile target opponent's nonland enchantment. when this enchantment enters, you gain 2 life. create 1 powerstone artifact token under your control, tapped"
-    {
-        return "When this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield. When this enchantment enters, you gain 2 life and create a tapped Powerstone token.".to_string();
-    }
     if lower_normalized == "whenever this become tapped, you draw a card."
         || lower_normalized == "whenever this become tapped, you draw a card"
     {
@@ -13049,11 +12972,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         && normalized.contains("damage to target player")
     {
         return "Target player sacrifices an artifact and a land of their choice. Structural Collapse deals 2 damage to that player.".to_string();
-    }
-    if normalized.contains("You mill 3 cards.")
-        && normalized.contains("Return target land card or Elf from your graveyard to your hand")
-    {
-        return "Mill three cards, then return a land card or Elf card from your graveyard to your hand. If you can't, draw a card.".to_string();
     }
     if normalized.contains("Add the number of a Ally you control mana of any one color") {
         return "{T}: Add X mana of any one color, where X is the number of Allies you control."
@@ -14510,28 +14428,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
             "Whenever this creature blocks a creature, that creature doesn't untap during its controller's next untap step{rest}"
         );
     }
-    if lower_trimmed.starts_with("a creature blocks: this enchantment deals ")
-        && let Some(rest) = trimmed
-            .split_once(": ")
-            .and_then(|(_, rhs)| rhs.strip_prefix("This enchantment deals "))
-        && let Some((amount, tail)) = rest.split_once(" damage")
-        && tail.trim().eq_ignore_ascii_case("to target creature")
-    {
-        return format!(
-            "Whenever a creature blocks, this enchantment deals {amount} damage to that creature's controller"
-        );
-    }
-    if lower_trimmed.starts_with("a creature blocks: deal ")
-        && let Some(rest) = trimmed
-            .split_once(": ")
-            .and_then(|(_, rhs)| rhs.strip_prefix("Deal "))
-        && let Some((amount, tail)) = rest.split_once(" damage")
-        && tail.trim().eq_ignore_ascii_case("to target creature")
-    {
-        return format!(
-            "Whenever a creature blocks, this enchantment deals {amount} damage to that creature's controller"
-        );
-    }
     if trimmed
         == "Whenever this permanent becomes the target of a spell or ability, you sacrifice it"
     {
@@ -14728,17 +14624,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
             "You may return {} to its owner's hand rather than pay this spell's mana cost",
             choice
         );
-    }
-    if trimmed.starts_with("When this land enters, you sacrifice it unless you Return target land you control to its owner's hand")
-        || trimmed
-            .starts_with("When this land enters, you sacrifice it unless you return target land you control to its owner's hand")
-        || trimmed
-            .starts_with("When this permanent enters, you sacrifice it unless you Return target land you control to its owner's hand")
-        || trimmed
-            .starts_with("When this permanent enters, you sacrifice it unless you return target land you control to its owner's hand")
-    {
-        return "When this land enters, sacrifice it unless you return a non-Lair land you control to its owner's hand"
-            .to_string();
     }
     if let Some((left, right)) = trimmed.split_once(". ")
         && right.starts_with("you gain ")
@@ -15306,10 +15191,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         .replace(
             "Whenever this creature deals damage to Spider, destroy it.",
             "Whenever this creature deals damage to a Spider, destroy that creature.",
-        )
-        .replace(
-            "Target creature you control gets +1/+0 and gains Deathtouch until end of turn and you lose 2 life.",
-            "Target creature you control gets +1/+0 and gains deathtouch until end of turn. Whenever a creature dealt damage by that creature dies this turn, its controller loses 2 life.",
         )
         .replace(
             "Whenever a Zombie you control enters, put the number of another Zombie +1/+1 counters on it.",
@@ -16107,17 +15988,6 @@ mod tests {
     fn normalizes_surveil_then_draw_sentence() {
         let normalized = normalize_sentence_surface_style("Surveil 2. Draw a card.");
         assert_eq!(normalized, "Surveil 2, then draw a card.");
-    }
-
-    #[test]
-    fn normalizes_static_net_compound_trigger_sentence() {
-        let normalized = normalize_sentence_surface_style(
-            "When this enchantment enters, exile target opponent's nonland enchantment. When this enchantment enters, you gain 2 life. Create 1 Powerstone artifact token under your control, tapped.",
-        );
-        assert_eq!(
-            normalized,
-            "When this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield. When this enchantment enters, you gain 2 life and create a tapped Powerstone token."
-        );
     }
 
     #[test]
