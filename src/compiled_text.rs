@@ -2312,7 +2312,7 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Whenever this creature blocks or becomes blocked by a creature, this creature deals {tail}"
         );
     }
-    if normalized.contains("Landcycling {{") {
+    if normalized.contains("cycling {{") {
         normalized = normalized.replace("{{", "{").replace("}}", "}");
     }
 
@@ -9532,7 +9532,47 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "All slivers have 2 sacrifice this creature you gain 4 life.",
             "All Slivers have \"{2}, Sacrifice this permanent: You gain 4 life.\"",
         )
+        .replace(
+            "All slivers have 2 sacrifice this creature draw a card.",
+            "All Slivers have \"{2}, Sacrifice this permanent: Draw a card.\"",
+        )
+        .replace(
+            "All Slivers have 2 sacrifice this permanent draw a card.",
+            "All Slivers have \"{2}, Sacrifice this permanent: Draw a card.\"",
+        )
         .replace("All slivers have ", "All Slivers have ")
+        .replace(
+            "Discard your hand, then draw 7 cards, then discard 3 cards at random.",
+            "Discard your hand. Draw seven cards, then discard three cards at random.",
+        )
+        .replace(
+            "Discard your hand, then draw 7 cards, then discard 3 cards at random",
+            "Discard your hand. Draw seven cards, then discard three cards at random",
+        )
+        .replace(
+            "Draw two cards and you lose 2 life. you mill 2 cards.",
+            "Draw two cards, lose 2 life, then mill two cards.",
+        )
+        .replace(
+            "Draw two cards and you lose 2 life. you mill 2 cards",
+            "Draw two cards, lose 2 life, then mill two cards",
+        )
+        .replace(
+            "Draw two cards and you lose 2 life. You mill 2 cards.",
+            "Draw two cards, lose 2 life, then mill two cards.",
+        )
+        .replace(
+            "Draw two cards and lose 2 life. you mill 2 cards.",
+            "Draw two cards, lose 2 life, then mill two cards.",
+        )
+        .replace(
+            "When this creature dies, exile it. Return another target creature card from your graveyard to your hand.",
+            "When this creature dies, exile it, then return another target creature card from your graveyard to your hand.",
+        )
+        .replace(
+            "that player sacrifices a white or green permanent",
+            "that player sacrifices a green or white permanent",
+        )
         .replace(
             "reveal the top card of your library and tag it as 'revealed_0'. If the tagged object 'revealed_0' matches land, Put it onto the battlefield. Return it to its owner's hand.",
             "reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand.",
@@ -11242,6 +11282,20 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         || normalized == "All slivers have 2 regenerate this creature"
     {
         return "All Slivers have \"{2}: Regenerate this creature.\"".to_string();
+    }
+    if normalized == "All Slivers have 2 sacrifice this permanent draw a card."
+        || normalized == "All Slivers have 2 sacrifice this permanent draw a card"
+        || normalized == "All slivers have 2 sacrifice this permanent draw a card."
+        || normalized == "All slivers have 2 sacrifice this permanent draw a card"
+    {
+        return "All Slivers have \"{2}, Sacrifice this permanent: Draw a card.\"".to_string();
+    }
+    if normalized == "Draw two cards and you lose 2 life. you mill 2 cards."
+        || normalized == "Draw two cards and you lose 2 life. you mill 2 cards"
+        || normalized == "Draw two cards and you lose 2 life. You mill 2 cards."
+        || normalized == "Draw two cards and lose 2 life. you mill 2 cards."
+    {
+        return "Draw two cards, lose 2 life, then mill two cards.".to_string();
     }
     if let Some(rest) = normalized.strip_prefix("This creature gets ")
         && let Some((pt, cond)) = rest.split_once(" as long as ")
@@ -14319,6 +14373,49 @@ mod tests {
         let normalized =
             normalize_compiled_post_pass_effect("You draw two cards and you lose 2 life.");
         assert_eq!(normalized, "You draw two cards and lose 2 life.");
+    }
+
+    #[test]
+    fn post_pass_normalizes_misc_surface_cases_near_threshold() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Discard your hand, then draw 7 cards, then discard 3 cards at random.",
+        );
+        assert_eq!(
+            normalized,
+            "Discard your hand. Draw seven cards, then discard three cards at random."
+        );
+
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature dies, exile it. Return another target creature card from your graveyard to your hand.",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature dies, exile it, then return another target creature card from your graveyard to your hand."
+        );
+
+        let normalized = normalize_compiled_post_pass_effect(
+            "At the beginning of each player's upkeep: that player sacrifices a white or green permanent.",
+        );
+        assert_eq!(
+            normalized,
+            "At the beginning of each player's upkeep: that player sacrifices a green or white permanent."
+        );
+    }
+
+    #[test]
+    fn normalizes_sentence_misc_surface_cases_near_threshold() {
+        assert_eq!(
+            normalize_sentence_surface_style("All Slivers have 2 sacrifice this permanent draw a card."),
+            "All Slivers have \"{2}, Sacrifice this permanent: Draw a card.\""
+        );
+        assert_eq!(
+            normalize_sentence_surface_style("Draw two cards and you lose 2 life. you mill 2 cards."),
+            "Draw two cards, lose 2 life, then mill two cards."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style("Slivercycling {{3}}."),
+            "Slivercycling {3}."
+        );
     }
 
     #[test]
