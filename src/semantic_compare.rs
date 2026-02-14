@@ -168,6 +168,12 @@ fn is_internal_compiled_scaffolding_clause(clause: &str) -> bool {
     {
         return true;
     }
+    if lower.starts_with("choose ")
+        && lower.contains("target attacking creature")
+        && !lower.contains(" and ")
+    {
+        return true;
+    }
 
     false
 }
@@ -341,6 +347,32 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         "that an opponent's lands could produce",
         "that lands an opponent controls could produce",
     );
+    normalized = normalized
+        .replace(
+            "target opponent's artifact or enchantment",
+            "target artifact or enchantment an opponent controls",
+        )
+        .replace(": It deals ", ": This creature deals ")
+        .replace(": it deals ", ": this creature deals ")
+        .replace(
+            "have t add one mana of any color",
+            "have {T}: add one mana of any color",
+        )
+        .replace(
+            "target creature an opponent controls",
+            "target creature you don't control",
+        );
+    if normalized.starts_with("Surveil ") || normalized.starts_with("surveil ") {
+        normalized = normalized
+            .replace(", then draw ", ". Draw ")
+            .replace(", then you draw ", ". Draw ")
+            .replace(", then you draw", ". Draw");
+    }
+    if normalized.starts_with("Draw ") || normalized.starts_with("draw ") {
+        normalized = normalized
+            .replace(" and create ", ". Create ")
+            .replace(" and create", ". Create");
+    }
     for (from, to) in [
         (
             "Search your library for up to one basic land you own, put it onto the battlefield tapped, then shuffle",
@@ -684,6 +716,7 @@ fn is_stopword(token: &str) -> bool {
             | "as"
             | "though"
             | "under"
+            | "t"
     )
 }
 
