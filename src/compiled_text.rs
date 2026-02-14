@@ -8980,6 +8980,20 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return format!("Put a -1/-1 counter on each {filter}.");
     }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ". For each ")
+        && let Some((filter, tail)) =
+            split_once_ascii_ci(rest, ", put a +1/+1 counter on that object")
+        && tail.trim_matches('.').is_empty()
+    {
+        return format!("{prefix}. Put a +1/+1 counter on each {filter}.");
+    }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ". For each ")
+        && let Some((filter, tail)) =
+            split_once_ascii_ci(rest, ", put a -1/-1 counter on that object")
+        && tail.trim_matches('.').is_empty()
+    {
+        return format!("{prefix}. Put a -1/-1 counter on each {filter}.");
+    }
     if let Some(rewritten) = normalize_embedded_create_with_token_reminder(&normalized) {
         normalized = rewritten;
     }
@@ -13703,6 +13717,17 @@ mod tests {
                 "Put a -1/-1 counter on target creature. Proliferate."
             ),
             "Put a -1/-1 counter on target creature, then proliferate."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_embedded_for_each_put_counter_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Create a 2/2 black Zombie creature token under your control. For each Zombie creature you control, Put a +1/+1 counter on that object.",
+        );
+        assert_eq!(
+            normalized,
+            "Create a 2/2 black Zombie creature token under your control. Put a +1/+1 counter on each Zombie creature you control."
         );
     }
 
