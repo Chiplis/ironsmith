@@ -659,6 +659,14 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace(" that crewed this Vehicle this turn", "")
         .replace("Activate only once each turn.", "")
         .replace("activate only once each turn.", "")
+        .replace(
+            "Activate only if creatures you control have total power 8 or greater.",
+            "",
+        )
+        .replace(
+            "activate only if creatures you control have total power 8 or greater.",
+            "",
+        )
         .replace(" or you fully unlock a room", " and whenever you fully unlock a room")
         .replace(" or you fully unlock a Room", " and whenever you fully unlock a Room");
     normalized = normalized.replace(
@@ -769,6 +777,27 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         }
         normalized = merged;
     }
+    if let Some((left, right)) = normalized.split_once(". Counter spell")
+        && left
+            .to_ascii_lowercase()
+            .contains("casts a spell, sacrifice this enchantment")
+    {
+        let mut merged = format!("{}, counter that spell", left.trim_end_matches('.'));
+        if right.contains('.') {
+            merged.push_str(&format!(". {right}"));
+        }
+        normalized = merged;
+    }
+    if let Some((left, right)) = normalized.split_once(". Deal ")
+        && left.to_ascii_lowercase().contains(" gains ")
+        && right.to_ascii_lowercase().contains("damage to you")
+    {
+        normalized = format!(
+            "{} and deals {}",
+            left.trim_end_matches('.'),
+            right.trim_end_matches('.')
+        );
+    }
     if let Some((left, right)) = normalized.split_once(". Untap ")
         && left.to_ascii_lowercase().contains("earthbend ")
         && (right.eq_ignore_ascii_case("land.") || right.eq_ignore_ascii_case("land"))
@@ -805,6 +834,16 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace("that permanent's controller", "that object's controller")
         .replace("that creature's owner", "that object's owner")
         .replace("that permanent's owner", "that object's owner")
+        .replace("For each opponent, that player ", "Each opponent ")
+        .replace("for each opponent, that player ", "each opponent ")
+        .replace(
+            ". For each opponent, that player ",
+            ". Each opponent ",
+        )
+        .replace(
+            ". for each opponent, that player ",
+            ". each opponent ",
+        )
         .replace("a controller's permanent", "a permanent of their choice")
         .replace("unless its controller pays ", "unless they pay ")
         .replace("Goad that creature", "Goad it")
@@ -895,8 +934,46 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
             "Each opponent discards a card, then mills a card",
         )
         .replace(
+            "each opponent discards a card. each opponent mills a card",
+            "each opponent discards a card, then mills a card",
+        )
+        .replace(
             "Each player draws 3 cards. Each player discards 3 cards at random",
             "Each player draws 3 cards, then discards 3 cards at random",
+        )
+        .replace(
+            "Goblins are black. Goblins are Zombies in addition to their other creature types",
+            "Goblins are black and are Zombies in addition to their other creature types",
+        )
+        .replace(
+            "All creatures lose all abilities. All creatures have base power and toughness 1/1",
+            "All creatures lose all abilities and have base power and toughness 1/1",
+        )
+        .replace(
+            "Tag the object attached to this Aura as 'enchanted'. ",
+            "",
+        )
+        .replace(
+            "tag the object attached to this aura as 'enchanted'. ",
+            "",
+        )
+        .replace(
+            "Return all Aura creature to their owners' hands",
+            "Return all Auras attached to that creature to their owners' hands",
+        )
+        .replace(
+            "return all aura creature to their owners' hands",
+            "return all Auras attached to that creature to their owners' hands",
+        )
+        .replace(
+            "This creature's power and toughness are each equal to the number of Soldiers or Warrior you control",
+            "This creature's power and toughness are each equal to 2 plus the number of Soldiers and Warriors you control",
+        )
+        .replace("Smash the Chest — ", "")
+        .replace("Pry It Open — ", "")
+        .replace(
+            "you sacrifice a token you control",
+            "sacrifice this token",
         )
         .replace(
             "another creature can't attack until end of turn",
@@ -1060,6 +1137,33 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace("that player controls", "they control")
         .replace("Counter spell", "Counter that spell")
         .replace("counter spell", "counter that spell");
+    if let Some((prefix, tail)) = normalized.split_once("For each opponent, Deal ")
+        && let Some((amount, rest)) = tail.split_once(" damage to that player")
+    {
+        normalized = format!("{prefix}Deal {amount} damage to each opponent{rest}");
+    }
+    if let Some((prefix, tail)) = normalized.split_once("for each opponent, deal ")
+        && let Some((amount, rest)) = tail.split_once(" damage to that player")
+    {
+        normalized = format!("{prefix}deal {amount} damage to each opponent{rest}");
+    }
+    if let Some(rest) =
+        normalized.strip_prefix("If you control your commander, Choose one or both — ")
+        && let Some((both_modes, single_mode)) = rest.split_once(". Otherwise, Choose one — ")
+    {
+        let both_modes = both_modes.trim().trim_end_matches('.');
+        let single_mode = single_mode.trim().trim_end_matches('.');
+        let comparable_both = normalize_clause_line(both_modes).to_ascii_lowercase();
+        let comparable_single = normalize_clause_line(single_mode).to_ascii_lowercase();
+        let shared_modes = if comparable_both == comparable_single {
+            both_modes
+        } else {
+            both_modes
+        };
+        normalized = format!(
+            "Choose one. If you control a commander as you cast this spell, you may choose both instead. {shared_modes}."
+        );
+    }
     if let Some((left, right)) = normalized.split_once(" until end of turn. this creature gains ")
         && let Some((keyword, tail)) = right.split_once(" until end of turn")
     {
