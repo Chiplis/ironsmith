@@ -8707,6 +8707,23 @@ fn normalize_for_each_clause_surface(text: String) -> String {
     if let Some((prefix, rest)) = text
         .split_once("For each player, You may that player ")
         .or_else(|| text.split_once("for each player, You may that player "))
+        && let Some((draw_clause, gain_tail)) =
+            rest.split_once(". For each player, that player gains ")
+        && (draw_clause == "draws a card" || draw_clause == "draw a card")
+    {
+        let each_player = if prefix.is_empty() {
+            "Each player"
+        } else {
+            "each player"
+        };
+        return format!(
+            "{prefix}{each_player} may draw a card, then each player who drew a card this way gains {}.",
+            gain_tail.trim_end_matches('.')
+        );
+    }
+    if let Some((prefix, rest)) = text
+        .split_once("For each player, You may that player ")
+        .or_else(|| text.split_once("for each player, You may that player "))
         && let Some((first, second)) = rest.split_once(". If you don't, that player ")
     {
         let first = normalize_for_each_may_first(first);
@@ -14316,6 +14333,18 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
             .replacen("For each opponent, Deal ", "This spell deals ", 1)
             .replacen("for each opponent, deal ", "This spell deals ", 1)
             .replace(" damage to that player", " damage to each opponent");
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("For each player, You may that player ")
+        .or_else(|| trimmed.strip_prefix("for each player, You may that player "))
+        && let Some((draw_clause, gain_tail)) =
+            rest.split_once(". For each player, that player gains ")
+        && (draw_clause == "draws a card" || draw_clause == "draw a card")
+    {
+        return format!(
+            "Each player may draw a card, then each player who drew a card this way gains {}",
+            gain_tail.trim_end_matches('.')
+        );
     }
     if let Some(rest) = trimmed
         .strip_prefix("For each player, You may that player ")
