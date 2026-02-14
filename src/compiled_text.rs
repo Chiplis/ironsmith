@@ -566,12 +566,58 @@ fn looks_like_creature_type_list_subject(subject: &str) -> bool {
     true
 }
 
+fn normalize_enchanted_creature_dies_clause(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    let tail = strip_prefix_ascii_ci(trimmed, "Whenever a enchanted creature dies, ")
+        .or_else(|| strip_prefix_ascii_ci(trimmed, "When a enchanted creature dies, "))
+        .or_else(|| strip_prefix_ascii_ci(trimmed, "Whenever enchanted creature dies, "))
+        .or_else(|| strip_prefix_ascii_ci(trimmed, "When enchanted creature dies, "))?;
+
+    let tail = tail.trim();
+    if let Some(counter_tail) =
+        strip_prefix_ascii_ci(tail, "return it from graveyard to the battlefield. put ")
+            .and_then(|rest| {
+                strip_suffix_ascii_ci(rest, " on it.")
+                    .or_else(|| strip_suffix_ascii_ci(rest, " on it"))
+            })
+    {
+        return Some(format!(
+            "When enchanted creature dies, return that card to the battlefield under your control with {} on it.",
+            counter_tail.trim()
+        ));
+    }
+
+    let create_tail = strip_prefix_ascii_ci(tail, "return this aura to its owner's hand. ")
+        .or_else(|| strip_prefix_ascii_ci(tail, "return this permanent to its owner's hand. "))
+        .and_then(|rest| strip_prefix_ascii_ci(rest, "create "))
+        .or_else(|| {
+            strip_prefix_ascii_ci(tail, "return this aura to its owner's hand and create ")
+        })
+        .or_else(|| {
+            strip_prefix_ascii_ci(tail, "return this permanent to its owner's hand and create ")
+        });
+    if let Some(create_tail) = create_tail {
+        let mut create_clause = create_tail.trim().to_string();
+        if !create_clause.ends_with('.') {
+            create_clause.push('.');
+        }
+        return Some(format!(
+            "When enchanted creature dies, return this card to its owner's hand and create {create_clause}"
+        ));
+    }
+
+    None
+}
+
 fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     if let Some(rewritten) = normalize_granted_activated_ability_clause(&normalized) {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_granted_beginning_trigger_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_enchanted_creature_dies_clause(&normalized) {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_inline_earthbend_phrasing(&normalized) {
@@ -14925,6 +14971,28 @@ mod tests {
         assert_eq!(
             normalized,
             "Creatures you control have \"At the beginning of your upkeep draw a card.\""
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_unholy_indenture_style_trigger() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Whenever a enchanted creature dies, return it from graveyard to the battlefield. Put a +1/+1 counter on it.",
+        );
+        assert_eq!(
+            normalized,
+            "When enchanted creature dies, return that card to the battlefield under your control with a +1/+1 counter on it."
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_nurgles_rot_style_trigger() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Whenever a enchanted creature dies, return this permanent to its owner's hand. Create a 1/3 black Demon creature token under your control.",
+        );
+        assert_eq!(
+            normalized,
+            "When enchanted creature dies, return this card to its owner's hand and create a 1/3 black Demon creature token under your control."
         );
     }
 
