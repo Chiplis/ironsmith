@@ -8910,7 +8910,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = rewrite_granted_triggered_ability_quote(&normalized) {
         normalized = rewritten;
     }
-    let normalized_lower = normalized.to_ascii_lowercase();
     if let Some(rewritten) = rewrite_return_with_counters_on_it_sequence(&normalized) {
         return rewritten;
     }
@@ -8921,38 +8920,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         && prefix.to_ascii_lowercase().starts_with("scry ")
     {
         return format!("{prefix}, then draw a card.");
-    }
-    if normalized_lower
-        == "tap up to two target creature an opponent controls. creature can't untap until your next turn."
-        || normalized_lower
-            == "tap up to two target creature an opponent controls. creature can't untap until your next turn"
-        || normalized_lower
-            == "tap up to two target creatures an opponent controls. creature can't untap until your next turn."
-        || normalized_lower
-            == "tap up to two target creatures an opponent controls. creature can't untap until your next turn"
-    {
-        return "Tap up to two target creatures you don't control. Those creatures don't untap during their controller's next untap step.".to_string();
-    }
-    if normalized_lower
-        .contains("tap up to two target creatures an opponent controls. creature can't untap until your next turn")
-    {
-        return normalized
-            .replace(
-                "Tap up to two target creatures an opponent controls. creature can't untap until your next turn.",
-                "Tap up to two target creatures you don't control. Those creatures don't untap during their controller's next untap step.",
-            )
-            .replace(
-                "Tap up to two target creatures an opponent controls. creature can't untap until your next turn",
-                "Tap up to two target creatures you don't control. Those creatures don't untap during their controller's next untap step",
-            )
-            .replace(
-                "tap up to two target creatures an opponent controls. creature can't untap until your next turn.",
-                "Tap up to two target creatures you don't control. Those creatures don't untap during their controller's next untap step.",
-            )
-            .replace(
-                "tap up to two target creatures an opponent controls. creature can't untap until your next turn",
-                "Tap up to two target creatures you don't control. Those creatures don't untap during their controller's next untap step",
-            );
     }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "Whenever you cast a Spirit or Arcane: ")
         && let Some(effect_text) = strip_suffix_ascii_ci(rest, ". spell.")
@@ -8971,99 +8938,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return "Deal 1 damage to each creature target opponent controls.".to_string();
     }
-    if let Some(rest) = strip_prefix_ascii_ci(
-        &normalized,
-        "When this land enters, you choose a permanent you control in the battlefield. you sacrifice a permanent. If you do, search your library for up to one basic land ",
-    ) && let Some(land_choices) = strip_suffix_ascii_ci(
-        rest,
-        " you own, put it onto the battlefield tapped, then shuffle. you gain 1 life.",
-    )
-    .or_else(|| {
-        strip_suffix_ascii_ci(
-            rest,
-            " you own, put it onto the battlefield tapped, then shuffle. you gain 1 life",
-        )
-    }) {
-        return format!(
-            "When this land enters, sacrifice it. If you do, search your library for a basic {land_choices} card, put it onto the battlefield tapped, then shuffle and you gain 1 life."
-        );
-    }
-    if normalized_lower
-        == "at the beginning of your end step: you may reveal your hand. return all land card in your hand to the battlefield. if you do, discard your hand."
-        || normalized_lower
-            == "at the beginning of your end step: you may reveal your hand. return all land card in your hand to the battlefield. if you do, discard your hand"
-    {
-        return "At the beginning of your end step, you may reveal your hand and put all land cards from it onto the battlefield. If you do, discard your hand.".to_string();
-    }
-    if normalized_lower.contains("destroy all creature without a counter on it") {
-        return "Destroy all creatures with no counters on them.".to_string();
-    }
-    if normalized_lower.contains("a land you control can't untap until your next turn")
-        || normalized_lower.contains("a land you control cant untap until your next turn")
-    {
-        return normalized
-            .replace(
-                "a land you control can't untap until your next turn",
-                "Lands you control don't untap during your next untap step",
-            )
-            .replace(
-                "a land you control cant untap until your next turn",
-                "Lands you control don't untap during your next untap step",
-            );
-    }
-    if normalized_lower.contains("permanent can't untap while you control this creature")
-        || normalized_lower.contains("permanent cant untap while you control this creature")
-    {
-        return normalized
-            .replace(
-                "permanent can't untap while you control this creature",
-                "That creature doesn't untap during its controller's untap step for as long as you control this creature",
-            )
-            .replace(
-                "permanent cant untap while you control this creature",
-                "That creature doesn't untap during its controller's untap step for as long as you control this creature",
-            );
-    }
-    if normalized_lower
-        == "search your library for x permanent you own, put them into your hand, then shuffle."
-        || normalized_lower
-            == "search your library for x permanent you own, put them into your hand, then shuffle"
-    {
-        return "Search your library for X cards, put those cards into your hand, then shuffle."
-            .to_string();
-    }
-    if normalized_lower == "you draw a card. permanent enter the battlefield tapped."
-        || normalized_lower == "you draw a card. permanent enter the battlefield tapped"
-    {
-        return "Permanents enter tapped this turn. Draw a card.".to_string();
-    }
-    if normalized_lower
-        == "when this creature dies, put the number of creature -1/-1 counter(s) on target creature."
-        || normalized_lower
-            == "when this creature dies, put the number of creature -1/-1 counter(s) on target creature"
-    {
-        return "When this creature dies, put a -1/-1 counter on target creature for each -1/-1 counter on this creature.".to_string();
-    }
-    if normalized_lower == "if the target spell was kicked, counter target spell."
-        || normalized_lower == "if the target spell was kicked, counter target spell"
-    {
-        return "Counter target spell if it was kicked.".to_string();
-    }
-    if normalized_lower
-        == "if the target spell was the second spell cast this turn, counter target spell."
-        || normalized_lower
-            == "if the target spell was the second spell cast this turn, counter target spell"
-    {
-        return "Counter target spell that's the second spell cast this turn.".to_string();
-    }
-    if normalized_lower
-        == "if the target creature has the greatest power among creatures on the battlefield, exile target creature."
-        || normalized_lower
-            == "if the target creature has the greatest power among creatures on the battlefield, exile target creature"
-    {
-        return "Exile target creature with the greatest power among creatures on the battlefield."
-            .to_string();
-    }
     if normalized_lower.contains("creature without a counter on its get ")
         && normalized_lower.contains(" until end of turn")
     {
@@ -9080,27 +8954,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             return replaced;
         }
     }
-    if normalized_lower.contains("whenever this creature deals damage to spider")
-        && normalized_lower.contains("destroy it")
-    {
-        return "Whenever this creature deals damage to a Spider, destroy that creature."
-            .to_string();
-    }
-    if normalized_lower.contains("create two 1/1 colorless robot artifact creature token")
-        && normalized_lower.contains("flying")
-        && normalized_lower.contains("tapped")
-        && normalized_lower.contains("under your control")
-    {
-        return "Create two tapped 1/1 colorless Robot artifact creature tokens with flying."
-            .to_string();
-    }
-    if normalized_lower
-        == "whenever a nontoken creature you control dies, deal 1 damage to you. draw a card."
-        || normalized_lower
-            == "whenever a nontoken creature you control dies, deal 1 damage to you. draw a card"
-    {
-        return "Whenever a nontoken creature you control dies, this creature deals 1 damage to you and you draw a card.".to_string();
-    }
     if normalized_lower == "return target creature to its owner's hand and you gain 2 life."
         || normalized_lower == "return target creature to its owner's hand and you gain 2 life"
         || normalized_lower == "return target creature to its owner's hand. you gain 2 life."
@@ -9112,12 +8965,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         || normalized_lower == "nonartifact creature can't block until end of turn"
     {
         return "Nonartifact creatures can't block this turn.".to_string();
-    }
-    if normalized_lower.contains("create 1 1/1 blue thopter artifact creature token with flying")
-        && normalized_lower.contains("you gain 1 life")
-    {
-        return "Create a 1/1 blue Thopter artifact creature token with flying. You gain 1 life."
-            .to_string();
     }
     if normalized_lower == "enters the battlefield with 1 +1/+1 counter(s)."
         || normalized_lower == "enters the battlefield with 1 +1/+1 counter(s)"
@@ -9144,11 +8991,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         };
         return format!("This creature enters with {rendered_count} +1/+1 {counter_word} on it.");
     }
-    if normalized_lower.contains(
-        "search your library for a card, put it into your hand, then shuffle and you lose 3 life",
-    ) {
-        return "Search your library for a card, put that card into your hand, then shuffle. You lose 3 life.".to_string();
-    }
 
     if let Some(rewritten) = normalize_for_each_player_draw_discard_chain(&normalized) {
         normalized = rewritten;
@@ -9161,16 +9003,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     }
     if let Some((left, right)) = normalized.split_once(" or Whenever ") {
         return format!("{left} or {}", lowercase_first(right.trim_end_matches('.')));
-    }
-    if normalized == "Destroy all artifact. Destroy all creatures. Destroy all enchantment."
-        || normalized == "Destroy all artifact. Destroy all creatures. Destroy all enchantment"
-    {
-        return "Destroy all artifacts, creatures, and enchantments.".to_string();
-    }
-    if normalized == "Exile all creature. Exile all Spacecraft."
-        || normalized == "Exile all creature. Exile all Spacecraft"
-    {
-        return "Exile all creatures and Spacecraft.".to_string();
     }
     if let Some(rest) = normalized.strip_prefix("Put the number of ")
         && let Some((count_and_counter, target_tail)) = rest.split_once(" counter(s) on ")
@@ -9197,40 +9029,9 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return format!("Put a -1/-1 counter on each {filter}.");
     }
-    if normalized == "Put a +1/+1 counter on target creature. Proliferate."
-        || normalized == "Put a +1/+1 counter on target creature. Proliferate"
-    {
-        return "Put a +1/+1 counter on target creature, then proliferate.".to_string();
-    }
-    if normalized == "Put a -1/-1 counter on target creature. Proliferate."
-        || normalized == "Put a -1/-1 counter on target creature. Proliferate"
-    {
-        return "Put a -1/-1 counter on target creature, then proliferate.".to_string();
-    }
-    if normalized == "Scry 4. you draw two cards." || normalized == "Scry 4. you draw two cards" {
-        return "Scry 4, then draw two cards.".to_string();
-    }
-    if normalized == "Tap up to two target creatures. creature can't untap until your next turn."
-        || normalized == "Tap up to two target creatures. creature can't untap until your next turn"
-    {
-        return "Tap up to two target creatures. Those creatures don't untap during their controller's next untap step.".to_string();
-    }
-    if normalized == "Target player discards 2 cards. target player loses 2 life."
-        || normalized == "Target player discards 2 cards. target player loses 2 life"
-    {
-        return "Target player discards two cards and loses 2 life.".to_string();
-    }
     if let Some(rewritten) = normalize_embedded_create_with_token_reminder(&normalized) {
         normalized = rewritten;
     }
-    normalized = normalized.replace(
-        "Create 1 Treasure artifact token with {T}, Sacrifice this artifact: Add one mana of any color. tapped under your control",
-        "Create a tapped Treasure token",
-    );
-    normalized = normalized.replace(
-        "create 1 treasure artifact token with {t}, sacrifice this artifact: add one mana of any color. tapped under your control",
-        "create a tapped Treasure token",
-    );
     if let Some((prefix, rest)) = normalized.split_once(", create 1 ")
         && (prefix.starts_with("When ")
             || prefix.starts_with("Whenever ")
@@ -9288,38 +9089,11 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         }
         return format!("Create {}.", join_with_and(&items));
     }
-    if normalized.contains(" Pest creature token under your control and you gain 1 life") {
-        return normalized.replace(
-            " Pest creature token under your control and you gain 1 life",
-            " Pest creature token with \"When this token dies, you gain 1 life.\" under your control",
-        );
-    }
-    if normalized.contains(" Pest creature tokens under your control and you gain 1 life") {
-        return normalized.replace(
-            " Pest creature tokens under your control and you gain 1 life",
-            " Pest creature tokens with \"When this token dies, you gain 1 life.\" under your control",
-        );
-    }
     if let Some((prefix, tail)) = normalized.split_once(". Put the number of ")
         && let Some((count_filter, target_tail)) = tail.split_once(" +1/+1 counter(s) on ")
     {
         let target = target_tail.trim_end_matches('.');
         return format!("{prefix}. Put a +1/+1 counter on {target} for each {count_filter}.");
-    }
-    if normalized.contains("Exile all artifact.")
-        && normalized.contains("Exile all creature.")
-        && normalized.contains("Exile all land.")
-        && normalized.contains("Exile all card from a graveyard")
-        && normalized.contains("Exile all card in hand")
-    {
-        return "Exile all artifacts, creatures, and lands from the battlefield, all cards from all graveyards, and all cards from all hands.".to_string();
-    }
-    if normalized.contains("Exile all creature.")
-        && normalized.contains("Exile all artifact.")
-        && normalized.contains("Exile all enchantment")
-        && !normalized.contains("Exile all card from a graveyard")
-    {
-        return "Exile all creatures, artifacts, and enchantments.".to_string();
     }
     if normalized == "Destroy all artifact. Destroy all enchantment."
         || normalized == "Destroy all artifact. Destroy all enchantment"
@@ -9385,59 +9159,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return format!("This creature deals {amount} damage to each other creature.");
     }
-    if normalized
-        == "For each another creature you control, Create 1 Powerstone artifact token under your control, tapped."
-        || normalized
-            == "For each another creature you control, Create 1 Powerstone artifact token under your control, tapped"
-    {
-        return "Create a tapped Powerstone token for each other creature you control.".to_string();
-    }
-    if let Some(rest) = normalized.strip_prefix("Create ")
-        && let Some((token_desc, tail)) = rest
-            .split_once(" token with ")
-            .or_else(|| rest.split_once(" tokens with "))
-        && let Some((ability_text, after_control)) = tail.split_once(" under your control")
-    {
-        if token_desc.contains(". ")
-            || ability_text.contains(". ")
-            || after_control.contains(". Create ")
-            || after_control.contains(". create ")
-        {
-            return normalized;
-        }
-        let ability_core = ability_text.trim().trim_matches('"').trim_end_matches('.');
-        let ability_lower = ability_core.to_ascii_lowercase();
-        let looks_like_token_reminder = ability_lower.starts_with("when this token")
-            || ability_lower.starts_with("whenever this creature")
-            || ability_core.starts_with('{')
-            || ability_lower.starts_with("flying and {");
-        if looks_like_token_reminder {
-            let is_single = token_desc.starts_with("1 ")
-                || token_desc.starts_with("a ")
-                || token_desc.starts_with("an ")
-                || token_desc.starts_with("one ");
-            let token_word = if is_single { "token" } else { "tokens" };
-            let pronoun = if is_single { "It has" } else { "They have" };
-            let mut first =
-                format!("Create {token_desc} {token_word} under your control{after_control}");
-            if !first.ends_with('.') {
-                first.push('.');
-            }
-            let mut ability = ability_core.to_string();
-            if let Some(rest) = ability
-                .strip_prefix("flying and ")
-                .or_else(|| ability.strip_prefix("Flying and "))
-            {
-                first = first.replacen(
-                    " token under your control",
-                    " token with flying under your control",
-                    1,
-                );
-                ability = rest.to_string();
-            }
-            return format!("{first} {pronoun} \"{ability}.\"");
-        }
-    }
     if let Some(rest) = normalized.strip_prefix("Create 1 ")
         && let Some((token_desc, tail)) = rest.split_once(" token under your control, tapped")
     {
@@ -9467,11 +9188,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             return format!("Create {token_desc} tokens{tail}");
         }
     }
-    if normalized == "Enters the battlefield with 2 -1/-1 counter(s)."
-        || normalized == "Enters the battlefield with 2 -1/-1 counter(s)"
-    {
-        return "This creature enters with two -1/-1 counters on it.".to_string();
-    }
     if let Some(rest) = normalized
         .strip_prefix("Choose up to two target creatures. ")
         .or_else(|| normalized.strip_prefix("choose up to two target creatures. "))
@@ -9489,43 +9205,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "{prefix}, each player sacrifices {} creatures of their choice.",
             normalize_count_token(amount)
         );
-    }
-    if let Some(rest) = normalized.strip_prefix(
-        "When this creature enters, you mill 3 cards. Return any number of target artifact or creature card with mana value ",
-    ) && let Some(limit) = strip_suffix_ascii_ci(rest, " or less from your graveyard to the battlefield.")
-        .or_else(|| strip_suffix_ascii_ci(rest, " or less from your graveyard to the battlefield"))
-    {
-        return format!(
-            "When this creature enters, mill three cards, then return any number of artifact creature cards with total mana value {limit} or less from your graveyard to the battlefield."
-        );
-    }
-    if normalized == "Exile two target card from an opponent's graveyard. it explores."
-        || normalized == "Exile two target card from an opponent's graveyard. it explores"
-    {
-        return "Exile two target cards from an opponent's graveyard. This creature explores."
-            .to_string();
-    }
-    if normalized == "Add the number of an enchantment you control mana of any one color."
-        || normalized == "Add the number of an enchantment you control mana of any one color"
-    {
-        return "Add X mana of any one color, where X is the number of enchantments you control."
-            .to_string();
-    }
-    if normalized
-        == "Return any number of target creature card with power 10 or less from your graveyard to the battlefield. Exile this permanent."
-        || normalized
-            == "Return any number of target creature card with power 10 or less from your graveyard to the battlefield. Exile this permanent"
-        || normalized
-            == "Return any number of target creature cards with power 10 or less from your graveyard to the battlefield. Exile this permanent."
-        || normalized
-            == "Return any number of target creature cards with power 10 or less from your graveyard to the battlefield. Exile this permanent"
-        || normalized
-            == "Return any number of target creature cards with power 10 or less from your graveyard to the battlefield. Exile this spell."
-        || normalized
-            == "Return any number of target creature cards with power 10 or less from your graveyard to the battlefield. Exile this spell"
-    {
-        return "Return any number of target creature cards with total power 10 or less from your graveyard to the battlefield. Exile this spell."
-            .to_string();
     }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "Exile target card in graveyard") {
         return format!("Exile target card from a graveyard{rest}");
@@ -11091,14 +10770,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
             keyword.to_ascii_lowercase()
         );
     }
-    if normalized
-        == "Creature you control with a +1/+1 counter on it have First strike as long as it's your turn."
-        || normalized
-            == "Creature you control with a +1/+1 counter on it have First strike as long as it's your turn"
-    {
-        return "During your turn, creatures you control with +1/+1 counters on them have first strike."
-            .to_string();
-    }
     if let Some(count) = normalized
         .strip_prefix("For each opponent, that player discards ")
         .and_then(|rest| rest.strip_suffix(" cards."))
@@ -11209,142 +10880,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     {
         return format!("Each opponent loses {amount} life.");
     }
-    if normalized == "Land is no longer snow." || normalized == "Land is no longer snow" {
-        return "All lands are no longer snow.".to_string();
-    }
-
-    if let Some(rest) = normalized
-        .strip_prefix("At the beginning of each player's upkeep: a player may loses ")
-        .or_else(|| {
-            normalized.strip_prefix("At the beginning of each player's upkeep, a player may loses ")
-        })
-        && let Some((amount, tail)) = rest.split_once(" life. If a player doesn't, ")
-    {
-        let tail = tail
-            .replace("target player's ", "that player's ")
-            .replace("target player", "that player");
-        return format!(
-            "At the beginning of each player's upkeep, that player may pay {amount} life. If they don't, {tail}"
-        );
-    }
-
-    if let Some((cost, effect)) = normalized.split_once(": ") {
-        let effect_trimmed = effect.trim();
-        if effect_trimmed == "Tap target opponent's artifact."
-            || effect_trimmed == "Tap target opponent's artifact"
-        {
-            return format!("{cost}: Tap target artifact you don't control.");
-        }
-        if let Some(rest) =
-            effect_trimmed.strip_prefix("For each another creature without flying, Deal ")
-            && let Some(amount) = rest
-                .strip_suffix(" damage to that object.")
-                .or_else(|| rest.strip_suffix(" damage to that object"))
-        {
-            return format!(
-                "{cost}: This creature deals {amount} damage to each other creature without flying."
-            );
-        }
-        if effect_trimmed
-            == "Prevent the next 1 damage to target creature until end of turn. For each other creature that shares a color with that object, Prevent the next 1 damage to that object until end of turn."
-            || effect_trimmed
-                == "Prevent the next 1 damage to target creature until end of turn. For each other creature that shares a color with that object, Prevent the next 1 damage to that object until end of turn"
-        {
-            return format!(
-                "{cost}: Prevent the next 1 damage that would be dealt to target creature and each other creature that shares a color with it this turn."
-            );
-        }
-        if effect_trimmed
-            == "you may Put target creature card in your hand onto the battlefield. creatures gain Haste until end of turn. you sacrifice a creature."
-            || effect_trimmed
-                == "you may Put target creature card in your hand onto the battlefield. creatures gain Haste until end of turn. you sacrifice a creature"
-            || effect_trimmed
-                == "you may Put creature card in your hand onto the battlefield. creatures gain Haste until end of turn. you sacrifice a creature."
-            || effect_trimmed
-                == "you may Put creature card in your hand onto the battlefield. creatures gain Haste until end of turn. you sacrifice a creature"
-        {
-            return format!(
-                "{cost}: You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step."
-            );
-        }
-        if effect_trimmed
-            == "For each player, that player draws a card. For each player, that player discards a card."
-            || effect_trimmed
-                == "For each player, that player draws a card. For each player, that player discards a card"
-        {
-            return format!("{cost}: Each player draws a card, then discards a card.");
-        }
-        if let Some(amount) = effect_trimmed
-            .strip_prefix("For each opponent, Deal ")
-            .and_then(|rest| rest.strip_suffix(" damage to that player."))
-            .or_else(|| {
-                effect_trimmed
-                    .strip_prefix("For each opponent, Deal ")
-                    .and_then(|rest| rest.strip_suffix(" damage to that player"))
-            })
-        {
-            return format!("{cost}: Deal {amount} damage to each opponent.");
-        }
-        if let Some(draw_amount) = effect_trimmed
-            .strip_prefix(
-                "For each player, that player discards their hand. For each player, that player draws ",
-            )
-            .and_then(|rest| rest.strip_suffix(" cards."))
-            .or_else(|| {
-                effect_trimmed
-                    .strip_prefix(
-                        "For each player, that player discards their hand. For each player, that player draws ",
-                    )
-                    .and_then(|rest| rest.strip_suffix(" cards"))
-            })
-        {
-            return format!("{cost}: Each player discards their hand, then draws {draw_amount} cards.");
-        }
-        if let Some(amount) = effect_trimmed
-            .strip_prefix("Prevent the next ")
-            .and_then(|rest| rest.split_once(" damage to "))
-            && let Some(target) = amount
-                .1
-                .strip_suffix(" until end of turn.")
-                .or_else(|| amount.1.strip_suffix(" until end of turn"))
-        {
-            return format!(
-                "{cost}: Prevent the next {} damage that would be dealt to {target} this turn.",
-                amount.0
-            );
-        }
-        if effect_trimmed == "you draw a card." || effect_trimmed == "you draw a card" {
-            return format!("{cost}: Draw a card.");
-        }
-        if effect_trimmed == "you draw two cards." || effect_trimmed == "you draw two cards" {
-            return format!("{cost}: Draw two cards.");
-        }
-        if effect_trimmed == "Add 3 mana of any one color to your mana pool."
-            || effect_trimmed == "Add 3 mana of any one color to your mana pool"
-        {
-            return format!("{cost}: Add three mana of any one color.");
-        }
-        if effect_trimmed == "Add 1 mana of any color to your mana pool."
-            || effect_trimmed == "Add 1 mana of any color to your mana pool"
-        {
-            return format!("{cost}: Add one mana of any color.");
-        }
-        if effect_trimmed == "Add {R} for each opponent's tapped land to your mana pool."
-            || effect_trimmed == "Add {R} for each opponent's tapped land to your mana pool"
-        {
-            return format!("{cost}: Add {{R}} for each tapped land your opponents control.");
-        }
-        if effect_trimmed == "Add {R} for each Goblin to your mana pool."
-            || effect_trimmed == "Add {R} for each Goblin to your mana pool"
-        {
-            return format!("{cost}: Add {{R}} for each Goblin on the battlefield.");
-        }
-        if effect_trimmed == "Add {U} for each Clue you control to your mana pool."
-            || effect_trimmed == "Add {U} for each Clue you control to your mana pool"
-        {
-            return format!("{cost}: Add {{U}} for each Clue you control.");
-        }
-    }
 
     if normalized
         == "For each player, that player draws a card. For each player, that player discards a card."
@@ -11394,24 +10929,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         })
     {
         return format!("Whenever this creature attacks, each opponent loses {amount} life.");
-    }
-    if let Some(rest) = normalized.strip_prefix("Whenever an opponent casts creature, ")
-        && let Some((amount, cost)) = rest
-            .strip_prefix("an opponent loses ")
-            .and_then(|tail| tail.split_once(" life unless an opponent pays "))
-    {
-        return format!(
-            "Whenever an opponent casts a creature spell, that player loses {amount} life unless they pay {cost}"
-        );
-    }
-    if let Some(rest) = normalized.strip_prefix("Whenever an opponent casts creature, ")
-        && let Some((amount, cost)) = rest
-            .strip_prefix("deal ")
-            .and_then(|tail| tail.split_once(" damage to target player unless target player pays "))
-    {
-        return format!(
-            "Whenever an opponent casts a creature spell, this enchantment deals {amount} damage to that player unless they pay {cost}"
-        );
     }
     if let Some(card_text) = normalized
         .strip_prefix("For each player, Put ")
@@ -11468,21 +10985,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
             kind.trim()
         );
     }
-    if normalized == "Destroy target enchantment or Spirit."
-        || normalized == "Destroy target enchantment or Spirit"
-    {
-        return "Destroy target Spirit or enchantment.".to_string();
-    }
-    if normalized == "Destroy target nonblack land or creature."
-        || normalized == "Destroy target nonblack land or creature"
-    {
-        return "Destroy target land or nonblack creature.".to_string();
-    }
-    if normalized == "Destroy target white or green creature."
-        || normalized == "Destroy target white or green creature"
-    {
-        return "Destroy target green or white creature.".to_string();
-    }
     if let Some(rest) =
         normalized.strip_prefix("For each creature or planeswalker without flying, Deal ")
         && let Some(amount) = rest
@@ -11516,22 +11018,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         || normalized == "Tap target opponent's artifact"
     {
         return "Tap target artifact you don't control.".to_string();
-    }
-    if let Some(cost) = normalized
-        .strip_prefix(
-            "When this creature enters, for each opponent, that player sacrifices a permanent unless that player pays ",
-        )
-        .and_then(|tail| tail.strip_suffix("."))
-        .or_else(|| {
-            normalized
-                .strip_prefix(
-                    "When this creature enters, for each opponent, that player sacrifices a permanent unless that player pays ",
-                )
-        })
-    {
-        return format!(
-            "When this creature enters, each opponent sacrifices a permanent of their choice unless they pay {cost}."
-        );
     }
     if normalized == "For each target opponent's creature, Deal 1 damage to that object."
         || normalized == "For each target opponent's creature, Deal 1 damage to that object"
@@ -12132,17 +11618,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     {
         return format!("Each player returns all {kind} cards from their graveyard to their hand");
     }
-    if trimmed == "For each player, Return target player's creature to its owner's hand"
-        || trimmed == "For each player, Return target player's creature to its owner's hand."
-    {
-        return "Each player returns a creature they control to its owner's hand".to_string();
-    }
-    if trimmed == "Target player sacrifices target player's attacking/blocking creature"
-        || trimmed == "Target player sacrifices target player's attacking/blocking creature."
-    {
-        return "Target player sacrifices an attacking or blocking creature of their choice"
-            .to_string();
-    }
     if let Some(counter_rest) = trimmed.strip_prefix("For each ")
         && let Some((subject, tail)) = counter_rest.split_once(", Put ")
         && let Some(counter_phrase) = tail.strip_suffix(" on that object")
@@ -12151,9 +11626,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     }
     if trimmed == "Destroy all creature" {
         return "Destroy all creatures".to_string();
-    }
-    if trimmed == "creatures have Blocks each combat if able" {
-        return "All creatures able to block this creature do so".to_string();
     }
     if trimmed == "Destroy all land" {
         return "Destroy all lands".to_string();
@@ -12172,22 +11644,8 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     {
         return "Destroy all artifacts and enchantments".to_string();
     }
-    if trimmed == "Destroy all artifact or creature. Destroy all enchantments" {
-        return "Destroy all artifacts, creatures, and enchantments".to_string();
-    }
     if trimmed == "Counter target spell Spirit or Arcane" {
         return "Counter target Spirit or Arcane spell".to_string();
-    }
-    if let Some(damage) = trimmed
-        .strip_prefix("Counter target spell. Deal ")
-        .and_then(|rest| rest.strip_suffix(" damage to target creature"))
-    {
-        return format!(
-            "Counter target spell and this spell deals {damage} damage to target creature"
-        );
-    }
-    if trimmed == "Counter target spell unless its controller pays {2}. Counter target spell" {
-        return "Counter target spell unless its controller pays {2}".to_string();
     }
     if let Some(rest) = trimmed.strip_prefix("Counter target spell unless its controller pays ")
         && let Some((amount, tail)) = rest.split_once(". If it happened, Surveil ")
@@ -12342,20 +11800,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     if trimmed.contains("target sliver") {
         return trimmed.replace("target sliver", "target Sliver");
     }
-    if trimmed == "target player sacrifices target player's creature" {
-        return "Target player sacrifices a creature of their choice".to_string();
-    }
-    if trimmed == "target player sacrifices target player's creature. target player loses 1 life" {
-        return "Target player sacrifices a creature of their choice and loses 1 life".to_string();
-    }
-    if trimmed == "target player sacrifices target player's attacking/blocking permanent" {
-        return "Target player sacrifices an attacking or blocking creature of their choice"
-            .to_string();
-    }
-    if trimmed == "target player sacrifices target player's attacking/blocking creature" {
-        return "Target player sacrifices an attacking or blocking creature of their choice"
-            .to_string();
-    }
     if let Some(rest) = trimmed.strip_prefix("target player sacrifices target player's ")
         && !rest.is_empty()
         && !rest.contains(". ")
@@ -12412,107 +11856,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     if let Some(buff) = trimmed.strip_prefix("other creature with flying you control get ") {
         return format!("Other creatures you control with flying get {buff}");
     }
-    if trimmed
-        == "Whenever a enchantment you control enters the battlefield: Put 1 +1/+1 counter(s) on this creature. you draw a card"
-    {
-        return "Whenever an enchantment you control enters, put a +1/+1 counter on this creature and draw a card"
-            .to_string();
-    }
-    if let Some(rest) = trimmed.strip_prefix("For each player, Deal ")
-        && let Some((amount, per_player_tail)) =
-            rest.split_once(" damage to that player. For each ")
-        && let Some((per_player_filter, repeated_damage)) = per_player_tail.split_once(", Deal ")
-        && repeated_damage == format!("{amount} damage to that object")
-    {
-        let per_player_filter = per_player_filter
-            .strip_suffix(" that player controls")
-            .unwrap_or(per_player_filter);
-        return format!("Deal {amount} damage to each player and each {per_player_filter}");
-    }
-    if let Some(rest) = trimmed.strip_prefix("For each opponent, Deal ")
-        && let Some((amount, discard_tail)) =
-            rest.split_once(" damage to that player. Each opponent discards ")
-    {
-        return format!(
-            "This spell deals {amount} damage to each opponent. Those players each discard {}",
-            discard_tail.trim_end_matches('.')
-        );
-    }
-    if (trimmed.contains("For each opponent, Deal ")
-        || trimmed
-            .to_ascii_lowercase()
-            .contains("for each opponent, deal "))
-        && trimmed
-            .to_ascii_lowercase()
-            .contains(" damage to that player")
-    {
-        return trimmed
-            .replacen("For each opponent, Deal ", "This spell deals ", 1)
-            .replacen("for each opponent, deal ", "This spell deals ", 1)
-            .replace(" damage to that player", " damage to each opponent");
-    }
-    if let Some(rest) = trimmed
-        .strip_prefix("For each player, You may that player ")
-        .or_else(|| trimmed.strip_prefix("for each player, You may that player "))
-        && let Some((first, second)) = rest.split_once(". If you don't, that player ")
-    {
-        let mut first = first.trim_end_matches('.').to_string();
-        if let Some(suffix) = first.strip_prefix("sacrifices ") {
-            first = format!("sacrifice {suffix}");
-        }
-        first = first.replace(
-            "a permanent that shares a card type with that object that player controls",
-            "a permanent of their choice that shares a card type with it",
-        );
-        first = first.replace(
-            "a permanent that player controls and shares a card type with that object",
-            "a permanent of their choice that shares a card type with it",
-        );
-        first = first.replace(
-            "that player controls and shares a card type with it",
-            "that shares a card type with it",
-        );
-        let mut second = second.trim_end_matches('.').to_string();
-        if let Some((prefix, _)) = second.split_once(". Draw a card") {
-            second = format!("{} and you draw a card", prefix.trim_end_matches('.'));
-        } else if let Some((prefix, _)) = second.split_once(". draw a card") {
-            second = format!("{} and you draw a card", prefix.trim_end_matches('.'));
-        }
-        return format!(
-            "Each player may {first}. For each player who doesn't, that player {second}"
-        );
-    }
-    if let Some(rest) = trimmed
-        .strip_prefix("For each opponent, You may that player ")
-        .or_else(|| trimmed.strip_prefix("for each opponent, You may that player "))
-        && let Some((first, second)) = rest.split_once(". If you don't, that player ")
-    {
-        let mut first = first.trim_end_matches('.').to_string();
-        if let Some(suffix) = first.strip_prefix("sacrifices ") {
-            first = format!("sacrifice {suffix}");
-        }
-        first = first.replace(
-            "a permanent that shares a card type with that object that player controls",
-            "a permanent of their choice that shares a card type with it",
-        );
-        first = first.replace(
-            "a permanent that player controls and shares a card type with that object",
-            "a permanent of their choice that shares a card type with it",
-        );
-        first = first.replace(
-            "that player controls and shares a card type with it",
-            "that shares a card type with it",
-        );
-        let mut second = second.trim_end_matches('.').to_string();
-        if let Some((prefix, _)) = second.split_once(". Draw a card") {
-            second = format!("{} and you draw a card", prefix.trim_end_matches('.'));
-        } else if let Some((prefix, _)) = second.split_once(". draw a card") {
-            second = format!("{} and you draw a card", prefix.trim_end_matches('.'));
-        }
-        return format!(
-            "Each opponent may {first}. For each opponent who doesn't, that player {second}"
-        );
-    }
     if let Some(loss_tail) = trimmed.strip_prefix("For each opponent, that player loses ")
         && let Some(gain_tail) = loss_tail.split_once(" life. you gain ")
     {
@@ -12561,10 +11904,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         && let Some(amount) = rest.strip_suffix(" damage to that object")
     {
         return format!("Deal {amount} damage to each creature your opponents control");
-    }
-    if trimmed == "Tap all an opponent's creature. Untap all a creature you control" {
-        return "Tap all creatures your opponents control and untap all creatures you control"
-            .to_string();
     }
     if let Some(rest) = strip_prefix_ascii_ci(trimmed, "creatures you control get ")
         && let Some(buff) = rest
@@ -12640,36 +11979,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     {
         return "At the beginning of your upkeep, sacrifice this enchantment unless you pay {W}{W}"
             .to_string();
-    }
-    if trimmed == "Destroy all an opponent's nonland permanent" {
-        return "Destroy all nonland permanents your opponents control".to_string();
-    }
-    if trimmed == "Destroy target white or green creature" {
-        return "Destroy target green or white creature".to_string();
-    }
-    if trimmed == "an opponent's creature enter the battlefield tapped" {
-        return "Creatures your opponents control enter tapped".to_string();
-    }
-    if trimmed == "Return all target player's nonland permanent to its owner's hand" {
-        return "Return all nonland permanents target player controls to their owner's hand"
-            .to_string();
-    }
-    if trimmed
-        == "target opponent loses 3 life. Put a card from target player's hand on top of target player's library"
-    {
-        return "Target opponent loses 3 life and puts a card from their hand on top of their library"
-            .to_string();
-    }
-    if trimmed == "Exchange control of creature and creature" {
-        return "Exchange control of two target creatures".to_string();
-    }
-    if trimmed == "Exchange control of permanent and permanent" {
-        return "Exchange control of two target permanents".to_string();
-    }
-    if trimmed
-        == "For each player, Put a card from target player's hand on top of target player's library"
-    {
-        return "each player puts a card from their hand on top of their library".to_string();
     }
     if let Some(prefix) = trimmed.strip_suffix(" that an opponent's land could produce") {
         return format!("{prefix} that a land an opponent controls could produce");
