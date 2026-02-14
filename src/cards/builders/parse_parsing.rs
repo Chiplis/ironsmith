@@ -9456,7 +9456,7 @@ fn append_token_reminder_to_effect(effect: Option<&mut EffectAst>, reminder: &st
 
 fn parse_target_player_choose_objects_clause(
     tokens: &[Token],
-) -> Result<Option<(PlayerAst, ObjectFilter)>, CardTextError> {
+) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.len() < 4 || clause_words.first().copied() != Some("target") {
         return Ok(None);
@@ -9474,10 +9474,36 @@ fn parse_target_player_choose_objects_clause(
         return Ok(None);
     }
 
-    let choose_object_tokens = trim_commas(&tokens[3..]);
+    let mut choose_object_tokens = trim_commas(&tokens[3..]);
     if choose_object_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing chosen object after target-player choose clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let mut count = ChoiceCount::exactly(1);
+    if choose_object_tokens
+        .first()
+        .is_some_and(|token| token.is_word("up"))
+        && choose_object_tokens
+            .get(1)
+            .is_some_and(|token| token.is_word("to"))
+        && let Some((value, used)) = parse_number(&choose_object_tokens[2..])
+    {
+        count = ChoiceCount {
+            min: 0,
+            max: Some(value as usize),
+            dynamic_x: false,
+        };
+        choose_object_tokens = trim_commas(&choose_object_tokens[2 + used..]);
+    } else if let Some((value, used)) = parse_number(&choose_object_tokens) {
+        count = ChoiceCount::exactly(value as usize);
+        choose_object_tokens = trim_commas(&choose_object_tokens[used..]);
+    }
+    if choose_object_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing chosen object filter after count in target-player choose clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
@@ -9495,14 +9521,15 @@ fn parse_target_player_choose_objects_clause(
         });
     }
 
-    Ok(Some((chooser, choose_filter)))
+    Ok(Some((chooser, choose_filter, count)))
 }
 
 fn parse_target_player_chooses_then_other_cant_block(
     first: &[Token],
     second: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some((chooser, mut choose_filter)) = parse_target_player_choose_objects_clause(first)?
+    let Some((chooser, mut choose_filter, choose_count)) =
+        parse_target_player_choose_objects_clause(first)?
     else {
         return Ok(None);
     };
@@ -9577,13 +9604,80 @@ fn parse_target_player_chooses_then_other_cant_block(
     Ok(Some(vec![
         EffectAst::ChooseObjects {
             filter: choose_filter,
-            count: ChoiceCount::exactly(1),
+            count: choose_count,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         },
         EffectAst::Cant {
             restriction: crate::effect::Restriction::block(restriction_filter),
             duration: Until::EndOfTurn,
+        },
+    ]))
+}
+
+fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    let first_clause = trim_commas(&tokens[..and_idx]);
+    let second_clause = trim_commas(&tokens[and_idx + 1..]);
+    if second_clause.is_empty() {
+        return Ok(None);
+    }
+
+    let Some((chooser, choose_filter, choose_count)) =
+        parse_target_player_choose_objects_clause(&first_clause)?
+    else {
+        return Ok(None);
+    };
+
+    let second_words = words(&second_clause);
+    if !matches!(second_words.first().copied(), Some("put" | "puts")) {
+        return Ok(None);
+    }
+    let Some(on_idx) = second_clause.iter().position(|token| token.is_word("on")) else {
+        return Ok(None);
+    };
+    if !second_clause
+        .get(on_idx + 1)
+        .is_some_and(|token| token.is_word("top"))
+        || !second_clause
+            .get(on_idx + 2)
+            .is_some_and(|token| token.is_word("of"))
+    {
+        return Ok(None);
+    }
+    let destination_words = words(&second_clause[on_idx + 3..]);
+    if !destination_words.contains(&"library") {
+        return Ok(None);
+    }
+
+    let moved_tokens = trim_commas(&second_clause[1..on_idx]);
+    let moved_words = words(&moved_tokens);
+    let target = if moved_tokens.is_empty()
+        || moved_words.as_slice() == ["it"]
+        || moved_words.as_slice() == ["them"]
+        || moved_words.as_slice() == ["those"]
+        || moved_words.as_slice() == ["those", "cards"]
+    {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&second_clause))
+    } else {
+        parse_target_phrase(&moved_tokens)?
+    };
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter: choose_filter,
+            count: choose_count,
+            player: chooser,
+            tag: TagKey::from(IT_TAG),
+        },
+        EffectAst::MoveToZone {
+            target,
+            zone: Zone::Library,
+            to_top: true,
         },
     ]))
 }
@@ -11330,6 +11424,10 @@ const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "each-player-choose-keep-rest-sacrifice",
         parser: parse_sentence_each_player_choose_and_sacrifice_rest,
+    },
+    SentencePrimitive {
+        name: "target-player-choose-then-put-on-top-library",
+        parser: parse_sentence_target_player_chooses_then_puts_on_top_of_library,
     },
     SentencePrimitive {
         name: "exile-instead-of-graveyard",
@@ -16706,13 +16804,12 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         return Ok(effect);
     }
 
-    if let Some((chooser, mut choose_filter)) = parse_target_player_choose_objects_clause(tokens)? {
-        if choose_filter.card_types.is_empty() {
-            choose_filter.card_types.push(CardType::Creature);
-        }
+    if let Some((chooser, choose_filter, choose_count)) =
+        parse_target_player_choose_objects_clause(tokens)?
+    {
         return Ok(EffectAst::ChooseObjects {
             filter: choose_filter,
-            count: ChoiceCount::exactly(1),
+            count: choose_count,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         });

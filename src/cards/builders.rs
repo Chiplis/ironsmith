@@ -5535,6 +5535,37 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_target_player_choose_cards_then_put_on_top_of_library() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Stunted Growth Variant")
+            .parse_text(
+                "Target player chooses three cards from their hand and puts them on top of their library in any order.",
+            )
+            .expect("parse choose-and-put-on-top sequence");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("ChooseObjectsEffect"),
+            "expected choose-objects step, got {debug}"
+        );
+        assert!(
+            debug.contains("count: ChoiceCount { min: 3, max: Some(3)")
+                && debug.contains("dynamic_x: false"),
+            "expected exact three-card choice count, got {debug}"
+        );
+        assert!(
+            debug.contains("zone: Hand"),
+            "expected choose filter in hand, got {debug}"
+        );
+        assert!(
+            debug.contains("MoveToZoneEffect")
+                && debug.contains("to: Library")
+                && debug.contains("to_top: true"),
+            "expected move-to-library-top follow-up, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_self_enters_with_counters_as_static_not_spell_effect() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Self ETB Counter Variant")
             .parse_text("This creature enters with four +1/+1 counters on it.")
