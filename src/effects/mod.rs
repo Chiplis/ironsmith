@@ -66,10 +66,10 @@ pub use cards::{
     RevealTopEffect, ScryEffect, SearchLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
-    EnterAttackingEffect, FightEffect, GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect,
-    ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
-    PreventAllCombatDamageFromEffect, PreventAllDamageEffect, PreventDamageEffect,
-    SetBasePowerToughnessEffect,
+    EnterAttackingEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
+    GrantAbilitiesTargetEffect, ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect,
+    ModifyPowerToughnessForEachEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
+    PreventDamageEffect, SetBasePowerToughnessEffect,
 };
 pub use composition::{
     AdaptEffect, BolsterEffect, ChooseModeEffect, ChooseObjectsEffect, ConditionalEffect,
@@ -101,16 +101,16 @@ pub use permanents::{
 pub use player::{
     ControlPlayerEffect, CreateEmblemEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect,
     ExperienceCountersEffect, ExtraTurnEffect, GrantEffect, GrantPlayFromGraveyardEffect,
-    LoseTheGameEffect, PoisonCountersEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
-    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, WinTheGameEffect,
+    LoseTheGameEffect, PayEnergyEffect, PoisonCountersEffect, SkipCombatPhasesEffect,
+    SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, WinTheGameEffect,
 };
 pub use replacement::{ApplyReplacementEffect, ReplacementApplyMode};
 pub use restrictions::CantEffect;
 pub use stack::{ChooseNewTargetsEffect, CopySpellEffect, CounterEffect};
 pub use tokens::{CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect};
 pub use zones::{
-    DestroyEffect, ExileEffect, ExileFromHandAsCostEffect, MoveToZoneEffect,
-    PutOntoBattlefieldEffect, ReturnAllToBattlefieldEffect,
+    DestroyEffect, ExileEffect, ExileFromHandAsCostEffect, ExileUntilDuration, ExileUntilEffect,
+    MoveToZoneEffect, PutOntoBattlefieldEffect, ReturnAllToBattlefieldEffect,
     ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
 };

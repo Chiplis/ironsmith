@@ -545,6 +545,9 @@ pub enum Value {
     /// The toughness of a specific object
     ToughnessOf(Box<ChooseSpec>),
 
+    /// The mana value of a specific object.
+    ManaValueOf(Box<ChooseSpec>),
+
     /// Life total of a player
     LifeTotal(PlayerFilter),
 
@@ -1177,6 +1180,9 @@ pub enum Condition {
     /// Source object is tapped
     SourceIsTapped,
 
+    /// Source object has no counters of a specific type.
+    SourceHasNoCounter(CounterType),
+
     /// At least N mana of a specific color/type was spent to cast this spell.
     /// If `symbol` is `None`, checks total mana spent instead.
     ManaSpentToCastThisSpellAtLeast {
@@ -1252,6 +1258,12 @@ impl Effect {
     pub fn connive(target: ChooseSpec) -> Self {
         use crate::effects::ConniveEffect;
         Self::new(ConniveEffect::new(target))
+    }
+
+    /// Create a "goad target creature" effect.
+    pub fn goad(target: ChooseSpec) -> Self {
+        use crate::effects::GoadEffect;
+        Self::new(GoadEffect::new(target))
     }
 
     /// Create an "explore" effect for a chosen object.
@@ -1366,6 +1378,18 @@ impl Effect {
     pub fn exile_any_number(choice: ChooseSpec) -> Self {
         use crate::effects::ExileEffect;
         Self::new(ExileEffect::any_number(choice))
+    }
+
+    /// Create an "exile target until this source leaves the battlefield" effect.
+    pub fn exile_until_source_leaves(choice: ChooseSpec) -> Self {
+        use crate::effects::ExileUntilEffect;
+        Self::new(ExileUntilEffect::source_leaves(choice))
+    }
+
+    /// Create an "exile ... until <duration>" effect.
+    pub fn exile_until(choice: ChooseSpec, duration: crate::effects::ExileUntilDuration) -> Self {
+        use crate::effects::ExileUntilEffect;
+        Self::new(ExileUntilEffect::new(choice, duration))
     }
 
     /// Create a "sacrifice" effect.
@@ -2366,6 +2390,15 @@ impl Effect {
     pub fn choose_exactly(count: impl Into<Value>, modes: Vec<EffectMode>) -> Self {
         use crate::effects::ChooseModeEffect;
         Self::new(ChooseModeEffect::choose_exactly(count, modes))
+    }
+
+    /// Create a "choose exactly N" modal effect that allows choosing the same mode more than once.
+    pub fn choose_exactly_allow_repeated_modes(
+        count: impl Into<Value>,
+        modes: Vec<EffectMode>,
+    ) -> Self {
+        use crate::effects::ChooseModeEffect;
+        Self::new(ChooseModeEffect::choose_exactly(count, modes).with_repeated_modes())
     }
 
     /// Create a "choose up to N" modal effect.

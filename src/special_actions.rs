@@ -731,6 +731,8 @@ pub fn perform_activate_mana_ability(
             pay_cost_component_with_choice(game, cost, &mut cost_ctx)
                 .map_err(cost_error_to_action_error)?;
         }
+        let x_value_from_costs = cost_ctx.x_value;
+        drop(cost_ctx);
 
         // Add mana to player's pool
         if let Some(player_data) = game.player_mut(player) {
@@ -742,6 +744,9 @@ pub fn perform_activate_mana_ability(
         // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
         if let Some(effects) = additional_effects {
             let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker);
+            if let Some(x) = x_value_from_costs {
+                effect_ctx = effect_ctx.with_x(x);
+            }
             for effect in effects {
                 // Ignore effect execution errors for mana abilities
                 let _ = effect.0.execute(game, &mut effect_ctx);
@@ -1652,5 +1657,49 @@ mod tests {
             starting_life - 2,
             "Controller should have taken 2 damage"
         );
+    }
+
+    #[test]
+    fn test_mana_ability_counter_cost_sets_x_for_effects() {
+        use crate::effect::Value;
+        use crate::object::CounterType;
+        use crate::target::PlayerFilter;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let battery = CardBuilder::new(CardId::from_raw(88), "Counter Battery")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let obj_id = game.create_object_from_card(&battery, alice, Zone::Battlefield);
+
+        if let Some(obj) = game.object_mut(obj_id) {
+            obj.add_counters(CounterType::Charge, 2);
+            obj.abilities.push(Ability::mana_with_effects(
+                TotalCost::from_cost(crate::costs::Cost::remove_counters(CounterType::Charge, 2)),
+                vec![crate::effect::Effect::new(
+                    crate::effects::mana::AddScaledManaEffect::new(
+                    vec![ManaSymbol::Black],
+                    Value::X,
+                    PlayerFilter::You,
+                ))],
+            ));
+        }
+
+        let action = SpecialAction::ActivateManaAbility {
+            permanent_id: obj_id,
+            ability_index: 0,
+        };
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        assert!(perform(action, &mut game, alice, &mut dm).is_ok());
+
+        let player = game.player(alice).expect("alice should exist");
+        assert_eq!(player.mana_pool.black, 2, "expected X=2 black mana");
+
+        let counters = game
+            .object(obj_id)
+            .and_then(|obj| obj.counters.get(&CounterType::Charge).copied())
+            .unwrap_or(0);
+        assert_eq!(counters, 0, "charge counters should be removed as a cost");
     }
 }

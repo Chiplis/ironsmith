@@ -1345,10 +1345,6 @@ impl StaticAbilityKind for MakeColorlessForFilter {
         Box::new(self.clone())
     }
 
-    fn is_devoid(&self) -> bool {
-        self.filter == ObjectFilter::source()
-    }
-
     fn generate_effects(
         &self,
         source: ObjectId,

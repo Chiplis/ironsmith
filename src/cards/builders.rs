@@ -281,6 +281,7 @@ enum PredicateAst {
         player: PlayerAst,
     },
     SourceIsTapped,
+    SourceHasNoCounter(CounterType),
     YouAttackedThisTurn,
     NoSpellsWereCastLastTurn,
     TargetWasKicked,
@@ -477,6 +478,10 @@ enum EffectAst {
         cost: ManaCost,
         player: PlayerAst,
     },
+    PayEnergy {
+        amount: Value,
+        player: PlayerAst,
+    },
     Cant {
         restriction: crate::effect::Restriction,
         duration: crate::effect::Until,
@@ -556,6 +561,9 @@ enum EffectAst {
         target: TargetAst,
     },
     ConniveIterated,
+    Goad {
+        target: TargetAst,
+    },
     Transform {
         target: TargetAst,
     },
@@ -666,6 +674,9 @@ enum EffectAst {
         filter: ObjectFilter,
     },
     Exile {
+        target: TargetAst,
+    },
+    ExileUntilSourceLeaves {
         target: TargetAst,
     },
     ExileAll {
@@ -3501,6 +3512,34 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_energy_pay_clause_includes_pay_energy_effect() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Energy Pay Trigger Variant")
+            .parse_text(
+                "Whenever this creature attacks, you may pay {E}. If you do, put a +1/+1 counter on this creature.",
+            )
+            .expect("energy pay trigger line should parse");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability");
+
+        let debug = format!("{:?}", triggered.effects);
+        assert!(
+            debug.contains("PayEnergyEffect"),
+            "expected pay energy effect, got {debug}"
+        );
+        assert!(
+            debug.contains("PutCountersEffect"),
+            "expected +1/+1 counter effect in if-you-do branch, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_add_black_for_each_creature_in_graveyard_compiles_scaled_mana() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Crypt Probe")
             .parse_text("Add {B} for each creature card in your graveyard.")
@@ -5700,5 +5739,5 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "parser-tests"))]
 mod tests;

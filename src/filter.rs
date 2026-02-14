@@ -2056,7 +2056,10 @@ impl ObjectFilter {
                     post_noun_qualifiers
                         .push("that shares a creature type with that object".to_string());
                 }
-                TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SameStableId => {}
+                TaggedOpbjectRelation::SharesCardType => {
+                    post_noun_qualifiers.push("that shares a card type with that object".to_string());
+                }
+                TaggedOpbjectRelation::SameStableId => {}
             }
         }
         if !self.supertypes.is_empty() {

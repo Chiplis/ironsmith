@@ -11,6 +11,7 @@
 
 mod enter_attacking;
 mod fight;
+mod goad;
 mod grant_abilities_all;
 mod grant_abilities_target;
 mod modify_power_toughness;
@@ -23,6 +24,7 @@ mod set_base_power_toughness;
 
 pub use enter_attacking::EnterAttackingEffect;
 pub use fight::FightEffect;
+pub use goad::GoadEffect;
 pub use grant_abilities_all::GrantAbilitiesAllEffect;
 pub use grant_abilities_target::GrantAbilitiesTargetEffect;
 pub use modify_power_toughness::ModifyPowerToughnessEffect;

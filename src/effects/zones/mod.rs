@@ -6,6 +6,7 @@
 mod destroy;
 mod exile;
 mod exile_from_hand_as_cost;
+mod exile_until_source_leaves;
 mod move_to_zone;
 mod put_onto_battlefield;
 mod return_all_to_battlefield;
@@ -18,6 +19,7 @@ mod sacrifice;
 pub use destroy::DestroyEffect;
 pub use exile::ExileEffect;
 pub use exile_from_hand_as_cost::ExileFromHandAsCostEffect;
+pub use exile_until_source_leaves::{ExileUntilDuration, ExileUntilEffect};
 pub use move_to_zone::MoveToZoneEffect;
 pub use put_onto_battlefield::PutOntoBattlefieldEffect;
 pub use return_all_to_battlefield::ReturnAllToBattlefieldEffect;

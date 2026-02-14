@@ -1206,7 +1206,6 @@ fn reject_known_partial_parse_line(normalized: &str, line: &str) -> Result<(), C
         || normalized.contains("defending player exiles two permanents they control")
         || normalized.contains("phases out")
         || normalized.contains("return it to the battlefield flipped")
-        || normalized.contains("shares a card type with it. for each opponent who doesn't")
         || normalized.contains("as this creature enters, sacrifice any number of untapped forests")
         || normalized.contains("your first spell during each opponent's turn")
         || normalized.contains(
@@ -13841,6 +13840,16 @@ fn parse_search_library_sentence(
     if !search_words.starts_with(&["search", "your", "library", "for"]) {
         return Ok(None);
     }
+    let mentions_nth_from_top = search_words
+        .windows(4)
+        .any(|window| window[1] == "from" && window[2] == "the" && window[3] == "top")
+        && !search_words.windows(4).any(|window| window == ["on", "top", "of", "library"]);
+    if mentions_nth_from_top {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported search-library top-position clause (clause: '{}')",
+            words_all.join(" ")
+        )));
+    }
 
     let for_idx = search_tokens
         .iter()
@@ -18073,6 +18082,17 @@ fn parse_gain_life(
     validate_life_keyword(rest)?;
     let trailing = trim_commas(&rest[1..]);
     if !trailing.is_empty() {
+        let trailing_words = words(&trailing);
+        if trailing_words
+            .windows(6)
+            .any(|window| window == ["then", "shuffle", "your", "graveyard", "into", "your"])
+            && trailing_words.contains(&"library")
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing life-gain shuffle-graveyard clause (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
         if let Some(resolved) = parse_life_amount_from_trailing(&amount, &trailing)? {
             amount = resolved;
             return Ok(EffectAst::GainLife { amount, player });

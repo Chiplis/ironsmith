@@ -933,6 +933,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CountPlayers(_)
         | Value::Devotion { .. }
         | Value::ColorsOfManaSpentToCastThisSpell
+        | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
         | Value::CardsInHand(_)
         | Value::CardsInGraveyard(_)
@@ -1555,6 +1556,7 @@ mod tests {
                 effects: vec![Effect::gain_life(1)],
                 choices: vec![],
                 timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,

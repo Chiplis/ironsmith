@@ -236,6 +236,10 @@ fn evaluate_condition_simple(
             };
             spent >= *amount
         }
+        Condition::SourceHasNoCounter(counter_type) => game
+            .object(source)
+            .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) == 0)
+            .unwrap_or(false),
         Condition::TaggedObjectMatches(_, _) => false,
         Condition::Not(inner) => !evaluate_condition_simple(game, inner, controller, source),
         Condition::And(a, b) => {
@@ -406,7 +410,9 @@ fn evaluate_condition(
             if !game.object_has_card_type(target_id, crate::types::CardType::Creature) {
                 return Ok(false);
             }
-            let Some(target_power) = game.calculated_power(target_id).or_else(|| target_obj.power())
+            let Some(target_power) = game
+                .calculated_power(target_id)
+                .or_else(|| target_obj.power())
             else {
                 return Ok(false);
             };
@@ -420,6 +426,10 @@ fn evaluate_condition(
             Ok(max_power.is_some_and(|max| target_power >= max))
         }
         Condition::SourceIsTapped => Ok(game.is_tapped(ctx.source)),
+        Condition::SourceHasNoCounter(counter_type) => Ok(game
+            .object(ctx.source)
+            .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) == 0)
+            .unwrap_or(false)),
         Condition::TargetIsAttacking => {
             // Check if the target is among declared attackers
             // Note: Combat attackers are tracked in game_loop, not game_state directly.

@@ -45,7 +45,7 @@ use crate::object::CounterType;
 use crate::player::ManaPool;
 use crate::rules::combat::{
     deals_first_strike_damage_with_game, deals_regular_combat_damage_with_game, maximum_blockers,
-    minimum_blockers_with_game,
+    minimum_blockers,
 };
 use crate::rules::damage::{
     DamageResult, DamageTarget, calculate_damage_with_game, distribute_trample_damage,
@@ -204,7 +204,7 @@ fn queue_triggers_from_event(
 
         if game
             .object(damage_event.source)
-            .map(|o| game.object_has_card_type(o.id, CardType::Creature))
+            .map(|o| o.is_creature())
             .unwrap_or(false)
         {
             *game
@@ -7655,7 +7655,7 @@ pub fn apply_attacker_declarations(
             .into());
         }
 
-        if !game.object_has_card_type(decl.creature, CardType::Creature) {
+        if !creature.is_creature() {
             return Err(ResponseError::InvalidAttackers("Not a creature".to_string()).into());
         }
 
@@ -7666,7 +7666,7 @@ pub fn apply_attacker_declarations(
         });
 
         // Tap the creature (unless it has vigilance)
-        if !crate::rules::combat::has_vigilance_with_game(creature, game) {
+        if !crate::rules::combat::has_vigilance(creature) {
             tap_permanent_with_trigger(game, trigger_queue, decl.creature);
         }
 
@@ -7767,7 +7767,7 @@ pub fn apply_blocker_declarations(
             .into());
         }
 
-        if !game.object_has_card_type(decl.blocker, CardType::Creature) {
+        if !blocker.is_creature() {
             return Err(ResponseError::InvalidBlockers("Not a creature".to_string()).into());
         }
 
@@ -7826,7 +7826,7 @@ pub fn apply_blocker_declarations(
             .into());
         };
 
-        let min = minimum_blockers_with_game(attacker, game);
+        let min = minimum_blockers(attacker);
         if !blockers.is_empty() && blockers.len() < min {
             return Err(ResponseError::InvalidBlockers(format!(
                 "{:?} needs at least {} blockers",

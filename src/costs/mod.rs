@@ -68,7 +68,7 @@ pub use processing_mode::CostProcessingMode;
 
 // Re-export all cost implementations
 pub use counters::{AddCountersCost, RemoveAnyCountersAmongCost, RemoveCountersCost};
-pub use discard::{DiscardCost, DiscardHandCost};
+pub use discard::{DiscardCost, DiscardHandCost, DiscardSourceCost};
 pub use effect::EffectCost;
 pub use energy::EnergyCost;
 pub use exile::{ExileFromGraveyardCost, ExileFromHandCost, ExileSelfCost};
@@ -161,6 +161,11 @@ impl Cost {
     /// Create a discard hand cost.
     pub fn discard_hand() -> Self {
         Self::new(DiscardHandCost::new())
+    }
+
+    /// Create a discard-this-card cost.
+    pub fn discard_source() -> Self {
+        Self::new(DiscardSourceCost::new())
     }
 
     /// Create an exile self cost.

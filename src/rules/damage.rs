@@ -79,7 +79,11 @@ fn get_static_abilities(source: &Object) -> Vec<StaticAbility> {
         .collect()
 }
 
-fn has_ability_id_with_game(source: &Object, game: &GameState, ability_id: StaticAbilityId) -> bool {
+fn has_ability_id_with_game(
+    source: &Object,
+    game: &GameState,
+    ability_id: StaticAbilityId,
+) -> bool {
     let abilities = game
         .calculated_characteristics(source.id)
         .map(|c| c.static_abilities)

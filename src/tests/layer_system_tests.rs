@@ -2797,3 +2797,85 @@ fn test_must_attack_with_optional_creature() {
         "Dauthi Slayer should be the attacker"
     );
 }
+
+#[test]
+fn test_goaded_creature_must_attack_if_able() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bears_def = grizzly_bears();
+    let creature_id = game.create_object_from_definition(&bears_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(creature_id);
+
+    let source = game.create_object_from_definition(&bears_def, alice, Zone::Battlefield);
+    game.add_goad_effect(creature_id, bob, Until::YourNextTurn, source);
+
+    let mut combat = new_combat();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations: Vec<AttackerDeclaration> = Vec::new();
+
+    let result =
+        apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations);
+    match result {
+        Err(GameLoopError::CombatError(CombatError::MustAttackNotDeclared(id))) => {
+            assert_eq!(
+                id, creature_id,
+                "goaded creature should be required to attack"
+            );
+        }
+        other => panic!("expected MustAttackNotDeclared for goaded creature, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_goaded_creature_cant_attack_goader_when_other_player_available() {
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let bears_def = grizzly_bears();
+    let creature_id = game.create_object_from_definition(&bears_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(creature_id);
+
+    let source = game.create_object_from_definition(&bears_def, bob, Zone::Battlefield);
+    game.add_goad_effect(creature_id, bob, Until::YourNextTurn, source);
+
+    let combat = new_combat();
+    let options = crate::decision::compute_legal_attackers(&game, &combat);
+    let attacker = options
+        .iter()
+        .find(|option| option.creature == creature_id)
+        .expect("expected goaded creature to be attack-capable");
+    assert!(
+        attacker
+            .valid_targets
+            .contains(&AttackTarget::Player(charlie)),
+        "goaded creature should still be able to attack non-goader players"
+    );
+    assert!(
+        !attacker.valid_targets.contains(&AttackTarget::Player(bob)),
+        "goaded creature should not be able to attack the goader when another player is attackable"
+    );
+
+    let declarations = vec![AttackerDeclaration {
+        creature: creature_id,
+        target: AttackTarget::Player(bob),
+    }];
+    let mut combat = new_combat();
+    let mut trigger_queue = TriggerQueue::new();
+    let result =
+        apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations);
+    match result {
+        Err(GameLoopError::ResponseError(crate::decision::ResponseError::InvalidAttackers(_))) => {}
+        other => panic!("expected InvalidAttackers for illegal goad target, got {other:?}"),
+    }
+}

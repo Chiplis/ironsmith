@@ -206,12 +206,14 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         EffectAst::DealDamage { target, .. }
         | EffectAst::Counter { target }
         | EffectAst::Explore { target }
+        | EffectAst::Goad { target }
         | EffectAst::PutCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target }
+        | EffectAst::ExileUntilSourceLeaves { target }
         | EffectAst::LookAtHand { target }
         | EffectAst::Transform { target }
         | EffectAst::Regenerate { target }
@@ -431,12 +433,14 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         EffectAst::DealDamage { target, .. }
         | EffectAst::Counter { target }
         | EffectAst::Explore { target }
+        | EffectAst::Goad { target }
         | EffectAst::PutCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target }
+        | EffectAst::ExileUntilSourceLeaves { target }
         | EffectAst::LookAtHand { target }
         | EffectAst::Transform { target }
         | EffectAst::Regenerate { target }
@@ -754,12 +758,14 @@ fn collect_tag_spans_from_effect(
         EffectAst::DealDamage { target, .. }
         | EffectAst::Counter { target }
         | EffectAst::Explore { target }
+        | EffectAst::Goad { target }
         | EffectAst::PutCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target }
+        | EffectAst::ExileUntilSourceLeaves { target }
         | EffectAst::LookAtHand { target }
         | EffectAst::Transform { target }
         | EffectAst::Regenerate { target }
@@ -1041,6 +1047,54 @@ fn compile_effects_in_iterated_player_context(
     )
 }
 
+fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
+    for effect in effects {
+        match effect {
+            EffectAst::CreateToken { player, .. }
+            | EffectAst::CreateTokenWithMods { player, .. }
+            | EffectAst::CreateTokenCopy { player, .. }
+            | EffectAst::CreateTokenCopyFromSource { player, .. } => {
+                if matches!(player, PlayerAst::Implicit) {
+                    *player = PlayerAst::You;
+                }
+            }
+            EffectAst::May { effects }
+            | EffectAst::MayByPlayer { effects, .. }
+            | EffectAst::MayByTaggedController { effects, .. }
+            | EffectAst::IfResult { effects, .. }
+            | EffectAst::ForEachOpponent { effects }
+            | EffectAst::ForEachPlayer { effects }
+            | EffectAst::ForEachObject { effects, .. }
+            | EffectAst::ForEachTagged { effects, .. }
+            | EffectAst::ForEachOpponentDoesNot { effects }
+            | EffectAst::ForEachPlayerDoesNot { effects }
+            | EffectAst::ForEachTaggedPlayer { effects, .. }
+            | EffectAst::DelayedUntilNextEndStep { effects, .. }
+            | EffectAst::DelayedUntilEndOfCombat { effects }
+            | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects }
+            | EffectAst::UnlessPays { effects, .. }
+            | EffectAst::VoteOption { effects, .. } => {
+                force_implicit_vote_token_controller_you(effects);
+            }
+            EffectAst::UnlessAction {
+                effects,
+                alternative,
+                ..
+            } => {
+                force_implicit_vote_token_controller_you(effects);
+                force_implicit_vote_token_controller_you(alternative);
+            }
+            EffectAst::Conditional {
+                if_true, if_false, ..
+            } => {
+                force_implicit_vote_token_controller_you(if_true);
+                force_implicit_vote_token_controller_you(if_false);
+            }
+            _ => {}
+        }
+    }
+}
+
 fn compile_vote_sequence(
     effects: &[EffectAst],
     ctx: &mut CompileContext,
@@ -1088,13 +1142,14 @@ fn compile_vote_sequence(
             let mut vote_options = Vec::new();
             let mut choices = Vec::new();
             for option in options {
-                let option_effects_ast = option_effects.get(option).ok_or_else(|| {
+                let mut option_effects_ast = option_effects.get(option).cloned().ok_or_else(|| {
                     CardTextError::ParseError(format!("missing effects for vote option '{option}'"))
                 })?;
+                force_implicit_vote_token_controller_you(&mut option_effects_ast);
                 ctx.last_effect_id = None;
                 ctx.last_object_tag = None;
                 ctx.last_player_filter = None;
-                let (compiled, option_choices) = compile_effects(option_effects_ast, ctx)?;
+                let (compiled, option_choices) = compile_effects(&option_effects_ast, ctx)?;
                 for choice in option_choices {
                     push_choice(&mut choices, choice);
                 }
@@ -1684,6 +1739,14 @@ fn compile_effect(
                 ))
             })
         }
+        EffectAst::PayEnergy { amount, player } => {
+            compile_player_effect_from_filter(*player, ctx, false, |filter| {
+                Effect::new(crate::effects::PayEnergyEffect::new(
+                    amount.clone(),
+                    ChooseSpec::Player(filter),
+                ))
+            })
+        }
         EffectAst::Cant {
             restriction,
             duration,
@@ -1824,7 +1887,18 @@ fn compile_effect(
             count,
         } => {
             let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, true)?;
-            let mut resolved_filter = resolve_it_tag(filter, ctx)?;
+            let mut resolved_filter = match resolve_it_tag(filter, ctx) {
+                Ok(resolved) => resolved,
+                Err(_)
+                    if filter.tagged_constraints.len() == 1
+                        && filter.tagged_constraints[0].tag.as_str() == IT_TAG =>
+                {
+                    // "Sacrifice it" can legally refer to the source itself in standalone
+                    // clauses like "If there are no counters on this land, sacrifice it."
+                    ObjectFilter::source()
+                }
+                Err(err) => return Err(err),
+            };
             if resolved_filter.controller.is_none() {
                 resolved_filter.controller = Some(chooser.clone());
             }
@@ -1890,6 +1964,10 @@ fn compile_effect(
             Ok((vec![effect], choices))
         }
         EffectAst::ConniveIterated => Ok((vec![Effect::connive(ChooseSpec::Iterated)], Vec::new())),
+        EffectAst::Goad { target } => {
+            let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            Ok((vec![Effect::goad(spec)], choices))
+        }
         EffectAst::ReturnToHand { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
             let from_graveyard = target_mentions_graveyard(target);
@@ -2184,6 +2262,16 @@ fn compile_effect(
             }
             Ok((vec![effect], choices))
         }
+        EffectAst::ExileUntilSourceLeaves { target } => {
+            let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            let mut effect = Effect::exile_until_source_leaves(spec.clone());
+            if spec.is_target() {
+                let tag = ctx.next_tag("exiled");
+                effect = effect.tag(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
+            Ok((vec![effect], choices))
+        }
         EffectAst::LookAtHand { target } => {
             let (effects, choices) = compile_effect_for_target(target, ctx, |spec| {
                 Effect::new(crate::effects::LookAtHandEffect::new(spec))
@@ -2319,6 +2407,9 @@ fn compile_effect(
                     Condition::PlayerHasLessLifeThanYou { player }
                 }
                 PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
+                PredicateAst::SourceHasNoCounter(counter_type) => {
+                    Condition::SourceHasNoCounter(*counter_type)
+                }
                 PredicateAst::YouAttackedThisTurn => Condition::AttackedThisTurn,
                 PredicateAst::NoSpellsWereCastLastTurn => Condition::NoSpellsWereCastLastTurn,
                 PredicateAst::TargetWasKicked => Condition::TargetWasKicked,

@@ -178,10 +178,12 @@ fn check_permanent_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
 
             // Creature with lethal damage dies (unless indestructible)
             let damage_marked = game.damage_on(obj_id);
-            let toughness_for_lethal = game.calculated_toughness(obj_id).or_else(|| obj.toughness());
-            if toughness_for_lethal.is_some_and(|toughness| {
-                toughness > 0 && damage_marked >= toughness as u32
-            }) && !is_indestructible
+            let toughness_for_lethal = game
+                .calculated_toughness(obj_id)
+                .or_else(|| obj.toughness());
+            if toughness_for_lethal
+                .is_some_and(|toughness| toughness > 0 && damage_marked >= toughness as u32)
+                && !is_indestructible
             {
                 actions.push(StateBasedAction::ObjectDies(obj_id));
                 continue;

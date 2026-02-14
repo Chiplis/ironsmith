@@ -5694,6 +5694,14 @@ fn reject_singleton_partial_parse_clauses_030() {
         "Return all land cards from your graveyard to the battlefield, then shuffle your graveyard into your library.",
     );
     assert_partial_parse_rejected(
+        "Archangel's Light Variant",
+        "You gain 2 life for each card in your graveyard, then shuffle your graveyard into your library.",
+    );
+    assert_partial_parse_rejected(
+        "Long-Term Plans Variant",
+        "Search your library for a card, then shuffle and put that card third from the top.",
+    );
+    assert_partial_parse_rejected(
         "Reckless Blaze Variant",
         "Whenever a creature you control dealt damage this way dies this turn, add {R}.",
     );

@@ -219,7 +219,9 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
             .any(|obj| {
                 obj.controller == blocker.controller
                     && game.object_has_card_type(obj.id, CardType::Land)
-                    && game.calculated_subtypes(obj.id).contains(&required_land_subtype)
+                    && game
+                        .calculated_subtypes(obj.id)
+                        .contains(&required_land_subtype)
             });
         if defending_has_required_land {
             return false;
@@ -252,9 +254,7 @@ fn protection_prevents_blocking(
         .unwrap_or_else(|| blocker.card_types.clone());
 
     match protection {
-        ProtectionFrom::Color(colors) => {
-            !colors.intersection(blocker_colors).is_empty()
-        }
+        ProtectionFrom::Color(colors) => !colors.intersection(blocker_colors).is_empty(),
         ProtectionFrom::AllColors => !blocker_colors.is_empty(),
         ProtectionFrom::Creatures => blocker_card_types.contains(&CardType::Creature),
         ProtectionFrom::CardType(card_type) => blocker_card_types.contains(card_type),
@@ -282,10 +282,7 @@ pub fn minimum_blockers(attacker: &Object) -> usize {
 
 /// Returns the minimum number of blockers required to block an attacker,
 /// accounting for granted abilities from continuous effects.
-pub fn minimum_blockers_with_game(
-    attacker: &Object,
-    game: &crate::game_state::GameState,
-) -> usize {
+pub fn minimum_blockers_with_game(attacker: &Object, game: &crate::game_state::GameState) -> usize {
     if has_ability_id_with_game(attacker, game, StaticAbilityId::Menace) {
         2
     } else {
@@ -368,7 +365,9 @@ pub fn can_attack_defending_player(
             .any(|obj| {
                 obj.controller == defending_player
                     && game.object_has_card_type(obj.id, CardType::Land)
-                    && game.calculated_subtypes(obj.id).contains(&required_land_subtype)
+                    && game
+                        .calculated_subtypes(obj.id)
+                        .contains(&required_land_subtype)
             });
         if !defending_has_required_land {
             return false;

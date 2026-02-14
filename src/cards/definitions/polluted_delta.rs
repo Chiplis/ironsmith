@@ -60,7 +60,14 @@ mod tests {
 
             let debug_str = format!("{:?}", &activated.mana_cost.costs());
             assert!(debug_str.contains("TapEffect"), "Should have tap");
-            assert!(debug_str.contains("LoseLifeEffect"), "Should have pay life");
+            assert!(
+                activated
+                    .mana_cost
+                    .costs()
+                    .iter()
+                    .any(|cost| cost.is_life_cost() && cost.life_amount() == Some(1)),
+                "Should have pay life"
+            );
             assert!(
                 debug_str.contains("SacrificeTargetEffect"),
                 "Should have sacrifice"

@@ -583,6 +583,7 @@ mod tests {
                 effects: vec![Effect::draw(1)],
                 choices: vec![],
                 intervening_if: None,
+                once_each_turn: false,
             },
             triggering_event: TriggerEvent::new(ZoneChangeEvent::new(
                 ObjectId::from_raw(1),

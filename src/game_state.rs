@@ -42,6 +42,17 @@ pub struct EntersResult {
     pub enters_tapped: bool,
 }
 
+/// Linked exile group metadata for "exile ... until ..." effects.
+#[derive(Debug, Clone)]
+pub struct LinkedExileGroup {
+    /// Stable identities of objects exiled as part of this linked group.
+    pub stable_ids: Vec<StableId>,
+    /// Zone to return objects to when the delayed condition is met.
+    pub return_zone: Zone,
+    /// If returning to the battlefield, reset controller to owner.
+    pub return_under_owner_control: bool,
+}
+
 /// Key type for extensible per-turn counters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TurnCounterKey {
@@ -223,6 +234,44 @@ impl RestrictionEffectInstance {
             crate::effect::Until::YouStopControllingThis => {
                 game.object(self.source).is_some_and(|obj| {
                     obj.zone == Zone::Battlefield && obj.controller == self.controller
+                })
+            }
+            _ => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GoadEffectInstance {
+    pub creature: ObjectId,
+    pub goaded_by: PlayerId,
+    pub source: ObjectId,
+    pub duration: crate::effect::Until,
+    pub expires_end_of_turn: u32,
+}
+
+impl GoadEffectInstance {
+    pub fn is_expired(&self, current_turn: u32) -> bool {
+        matches!(self.duration, crate::effect::Until::EndOfTurn)
+            && current_turn > self.expires_end_of_turn
+    }
+
+    pub fn is_active(&self, game: &GameState, current_turn: u32) -> bool {
+        if self.is_expired(current_turn) {
+            return false;
+        }
+
+        match self.duration {
+            crate::effect::Until::YourNextTurn => {
+                !(current_turn > self.expires_end_of_turn
+                    && game.turn.active_player == self.goaded_by)
+            }
+            crate::effect::Until::ThisLeavesTheBattlefield => game
+                .object(self.source)
+                .is_some_and(|obj| obj.zone == Zone::Battlefield),
+            crate::effect::Until::YouStopControllingThis => {
+                game.object(self.source).is_some_and(|obj| {
+                    obj.zone == Zone::Battlefield && obj.controller == self.goaded_by
                 })
             }
             _ => true,
@@ -851,6 +900,10 @@ pub struct GameState {
     /// Active restriction effects (spell/ability-based "can't" effects).
     pub restriction_effects: Vec<RestrictionEffectInstance>,
 
+    /// Active goad effects (a creature attacks each combat and attacks a player
+    /// other than the goader if able).
+    pub goad_effects: Vec<GoadEffectInstance>,
+
     // =========================================================================
     // Battlefield State Extension Maps
     // =========================================================================
@@ -898,6 +951,12 @@ pub struct GameState {
     /// Imprinted cards - maps a permanent to the card(s) exiled with it via imprint.
     /// Used by Chrome Mox, Isochron Scepter, etc.
     pub imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
+
+    /// Linked exile groups keyed by generated runtime ID.
+    pub linked_exile_groups: HashMap<u64, LinkedExileGroup>,
+
+    /// Monotonic ID generator for linked exile groups.
+    pub next_linked_exile_group_id: u64,
 }
 
 impl GameState {
@@ -955,6 +1014,7 @@ impl GameState {
             creature_damage_to_players_this_turn: HashMap::new(),
             damage_to_players_this_turn: HashMap::new(),
             restriction_effects: Vec::new(),
+            goad_effects: Vec::new(),
             // Battlefield state extension maps
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
@@ -970,6 +1030,8 @@ impl GameState {
             saga_final_chapter_resolved: HashSet::new(),
             commanders: HashSet::new(),
             imprinted_cards: HashMap::new(),
+            linked_exile_groups: HashMap::new(),
+            next_linked_exile_group_id: 0,
         }
     }
 
@@ -999,6 +1061,41 @@ impl GameState {
             duration,
             expires_end_of_turn,
         });
+    }
+
+    pub fn add_goad_effect(
+        &mut self,
+        creature: ObjectId,
+        goaded_by: PlayerId,
+        duration: crate::effect::Until,
+        source: ObjectId,
+    ) {
+        let expires_end_of_turn = match duration {
+            crate::effect::Until::EndOfTurn => self.turn.turn_number,
+            crate::effect::Until::Forever => u32::MAX,
+            _ => self.turn.turn_number,
+        };
+
+        self.goad_effects.push(GoadEffectInstance {
+            creature,
+            goaded_by,
+            source,
+            duration,
+            expires_end_of_turn,
+        });
+    }
+
+    pub fn active_goaders_for(&self, creature: ObjectId) -> HashSet<PlayerId> {
+        let current_turn = self.turn.turn_number;
+        self.goad_effects
+            .iter()
+            .filter(|effect| effect.creature == creature && effect.is_active(self, current_turn))
+            .map(|effect| effect.goaded_by)
+            .collect()
+    }
+
+    pub fn is_goaded(&self, creature: ObjectId) -> bool {
+        !self.active_goaders_for(creature).is_empty()
     }
 
     pub fn cleanup_restrictions_end_of_turn(&mut self) {
@@ -1955,6 +2052,14 @@ impl GameState {
             }
         }
         self.restriction_effects = active_restrictions.clone();
+
+        let mut active_goad = Vec::new();
+        for effect in &self.goad_effects {
+            if effect.is_active(self, current_turn) {
+                active_goad.push(effect.clone());
+            }
+        }
+        self.goad_effects = active_goad;
 
         let mut restriction_tracker = CantEffectTracker::default();
         for effect in active_restrictions {
@@ -2934,6 +3039,34 @@ impl GameState {
         self.imprinted_cards.remove(&permanent_id);
     }
 
+    /// Create a linked exile group and return its generated group ID.
+    pub fn create_linked_exile_group(
+        &mut self,
+        mut stable_ids: Vec<StableId>,
+        return_zone: Zone,
+        return_under_owner_control: bool,
+    ) -> u64 {
+        // Keep stable order while de-duplicating.
+        stable_ids.dedup();
+
+        self.next_linked_exile_group_id = self.next_linked_exile_group_id.saturating_add(1);
+        let group_id = self.next_linked_exile_group_id;
+        self.linked_exile_groups.insert(
+            group_id,
+            LinkedExileGroup {
+                stable_ids,
+                return_zone,
+                return_under_owner_control,
+            },
+        );
+        group_id
+    }
+
+    /// Take (and clear) a linked exile group.
+    pub fn take_linked_exile_group(&mut self, group_id: u64) -> Option<LinkedExileGroup> {
+        self.linked_exile_groups.remove(&group_id)
+    }
+
     /// Queue a trigger event to be processed by the game loop.
     /// Use this when effects need to emit events that should generate triggers.
     pub fn queue_trigger_event(&mut self, event: crate::triggers::TriggerEvent) {
@@ -3353,6 +3486,33 @@ mod tests {
         assert!(
             game.can_untap(target),
             "restriction should expire on controller's next turn"
+        );
+    }
+
+    #[test]
+    fn goad_effect_expires_on_goaders_next_turn() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let source = game.create_object_from_card(&grizzly_bears(), alice, Zone::Battlefield);
+        let creature = game.create_object_from_card(&grizzly_bears(), alice, Zone::Battlefield);
+
+        game.add_goad_effect(creature, alice, crate::effect::Until::YourNextTurn, source);
+        game.update_cant_effects();
+        assert!(game.is_goaded(creature), "goad should apply immediately");
+
+        game.next_turn();
+        game.update_cant_effects();
+        assert!(
+            game.is_goaded(creature),
+            "goad should still apply before goader's next turn"
+        );
+
+        game.next_turn();
+        game.update_cant_effects();
+        assert!(
+            !game.is_goaded(creature),
+            "goad should expire on goader's next turn"
         );
     }
 }

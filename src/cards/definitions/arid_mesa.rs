@@ -99,9 +99,13 @@ mod tests {
             // Check for tap effect
             assert!(debug_str.contains("TapEffect"), "costs should contain tap");
 
-            // Check for life payment effect
+            // Check for life payment cost
             assert!(
-                debug_str.contains("LoseLifeEffect"),
+                activated
+                    .mana_cost
+                    .costs()
+                    .iter()
+                    .any(|cost| cost.is_life_cost() && cost.life_amount() == Some(1)),
                 "costs should contain pay life"
             );
 
@@ -334,10 +338,12 @@ mod tests {
         let def = arid_mesa();
 
         if let AbilityKind::Activated(activated) = &def.abilities[0].kind {
-            // Life cost is now in cost_effects as LoseLifeEffect
-            let debug_str = format!("{:?}", &activated.mana_cost.costs());
             assert!(
-                debug_str.contains("LoseLifeEffect") && debug_str.contains("Fixed(1)"),
+                activated
+                    .mana_cost
+                    .costs()
+                    .iter()
+                    .any(|cost| cost.is_life_cost() && cost.life_amount() == Some(1)),
                 "Arid Mesa should cost exactly 1 life to activate"
             );
         }

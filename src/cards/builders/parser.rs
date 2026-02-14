@@ -4,6 +4,7 @@ use super::*;
 struct ModalHeader {
     min: u32,
     max: Option<u32>,
+    same_mode_more_than_once: bool,
     commander_allows_both: bool,
     trigger: Option<TriggerSpec>,
     line_text: String,
@@ -736,6 +737,9 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
     };
 
     let commander_allows_both = token_words.contains(&"commander") && token_words.contains(&"both");
+    let same_mode_more_than_once = token_words
+        .windows(5)
+        .any(|window| window == ["same", "mode", "more", "than", "once"]);
 
     let mut trigger = None;
     if let Some(comma_idx) = tokens
@@ -762,6 +766,7 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
     Ok(Some(ModalHeader {
         min,
         max,
+        same_mode_more_than_once,
         commander_allows_both,
         trigger,
         line_text: info.raw_line.clone(),
@@ -798,6 +803,8 @@ fn finalize_pending_modal(
             vec![choose_both],
             vec![choose_one],
         )
+    } else if pending.header.same_mode_more_than_once && min == max {
+        Effect::choose_exactly_allow_repeated_modes(max, modes)
     } else if min == 1 && max == 1 {
         Effect::choose_one(modes)
     } else if min == max {

@@ -40,6 +40,8 @@ pub struct ChooseModeEffect {
     pub choose_count: Value,
     /// Minimum modes to choose. If None, defaults to choose_count (exact choice).
     pub min_choose_count: Option<Value>,
+    /// Whether the same mode can be chosen more than once.
+    pub allow_repeated_modes: bool,
 }
 
 impl ChooseModeEffect {
@@ -53,6 +55,7 @@ impl ChooseModeEffect {
             modes,
             choose_count,
             min_choose_count,
+            allow_repeated_modes: false,
         }
     }
 
@@ -73,6 +76,12 @@ impl ChooseModeEffect {
         modes: Vec<EffectMode>,
     ) -> Self {
         Self::new(modes, max.into(), Some(min.into()))
+    }
+
+    /// Allow selecting the same mode more than once.
+    pub fn with_repeated_modes(mut self) -> Self {
+        self.allow_repeated_modes = true;
+        self
     }
 
     /// Check if a mode is legal to choose.

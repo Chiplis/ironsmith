@@ -884,6 +884,7 @@ mod tests {
                 ],
                 choices: vec![ChooseSpec::target_player()],
                 intervening_if: None,
+                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(

@@ -3,7 +3,9 @@
 use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::decision::FallbackStrategy;
-use crate::decisions::{CounterRemovalSpec, DistributeSpec, make_decision_with_fallback};
+use crate::decisions::{
+    CounterRemovalSpec, DistributeSpec, NumberSpec, make_decision_with_fallback,
+};
 use crate::filter::FilterContext;
 use crate::game_state::{GameState, Target};
 use crate::ids::ObjectId;
@@ -81,6 +83,12 @@ impl CostPayer for RemoveCountersCost {
             *count = count.saturating_sub(self.count);
         }
 
+        // Expose removed count for effects that reference
+        // "for each counter removed this way".
+        if ctx.x_value.is_none() {
+            ctx.x_value = Some(self.count);
+        }
+
         Ok(CostPaymentResult::Paid)
     }
 
@@ -102,6 +110,169 @@ impl CostPayer for RemoveCountersCost {
     }
 
     // RemoveCountersCost is an immediate cost - no player choice needed
+}
+
+/// A remove-variable-counters cost from the source permanent.
+///
+/// Used for costs like:
+/// - "Remove any number of charge counters from this artifact"
+/// - "Remove X storage counters from this land"
+#[derive(Debug, Clone, PartialEq)]
+pub struct RemoveAnyCountersFromSourceCost {
+    /// Optional counter type restriction.
+    /// If `None`, any counter types can be removed.
+    pub counter_type: Option<CounterType>,
+    /// Whether display should use `X` instead of `any number`.
+    pub display_x: bool,
+}
+
+impl RemoveAnyCountersFromSourceCost {
+    /// Create a source-counter cost that removes any number of counters.
+    pub fn any_number(counter_type: Option<CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: false,
+        }
+    }
+
+    /// Create a source-counter cost that removes `X` counters.
+    pub fn x(counter_type: Option<CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: true,
+        }
+    }
+
+    fn max_removable(&self, game: &GameState, source: ObjectId) -> Result<u32, CostPaymentError> {
+        let obj = game.object(source).ok_or(CostPaymentError::SourceNotFound)?;
+        if obj.zone != Zone::Battlefield {
+            return Err(CostPaymentError::SourceNotOnBattlefield);
+        }
+
+        let max = if let Some(counter_type) = self.counter_type {
+            obj.counters.get(&counter_type).copied().unwrap_or(0)
+        } else {
+            obj.counters.values().copied().sum::<u32>()
+        };
+
+        Ok(max)
+    }
+}
+
+impl CostPayer for RemoveAnyCountersFromSourceCost {
+    fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        let _ = self.max_removable(game, ctx.source)?;
+        Ok(())
+    }
+
+    fn pay(
+        &self,
+        game: &mut GameState,
+        ctx: &mut CostContext,
+    ) -> Result<CostPaymentResult, CostPaymentError> {
+        self.can_pay(game, ctx)?;
+
+        let max_removable = self.max_removable(game, ctx.source)?;
+        let description = if self.display_x {
+            "Choose X counters to remove"
+        } else {
+            "Choose counters to remove"
+        };
+        let to_remove = make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            ctx.payer,
+            Some(ctx.source),
+            NumberSpec::up_to(ctx.source, max_removable, description),
+            FallbackStrategy::Maximum,
+        )
+        .min(max_removable);
+
+        let mut removed_total = 0u32;
+        if let Some(counter_type) = self.counter_type {
+            if to_remove > 0
+                && let Some((removed, _event)) = game.remove_counters(
+                    ctx.source,
+                    counter_type,
+                    to_remove,
+                    Some(ctx.source),
+                    Some(ctx.payer),
+                )
+            {
+                removed_total = removed;
+            }
+        } else {
+            let available_counters: Vec<(CounterType, u32)> = game
+                .object(ctx.source)
+                .map(|obj| {
+                    obj.counters
+                        .iter()
+                        .filter(|(_, count)| **count > 0)
+                        .map(|(counter_type, count)| (*counter_type, *count))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let selections = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.payer,
+                Some(ctx.source),
+                CounterRemovalSpec::new(ctx.source, ctx.source, to_remove, available_counters),
+                FallbackStrategy::Maximum,
+            );
+
+            for (counter_type, requested) in selections {
+                if removed_total >= to_remove {
+                    break;
+                }
+                let remaining = to_remove - removed_total;
+                let to_remove_now = requested.min(remaining);
+                if to_remove_now == 0 {
+                    continue;
+                }
+                if let Some((removed, _event)) = game.remove_counters(
+                    ctx.source,
+                    counter_type,
+                    to_remove_now,
+                    Some(ctx.source),
+                    Some(ctx.payer),
+                ) {
+                    removed_total += removed;
+                }
+            }
+        }
+
+        if removed_total != to_remove {
+            return Err(CostPaymentError::InsufficientCounters);
+        }
+
+        // Expose removed count for effects that reference
+        // "for each counter removed this way".
+        if ctx.x_value.is_none() {
+            ctx.x_value = Some(removed_total);
+        }
+
+        Ok(CostPaymentResult::Paid)
+    }
+
+    fn clone_box(&self) -> Box<dyn CostPayer> {
+        Box::new(self.clone())
+    }
+
+    fn display(&self) -> String {
+        let amount_text = if self.display_x { "X" } else { "any number of" };
+        if let Some(counter_type) = self.counter_type {
+            let counter_name = format_counter_type(&counter_type);
+            format!("Remove {} {} counters from ~", amount_text, counter_name)
+        } else {
+            format!("Remove {} counters from ~", amount_text)
+        }
+    }
+
+    fn is_remove_counters(&self) -> bool {
+        true
+    }
 }
 
 /// An add counters cost (e.g., cumulative upkeep).
@@ -355,6 +526,12 @@ impl CostPayer for RemoveAnyCountersAmongCost {
             return Err(CostPaymentError::InsufficientCounters);
         }
 
+        // Expose the actual removed count for effects that reference
+        // "for each counter removed this way".
+        if ctx.x_value.is_none() {
+            ctx.x_value = Some(removed_total);
+        }
+
         Ok(CostPaymentResult::Paid)
     }
 
@@ -385,6 +562,7 @@ fn format_counter_type(counter_type: &CounterType) -> &'static str {
         CounterType::MinusOneMinusOne => "-1/-1",
         CounterType::Loyalty => "loyalty",
         CounterType::Charge => "charge",
+        CounterType::Storage => "storage",
         CounterType::Age => "age",
         CounterType::Time => "time",
         CounterType::Level => "level",
@@ -517,6 +695,43 @@ mod tests {
         // Should have 1 counter left
         let obj = game.object(card_id).unwrap();
         assert_eq!(obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
+    }
+
+    #[test]
+    fn test_remove_any_counters_from_source_display() {
+        assert_eq!(
+            RemoveAnyCountersFromSourceCost::any_number(Some(CounterType::Charge)).display(),
+            "Remove any number of charge counters from ~"
+        );
+        assert_eq!(
+            RemoveAnyCountersFromSourceCost::x(Some(CounterType::Storage)).display(),
+            "Remove X storage counters from ~"
+        );
+    }
+
+    #[test]
+    fn test_remove_any_counters_from_source_pay_sets_x() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let card = simple_card("Card", 1);
+        let card_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+
+        if let Some(obj) = game.object_mut(card_id) {
+            obj.counters.insert(CounterType::Charge, 3);
+        }
+
+        let cost = RemoveAnyCountersFromSourceCost::any_number(Some(CounterType::Charge));
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = CostContext::new(card_id, alice, &mut dm);
+
+        let result = cost.pay(&mut game, &mut ctx);
+        assert_eq!(result, Ok(CostPaymentResult::Paid));
+        assert_eq!(ctx.x_value, Some(3), "removed amount should propagate to x_value");
+
+        let obj = game.object(card_id).expect("source should still exist");
+        let remaining = obj.counters.get(&CounterType::Charge).copied().unwrap_or(0);
+        assert_eq!(remaining, 0, "all charge counters should be removed");
     }
 
     // === AddCountersCost tests ===

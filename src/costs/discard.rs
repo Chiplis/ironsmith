@@ -4,6 +4,7 @@ use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::game_state::GameState;
 use crate::types::CardType;
+use crate::zone::Zone;
 
 /// A discard cards cost.
 ///
@@ -199,6 +200,89 @@ impl CostPayer for DiscardHandCost {
     }
 }
 
+/// A discard-this-card cost.
+///
+/// Used by hand-zone activated abilities like Cycling/Bloodrush where the
+/// source card itself must be discarded as part of paying the cost.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiscardSourceCost;
+
+impl DiscardSourceCost {
+    /// Create a new discard source cost.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for DiscardSourceCost {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CostPayer for DiscardSourceCost {
+    fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        let source = game
+            .object(ctx.source)
+            .ok_or(CostPaymentError::SourceNotFound)?;
+        let player = game.player(ctx.payer).ok_or(CostPaymentError::PlayerNotFound)?;
+
+        if source.zone != Zone::Hand || !player.hand.contains(&ctx.source) {
+            return Err(CostPaymentError::InsufficientCardsInHand);
+        }
+
+        Ok(())
+    }
+
+    fn pay(
+        &self,
+        game: &mut GameState,
+        ctx: &mut CostContext,
+    ) -> Result<CostPaymentResult, CostPaymentError> {
+        use crate::event_processor::execute_discard;
+        use crate::events::cause::EventCause;
+
+        self.can_pay(game, ctx)?;
+
+        let cause = EventCause::from_cost(ctx.source, ctx.payer);
+        let result = execute_discard(
+            game,
+            ctx.source,
+            ctx.payer,
+            cause,
+            false,
+            ctx.decision_maker,
+        );
+        if result.prevented {
+            return Err(CostPaymentError::Other(
+                "Discard cost was prevented".to_string(),
+            ));
+        }
+
+        Ok(CostPaymentResult::Paid)
+    }
+
+    fn clone_box(&self) -> Box<dyn CostPayer> {
+        Box::new(self.clone())
+    }
+
+    fn display(&self) -> String {
+        "Discard this card".to_string()
+    }
+
+    fn is_discard(&self) -> bool {
+        true
+    }
+
+    fn discard_details(&self) -> Option<(u32, Option<crate::types::CardType>)> {
+        Some((1, None))
+    }
+
+    fn processing_mode(&self) -> crate::costs::CostProcessingMode {
+        crate::costs::CostProcessingMode::Immediate
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,5 +444,61 @@ mod tests {
         let cost = DiscardCost::one();
         let cloned = cost.clone_box();
         assert!(format!("{:?}", cloned).contains("DiscardCost"));
+    }
+
+    // === DiscardSourceCost tests ===
+
+    #[test]
+    fn test_discard_source_cost_display() {
+        let cost = DiscardSourceCost::new();
+        assert_eq!(cost.display(), "Discard this card");
+    }
+
+    #[test]
+    fn test_discard_source_cost_can_pay_when_source_in_hand() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_card = simple_card("Cycling Source", 77);
+        let source = game.create_object_from_card(&source_card, alice, Zone::Hand);
+
+        let cost = DiscardSourceCost::new();
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let ctx = CostContext::new(source, alice, &mut dm);
+
+        assert!(cost.can_pay(&game, &ctx).is_ok());
+    }
+
+    #[test]
+    fn test_discard_source_cost_pay_moves_source_to_graveyard() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_card = simple_card("Bloodrush Source", 88);
+        let source = game.create_object_from_card(&source_card, alice, Zone::Hand);
+
+        let cost = DiscardSourceCost::new();
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = CostContext::new(source, alice, &mut dm);
+
+        let result = cost.pay(&mut game, &mut ctx);
+        assert_eq!(result, Ok(CostPaymentResult::Paid));
+
+        let player = game.player(alice).expect("player exists");
+        assert!(
+            !player.hand.contains(&source),
+            "source card should no longer be in hand"
+        );
+        assert!(
+            !player.graveyard.is_empty(),
+            "source card should be in graveyard (possibly with a new id)"
+        );
+    }
+
+    #[test]
+    fn test_discard_source_cost_clone_box() {
+        let cost = DiscardSourceCost::new();
+        let cloned = cost.clone_box();
+        assert!(format!("{:?}", cloned).contains("DiscardSourceCost"));
     }
 }

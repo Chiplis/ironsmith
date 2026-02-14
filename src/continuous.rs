@@ -2537,6 +2537,7 @@ fn resolve_value_with_context(
         | Value::CountersOn(_, _)
         | Value::PowerOf(_)
         | Value::ToughnessOf(_)
+        | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
         | Value::CardsInHand(_)
         | Value::CardsInGraveyard(_)

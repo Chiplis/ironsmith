@@ -341,4 +341,46 @@ mod tests {
             "Bob's Braids should trigger at Bob's end step"
         );
     }
+
+    #[test]
+    fn test_braids_oracle_like_text_is_emittable() {
+        let def = braids_arisen_nightmare();
+        let rendered = crate::compiled_text::oracle_like_lines(&def).join(" ");
+        let lower = rendered.to_ascii_lowercase();
+
+        assert!(
+            lower.contains("at the beginning of your end step"),
+            "missing trigger lead-in: {rendered}"
+        );
+        assert!(
+            lower.contains("loses 2 life") && lower.contains("draw a card"),
+            "missing life-loss/draw payload: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_braids_raw_effects_match_if_you_do_structure() {
+        let def = braids_arisen_nightmare();
+        let ability = &def.abilities[0];
+
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            panic!("Expected triggered ability");
+        };
+
+        let debug = format!("{:#?}", triggered.effects);
+        assert!(
+            debug.contains("MayEffect") && debug.contains("SacrificeEffect"),
+            "expected optional sacrifice branch, got {debug}"
+        );
+        assert!(
+            debug.contains("IfEffect")
+                && debug.contains("DidNotHappen")
+                && debug.contains("ForPlayersEffect"),
+            "expected if-you-do + opponent loop structure, got {debug}"
+        );
+        assert!(
+            debug.contains("LoseLifeEffect") && debug.contains("DrawCardsEffect"),
+            "expected lose-life and draw effects in fallback branch, got {debug}"
+        );
+    }
 }

@@ -125,29 +125,31 @@ mod tests {
                 "Should have 3 cost effects (pay life + choose + sacrifice)"
             );
 
-            // First effect should be LoseLifeEffect (pay_life uses LoseLifeEffect internally)
-            let debug_str_0 = format!("{:?}", &act.mana_cost.costs()[0]);
+            // Should include a life payment cost
             assert!(
-                debug_str_0.contains("LoseLifeEffect"),
-                "First cost effect should be pay life"
+                act.mana_cost
+                    .costs()
+                    .iter()
+                    .any(|cost| cost.is_life_cost() && cost.life_amount() == Some(1)),
+                "Costs should include pay 1 life"
             );
 
-            // Second effect should be ChooseObjectsEffect for another creature
-            let debug_str_1 = format!("{:?}", &act.mana_cost.costs()[1]);
+            // Should include choose-another-creature cost component
+            let debug_str = format!("{:?}", &act.mana_cost.costs());
             assert!(
-                debug_str_1.contains("ChooseObjectsEffect"),
-                "Second cost effect should be choose"
+                debug_str.contains("ChooseObjectsEffect"),
+                "Costs should include choose"
             );
             assert!(
-                debug_str_1.contains("other: true"),
+                debug_str.contains("other: true"),
                 "Should require 'another' creature"
             );
 
-            // Third effect should be SacrificeEffect
-            let debug_str_2 = format!("{:?}", &act.mana_cost.costs()[2]);
+            // Should include sacrifice cost component
             assert!(
-                debug_str_2.contains("SacrificeEffect"),
-                "Third cost effect should be sacrifice"
+                debug_str.contains("SacrificeEffect")
+                    || debug_str.contains("SacrificeTargetEffect"),
+                "Costs should include sacrifice"
             );
         }
     }

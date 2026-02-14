@@ -141,7 +141,8 @@ pub fn resolve_value(
             let obj = game
                 .object(ctx.source)
                 .ok_or(ExecutionError::ObjectNotFound(ctx.source))?;
-            game.calculated_power(ctx.source).or_else(|| obj.power())
+            game.calculated_power(ctx.source)
+                .or_else(|| obj.power())
                 .ok_or_else(|| ExecutionError::UnresolvableValue("Source has no power".to_string()))
         }
 
@@ -152,7 +153,7 @@ pub fn resolve_value(
             game.calculated_toughness(ctx.source)
                 .or_else(|| obj.toughness())
                 .ok_or_else(|| {
-                ExecutionError::UnresolvableValue("Source has no toughness".to_string())
+                    ExecutionError::UnresolvableValue("Source has no toughness".to_string())
                 })
         }
 
@@ -163,7 +164,7 @@ pub fn resolve_value(
                 game.calculated_power(target_id)
                     .or_else(|| obj.power())
                     .ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("Target has no power".to_string())
+                        ExecutionError::UnresolvableValue("Target has no power".to_string())
                     })
             } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
                 snapshot.power.ok_or_else(|| {
@@ -181,12 +182,34 @@ pub fn resolve_value(
                 game.calculated_toughness(target_id)
                     .or_else(|| obj.toughness())
                     .ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("Target has no toughness".to_string())
+                        ExecutionError::UnresolvableValue("Target has no toughness".to_string())
                     })
             } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
                 snapshot.toughness.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no toughness".to_string())
                 })
+            } else {
+                Err(ExecutionError::ObjectNotFound(target_id))
+            }
+        }
+
+        Value::ManaValueOf(_target_spec) => {
+            let target_id = find_target_object(&ctx.targets)?;
+            if let Some(obj) = game.object(target_id) {
+                obj.mana_cost
+                    .as_ref()
+                    .map(|cost| cost.mana_value() as i32)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue("Target has no mana value".to_string())
+                    })
+            } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
+                snapshot
+                    .mana_cost
+                    .as_ref()
+                    .map(|cost| cost.mana_value() as i32)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue("Target had no mana value".to_string())
+                    })
             } else {
                 Err(ExecutionError::ObjectNotFound(target_id))
             }

@@ -22,14 +22,12 @@ use crate::decision::{
 use crate::decisions::context::DecisionContext;
 use crate::game_loop::{
     ActivationStage, CastStage, PriorityLoopState, PriorityResponse, add_saga_lore_counters,
-    advance_priority, apply_priority_response_with_dm, execute_combat_damage_step,
-    generate_and_queue_step_triggers, get_declare_attackers_decision,
-    get_declare_blockers_decision, queue_combat_damage_triggers,
+    advance_priority, apply_priority_response_with_dm, generate_and_queue_step_triggers,
+    get_declare_attackers_decision, get_declare_blockers_decision,
 };
 use crate::game_state::{GameState, Phase, Step, Target};
 use crate::ids::{ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
 use crate::mana::ManaSymbol;
-use crate::rules::combat::deals_first_strike_damage_with_game;
 use crate::target::ObjectFilter;
 use crate::triggers::{TriggerQueue, check_triggers};
 use crate::types::CardType;
@@ -866,8 +864,6 @@ struct ReplayCheckpoint {
     game_over: Option<GameResult>,
     attackers_declared_this_step: bool,
     blockers_declared_this_step: bool,
-    first_strike_damage_done_this_step: bool,
-    regular_damage_done_this_step: bool,
     id_counters: crate::ids::IdCountersSnapshot,
 }
 
@@ -1149,8 +1145,6 @@ pub struct WasmGame {
     perspective: PlayerId,
     attackers_declared_this_step: bool,
     blockers_declared_this_step: bool,
-    first_strike_damage_done_this_step: bool,
-    regular_damage_done_this_step: bool,
     deck_generation_nonce: u64,
     last_step_actions_applied: Option<(u32, Phase, Option<Step>)>,
 }
@@ -1178,8 +1172,6 @@ impl WasmGame {
             perspective: PlayerId::from_index(0),
             attackers_declared_this_step: false,
             blockers_declared_this_step: false,
-            first_strike_damage_done_this_step: false,
-            regular_damage_done_this_step: false,
             deck_generation_nonce: 0,
             last_step_actions_applied: None,
         }
@@ -1738,8 +1730,6 @@ impl WasmGame {
         self.game_over = None;
         self.attackers_declared_this_step = false;
         self.blockers_declared_this_step = false;
-        self.first_strike_damage_done_this_step = false;
-        self.regular_damage_done_this_step = false;
         self.last_step_actions_applied = None;
         if self.game.player(self.perspective).is_none()
             && let Some(first) = self.game.players.first()
@@ -1775,10 +1765,6 @@ impl WasmGame {
                     return Ok(());
                 }
                 GameProgress::Continue => {
-                    if self.try_run_regular_combat_damage_substep() {
-                        self.pending_decision = None;
-                        continue;
-                    }
                     self.advance_step_with_actions()?;
                     self.pending_decision = None;
                     continue;
@@ -1806,10 +1792,6 @@ impl WasmGame {
                 Ok(())
             }
             GameProgress::Continue => {
-                if self.try_run_regular_combat_damage_substep() {
-                    self.pending_decision = None;
-                    return self.advance_until_decision();
-                }
                 self.advance_step_with_actions()?;
                 self.pending_decision = None;
                 self.advance_until_decision()
@@ -1833,51 +1815,6 @@ impl WasmGame {
         if self.game.turn.step != Some(Step::DeclareBlockers) {
             self.blockers_declared_this_step = false;
         }
-        if self.game.turn.step != Some(Step::CombatDamage) {
-            self.first_strike_damage_done_this_step = false;
-            self.regular_damage_done_this_step = false;
-        }
-    }
-
-    fn combat_has_first_strike_participants(&self) -> bool {
-        let Some(combat) = &self.game.combat else {
-            return false;
-        };
-        combat.attackers.iter().any(|info| {
-            self.game
-                .object(info.creature)
-                .is_some_and(|obj| deals_first_strike_damage_with_game(obj, &self.game))
-        }) || combat.blockers.values().any(|blockers| {
-            blockers.iter().any(|&id| {
-                self.game
-                    .object(id)
-                    .is_some_and(|obj| deals_first_strike_damage_with_game(obj, &self.game))
-            })
-        })
-    }
-
-    fn run_combat_damage_substep(&mut self, first_strike: bool) {
-        let events = self.game.combat.clone().map_or_else(Vec::new, |combat| {
-            execute_combat_damage_step(&mut self.game, &combat, first_strike)
-        });
-        queue_combat_damage_triggers(&mut self.game, &events, &mut self.trigger_queue);
-        if first_strike {
-            self.first_strike_damage_done_this_step = true;
-        } else {
-            self.regular_damage_done_this_step = true;
-        }
-    }
-
-    fn try_run_regular_combat_damage_substep(&mut self) -> bool {
-        if self.game.turn.phase != Phase::Combat || self.game.turn.step != Some(Step::CombatDamage)
-        {
-            return false;
-        }
-        if !self.first_strike_damage_done_this_step || self.regular_damage_done_this_step {
-            return false;
-        }
-        self.run_combat_damage_substep(false);
-        true
     }
 
     fn pending_combat_declare_decision(&mut self) -> Result<Option<DecisionContext>, JsValue> {
@@ -1911,8 +1848,6 @@ impl WasmGame {
     fn advance_step_with_actions(&mut self) -> Result<(), JsValue> {
         crate::turn::advance_step(&mut self.game)
             .map_err(|e| JsValue::from_str(&format!("advance_step failed: {e:?}")))?;
-        self.priority_state
-            .reset_for_new_priority_window(&mut self.game);
         self.apply_current_step_actions_once();
         Ok(())
     }
@@ -1948,26 +1883,10 @@ impl WasmGame {
                 add_saga_lore_counters(&mut self.game, &mut self.trigger_queue);
             }
             (Phase::Combat, Some(Step::BeginCombat))
+            | (Phase::Combat, Some(Step::EndCombat))
             | (Phase::NextMain, None)
             | (Phase::Ending, Some(Step::End)) => {
                 generate_and_queue_step_triggers(&mut self.game, &mut self.trigger_queue);
-            }
-            (Phase::Combat, Some(Step::CombatDamage)) => {
-                if self.combat_has_first_strike_participants() {
-                    if !self.first_strike_damage_done_this_step {
-                        self.run_combat_damage_substep(true);
-                    } else if !self.regular_damage_done_this_step {
-                        self.run_combat_damage_substep(false);
-                    }
-                } else if !self.regular_damage_done_this_step {
-                    self.run_combat_damage_substep(false);
-                }
-            }
-            (Phase::Combat, Some(Step::EndCombat)) => {
-                generate_and_queue_step_triggers(&mut self.game, &mut self.trigger_queue);
-                if let Some(combat) = self.game.combat.as_mut() {
-                    crate::combat_state::end_combat(combat);
-                }
             }
             (Phase::Ending, Some(Step::Cleanup)) => {
                 crate::turn::execute_cleanup_step(&mut self.game);
@@ -2005,8 +1924,6 @@ impl WasmGame {
             game_over: self.game_over.clone(),
             attackers_declared_this_step: self.attackers_declared_this_step,
             blockers_declared_this_step: self.blockers_declared_this_step,
-            first_strike_damage_done_this_step: self.first_strike_damage_done_this_step,
-            regular_damage_done_this_step: self.regular_damage_done_this_step,
             id_counters: snapshot_id_counters(),
         }
     }
@@ -2019,8 +1936,6 @@ impl WasmGame {
         self.game_over = checkpoint.game_over.clone();
         self.attackers_declared_this_step = checkpoint.attackers_declared_this_step;
         self.blockers_declared_this_step = checkpoint.blockers_declared_this_step;
-        self.first_strike_damage_done_this_step = checkpoint.first_strike_damage_done_this_step;
-        self.regular_damage_done_this_step = checkpoint.regular_damage_done_this_step;
     }
 
     fn apply_response_combat_flags(&mut self, response: &PriorityResponse) {
@@ -3197,30 +3112,6 @@ fn describe_mana_condition(condition: &crate::ability::ManaAbilityCondition) -> 
                 "you control a land".to_string()
             } else {
                 format!("you control {count} or more lands")
-            }
-        }
-        crate::ability::ManaAbilityCondition::CardInYourGraveyard {
-            card_types,
-            subtypes,
-        } => {
-            let mut descriptors = Vec::new();
-            for subtype in subtypes {
-                descriptors.push(split_camel_case(&format!("{subtype:?}")));
-            }
-            for card_type in card_types {
-                descriptors.push(split_camel_case(&format!("{card_type:?}")).to_ascii_lowercase());
-            }
-            descriptors.retain(|entry| !entry.is_empty());
-            descriptors.dedup();
-
-            if descriptors.is_empty() {
-                "there is a card in your graveyard".to_string()
-            } else if descriptors.len() == 1 {
-                format!("there is an {} card in your graveyard", descriptors[0])
-            } else {
-                let head = descriptors[..descriptors.len() - 1].join(" ");
-                let tail = descriptors.last().expect("descriptor tail");
-                format!("there is a {head} {tail} card in your graveyard")
             }
         }
         crate::ability::ManaAbilityCondition::Timing(timing) => match timing {
@@ -6218,130 +6109,4 @@ fn validate_object_selection(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ability::Ability;
-    use crate::card::{CardBuilder, PowerToughness};
-    use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-    use crate::ids::CardId;
-    use crate::static_abilities::StaticAbility;
-    use crate::types::CardType;
-    use crate::zone::Zone;
-    use std::collections::HashMap;
-
-    fn create_creature(
-        game: &mut GameState,
-        owner: PlayerId,
-        name: &str,
-        power: i32,
-        toughness: i32,
-    ) -> ObjectId {
-        let card = CardBuilder::new(CardId::new(), name)
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(power, toughness))
-            .build();
-        game.create_object_from_card(&card, owner, Zone::Battlefield)
-    }
-
-    #[test]
-    fn wasm_combat_damage_step_applies_unblocked_attacker_damage() {
-        let mut wasm = WasmGame::new();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let attacker = create_creature(&mut wasm.game, alice, "Test Attacker", 3, 3);
-
-        wasm.game.turn.phase = Phase::Combat;
-        wasm.game.turn.step = Some(Step::CombatDamage);
-        wasm.last_step_actions_applied = None;
-        wasm.game.combat = Some(CombatState {
-            attackers: vec![AttackerInfo {
-                creature: attacker,
-                target: AttackTarget::Player(bob),
-            }],
-            blockers: HashMap::new(),
-            damage_assignment_order: HashMap::new(),
-        });
-
-        let before = wasm.game.player(bob).map(|p| p.life).unwrap_or_default();
-        wasm.apply_current_step_actions_once();
-        let after = wasm.game.player(bob).map(|p| p.life).unwrap_or_default();
-
-        assert_eq!(after, before - 3);
-        assert!(!wasm.first_strike_damage_done_this_step);
-        assert!(wasm.regular_damage_done_this_step);
-    }
-
-    #[test]
-    fn wasm_combat_damage_runs_first_strike_then_regular_substep() {
-        let mut wasm = WasmGame::new();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-
-        let first_striker = create_creature(&mut wasm.game, alice, "First Striker", 2, 2);
-        let normal_attacker = create_creature(&mut wasm.game, alice, "Normal Attacker", 3, 3);
-        if let Some(obj) = wasm.game.object_mut(first_striker) {
-            obj.abilities
-                .push(Ability::static_ability(StaticAbility::first_strike()));
-        }
-
-        wasm.game.turn.phase = Phase::Combat;
-        wasm.game.turn.step = Some(Step::CombatDamage);
-        wasm.last_step_actions_applied = None;
-        wasm.game.combat = Some(CombatState {
-            attackers: vec![
-                AttackerInfo {
-                    creature: first_striker,
-                    target: AttackTarget::Player(bob),
-                },
-                AttackerInfo {
-                    creature: normal_attacker,
-                    target: AttackTarget::Player(bob),
-                },
-            ],
-            blockers: HashMap::new(),
-            damage_assignment_order: HashMap::new(),
-        });
-
-        let start = wasm.game.player(bob).map(|p| p.life).unwrap_or_default();
-        wasm.apply_current_step_actions_once();
-        let after_first_strike = wasm.game.player(bob).map(|p| p.life).unwrap_or_default();
-        assert_eq!(after_first_strike, start - 2);
-        assert!(wasm.first_strike_damage_done_this_step);
-        assert!(!wasm.regular_damage_done_this_step);
-
-        assert!(wasm.try_run_regular_combat_damage_substep());
-        let after_regular = wasm.game.player(bob).map(|p| p.life).unwrap_or_default();
-        assert_eq!(after_regular, start - 5);
-        assert!(wasm.regular_damage_done_this_step);
-        assert!(!wasm.try_run_regular_combat_damage_substep());
-    }
-
-    #[test]
-    fn wasm_end_combat_step_clears_combat_state() {
-        let mut wasm = WasmGame::new();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let attacker = create_creature(&mut wasm.game, alice, "Attacker", 2, 2);
-
-        wasm.game.turn.phase = Phase::Combat;
-        wasm.game.turn.step = Some(Step::EndCombat);
-        wasm.last_step_actions_applied = None;
-        wasm.game.combat = Some(CombatState {
-            attackers: vec![AttackerInfo {
-                creature: attacker,
-                target: AttackTarget::Player(bob),
-            }],
-            blockers: HashMap::new(),
-            damage_assignment_order: HashMap::new(),
-        });
-
-        wasm.apply_current_step_actions_once();
-        let combat = wasm.game.combat.expect("combat should still exist");
-        assert!(combat.attackers.is_empty());
-        assert!(combat.blockers.is_empty());
-        assert!(combat.damage_assignment_order.is_empty());
-    }
 }
