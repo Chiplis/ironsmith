@@ -1178,6 +1178,11 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("Deal {amount} damage to each opponent");
     }
+    if let Some(rest) = normalized.strip_prefix("Investigate. ")
+        && rest.starts_with("target creature gets +")
+    {
+        return format!("Investigate, then {rest}");
+    }
     if let Some(rest) = normalized.strip_prefix("For each opponent, Deal ")
         && let Some((amount, tail)) = rest.split_once(" damage to that player. ")
         && (tail.eq_ignore_ascii_case("you gain 1 life")
