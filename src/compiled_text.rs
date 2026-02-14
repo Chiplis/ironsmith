@@ -568,6 +568,12 @@ fn looks_like_creature_type_list_subject(subject: &str) -> bool {
 
 fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    if let Some(rewritten) = normalize_granted_activated_ability_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_granted_beginning_trigger_clause(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_inline_earthbend_phrasing(&normalized) {
         normalized = rewritten;
     }
@@ -11846,6 +11852,33 @@ fn normalize_granted_activated_ability_clause(text: &str) -> Option<String> {
     Some(format!("{subject} {has_word} \"{cost}: {effect}\""))
 }
 
+fn normalize_granted_beginning_trigger_clause(text: &str) -> Option<String> {
+    let (subject, tail, has_word) = if let Some((subject, tail)) = text.split_once(" has ") {
+        (subject.trim(), tail.trim(), "has")
+    } else if let Some((subject, tail)) = text.split_once(" have ") {
+        (subject.trim(), tail.trim(), "have")
+    } else {
+        return None;
+    };
+    if subject.is_empty() {
+        return None;
+    }
+
+    let mut body = tail.trim().trim_matches('"').trim_end_matches('.').to_string();
+    if !body.to_ascii_lowercase().starts_with("at the beginning of ") {
+        return None;
+    }
+    body = body
+        .replace(" w w ", " {W}{W} ")
+        .replace(" w w.", " {W}{W}.")
+        .replace(" if you do ", ". If you do, ")
+        .replace(" if you do,", ". If you do,");
+    if !body.ends_with('.') {
+        body.push('.');
+    }
+    Some(format!("{subject} {has_word} \"{}\"", capitalize_first(&body)))
+}
+
 fn normalize_oracle_line_segment(segment: &str) -> String {
     let trimmed_owned = strip_square_bracketed_segments(segment.trim());
     let trimmed = trimmed_owned.trim();
@@ -14835,6 +14868,29 @@ mod tests {
         assert_eq!(
             normalized,
             "When this creature enters, each opponent sacrifices a creature of their choice, discards a card, and loses 4 life"
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_granted_beginning_trigger_clause() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Enchanted land has at the beginning of your upkeep you may pay w w if you do you gain 1 life",
+        );
+        assert_eq!(
+            normalized,
+            "Enchanted land has \"At the beginning of your upkeep you may pay {W}{W}. If you do, you gain 1 life.\""
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_granted_beginning_trigger_clause_for_plural_subject()
+    {
+        let normalized = normalize_common_semantic_phrasing(
+            "Creatures you control have at the beginning of your upkeep draw a card",
+        );
+        assert_eq!(
+            normalized,
+            "Creatures you control have \"At the beginning of your upkeep draw a card.\""
         );
     }
 
