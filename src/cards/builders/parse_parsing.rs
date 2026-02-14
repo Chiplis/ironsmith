@@ -821,7 +821,12 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                 let has_effect_head = find_verb(after_then).is_some()
                     || parse_ability_line(after_then).is_some()
                     || has_nonverb_effect_head;
-                if !has_back_ref && has_effect_head {
+                let allow_backref_split = has_back_ref
+                    && after_words.first().is_some_and(|word| *word == "put")
+                    && after_words
+                        .iter()
+                        .any(|word| *word == "counter" || *word == "counters");
+                if has_effect_head && (!has_back_ref || allow_backref_split) {
                     split_point = Some(i);
                     break;
                 }
@@ -18926,6 +18931,7 @@ fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "vigilance" => Some(CounterType::Vigilance),
         "loyalty" => Some(CounterType::Loyalty),
         "charge" => Some(CounterType::Charge),
+        "stun" => Some(CounterType::Stun),
         "depletion" => Some(CounterType::Depletion),
         "storage" => Some(CounterType::Storage),
         "ki" => Some(CounterType::Ki),
