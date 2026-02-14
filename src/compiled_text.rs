@@ -4411,6 +4411,15 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(gain) = filtered[idx].downcast_ref::<crate::effects::GainLifeEffect>()
+            && let Some(scry) = filtered[idx + 1].downcast_ref::<crate::effects::ScryEffect>()
+            && let Some(compact) = describe_gain_life_then_scry(gain, scry)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(scry) = filtered[idx].downcast_ref::<crate::effects::ScryEffect>()
             && let Some(draw) = filtered[idx + 1].downcast_ref::<crate::effects::DrawCardsEffect>()
             && let Some(compact) = describe_scry_then_draw(scry, draw)
@@ -5613,6 +5622,39 @@ fn describe_mill_then_may_return(
     );
     let return_clause = lowercase_first(&describe_effect(return_effect));
     Some(format!("{mill_clause}, then {player} may {return_clause}"))
+}
+
+fn describe_gain_life_then_scry(
+    gain: &crate::effects::GainLifeEffect,
+    scry: &crate::effects::ScryEffect,
+) -> Option<String> {
+    let crate::target::ChooseSpec::Player(gain_player) = gain.player.base() else {
+        return None;
+    };
+    if gain_player != &scry.player {
+        return None;
+    }
+    if !matches!(gain.amount, Value::Fixed(_) | Value::X) {
+        return None;
+    }
+
+    let player = describe_player_filter(gain_player);
+    let gain_clause = format!(
+        "{player} {} {} life",
+        player_verb(&player, "gain", "gains"),
+        describe_value(&gain.amount)
+    );
+    if *gain_player == PlayerFilter::You {
+        return Some(format!(
+            "{gain_clause} and scry {}",
+            describe_value(&scry.count)
+        ));
+    }
+    Some(format!(
+        "{gain_clause} and {player} {} {}",
+        player_verb(&player, "scry", "scries"),
+        describe_value(&scry.count)
+    ))
 }
 
 fn describe_scry_then_draw(
