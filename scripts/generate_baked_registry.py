@@ -16,6 +16,58 @@ ROOT = Path(__file__).resolve().parents[1]
 CARDS_JSON = ROOT / "cards.json"
 OUT_FILE = ROOT / "src" / "cards" / "generated_registry.rs"
 
+DIGITAL_ONLY_ORACLE_MARKERS = (
+    "boon",
+    "conjure",
+    "double team",
+    "draft",
+    "heist",
+    "incorporate",
+    "intensity",
+    "intensify",
+    "not the starting player",
+    "perpetually",
+    "seek",
+    "specialize",
+    "spellbook",
+)
+
+
+def contains_marker_with_boundaries(text: str, marker: str) -> bool:
+    start = text.find(marker)
+    while start != -1:
+        before = text[start - 1] if start > 0 else ""
+        after_index = start + len(marker)
+        after = text[after_index] if after_index < len(text) else ""
+        before_is_letter = before.isalpha()
+        after_is_letter = after.isalpha()
+        if not before_is_letter and not after_is_letter:
+            return True
+        start = text.find(marker, start + 1)
+    return False
+
+
+def has_digital_only_oracle_marker(oracle_text: str) -> bool:
+    lower = oracle_text.lower()
+    return any(
+        contains_marker_with_boundaries(lower, marker)
+        for marker in DIGITAL_ONLY_ORACLE_MARKERS
+    )
+
+
+def card_oracle_text(card: dict) -> str | None:
+    oracle_text = card.get("oracle_text")
+    if isinstance(oracle_text, str):
+        return oracle_text
+    faces = card.get("card_faces")
+    if isinstance(faces, list) and faces:
+        first = faces[0]
+        if isinstance(first, dict):
+            face_oracle = first.get("oracle_text")
+            if isinstance(face_oracle, str):
+                return face_oracle
+    return None
+
 
 def rust_raw_literal(value: str) -> str:
     """Return a Rust string literal (raw when possible)."""
@@ -48,6 +100,9 @@ def load_excluded_name_keys() -> set[str]:
 def collect_unique_blocks(excluded_name_keys: set[str]) -> Dict[str, Tuple[str, str]]:
     unique: Dict[str, Tuple[str, str]] = {}
     for card in iter_json_array(CARDS_JSON):
+        oracle_text = card_oracle_text(card)
+        if oracle_text and has_digital_only_oracle_marker(oracle_text):
+            continue
         block = build_block(card)
         if not block:
             continue

@@ -98,6 +98,37 @@ fn pick_field<'a>(card: &'a Value, face: Option<&'a Value>, field: &str) -> Opti
         .or_else(|| card.get(field).and_then(Value::as_str))
 }
 
+fn contains_marker_with_boundaries(text: &str, marker: &str) -> bool {
+    text.match_indices(marker).any(|(start, _)| {
+        let before = text[..start].chars().next_back();
+        let end = start + marker.len();
+        let after = text[end..].chars().next();
+        !before.is_some_and(|ch| ch.is_ascii_alphabetic())
+            && !after.is_some_and(|ch| ch.is_ascii_alphabetic())
+    })
+}
+
+fn has_digital_only_oracle_marker(oracle_text: &str) -> bool {
+    let lower = oracle_text.to_ascii_lowercase();
+    [
+        "boon",
+        "conjure",
+        "double team",
+        "draft",
+        "heist",
+        "incorporate",
+        "intensity",
+        "intensify",
+        "not the starting player",
+        "perpetually",
+        "seek",
+        "specialize",
+        "spellbook",
+    ]
+    .iter()
+    .any(|marker| contains_marker_with_boundaries(&lower, marker))
+}
+
 fn is_non_playable(type_line: Option<&str>, oracle_text: Option<&str>, card: &Value) -> bool {
     if card
         .get("layout")
@@ -139,6 +170,9 @@ fn is_non_playable(type_line: Option<&str>, oracle_text: Option<&str>, card: &Va
         }
     }
     if oracle_text.is_some_and(|oracle| oracle.contains("Theme color")) {
+        return true;
+    }
+    if oracle_text.is_some_and(has_digital_only_oracle_marker) {
         return true;
     }
     false
