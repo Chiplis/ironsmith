@@ -697,17 +697,39 @@ impl StaticAbilityKind for EntersWithCounters {
     }
 
     fn display(&self) -> String {
-        let count = match &self.count {
-            Value::Fixed(v) => v.to_string(),
-            Value::X => "X".to_string(),
-            Value::Count(_) => "the appropriate number of".to_string(),
-            _ => format!("{:?}", self.count),
-        };
-        format!(
-            "Enters the battlefield with {} {} counter(s)",
-            count,
-            describe_counter_type(self.counter_type)
-        )
+        let counter = describe_counter_type(self.counter_type);
+        match &self.count {
+            Value::Fixed(v) => {
+                format!("Enters the battlefield with {v} {counter} counter(s)")
+            }
+            Value::X => {
+                format!("Enters the battlefield with X {counter} counter(s)")
+            }
+            Value::Count(filter) => {
+                format!(
+                    "Enters the battlefield with X {counter} counter(s), where X is the number of {}",
+                    filter.description()
+                )
+            }
+            Value::CountScaled(filter, scale) => {
+                if *scale == 1 {
+                    format!(
+                        "Enters the battlefield with X {counter} counter(s), where X is the number of {}",
+                        filter.description()
+                    )
+                } else {
+                    format!(
+                        "Enters the battlefield with X {counter} counter(s), where X is {} times the number of {}",
+                        scale,
+                        filter.description()
+                    )
+                }
+            }
+            _ => format!(
+                "Enters the battlefield with {:?} {} counter(s)",
+                self.count, counter
+            ),
+        }
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
