@@ -1988,6 +1988,14 @@ fn compile_effect(
         EffectAst::ConniveIterated => Ok((vec![Effect::connive(ChooseSpec::Iterated)], Vec::new())),
         EffectAst::Goad { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            let spec = if choices.is_empty() {
+                match spec {
+                    ChooseSpec::Object(filter) => ChooseSpec::All(filter),
+                    other => other,
+                }
+            } else {
+                spec
+            };
             Ok((vec![Effect::goad(spec)], choices))
         }
         EffectAst::ReturnToHand { target } => {

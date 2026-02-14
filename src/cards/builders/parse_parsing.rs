@@ -4022,6 +4022,11 @@ fn parse_static_condition_clause(tokens: &[Token]) -> Result<StaticCondition, Ca
     if clause_words == ["it", "is", "your", "turn"] || clause_words == ["its", "your", "turn"] {
         return Ok(StaticCondition::YourTurn);
     }
+    if clause_words == ["it", "is", "not", "your", "turn"]
+        || clause_words == ["its", "not", "your", "turn"]
+    {
+        return Ok(StaticCondition::NotYourTurn);
+    }
 
     if clause_words.starts_with(&["there", "are"]) {
         let quantified = &tokens[2..];
@@ -4147,6 +4152,15 @@ fn parse_anthem_prefix_condition(
     tokens: &[Token],
     get_idx: usize,
 ) -> Result<(Option<StaticCondition>, usize), CardTextError> {
+    if words_start_with(tokens, &["during", "turns", "other", "than", "yours"]) {
+        let subject_start = tokens[..get_idx]
+            .iter()
+            .position(|token| matches!(token, Token::Comma(_)))
+            .map(|idx| idx + 1)
+            .or_else(|| find_source_reference_start(&tokens[..get_idx]))
+            .unwrap_or(5);
+        return Ok((Some(StaticCondition::NotYourTurn), subject_start));
+    }
     if words_start_with(tokens, &["during", "your", "turn"]) {
         let subject_start = tokens[..get_idx]
             .iter()
@@ -11584,6 +11598,8 @@ fn try_build_unless(
         (PlayerAst::You, 1)
     } else if after_words.starts_with(&["they"]) {
         (PlayerAst::That, 1)
+    } else if after_words.starts_with(&["defending", "player"]) {
+        (PlayerAst::Defending, 2)
     } else if after_words.starts_with(&["that", "player"]) {
         (PlayerAst::That, 2)
     } else if after_words.starts_with(&["its", "controller"]) {
@@ -11700,7 +11716,7 @@ fn try_build_unless(
 
     // Try action-based alternative: "unless you [verb] [object]"
     // Both the main effects and the alternative must parse successfully.
-    if let Ok(alternative) = parse_effect_chain(action_tokens) {
+    if let Ok(alternative) = parse_effect_chain(after_unless) {
         if !alternative.is_empty() {
             return Ok(Some(EffectAst::UnlessAction {
                 effects,
@@ -21703,6 +21719,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                 all_words.join(" ")
             )));
         }
+        filter.excluded_name = Some(name_words.join(" "));
         let mut remaining = Vec::with_capacity(all_words.len());
         remaining.extend_from_slice(&all_words[..not_named_idx]);
         remaining.extend_from_slice(&all_words[name_end..]);
@@ -22402,6 +22419,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
         || filter.name.is_some()
+        || filter.excluded_name.is_some()
         || filter.source
         || filter.with_counter.is_some()
         || filter.without_counter.is_some()
@@ -22444,6 +22462,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
         || filter.name.is_some()
+        || filter.excluded_name.is_some()
         || filter.source
         || filter.with_counter.is_some()
         || filter.without_counter.is_some()

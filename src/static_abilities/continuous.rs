@@ -291,6 +291,8 @@ impl AnthemValue {
 pub enum StaticCondition {
     /// "During your turn" / "as long as it's your turn"
     YourTurn,
+    /// "During turns other than yours" / "as long as it's not your turn"
+    NotYourTurn,
     /// "As long as this creature is equipped"
     SourceIsEquipped,
     /// "As long as equipped creature is tapped"
@@ -345,6 +347,7 @@ fn comparison_display(cmp: &Comparison) -> String {
 fn describe_static_condition(condition: &StaticCondition) -> String {
     match condition {
         StaticCondition::YourTurn => "as long as it's your turn".to_string(),
+        StaticCondition::NotYourTurn => "during turns other than yours".to_string(),
         StaticCondition::SourceIsEquipped => "as long as this creature is equipped".to_string(),
         StaticCondition::EquippedCreatureTapped => {
             "as long as equipped creature is tapped".to_string()
@@ -442,6 +445,7 @@ fn static_condition_is_active(
 ) -> bool {
     match condition {
         StaticCondition::YourTurn => game.turn.active_player == controller,
+        StaticCondition::NotYourTurn => game.turn.active_player != controller,
         StaticCondition::SourceIsEquipped => game.object(source).is_some_and(|source_obj| {
             source_obj.attachments.iter().any(|id| {
                 game.object(*id)

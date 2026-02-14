@@ -2426,6 +2426,11 @@ fn filter_matches_with_controller(
     {
         return false;
     }
+    if let Some(excluded_name) = &filter.excluded_name
+        && object.name == *excluded_name
+    {
+        return false;
+    }
 
     if filter.is_commander && !game.is_commander(object.id) {
         return false;

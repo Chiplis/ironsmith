@@ -478,6 +478,9 @@ pub struct ObjectFilter {
     /// Name must match (for cards like "Rat Colony")
     pub name: Option<String>,
 
+    /// Name must not match.
+    pub excluded_name: Option<String>,
+
     /// Require a card to have a specific alternative casting capability.
     pub alternative_cast: Option<AlternativeCastKind>,
 
@@ -826,6 +829,12 @@ impl ObjectFilter {
     /// Require a specific name.
     pub fn named(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
+        self
+    }
+
+    /// Exclude a specific name.
+    pub fn not_named(mut self, name: impl Into<String>) -> Self {
+        self.excluded_name = Some(name.into());
         self
     }
 
@@ -1287,6 +1296,11 @@ impl ObjectFilter {
         {
             return false;
         }
+        if let Some(excluded_name) = &self.excluded_name
+            && object.name.eq_ignore_ascii_case(excluded_name)
+        {
+            return false;
+        }
 
         if let Some(counter_requirement) = self.with_counter {
             let has_counter = match counter_requirement {
@@ -1500,9 +1514,7 @@ impl ObjectFilter {
             return false;
         }
 
-        if self.entered_since_your_last_turn_ended
-            && !game.is_summoning_sick(snapshot.object_id)
-        {
+        if self.entered_since_your_last_turn_ended && !game.is_summoning_sick(snapshot.object_id) {
             return false;
         }
 
@@ -1710,6 +1722,11 @@ impl ObjectFilter {
         // Name check
         if let Some(required_name) = &self.name
             && !snapshot.name.eq_ignore_ascii_case(required_name)
+        {
+            return false;
+        }
+        if let Some(excluded_name) = &self.excluded_name
+            && snapshot.name.eq_ignore_ascii_case(excluded_name)
         {
             return false;
         }
@@ -2057,7 +2074,8 @@ impl ObjectFilter {
                         .push("that shares a creature type with that object".to_string());
                 }
                 TaggedOpbjectRelation::SharesCardType => {
-                    post_noun_qualifiers.push("that shares a card type with that object".to_string());
+                    post_noun_qualifiers
+                        .push("that shares a card type with that object".to_string());
                 }
                 TaggedOpbjectRelation::SameStableId => {}
             }
@@ -2275,6 +2293,9 @@ impl ObjectFilter {
         // Handle name
         if let Some(ref name) = self.name {
             return format!("a {} named {}", parts.join(" "), name);
+        }
+        if let Some(ref name) = self.excluded_name {
+            return format!("{} not named {}", parts.join(" "), name);
         }
 
         if let Some(ref power) = self.power {
@@ -3154,10 +3175,7 @@ mod tests {
         let filter = ObjectFilter::creature().with_base_power(Comparison::LessThanOrEqual(2));
         assert_eq!(filter.power, Some(Comparison::LessThanOrEqual(2)));
         assert_eq!(filter.power_reference, PtReference::Base);
-        assert_eq!(
-            filter.description(),
-            "creature with base power 2 or less"
-        );
+        assert_eq!(filter.description(), "creature with base power 2 or less");
     }
 
     #[test]
@@ -3182,8 +3200,10 @@ mod tests {
         let obj = game.object(object_id).expect("object should exist");
         let ctx = FilterContext::new(you);
 
-        let effective_filter = ObjectFilter::creature().with_power(Comparison::GreaterThanOrEqual(3));
-        let base_filter = ObjectFilter::creature().with_base_power(Comparison::GreaterThanOrEqual(3));
+        let effective_filter =
+            ObjectFilter::creature().with_power(Comparison::GreaterThanOrEqual(3));
+        let base_filter =
+            ObjectFilter::creature().with_base_power(Comparison::GreaterThanOrEqual(3));
 
         assert!(
             effective_filter.matches(obj, &ctx, &game),
@@ -3212,11 +3232,12 @@ mod tests {
             .build();
         let object_id = game.create_object_from_card(&card, you, Zone::Battlefield);
         if let Some(obj) = game.object_mut(object_id) {
-            obj.abilities.push(Ability::static_ability(StaticAbility::anthem(
-                ObjectFilter::source(),
-                2,
-                0,
-            )));
+            obj.abilities
+                .push(Ability::static_ability(StaticAbility::anthem(
+                    ObjectFilter::source(),
+                    2,
+                    0,
+                )));
         }
 
         let obj = game.object(object_id).expect("object should exist");
