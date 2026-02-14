@@ -867,6 +867,47 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
     result
 }
 
+fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
+    let mut result = Vec::new();
+    for segment in segments {
+        let mut start = 0usize;
+        let mut split_any = false;
+
+        for idx in 0..segment.len() {
+            if !matches!(segment[idx], Token::Comma(_)) {
+                continue;
+            }
+            let before = trim_commas(&segment[start..idx]);
+            let after = trim_commas(&segment[idx + 1..]);
+            if before.is_empty() || after.is_empty() {
+                continue;
+            }
+            let before_has_verb = find_verb(before.as_slice()).is_some();
+            let after_starts_effect =
+                find_verb(after.as_slice()).is_some_and(|(_, verb_idx)| verb_idx == 0)
+                    || parse_ability_line(after.as_slice()).is_some();
+            if !before_has_verb || !after_starts_effect {
+                continue;
+            }
+
+            let part = before.to_vec();
+            if !part.is_empty() {
+                result.push(part);
+                split_any = true;
+            }
+            start = idx + 1;
+        }
+
+        let tail = trim_commas(&segment[start..]).to_vec();
+        if !tail.is_empty() {
+            result.push(tail);
+        } else if !split_any && !segment.is_empty() {
+            result.push(segment);
+        }
+    }
+    result
+}
+
 fn split_cost_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
@@ -15655,6 +15696,7 @@ fn parse_effect_chain_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardText
     // back-reference the first part (no "that", "it", "them", "its").
     // This handles patterns like "discard your hand, then draw four cards".
     segments = split_segments_on_comma_then(segments);
+    segments = split_segments_on_comma_effect_head(segments);
     segments = expand_segments_with_comma_action_clauses(segments);
     segments = expand_segments_with_multi_create_clauses(segments);
     let mut carried_context: Option<CarryContext> = None;
