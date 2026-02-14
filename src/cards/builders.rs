@@ -4155,6 +4155,60 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_non_mana_additional_cost_modifier_as_static_ability() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Brutal Suppression Variant")
+            .parse_text(
+                "Activated abilities of nontoken Rebels cost an additional \"Sacrifice a land\" to activate.",
+            )
+            .expect("parse non-mana additional cost modifier");
+
+        assert!(
+            def.spell_effect.is_none(),
+            "expected no spell effects, got {:?}",
+            def.spell_effect
+        );
+        let lines = compiled_lines(&def);
+        assert!(
+            lines.iter().any(|line| {
+                line.contains(
+                    "Activated abilities of nontoken Rebels cost an additional \"Sacrifice a land\" to activate."
+                )
+            }),
+            "expected static additional cost modifier text, got {lines:?}"
+        );
+    }
+
+    #[test]
+    fn parse_drought_additional_cost_lines_as_static_abilities() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Drought Variant")
+            .parse_text(
+                "At the beginning of your upkeep, sacrifice this enchantment unless you pay {W}{W}.\nSpells cost an additional \"Sacrifice a Swamp\" to cast for each black mana symbol in their mana costs.\nActivated abilities cost an additional \"Sacrifice a Swamp\" to activate for each black mana symbol in their activation costs.",
+            )
+            .expect("parse drought-style additional costs");
+
+        assert!(
+            def.spell_effect.is_none(),
+            "expected no top-level spell effects, got {:?}",
+            def.spell_effect
+        );
+        let lines = compiled_lines(&def);
+        assert!(
+            lines.iter().any(|line| line.starts_with("Triggered ability 1:")),
+            "expected upkeep trigger to remain triggered ability, got {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|line| line.contains("Spells cost an additional \"Sacrifice a Swamp\" to cast")),
+            "expected spell additional cost line as static ability, got {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Activated abilities cost an additional \"Sacrifice a Swamp\" to activate")),
+            "expected activated additional cost line as static ability, got {lines:?}"
+        );
+    }
+
+    #[test]
     fn parse_search_library_named_card_with_leading_you_may() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Wretched Throng Variant")
             .parse_text(

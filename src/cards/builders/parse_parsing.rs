@@ -1104,6 +1104,20 @@ fn is_untap_during_each_other_players_untap_step_words(words: &[&str]) -> bool {
     })
 }
 
+fn is_non_mana_additional_cost_modifier_line(normalized_line: &str) -> bool {
+    let has_additional_cost = normalized_line.contains(" cost an additional ")
+        || normalized_line.contains(" costs an additional ");
+    if !has_additional_cost {
+        return false;
+    }
+    let has_activation_or_cast_tail =
+        normalized_line.contains(" to activate") || normalized_line.contains(" to cast");
+    if !has_activation_or_cast_tail {
+        return false;
+    }
+    normalized_line.contains('"') || normalized_line.contains('“') || normalized_line.contains('”')
+}
+
 fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     parser_trace_line("parse_line:entry", line);
     let normalized = line
@@ -1174,6 +1188,13 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
         }
         let effects = parse_effect_sentences(effect_tokens)?;
         return Ok(LineAst::AdditionalCost { effects });
+    }
+
+    if is_non_mana_additional_cost_modifier_line(&normalized) {
+        return Ok(LineAst::StaticAbility(StaticAbility::custom(
+            "additional_cost_modifier",
+            line.trim().to_string(),
+        )));
     }
 
     if tokens.first().is_some_and(|token| token.is_word("you"))
