@@ -8992,22 +8992,39 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
                 .is_some_and(|token| token.is_word("whenever") || token.is_word("when"))
         {
             let tail = &tokens[split_idx + 1..];
-            if looks_like_trigger_type_list_tail(tail)
-                && let Some(next_comma_rel) = tail.iter().enumerate().find_map(|(idx, token)| {
-                    if !matches!(token, Token::Comma(_)) {
-                        return None;
+            if looks_like_trigger_type_list_tail(tail) || looks_like_trigger_color_list_tail(tail) {
+                let next_comma_rel = tail
+                    .iter()
+                    .enumerate()
+                    .find_map(|(idx, token)| {
+                        if !matches!(token, Token::Comma(_)) {
+                            return None;
+                        }
+                        let before_words = words(&tail[..idx]);
+                        if before_words.contains(&"spell") || before_words.contains(&"spells") {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    })
+                    .or_else(|| {
+                        if looks_like_trigger_color_list_tail(tail) {
+                            tail.iter().enumerate().rev().find_map(|(idx, token)| {
+                                if matches!(token, Token::Comma(_)) {
+                                    Some(idx)
+                                } else {
+                                    None
+                                }
+                            })
+                        } else {
+                            None
+                        }
+                    });
+                if let Some(next_comma_rel) = next_comma_rel {
+                    let candidate_idx = split_idx + 1 + next_comma_rel;
+                    if candidate_idx > start_idx && candidate_idx + 1 < tokens.len() {
+                        split_idx = candidate_idx;
                     }
-                    let before_words = words(&tail[..idx]);
-                    if before_words.contains(&"spell") || before_words.contains(&"spells") {
-                        Some(idx)
-                    } else {
-                        None
-                    }
-                })
-            {
-                let candidate_idx = split_idx + 1 + next_comma_rel;
-                if candidate_idx > start_idx && candidate_idx + 1 < tokens.len() {
-                    split_idx = candidate_idx;
                 }
             }
         }
@@ -9062,6 +9079,19 @@ fn looks_like_trigger_type_list_tail(tokens: &[Token]) -> bool {
         });
     first_is_card_type
         && (words.contains(&"spell") || words.contains(&"spells"))
+        && words.contains(&"or")
+        && tokens.iter().any(|token| matches!(token, Token::Comma(_)))
+}
+
+fn looks_like_trigger_color_list_tail(tokens: &[Token]) -> bool {
+    if tokens.is_empty() {
+        return false;
+    }
+    let words = words(tokens);
+    if words.is_empty() {
+        return false;
+    }
+    is_basic_color_word(words[0])
         && words.contains(&"or")
         && tokens.iter().any(|token| matches!(token, Token::Comma(_)))
 }
@@ -10468,11 +10498,61 @@ fn parse_sentence_for_each_counter_removed(
     Ok(parse_for_each_counter_removed_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
+fn parse_put_counter_ladder_segments(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let segments = split_on_comma(tokens);
+    if segments.len() != 3 {
+        return Ok(None);
+    }
+
+    let mut effects = Vec::new();
+    for (idx, segment) in segments.iter().enumerate() {
+        let mut clause = trim_commas(segment).to_vec();
+        if idx == 0 {
+            if clause.is_empty() || !clause[0].is_word("put") {
+                return Ok(None);
+            }
+            clause.remove(0);
+        } else if clause.first().is_some_and(|token| token.is_word("and")) {
+            clause.remove(0);
+        }
+        if clause.is_empty() {
+            return Ok(None);
+        }
+
+        let Some(on_idx) = clause.iter().position(|token| token.is_word("on")) else {
+            return Ok(None);
+        };
+        let descriptor = trim_commas(&clause[..on_idx]);
+        let target_tokens = trim_commas(&clause[on_idx + 1..]);
+        if descriptor.is_empty() || target_tokens.is_empty() {
+            return Ok(None);
+        }
+
+        let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
+        let target = parse_target_phrase(&target_tokens)?;
+        effects.push(EffectAst::PutCounters {
+            counter_type,
+            count: Value::Fixed(count as i32),
+            target,
+            target_count: None,
+            distributed: false,
+        });
+    }
+
+    Ok(Some(effects))
+}
+
 fn parse_sentence_put_counter_sequence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if !tokens.first().is_some_and(|token| token.is_word("put")) {
         return Ok(None);
+    }
+
+    if let Some(effects) = parse_put_counter_ladder_segments(tokens)? {
+        return Ok(Some(effects));
     }
 
     if let Some(on_idx) = tokens.iter().position(|token| token.is_word("on")) {
@@ -13599,28 +13679,46 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
         return Ok(None);
     }
 
-    let duration = if after_gain
+    let duration_phrase = if let Some(idx) = after_gain
         .windows(4)
-        .any(|window| window == ["until", "end", "of", "turn"])
+        .position(|window| window == ["until", "end", "of", "turn"])
     {
-        Until::EndOfTurn
-    } else if after_gain
-        .windows(4)
-        .any(|window| window == ["until", "your", "next", "turn"])
-        || after_gain
-            .windows(4)
-            .any(|window| window == ["until", "your", "next", "upkeep"])
-        || after_gain
-            .windows(5)
-            .any(|window| window == ["until", "your", "next", "untap", "step"])
-        || after_gain
-            .windows(5)
-            .any(|window| window == ["during", "your", "next", "untap", "step"])
-    {
-        Until::YourNextTurn
+        Some((idx, 4usize, Until::EndOfTurn))
+    } else if let Some(idx) = after_gain.windows(4).position(|window| {
+        window == ["until", "your", "next", "turn"] || window == ["until", "your", "next", "upkeep"]
+    }) {
+        Some((idx, 4usize, Until::YourNextTurn))
+    } else if let Some(idx) = after_gain.windows(5).position(|window| {
+        window == ["until", "your", "next", "untap", "step"]
+            || window == ["during", "your", "next", "untap", "step"]
+    }) {
+        Some((idx, 5usize, Until::YourNextTurn))
     } else {
-        Until::Forever
+        None
     };
+    let duration = duration_phrase
+        .as_ref()
+        .map(|(_, _, duration)| duration.clone())
+        .unwrap_or(Until::Forever);
+
+    let mut trailing_effects = Vec::new();
+    if let Some((start_rel, len_words, _)) = duration_phrase {
+        let tail_word_idx = gain_idx + 1 + start_rel + len_words;
+        if let Some(tail_token_idx) = token_index_for_word_index(tokens, tail_word_idx) {
+            let mut tail_tokens = trim_commas(&tokens[tail_token_idx..]).to_vec();
+            while tail_tokens
+                .first()
+                .is_some_and(|token| token.is_word("and") || token.is_word("then"))
+            {
+                tail_tokens.remove(0);
+            }
+            if !tail_tokens.is_empty() {
+                if let Ok(parsed_tail) = parse_effect_chain(&tail_tokens) {
+                    trailing_effects = parsed_tail;
+                }
+            }
+        }
+    }
 
     let ability_tokens = if let Some(until_idx) = tokens.iter().position(|t| t.is_word("until")) {
         if until_idx > gain_idx + 1 {
@@ -13694,6 +13792,7 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
             abilities,
             duration,
         });
+        effects.extend(trailing_effects.clone());
         return Ok(Some(effects));
     }
 
@@ -13715,6 +13814,7 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
             abilities,
             duration,
         });
+        effects.extend(trailing_effects.clone());
         return Ok(Some(effects));
     }
 
@@ -13734,6 +13834,7 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
             abilities,
             duration,
         });
+        effects.extend(trailing_effects.clone());
         return Ok(Some(effects));
     }
 
@@ -13757,6 +13858,7 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
         abilities,
         duration,
     });
+    effects.extend(trailing_effects);
 
     Ok(Some(effects))
 }

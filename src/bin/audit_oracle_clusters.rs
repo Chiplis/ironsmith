@@ -602,6 +602,19 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace(
             "target creature an opponent controls",
             "target creature you don't control",
+        )
+        .replace(
+            "This creature can't block and can't be blocked",
+            "This creature can't block. This creature can't be blocked",
+        )
+        .replace(
+            "this creature can't block and can't be blocked",
+            "this creature can't block. this creature can't be blocked",
+        )
+        .replace("Exile 1 card(s) from your hand", "Exile a card from your hand")
+        .replace(
+            ", choose another target attacking creature. another target attacking creature ",
+            ", another target attacking creature ",
         );
     if normalized.starts_with("Surveil ") || normalized.starts_with("surveil ") {
         normalized = normalized
