@@ -4742,6 +4742,17 @@ fn pluralize_word(word: &str) -> String {
         return word.to_string();
     }
     let lower = word.to_ascii_lowercase();
+    if lower == "elf" {
+        return if word
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            "Elves".to_string()
+        } else {
+            "elves".to_string()
+        };
+    }
     if lower.ends_with('y')
         && lower.len() > 1
         && !matches!(
@@ -8672,6 +8683,15 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = rewrite_granted_triggered_ability_quote(&normalized) {
         normalized = rewritten;
     }
+    if let Some(rewritten) = normalize_choose_exact_return_cost_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_choose_exact_exile_cost_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_choose_exact_tagged_it_clause(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = rewrite_return_with_counters_on_it_sequence(&normalized) {
         return rewritten;
     }
@@ -9624,6 +9644,130 @@ fn split_once_ascii_ci<'a>(text: &'a str, separator: &str) -> Option<(&'a str, &
     let sep_lower = separator.to_ascii_lowercase();
     let idx = lower.find(&sep_lower)?;
     Some((&text[..idx], &text[idx + separator.len()..]))
+}
+
+fn render_choose_exact_subject(descriptor: &str, count: usize) -> String {
+    let descriptor = descriptor.trim();
+    if let Some(rest) = descriptor.strip_prefix("this a ") {
+        return format!("this {rest}");
+    }
+    if let Some(rest) = descriptor.strip_prefix("this an ") {
+        return format!("this {rest}");
+    }
+    if count == 1 {
+        if let Some(rest) = descriptor.strip_prefix("a ") {
+            return with_indefinite_article(rest);
+        }
+        if let Some(rest) = descriptor.strip_prefix("an ") {
+            return with_indefinite_article(rest);
+        }
+        return descriptor.to_string();
+    }
+
+    let count_word = render_small_number_or_raw(&count.to_string());
+    if let Some(rest) = descriptor.strip_prefix("a ") {
+        return format!("{count_word} {}", pluralize_noun_phrase(rest));
+    }
+    if let Some(rest) = descriptor.strip_prefix("an ") {
+        return format!("{count_word} {}", pluralize_noun_phrase(rest));
+    }
+    format!("{count_word} {}", pluralize_noun_phrase(descriptor))
+}
+
+fn normalize_choose_exact_return_cost_clause(text: &str) -> Option<String> {
+    let marker = " and tags it as 'return_cost_0', Return target permanent to its owner's hand";
+    let (head, tail) = text.split_once(marker)?;
+    let choose_idx = head.rfind("Choose exactly ")?;
+    let prefix = &head[..choose_idx];
+    let choose_tail = &head[choose_idx + "Choose exactly ".len()..];
+    let (count_token, rest) = choose_tail.split_once(' ')?;
+    let count = count_token.parse::<usize>().ok()?;
+    let descriptor = rest.strip_suffix(" in the battlefield")?;
+    let subject = render_choose_exact_subject(descriptor, count);
+    let owner_tail = if count == 1 {
+        "its owner's hand"
+    } else {
+        "their owner's hand"
+    };
+    let clause = format!("Return {subject} to {owner_tail}");
+    Some(format!("{prefix}{clause}{tail}"))
+}
+
+fn normalize_choose_exact_exile_cost_clause(text: &str) -> Option<String> {
+    let marker = " and tags it as 'exile_cost_0', Exile it";
+    let (head, tail) = text.split_once(marker)?;
+    let choose_idx = head.rfind("Choose exactly ")?;
+    let prefix = &head[..choose_idx];
+    let choose_tail = &head[choose_idx + "Choose exactly ".len()..];
+    let (count_token, rest) = choose_tail.split_once(' ')?;
+    let count = count_token.parse::<usize>().ok()?;
+    let descriptor = rest
+        .strip_suffix(" in the battlefield")
+        .or_else(|| rest.strip_suffix(" in the stack"))?;
+    let mut subject = render_choose_exact_subject(descriptor, count);
+    if subject.contains("instant or sorcery") && !subject.contains(" spell") {
+        if subject.starts_with("a ") {
+            subject = subject.replacen("a instant or sorcery", "an instant or sorcery spell", 1);
+        } else if subject.starts_with("an ") {
+            subject = subject.replacen("an instant or sorcery", "an instant or sorcery spell", 1);
+        } else {
+            subject = subject.replacen("instant or sorcery", "instant or sorcery spell", 1);
+        }
+    }
+    Some(format!("{prefix}Exile {subject}{tail}"))
+}
+
+fn parse_choose_exact_tail(head: &str) -> Option<(&str, usize, &str)> {
+    let needle = " chooses exactly ";
+    let lower = head.to_ascii_lowercase();
+    let idx = lower.rfind(needle)?;
+    let prefix = head.get(..idx)?.trim_end_matches(',');
+    let choose_tail = head.get(idx + needle.len()..)?;
+    let (count_token, rest) = choose_tail.split_once(' ')?;
+    let count = count_token.parse::<usize>().ok()?;
+    let descriptor = rest
+        .strip_suffix(" in the battlefield")
+        .or_else(|| rest.strip_suffix(" in a hand"))
+        .or_else(|| rest.strip_suffix(" in hand"))
+        .or_else(|| rest.strip_suffix(" in the stack"))?;
+    Some((prefix, count, descriptor))
+}
+
+fn normalize_choose_exact_tagged_it_clause(text: &str) -> Option<String> {
+    if let Some((head, tail)) = text.split_once(" and tags it as '__it__'. Destroy it")
+        && let Some((chooser, count, descriptor)) = parse_choose_exact_tail(head)
+    {
+        let mut descriptor = descriptor
+            .replace("that player controls", "they control")
+            .replace("target player's ", "")
+            .replace("that player's ", "")
+            .replace(" from their hand", " in their hand");
+        descriptor = descriptor.replace(" in their hand in their hand", " in their hand");
+        let chosen = render_choose_exact_subject(&descriptor, count);
+        let target_ref = if chosen.to_ascii_lowercase().contains("creature") {
+            "that creature"
+        } else if chosen.to_ascii_lowercase().contains("artifact") {
+            "that artifact"
+        } else if chosen.to_ascii_lowercase().contains("card") {
+            "that card"
+        } else {
+            "that permanent"
+        };
+        return Some(format!("{chooser} chooses {chosen}. Destroy {target_ref}{tail}"));
+    }
+    if let Some((head, tail)) = text.split_once(" and tags it as '__it__'")
+        && let Some((chooser, count, descriptor)) = parse_choose_exact_tail(head)
+    {
+        let mut descriptor = descriptor
+            .replace("that player controls", "they control")
+            .replace("target player's ", "")
+            .replace("that player's ", "")
+            .replace(" from their hand", " in their hand");
+        descriptor = descriptor.replace(" in their hand in their hand", " in their hand");
+        let chosen = render_choose_exact_subject(&descriptor, count);
+        return Some(format!("{chooser} chooses {chosen}{tail}"));
+    }
+    None
 }
 
 fn normalize_split_land_search_sequence(text: &str) -> Option<String> {
