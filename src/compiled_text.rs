@@ -8552,6 +8552,25 @@ fn normalize_for_each_clause_surface(text: String) -> String {
         }
         normalized
     };
+    let normalize_for_each_may_action = |action: &str| {
+        let action = action.trim().trim_end_matches('.');
+        if let Some(rest) = action.strip_prefix("draws ") {
+            return format!("draw {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("discards ") {
+            return format!("discard {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("gains ") {
+            return format!("gain {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("loses ") {
+            return format!("lose {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("mills ") {
+            return format!("mill {rest}");
+        }
+        action.to_string()
+    };
     if let Some((prefix, rest)) = text
         .split_once("For each player, You may that player ")
         .or_else(|| text.split_once("for each player, You may that player "))
@@ -8582,6 +8601,38 @@ fn normalize_for_each_clause_surface(text: String) -> String {
         };
         return format!(
             "{prefix}{each_opponent} may {first}. For each opponent who doesn't, that player {second}"
+        );
+    }
+    if let Some((prefix, rest)) = text
+        .split_once("For each player, You may that player ")
+        .or_else(|| text.split_once("for each player, You may that player "))
+        && let Some((first, second)) = rest.split_once(". If you do, that player ")
+    {
+        let first = normalize_for_each_may_action(first);
+        let second = second.trim().trim_end_matches('.');
+        let each_player = if prefix.is_empty() {
+            "Each player"
+        } else {
+            "each player"
+        };
+        return format!(
+            "{prefix}{each_player} may {first}. For each player who does, that player {second}"
+        );
+    }
+    if let Some((prefix, rest)) = text
+        .split_once("For each opponent, You may that player ")
+        .or_else(|| text.split_once("for each opponent, You may that player "))
+        && let Some((first, second)) = rest.split_once(". If you do, that player ")
+    {
+        let first = normalize_for_each_may_action(first);
+        let second = second.trim().trim_end_matches('.');
+        let each_opponent = if prefix.is_empty() {
+            "Each opponent"
+        } else {
+            "each opponent"
+        };
+        return format!(
+            "{prefix}{each_opponent} may {first}. For each opponent who does, that player {second}"
         );
     }
     if let Some((prefix, rest)) = text.split_once("For each opponent, Deal ")
