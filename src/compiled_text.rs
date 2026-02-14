@@ -8556,6 +8556,7 @@ fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String
         normalized_body = normalize_for_each_clause_surface(normalized_body);
         normalized_body = normalize_known_low_tail_phrase(&normalized_body);
         normalized_body = normalize_triggered_self_deals_damage_phrase(def, &normalized_body);
+        normalized_body = normalize_gain_life_plus_phrase(&normalized_body);
         return format!("{}: {}", prefix.trim(), normalized_body);
     }
     let mut normalized =
@@ -8569,7 +8570,28 @@ fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String
     normalized = normalize_for_each_clause_surface(normalized);
     normalized = normalize_known_low_tail_phrase(&normalized);
     normalized = normalize_triggered_self_deals_damage_phrase(def, &normalized);
+    normalized = normalize_gain_life_plus_phrase(&normalized);
     normalized
+}
+
+fn normalize_gain_life_plus_phrase(text: &str) -> String {
+    let trimmed = text.trim();
+    if let Some((left, right)) = split_once_ascii_ci(trimmed, " and you gain ")
+        && left
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("you gain ")
+        && let Some(base_amount) = strip_prefix_ascii_ci(left.trim(), "you gain ")
+            .and_then(|tail| strip_suffix_ascii_ci(tail.trim(), " life"))
+        && let Some(extra_amount) = strip_suffix_ascii_ci(right.trim().trim_end_matches('.'), " life")
+    {
+        return format!(
+            "You gain {} plus {} life.",
+            base_amount.trim(),
+            extra_amount.trim()
+        );
+    }
+    trimmed.to_string()
 }
 
 fn normalize_for_each_clause_surface(text: String) -> String {
@@ -14583,6 +14605,12 @@ mod tests {
     fn post_pass_merges_you_gain_x_and_you_gain_n() {
         let normalized =
             normalize_compiled_post_pass_effect("You gain X life and you gain 3 life.");
+        assert_eq!(normalized, "You gain X plus 3 life.");
+    }
+
+    #[test]
+    fn line_post_pass_normalizes_you_gain_x_plus_n_phrase() {
+        let normalized = normalize_gain_life_plus_phrase("You gain X life and you gain 3 life.");
         assert_eq!(normalized, "You gain X plus 3 life.");
     }
 
