@@ -3547,6 +3547,27 @@ fn normalize_choose_between_modes_clause(text: &str) -> Option<String> {
 
 fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> String {
     match (min, max) {
+        (Some(Value::Fixed(min_value)), Value::Fixed(max_value)) => match (*min_value, *max_value) {
+            (0, 1) => "Choose up to one -".to_string(),
+            (1, 1) => "Choose one -".to_string(),
+            (1, 2) => "Choose one or both -".to_string(),
+            (1, n) if n > 2 => "Choose one or more -".to_string(),
+            (0, n) => {
+                if let Some(word) = number_word(n) {
+                    format!("Choose up to {word} -")
+                } else {
+                    format!("Choose up to {n} -")
+                }
+            }
+            (n, m) if n == m => {
+                if let Some(word) = number_word(n) {
+                    format!("Choose {word} -")
+                } else {
+                    format!("Choose {n} -")
+                }
+            }
+            _ => format!("Choose between {min_value} and {max_value} mode(s) -"),
+        },
         (None, Value::Fixed(value)) if *value > 0 => {
             if let Some(word) = number_word(*value) {
                 format!("Choose {word} -")
@@ -3554,7 +3575,6 @@ fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> String {
                 format!("Choose {value} mode(s) -")
             }
         }
-        (Some(Value::Fixed(1)), Value::Fixed(2)) => "Choose one or both -".to_string(),
         (Some(min), max) => format!(
             "Choose between {} and {} mode(s) -",
             describe_value(min),
