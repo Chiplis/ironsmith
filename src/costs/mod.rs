@@ -67,7 +67,10 @@ pub use payer_trait::{CostContext, CostPayer, CostPaymentResult};
 pub use processing_mode::CostProcessingMode;
 
 // Re-export all cost implementations
-pub use counters::{AddCountersCost, RemoveAnyCountersAmongCost, RemoveCountersCost};
+pub use counters::{
+    AddCountersCost, RemoveAnyCountersAmongCost, RemoveAnyCountersFromSourceCost,
+    RemoveCountersCost,
+};
 pub use discard::{DiscardCost, DiscardHandCost, DiscardSourceCost};
 pub use effect::EffectCost;
 pub use energy::EnergyCost;

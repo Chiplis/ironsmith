@@ -144,7 +144,9 @@ impl RemoveAnyCountersFromSourceCost {
     }
 
     fn max_removable(&self, game: &GameState, source: ObjectId) -> Result<u32, CostPaymentError> {
-        let obj = game.object(source).ok_or(CostPaymentError::SourceNotFound)?;
+        let obj = game
+            .object(source)
+            .ok_or(CostPaymentError::SourceNotFound)?;
         if obj.zone != Zone::Battlefield {
             return Err(CostPaymentError::SourceNotOnBattlefield);
         }
@@ -727,7 +729,11 @@ mod tests {
 
         let result = cost.pay(&mut game, &mut ctx);
         assert_eq!(result, Ok(CostPaymentResult::Paid));
-        assert_eq!(ctx.x_value, Some(3), "removed amount should propagate to x_value");
+        assert_eq!(
+            ctx.x_value,
+            Some(3),
+            "removed amount should propagate to x_value"
+        );
 
         let obj = game.object(card_id).expect("source should still exist");
         let remaining = obj.counters.get(&CounterType::Charge).copied().unwrap_or(0);

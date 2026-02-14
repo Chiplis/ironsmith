@@ -1419,7 +1419,10 @@ pub fn execute_combat_damage_step(
         }
 
         // Get attacker's effective power (includes continuous effects).
-        let Some(power) = game.calculated_power(attacker_id).or_else(|| attacker.power()) else {
+        let Some(power) = game
+            .calculated_power(attacker_id)
+            .or_else(|| attacker.power())
+        else {
             continue;
         };
         if power <= 0 {
@@ -1466,7 +1469,10 @@ pub fn execute_combat_damage_step(
             }
 
             // Get blocker's effective power (includes continuous effects).
-            let Some(power) = game.calculated_power(blocker_id).or_else(|| blocker.power()) else {
+            let Some(power) = game
+                .calculated_power(blocker_id)
+                .or_else(|| blocker.power())
+            else {
                 continue;
             };
             if power <= 0 {
@@ -1480,8 +1486,13 @@ pub fn execute_combat_damage_step(
                 continue;
             }
 
-            let damage_result =
-                calculate_damage_with_game(game, blocker, DamageTarget::Permanent, power as u32, true);
+            let damage_result = calculate_damage_with_game(
+                game,
+                blocker,
+                DamageTarget::Permanent,
+                power as u32,
+                true,
+            );
             blocker_damage_info.push((blocker_id, *attacker_id, controller, damage_result));
         }
     }
@@ -1565,7 +1576,13 @@ fn deal_damage_to_blockers(
         if let Some(AttackTarget::Player(player_id)) = attack_target {
             Some((
                 player_id,
-                calculate_damage_with_game(game, attacker, DamageTarget::Player(player_id), excess, true),
+                calculate_damage_with_game(
+                    game,
+                    attacker,
+                    DamageTarget::Player(player_id),
+                    excess,
+                    true,
+                ),
             ))
         } else {
             None
@@ -1643,8 +1660,13 @@ fn deal_damage_to_defender(
 
     match target {
         AttackTarget::Player(player_id) => {
-            let damage_result =
-                calculate_damage_with_game(game, attacker, DamageTarget::Player(*player_id), damage, true);
+            let damage_result = calculate_damage_with_game(
+                game,
+                attacker,
+                DamageTarget::Player(*player_id),
+                damage,
+                true,
+            );
 
             let applied = apply_damage_to_player(game, *player_id, attacker_id, &damage_result);
 
@@ -8537,23 +8559,20 @@ mod tests {
         let attacker_id = create_creature(&mut game, "Tek Test", alice, 2, 2);
 
         if let Some(attacker) = game.object_mut(attacker_id) {
-            let swamp_condition =
-                crate::static_abilities::StaticCondition::CountComparison {
-                    count: crate::static_abilities::AnthemCountExpression::MatchingFilter(
-                        crate::filter::ObjectFilter::land()
-                            .with_subtype(crate::types::Subtype::Swamp)
-                            .you_control(),
-                    ),
-                    comparison: crate::filter::Comparison::GreaterThanOrEqual(1),
-                    display: Some("you control a Swamp".to_string()),
-                };
-            let anthem = crate::static_abilities::Anthem::for_source(2, 0)
-                .with_condition(swamp_condition);
-            attacker
-                .abilities
-                .push(Ability::static_ability(crate::static_abilities::StaticAbility::new(
-                    anthem,
-                )));
+            let swamp_condition = crate::static_abilities::StaticCondition::CountComparison {
+                count: crate::static_abilities::AnthemCountExpression::MatchingFilter(
+                    crate::filter::ObjectFilter::land()
+                        .with_subtype(crate::types::Subtype::Swamp)
+                        .you_control(),
+                ),
+                comparison: crate::filter::Comparison::GreaterThanOrEqual(1),
+                display: Some("you control a Swamp".to_string()),
+            };
+            let anthem =
+                crate::static_abilities::Anthem::for_source(2, 0).with_condition(swamp_condition);
+            attacker.abilities.push(Ability::static_ability(
+                crate::static_abilities::StaticAbility::new(anthem),
+            ));
         }
 
         let swamp = CardBuilder::new(CardId::new(), "Swamp")

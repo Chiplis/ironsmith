@@ -1679,10 +1679,11 @@ mod tests {
                 TotalCost::from_cost(crate::costs::Cost::remove_counters(CounterType::Charge, 2)),
                 vec![crate::effect::Effect::new(
                     crate::effects::mana::AddScaledManaEffect::new(
-                    vec![ManaSymbol::Black],
-                    Value::X,
-                    PlayerFilter::You,
-                ))],
+                        vec![ManaSymbol::Black],
+                        Value::X,
+                        PlayerFilter::You,
+                    ),
+                )],
             ));
         }
 

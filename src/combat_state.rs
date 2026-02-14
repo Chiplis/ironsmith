@@ -637,12 +637,12 @@ pub fn get_attacking_player(combat: &CombatState, game: &GameState) -> Option<Pl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::object::Object;
     use crate::ability::Ability;
     use crate::card::PtValue;
     use crate::color::ColorSet;
     use crate::cost::OptionalCostsPaid;
     use crate::ids::StableId;
+    use crate::object::Object;
     use crate::static_abilities::StaticAbility;
     use crate::types::{CardType, Subtype};
     use std::collections::HashMap;

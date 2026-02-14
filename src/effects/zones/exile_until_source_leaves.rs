@@ -86,4 +86,3 @@ impl EffectExecutor for ExileUntilEffect {
         "target to exile"
     }
 }
-

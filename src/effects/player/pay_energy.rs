@@ -1,9 +1,9 @@
 //! Pay energy effect implementation.
 
 use crate::effect::{EffectOutcome, EffectResult, Value};
+use crate::effects::EffectExecutor;
 use crate::effects::executor_trait::CostValidationError;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
-use crate::effects::EffectExecutor;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -70,8 +70,9 @@ impl EffectExecutor for PayEnergyEffect {
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
         let ctx = ExecutionContext::new_default(source, controller);
-        let payer = resolve_player_from_spec(game, &self.player, &ctx)
-            .map_err(|_| CostValidationError::Other("unable to resolve player for energy cost".to_string()))?;
+        let payer = resolve_player_from_spec(game, &self.player, &ctx).map_err(|_| {
+            CostValidationError::Other("unable to resolve player for energy cost".to_string())
+        })?;
         let needed = resolve_value(game, &self.amount, &ctx)
             .map_err(|_| CostValidationError::Other("unable to resolve energy amount".to_string()))?
             .max(0) as u32;
@@ -89,4 +90,3 @@ impl EffectExecutor for PayEnergyEffect {
         }
     }
 }
-

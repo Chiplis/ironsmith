@@ -225,7 +225,9 @@ impl CostPayer for DiscardSourceCost {
         let source = game
             .object(ctx.source)
             .ok_or(CostPaymentError::SourceNotFound)?;
-        let player = game.player(ctx.payer).ok_or(CostPaymentError::PlayerNotFound)?;
+        let player = game
+            .player(ctx.payer)
+            .ok_or(CostPaymentError::PlayerNotFound)?;
 
         if source.zone != Zone::Hand || !player.hand.contains(&ctx.source) {
             return Err(CostPaymentError::InsufficientCardsInHand);

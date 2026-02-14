@@ -35,7 +35,8 @@ impl EffectExecutor for GoadEffect {
             let Some(object) = game.object(object_id) else {
                 continue;
             };
-            if object.zone != Zone::Battlefield || !object.card_types.contains(&CardType::Creature) {
+            if object.zone != Zone::Battlefield || !object.card_types.contains(&CardType::Creature)
+            {
                 continue;
             }
             game.add_goad_effect(object_id, ctx.controller, Until::YourNextTurn, ctx.source);
@@ -56,4 +57,3 @@ impl EffectExecutor for GoadEffect {
         "creature to goad"
     }
 }
-
