@@ -8914,19 +8914,6 @@ fn normalize_known_low_tail_phrase(text: &str) -> String {
             .to_string();
     }
     if normalized
-        == "For each player, if that player controls creature, Investigate. Destroy all creatures."
-        || normalized
-            == "For each player, if that player controls creature, Investigate. Destroy all creatures"
-    {
-        return "Each player who controls the most creatures investigates. Then destroy all creatures."
-            .to_string();
-    }
-    if normalized == "Exile card in that player's exile."
-        || normalized == "Exile card in that player's exile"
-    {
-        return "Until end of turn, if one or more creatures would enter from exile or after being cast from exile, their owners shuffle them into their libraries instead.".to_string();
-    }
-    if normalized
         == "This creature's power and toughness are each equal to the number of anothers an opponent's Swamp an opponent controls."
         || normalized
             == "This creature's power and toughness are each equal to the number of anothers an opponent's Swamp an opponent controls"
@@ -9028,11 +9015,6 @@ fn normalize_known_low_tail_phrase(text: &str) -> String {
         || normalized.eq_ignore_ascii_case("Destroy target artifact or enchantment or land")
     {
         return "Destroy target artifact, enchantment, or land.".to_string();
-    }
-    if normalized.eq_ignore_ascii_case("Creature deals damage equal to its power to creature.")
-        || normalized.eq_ignore_ascii_case("Creature deals damage equal to its power to creature")
-    {
-        return "Each creature deals damage to itself equal to its power.".to_string();
     }
     if normalized
         .eq_ignore_ascii_case(
@@ -9521,26 +9503,11 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         return "Creatures you control get +1/+1 for each time you've cast your commander from the command zone this game.".to_string();
     }
     if normalized_lower
-        == "{5}, {t}: create a 1/1 green snake creature token under your control for each artifact."
-        || normalized_lower
-            == "{5}, {t}: create a 1/1 green snake creature token under your control for each artifact"
-    {
-        return "{5}, {T}: Create a 1/1 green Snake creature token for each charge counter on this artifact.".to_string();
-    }
-    if normalized_lower
         == "when this creature dies, put the number of creature -1/-1 counter(s) on target creature."
         || normalized_lower
             == "when this creature dies, put the number of creature -1/-1 counter(s) on target creature"
     {
         return "When this creature dies, put a -1/-1 counter on target creature for each -1/-1 counter on this creature.".to_string();
-    }
-    if normalized_lower
-        == "for each player, if that player controls creature, investigate. destroy all creatures."
-        || normalized_lower
-            == "for each player, if that player controls creature, investigate. destroy all creatures"
-    {
-        return "Each player who controls the most creatures investigates. Then destroy all creatures."
-            .to_string();
     }
     if normalized_lower.contains("cards in exile gain suspend")
         && normalized_lower.contains("put three time counters on it")
@@ -9675,12 +9642,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return "Whenever a Goblin or Orc you control deals combat damage to a player, you may sacrifice it. When you do, choose one — • Draw a card. • Create a Treasure token.".to_string();
     }
-    if normalized_lower.contains(
-        "when this enchantment enters, exile up to one target opponent's nonland enchantment",
-    ) && normalized_lower.contains("you gain 2 life")
-    {
-        return "When this enchantment enters, exile up to one target nonland permanent an opponent controls until this enchantment leaves the battlefield. You gain 2 life.".to_string();
-    }
     if normalized_lower.contains("destroy target black or red attacking/blocking creature")
         && normalized_lower.contains("you gain 2 life")
     {
@@ -9698,11 +9659,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         && normalized_lower.contains("draw a card")
     {
         return "At the beginning of your upkeep, return all cards you own exiled with this artifact to your hand, then draw a card.".to_string();
-    }
-    if normalized_lower.contains(
-        "this creature's power and toughness are each equal to the number of opponent's artifact an opponent controls",
-    ) {
-        return "This creature's power and toughness are each equal to 1 plus the number of artifacts your opponents control.".to_string();
     }
     if normalized_lower.contains(
         "when this creature dies, create three 1/1 green elf warrior creature token under your control. you mill 3 cards",
@@ -9764,11 +9720,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return "Whenever another Goblin you control becomes blocked, sacrifice it. If you do, it deals 4 damage to each creature blocking it.".to_string();
     }
-    if normalized_lower == "destroy target artifact or creature and you gain 3 life."
-        || normalized_lower == "destroy target artifact or creature and you gain 3 life"
-    {
-        return "Destroy target artifact or tapped creature. You gain 3 life.".to_string();
-    }
     if normalized_lower == "return target creature to its owner's hand and you gain 2 life."
         || normalized_lower == "return target creature to its owner's hand and you gain 2 life"
         || normalized_lower == "return target creature to its owner's hand. you gain 2 life."
@@ -9780,13 +9731,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         || normalized_lower == "nonartifact creature can't block until end of turn"
     {
         return "Nonartifact creatures can't block this turn.".to_string();
-    }
-    if normalized_lower
-        == "whenever this creature attacks, create 1 3/1 red dinosaur creature token under your control."
-        || normalized_lower
-            == "whenever this creature attacks, create 1 3/1 red dinosaur creature token under your control"
-    {
-        return "Whenever this creature attacks, create a 3/1 red Dinosaur creature token if you control a creature with power 4 or greater.".to_string();
     }
     if normalized_lower.contains("choose another target creature with power 2 or less you control")
         && normalized_lower.contains("can't be blocked until end of turn")
@@ -9897,12 +9841,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return "Whenever an opponent casts a spell, that player sacrifices a permanent of their choice unless they pay {1}.".to_string();
     }
-    if normalized_lower.contains("destroy target artifact")
-        && normalized_lower.contains("you gain 3 life")
-        && !normalized_lower.contains("tapped creature")
-    {
-        return "Destroy target artifact or tapped creature. You gain 3 life.".to_string();
-    }
     if normalized_lower.contains("whenever another goblin you control becomes blocked")
         && normalized_lower.contains("you choose a permanent you control")
         && normalized_lower.contains("you sacrifice a permanent")
@@ -9975,13 +9913,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return "Exile target creature, then roll a d20. 1—9 | Its controller creates a 4/4 green Ox creature token. 10—19 | Its controller creates a 2/2 green Boar creature token. 20 | Its controller creates a 0/1 white Goat creature token.".to_string();
     }
-    if normalized
-        == "Choose one — Destroy target creature or planeswalker. • Destroy target noncreature, nonland permanent with mana value 1 or less."
-        || normalized
-            == "Choose one — Destroy target creature or planeswalker. • Destroy target noncreature, nonland permanent with mana value 1 or less"
-    {
-        return "Choose one. If you descended this turn, you may choose both instead. • Destroy target creature or planeswalker. • Destroy target noncreature, nonland permanent with mana value 1 or less.".to_string();
-    }
     if normalized == "Non-Human creatures you control get +1/+1 for each creature."
         || normalized == "Non-Human creatures you control get +1/+1 for each creature"
     {
@@ -10010,13 +9941,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         && normalized_lower.contains("for each plains, deal 2 damage to that object")
     {
         return "At the beginning of each end step, each player sacrifices a land of their choice. This enchantment deals 2 damage to each player who sacrificed a Plains this way.".to_string();
-    }
-    if normalized_lower.contains("choose one")
-        && normalized_lower.contains("destroy target creature or planeswalker")
-        && normalized_lower
-            .contains("destroy target noncreature, nonland permanent with mana value 1 or less")
-    {
-        return "Choose one. If you descended this turn, you may choose both instead. • Destroy target creature or planeswalker. • Destroy target noncreature, nonland permanent with mana value 1 or less.".to_string();
     }
     if let Some(rewritten) = normalize_embedded_create_with_token_reminder(&normalized) {
         normalized = rewritten;
@@ -10370,17 +10294,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return "Return any number of target creature cards with total power 10 or less from your graveyard to the battlefield. Exile this spell."
             .to_string();
-    }
-    if normalized_lower.contains("destroy target tapped artifact or creature")
-        && normalized_lower.contains("gain 3 life")
-    {
-        return "Destroy target artifact or tapped creature. You gain 3 life.".to_string();
-    }
-    if normalized_lower.contains("destroy all target opponent's creature")
-        && (normalized_lower.contains("lose 2 life for each creature")
-            || normalized_lower.contains("lose 1 life for each creature"))
-    {
-        return "Destroy all creatures target opponent controls. You lose 2 life for each creature destroyed this way.".to_string();
     }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "Exile target card in graveyard") {
         return format!("Exile target card from a graveyard{rest}");
@@ -11799,9 +11712,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     {
         return "Target player sacrifices an artifact and a land of their choice. Structural Collapse deals 2 damage to that player.".to_string();
     }
-    if lower_normalized.contains("bolster 1 of their choice") {
-        return "Target player sacrifices an enchantment of their choice. Bolster 1.".to_string();
-    }
     if lower_normalized == "return target permanent to its owner's hand, then discard a card."
         || lower_normalized == "return target permanent to its owner's hand, then discard a card"
     {
@@ -11919,13 +11829,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     {
         return "Destroy each other enchantment that shares a color with it.".to_string();
     }
-    if lower_normalized.contains("choose one")
-        && lower_normalized.contains("destroy target creature or planeswalker")
-        && lower_normalized
-            .contains("destroy target noncreature, nonland permanent with mana value 1 or less")
-    {
-        return "Choose one. If you descended this turn, you may choose both instead. • Destroy target creature or planeswalker. • Destroy target noncreature, nonland permanent with mana value 1 or less.".to_string();
-    }
     if lower_normalized
         .contains("return all zombie creature card in your graveyard to the battlefield tapped")
         && lower_normalized.contains("destroy all humans")
@@ -12014,18 +11917,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
             == "when this enchantment enters, exile target opponent's nonland enchantment. when this enchantment enters, you gain 2 life. create 1 powerstone artifact token under your control, tapped"
     {
         return "When this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield. When this enchantment enters, you gain 2 life and create a tapped Powerstone token.".to_string();
-    }
-    if lower_normalized.contains(
-        "whenever this creature enters or attacks, choose one — this creature deals 4 damage to any target; or this creature gains lifelink and indestructible until end of turn",
-    ) {
-        return "Whenever this creature enters or attacks, put a charge counter on it or remove one from it. When you remove a counter this way, choose one — this creature deals 4 damage to any target; or this creature gains lifelink and indestructible until end of turn.".to_string();
-    }
-    if lower_normalized
-        == "when this creature enters or whenever this creature attacks, choose one - immard deals 4 damage to any target. • immard gains lifelink and indestructible until end of turn."
-        || lower_normalized
-            == "when this creature enters or whenever this creature attacks, choose one - immard deals 4 damage to any target. • immard gains lifelink and indestructible until end of turn"
-    {
-        return "Whenever this creature enters or attacks, put a charge counter on it or remove one from it. When you remove a counter this way, choose one — this creature deals 4 damage to any target; or this creature gains lifelink and indestructible until end of turn.".to_string();
     }
     if lower_normalized == "whenever this become tapped, you draw a card."
         || lower_normalized == "whenever this become tapped, you draw a card"
@@ -12991,13 +12882,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     if normalized == "Surveil 2. Draw a card." || normalized == "Surveil 2. Draw a card" {
         return "Surveil 2, then draw a card.".to_string();
     }
-    if normalized == "Target player sacrifices a enchantment. Bolster 1 of their choice."
-        || normalized == "Target player sacrifices a enchantment. Bolster 1 of their choice"
-        || normalized == "Target player sacrifices an enchantment. Bolster 1 of their choice."
-        || normalized == "Target player sacrifices an enchantment. Bolster 1 of their choice"
-    {
-        return "Target player sacrifices an enchantment of their choice. Bolster 1.".to_string();
-    }
     if normalized
         == "Return target creature you own to its owner's hand. Return all other card with the same name as that object from your graveyard to your hand."
         || normalized
@@ -13165,9 +13049,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         && normalized.contains("damage to target player")
     {
         return "Target player sacrifices an artifact and a land of their choice. Structural Collapse deals 2 damage to that player.".to_string();
-    }
-    if normalized.contains("Bolster 1 of their choice") {
-        return "Target player sacrifices an enchantment of their choice. Bolster 1.".to_string();
     }
     if normalized.contains("You mill 3 cards.")
         && normalized.contains("Return target land card or Elf from your graveyard to your hand")
@@ -15447,10 +15328,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
             "Whenever a Goblin or Orc you control deals combat damage to a player, you may sacrifice it. When you do, choose one — • Draw a card. • Create a Treasure token.",
         )
         .replace(
-            "When this enchantment enters, exile up to one target opponent's nonland enchantment and you gain 2 life.",
-            "When this enchantment enters, exile up to one target nonland permanent an opponent controls until this enchantment leaves the battlefield. You gain 2 life.",
-        )
-        .replace(
             "Destroy target black or red attacking/blocking creature and you gain 2 life.",
             "Destroy target black or red creature that's attacking or blocking. You gain 2 life.",
         )
@@ -15461,10 +15338,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         .replace(
             "At the beginning of your upkeep: Return all artifact card in your exile to their owners' hands. Draw a card.",
             "At the beginning of your upkeep, return all cards you own exiled with this artifact to your hand, then draw a card.",
-        )
-        .replace(
-            "This creature's power and toughness are each equal to the number of opponent's artifact an opponent controls.",
-            "This creature's power and toughness are each equal to 1 plus the number of artifacts your opponents control.",
         )
         .replace(
             "When this creature dies, create three 1/1 green Elf Warrior creature token under your control. you mill 3 cards.",
@@ -15515,22 +15388,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         .replace("its owners hands", "its owners' hands")
         .replace("their owners hand", "their owner's hand")
         .replace("their owners hands", "their owners' hands")
-        .replace(
-            "Destroy all target opponent's creature and you lose 2 life for each creature",
-            "Destroy all creatures target opponent controls. You lose 2 life for each creature destroyed this way",
-        )
-        .replace(
-            "destroy all target opponent's creature and you lose 2 life for each creature",
-            "Destroy all creatures target opponent controls. You lose 2 life for each creature destroyed this way",
-        )
-        .replace(
-            "Destroy target tapped artifact or creature and you gain 3 life",
-            "Destroy target artifact or tapped creature. You gain 3 life",
-        )
-        .replace(
-            "destroy target tapped artifact or creature and you gain 3 life",
-            "Destroy target artifact or tapped creature. You gain 3 life",
-        )
         .replace("instant or sorcery cards", "instant and/or sorcery cards")
         .replace("instants or sorcery cards", "instant and/or sorcery cards")
         .replace("you control you control", "you control")
@@ -16530,17 +16387,6 @@ mod tests {
     }
 
     #[test]
-    fn post_pass_normalizes_molten_collapse_choose_both_preamble() {
-        let normalized = normalize_compiled_post_pass_effect(
-            "Choose one — Destroy target creature or planeswalker. • Destroy target noncreature, nonland permanent with mana value 1 or less.",
-        );
-        assert_eq!(
-            normalized,
-            "Choose one. If you descended this turn, you may choose both instead. • Destroy target creature or planeswalker. • Destroy target noncreature, nonland permanent with mana value 1 or less."
-        );
-    }
-
-    #[test]
     fn post_pass_merges_repeated_subject_predicate_sentences() {
         let normalized = normalize_compiled_post_pass_effect(
             "This creature gets +1/+0 until end of turn. this creature gains Flying until end of turn.",
@@ -16763,15 +16609,6 @@ mod tests {
         assert_eq!(
             normalized,
             "Whenever a creature dies, put a +1/+1 counter on equipped creature. If equipped creature is a Vampire, put two +1/+1 counters on it instead."
-        );
-    }
-
-    #[test]
-    fn post_pass_normalizes_dont_blink_replacement_text() {
-        let normalized = normalize_known_low_tail_phrase("Exile card in that player's exile.");
-        assert_eq!(
-            normalized,
-            "Until end of turn, if one or more creatures would enter from exile or after being cast from exile, their owners shuffle them into their libraries instead."
         );
     }
 
