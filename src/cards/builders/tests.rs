@@ -414,6 +414,28 @@ fn test_parse_target_player_may_copy_this_spell_and_choose_new_targets() {
 }
 
 #[test]
+fn test_parse_then_controller_may_copy_spell_and_choose_new_targets() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Chain of Acid Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy target noncreature permanent. Then that permanent's controller may copy this spell and may choose a new target for that copy.",
+        )
+        .expect("parse then-controller copy-this-spell clause");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("that object's controller may copy this spell")
+            && !joined.contains("you may copy this spell"),
+        "expected copy permission to stay linked to referenced controller, got {joined}"
+    );
+    assert!(
+        joined.contains("that object's controller may choose new targets")
+            && !joined.contains("you may choose new targets"),
+        "expected retarget permission to stay linked to referenced controller, got {joined}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_attacks_with_subject_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attack Filter Probe")
         .card_types(vec![CardType::Enchantment])
