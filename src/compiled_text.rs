@@ -10842,6 +10842,30 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         )
         .replace("for each a ", "for each ")
         .replace("for each an ", "for each ")
+        .replace("Elfs you control get ", "Elves you control get ")
+        .replace("Warrior have ", "Warriors have ")
+        .replace("warrior have ", "warriors have ")
+        .replace(
+            "Creature with a level counter on it you control get ",
+            "Each creature you control with a level counter on it gets ",
+        )
+        .replace(
+            "creature with a level counter on it you control get ",
+            "each creature you control with a level counter on it gets ",
+        )
+        .replace(
+            "the number of Soldiers or Warrior you control",
+            "the number of Soldiers and Warriors you control",
+        )
+        .replace(
+            "the number of Soldiers and Warrior you control",
+            "the number of Soldiers and Warriors you control",
+        )
+        .replace("Goblin are black", "Goblins are black")
+        .replace(
+            "Goblin are zombie in addition to their other types",
+            "Goblins are Zombies in addition to their other creature types",
+        )
         .replace(
             "Whenever this creature or Whenever another Ally you control enters",
             "Whenever this creature or another Ally you control enters",
@@ -13512,6 +13536,40 @@ mod tests {
     fn normalizes_granted_mana_ability_sentence() {
         let normalized = normalize_sentence_surface_style("Creatures you control have t add g.");
         assert_eq!(normalized, "Creatures you control have \"{T}: Add {G}.\"");
+    }
+
+    #[test]
+    fn normalizes_specific_plural_surface_phrases() {
+        assert_eq!(
+            normalize_sentence_surface_style("Elfs you control get +2/+0."),
+            "Elves you control get +2/+0."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style("Warrior have Haste."),
+            "Warriors have Haste."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "Creature with a level counter on it you control get +2/+2."
+            ),
+            "Each creature you control with a level counter on it gets +2/+2."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "This creature's power and toughness are each equal to the number of Soldiers or Warrior you control."
+            ),
+            "This creature's power and toughness are each equal to the number of Soldiers and Warriors you control."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style("Goblin are black."),
+            "Goblins are black."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "Goblin are zombie in addition to their other types."
+            ),
+            "Goblins are Zombies in addition to their other creature types."
+        );
     }
 
     #[test]
