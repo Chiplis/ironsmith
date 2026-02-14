@@ -34,6 +34,16 @@ It is optimized for:
    - Do **not** convert low-similarity cards into parse failures as a "fix."
    - Any new parser rejection must be tied to a genuinely unsupported mechanic (with rule citation in commit notes/tests), not to a specific failing report cohort.
    - Progress must be measured by improved compiled semantics for the same cards, not by moving cards out of the similarity denominator.
+9. **Never delete real rules text from semantic comparison to raise similarity.**
+   - Do **not** remove gameplay-relevant clauses via empty-string replacements (for example `unless`, `if mana was spent`, targeting/timing restrictions, crew/activation limits, mode constraints).
+   - Empty-string normalization is allowed only for parser-internal scaffolding/leaked tags or pure formatting markers, never for real card semantics.
+10. **`--raw` is the semantic authority.**
+   - Use the `--raw` command to check compiled abilities against compiled text and oracle text.
+   - Oracle text must be represented exactly by compiled abilities; this is the highest-priority correctness requirement in this loop.
+   - Compiled-text wording fixes are allowed **only if** `--raw` already matches oracle semantics exactly.
+11. **Commit frequently during the loop.**
+   - Make small, reviewable commits after each completed cluster/pattern fix (or equivalent unit of progress).
+   - Do not batch large unrelated fixes into a single commit.
 
 ---
 
@@ -134,6 +144,10 @@ How to decide where to fix:
   - parser/lowering/runtime semantics issue.
 - both `--raw` and `--detailed` align with oracle semantics:
   - inspect similarity heuristics/false-positive handling.
+
+Non-negotiable rule:
+- `--raw` must fully encode oracle semantics before any renderer-only cleanup is accepted.
+- If `--raw` and oracle diverge, do **not** "fix" by deleting oracle-like clauses in comparison normalization.
 
 Tip for faster raw inspection:
 

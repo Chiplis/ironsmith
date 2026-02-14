@@ -655,18 +655,6 @@ fn expand_create_list_clause(line: &str) -> String {
 fn split_common_semantic_conjunctions(line: &str) -> String {
     let mut normalized = strip_not_named_phrase(line);
     normalized = normalized
-        .replace(" that crewed it this turn", "")
-        .replace(" that crewed this Vehicle this turn", "")
-        .replace("Activate only once each turn.", "")
-        .replace("activate only once each turn.", "")
-        .replace(
-            "Activate only if creatures you control have total power 8 or greater.",
-            "",
-        )
-        .replace(
-            "activate only if creatures you control have total power 8 or greater.",
-            "",
-        )
         .replace(" or you fully unlock a room", " and whenever you fully unlock a room")
         .replace(" or you fully unlock a Room", " and whenever you fully unlock a Room");
     normalized = normalized.replace(
@@ -887,8 +875,6 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace(" to their owners' hands", " to their owner's hand")
         .replace(" to their owners hand", " to their owner's hand")
         .replace(" to its owner's hand", " to their owner's hand")
-        .replace("Unless any player pays {2}, ", "")
-        .replace("unless any player pays {2}, ", "")
         .replace("You gain X life and you gain 3 life", "You gain X plus 3 life")
         .replace("you gain x life and you gain 3 life", "you gain x plus 3 life")
         .replace(
@@ -914,12 +900,6 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
             "This artifact deals 2 damage to card in hand",
             "This artifact deals 2 damage to that player unless they have exactly three or exactly four cards in hand",
         )
-        .replace("Smash the Chest — ", "")
-        .replace("Pry It Open — ", "")
-        .replace("Antimagic Cone — ", "")
-        .replace("Fear Ray — ", "")
-        .replace("Executioner Round — ", "")
-        .replace("Hyperfrag Round — ", "")
         .replace("choose one or more - ", "choose one or more — ")
         .replace(
             "Search your library for up to three cards with the same name as target creature, reveal them, put them into your hand, then shuffle",
@@ -928,20 +908,6 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace(
             "Search your library for up to two basic land cards and/or Town cards with different names, put them onto the battlefield tapped, then shuffle",
             "Search your library for up to two basic land you own, put them onto the battlefield tapped, then shuffle",
-        )
-        .replace("Each mode must target a different player.", "")
-        .replace("each mode must target a different player.", "")
-        .replace("Choose one — ", "")
-        .replace("choose one — ", "")
-        .replace("Choose one or more — ", "")
-        .replace("choose one or more — ", "")
-        .replace(
-            " unless that creature's controller has Blazing Salvo deal 5 damage to them",
-            "",
-        )
-        .replace(
-            " unless that object's controller has Blazing Salvo deal 5 damage to them",
-            "",
         )
         .replace(
             "Choose up to two target creatures. target creature can't be blocked this turn",
@@ -958,27 +924,6 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace(
             "investigate once for each opponent who has more cards in hand than you",
             "investigate",
-        )
-        .replace(" except during its controller's turn", "")
-        .replace(" if {B} was spent to cast this spell", "")
-        .replace(" if {R} was spent to cast this spell", "")
-        .replace(" if {G} was spent to cast this spell", "")
-        .replace(" if {U} was spent to cast this spell", "")
-        .replace(" if {W} was spent to cast this spell", "")
-        .replace(" if {C} was spent to cast this spell", "")
-        .replace(" if {b} was spent to cast this spell", "")
-        .replace(" if {r} was spent to cast this spell", "")
-        .replace(" if {g} was spent to cast this spell", "")
-        .replace(" if {u} was spent to cast this spell", "")
-        .replace(" if {w} was spent to cast this spell", "")
-        .replace(" if {c} was spent to cast this spell", "")
-        .replace(
-            "controlled by different players until this creature leaves the battlefield",
-            "",
-        )
-        .replace(
-            "controlled by different players until this leaves the battlefield",
-            "",
         )
         .replace(
             "When an exiled card enters under your control this way, put two +1/+1 counters on it",
@@ -1074,8 +1019,6 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
             "This creature's power and toughness are each equal to the number of Soldiers or Warrior you control",
             "This creature's power and toughness are each equal to 2 plus the number of Soldiers and Warriors you control",
         )
-        .replace("Smash the Chest — ", "")
-        .replace("Pry It Open — ", "")
         .replace(
             "you sacrifice a token you control",
             "sacrifice this token",
