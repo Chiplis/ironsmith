@@ -1228,14 +1228,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("{cost}: Deal {amount} damage to each {filter}");
     }
-    if normalized
-        == "For each player, Put target creature card in target player's graveyard onto the battlefield"
-        || normalized
-            == "For each player, Put target creature card in target player's graveyard onto the battlefield."
-    {
-        return "Each player puts a creature card from their graveyard onto the battlefield"
-            .to_string();
-    }
     if let Some(tail) =
         normalized.strip_prefix("For each player, that player discards their hand. you draw ")
     {
@@ -1717,13 +1709,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "When this permanent enters, put a +1/+1 counter on each other creature you control"
             .to_string();
     }
-    if normalized
-        == "When this permanent enters, for each player, that player mills 3 cards. For each opponent, that player discards a card. Draw a card"
-        || normalized
-            == "When this permanent enters, for each player, that player mills 3 cards. For each opponent, that player discards a card. Draw a card."
-    {
-        return "When this permanent enters, each player mills three cards, then each opponent discards a card and you draw a card".to_string();
-    }
     if normalized.starts_with("For each player, that player loses 1 life for each ") {
         let rest = normalized
             .trim_start_matches("For each player, that player loses 1 life for each ")
@@ -1794,26 +1779,12 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Prevent all combat damage that would be dealt this turn. Each attacking creature doesn't untap during its controller's next untap step".to_string();
     }
-    if normalized == "Destroy all an opponent's creature. Destroy all an opponent's planeswalker."
-        || normalized
-            == "Destroy all an opponent's creature. Destroy all an opponent's planeswalker"
-    {
-        return "Destroy all creatures and planeswalkers you don't control".to_string();
-    }
     if normalized == "An opponent's creature enter tapped."
         || normalized == "An opponent's creature enter tapped"
         || normalized == "An opponent's creature enters tapped."
         || normalized == "An opponent's creature enters tapped"
     {
         return "Creatures your opponents control enter tapped".to_string();
-    }
-    if normalized
-        == "Target opponent chooses exactly 1 target player's creature in the battlefield. Destroy it."
-        || normalized
-            == "Target opponent chooses exactly 1 target player's creature in the battlefield. Destroy it"
-    {
-        return "Target opponent chooses a creature they control. Destroy that creature"
-            .to_string();
     }
     if let Some(subject) = normalized.strip_suffix(" have flashback as long as it's your turn") {
         return format!(
@@ -1909,9 +1880,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         }
         return format!("This creature can't be blocked by more than {rest}");
     }
-    if normalized == "Can't be blocked except by creatures with flying or reach." {
-        return "This creature can't be blocked except by creatures with flying.".to_string();
-    }
     if let Some(rest) =
         normalized.strip_prefix("As long as this creature is equipped, this creature gets ")
     {
@@ -1944,43 +1912,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "When this creature becomes the target of a spell or ability, sacrifice it"
             .to_string();
     }
-    if normalized == "target creature you control fights target creature an opponent controls" {
-        return "Target creature you control fights target creature you don't control".to_string();
-    }
-    if normalized
-        == "target creature you control deals damage equal to its power to target creature an opponent controls"
-    {
-        return "Target creature you control deals damage equal to its power to target creature you don't control".to_string();
-    }
-    if normalized
-        == "target creature you control deals damage equal to its power to target creature an opponent controls or planeswalker"
-    {
-        return "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control".to_string();
-    }
-    if normalized
-        == "target creature you control deals damage equal to its power to target creature you don't control or planeswalker"
-    {
-        return "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control".to_string();
-    }
-    if let Some(rest) = normalized
-        .strip_prefix("When this creature enters, target creature you don't control gets ")
-    {
-        return format!(
-            "When this creature enters, target creature an opponent controls gets {rest}"
-        );
-    }
-    if let Some(rest) =
-        normalized.strip_prefix("When this creature dies, target creature you don't control gets ")
-    {
-        return format!(
-            "When this creature dies, target creature an opponent controls gets {rest}"
-        );
-    }
-    if normalized
-        == "When this creature enters, tap target creature you don't control. That creature doesn't untap during its controller's next untap step"
-    {
-        return "When this creature enters, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step".to_string();
-    }
     if normalized
         == "this creature or Whenever another Ally you control enters: You may Put a +1/+1 counter on this creature"
     {
@@ -1991,12 +1922,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if normalized == "Whenever you cast noncreature spell, Put a +1/+1 counter on this creature" {
         return "Whenever you cast a noncreature spell, put a +1/+1 counter on this creature"
-            .to_string();
-    }
-    if normalized
-        == "When this creature enters, Each player sacrifices a creature that player controls of their choice"
-    {
-        return "When this creature enters, each player sacrifices a creature of their choice"
             .to_string();
     }
     if let Some(rest) =
@@ -2042,13 +1967,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("You and target opponent each draw {count}");
     }
-    if let Some(rest) = normalized.strip_prefix(
-        "When this creature enters, return target creature you don't control to its owner's hand",
-    ) {
-        return format!(
-            "When this creature enters, return target creature an opponent controls to its owner's hand{rest}"
-        );
-    }
     if let Some(rest) = normalized.strip_prefix("Search your library for basic land you own") {
         return format!("Search your library for a basic land card{rest}");
     }
@@ -2059,12 +1977,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if normalized == "Counter target instant spell spell" {
         return "Counter target instant spell".to_string();
-    }
-    if normalized == "Return target permanent to its owner's hand, then discard a card"
-        || normalized == "Return target permanent to its owner's hand, then discard a card."
-    {
-        return "Return target permanent to its owner's hand. Then that player discards a card"
-            .to_string();
     }
     if normalized == "Counter target sorcery spell spell" {
         return "Counter target sorcery spell".to_string();
@@ -2107,12 +2019,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rest) = lower.strip_prefix("whenever this or whenever another ") {
         return format!("Whenever this or another {rest}");
     }
-    if lower
-        == "at the beginning of your upkeep, return target creature you control to its owner's hand"
-    {
-        return "At the beginning of your upkeep, return a creature you control to its owner's hand"
-            .to_string();
-    }
     if let Some(rest) = normalized
         .strip_prefix("At the beginning of your upkeep, tap this creature unless you lose ")
     {
@@ -2122,16 +2028,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         lower.strip_prefix("at the beginning of your upkeep, tap this creature unless you lose ")
     {
         return format!("At the beginning of your upkeep, tap this creature unless you pay {rest}");
-    }
-    if normalized
-        == "Whenever this creature attacks, that creature doesn't untap during its controller's next untap step"
-    {
-        return "Whenever this creature attacks, it doesn't untap during its controller's next untap step".to_string();
-    }
-    if lower
-        == "whenever this creature attacks, that creature doesn't untap during its controller's next untap step"
-    {
-        return "Whenever this creature attacks, it doesn't untap during its controller's next untap step".to_string();
     }
     if normalized == "Whenever this creature becomes blocked, the defending player discards a card"
     {
@@ -2200,9 +2096,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized == "When this creature enters, you sacrifice a creature" {
         return "When this creature enters, sacrifice a creature".to_string();
     }
-    if normalized == "target creature gets +2/+2 until end of turn. Investigate 1" {
-        return "Target creature gets +2/+2 until end of turn. Investigate".to_string();
-    }
     if normalized == "you draw a card. Scry 2" {
         return "Draw a card. Scry 2".to_string();
     }
@@ -2211,11 +2104,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if normalized == "Trample, Haste" {
         return "Trample, haste".to_string();
-    }
-    if normalized
-        == "target creature you control gets +1/+0 until end of turn. that creature deals damage equal to its power to target creature you don't control"
-    {
-        return "Target creature you control gets +1/+0 until end of turn. It deals damage equal to its power to target creature an opponent controls".to_string();
     }
     if let Some(rest) =
         normalized.strip_prefix("Whenever you cast an instant or sorcery spell, deal ")
@@ -2242,48 +2130,12 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rest) = normalized.strip_prefix("{T}: Deal ") {
         return format!("{{T}}: This creature deals {rest}");
     }
-    if normalized == "When this creature enters, put a +1/+1 counter on each creature you control" {
-        return "When this creature enters, put a +1/+1 counter on each other creature you control"
-            .to_string();
-    }
-    if lower == "when this creature enters, put a +1/+1 counter on each creature you control" {
-        return "When this creature enters, put a +1/+1 counter on each other creature you control"
-            .to_string();
-    }
     if let Some(rest) = normalized
         .strip_prefix("Search your library for a card, put it on top of library, then shuffle. ")
     {
         return format!(
             "Search your library for a card, then shuffle and put that card on top. {rest}"
         );
-    }
-    if normalized == "Take an extra turn after this one. you lose the game" {
-        return "Take an extra turn after this one. At the beginning of that turn's end step, you lose the game".to_string();
-    }
-    if normalized
-        == "At the beginning of your next end step, you take an extra turn after this one. you lose the game"
-        || normalized
-            == "At the beginning of your next end step, you takes an extra turn after this one. you lose the game"
-        || normalized
-            == "At the beginning of your next end step, you take an extra turn after this one. you loses the game"
-        || normalized
-            == "At the beginning of your next end step, you takes an extra turn after this one. you loses the game"
-    {
-        return "Take an extra turn after this one. At the beginning of that turn's end step, you lose the game".to_string();
-    }
-    if normalized == "At the beginning of your next end step, you take an extra turn after this one"
-        || normalized
-            == "At the beginning of your next end step, you takes an extra turn after this one"
-    {
-        return "Take an extra turn after this one".to_string();
-    }
-    if normalized == "Whenever this creature attacks, tap target creature" {
-        return "Whenever this creature attacks, tap target creature defending player controls"
-            .to_string();
-    }
-    if lower == "whenever this creature attacks, tap target creature" {
-        return "Whenever this creature attacks, tap target creature defending player controls"
-            .to_string();
     }
     if normalized == "target creature gains Deathtouch and gains Indestructible until end of turn" {
         return "Target creature gains deathtouch and indestructible until end of turn".to_string();
@@ -2293,9 +2145,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if normalized == "Doesn't untap during your untap step" {
         return "This creature doesn't untap during your untap step".to_string();
-    }
-    if normalized == "This land enters with 2 charge counters" {
-        return "This land enters tapped with two charge counters on it".to_string();
     }
     if normalized == "This creature enters with 2 +1/+1 counters" {
         return "This creature enters with two +1/+1 counters on it".to_string();
@@ -2315,11 +2164,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         return format!(
             "At the beginning of your upkeep, this creature deals {amount} damage to you"
         );
-    }
-    if normalized == "an opponent's artifact or creature or land enter tapped"
-        || normalized == "an opponent's artifact or creature or land enter the battlefield tapped"
-    {
-        return "Artifacts, creatures, and lands your opponents control enter tapped".to_string();
     }
     if let Some(rest) = normalized.strip_prefix("Search your library for a ")
         && let Some((tribe, tail)) = rest.split_once(" with mana value ")
@@ -2477,33 +2321,14 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("This creatures gain ", "This creature gains ")
         .replace(", If ", ", if ")
         .replace(", Transform ", ", transform ")
-        .replace(". it fights target creature an opponent controls", ", then it fights target creature you don't control")
-        .replace(". it fights target creature you don't control", ", then it fights target creature you don't control")
         .replace("Counter target spell. that object's controller mills ", "Counter target spell, then its controller mills ")
         .replace(" this artifact deals ", " It deals ")
         .replace(" This artifact deals ", " It deals ")
         .replace(" for each creature blocking it until end of turn", " until end of turn for each creature blocking it")
         .replace(" for each artifact you control until end of turn", " until end of turn for each artifact you control")
-        .replace("sacrifice another creature you control", "sacrifice another creature")
-        .replace("Sacrifice another creature you control", "Sacrifice another creature")
-        .replace("sacrifice an enchantment you control", "sacrifice an enchantment")
-        .replace("Sacrifice an enchantment you control", "Sacrifice an enchantment")
-        .replace("sacrifice a creature you control", "sacrifice a creature")
-        .replace("Sacrifice a creature you control", "Sacrifice a creature")
-        .replace(
-            "Sacrifice an artifact or land you control",
-            "Sacrifice an artifact or land",
-        )
-        .replace(
-            "sacrifice an artifact or land you control",
-            "sacrifice an artifact or land",
-        )
-        .replace("Sacrifice a Food you control", "Sacrifice a Food")
-        .replace("sacrifice a Food you control", "sacrifice a Food")
         .replace("when this creature enters or When this creature dies, ", "When this creature enters or dies, ")
         .replace("When this creature enters or When this creature dies, ", "When this creature enters or dies, ")
         .replace("Whenever this creature blocks creature, ", "Whenever this creature blocks a creature, ")
-        .replace("Whenever this creature attacks, that creature doesn't untap during its controller's next untap step", "Whenever this creature attacks, it doesn't untap during its controller's next untap step")
         .replace("target creature you don't control or planeswalker", "target creature or planeswalker you don't control")
         .replace("Counter target instant spell spell", "Counter target instant spell")
         .replace("Counter target sorcery spell spell", "Counter target sorcery spell")
@@ -2568,14 +2393,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Prevent all combat damage that would be dealt to players this turn",
         )
         .replace(
-            "Whenever a land you control enters, deal 1 damage to each opponent",
-            "Whenever a land you control enters, this creature deals 1 damage to each opponent",
-        )
-        .replace(
-            "Whenever a land you control enters, deal 2 damage to each opponent",
-            "Whenever a land you control enters, this creature deals 2 damage to each opponent",
-        )
-        .replace(
             "target creature you control gets +1/+2 until end of turn, then it fights target creature you don't control",
             "Target creature you control gets +1/+2 until end of turn. It fights target creature you don't control",
         )
@@ -2604,20 +2421,9 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "rather than pay this spell's mana cost (Parsed alternative cost)",
             "rather than pay this spell's mana cost",
         )
-        .replace("you lose 6 life. you sacrifice ", "pay 6 life and sacrifice ")
-        .replace("you lose 2 life. you sacrifice ", "pay 2 life and sacrifice ")
         .replace("controlss", "controls")
-        .replace("tag the object attached to this enchantment as 'enchanted'. ", "")
-        .replace("Tag the object attached to this enchantment as 'enchanted'. ", "")
-        .replace("tag the object attached to this aura as 'enchanted'. ", "")
-        .replace("Tag the object attached to this aura as 'enchanted'. ", "")
-        .replace("tag the object attached to this source as 'enchanted'. ", "")
-        .replace("Tag the object attached to this source as 'enchanted'. ", "")
         .replace("the tagged object 'enchanted'", "enchanted creature")
         .replace("the tagged object '__it__'", "that creature")
-        .replace(" and tags it as '__it__'", "")
-        .replace(" and tags it as 'keep'", "")
-        .replace(" and tags it as 'sacrificed_0'", "")
         .replace(
             "the tagged object 'exiled_0' matches creature",
             "that card is a creature card",
@@ -2649,21 +2455,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(". Put a stun counter on it", " and put a stun counter on it")
         .replace(". put a stun counter on it", " and put a stun counter on it")
         .replace(". you draw a card", ". Draw a card")
-        .replace(
-            "you sacrifice a land you control. Search your library",
-            "Sacrifice a land. Search your library",
-        )
-        .replace("you sacrifice a land you control", "sacrifice a land")
-        .replace("you sacrifice a permanent you control", "sacrifice a permanent")
-        .replace("you sacrifice an artifact you control", "sacrifice an artifact")
-        .replace("you sacrifice a creature you control", "sacrifice a creature")
-        .replace("you sacrifice another creature or artifact you control", "sacrifice another creature or artifact")
-        .replace("you sacrifice another creature or enchantment you control", "sacrifice another creature or enchantment")
-        .replace("you sacrifice another artifact you control", "sacrifice another artifact")
-        .replace(
-            "you sacrifice it unless you sacrifice a Forest you control",
-            "sacrifice it unless you sacrifice a Forest",
-        )
         .replace(
             ". this land can't untap until your next turn",
             ". This land doesn't untap during your next untap step",
@@ -2700,36 +2491,7 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "As an additional cost to cast this spell, discard card",
             "As an additional cost to cast this spell, discard a card",
         )
-        .replace(", Choose exactly 1 a ", ", Return a ")
-        .replace(", choose exactly 1 a ", ", return a ")
-        .replace("Choose exactly 1 this a ", "Return this ")
-        .replace("choose exactly 1 this a ", "return this ")
-        .replace("Choose exactly 1 a ", "Choose a ")
-        .replace("choose exactly 1 a ", "choose a ")
-        .replace(
-            " and tags it as 'exile_cost_0', Exile it",
-            "",
-        )
-        .replace(
-            " and tags it as 'tap_cost_0'. Tap it",
-            "",
-        )
-        .replace(
-            " and tags it as 'tap_cost_0', Tap it",
-            "",
-        )
-        .replace(
-            " in the battlefield and tags it as 'return_cost_0', Return target permanent to its owner's hand",
-            " you control to its owner's hand",
-        );
-    if let Some((cost, effect)) = normalized.split_once(": ")
-        && (cost.contains("Sacrifice ") || cost.contains("sacrifice "))
-    {
-        let cleaned_cost = cost
-            .replace(" you control", "")
-            .replace(" your control", "");
-        normalized = format!("{cleaned_cost}: {effect}");
-    }
+        ;
     normalized = normalized
         .replace("Return a Island", "Return an Island")
         .replace("Return a artifact", "Return an artifact")
@@ -8933,11 +8695,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     );
     normalized = normalized.replace(" from a graveyard you own", " in your graveyard");
     let normalized_lower = normalized.to_ascii_lowercase();
-    if normalized_lower == "deal 1 damage to each target creature an opponent controls."
-        || normalized_lower == "deal 1 damage to each target creature an opponent controls"
-    {
-        return "Deal 1 damage to each creature target opponent controls.".to_string();
-    }
     if normalized_lower.contains("creature without a counter on its get ")
         && normalized_lower.contains(" until end of turn")
     {
@@ -8960,11 +8717,6 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         || normalized_lower == "return target creature to its owner's hand. you gain 2 life"
     {
         return "Return target creature to its owner's hand. You gain 2 life.".to_string();
-    }
-    if normalized_lower == "nonartifact creature can't block until end of turn."
-        || normalized_lower == "nonartifact creature can't block until end of turn"
-    {
-        return "Nonartifact creatures can't block this turn.".to_string();
     }
     if normalized_lower == "enters the battlefield with 1 +1/+1 counter(s)."
         || normalized_lower == "enters the battlefield with 1 +1/+1 counter(s)"
@@ -9875,31 +9627,7 @@ fn split_once_ascii_ci<'a>(text: &'a str, separator: &str) -> Option<(&'a str, &
 }
 
 fn normalize_split_land_search_sequence(text: &str) -> Option<String> {
-    let trimmed = text.trim();
-    if trimmed
-        == "Search your library for up to one basic land you own, put it onto the battlefield tapped. Search your library for basic land you own, reveal it, put it into your hand, then shuffle."
-        || trimmed
-            == "Search your library for up to one basic land you own, put it onto the battlefield tapped. Search your library for basic land you own, reveal it, put it into your hand, then shuffle"
-    {
-        return Some(
-            "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle."
-                .to_string(),
-        );
-    }
-    if trimmed
-        == "Search your library for up to one basic land or Gate you own, put it onto the battlefield tapped. Search your library for basic land or Gate you own, reveal it, put it into your hand, then shuffle."
-        || trimmed
-            == "Search your library for up to one basic land or Gate you own, put it onto the battlefield tapped. Search your library for basic land or Gate you own, reveal it, put it into your hand, then shuffle"
-        || trimmed
-            == "Search your library for up to one basic land or gate you own, put it onto the battlefield tapped. Search your library for basic land or gate you own, reveal it, put it into your hand, then shuffle."
-        || trimmed
-            == "Search your library for up to one basic land or gate you own, put it onto the battlefield tapped. Search your library for basic land or gate you own, reveal it, put it into your hand, then shuffle"
-    {
-        return Some(
-            "Search your library for up to two basic land cards and/or Gate cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle."
-                .to_string(),
-        );
-    }
+    let _ = text;
     None
 }
 
@@ -10594,21 +10322,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
             draw_clause.trim_end_matches('.')
         );
     }
-    if lower_normalized
-        == "create two 1/1 colorless robot artifact creature token with flying tapped under your control."
-        || lower_normalized
-            == "create two 1/1 colorless robot artifact creature token with flying tapped under your control"
-    {
-        return "Create two tapped 1/1 colorless Robot artifact creature tokens with flying."
-            .to_string();
-    }
-
-    if lower_normalized == "whenever this become untapped, put a +1/+1 counter on target player."
-        || lower_normalized == "whenever this become untapped, put a +1/+1 counter on target player"
-    {
-        return "Whenever this creature becomes untapped, put a +1/+1 counter on this creature."
-            .to_string();
-    }
     if let Some(rest) = normalized
         .strip_prefix("For each player, if that player controls ")
         .or_else(|| normalized.strip_prefix("for each player, if that player controls "))
@@ -11014,16 +10727,6 @@ fn normalize_sentence_surface_style(line: &str) -> String {
             "When this permanent enters, it deals {amount} damage to each creature and each planeswalker."
         );
     }
-    if normalized == "Tap target opponent's artifact."
-        || normalized == "Tap target opponent's artifact"
-    {
-        return "Tap target artifact you don't control.".to_string();
-    }
-    if normalized == "For each target opponent's creature, Deal 1 damage to that object."
-        || normalized == "For each target opponent's creature, Deal 1 damage to that object"
-    {
-        return "Deal 1 damage to each creature target opponent controls.".to_string();
-    }
     if normalized == "All slivers have 2 regenerate this creature."
         || normalized == "All slivers have 2 regenerate this creature"
     {
@@ -11199,10 +10902,7 @@ fn normalize_create_under_control_clause(text: &str) -> Option<String> {
                 return Some(format!("{lead} {pronoun} \"{reminder}.\""));
             }
         }
-        let mut normalized = format!("{prefix}{create_keyword}{created}{suffix}");
-        if normalized == "Create a Powerstone artifact token, tapped" {
-            normalized = "Create a tapped Powerstone token".to_string();
-        }
+        let normalized = format!("{prefix}{create_keyword}{created}{suffix}");
         return Some(normalized);
     }
     let (created, suffix) = rest.split_once(" under that object's controller's control")?;
@@ -11961,19 +11661,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     {
         return format!("Regenerate enchanted creature{rest}");
     }
-    if trimmed.starts_with("Attach this enchantment to target creature.")
-        && let Some(rest) = trimmed
-            .split("the tagged object 'enchanted' gets base power and toughness ")
-            .nth(1)
-        && let Some(pt) = rest.strip_suffix(" until end of turn")
-    {
-        return format!("Enchanted creature has base power and toughness {pt}");
-    }
-    if let Some(kind) = trimmed.strip_prefix("Whenever this permanent deals damage to ")
-        && let Some(kind) = kind.strip_suffix(": Destroy it")
-    {
-        return format!("Whenever this creature deals damage to a {kind}, destroy that creature");
-    }
     if trimmed
         == "At the beginning of your upkeep: Sacrifice this enchantment unless you pays {W}{W}"
     {
@@ -12013,64 +11700,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         && let Some(mana) = mana.strip_suffix(" to your mana pool")
     {
         return format!("Add {mana}");
-    }
-    if let Some((left, right)) = trimmed.split_once(". ") {
-        let right_trimmed = right.trim_end_matches('.');
-        if (left.starts_with("Tap ") || left.contains(", Tap ") || left.contains(": Tap "))
-            && matches!(
-                right_trimmed,
-                "creature can't untap until your next turn"
-                    | "creature cant untap until your next turn"
-                    | "target creature can't untap until your next turn"
-                    | "target creature cant untap until your next turn"
-                    | "permanent can't untap until your next turn"
-                    | "permanent cant untap until your next turn"
-            )
-        {
-            if left.contains("target creatures") {
-                return format!(
-                    "{left}. Those creatures don't untap during their controllers' next untap steps"
-                );
-            }
-            if left.contains("target creature") {
-                return format!(
-                    "{left}. That creature doesn't untap during its controller's next untap step"
-                );
-            }
-        }
-    }
-    if matches!(
-        trimmed,
-        "target creature can't untap until your next turn"
-            | "target creature cant untap until your next turn"
-    ) {
-        return "Target creature doesn't untap during its controller's next untap step".to_string();
-    }
-    if matches!(
-        trimmed,
-        "permanent can't untap until your next turn" | "permanent cant untap until your next turn"
-    ) {
-        return "That creature doesn't untap during its controller's next untap step".to_string();
-    }
-    if let Some(rest) = trimmed
-        .strip_prefix("Whenever this creature attacks, permanent can't untap until your next turn")
-    {
-        return format!(
-            "Whenever this creature attacks, it doesn't untap during its controller's next untap step{rest}"
-        );
-    }
-    if let Some(rest) = trimmed.strip_prefix(
-        "Whenever this creature blocks creature, permanent can't untap until your next turn",
-    ) {
-        return format!(
-            "Whenever this creature blocks a creature, that creature doesn't untap during its controller's next untap step{rest}"
-        );
-    }
-    if trimmed
-        == "Whenever this permanent becomes the target of a spell or ability, you sacrifice it"
-    {
-        return "When this creature becomes the target of a spell or ability, sacrifice it"
-            .to_string();
     }
     if lower_trimmed
         .starts_with("for each creature you control, put a +1/+1 counter on that object")
@@ -12116,12 +11745,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         "when this permanent enters, for each another creature you control, put 1 +1/+1 counter on that object",
     ) {
         return "When this permanent enters, put a +1/+1 counter on each other creature you control"
-            .to_string();
-    }
-    if lower_trimmed
-        == "when this creature enters or whenever another ally you control enters, may put a +1/+1 counter on this creature"
-    {
-        return "Whenever this creature or another Ally you control enters, you may put a +1/+1 counter on this creature"
             .to_string();
     }
     if let Some(rest) = strip_prefix_ascii_ci(trimmed, "opponent's ")
@@ -12229,40 +11852,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     if let Some((subject, mana_tail)) = trimmed.split_once(" has t add ") {
         return format!("{subject} has \"{{T}}: Add {mana_tail}.\"");
     }
-    if trimmed
-        == "You may you choose exactly 1 a Island you control in the battlefield and tags it as 'return_cost_0'. Return target permanent to its owner's hand rather than pay this spell's mana cost (Parsed alternative cost)"
-    {
-        return "You may return an Island you control to its owner's hand rather than pay this spell's mana cost"
-            .to_string();
-    }
-    if let Some((prefix, choice)) = trimmed
-        .split_once(" and you choose exactly 1 ")
-        .and_then(|(left, right)| {
-            right
-                .strip_suffix(
-                    " in the battlefield and tags it as 'return_cost_0'. Return target permanent to its owner's hand rather than pay this spell's mana cost (Parsed alternative cost)",
-                )
-                .map(|choice| (left, choice))
-        })
-    {
-        return format!(
-            "{prefix} and return {} to its owner's hand rather than pay this spell's mana cost",
-            choice
-        );
-    }
-    if let Some(choice) = trimmed
-        .strip_prefix("You may you choose exactly 1 ")
-        .and_then(|rest| {
-            rest.strip_suffix(
-                " in the battlefield and tags it as 'return_cost_0'. Return target permanent to its owner's hand rather than pay this spell's mana cost (Parsed alternative cost)",
-            )
-        })
-    {
-        return format!(
-            "You may return {} to its owner's hand rather than pay this spell's mana cost",
-            choice
-        );
-    }
     if let Some((left, right)) = trimmed.split_once(". ")
         && right.starts_with("you gain ")
         && left.contains(" loses ")
@@ -12279,19 +11868,8 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     if trimmed == "you draw a card" {
         return "Draw a card".to_string();
     }
-    if trimmed
-        == "For each player, Put target card in target player's hand on top of its owner's library"
-    {
-        return "each player puts a card from their hand on top of their library".to_string();
-    }
     if trimmed == "Exile all card in graveyard" {
         return "Exile all graveyards".to_string();
-    }
-    if trimmed
-        == "Exile target nonland permanent. Create a Treasure token under that object's controller's control"
-    {
-        return "Exile target nonland permanent. Its controller creates a Treasure token"
-            .to_string();
     }
     if let Some(rest) = trimmed.strip_prefix("Exile target ")
         && let Some((count, noun)) = rest.split_once(" target ")
@@ -12325,11 +11903,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
             " in your graveyard to its owner's hand",
             " from your graveyard to your hand",
         );
-    }
-    if let Some(tail) = trimmed.strip_prefix("you sacrifice a permanent you control unless ")
-        && tail == "you sacrifice a Forest you control"
-    {
-        return "sacrifice it unless you sacrifice a Forest".to_string();
     }
     if let Some(rest) =
         trimmed.strip_prefix("you may Search your library for artifact with mana value ")
@@ -12372,9 +11945,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     }
     if let Some(rest) = trimmed.strip_prefix("Sacrifice this creature: This creature deals ") {
         return format!("Sacrifice this creature: It deals {rest}");
-    }
-    if trimmed == "Untap target 1 to 2 target creature" {
-        return "Untap one or two target creatures".to_string();
     }
     if trimmed.starts_with("This land enters with ")
         && trimmed.contains(" charge counters")
@@ -12618,10 +12188,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     {
         return "Put a +1/+1 counter on target creature, then proliferate".to_string();
     }
-    if trimmed == "Untap target 1 to 2 target creature. this source gets +2/+2 until end of turn" {
-        return "Untap one or two target creatures. They each get +2/+2 until end of turn"
-            .to_string();
-    }
     if let Some((first, second)) = split_once_ascii_ci(trimmed, ". ")
         && let Some(first_buff) = strip_prefix_ascii_ci(first.trim(), "target creature gets ")
             .and_then(|rest| rest.strip_suffix(" until end of turn"))
@@ -12711,7 +12277,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
             "target artifact, creature, enchantment, or land",
         )
         .replace("Destroy all enchantment", "Destroy all enchantments")
-        .replace("Sacrifice a land you control", "Sacrifice a land")
         .replace("Exile target card in graveyard", "Exile target card from a graveyard")
         .replace(
             "Exile target artifact card in graveyard",
@@ -12785,10 +12350,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
             "Create a Powerstone artifact token, tapped",
             "Create a tapped Powerstone token",
         )
-        .replace(
-            ", you sacrifice a permanent you control unless you sacrifice a Forest you control",
-            ", sacrifice it unless you sacrifice a Forest",
-        )
         .replace(", This creature deals ", ", it deals ")
         .replace(
             " in your graveyard on top of its owner's library",
@@ -12796,19 +12357,6 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         )
         .replace("Put 1 +1/+1 counter(s) on ", "Put a +1/+1 counter on ")
         .replace("counter(s)", "counters")
-        .replace("artifact you control cost", "artifact spells you cast cost")
-        .replace(
-            "Return all Zombie creature card in your graveyard to the battlefield tapped. Destroy all Humans.",
-            "Return all Zombie creature cards from your graveyard to the battlefield tapped, then destroy all Humans.",
-        )
-        .replace(
-            "Exile this creature: Create two 1/1 colorless Robot artifact creature token with flying tapped under your control.",
-            "Exile this card from your graveyard: Create two tapped 1/1 colorless Robot artifact creature tokens with flying.",
-        )
-        .replace(
-            "Exile this permanent: Create two 1/1 colorless Robot artifact creature token with flying tapped under your control.",
-            "Exile this card from your graveyard: Create two tapped 1/1 colorless Robot artifact creature tokens with flying.",
-        )
         .replace(
             "Whenever this creature deals damage to Spider, destroy it.",
             "Whenever this creature deals damage to a Spider, destroy that creature.",
