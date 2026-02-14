@@ -9560,6 +9560,20 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         };
         normalized = rewritten;
     }
+    if let Some((prefix, tail)) = split_once_ascii_ci(&normalized, ". For each ")
+        && let Some((targets, deal_tail)) = split_once_ascii_ci(tail, ", Deal ")
+        && let Some(amount) = strip_suffix_ascii_ci(deal_tail, " damage to that object.")
+            .or_else(|| strip_suffix_ascii_ci(deal_tail, " damage to that object"))
+    {
+        normalized = format!("{prefix}. Deal {amount} damage to each {targets}.");
+    }
+    if let Some((prefix, tail)) = split_once_ascii_ci(&normalized, " you may For each ")
+        && let Some((targets, deal_tail)) = split_once_ascii_ci(tail, ", Deal ")
+        && let Some(amount) = strip_suffix_ascii_ci(deal_tail, " damage to that object.")
+            .or_else(|| strip_suffix_ascii_ci(deal_tail, " damage to that object"))
+    {
+        normalized = format!("{prefix} you may have it deal {amount} damage to each {targets}.");
+    }
 
     if let Some(rest) = normalized.strip_prefix("Spells ")
         && let Some((tribe, cost_tail)) = rest.split_once(" you control cost ")
@@ -13802,6 +13816,28 @@ mod tests {
         assert_eq!(
             normalized,
             "Whenever this creature becomes blocked, it deals 2 damage to each attacking creature and each blocking creature."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_sentence_for_each_damage_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Deal 3 damage to target player. For each creature that player controls, Deal 1 damage to that object.",
+        );
+        assert_eq!(
+            normalized,
+            "Deal 3 damage to target player. Deal 1 damage to each creature that player controls."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_you_may_for_each_damage_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Whenever this creature attacks, you may For each creature without flying, Deal 1 damage to that object.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever this creature attacks, you may have it deal 1 damage to each creature without flying."
         );
     }
 
