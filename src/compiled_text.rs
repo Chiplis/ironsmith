@@ -8922,6 +8922,94 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if normalized.is_empty() {
         return normalized;
     }
+    normalized = normalized.replace(
+        "When this creature enters or this creature attacks,",
+        "Whenever this creature enters or attacks,",
+    );
+    normalized = normalized.replace(
+        "When this permanent enters or Whenever this creature attacks,",
+        "Whenever this creature enters or attacks,",
+    );
+    normalized = normalized.replace(
+        "when this creature enters or this creature attacks,",
+        "whenever this creature enters or attacks,",
+    );
+    normalized = normalized.replace(
+        "when this permanent enters or whenever this creature attacks,",
+        "whenever this creature enters or attacks,",
+    );
+    if let Some((prefix, rest)) =
+        split_once_ascii_ci(&normalized, "For each opponent, that player discards ")
+            && let Some((discard_tail, lose_tail)) =
+                split_once_ascii_ci(rest, ". For each opponent, that player loses ")
+    {
+        let lose_tail = lose_tail.trim();
+        let (lose_clause, trailing_tail) = if let Some((lose_clause, tail)) = lose_tail.split_once(". ") {
+            (lose_clause.trim().trim_end_matches('.'), Some(tail.trim()))
+        } else {
+            (lose_tail.trim_end_matches('.'), None)
+        };
+        let prefix = prefix.trim_end();
+        let lead = if prefix.is_empty() {
+            "Each opponent ".to_string()
+        } else if prefix.ends_with(',') {
+            format!("{prefix} each opponent ")
+        } else {
+            format!("{prefix}, each opponent ")
+        };
+        let merged = format!(
+            "{lead}discards {} and loses {}.",
+            discard_tail.trim(),
+            lose_clause
+        );
+        if let Some(tail) = trailing_tail {
+            return normalize_compiled_post_pass_effect(&format!("{merged} {tail}"));
+        }
+        return merged;
+    }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, "target opponent sacrifices ")
+        && let Some((sacrifice_tail, rest)) =
+            split_once_ascii_ci(rest, ". target opponent discards ")
+        && let Some((discard_tail, lose_tail)) =
+            split_once_ascii_ci(rest, ". target opponent loses ")
+    {
+        let lose_tail = lose_tail.trim();
+        let (lose_clause, trailing_tail) = if let Some((lose_clause, tail)) = lose_tail.split_once(". ") {
+            (lose_clause.trim().trim_end_matches('.'), Some(tail.trim()))
+        } else {
+            (lose_tail.trim_end_matches('.'), None)
+        };
+        let merged = format!(
+            "{}target opponent sacrifices {}, discards {}, and loses {}.",
+            prefix,
+            sacrifice_tail.trim(),
+            discard_tail.trim(),
+            lose_clause
+        );
+        if let Some(tail) = trailing_tail {
+            return normalize_compiled_post_pass_effect(&format!("{merged} {tail}"));
+        }
+        return merged;
+    }
+    if let Some((left, right)) = normalized.split_once(". ")
+        && left.to_ascii_lowercase().starts_with("draw ")
+        && right.to_ascii_lowercase().starts_with("you gain ")
+        && right.to_ascii_lowercase().ends_with(" life")
+    {
+        return format!("{left} and {}", normalize_you_verb_phrase(right));
+    }
+    if let Some((prefix, gain_tail)) = split_once_ascii_ci(&normalized, ". Draw a card. you gain ")
+        && gain_tail
+            .trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase()
+            .ends_with(" life")
+    {
+        return format!(
+            "{prefix}. Draw a card and gain {}.",
+            gain_tail.trim().trim_end_matches('.')
+        );
+    }
     if let Some(rewritten) = normalize_split_search_battlefield_then_hand_clause(&normalized) {
         return rewritten;
     }
@@ -14224,6 +14312,56 @@ mod tests {
         assert_eq!(
             normalized,
             "Search your library for up to two basic land or Gate cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle."
+        );
+    }
+
+    #[test]
+    fn post_pass_merges_for_each_opponent_discards_then_loses_chain() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters, for each opponent, that player discards a card. For each opponent, that player loses 2 life.",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature enters, each opponent discards a card, and loses 2 life."
+        );
+    }
+
+    #[test]
+    fn post_pass_merges_target_opponent_sacrifice_discard_lose_chain() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters or this creature attacks, target opponent sacrifices a creature or planeswalker of their choice. target opponent discards a card. target opponent loses 3 life.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever this creature enters or attacks, target opponent sacrifices a creature or planeswalker of their choice, discards a card, and loses 3 life."
+        );
+    }
+
+    #[test]
+    fn post_pass_merges_draw_then_gain_life_chain() {
+        let normalized = normalize_compiled_post_pass_effect("Draw a card. you gain 3 life.");
+        assert_eq!(normalized, "Draw a card and gain 3 life.");
+    }
+
+    #[test]
+    fn post_pass_merges_draw_then_gain_life_chain_with_prefix() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Whenever this creature enters or attacks, target opponent loses 3 life. Draw a card. you gain 3 life.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever this creature enters or attacks, target opponent loses 3 life. Draw a card and gain 3 life."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_when_permanent_enters_or_whenever_attacks_prefix() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this permanent enters or Whenever this creature attacks, target opponent loses 3 life.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever this creature enters or attacks, target opponent loses 3 life."
         );
     }
 
