@@ -571,6 +571,9 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rewritten) = normalize_inline_earthbend_phrasing(&normalized) {
         normalized = rewritten;
     }
+    if let Some(rewritten) = normalize_reveal_tagged_draw_clause(&normalized) {
+        normalized = rewritten;
+    }
     let lower = normalized.to_ascii_lowercase();
 
     if lower == "creatures have blocks each combat if able"
@@ -2816,6 +2819,74 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized
 }
 
+fn normalize_reveal_match_filter(filter: &str) -> String {
+    let mut normalized = filter.trim().to_string();
+    if !normalized.ends_with("card") && !normalized.ends_with("cards") {
+        normalized.push_str(" card");
+    }
+    let lower = normalized.to_ascii_lowercase();
+    if lower.starts_with("a ")
+        || lower.starts_with("an ")
+        || lower.starts_with("the ")
+        || lower.starts_with("that ")
+        || lower.starts_with("this ")
+        || lower.starts_with("those ")
+        || lower.starts_with("these ")
+    {
+        return normalized;
+    }
+    let article = if lower
+        .chars()
+        .next()
+        .is_some_and(|ch| matches!(ch, 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {normalized}")
+}
+
+fn normalize_reveal_tagged_draw_clause(line: &str) -> Option<String> {
+    for prefix in [
+        "Reveal the top card of your library and tag it as 'revealed_0'. If the tagged object 'revealed_0' matches ",
+        "you may Reveal the top card of your library and tag it as 'revealed_0'. If the tagged object 'revealed_0' matches ",
+    ] {
+        let Some(start) = line.find(prefix) else {
+            continue;
+        };
+        let rest = &line[start + prefix.len()..];
+        let (filter, suffix) = if let Some(filter) = rest.strip_prefix("")
+            && let Some(stripped) = filter.strip_suffix(", you draw a card.")
+        {
+            (stripped, ".")
+        } else if let Some(filter) = rest.strip_prefix("")
+            && let Some(stripped) = filter.strip_suffix(", you draw a card")
+        {
+            (stripped, "")
+        } else {
+            continue;
+        };
+
+        let before = &line[..start];
+        let reveal_clause = if prefix.starts_with("you may ") {
+            format!(
+                "you may reveal the top card of your library. If it's {}, draw a card{}",
+                normalize_reveal_match_filter(filter),
+                suffix
+            )
+        } else {
+            format!(
+                "Reveal the top card of your library. If it's {}, draw a card{}",
+                normalize_reveal_match_filter(filter),
+                suffix
+            )
+        };
+        return Some(format!("{before}{reveal_clause}"));
+    }
+    None
+}
+
 fn normalize_zero_pt_prefix(text: &str) -> String {
     text.replace(" gets 0/+", " gets +0/+")
         .replace(" gets 0/", " gets +0/")
@@ -3084,6 +3155,12 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     let mut subject = strip_indefinite_article(&bare.description()).to_string();
     subject = subject.replace("target player's ", "");
     subject = subject.replace("that player's ", "");
+    let lower_subject = subject.to_ascii_lowercase();
+    if lower_subject.starts_with("a ") {
+        subject = subject[2..].to_string();
+    } else if lower_subject.starts_with("an ") {
+        subject = subject[3..].to_string();
+    }
 
     let controller_suffix = match controller {
         Some(PlayerFilter::You) => Some("you control"),
@@ -4923,10 +5000,16 @@ fn describe_for_each_double_counters(for_each: &crate::effects::ForEachObject) -
 
 fn strip_indefinite_article(text: &str) -> &str {
     let trimmed = text.trim();
-    if let Some(rest) = trimmed.strip_prefix("a ") {
+    if let Some(rest) = trimmed
+        .strip_prefix("a ")
+        .or_else(|| trimmed.strip_prefix("A "))
+    {
         return rest;
     }
-    if let Some(rest) = trimmed.strip_prefix("an ") {
+    if let Some(rest) = trimmed
+        .strip_prefix("an ")
+        .or_else(|| trimmed.strip_prefix("An "))
+    {
         return rest;
     }
     trimmed
@@ -6883,12 +6966,17 @@ fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(modify_pt_each) =
         effect.downcast_ref::<crate::effects::ModifyPowerToughnessForEachEffect>()
     {
+        let each_text = if let Value::Count(filter) = &modify_pt_each.count {
+            describe_for_each_count_filter(filter)
+        } else {
+            describe_value(&modify_pt_each.count)
+        };
         return format!(
             "{} gets +{} / +{} for each {} {}",
             describe_choose_spec(&modify_pt_each.target),
             modify_pt_each.power_per,
             modify_pt_each.toughness_per,
-            describe_value(&modify_pt_each.count),
+            each_text,
             describe_until(&modify_pt_each.duration)
         );
     }

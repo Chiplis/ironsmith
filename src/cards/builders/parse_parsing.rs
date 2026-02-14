@@ -15592,7 +15592,7 @@ fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError>
         return Ok(vec![EffectAst::MayByPlayer { player, effects }]);
     }
 
-    if tokens.iter().any(|token| token.is_word("may"))
+    if tokens.first().is_some_and(|token| token.is_word("may"))
         && !starts_with_each_opponent
         && !starts_with_each_player
     {
@@ -16448,6 +16448,27 @@ fn parse_fight_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextErr
 fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
+    }
+
+    if let Some(player) = parse_leading_player_may(tokens) {
+        let mut stripped = remove_through_first_word(tokens, "may");
+        if stripped
+            .first()
+            .is_some_and(|token| token.is_word("have") || token.is_word("has"))
+        {
+            stripped.remove(0);
+        }
+        let mut effects = parse_effect_chain_with_sentence_primitives(&stripped)?;
+        for effect in &mut effects {
+            bind_implicit_player_context(effect, player);
+        }
+        return Ok(EffectAst::MayByPlayer { player, effects });
+    }
+
+    if tokens.first().is_some_and(|token| token.is_word("may")) {
+        let stripped = remove_first_word(tokens, "may");
+        let effects = parse_effect_chain_with_sentence_primitives(&stripped)?;
+        return Ok(EffectAst::May { effects });
     }
 
     let clause_words = words(tokens);
