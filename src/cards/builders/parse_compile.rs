@@ -2245,14 +2245,14 @@ fn compile_effect(
         EffectAst::PoisonCounters { count, player } => compile_player_effect(
             *player,
             ctx,
-            false,
+            true,
             || Effect::poison_counters(count.clone()),
             |filter| Effect::poison_counters_player(count.clone(), filter),
         ),
         EffectAst::EnergyCounters { count, player } => compile_player_effect(
             *player,
             ctx,
-            false,
+            true,
             || Effect::energy_counters(count.clone()),
             |filter| Effect::energy_counters_player(count.clone(), filter),
         ),
@@ -2571,6 +2571,18 @@ fn compile_effect(
                 PredicateAst::TargetWasKicked => Condition::TargetWasKicked,
                 PredicateAst::TargetSpellCastOrderThisTurn(order) => {
                     Condition::TargetSpellCastOrderThisTurn(*order)
+                }
+                PredicateAst::TargetSpellControllerIsPoisoned => {
+                    Condition::TargetSpellControllerIsPoisoned
+                }
+                PredicateAst::TargetSpellNoManaSpentToCast => {
+                    Condition::Not(Box::new(Condition::TargetSpellManaSpentToCastAtLeast {
+                        amount: 1,
+                        symbol: None,
+                    }))
+                }
+                PredicateAst::YouControlMoreCreaturesThanTargetSpellController => {
+                    Condition::YouControlMoreCreaturesThanTargetSpellController
                 }
                 PredicateAst::TargetHasGreatestPowerAmongCreatures => {
                     Condition::TargetHasGreatestPowerAmongCreatures

@@ -15396,6 +15396,42 @@ fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardTextError> {
     {
         return Ok(PredicateAst::TargetWasKicked);
     }
+    if filtered.as_slice() == ["its", "controller", "poisoned"]
+        || filtered.as_slice() == ["that", "spells", "controller", "poisoned"]
+    {
+        return Ok(PredicateAst::TargetSpellControllerIsPoisoned);
+    }
+    if filtered.as_slice() == ["no", "mana", "was", "spent", "to", "cast", "it"]
+        || filtered.as_slice() == ["no", "mana", "were", "spent", "to", "cast", "it"]
+        || filtered.as_slice() == ["no", "mana", "was", "spent", "to", "cast", "that", "spell"]
+        || filtered.as_slice() == ["no", "mana", "were", "spent", "to", "cast", "that", "spell"]
+    {
+        return Ok(PredicateAst::TargetSpellNoManaSpentToCast);
+    }
+    if filtered.as_slice()
+        == [
+            "you",
+            "control",
+            "more",
+            "creatures",
+            "than",
+            "that",
+            "spells",
+            "controller",
+        ]
+        || filtered.as_slice()
+            == [
+                "you",
+                "control",
+                "more",
+                "creatures",
+                "than",
+                "its",
+                "controller",
+            ]
+    {
+        return Ok(PredicateAst::YouControlMoreCreaturesThanTargetSpellController);
+    }
     if filtered.len() == 7
         && matches!(filtered[0], "w" | "u" | "b" | "r" | "g" | "c")
         && filtered[1] == "was"
@@ -15920,6 +15956,8 @@ fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
         | EffectAst::Scry { player, .. }
         | EffectAst::Surveil { player, .. }
         | EffectAst::Mill { player, .. }
+        | EffectAst::PoisonCounters { player, .. }
+        | EffectAst::EnergyCounters { player, .. }
         | EffectAst::RevealTop { player }
         | EffectAst::RevealHand { player } => *player,
         _ => return None,
@@ -15943,6 +15981,8 @@ fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
         | EffectAst::Scry { player, .. }
         | EffectAst::Surveil { player, .. }
         | EffectAst::Mill { player, .. }
+        | EffectAst::PoisonCounters { player, .. }
+        | EffectAst::EnergyCounters { player, .. }
         | EffectAst::RevealTop { player }
         | EffectAst::RevealHand { player } => matches!(*player, PlayerAst::Implicit),
         _ => false,
@@ -15960,6 +16000,8 @@ fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: CarryCont
             | EffectAst::Scry { player, .. }
             | EffectAst::Surveil { player, .. }
             | EffectAst::Mill { player, .. }
+            | EffectAst::PoisonCounters { player, .. }
+            | EffectAst::EnergyCounters { player, .. }
             | EffectAst::RevealTop { player }
             | EffectAst::RevealHand { player } => {
                 if matches!(*player, PlayerAst::Implicit) {
@@ -16021,6 +16063,14 @@ fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
             ..
         }
         | EffectAst::Mill {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::PoisonCounters {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::EnergyCounters {
             player: effect_player,
             ..
         }
@@ -18319,6 +18369,24 @@ fn parse_counter(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             "unsupported counter-ability target clause (clause: '{}')",
             clause_words.join(" ")
         )));
+    }
+
+    if let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) {
+        if if_idx == 0 || if_idx + 1 >= tokens.len() {
+            return Err(CardTextError::ParseError(format!(
+                "missing conditional counter target or predicate (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
+        let target_tokens = trim_commas(&tokens[..if_idx]);
+        let predicate_tokens = trim_commas(&tokens[if_idx + 1..]);
+        let target = parse_target_phrase(&target_tokens)?;
+        let predicate = parse_predicate(&predicate_tokens)?;
+        return Ok(EffectAst::Conditional {
+            predicate,
+            if_true: vec![EffectAst::Counter { target }],
+            if_false: Vec::new(),
+        });
     }
 
     if let Some(unless_idx) = tokens.iter().position(|token| token.is_word("unless")) {

@@ -5681,10 +5681,6 @@ fn reject_singleton_partial_parse_clauses_030() {
         "{T}: Each player may draw a card, then each player who drew a card this way gains 1 life.",
     );
     assert_partial_parse_rejected(
-        "Unified Will Variant",
-        "Counter target spell if you control more creatures than that spell's controller.",
-    );
-    assert_partial_parse_rejected(
         "Forbidden Friendship Variant",
         "Create a 1/1 red Dinosaur creature token with haste and a 1/1 white Human Soldier creature token.",
     );
@@ -7132,16 +7128,43 @@ fn parse_rejects_three_dog_aura_copy_attachment_clause() {
 }
 
 #[test]
-fn parse_rejects_if_no_mana_was_spent_counter_clause() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Nix Variant")
+fn parse_counter_target_spell_if_no_mana_was_spent_keeps_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nix Variant")
         .parse_text("Counter target spell if no mana was spent to cast it.")
-        .expect_err("no-mana-spent counter clause should not partially parse");
+        .expect("parse no-mana-spent conditional counter");
 
-    let message = format!("{err:?}").to_ascii_lowercase();
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        message.contains("unsupported parser line")
-            || message.contains("unsupported known partial parse pattern"),
-        "expected explicit unsupported rejection, got {message}"
+        joined.contains("counter target spell if no mana was spent to cast the target spell"),
+        "expected no-mana-spent conditional counter wording, got {joined}"
+    );
+}
+
+#[test]
+fn parse_counter_target_spell_if_you_control_more_creatures_keeps_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Unified Will Variant")
+        .parse_text("Counter target spell if you control more creatures than that spell's controller.")
+        .expect("parse creature-count conditional counter");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "counter target spell if you control more creatures than the target spell's controller"
+        ),
+        "expected creature-count conditional counter wording, got {joined}"
+    );
+}
+
+#[test]
+fn parse_counter_target_spell_if_controller_is_poisoned_keeps_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Corrupted Resolve Variant")
+        .parse_text("Counter target spell if its controller is poisoned.")
+        .expect("parse poisoned-controller conditional counter");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("counter target spell if the target spell's controller is poisoned"),
+        "expected poisoned-controller conditional counter wording, got {joined}"
     );
 }
 

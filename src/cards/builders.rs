@@ -293,6 +293,9 @@ enum PredicateAst {
     NoSpellsWereCastLastTurn,
     TargetWasKicked,
     TargetSpellCastOrderThisTurn(u32),
+    TargetSpellControllerIsPoisoned,
+    TargetSpellNoManaSpentToCast,
+    YouControlMoreCreaturesThanTargetSpellController,
     TargetHasGreatestPowerAmongCreatures,
     ManaSpentToCastThisSpellAtLeast {
         amount: u32,

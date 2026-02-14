@@ -255,6 +255,9 @@ fn evaluate_condition_simple(
         | Condition::TargetIsAttacking
         | Condition::TargetWasKicked
         | Condition::TargetSpellCastOrderThisTurn(_)
+        | Condition::TargetSpellControllerIsPoisoned
+        | Condition::TargetSpellManaSpentToCastAtLeast { .. }
+        | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures
         | Condition::SourceIsTapped => false,
     }
@@ -395,6 +398,67 @@ fn evaluate_condition(
                 }
             }
             Ok(false)
+        }
+        Condition::TargetSpellControllerIsPoisoned => {
+            for target in &ctx.targets {
+                if let crate::executor::ResolvedTarget::Object(id) = target
+                    && let Some(obj) = game.object(*id)
+                    && let Some(player) = game.player(obj.controller)
+                {
+                    return Ok(player.poison_counters > 0);
+                }
+            }
+            Ok(false)
+        }
+        Condition::TargetSpellManaSpentToCastAtLeast { amount, symbol } => {
+            for target in &ctx.targets {
+                if let crate::executor::ResolvedTarget::Object(id) = target
+                    && let Some(obj) = game.object(*id)
+                {
+                    let spent = if let Some(sym) = symbol {
+                        obj.mana_spent_to_cast.amount(*sym)
+                    } else {
+                        obj.mana_spent_to_cast.total()
+                    };
+                    return Ok(spent >= *amount);
+                }
+            }
+            Ok(false)
+        }
+        Condition::YouControlMoreCreaturesThanTargetSpellController => {
+            let target_controller = ctx.targets.iter().find_map(|target| match target {
+                crate::executor::ResolvedTarget::Object(id) => {
+                    game.object(*id).map(|obj| obj.controller)
+                }
+                _ => None,
+            });
+            let Some(target_controller) = target_controller else {
+                return Ok(false);
+            };
+
+            let you_count = game
+                .battlefield
+                .iter()
+                .filter(|&&id| {
+                    game.object(id)
+                        .is_some_and(|obj| {
+                            obj.controller == ctx.controller
+                                && game.object_has_card_type(id, crate::types::CardType::Creature)
+                        })
+                })
+                .count();
+            let target_count = game
+                .battlefield
+                .iter()
+                .filter(|&&id| {
+                    game.object(id)
+                        .is_some_and(|obj| {
+                            obj.controller == target_controller
+                                && game.object_has_card_type(id, crate::types::CardType::Creature)
+                        })
+                })
+                .count();
+            Ok(you_count > target_count)
         }
         Condition::TargetHasGreatestPowerAmongCreatures => {
             let target_id = ctx.targets.iter().find_map(|target| match target {

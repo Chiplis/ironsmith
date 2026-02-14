@@ -3242,6 +3242,22 @@ fn describe_condition(
         crate::effect::Condition::TargetSpellCastOrderThisTurn(order) => {
             format!("the target spell was spell number {order} cast this turn")
         }
+        crate::effect::Condition::TargetSpellControllerIsPoisoned => {
+            "the target spell's controller is poisoned".to_string()
+        }
+        crate::effect::Condition::TargetSpellManaSpentToCastAtLeast { amount, symbol } => {
+            if let Some(symbol) = symbol {
+                format!(
+                    "at least {amount} {} mana was spent to cast the target spell",
+                    mana_symbol_to_oracle(*symbol)
+                )
+            } else {
+                format!("at least {amount} mana was spent to cast the target spell")
+            }
+        }
+        crate::effect::Condition::YouControlMoreCreaturesThanTargetSpellController => {
+            "you control more creatures than the target spell's controller".to_string()
+        }
         crate::effect::Condition::TargetHasGreatestPowerAmongCreatures => {
             "the target creature has the greatest power among creatures on the battlefield"
                 .to_string()
@@ -3271,7 +3287,15 @@ fn describe_condition(
             )
         }
         crate::effect::Condition::Not(inner) => {
-            format!("not ({})", describe_condition(inner, tagged_subjects))
+            if let crate::effect::Condition::TargetSpellManaSpentToCastAtLeast {
+                amount: 1,
+                symbol: None,
+            } = inner.as_ref()
+            {
+                "no mana was spent to cast the target spell".to_string()
+            } else {
+                format!("not ({})", describe_condition(inner, tagged_subjects))
+            }
         }
         crate::effect::Condition::And(left, right) => format!(
             "({}) and ({})",

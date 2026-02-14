@@ -4434,6 +4434,22 @@ fn describe_condition(condition: &Condition) -> String {
         Condition::TargetSpellCastOrderThisTurn(order) => {
             format!("the target spell was spell number {order} cast this turn")
         }
+        Condition::TargetSpellControllerIsPoisoned => {
+            "the target spell's controller is poisoned".to_string()
+        }
+        Condition::TargetSpellManaSpentToCastAtLeast { amount, symbol } => {
+            if let Some(symbol) = symbol {
+                format!(
+                    "at least {amount} {} mana was spent to cast the target spell",
+                    describe_mana_symbol(*symbol)
+                )
+            } else {
+                format!("at least {amount} mana was spent to cast the target spell")
+            }
+        }
+        Condition::YouControlMoreCreaturesThanTargetSpellController => {
+            "you control more creatures than the target spell's controller".to_string()
+        }
         Condition::TargetHasGreatestPowerAmongCreatures => {
             "the target creature has the greatest power among creatures on the battlefield"
                 .to_string()
@@ -4460,7 +4476,17 @@ fn describe_condition(condition: &Condition) -> String {
             tag.as_str(),
             filter.description()
         ),
-        Condition::Not(inner) => format!("not ({})", describe_condition(inner)),
+        Condition::Not(inner) => {
+            if let Condition::TargetSpellManaSpentToCastAtLeast {
+                amount: 1,
+                symbol: None,
+            } = inner.as_ref()
+            {
+                "no mana was spent to cast the target spell".to_string()
+            } else {
+                format!("not ({})", describe_condition(inner))
+            }
+        }
         Condition::And(left, right) => {
             format!(
                 "({}) and ({})",

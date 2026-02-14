@@ -1182,6 +1182,19 @@ pub enum Condition {
     /// The targeted spell was the Nth spell cast this turn.
     TargetSpellCastOrderThisTurn(u32),
 
+    /// The targeted spell's controller is poisoned.
+    TargetSpellControllerIsPoisoned,
+
+    /// At least N mana of a specific color/type was spent to cast the targeted spell.
+    /// If `symbol` is `None`, checks total mana spent.
+    TargetSpellManaSpentToCastAtLeast {
+        amount: u32,
+        symbol: Option<ManaSymbol>,
+    },
+
+    /// You control more creatures than the targeted spell's controller.
+    YouControlMoreCreaturesThanTargetSpellController,
+
     /// The targeted creature has the greatest power among creatures on the battlefield.
     TargetHasGreatestPowerAmongCreatures,
 
