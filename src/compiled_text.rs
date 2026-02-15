@@ -7843,6 +7843,18 @@ fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(add_one) = effect.downcast_ref::<crate::effects::AddManaOfAnyOneColorEffect>() {
+        if let Value::Count(filter) = &add_one.amount {
+            let mut count_subject = pluralize_noun_phrase(&filter.description());
+            let lower_subject = count_subject.to_ascii_lowercase();
+            if filter.zone == Some(Zone::Battlefield) && !lower_subject.contains("battlefield") {
+                count_subject.push_str(" on the battlefield");
+            }
+            return format!(
+                "Add X mana of any one color to {}, where X is the number of {}",
+                describe_mana_pool_owner(&add_one.player),
+                count_subject
+            );
+        }
         return format!(
             "Add {} mana of any one color to {}",
             describe_value(&add_one.amount),
@@ -16523,6 +16535,28 @@ mod tests {
                 .to_ascii_lowercase()
                 .contains("destroy each creature that isn't all colors"),
             "expected each-creature wording in rendered compiled line, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn renders_dynamic_any_one_color_mana_with_explicit_x_count_clause() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wirewood Render Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text("{T}: Add X mana of any one color, where X is the number of Elves on the battlefield.")
+            .expect("wirewood dynamic mana clause should parse");
+
+        let rendered = compiled_lines(&def).join(" ");
+        assert!(
+            rendered
+                .to_ascii_lowercase()
+                .contains("add x mana of any one color"),
+            "expected explicit X mana wording, got {rendered}"
+        );
+        assert!(
+            rendered
+                .to_ascii_lowercase()
+                .contains("where x is the number of elves on the battlefield"),
+            "expected explicit where-X count clause, got {rendered}"
         );
     }
 
