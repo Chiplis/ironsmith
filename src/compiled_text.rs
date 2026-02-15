@@ -9098,9 +9098,71 @@ fn rewrite_saga_chapter_prefix(text: &str) -> Option<String> {
 }
 
 fn rewrite_granted_triggered_ability_quote(text: &str) -> Option<String> {
+    fn insert_trigger_comma_if_missing(body: &str) -> String {
+        for verb in [
+            " draw ",
+            " discard ",
+            " put ",
+            " return ",
+            " create ",
+            " destroy ",
+            " exile ",
+            " tap ",
+            " untap ",
+            " sacrifice ",
+            " deal ",
+            " gain ",
+            " lose ",
+            " mill ",
+            " counter ",
+        ] {
+            if let Some((head, tail)) = body.split_once(verb) {
+                if head.trim_end().ends_with(',') {
+                    return body.to_string();
+                }
+                return format!("{head},{verb}{}", tail.trim_start());
+            }
+        }
+        body.to_string()
+    }
+
     fn normalize_granted_trigger_body(body: &str) -> String {
         let mut normalized = body.trim().trim_end_matches('.').to_string();
         let lower = normalized.to_ascii_lowercase();
+        if (lower.starts_with("when ")
+            || lower.starts_with("whenever ")
+            || lower.starts_with("at the beginning of "))
+            && !normalized.contains(',')
+        {
+            for verb in [
+                " draw ",
+                " discard ",
+                " put ",
+                " return ",
+                " create ",
+                " destroy ",
+                " exile ",
+                " tap ",
+                " untap ",
+                " sacrifice ",
+                " deal ",
+                " gain ",
+                " lose ",
+                " mill ",
+                " counter ",
+            ] {
+                if let Some((head, tail)) = normalized.split_once(verb) {
+                    normalized = format!("{head},{verb}{}", tail.trim_start());
+                    break;
+                }
+            }
+        }
+        normalized = normalized
+            .replace(" then ", ", then ")
+            .replace(
+                " this ability triggers only once each turn",
+                ". This ability triggers only once each turn",
+            );
         if lower.contains("reveal the top card of your library if")
             && lower.contains("otherwise put it into your hand")
             && lower.contains("this ability triggers only")
@@ -9124,11 +9186,23 @@ fn rewrite_granted_triggered_ability_quote(text: &str) -> Option<String> {
     }
 
     if let Some((subject, body)) = text.split_once(" have whenever ") {
-        let body = format!("Whenever {}", normalize_granted_trigger_body(body));
+        let body = insert_trigger_comma_if_missing(&normalize_granted_trigger_body(body));
+        let body = format!("Whenever {body}");
         return Some(format!("{} have \"{}.\"", subject.trim(), body));
     }
     if let Some((subject, body)) = text.split_once(" has whenever ") {
-        let body = format!("Whenever {}", normalize_granted_trigger_body(body));
+        let body = insert_trigger_comma_if_missing(&normalize_granted_trigger_body(body));
+        let body = format!("Whenever {body}");
+        return Some(format!("{} has \"{}.\"", subject.trim(), body));
+    }
+    if let Some((subject, body)) = text.split_once(" have when ") {
+        let body = insert_trigger_comma_if_missing(&normalize_granted_trigger_body(body));
+        let body = format!("When {body}");
+        return Some(format!("{} have \"{}.\"", subject.trim(), body));
+    }
+    if let Some((subject, body)) = text.split_once(" has when ") {
+        let body = insert_trigger_comma_if_missing(&normalize_granted_trigger_body(body));
+        let body = format!("When {body}");
         return Some(format!("{} has \"{}.\"", subject.trim(), body));
     }
     None
