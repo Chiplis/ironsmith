@@ -2987,10 +2987,11 @@ fn compile_effect(
                 })?,
             };
             let tag: TagKey = tag.into();
+            let count = resolve_value_it_tag(count, ctx)?;
             let player_filter = resolve_non_target_player_filter(*player, ctx)?;
             let mut effect = crate::effects::CreateTokenCopyEffect::new(
                 ChooseSpec::Tagged(tag),
-                *count,
+                count,
                 player_filter,
             );
             if *half_power_toughness_round_up {
@@ -3036,10 +3037,15 @@ fn compile_effect(
             set_base_power_toughness,
             granted_abilities,
         } => {
+            let count = resolve_value_it_tag(count, ctx)?;
             let player_filter = resolve_non_target_player_filter(*player, ctx)?;
             compile_effect_for_target(source, ctx, |source_spec| {
                 let mut effect =
-                    crate::effects::CreateTokenCopyEffect::new(source_spec, *count, player_filter);
+                    crate::effects::CreateTokenCopyEffect::new(
+                        source_spec,
+                        count.clone(),
+                        player_filter,
+                    );
                 if *half_power_toughness_round_up {
                     effect = effect.half_power_toughness_round_up();
                 }
@@ -4225,6 +4231,9 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         let mut builder = CardDefinitionBuilder::new(CardId::new(), token_name)
             .token()
             .card_types(vec![CardType::Artifact]);
+        if words.contains(&"legendary") {
+            builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
+        }
         if !subtypes.is_empty() {
             builder = builder.subtypes(subtypes);
         }
@@ -4378,15 +4387,48 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
             }
         }
 
-        let token_name = subtypes
-            .first()
-            .map(|subtype| format!("{subtype:?}"))
-            .unwrap_or_else(|| "Token".to_string());
+        let explicit_name = words.first().copied().and_then(|word| {
+            let is_simple_name_word = word
+                .chars()
+                .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-');
+            if !is_simple_name_word {
+                return None;
+            }
+            let is_descriptor = matches!(
+                word,
+                "legendary"
+                    | "artifact"
+                    | "enchantment"
+                    | "creature"
+                    | "token"
+                    | "tokens"
+                    | "white"
+                    | "blue"
+                    | "black"
+                    | "red"
+                    | "green"
+                    | "colorless"
+                    | "named"
+            );
+            if is_descriptor || parse_subtype_word(word).is_some() {
+                return None;
+            }
+            Some(title_case_words(&[word]))
+        });
+        let token_name = explicit_name.unwrap_or_else(|| {
+            subtypes
+                .first()
+                .map(|subtype| format!("{subtype:?}"))
+                .unwrap_or_else(|| "Token".to_string())
+        });
 
         let mut builder = CardDefinitionBuilder::new(CardId::new(), token_name)
             .token()
             .card_types(card_types)
             .power_toughness(PowerToughness::fixed(power, toughness));
+        if words.contains(&"legendary") {
+            builder = builder.supertypes(vec![crate::types::Supertype::Legendary]);
+        }
 
         if !subtypes.is_empty() {
             builder = builder.subtypes(subtypes);

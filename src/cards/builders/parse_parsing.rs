@@ -732,7 +732,12 @@ fn starts_with_inline_token_rules_continuation(words: &[&str]) -> bool {
     matches!(
         words.first().copied(),
         Some(
-            "gain"
+            "it"
+                | "they"
+                | "that"
+                | "those"
+                | "this"
+                | "gain"
                 | "gains"
                 | "draw"
                 | "draws"
@@ -22947,6 +22952,27 @@ fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
     Some((power, toughness))
 }
 
+fn is_probable_token_name_word(word: &str) -> bool {
+    if !word.chars().all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-') {
+        return false;
+    }
+    !matches!(
+        word,
+        "legendary"
+            | "artifact"
+            | "enchantment"
+            | "creature"
+            | "token"
+            | "tokens"
+            | "white"
+            | "blue"
+            | "black"
+            | "red"
+            | "green"
+            | "colorless"
+    )
+}
+
 fn parse_copy_modifiers_from_tail(
     tail_words: &[&str],
 ) -> (
@@ -23035,25 +23061,25 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         _ => PlayerAst::Implicit,
     };
     let clause_words = words(tokens);
-    let has_dynamic_count = clause_words.first().is_some_and(|word| *word == "x")
-        || clause_words.starts_with(&["a", "number", "of"])
+    let has_unsupported_dynamic_count = clause_words.starts_with(&["a", "number", "of"])
         || clause_words.starts_with(&["the", "number", "of"]);
-    if has_dynamic_count {
+    if has_unsupported_dynamic_count {
         return Err(CardTextError::ParseError(format!(
             "unsupported dynamic token count in create clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
     let mut idx = 0;
-    let mut count = 1u32;
     let mut count_value = Value::Fixed(1);
     if tokens.first().is_some_and(|token| token.is_word("that"))
         && tokens.get(1).is_some_and(|token| token.is_word("many"))
     {
         count_value = Value::EventValue(EventValueSpec::Amount);
         idx = 2;
+    } else if tokens.first().is_some_and(|token| token.is_word("x")) {
+        count_value = Value::X;
+        idx = 1;
     } else if let Some((parsed_count, used)) = parse_number(tokens) {
-        count = parsed_count;
         count_value = Value::Fixed(parsed_count as i32);
         idx = used;
     }
@@ -23190,7 +23216,7 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
                     let source = parse_target_phrase(source_tokens)?;
                     return Ok(wrap_for_each(EffectAst::CreateTokenCopyFromSource {
                         source,
-                        count,
+                        count: count_value.clone(),
                         player,
                         half_power_toughness_round_up: half_pt,
                         has_haste,
@@ -23206,7 +23232,7 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
             }
             return Ok(wrap_for_each(EffectAst::CreateTokenCopy {
                 object: ObjectRefAst::It,
-                count,
+                count: count_value.clone(),
                 player,
                 half_power_toughness_round_up: half_pt,
                 has_haste,
@@ -23287,7 +23313,14 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         && pt_idx > 0
         && pt_idx < name_words_primary_len
     {
-        name_words = name_words[pt_idx..].to_vec();
+        let prefix_words = &name_words[..pt_idx];
+        let keep_prefix = prefix_words.contains(&"legendary")
+            || prefix_words
+                .first()
+                .is_some_and(|word| is_probable_token_name_word(word));
+        if !keep_prefix {
+            name_words = name_words[pt_idx..].to_vec();
+        }
     }
     let name = normalize_token_name(&name_words);
 

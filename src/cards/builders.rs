@@ -741,7 +741,7 @@ enum EffectAst {
     },
     CreateTokenCopy {
         object: ObjectRefAst,
-        count: u32,
+        count: Value,
         player: PlayerAst,
         half_power_toughness_round_up: bool,
         has_haste: bool,
@@ -755,7 +755,7 @@ enum EffectAst {
     },
     CreateTokenCopyFromSource {
         source: TargetAst,
-        count: u32,
+        count: Value,
         player: PlayerAst,
         half_power_toughness_round_up: bool,
         has_haste: bool,
