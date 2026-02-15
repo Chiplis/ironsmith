@@ -1946,6 +1946,9 @@ fn parse_static_ability_line(
     if let Some(abilities) = parse_granted_keyword_static_line(tokens)? {
         return Ok(Some(abilities));
     }
+    if let Some(abilities) = parse_lose_all_abilities_and_transform_base_pt_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(abilities) = parse_lose_all_abilities_and_base_pt_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -3464,6 +3467,176 @@ fn parse_all_creatures_lose_flying_line(
         )));
     }
     Ok(None)
+}
+
+fn parse_lose_all_abilities_and_transform_base_pt_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    fn title_case_words(words: &[&str]) -> String {
+        words
+            .iter()
+            .map(|word| {
+                let mut chars = word.chars();
+                if let Some(first) = chars.next() {
+                    let mut out = String::new();
+                    out.extend(first.to_uppercase());
+                    out.push_str(chars.as_str());
+                    out
+                } else {
+                    String::new()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    let words = words(tokens);
+    if words.len() < 8 {
+        return Ok(None);
+    }
+
+    let Some(is_idx) = words.iter().position(|word| *word == "is" || *word == "are") else {
+        return Ok(None);
+    };
+    let Some(with_idx) = words
+        .windows(5)
+        .position(|window| window == ["with", "base", "power", "and", "toughness"])
+    else {
+        return Ok(None);
+    };
+    if with_idx <= is_idx {
+        return Ok(None);
+    }
+
+    let Some(pt_word) = words.get(with_idx + 5) else {
+        return Ok(None);
+    };
+    let (power, toughness) = parse_pt_modifier(pt_word).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "invalid base power/toughness value (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
+
+    let has_lose_all = words
+        .windows(3)
+        .any(|window| matches!(window, ["lose", "all", "abilities"] | ["loses", "all", "abilities"]));
+    if !has_lose_all {
+        return Ok(None);
+    }
+
+    let subject_end = is_idx.min(
+        words
+            .iter()
+            .position(|word| *word == "lose" || *word == "loses")
+            .unwrap_or(is_idx),
+    );
+    if subject_end == 0 {
+        return Ok(None);
+    }
+    let subject_tokens = trim_commas(&tokens[..subject_end]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported subject in lose-all-abilities transform clause (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
+
+    let mut descriptor_words = words[is_idx + 1..with_idx]
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word) && *word != "and")
+        .collect::<Vec<_>>();
+    if descriptor_words.is_empty() {
+        return Ok(None);
+    }
+    if descriptor_words.first().copied() == Some("all") {
+        descriptor_words.remove(0);
+    }
+    if descriptor_words.is_empty() {
+        return Ok(None);
+    }
+
+    let mut set_colors = ColorSet::new();
+    let mut set_card_types: Vec<CardType> = Vec::new();
+    let mut creature_subtypes: Vec<Subtype> = Vec::new();
+
+    for descriptor in descriptor_words {
+        if let Some(color) = parse_color(descriptor) {
+            set_colors = set_colors.union(color);
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(descriptor) {
+            if !set_card_types.contains(&card_type) {
+                set_card_types.push(card_type);
+            }
+            continue;
+        }
+        if let Some(subtype) = parse_subtype_word(descriptor)
+            .or_else(|| descriptor.strip_suffix('s').and_then(parse_subtype_word))
+        {
+            if !creature_subtypes.contains(&subtype) {
+                creature_subtypes.push(subtype);
+            }
+            continue;
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported transform descriptor '{}' (clause: '{}')",
+            descriptor,
+            words.join(" ")
+        )));
+    }
+
+    if !creature_subtypes.is_empty() && !set_card_types.contains(&CardType::Creature) {
+        set_card_types.push(CardType::Creature);
+    }
+
+    let mut set_name: Option<String> = None;
+    let tail_words = &words[with_idx + 6..];
+    if let Some(named_idx) = tail_words.iter().position(|word| *word == "named") {
+        let end_idx = (named_idx + 1..tail_words.len())
+            .find(|idx| {
+                matches!(
+                    tail_words[*idx],
+                    "and" | "lose" | "loses" | "with" | "it" | "that" | "those" | "this"
+                )
+            })
+            .unwrap_or(tail_words.len());
+        if end_idx > named_idx + 1 {
+            set_name = Some(title_case_words(&tail_words[named_idx + 1..end_idx]));
+        }
+    }
+
+    let mut abilities = vec![StaticAbility::remove_all_abilities(filter.clone())];
+
+    if !set_card_types.is_empty() {
+        abilities.push(StaticAbility::set_card_types(
+            filter.clone(),
+            set_card_types,
+        ));
+    }
+    if !creature_subtypes.is_empty() {
+        abilities.push(StaticAbility::set_creature_subtypes(
+            filter.clone(),
+            creature_subtypes,
+        ));
+    }
+    if !set_colors.is_empty() {
+        abilities.push(StaticAbility::set_colors(filter.clone(), set_colors));
+    }
+    if let Some(name) = set_name {
+        abilities.push(StaticAbility::set_name(filter.clone(), name));
+    }
+    abilities.push(StaticAbility::set_base_power_toughness(
+        filter,
+        power,
+        toughness,
+    ));
+
+    Ok(Some(abilities))
 }
 
 fn parse_lose_all_abilities_and_base_pt_line(
@@ -13998,20 +14171,15 @@ fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<EffectAst> {
         .filter(|word| !is_article(word))
         .collect();
 
-    if filtered.starts_with(&["it", "gains", "haste"])
-        || filtered.starts_with(&["they", "gain", "haste"])
-        || filtered.starts_with(&["it", "has", "haste"])
-        || filtered.starts_with(&["they", "have", "haste"])
-    {
-        let has_until_eot = filtered
-            .windows(3)
-            .any(|window| window == ["until", "end", "of"])
-            && filtered.contains(&"turn");
-        let is_always_haste_grant = filtered.starts_with(&["it", "has", "haste"])
-            || filtered.starts_with(&["they", "have", "haste"]);
-        if has_until_eot || is_always_haste_grant {
-            return Some(EffectAst::TokenCopyGainHasteUntilEot);
-        }
+    let is_exact_haste_followup = matches!(
+        filtered.as_slice(),
+        ["it", "gains", "haste", "until", "end", "of", "turn"]
+            | ["they", "gain", "haste", "until", "end", "of", "turn"]
+            | ["it", "has", "haste"]
+            | ["they", "have", "haste"]
+    );
+    if is_exact_haste_followup {
+        return Some(EffectAst::TokenCopyGainHasteUntilEot);
     }
 
     if filtered.starts_with(&["sacrifice", "it"]) || filtered.starts_with(&["sacrifice", "them"]) {
@@ -17496,6 +17664,7 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "cat" => Some(Subtype::Cat),
         "centaur" => Some(Subtype::Centaur),
         "citizen" | "citizens" => Some(Subtype::Citizen),
+        "coward" | "cowards" => Some(Subtype::Coward),
         "changeling" => Some(Subtype::Changeling),
         "cleric" => Some(Subtype::Cleric),
         "construct" => Some(Subtype::Construct),

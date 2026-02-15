@@ -1310,15 +1310,136 @@ fn strip_compiled_prefix(line: &str) -> &str {
     }
 }
 
+fn split_lose_all_abilities_subject(line: &str) -> Option<&str> {
+    let trimmed = line.trim().trim_end_matches('.');
+    trimmed
+        .strip_suffix(" loses all abilities")
+        .or_else(|| trimmed.strip_suffix(" lose all abilities"))
+        .map(str::trim)
+}
+
+fn merge_transform_compiled_lines(lines: &[String]) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let left = lines[idx].trim().trim_end_matches('.');
+        let Some(subject) = split_lose_all_abilities_subject(left) else {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+
+        let mut consumed = 1usize;
+        let mut colors: Vec<String> = Vec::new();
+        let mut card_types: Vec<String> = Vec::new();
+        let mut subtypes: Vec<String> = Vec::new();
+        let mut named: Option<String> = None;
+        let mut base_pt: Option<String> = None;
+
+        while idx + consumed < lines.len() {
+            let line = lines[idx + consumed].trim().trim_end_matches('.');
+            if let Some(pt) = line.strip_prefix("Affected permanents have base power and toughness ")
+            {
+                base_pt = Some(pt.trim().to_string());
+                consumed += 1;
+                continue;
+            }
+
+            let subject_prefix = format!("{subject} is ");
+            let Some(rest) = line.strip_prefix(&subject_prefix) else {
+                break;
+            };
+            let rest = rest.trim();
+            if let Some(name) = rest.strip_prefix("named ") {
+                named = Some(name.trim().to_string());
+                consumed += 1;
+                continue;
+            }
+            for part in rest.split(" and ").map(str::trim).filter(|part| !part.is_empty()) {
+                let lower = part.to_ascii_lowercase();
+                if matches!(
+                    lower.as_str(),
+                    "white" | "blue" | "black" | "red" | "green" | "colorless"
+                ) {
+                    if !colors.contains(&lower) {
+                        colors.push(lower);
+                    }
+                    continue;
+                }
+                if matches!(
+                    lower.as_str(),
+                    "creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"
+                ) {
+                    if !card_types.contains(&lower) {
+                        card_types.push(lower);
+                    }
+                    continue;
+                }
+                if !subtypes.contains(&lower) {
+                    subtypes.push(lower);
+                }
+            }
+            consumed += 1;
+        }
+
+        if consumed == 1 {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        let mut combined = format!("{subject} loses all abilities");
+        let mut descriptor = String::new();
+        if !colors.is_empty() {
+            descriptor.push_str(&colors.join(" and "));
+        }
+        if !subtypes.is_empty() {
+            if !descriptor.is_empty() {
+                descriptor.push(' ');
+            }
+            descriptor.push_str(&subtypes.join(" and "));
+        }
+        if !card_types.is_empty() {
+            if !descriptor.is_empty() {
+                descriptor.push(' ');
+            }
+            descriptor.push_str(&card_types.join(" and "));
+        }
+        if !descriptor.is_empty() {
+            combined.push_str(" and is ");
+            combined.push_str(&descriptor);
+        }
+        if let Some(pt) = base_pt {
+            combined.push_str(" with base power and toughness ");
+            combined.push_str(&pt);
+        }
+        if let Some(name) = named {
+            combined.push_str(" named ");
+            combined.push_str(&name);
+        }
+        merged.push(combined);
+        idx += consumed;
+    }
+
+    merged
+}
+
 pub fn compare_semantics_scored(
     oracle_text: &str,
     compiled_lines: &[String],
     embedding: Option<EmbeddingConfig>,
 ) -> (f32, f32, f32, isize, bool) {
     let oracle_clauses = semantic_clauses(oracle_text);
-    let compiled_clauses = compiled_lines
+    let compiled_normalized_lines = merge_transform_compiled_lines(
+        &compiled_lines
+            .iter()
+            .map(|line| strip_compiled_prefix(line).to_string())
+            .collect::<Vec<_>>(),
+    );
+    let compiled_clauses = compiled_normalized_lines
         .iter()
-        .flat_map(|line| semantic_clauses(strip_compiled_prefix(line)))
+        .flat_map(|line| semantic_clauses(line))
         .filter(|clause| !is_internal_compiled_scaffolding_clause(clause))
         .collect::<Vec<_>>();
 

@@ -1141,6 +1141,52 @@ impl StaticAbilityKind for SetColorsForFilter {
     }
 }
 
+/// Set name: "Enchanted creature is named Legitimate Businessperson."
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetNameForFilter {
+    pub filter: ObjectFilter,
+    pub name: String,
+}
+
+impl SetNameForFilter {
+    pub fn new(filter: ObjectFilter, name: String) -> Self {
+        Self { filter, name }
+    }
+}
+
+impl StaticAbilityKind for SetNameForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetName
+    }
+
+    fn display(&self) -> String {
+        let subject = subject_text(&self.filter);
+        let (verb, _) = subject_verb_and_possessive(&subject);
+        format!("{subject} {verb} named {}", self.name)
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::SetName(self.name.clone()),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// Add colors: "Enchanted creature is black in addition to its other colors."
 #[derive(Debug, Clone)]
 pub struct AddColorsForFilter {
@@ -1254,6 +1300,63 @@ impl StaticAbilityKind for AddCardTypesForFilter {
     }
 }
 
+/// Set card types: "Enchanted permanent is a creature."
+#[derive(Debug, Clone)]
+pub struct SetCardTypesForFilter {
+    pub filter: ObjectFilter,
+    pub card_types: Vec<CardType>,
+}
+
+impl SetCardTypesForFilter {
+    pub fn new(filter: ObjectFilter, card_types: Vec<CardType>) -> Self {
+        Self { filter, card_types }
+    }
+}
+
+impl PartialEq for SetCardTypesForFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter && self.card_types == other.card_types
+    }
+}
+
+impl StaticAbilityKind for SetCardTypesForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetCardTypes
+    }
+
+    fn display(&self) -> String {
+        let subject = subject_text(&self.filter);
+        let (verb, _) = subject_verb_and_possessive(&subject);
+        let types = self
+            .card_types
+            .iter()
+            .map(|card_type| format!("{card_type:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        format!("{subject} {verb} {}", join_with_and(&types))
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::SetCardTypes(self.card_types.clone()),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// Add subtypes: "Enchanted creature is a Zombie in addition to its other types."
 #[derive(Debug, Clone)]
 pub struct AddSubtypesForFilter {
@@ -1303,6 +1406,70 @@ impl StaticAbilityKind for AddSubtypesForFilter {
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
         vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddSubtypes(self.subtypes.clone()),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// Set creature subtypes by removing all creature types first, then adding the new list.
+#[derive(Debug, Clone)]
+pub struct SetCreatureSubtypesForFilter {
+    pub filter: ObjectFilter,
+    pub subtypes: Vec<Subtype>,
+}
+
+impl SetCreatureSubtypesForFilter {
+    pub fn new(filter: ObjectFilter, subtypes: Vec<Subtype>) -> Self {
+        Self { filter, subtypes }
+    }
+}
+
+impl PartialEq for SetCreatureSubtypesForFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter && self.subtypes == other.subtypes
+    }
+}
+
+impl StaticAbilityKind for SetCreatureSubtypesForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetCreatureSubtypes
+    }
+
+    fn display(&self) -> String {
+        let subject = subject_text(&self.filter);
+        let (verb, _) = subject_verb_and_possessive(&subject);
+        let subtypes = self
+            .subtypes
+            .iter()
+            .map(|subtype| format!("{subtype:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        format!("{subject} {verb} {}", join_with_and(&subtypes))
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::RemoveAllCreatureTypes,
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
             ContinuousEffect::new(
                 source,
                 controller,

@@ -225,6 +225,8 @@ pub enum Modification {
     // === Layer 3: Text ===
     /// Change text (e.g., "Swamp" becomes "Forest")
     ChangeText { from: String, to: String },
+    /// Set a permanent's name.
+    SetName(String),
 
     // === Layer 4: Type ===
     /// Add card types
@@ -343,7 +345,7 @@ impl Modification {
 
             Modification::ChangeController(_) => Layer::Control,
 
-            Modification::ChangeText { .. } => Layer::Text,
+            Modification::ChangeText { .. } | Modification::SetName(_) => Layer::Text,
 
             Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
@@ -804,6 +806,7 @@ impl ContinuousEffect {
 /// Calculated characteristics for an object after applying continuous effects.
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
+    pub name: String,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
     pub card_types: Vec<CardType>,
@@ -907,6 +910,7 @@ fn calculate_with_layers_direct_internal(
 
     // Start with base characteristics
     let mut chars = CalculatedCharacteristics {
+        name: object.name.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: object.card_types.clone(),
@@ -1255,6 +1259,7 @@ fn apply_modification_to_chars(
         // Layer 1: Copy
         Modification::CopyOf(target_id) => {
             if let Some(target) = objects.get(target_id) {
+                chars.name = target.name.clone();
                 chars.power = target.base_power.as_ref().map(|p| p.base_value());
                 chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
                 chars.card_types = target.card_types.clone();
@@ -1269,6 +1274,12 @@ fn apply_modification_to_chars(
         // Layer 2: Control
         Modification::ChangeController(new_controller) => {
             chars.controller = *new_controller;
+        }
+        Modification::ChangeText { .. } => {
+            // Text changes are handled separately.
+        }
+        Modification::SetName(name) => {
+            chars.name = name.clone();
         }
 
         // Layer 4: Type changes
@@ -1554,9 +1565,6 @@ fn apply_modification_to_chars(
         }
 
         // Other modifications that don't affect characteristics calculation
-        Modification::ChangeText { .. } => {
-            // Text changes are handled separately
-        }
         Modification::RemoveSupertypes(supertypes) => {
             chars.supertypes.retain(|st| !supertypes.contains(st));
         }
@@ -1705,6 +1713,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
 
     // Start with base characteristics
     let mut chars = CalculatedCharacteristics {
+        name: object.name.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: object.card_types.clone(),
@@ -1783,6 +1792,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     // rules text, power, toughness, and loyalty.
                     // It does NOT copy counters, damage, or other non-copiable state.
                     if let Some(target) = ctx.objects.get(target_id) {
+                        chars.name = target.name.clone();
                         // Copy base characteristics from the target
                         chars.power = target.base_power.as_ref().map(|p| p.base_value());
                         chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
@@ -1799,6 +1809,12 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 // Layer 2: Control
                 Modification::ChangeController(new_controller) => {
                     chars.controller = *new_controller;
+                }
+                Modification::ChangeText { .. } => {
+                    // Text changes are handled separately.
+                }
+                Modification::SetName(name) => {
+                    chars.name = name.clone();
                 }
 
                 // Layer 4: Type changes
@@ -2426,12 +2442,12 @@ fn filter_matches_with_controller(
     }
 
     if let Some(required_name) = &filter.name
-        && object.name != *required_name
+        && chars.name != *required_name
     {
         return false;
     }
     if let Some(excluded_name) = &filter.excluded_name
-        && object.name == *excluded_name
+        && chars.name == *excluded_name
     {
         return false;
     }
@@ -2910,6 +2926,7 @@ mod tests {
 
         // Calculate characteristics
         let mut chars = CalculatedCharacteristics {
+            name: creature.name.clone(),
             power: creature.base_power.as_ref().map(|p| p.base_value()),
             toughness: creature.base_toughness.as_ref().map(|t| t.base_value()),
             card_types: creature.card_types.clone(),
@@ -2954,6 +2971,7 @@ mod tests {
         creature.add_counters(CounterType::Vigilance, 1);
 
         let mut chars = CalculatedCharacteristics {
+            name: creature.name.clone(),
             power: None,
             toughness: None,
             card_types: creature.card_types.clone(),
@@ -3008,6 +3026,7 @@ mod tests {
 
         // Start with flying ability already present
         let mut chars = CalculatedCharacteristics {
+            name: creature.name.clone(),
             power: None,
             toughness: None,
             card_types: creature.card_types.clone(),

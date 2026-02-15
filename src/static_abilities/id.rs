@@ -69,7 +69,9 @@ pub enum StaticAbilityId {
     BelloBardOfTheBrambles,
     CharacteristicDefiningPT,
     AddCardTypes,
+    SetCardTypes,
     AddSubtypes,
+    SetCreatureSubtypes,
     AddColors,
     CopyActivatedAbilities,
     ManascapeRefractor,
@@ -80,6 +82,7 @@ pub enum StaticAbilityId {
     AttachedAbilityGrant,
     GrantObjectAbilityForFilter,
     SetColors,
+    SetName,
     MakeColorless,
     RemoveSupertypes,
 

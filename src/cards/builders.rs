@@ -2989,6 +2989,44 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_enchanted_creature_loses_abilities_and_transforms_with_base_pt() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ichthyomorphosis Variant")
+            .parse_text(
+                "Enchant creature\nEnchanted creature loses all abilities and is a blue Fish with base power and toughness 0/1.",
+            )
+            .expect("transforming lose-all-abilities Aura line should parse");
+
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            static_ids.contains(&StaticAbilityId::RemoveAllAbilitiesForFilter),
+            "expected lose-all-abilities static, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetCardTypes),
+            "expected set-card-types static, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetCreatureSubtypes),
+            "expected creature-subtype reset static, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetColors),
+            "expected set-colors static, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+            "expected set-base-power/toughness static, got {static_ids:?}"
+        );
+    }
+
+    #[test]
     fn parse_target_creature_has_base_power_until_end_of_turn() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Wak-Wak Variant")
             .parse_text("Target attacking creature has base power 0 until end of turn.")
@@ -5650,6 +5688,25 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             activated.contains("Haste"),
             "expected followup haste clause to be preserved, got {activated}"
+        );
+    }
+
+    #[test]
+    fn parse_threaten_style_followup_keeps_multiple_keywords() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Lose Calm Variant")
+            .parse_text(
+                "Gain control of target creature until end of turn. Untap that creature. It gains haste and menace until end of turn.",
+            )
+            .expect("threaten-style followup with multiple keywords should parse");
+
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let spell_line = lines
+            .iter()
+            .find(|line| line.starts_with("Spell effects:"))
+            .expect("expected spell effects line");
+        assert!(
+            spell_line.contains("Haste") && spell_line.contains("Menace"),
+            "expected both granted keywords to be preserved, got {spell_line}"
         );
     }
 

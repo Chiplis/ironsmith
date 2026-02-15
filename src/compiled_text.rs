@@ -1059,6 +1059,18 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
         )
         .replace(
+            "Untap it. it gains Haste until end of turn",
+            "Untap that creature. It gains haste until end of turn",
+        )
+        .replace(
+            "Untap it. it gains Haste and gains Menace until end of turn",
+            "Untap that creature. It gains haste and menace until end of turn",
+        )
+        .replace(
+            "it gains Haste and gains Menace until end of turn",
+            "it gains haste and menace until end of turn",
+        )
+        .replace(
             "at the beginning of the next end step. you control.",
             "at the beginning of the next end step.",
         )
@@ -12082,6 +12094,115 @@ fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
     merged
 }
 
+fn merge_lose_all_transform_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let left = lines[idx].trim().trim_end_matches('.');
+        let Some(subject) = split_lose_all_abilities_clause(left) else {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+
+        let mut consumed = 1usize;
+        let mut colors: Vec<String> = Vec::new();
+        let mut card_types: Vec<String> = Vec::new();
+        let mut subtypes: Vec<String> = Vec::new();
+        let mut named: Option<String> = None;
+        let mut base_pt: Option<String> = None;
+
+        while idx + consumed < lines.len() {
+            let line = lines[idx + consumed].trim().trim_end_matches('.');
+            if let Some(pt) = line.strip_prefix("Affected permanents have base power and toughness ")
+            {
+                base_pt = Some(pt.trim().to_string());
+                consumed += 1;
+                continue;
+            }
+
+            let subject_is_prefix = format!("{subject} is ");
+            let Some(rest) = line.strip_prefix(&subject_is_prefix) else {
+                break;
+            };
+            let rest = rest.trim();
+            if let Some(name) = rest.strip_prefix("named ") {
+                named = Some(name.trim().to_string());
+                consumed += 1;
+                continue;
+            }
+
+            for part in rest.split(" and ").map(str::trim).filter(|part| !part.is_empty()) {
+                let lower = part.to_ascii_lowercase();
+                if matches!(
+                    lower.as_str(),
+                    "white" | "blue" | "black" | "red" | "green" | "colorless"
+                ) {
+                    if !colors.contains(&lower) {
+                        colors.push(lower);
+                    }
+                    continue;
+                }
+                if matches!(
+                    lower.as_str(),
+                    "creature" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"
+                ) {
+                    if !card_types.contains(&lower) {
+                        card_types.push(lower);
+                    }
+                    continue;
+                }
+                if !subtypes.contains(&lower) {
+                    subtypes.push(lower);
+                }
+            }
+            consumed += 1;
+        }
+
+        if consumed == 1 {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        let mut combined = format!("{subject} loses all abilities");
+        let mut descriptor = String::new();
+        if !colors.is_empty() {
+            descriptor.push_str(&join_with_and(&colors));
+        }
+        if !subtypes.is_empty() {
+            if !descriptor.is_empty() {
+                descriptor.push(' ');
+            }
+            descriptor.push_str(&join_with_and(&subtypes));
+        }
+        if !card_types.is_empty() {
+            if !descriptor.is_empty() {
+                descriptor.push(' ');
+            }
+            descriptor.push_str(&join_with_and(&card_types));
+        }
+        if !descriptor.is_empty() {
+            combined.push_str(" and is ");
+            combined.push_str(&descriptor);
+        }
+        if let Some(pt) = base_pt {
+            combined.push_str(" with base power and toughness ");
+            combined.push_str(&pt);
+        }
+        if let Some(name) = named {
+            combined.push_str(" named ");
+            combined.push_str(&name);
+        }
+
+        merged.push(combined);
+        idx += consumed;
+    }
+
+    merged
+}
+
 fn parse_simple_mana_add_line(line: &str) -> Option<(&str, &str)> {
     let (cost, rest) = line.split_once(": ")?;
     let symbol = rest.strip_prefix("Add ")?;
@@ -15151,7 +15272,8 @@ pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
     let merged_has_keywords = merge_subject_has_keyword_lines(merged_mana);
     let without_redundant_cost_lines = drop_redundant_spell_cost_lines(merged_has_keywords);
     let merged_blockability = merge_blockability_lines(without_redundant_cost_lines);
-    merged_blockability
+    let merged_transform = merge_lose_all_transform_lines(merged_blockability);
+    merged_transform
         .into_iter()
         .map(|line| normalize_sentence_surface_style(&line))
         .collect()
