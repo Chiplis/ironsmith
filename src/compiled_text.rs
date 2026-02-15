@@ -1408,6 +1408,13 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("Deal {amount} damage to each creature your opponents control");
     }
+    if let Some(rest) = normalized.strip_prefix("For each opponent's creature, Deal ")
+        && let Some(amount) = rest
+            .strip_suffix(" damage to each opponent.")
+            .or_else(|| rest.strip_suffix(" damage to each opponent"))
+    {
+        return format!("Deal {amount} damage to each creature your opponents control");
+    }
     if let Some(rest) = normalized.strip_prefix("For each creature or planeswalker, Deal ")
         && let Some(amount) = rest.strip_suffix(" damage to that object")
     {
@@ -8924,7 +8931,49 @@ fn normalize_triggered_self_deals_damage_phrase(def: &CardDefinition, text: &str
 }
 
 fn normalize_known_low_tail_phrase(text: &str) -> String {
-    text.trim().to_string()
+    let trimmed = text.trim();
+
+    if let Some((first_clause, rest)) =
+        trimmed.split_once(". For each opponent's creature, Deal ")
+        && let Some(amount) = rest
+            .strip_suffix(" damage to each opponent.")
+            .or_else(|| rest.strip_suffix(" damage to each opponent"))
+        && let Some((subject, self_amount)) = first_clause
+            .strip_prefix("When this permanent enters, it deals ")
+            .map(|tail| ("permanent", tail))
+            .or_else(|| {
+                first_clause
+                    .strip_prefix("When this creature enters, it deals ")
+                    .map(|tail| ("creature", tail))
+            })
+            .and_then(|(subject, tail)| {
+                tail.strip_suffix(" damage to that player")
+                    .map(|amount| (subject, amount))
+            })
+        && self_amount.trim().eq_ignore_ascii_case(amount.trim())
+    {
+        return format!(
+            "When this {subject} enters, it deals {amount} damage to each opponent and each creature your opponents control."
+        );
+    }
+    if let Some(rest) = trimmed.strip_prefix("For each opponent's creature, Deal ")
+        && let Some(amount) = rest
+            .strip_suffix(" damage to each opponent.")
+            .or_else(|| rest.strip_suffix(" damage to each opponent"))
+    {
+        return format!("Deal {amount} damage to each creature your opponents control.");
+    }
+    if let Some((left, right)) = split_once_ascii_ci(trimmed, ". sacrifice ")
+        && left.to_ascii_lowercase().contains(" and you lose ")
+    {
+        return format!(
+            "{}, then sacrifice {}.",
+            left.trim().trim_end_matches('.'),
+            right.trim().trim_end_matches('.')
+        );
+    }
+
+    trimmed.to_string()
 }
 
 fn normalize_stubborn_surface_chain(text: &str) -> String {
@@ -9298,6 +9347,16 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             sacrifice_tail.trim().trim_end_matches('.')
         );
     }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, "target player sacrifices ")
+        && let Some((sacrifice_tail, lose_tail)) =
+            split_once_ascii_ci(rest, ". target player loses ")
+    {
+        return format!(
+            "{prefix}target player sacrifices {} and loses {}.",
+            sacrifice_tail.trim(),
+            lose_tail.trim().trim_end_matches('.')
+        );
+    }
     if let Some((left, right)) = normalized.split_once(". ")
         && left.to_ascii_lowercase().starts_with("draw ")
         && right.to_ascii_lowercase().starts_with("you gain ")
@@ -9357,6 +9416,45 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             return format!("Draw {draw_tail} and gain {gain_tail}.");
         }
         return format!("{prefix}. Draw {draw_tail} and gain {gain_tail}.");
+    }
+    if let Some((prefix, energy_tail)) = split_once_ascii_ci(&normalized, ". you get ")
+        && energy_tail.trim_start().starts_with("{E")
+    {
+        return format!(
+            "{} and you get {}.",
+            prefix.trim().trim_end_matches('.'),
+            energy_tail.trim().trim_end_matches('.')
+        );
+    }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ": you gain ")
+        && let Some((gain_tail, draw_tail)) = split_once_ascii_ci(rest, " life. you may draw ")
+    {
+        return format!(
+            "{prefix}: you gain {} life and you may draw {}.",
+            gain_tail.trim(),
+            draw_tail.trim().trim_end_matches('.')
+        );
+    }
+    if let Some((left, right)) = split_once_ascii_ci(&normalized, ". Deal ")
+        && left.to_ascii_lowercase().contains(" gets ")
+        && left.to_ascii_lowercase().contains("until end of turn")
+        && let Some(amount_tail) = strip_suffix_ascii_ci(right.trim(), " damage to each opponent.")
+            .or_else(|| strip_suffix_ascii_ci(right.trim(), " damage to each opponent"))
+    {
+        return format!(
+            "{}, and deals {} damage to each opponent.",
+            left.trim().trim_end_matches('.'),
+            amount_tail.trim()
+        );
+    }
+    if let Some((left, right)) = split_once_ascii_ci(&normalized, ". sacrifice ")
+        && left.to_ascii_lowercase().contains(" and you lose ")
+    {
+        return format!(
+            "{} and sacrifice {}.",
+            left.trim().trim_end_matches('.'),
+            right.trim().trim_end_matches('.')
+        );
     }
     if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, "This creature deals ")
         && let Some((damage, loss_tail)) =
@@ -10153,9 +10251,14 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "target opponent's artifact or creature",
             "target artifact or creature an opponent controls",
         )
+        .replace("target opponent's land", "target land an opponent controls")
         .replace(
             "permanent can't untap until your next turn",
             "that permanent doesn't untap during its controller's next untap step",
+        )
+        .replace(
+            "land can't untap until your next turn",
+            "that land doesn't untap during its controller's next untap step",
         )
         .replace("target opponent's creature", "target creature an opponent controls")
         .replace(
@@ -10229,6 +10332,7 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "Whenever you cast noncreature spell,",
             "Whenever you cast a noncreature spell,",
         )
+        .replace("you may Allies you control gain ", "you may have Allies you control gain ")
         .replace(" to your mana pool", "")
         .replace(
             "create 1 Powerstone artifact token under your control, tapped",
@@ -10315,6 +10419,15 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "Draw two cards and lose 2 life. you mill 2 cards.",
             "Draw two cards, lose 2 life, then mill two cards.",
         )
+        .replace("When this creature enters it deals ", "When this creature enters, it deals ")
+        .replace(" and you, gain ", " and you gain ")
+        .replace(". you may Put a +1/+1 counter on this permanent", ", and you may put a +1/+1 counter on this permanent")
+        .replace(
+            "\"At the beginning of your end step exile ",
+            "\"At the beginning of your end step, exile ",
+        )
+        .replace(" you control then return ", " you control, then return ")
+        .replace(" its owners control", " its owner's control")
         .replace(
             "When this creature dies, exile it. Return another target creature card from your graveyard to your hand.",
             "When this creature dies, exile it, then return another target creature card from your graveyard to your hand.",
@@ -11533,7 +11646,7 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     }
     if let Some((left, right)) = normalized.split_once(". ") {
         let right_lower = right.trim_start().to_ascii_lowercase();
-        if !right_lower.starts_with("you sacrifice ") {
+        if !right_lower.starts_with("you sacrifice ") && !right_lower.starts_with("sacrifice ") {
             // no-op
         } else {
         let left_trimmed = left.trim().trim_end_matches('.');
@@ -11577,6 +11690,72 @@ fn normalize_sentence_surface_style(line: &str) -> String {
             "Whenever {}, {}",
             trigger_head.trim().to_ascii_lowercase(),
             trigger_body.trim()
+        );
+    }
+    if let Some(rest) = normalized.strip_prefix("Creatures you control get ")
+        && let Some(pt) = rest
+            .strip_suffix(" as long as it's your turn.")
+            .or_else(|| rest.strip_suffix(" as long as it's your turn"))
+    {
+        return format!("During your turn, creatures you control get {pt}.");
+    }
+    if let Some((head, _tail)) = normalized.split_once(", put a card from that player's hand on top of that player's library")
+        && (head.starts_with("When this creature enters")
+            || head.starts_with("When this permanent enters"))
+    {
+        return format!("{head}, target player puts a card from their hand on top of their library.");
+    }
+    if let Some((prefix, rest)) =
+        split_once_ascii_ci(&normalized, ". For each opponent's creature, Deal ")
+        && let Some(amount) = rest
+            .strip_suffix(" damage to each opponent.")
+            .or_else(|| rest.strip_suffix(" damage to each opponent"))
+        && let Some((subject, self_amount)) = strip_prefix_ascii_ci(
+            prefix.trim(),
+            "When this permanent enters, it deals ",
+        )
+        .map(|tail| ("permanent", tail))
+        .or_else(|| {
+            strip_prefix_ascii_ci(prefix.trim(), "When this creature enters, it deals ")
+                .map(|tail| ("creature", tail))
+        })
+        .or_else(|| {
+            split_once_ascii_ci(
+                prefix.trim(),
+                ": When this permanent enters, it deals ",
+            )
+            .map(|(_, tail)| ("permanent", tail))
+        })
+        .or_else(|| {
+            split_once_ascii_ci(
+                prefix.trim(),
+                ": When this creature enters, it deals ",
+            )
+            .map(|(_, tail)| ("creature", tail))
+        })
+        .and_then(|(subject, tail)| {
+            strip_suffix_ascii_ci(tail, " damage to that player").map(|amount| (subject, amount))
+        })
+        && self_amount.trim().eq_ignore_ascii_case(amount.trim())
+    {
+        return format!(
+            "When this {subject} enters, it deals {} damage to each opponent and each creature your opponents control.",
+            amount.trim(),
+        );
+    }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ": For each ")
+        && let Some((first_filter, rest)) = split_once_ascii_ci(rest, ", put ")
+        && let Some((first_counter, rest)) = split_once_ascii_ci(rest, " on that object. For each ")
+        && let Some((second_filter, rest)) = split_once_ascii_ci(rest, ", Put ")
+        && let Some(second_counter) = strip_suffix_ascii_ci(rest, " on that object.")
+            .or_else(|| strip_suffix_ascii_ci(rest, " on that object"))
+    {
+        return format!(
+            "{prefix}: put {} on each {} and {} on each {}.",
+            first_counter.trim(),
+            first_filter.trim(),
+            second_counter.trim(),
+            second_filter.trim()
         );
     }
     if normalized.eq_ignore_ascii_case("All Slivers have \"Sacrifice this creature: Add b b.\"")
@@ -13245,10 +13424,40 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     {
         return format!("Deal {amount} damage to each {left} and/or {kind} creature");
     }
+    if let Some((first_clause, rest)) =
+        trimmed.split_once(". For each opponent's creature, Deal ")
+        && let Some(amount) = rest
+            .strip_suffix(" damage to each opponent")
+            .or_else(|| rest.strip_suffix(" damage to each opponent."))
+        && let Some(self_amount) = first_clause
+            .strip_prefix("When this permanent enters, it deals ")
+            .and_then(|tail| tail.strip_suffix(" damage to that player"))
+        && self_amount.trim().eq_ignore_ascii_case(amount.trim())
+    {
+        return format!(
+            "When this permanent enters, it deals {amount} damage to each opponent and each creature your opponents control"
+        );
+    }
     if let Some(rest) = trimmed.strip_prefix("For each opponent's creature, Deal ")
         && let Some(amount) = rest.strip_suffix(" damage to that object")
     {
         return format!("Deal {amount} damage to each creature your opponents control");
+    }
+    if let Some(rest) = trimmed.strip_prefix("For each opponent's creature, Deal ")
+        && let Some(amount) = rest
+            .strip_suffix(" damage to each opponent")
+            .or_else(|| rest.strip_suffix(" damage to each opponent."))
+    {
+        return format!("Deal {amount} damage to each creature your opponents control");
+    }
+    if let Some((left, right)) = split_once_ascii_ci(trimmed, ". sacrifice ")
+        && left.to_ascii_lowercase().contains(" and you lose ")
+    {
+        return format!(
+            "{} and sacrifice {}",
+            left.trim().trim_end_matches('.'),
+            right.trim().trim_end_matches('.')
+        );
     }
     if let Some(rest) = strip_prefix_ascii_ci(trimmed, "creatures you control get ")
         && let Some(buff) = rest
@@ -15971,6 +16180,30 @@ mod tests {
             normalized,
             "Exile target creature. At the beginning of the next end step, return that card to the battlefield under its owner's control with a +1/+1 counter on it."
         );
+
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this permanent enters, you gain 3 life. you get {E}{E}{E}.",
+        );
+        assert_eq!(
+            normalized,
+            "When this permanent enters, you gain 3 life and you get {E}{E}{E}."
+        );
+
+        let normalized = normalize_compiled_post_pass_effect(
+            "{1}, Sacrifice an artifact you control: this permanent gets +1/+1 until end of turn. Deal 1 damage to each opponent.",
+        );
+        assert_eq!(
+            normalized,
+            "{1}, Sacrifice an artifact you control: this permanent gets +1/+1 until end of turn, and deals 1 damage to each opponent."
+        );
+
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this permanent enters, target player sacrifices a creature or planeswalker of their choice. target player loses 1 life.",
+        );
+        assert_eq!(
+            normalized,
+            "When this permanent enters, target player sacrifices a creature or planeswalker of their choice and loses 1 life."
+        );
     }
 
     #[test]
@@ -15998,6 +16231,34 @@ mod tests {
                 "Exile target creature. Return it from graveyard to the battlefield tapped. Draw a card."
             ),
             "Exile target creature. Return it from graveyard to the battlefield tapped. Draw a card."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "When this permanent enters, it deals 1 damage to that player. For each opponent's creature, Deal 1 damage to each opponent."
+            ),
+            "When this permanent enters, it deals 1 damage to each opponent and each creature your opponents control."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "When this permanent enters, put a card from that player's hand on top of that player's library."
+            ),
+            "When this permanent enters, target player puts a card from their hand on top of their library."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "At the beginning of your end step: For each creature you control, put a +1/+1 counter on that object. For each planeswalker you control, Put a loyalty counter on that object."
+            ),
+            "At the beginning of your end step: put a +1/+1 counter on each creature you control and a loyalty counter on each planeswalker you control."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style("Creatures you control get +1/+0 as long as it's your turn."),
+            "During your turn, creatures you control get +1/+0."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "At the beginning of your end step: you discard a card and you lose 2 life. sacrifice a creature."
+            ),
+            "At the beginning of your end step: you discard a card and you lose 2 life, then sacrifice a creature."
         );
     }
 
