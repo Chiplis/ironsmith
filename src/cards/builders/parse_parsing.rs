@@ -1359,13 +1359,19 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
 
     let is_each_other_player_untap_static =
         is_untap_during_each_other_players_untap_step_words(&line_words);
-    if find_verb(&tokens).is_some_and(|(_, idx)| idx == 0)
-        && !is_each_other_player_untap_static
-        && let Ok(effects) = parse_effect_sentences(&tokens)
-        && !effects.is_empty()
-    {
-        parser_trace("parse_line:branch=statement-verb-leading", &tokens);
-        return Ok(LineAst::Statement { effects });
+    let starts_with_statement_effect_head = find_verb(&tokens).is_some_and(|(_, idx)| idx == 0)
+        || tokens.first().is_some_and(|token| token.is_word("choose"));
+    if starts_with_statement_effect_head && !is_each_other_player_untap_static {
+        match parse_effect_sentences(&tokens) {
+            Ok(effects) if !effects.is_empty() => {
+                parser_trace("parse_line:branch=statement-verb-leading", &tokens);
+                return Ok(LineAst::Statement { effects });
+            }
+            Ok(_) => {}
+            Err(err) => {
+                return Err(err);
+            }
+        }
     }
 
     if let Some(mut abilities) = parse_static_ability_line(&tokens)? {

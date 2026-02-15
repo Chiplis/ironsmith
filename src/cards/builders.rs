@@ -4997,6 +4997,29 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_verb_leading_line_does_not_fallback_to_static_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Nahiri Lithoforming Variant")
+            .parse_text(
+                "Sacrifice X lands. For each land sacrificed this way, draw a card. You may play X additional lands this turn. Lands you control enter tapped this turn.",
+            );
+        assert!(
+            result.is_err(),
+            "unsupported verb-leading spell text should fail parse instead of falling back to a partial static ability"
+        );
+    }
+
+    #[test]
+    fn parse_choose_leading_line_does_not_fallback_to_static_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Rebuild City Variant").parse_text(
+            "Choose target land. Create three tokens that are copies of it, except they're 3/3 creatures in addition to their other types and they have vigilance and menace.",
+        );
+        assert!(
+            result.is_err(),
+            "unsupported choose-leading spell text should fail parse instead of falling back to a partial static ability"
+        );
+    }
+
+    #[test]
     fn parse_labeled_trigger_line_as_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Heroic Label Variant")
             .parse_text(
