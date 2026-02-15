@@ -18695,6 +18695,10 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         return Ok(effect);
     }
 
+    if let Some(effect) = parse_has_base_power_clause(tokens)? {
+        return Ok(effect);
+    }
+
     if let Some(effect) = parse_has_base_power_toughness_clause(tokens)? {
         return Ok(effect);
     }
@@ -19008,6 +19012,103 @@ fn is_mana_trigger_additional_clause_words(words: &[&str]) -> bool {
     let has_add = words.contains(&"add") || words.contains(&"adds");
     let has_additional = words.contains(&"additional");
     has_whenever && has_tap && has_for_mana && has_add && has_additional
+}
+
+fn parse_has_base_power_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    let words_all = words(tokens);
+    let Some(has_idx) = words_all
+        .iter()
+        .position(|word| *word == "has" || *word == "have")
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = &tokens[..has_idx];
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let subject_words = words(subject_tokens);
+
+    let rest_words = &words_all[has_idx + 1..];
+    if rest_words.len() < 3 || !rest_words.starts_with(&["base", "power"]) {
+        return Ok(None);
+    }
+    if rest_words.get(2).is_some_and(|word| *word == "and") {
+        return Ok(None);
+    }
+
+    let has_token_idx = tokens
+        .iter()
+        .position(|token| token.is_word("has") || token.is_word("have"))
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing has/have token in base-power clause (clause: '{}')",
+                words_all.join(" ")
+            ))
+        })?;
+    let rest_tokens = &tokens[has_token_idx + 1..];
+
+    let mut seen_words = 0usize;
+    let mut value_token_idx = None;
+    for (idx, token) in rest_tokens.iter().enumerate() {
+        if token.as_word().is_some() {
+            seen_words += 1;
+            if seen_words == 3 {
+                value_token_idx = Some(idx);
+                break;
+            }
+        }
+    }
+    let Some(value_token_idx) = value_token_idx else {
+        return Ok(None);
+    };
+    let (power, value_used) = parse_value(&rest_tokens[value_token_idx..]).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "invalid base power value (clause: '{}')",
+            words_all.join(" ")
+        ))
+    })?;
+
+    let tail_words: Vec<&str> = rest_tokens[value_token_idx + value_used..]
+        .iter()
+        .filter_map(Token::as_word)
+        .collect();
+    if tail_words.is_empty() {
+        let has_target_subject = subject_words.contains(&"target");
+        let has_leading_until_eot = subject_words.starts_with(&["until", "end", "of", "turn"]);
+        let has_temporal_words = words_all
+            .windows(4)
+            .any(|window| window == ["until", "end", "of", "turn"])
+            || words_all
+                .windows(2)
+                .any(|window| window == ["this", "turn"] || window == ["next", "turn"]);
+        if !has_target_subject && !has_leading_until_eot && !has_temporal_words {
+            return Ok(None);
+        }
+    } else if tail_words.as_slice() != ["until", "end", "of", "turn"] {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing base power clause (clause: '{}')",
+            words_all.join(" ")
+        )));
+    }
+
+    let target_tokens: Vec<Token> = if subject_words.starts_with(&["until", "end", "of", "turn"]) {
+        let mut skip_idx = 4usize;
+        if subject_tokens
+            .get(skip_idx)
+            .is_some_and(|token| matches!(token, Token::Comma(_)))
+        {
+            skip_idx += 1;
+        }
+        trim_commas(&subject_tokens[skip_idx..]).to_vec()
+    } else {
+        subject_tokens.to_vec()
+    };
+    let target = parse_target_phrase(&target_tokens)?;
+    Ok(Some(EffectAst::SetBasePower {
+        power,
+        target,
+        duration: Until::EndOfTurn,
+    }))
 }
 
 fn parse_has_base_power_toughness_clause(

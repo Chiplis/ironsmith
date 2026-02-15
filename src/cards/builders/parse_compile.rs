@@ -227,6 +227,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::ReturnToBattlefield { target, .. }
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
+        | EffectAst::SetBasePower { target, .. }
         | EffectAst::SetBasePowerToughness { target, .. }
         | EffectAst::PumpForEach { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
@@ -585,6 +586,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::ReturnToBattlefield { target, .. }
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
+        | EffectAst::SetBasePower { target, .. }
         | EffectAst::SetBasePowerToughness { target, .. }
         | EffectAst::PumpForEach { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
@@ -975,6 +977,7 @@ fn collect_tag_spans_from_effect(
         | EffectAst::ReturnToBattlefield { target, .. }
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
+        | EffectAst::SetBasePower { target, .. }
         | EffectAst::SetBasePowerToughness { target, .. }
         | EffectAst::PumpByLastEffect { target, .. } => {
             collect_tag_spans_from_target(target, annotations, ctx);
@@ -3095,6 +3098,24 @@ fn compile_effect(
                     crate::continuous::Modification::SetPowerToughness {
                         power: power.clone(),
                         toughness: toughness.clone(),
+                        sublayer: crate::continuous::PtSublayer::Setting,
+                    },
+                    duration.clone(),
+                )
+                .require_creature_target()
+                .resolve_set_pt_values_at_resolution(),
+            )
+        }),
+        EffectAst::SetBasePower {
+            power,
+            target,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "set_base_power", |spec| {
+            Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    spec,
+                    crate::continuous::Modification::SetPower {
+                        value: power.clone(),
                         sublayer: crate::continuous::PtSublayer::Setting,
                     },
                     duration.clone(),

@@ -789,6 +789,11 @@ enum EffectAst {
         target: TargetAst,
         duration: Until,
     },
+    SetBasePower {
+        power: Value,
+        target: TargetAst,
+        duration: Until,
+    },
     PumpForEach {
         power_per: i32,
         toughness_per: i32,
@@ -2967,6 +2972,27 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             !has_base_line.contains("until end of turn"),
             "static base P/T line must not be temporary: {has_base_line}"
+        );
+    }
+
+    #[test]
+    fn parse_target_creature_has_base_power_until_end_of_turn() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Wak-Wak Variant")
+            .parse_text("Target attacking creature has base power 0 until end of turn.")
+            .expect("base-power-only clause should parse");
+
+        let lines = crate::compiled_text::compiled_lines(&def);
+        let spell_line = lines
+            .iter()
+            .find(|line| line.starts_with("Spell effects:"))
+            .expect("expected spell effects line");
+        assert!(
+            spell_line.contains("base power 0") && spell_line.contains("until end of turn"),
+            "compiled text should include temporary base power wording, got {spell_line}"
+        );
+        assert!(
+            !spell_line.contains("Choose target"),
+            "base-power-only clause should compile to an effect, not target-only text: {spell_line}"
         );
     }
 

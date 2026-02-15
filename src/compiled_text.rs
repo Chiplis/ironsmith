@@ -2110,9 +2110,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized == "Destroy target artifact or enchantment or creature with flying" {
         return "Destroy target artifact, enchantment, or creature with flying".to_string();
     }
-    if normalized == "target creature gets base power and toughness 1/1 until end of turn" {
-        return "Target creature has base power and toughness 1/1 until end of turn".to_string();
-    }
     if let Some(rest) = normalized.strip_prefix("this creature gets ")
         && let Some((pt, tail)) = rest.split_once(" for each Equipment attached to this creature")
     {
@@ -2458,7 +2455,6 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("target creature you don't control or planeswalker", "target creature or planeswalker you don't control")
         .replace("Counter target instant spell spell", "Counter target instant spell")
         .replace("Counter target sorcery spell spell", "Counter target sorcery spell")
-        .replace("target creature gets base power and toughness", "target creature has base power and toughness")
         .replace("the defending player", "defending player")
         .replace("Whenever this creature or Whenever another Ally you control enters", "Whenever this creature or another Ally you control enters")
         .replace("Chapter 1:", "I —")
@@ -3943,6 +3939,7 @@ fn describe_apply_continuous_clauses(
     plural_target: bool,
 ) -> Vec<String> {
     let gets = if plural_target { "get" } else { "gets" };
+    let has = if plural_target { "have" } else { "has" };
     let gains = if plural_target { "gain" } else { "gains" };
 
     let mut clauses = Vec::new();
@@ -3968,19 +3965,36 @@ fn describe_apply_continuous_clauses(
             clauses.push(format!("{gets} {} toughness", describe_signed_i32(*value)));
         }
         crate::continuous::Modification::SetPowerToughness {
-            power, toughness, ..
+            power,
+            toughness,
+            sublayer,
         } => {
+            let verb = if *sublayer == crate::continuous::PtSublayer::Setting {
+                has
+            } else {
+                gets
+            };
             clauses.push(format!(
-                "{gets} base power and toughness {}/{}",
+                "{verb} base power and toughness {}/{}",
                 describe_value(power),
                 describe_value(toughness)
             ));
         }
-        crate::continuous::Modification::SetPower { value, .. } => {
-            clauses.push(format!("{gets} base power {}", describe_value(value)));
+        crate::continuous::Modification::SetPower { value, sublayer } => {
+            let verb = if *sublayer == crate::continuous::PtSublayer::Setting {
+                has
+            } else {
+                gets
+            };
+            clauses.push(format!("{verb} base power {}", describe_value(value)));
         }
-        crate::continuous::Modification::SetToughness { value, .. } => {
-            clauses.push(format!("{gets} base toughness {}", describe_value(value)));
+        crate::continuous::Modification::SetToughness { value, sublayer } => {
+            let verb = if *sublayer == crate::continuous::PtSublayer::Setting {
+                has
+            } else {
+                gets
+            };
+            clauses.push(format!("{verb} base toughness {}", describe_value(value)));
         }
         crate::continuous::Modification::AddAbility(ability) => {
             clauses.push(format!("{gains} {}", ability.display()));
