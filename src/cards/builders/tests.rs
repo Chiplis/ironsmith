@@ -3324,18 +3324,37 @@ fn parse_targeted_exile_activation_cost_fails_strictly() {
 }
 
 #[test]
-fn parse_granted_activated_ability_to_non_source_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Quicksmith Rebel Variant")
-            .card_types(vec![CardType::Creature])
-            .parse_text(
-                "When this creature enters, target artifact you control gains \"{T}: This artifact deals 2 damage to any target\" for as long as you control this creature.",
-            )
-            .expect_err("unsupported non-source granted activated ability should fail parse");
-    let message = format!("{err:?}");
+fn parse_granted_activated_ability_to_non_source_compiles_as_grant() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Quicksmith Rebel Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, target artifact you control gains \"{T}: This artifact deals 2 damage to any target\" for as long as you control this creature.",
+        )
+        .expect("non-source granted activated ability should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        message.contains("missing life gain amount")
-            || message.contains("unsupported granted activated/triggered ability clause"),
-        "expected strict failure for unsupported granted activated ability target, got {message}"
+        rendered.contains("target artifact you control gains")
+            && rendered.contains("deals 2 damage to any target"),
+        "expected granted activated ability wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_until_prefix_gets_and_gains_quoted_ability_keeps_grant() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dead Before Sunrise Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Until end of turn, outlaw creatures you control get +1/+0 and gain \"{T}: This creature deals damage equal to its power to target creature.\"",
+        )
+        .expect("until-prefix gets-and-gains quoted ability should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("outlaw creatures you control get +1/+0")
+            && rendered.contains("gain t this creature deals damage equal to its power to target creature")
+            && rendered.contains("until end of turn"),
+        "expected pump and granted activated ability wording, got {rendered}"
     );
 }
 

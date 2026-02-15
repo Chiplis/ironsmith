@@ -14425,15 +14425,47 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
     let words = words(tokens);
     let gain_idx = words
         .iter()
-        .position(|word| *word == "gain" || *word == "gains");
+        .position(|word| matches!(*word, "gain" | "gains" | "has" | "have"));
     let Some(gain_idx) = gain_idx else {
+        return Ok(None);
+    };
+    let Some(gain_token_idx) = token_index_for_word_index(tokens, gain_idx) else {
         return Ok(None);
     };
 
     let after_gain = &words[gain_idx + 1..];
-    if after_gain.contains(&"life") || after_gain.contains(&"control") {
-        return Ok(None);
+    if matches!(words[gain_idx], "gain" | "gains") {
+        let starts_with_life = after_gain.first().is_some_and(|word| *word == "life");
+        let starts_with_control = after_gain.first().is_some_and(|word| *word == "control");
+        if starts_with_life || starts_with_control {
+            return Ok(None);
+        }
     }
+
+    let leading_duration_phrase = if words.starts_with(&["until", "end", "of", "turn"]) {
+        Some((4usize, Until::EndOfTurn))
+    } else if words.starts_with(&["until", "your", "next", "turn"])
+        || words.starts_with(&["until", "your", "next", "upkeep"])
+    {
+        Some((4usize, Until::YourNextTurn))
+    } else if words.starts_with(&["until", "your", "next", "untap", "step"])
+        || words.starts_with(&["during", "your", "next", "untap", "step"])
+    {
+        Some((5usize, Until::YourNextTurn))
+    } else {
+        None
+    };
+    let subject_start_word_idx = leading_duration_phrase
+        .as_ref()
+        .map(|(len, _)| *len)
+        .unwrap_or(0);
+    let subject_start_token_idx = if subject_start_word_idx == 0 {
+        0usize
+    } else if let Some(idx) = token_index_for_word_index(tokens, subject_start_word_idx) {
+        idx
+    } else {
+        return Ok(None);
+    };
 
     let duration_phrase = if let Some(idx) = after_gain
         .windows(4)
@@ -14449,13 +14481,22 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
             || window == ["during", "your", "next", "untap", "step"]
     }) {
         Some((idx, 5usize, Until::YourNextTurn))
+    } else if let Some(idx) = after_gain
+        .windows(6)
+        .position(|window| window == ["for", "as", "long", "as", "you", "control"])
+    {
+        // Consume the remainder of the phrase as the duration clause.
+        Some((idx, after_gain.len().saturating_sub(idx), Until::YouStopControllingThis))
     } else {
         None
     };
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
+        .or_else(|| leading_duration_phrase.as_ref().map(|(_, duration)| duration.clone()))
         .unwrap_or(Until::Forever);
+    let has_explicit_duration =
+        duration_phrase.is_some() || leading_duration_phrase.as_ref().is_some();
 
     let mut trailing_tail_tokens: Vec<Token> = Vec::new();
     if let Some((start_rel, len_words, _)) = duration_phrase {
@@ -14474,52 +14515,72 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
         }
     }
 
-    let ability_tokens = if let Some(until_idx) = tokens.iter().position(|t| t.is_word("until")) {
-        if until_idx > gain_idx + 1 {
-            &tokens[gain_idx + 1..until_idx]
-        } else {
-            &tokens[gain_idx + 1..]
-        }
+    let ability_end_word_idx = duration_phrase
+        .as_ref()
+        .map(|(start_rel, _, _)| gain_idx + 1 + *start_rel);
+    let ability_end_token_idx = if let Some(end_word_idx) = ability_end_word_idx {
+        token_index_for_word_index(tokens, end_word_idx).unwrap_or(tokens.len())
     } else {
-        &tokens[gain_idx + 1..]
+        tokens.len()
     };
-
-    let actions = parse_ability_line(ability_tokens)
-        .or_else(|| parse_choice_of_abilities(ability_tokens));
-    let Some(actions) = actions else {
+    let ability_start_token_idx = gain_token_idx + 1;
+    if ability_start_token_idx > ability_end_token_idx || ability_start_token_idx >= tokens.len() {
         return Ok(None);
-    };
-    reject_unimplemented_keyword_actions(&actions, &words.join(" "))?;
+    }
+    let ability_tokens = trim_commas(&tokens[ability_start_token_idx..ability_end_token_idx]);
 
-    let abilities: Vec<StaticAbility> = actions
-        .into_iter()
-        .filter_map(keyword_action_to_static_ability)
-        .collect();
+    let mut abilities = if let Some(actions) = parse_ability_line(&ability_tokens)
+        .or_else(|| parse_choice_of_abilities(&ability_tokens))
+    {
+        reject_unimplemented_keyword_actions(&actions, &words.join(" "))?;
+        actions
+            .into_iter()
+            .filter_map(keyword_action_to_static_ability)
+        .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    if abilities.is_empty()
+        && let Some(granted) =
+            parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &words)?
+    {
+        abilities.push(granted);
+    }
     if abilities.is_empty() {
         return Ok(None);
     }
 
-    // Check for "gets +X/+Y and gains KEYWORD" pattern - if there's a pump modifier
-    // before the "gain"/"gains", extract it as a separate Pump/PumpAll effect.
-    let before_gain = &words[..gain_idx];
+    // Check for "gets +X/+Y and gains/has ..." pattern - if there's a pump modifier
+    // before the granting verb, extract it as a separate Pump/PumpAll effect.
+    let before_gain = &words[subject_start_word_idx..gain_idx];
     let get_idx = before_gain.iter().position(|w| *w == "get" || *w == "gets");
     let pump_effect = if let Some(gi) = get_idx {
         let mod_word = before_gain.get(gi + 1).copied().unwrap_or("");
         if let Ok((power, toughness)) = parse_pt_modifier_values(mod_word) {
-            Some((power, toughness, gi))
+            Some((power, toughness, subject_start_word_idx + gi))
         } else {
             None
         }
     } else {
         None
     };
+    let has_have_verb = matches!(words[gain_idx], "has" | "have");
+    if has_have_verb && pump_effect.is_none() && !has_explicit_duration {
+        return Ok(None);
+    }
 
     // Determine the real subject (before "get"/"gets" if pump is present)
-    let real_subject_end = pump_effect
+    let real_subject_end_word_idx = pump_effect
         .as_ref()
         .map(|(_, _, gi)| *gi)
         .unwrap_or(gain_idx);
-    let real_subject_tokens = &tokens[..real_subject_end];
+    let real_subject_end_token_idx = token_index_for_word_index(tokens, real_subject_end_word_idx)
+        .unwrap_or(gain_token_idx);
+    if subject_start_token_idx >= real_subject_end_token_idx {
+        return Ok(None);
+    }
+    let real_subject_tokens =
+        trim_commas(&tokens[subject_start_token_idx..real_subject_end_token_idx]);
 
     let mut effects = Vec::new();
 
@@ -14531,7 +14592,7 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
     let is_pronoun_subject =
         real_subject_words.as_slice() == ["it"] || real_subject_words.as_slice() == ["they"];
     if is_pronoun_subject {
-        let span = span_from_tokens(real_subject_tokens);
+        let span = span_from_tokens(&real_subject_tokens);
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span);
         if let Some((power, toughness, _)) = pump_effect {
             effects.push(EffectAst::Pump {
@@ -14554,7 +14615,7 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
         .first()
         .is_some_and(|word| *word == "that" || *word == "those");
     if is_demonstrative_subject {
-        let target = parse_target_phrase(real_subject_tokens)?;
+        let target = parse_target_phrase(&real_subject_tokens)?;
         if let Some((power, toughness, _)) = pump_effect {
             effects.push(EffectAst::Pump {
                 power,
@@ -14572,9 +14633,9 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
         return Ok(Some(effects));
     }
 
-    if words[..gain_idx].contains(&"target") {
+    if before_gain.contains(&"target") {
         if let Some((power, toughness, _)) = pump_effect {
-            let target = parse_target_phrase(real_subject_tokens)?;
+            let target = parse_target_phrase(&real_subject_tokens)?;
             effects.push(EffectAst::Pump {
                 power,
                 toughness,
@@ -14582,7 +14643,7 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
                 duration: duration.clone(),
             });
         }
-        let target = parse_target_phrase(real_subject_tokens)?;
+        let target = parse_target_phrase(&real_subject_tokens)?;
         effects.push(EffectAst::GrantAbilitiesToTarget {
             target,
             abilities,
@@ -14592,7 +14653,7 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
         return Ok(Some(effects));
     }
 
-    let filter = parse_object_filter(real_subject_tokens, false).map_err(|_| {
+    let filter = parse_object_filter(&real_subject_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported subject in gain-ability clause (clause: '{}')",
             words.join(" ")
@@ -14615,6 +14676,77 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
     effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
 
     Ok(Some(effects))
+}
+
+fn parse_granted_activated_or_triggered_ability_for_gain(
+    ability_tokens: &[Token],
+    clause_words: &[&str],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if ability_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let has_colon = ability_tokens
+        .iter()
+        .any(|token| matches!(token, Token::Colon(_)));
+    let looks_like_trigger = ability_tokens.first().is_some_and(|token| {
+        token.is_word("when")
+            || token.is_word("whenever")
+            || (token.is_word("at")
+                && ability_tokens
+                    .get(1)
+                    .is_some_and(|next| next.is_word("the")))
+    });
+    if !has_colon && !looks_like_trigger {
+        return Ok(None);
+    }
+
+    let mut ability = if has_colon {
+        let Some(parsed) = parse_activated_line(ability_tokens)? else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported granted activated/triggered ability clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        parsed.ability
+    } else {
+        match parse_triggered_line(ability_tokens)? {
+            LineAst::Triggered {
+                trigger,
+                effects,
+                once_each_turn,
+            } => {
+                let (compiled_effects, choices) = compile_trigger_effects(Some(&trigger), &effects)?;
+                Ability {
+                    kind: AbilityKind::Triggered(TriggeredAbility {
+                        trigger: compile_trigger_spec(trigger),
+                        effects: compiled_effects,
+                        choices,
+                        intervening_if: None,
+                        once_each_turn,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                    text: None,
+                }
+            }
+            _ => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported granted activated/triggered ability clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+        }
+    };
+
+    if ability.text.is_none() {
+        ability.text = Some(words(ability_tokens).join(" "));
+    }
+
+    Ok(Some(StaticAbility::grant_object_ability_for_filter(
+        ObjectFilter::source(),
+        ability,
+        words(ability_tokens).join(" "),
+    )))
 }
 
 fn append_gain_ability_trailing_effects(
