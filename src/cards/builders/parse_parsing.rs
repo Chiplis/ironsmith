@@ -4534,22 +4534,22 @@ fn token_index_for_word_index(tokens: &[Token], word_index: usize) -> Option<usi
 fn parse_enters_tapped_for_filter_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = words(tokens);
-    if is_negated_untap_clause(&words) {
-        let has_enters_tapped = words.contains(&"enter") || words.contains(&"enters");
-        let has_tapped = words.contains(&"tapped");
+    let clause_words = words(tokens);
+    if is_negated_untap_clause(&clause_words) {
+        let has_enters_tapped = clause_words.contains(&"enter") || clause_words.contains(&"enters");
+        let has_tapped = clause_words.contains(&"tapped");
         if has_enters_tapped && has_tapped {
             return Err(CardTextError::ParseError(format!(
                 "unsupported mixed enters-tapped and negated-untap clause (clause: '{}')",
-                words.join(" ")
+                clause_words.join(" ")
             )));
         }
         return Ok(None);
     }
-    if words.contains(&"unless") {
+    if clause_words.contains(&"unless") {
         return Ok(None);
     }
-    let enter_word_idx = words
+    let enter_word_idx = clause_words
         .iter()
         .position(|word| *word == "enter" || *word == "enters");
     let Some(enter_word_idx) = enter_word_idx else {
@@ -4558,17 +4558,40 @@ fn parse_enters_tapped_for_filter_line(
     let Some(enter_token_idx) = token_index_for_word_index(tokens, enter_word_idx) else {
         return Ok(None);
     };
-    if !words
+    if !clause_words
         .iter()
         .skip(enter_word_idx + 1)
         .any(|word| *word == "tapped")
     {
         return Ok(None);
     }
-    if words.first().copied() == Some("this") {
+    if clause_words.first().copied() == Some("this") {
         return Ok(None);
     }
-    let filter = parse_object_filter(&tokens[..enter_token_idx], false)?;
+    let before_enter = &tokens[..enter_token_idx];
+    let before_words = words(before_enter);
+    let mut controller_override: Option<PlayerFilter> = None;
+    let mut filter_end = before_enter.len();
+    let find_suffix_cut = |suffix_len: usize| {
+        token_index_for_word_index(before_enter, before_words.len().saturating_sub(suffix_len))
+            .unwrap_or(before_enter.len())
+    };
+    if before_words.ends_with(&["played", "by", "your", "opponents"]) {
+        controller_override = Some(PlayerFilter::Opponent);
+        filter_end = find_suffix_cut(4);
+    } else if before_words.ends_with(&["played", "by", "an", "opponent"])
+        || before_words.ends_with(&["played", "by", "a", "opponent"])
+    {
+        controller_override = Some(PlayerFilter::Opponent);
+        filter_end = find_suffix_cut(4);
+    } else if before_words.ends_with(&["played", "by", "opponents"]) {
+        controller_override = Some(PlayerFilter::Opponent);
+        filter_end = find_suffix_cut(3);
+    }
+    let mut filter = parse_object_filter(&before_enter[..filter_end], false)?;
+    if let Some(controller) = controller_override {
+        filter.controller = Some(controller);
+    }
     Ok(Some(StaticAbility::enters_tapped_for_filter(filter)))
 }
 

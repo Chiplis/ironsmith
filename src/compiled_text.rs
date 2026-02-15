@@ -11314,9 +11314,36 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     if token_plural_starts
         .iter()
         .any(|prefix| normalized.starts_with(prefix))
-        && normalized.contains(" creature token ")
+        && normalized.contains(" creature token")
+        && !normalized.contains(" creature tokens")
     {
-        normalized = normalized.replacen(" creature token ", " creature tokens ", 1);
+        normalized = normalized.replacen(" creature token", " creature tokens", 1);
+    }
+    let lower_plural_markers = [
+        "create two ",
+        "create three ",
+        "create four ",
+        "create five ",
+        "create six ",
+        "create seven ",
+        "create eight ",
+        "create nine ",
+        "create 2 ",
+        "create 3 ",
+        "create 4 ",
+        "create 5 ",
+        "create 6 ",
+        "create 7 ",
+        "create 8 ",
+        "create 9 ",
+    ];
+    if lower_plural_markers
+        .iter()
+        .any(|marker| lower_normalized.contains(marker))
+        && normalized.contains(" creature token")
+        && !normalized.contains(" creature tokens")
+    {
+        normalized = normalized.replacen(" creature token", " creature tokens", 1);
     }
     if let Some((left, right)) = normalized.split_once(". ") {
         let right_lower = right.trim_start().to_ascii_lowercase();

@@ -3470,6 +3470,19 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_played_by_your_opponents_enter_tapped_preserves_controller_filter() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Uphill Battle Variant")
+            .parse_text("Creatures played by your opponents enter tapped.")
+            .expect("should parse played-by-opponents enters tapped line");
+
+        let rendered = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+        assert!(
+            rendered.contains("opponent"),
+            "expected rendered line to preserve opponents controller filter, got {rendered}"
+        );
+    }
+
+    #[test]
     fn parse_pay_life_or_enter_tapped_shockland_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Blood Crypt Variant")
             .parse_text(
