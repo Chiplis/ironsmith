@@ -4997,6 +4997,61 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_labeled_trigger_line_as_triggered_ability() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Heroic Label Variant")
+            .parse_text(
+                "Heroic — Whenever you cast a spell that targets this creature, put a +1/+1 counter on this creature, then scry 1.",
+            )
+            .expect("parse heroic labeled trigger");
+
+        assert!(
+            def.spell_effect.is_none(),
+            "labeled trigger should not collapse into spell-effect text"
+        );
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability from labeled trigger line");
+        let effects_debug = format!("{:?}", triggered.effects);
+        assert!(
+            effects_debug.contains("PutCountersEffect") && effects_debug.contains("ScryEffect"),
+            "expected +1/+1 counter and scry effects in heroic trigger, got {effects_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_labeled_trigger_line_preserves_once_each_turn_suffix() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Reach Label Variant")
+            .parse_text(
+                "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn.",
+            )
+            .expect("parse reach line plus labeled once-each-turn trigger");
+
+        assert!(
+            def.abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, AbilityKind::Static(_))),
+            "expected the standalone Reach line to compile to a static ability"
+        );
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability from labeled trigger line");
+        assert!(
+            triggered.once_each_turn,
+            "expected 'This ability triggers only once each turn' suffix to set once_each_turn=true"
+        );
+    }
+
+    #[test]
     fn parse_gain_control_target_creature_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Threaten")
             .parse_text("Gain control of target creature until end of turn.")

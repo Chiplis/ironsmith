@@ -1299,7 +1299,8 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
         token.is_word("whenever")
             || token.is_word("when")
             || is_at_trigger_intro(&tokens, *idx)
-    }) && trigger_idx <= 2
+    }) && (trigger_idx <= 2
+        || (trigger_idx > 2 && (line.contains('—') || line.contains(" - "))))
     {
         parser_trace("parse_line:branch=triggered", &tokens[trigger_idx..]);
         return parse_triggered_line(&tokens[trigger_idx..]);
