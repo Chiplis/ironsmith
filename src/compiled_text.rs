@@ -11434,6 +11434,16 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     }
     normalized = normalized.replace("controlss", "controls");
     let lower_normalized = normalized.to_ascii_lowercase();
+    if let Some((inner, payment)) = normalized.split_once(" unless a player pays ")
+        && inner.starts_with("Search ")
+    {
+        let payment = payment.trim().trim_end_matches('.');
+        return format!(
+            "Unless any player pays {}, {}.",
+            payment,
+            lowercase_first(inner)
+        );
+    }
     if lower_normalized.contains("and tags it as 'exiled_0'")
         && lower_normalized.contains("for each object exiled this way, search that player's library for permanent that shares a card type with that object that player owns, put it onto the battlefield, then shuffle")
     {
