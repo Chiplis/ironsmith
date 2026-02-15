@@ -753,6 +753,38 @@ fn should_keep_and_for_token_rules(current: &[Token], remaining: &[Token]) -> bo
     starts_with_inline_token_rules_tail(&remaining_words)
 }
 
+fn should_keep_and_for_attachment_object_list(current: &[Token], remaining: &[Token]) -> bool {
+    if current.is_empty() || remaining.is_empty() {
+        return false;
+    }
+    let current_words = words(current);
+    let remaining_words = words(remaining);
+    if current_words.is_empty() || remaining_words.is_empty() {
+        return false;
+    }
+
+    let starts_attachment_subject = remaining_words.first().is_some_and(|word| {
+        matches!(
+            *word,
+            "aura"
+                | "auras"
+                | "equipment"
+                | "equipments"
+                | "enchantment"
+                | "enchantments"
+                | "artifact"
+                | "artifacts"
+        )
+    });
+    if !starts_attachment_subject || !remaining_words.contains(&"attached") {
+        return false;
+    }
+
+    current_words.starts_with(&["destroy", "all"])
+        || current_words.starts_with(&["exile", "all"])
+        || current_words.starts_with(&["gain", "control", "of", "all"])
+}
+
 fn split_effect_chain_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
@@ -764,7 +796,10 @@ fn split_effect_chain_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
             let is_color_pair = prev_word
                 .zip(next_word)
                 .is_some_and(|(left, right)| is_basic_color_word(left) && is_basic_color_word(right));
-            if is_color_pair || should_keep_and_for_token_rules(&current, &tokens[idx + 1..]) {
+            if is_color_pair
+                || should_keep_and_for_token_rules(&current, &tokens[idx + 1..])
+                || should_keep_and_for_attachment_object_list(&current, &tokens[idx + 1..])
+            {
                 current.push(token.clone());
                 continue;
             }
@@ -864,6 +899,9 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                     && after_words
                         .iter()
                         .any(|word| *word == "counter" || *word == "counters");
+                let allow_attach_followup = after_words
+                    .first()
+                    .is_some_and(|word| matches!(*word, "attach" | "attaches"));
                 let allow_that_many_followup = !starts_with_for_each_player_or_opponent
                     && has_back_ref
                     && (after_words.starts_with(&["draw", "that", "many"])
@@ -877,6 +915,9 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                         || after_words.starts_with(&["lose", "life", "equal", "to", "that"])
                         || after_words.starts_with(&["loses", "life", "equal", "to", "that"]));
                 if has_effect_head && (!has_back_ref || allow_backref_split) {
+                    split_point = Some(i);
+                    break;
+                } else if has_effect_head && allow_attach_followup {
                     split_point = Some(i);
                     break;
                 } else if has_effect_head && allow_that_many_followup {
@@ -11664,6 +11705,64 @@ fn parse_destroy_then_land_controller_graveyard_count_damage_sentence(
     Ok(Some(head_effects))
 }
 
+fn parse_sentence_destroy_all_attached_to_target(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentence_words = words(tokens);
+    if sentence_words.first().copied() != Some("destroy") {
+        return Ok(None);
+    }
+    if !tokens
+        .get(1)
+        .is_some_and(|token| token.is_word("all") || token.is_word("each"))
+    {
+        return Ok(None);
+    }
+    let Some(attached_idx) = tokens.iter().position(|token| token.is_word("attached")) else {
+        return Ok(None);
+    };
+    if !tokens
+        .get(attached_idx + 1)
+        .is_some_and(|token| token.is_word("to"))
+    {
+        return Ok(None);
+    }
+    if attached_idx <= 2 || attached_idx + 2 >= tokens.len() {
+        return Ok(None);
+    }
+
+    let mut filter_tokens = trim_commas(&tokens[2..attached_idx]).to_vec();
+    while filter_tokens
+        .last()
+        .and_then(Token::as_word)
+        .is_some_and(|word| matches!(word, "that" | "were" | "was" | "is" | "are"))
+    {
+        filter_tokens.pop();
+    }
+    let target_tokens = trim_commas(&tokens[attached_idx + 2..]);
+    let target_words = words(&target_tokens);
+    let has_timing_tail = target_words.iter().any(|word| {
+        matches!(
+            *word,
+            "at" | "beginning" | "end" | "combat" | "turn" | "step" | "until"
+        )
+    });
+    let supported_target = target_words.starts_with(&["target"])
+        || target_words == ["it"]
+        || target_words.starts_with(&["that", "creature"])
+        || target_words.starts_with(&["that", "permanent"])
+        || target_words.starts_with(&["that", "land"])
+        || target_words.starts_with(&["that", "artifact"])
+        || target_words.starts_with(&["that", "enchantment"]);
+    if filter_tokens.is_empty() || target_tokens.is_empty() || !supported_target || has_timing_tail {
+        return Ok(None);
+    }
+
+    let filter = parse_object_filter(&filter_tokens, false)?;
+    let target = parse_target_phrase(&target_tokens)?;
+    Ok(Some(vec![EffectAst::DestroyAllAttachedTo { filter, target }]))
+}
+
 fn parse_sentence_destroy_then_land_controller_graveyard_count_damage(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -12550,6 +12649,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "exile-then-may-put-from-exile",
         parser: parse_sentence_exile_then_may_put_from_exile,
+    },
+    SentencePrimitive {
+        name: "destroy-all-attached-to-target",
+        parser: parse_sentence_destroy_all_attached_to_target,
     },
     SentencePrimitive {
         name: "comma-then-chain-special",
@@ -18228,6 +18331,7 @@ enum Verb {
     Investigate,
     Proliferate,
     Tap,
+    Attach,
     Remove,
     Return,
     Exchange,
@@ -18589,6 +18693,7 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             "sacrifice",
             "create",
             "investigate",
+            "attach",
             "remove",
             "return",
             "exchange",
@@ -19634,6 +19739,7 @@ fn parse_verb_first_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTe
         "investigate" => Verb::Investigate,
         "proliferate" => Verb::Proliferate,
         "tap" => Verb::Tap,
+        "attach" => Verb::Attach,
         "untap" => Verb::Untap,
         "scry" => Verb::Scry,
         "discard" => Verb::Discard,
@@ -19820,6 +19926,7 @@ fn find_verb(tokens: &[Token]) -> Option<(Verb, usize)> {
             "investigates" | "investigate" => Verb::Investigate,
             "proliferates" | "proliferate" => Verb::Proliferate,
             "taps" | "tap" => Verb::Tap,
+            "attaches" | "attach" => Verb::Attach,
             "untaps" | "untap" => Verb::Untap,
             "scries" | "scry" => Verb::Scry,
             "discards" | "discard" => Verb::Discard,
@@ -19985,6 +20092,7 @@ fn parse_effect_with_verb(
         Verb::Investigate => parse_investigate(tokens),
         Verb::Proliferate => Ok(EffectAst::Proliferate),
         Verb::Tap => parse_tap(tokens),
+        Verb::Attach => parse_attach(tokens),
         Verb::Untap => parse_untap(tokens),
         Verb::Scry => parse_scry(tokens, subject),
         Verb::Discard => parse_discard(tokens, subject),
@@ -20082,6 +20190,97 @@ fn parse_goad(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     }
 
     Ok(EffectAst::Goad { target })
+}
+
+fn parse_attach_object_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
+    let object_words = words(tokens);
+    let object_span = span_from_tokens(tokens);
+    if object_words.is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing object to attach".to_string(),
+        ));
+    }
+
+    let is_source_attachment = is_source_reference_words(&object_words)
+        || object_words.starts_with(&["this", "equipment"])
+        || object_words.starts_with(&["this", "aura"])
+        || object_words.starts_with(&["this", "enchantment"])
+        || object_words.starts_with(&["this", "artifact"]);
+    if is_source_attachment {
+        return Ok(TargetAst::Source(object_span));
+    }
+
+    if matches!(object_words.as_slice(), ["it"] | ["them"]) {
+        return Ok(TargetAst::Tagged(TagKey::from(IT_TAG), object_span));
+    }
+
+    let mut tagged_filter = ObjectFilter::default();
+    if matches!(object_words.as_slice(), ["that", "equipment"] | ["those", "equipment"]) {
+        tagged_filter.zone = Some(Zone::Battlefield);
+        tagged_filter.card_types.push(CardType::Artifact);
+        tagged_filter.subtypes.push(Subtype::Equipment);
+    } else if matches!(object_words.as_slice(), ["that", "aura"] | ["those", "auras"]) {
+        tagged_filter.zone = Some(Zone::Battlefield);
+        tagged_filter.card_types.push(CardType::Enchantment);
+        tagged_filter.subtypes.push(Subtype::Aura);
+    } else if matches!(object_words.as_slice(), ["that", "artifact"] | ["those", "artifacts"]) {
+        tagged_filter.zone = Some(Zone::Battlefield);
+        tagged_filter.card_types.push(CardType::Artifact);
+    } else if object_words.as_slice() == ["that", "enchantment"] {
+        tagged_filter.zone = Some(Zone::Battlefield);
+        tagged_filter.card_types.push(CardType::Enchantment);
+    }
+
+    if tagged_filter.zone.is_some() {
+        tagged_filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        return Ok(TargetAst::Object(tagged_filter, object_span, None));
+    }
+
+    parse_target_phrase(tokens)
+}
+
+fn parse_attach(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+    let clause_words = words(tokens);
+    if tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "attach clause missing object and destination".to_string(),
+        ));
+    }
+
+    let Some(to_idx) = tokens.iter().position(|token| token.is_word("to")) else {
+        return Err(CardTextError::ParseError(format!(
+            "attach clause missing destination (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    if to_idx == 0 || to_idx + 1 >= tokens.len() {
+        return Err(CardTextError::ParseError(format!(
+            "attach clause missing object or destination (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let object_tokens = trim_commas(&tokens[..to_idx]);
+    let target_tokens = trim_commas(&tokens[to_idx + 1..]);
+    if object_tokens.is_empty() || target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "attach clause missing object or destination (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let object = parse_attach_object_phrase(&object_tokens)?;
+    let target_words = words(&target_tokens);
+    let target = if matches!(target_words.as_slice(), ["it"] | ["them"]) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
+    } else {
+        parse_target_phrase(&target_tokens)?
+    };
+
+    Ok(EffectAst::Attach { object, target })
 }
 
 fn parse_deal_damage(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
@@ -22718,6 +22917,43 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         )));
     }
     if matches!(clause_words.first().copied(), Some("all" | "each")) {
+        if let Some(attached_idx) = tokens.iter().position(|token| token.is_word("attached"))
+            && tokens.get(attached_idx + 1).is_some_and(|token| token.is_word("to"))
+            && attached_idx > 1
+        {
+            let mut filter_tokens = trim_commas(&tokens[1..attached_idx]).to_vec();
+            while filter_tokens
+                .last()
+                .and_then(Token::as_word)
+                .is_some_and(|word| matches!(word, "that" | "were" | "was" | "is" | "are"))
+            {
+                filter_tokens.pop();
+            }
+            let target_tokens = trim_commas(&tokens[attached_idx + 2..]);
+            let target_words = words(&target_tokens);
+            let has_timing_tail = target_words.iter().any(|word| {
+                matches!(
+                    *word,
+                    "at" | "beginning" | "end" | "combat" | "turn" | "step" | "until"
+                )
+            });
+            let supported_target = target_words.starts_with(&["target"])
+                || target_words == ["it"]
+                || target_words.starts_with(&["that", "creature"])
+                || target_words.starts_with(&["that", "permanent"])
+                || target_words.starts_with(&["that", "land"])
+                || target_words.starts_with(&["that", "artifact"])
+                || target_words.starts_with(&["that", "enchantment"]);
+            if !filter_tokens.is_empty()
+                && !target_tokens.is_empty()
+                && supported_target
+                && !has_timing_tail
+            {
+                let filter = parse_object_filter(&filter_tokens, false)?;
+                let target = parse_target_phrase(&target_tokens)?;
+                return Ok(EffectAst::DestroyAllAttachedTo { filter, target });
+            }
+        }
         let filter_tokens = &tokens[1..];
         let filter = parse_object_filter(filter_tokens, false)?;
         return Ok(EffectAst::DestroyAll { filter });
@@ -23970,6 +24206,33 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
 
     if is_source_reference_words(&all_words) {
         filter.source = true;
+    }
+
+    if let Some(attached_idx) = all_words.iter().position(|word| *word == "attached")
+        && all_words.get(attached_idx + 1) == Some(&"to")
+    {
+        let attached_to_words = &all_words[attached_idx + 2..];
+        let references_it = attached_to_words.starts_with(&["it"])
+            || attached_to_words.starts_with(&["that", "object"])
+            || attached_to_words.starts_with(&["that", "creature"])
+            || attached_to_words.starts_with(&["that", "permanent"])
+            || attached_to_words.starts_with(&["that", "equipment"])
+            || attached_to_words.starts_with(&["that", "aura"]);
+        if references_it {
+            let trim_start = if attached_idx >= 2
+                && all_words[attached_idx - 2] == "that"
+                && matches!(all_words[attached_idx - 1], "were" | "was" | "is" | "are")
+            {
+                attached_idx - 2
+            } else {
+                attached_idx
+            };
+            all_words.truncate(trim_start);
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: IT_TAG.into(),
+                relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+            });
+        }
     }
 
     if all_words.len() == 1 && (all_words[0] == "it" || all_words[0] == "them") {

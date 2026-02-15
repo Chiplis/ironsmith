@@ -4947,6 +4947,13 @@ fn describe_effect_core_expanded(
             describe_choose_spec(&attach_to.target, tagged_subjects)
         ));
     }
+    if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
+        return Some(format!(
+            "Attach {} to {}.",
+            describe_choose_spec(&attach.objects, tagged_subjects),
+            describe_choose_spec(&attach.target, tagged_subjects)
+        ));
+    }
     if let Some(earthbend) = effect.downcast_ref::<crate::effects::EarthbendEffect>() {
         return Some(format!(
             "Put {} charge counter(s) on {}.",

@@ -7,6 +7,7 @@ use crate::effect::{
 };
 use crate::object::CounterType;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::types::Subtype;
 use crate::{CardDefinition, CardType, Effect, ManaSymbol, Zone};
 
 thread_local! {
@@ -3135,6 +3136,25 @@ fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
     }
+}
+
+fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
+    if let ChooseSpec::All(filter) = spec
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        if filter.subtypes.contains(&Subtype::Equipment) {
+            return "that Equipment".to_string();
+        }
+        if filter.subtypes.contains(&Subtype::Aura) {
+            return "that Aura".to_string();
+        }
+        if filter.card_types.is_empty() && filter.subtypes.is_empty() {
+            return "those objects".to_string();
+        }
+    }
+    describe_choose_spec(spec)
 }
 
 fn describe_goad_target(spec: &ChooseSpec) -> String {
@@ -6923,6 +6943,13 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&attach.target)
         );
     }
+    if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
+        return format!(
+            "Attach {} to {}",
+            describe_attach_objects_spec(&attach.objects),
+            describe_choose_spec(&attach.target)
+        );
+    }
     if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
         let player = describe_player_filter(&sacrifice.player);
         let verb = player_verb(&player, "sacrifice", "sacrifices");
@@ -9082,6 +9109,23 @@ fn normalize_known_low_tail_phrase(text: &str) -> String {
             right_clause
         );
         return format!("{merged}.");
+    }
+    if let Some((choose_clause, destroy_clause)) = split_once_ascii_ci(trimmed, ". ")
+        && let Some(target_phrase) = strip_prefix_ascii_ci(choose_clause.trim(), "Choose ")
+        && target_phrase.to_ascii_lowercase().starts_with("target ")
+        && let Some(attached_filter) = strip_prefix_ascii_ci(destroy_clause.trim(), "Destroy all ")
+            .and_then(|tail| {
+                strip_suffix_ascii_ci(
+                    tail.trim_end_matches('.'),
+                    " attached to that object",
+                )
+            })
+    {
+        return format!(
+            "Destroy all {} attached to {}.",
+            attached_filter.trim(),
+            target_phrase.trim()
+        );
     }
     if let Some((first_clause, rest)) =
         trimmed.split_once(". For each opponent's creature, Deal ")
@@ -16850,6 +16894,17 @@ mod tests {
         assert_eq!(
             normalized,
             "Put a +1/+1 counter on this creature and prevent all damage that would be dealt to it this turn."
+        );
+    }
+
+    #[test]
+    fn known_low_tail_rewrites_choose_target_then_destroy_attached() {
+        let normalized = normalize_known_low_tail_phrase(
+            "Choose target creature. Destroy all Aura or Equipment attached to that object.",
+        );
+        assert_eq!(
+            normalized,
+            "Destroy all Aura or Equipment attached to target creature."
         );
     }
 

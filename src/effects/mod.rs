@@ -96,8 +96,8 @@ pub use mana::{
     AddManaOfLandProducedTypesEffect, AddScaledManaEffect, PayManaEffect,
 };
 pub use permanents::{
-    AttachToEffect, EarthbendEffect, GrantObjectAbilityEffect, MonstrosityEffect, RegenerateEffect,
-    TapEffect, TransformEffect, UntapEffect,
+    AttachObjectsEffect, AttachToEffect, EarthbendEffect, GrantObjectAbilityEffect,
+    MonstrosityEffect, RegenerateEffect, TapEffect, TransformEffect, UntapEffect,
 };
 pub use player::{
     ControlPlayerEffect, CreateEmblemEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect,

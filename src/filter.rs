@@ -322,6 +322,8 @@ pub enum TaggedOpbjectRelation {
     SameControllerAsTagged,
     /// The object must have the same mana value as a tagged object.
     SameManaValueAsTagged,
+    /// The object must be attached to a tagged object.
+    AttachedToTaggedObject,
     /// The object must NOT be one of the tagged objects.
     IsNotTaggedObject,
 }
@@ -1388,6 +1390,7 @@ impl ObjectFilter {
                 if matches!(
                     constraint.relation,
                     TaggedOpbjectRelation::IsTaggedObject
+                        | TaggedOpbjectRelation::AttachedToTaggedObject
                         | TaggedOpbjectRelation::SameManaValueAsTagged
                 ) {
                     return false;
@@ -1463,6 +1466,14 @@ impl ObjectFilter {
                             .map_or(0, |mc| mc.mana_value() as i32)
                             == object_mana_value
                     }) {
+                        return false;
+                    }
+                }
+                TaggedOpbjectRelation::AttachedToTaggedObject => {
+                    if !tagged_snapshots
+                        .iter()
+                        .any(|s| object.attached_to == Some(s.object_id))
+                    {
                         return false;
                     }
                 }
@@ -1838,6 +1849,7 @@ impl ObjectFilter {
                 if matches!(
                     constraint.relation,
                     TaggedOpbjectRelation::IsTaggedObject
+                        | TaggedOpbjectRelation::AttachedToTaggedObject
                         | TaggedOpbjectRelation::SharesSubtypeWithTagged
                         | TaggedOpbjectRelation::SharesColorWithTagged
                         | TaggedOpbjectRelation::SameStableId
@@ -1932,6 +1944,14 @@ impl ObjectFilter {
                             .map_or(0, |mc| mc.mana_value() as i32)
                             == snapshot_mana_value
                     }) {
+                        return false;
+                    }
+                }
+                TaggedOpbjectRelation::AttachedToTaggedObject => {
+                    if !tagged_snapshots
+                        .iter()
+                        .any(|s| snapshot.attached_to == Some(s.object_id))
+                    {
                         return false;
                     }
                 }
@@ -2127,6 +2147,9 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::SharesCardType => {
                     post_noun_qualifiers
                         .push("that shares a card type with that object".to_string());
+                }
+                TaggedOpbjectRelation::AttachedToTaggedObject => {
+                    post_noun_qualifiers.push("attached to that object".to_string());
                 }
                 TaggedOpbjectRelation::SameStableId => {}
             }

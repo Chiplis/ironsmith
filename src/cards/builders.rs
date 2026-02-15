@@ -703,12 +703,20 @@ enum EffectAst {
     Enchant {
         filter: ObjectFilter,
     },
+    Attach {
+        object: TargetAst,
+        target: TargetAst,
+    },
     Investigate,
     Destroy {
         target: TargetAst,
     },
     DestroyAll {
         filter: ObjectFilter,
+    },
+    DestroyAllAttachedTo {
+        filter: ObjectFilter,
+        target: TargetAst,
     },
     Exile {
         target: TargetAst,

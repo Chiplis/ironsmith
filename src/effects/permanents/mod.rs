@@ -4,6 +4,7 @@
 //! such as tapping, untapping, monstrosity, regeneration, and transformation.
 
 mod attach_to;
+mod attach_objects;
 mod earthbend;
 mod grant_object_ability;
 mod monstrosity;
@@ -12,6 +13,7 @@ mod tap;
 mod transform;
 mod untap;
 
+pub use attach_objects::AttachObjectsEffect;
 pub use attach_to::AttachToEffect;
 pub use earthbend::EarthbendEffect;
 pub use grant_object_ability::GrantObjectAbilityEffect;

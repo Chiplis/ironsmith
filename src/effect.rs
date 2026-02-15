@@ -2062,6 +2062,12 @@ impl Effect {
         Self::new(AttachToEffect::new(target))
     }
 
+    /// Create an effect that attaches one or more objects to a target object.
+    pub fn attach_objects(objects: ChooseSpec, target: ChooseSpec) -> Self {
+        use crate::effects::AttachObjectsEffect;
+        Self::new(AttachObjectsEffect::new(objects, target))
+    }
+
     /// Create a "mill N cards" effect.
     pub fn mill(count: impl Into<Value>) -> Self {
         use crate::effects::MillEffect;

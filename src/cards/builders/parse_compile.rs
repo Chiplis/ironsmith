@@ -270,6 +270,17 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             matches!(from, TargetAst::Tagged(t, _) if t.as_str() == tag)
                 || matches!(to, TargetAst::Tagged(t, _) if t.as_str() == tag)
         }
+        EffectAst::DestroyAllAttachedTo { filter, target } => {
+            matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
+                || filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.tag.as_str() == tag)
+        }
+        EffectAst::Attach { object, target } => {
+            matches!(object, TargetAst::Tagged(t, _) if t.as_str() == tag)
+                || matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
+        }
         EffectAst::PutIntoHand { object, .. } => {
             matches!(object, ObjectRefAst::It) && tag == IT_TAG
         }
@@ -617,6 +628,16 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
             .any(|constraint| constraint.tag.as_str() == IT_TAG),
         EffectAst::MoveAllCounters { from, to } => {
             target_references_tag(from, IT_TAG) || target_references_tag(to, IT_TAG)
+        }
+        EffectAst::DestroyAllAttachedTo { filter, target } => {
+            target_references_tag(target, IT_TAG)
+                || filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        }
+        EffectAst::Attach { object, target } => {
+            target_references_tag(object, IT_TAG) || target_references_tag(target, IT_TAG)
         }
         EffectAst::PutIntoHand { object, .. } => matches!(object, ObjectRefAst::It),
         EffectAst::CopySpell { target, .. } => target_references_tag(target, IT_TAG),
@@ -2600,6 +2621,49 @@ fn compile_effect(
         EffectAst::Destroy { target } => {
             compile_tagged_effect_for_target(target, ctx, "destroyed", Effect::destroy)
         }
+        EffectAst::DestroyAllAttachedTo { filter, target } => {
+            let (target_spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            let mut prelude = Vec::new();
+            let mut choices = choices;
+            let target_tag = if let ChooseSpec::Tagged(tag) = &target_spec {
+                tag.as_str().to_string()
+            } else {
+                if !choose_spec_targets_object(&target_spec) || !target_spec.is_target() {
+                    return Err(CardTextError::ParseError(
+                        "destroy-attached target must be an object target or tagged object"
+                            .to_string(),
+                    ));
+                }
+                let tag = ctx.next_tag("attachment_target");
+                prelude.push(
+                    Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone()))
+                        .tag(tag.clone()),
+                );
+                tag
+            };
+            ctx.last_object_tag = Some(target_tag.clone());
+
+            let mut resolved_filter = resolve_it_tag(filter, ctx)?;
+            resolved_filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from(target_tag.as_str()),
+                relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+            });
+
+            let (mut filter_prelude, filter_choices) = target_context_prelude_for_filter(&resolved_filter);
+            for choice in filter_choices {
+                push_choice(&mut choices, choice);
+            }
+
+            let mut effect = Effect::destroy_all(resolved_filter);
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("destroyed");
+                effect = effect.tag(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
+            prelude.append(&mut filter_prelude);
+            prelude.push(effect);
+            Ok((prelude, choices))
+        }
         EffectAst::DestroyAll { filter } => {
             let resolved_filter = resolve_it_tag(filter, ctx)?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
@@ -2840,6 +2904,11 @@ fn compile_effect(
             let spec = ChooseSpec::target(ChooseSpec::Object(filter.clone()));
             let effect = Effect::attach_to(spec.clone());
             Ok((vec![effect], vec![spec]))
+        }
+        EffectAst::Attach { object, target } => {
+            let objects = resolve_attach_object_spec(object, ctx)?;
+            let (target, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            Ok((vec![Effect::attach_objects(objects, target)], choices))
         }
         EffectAst::Investigate => Ok((vec![Effect::investigate(1)], Vec::new())),
         EffectAst::CreateTokenWithMods {
@@ -4539,6 +4608,38 @@ fn resolve_target_spec_with_choices(
         Vec::new()
     };
     Ok((spec, choices))
+}
+
+fn resolve_attach_object_spec(
+    object: &TargetAst,
+    ctx: &CompileContext,
+) -> Result<ChooseSpec, CardTextError> {
+    match object {
+        TargetAst::Source(_) => Ok(ChooseSpec::Source),
+        TargetAst::Tagged(tag, _) => {
+            let resolved_tag = if tag.as_str() == IT_TAG {
+                ctx.last_object_tag.clone().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "cannot resolve 'it/them' in attach object clause without prior tagged object"
+                            .to_string(),
+                    )
+                })?
+            } else {
+                tag.as_str().to_string()
+            };
+            Ok(ChooseSpec::All(ObjectFilter::tagged(TagKey::from(
+                resolved_tag.as_str(),
+            ))))
+        }
+        TargetAst::Object(filter, _, _) => {
+            let resolved = resolve_it_tag(filter, ctx)?;
+            Ok(ChooseSpec::All(resolved))
+        }
+        TargetAst::WithCount(inner, _) => resolve_attach_object_spec(inner, ctx),
+        _ => Err(CardTextError::ParseError(
+            "unsupported attach object reference".to_string(),
+        )),
+    }
 }
 
 fn compile_effect_for_target<Builder>(
