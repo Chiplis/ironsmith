@@ -8447,6 +8447,15 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         words.remove(0);
     }
 
+    if words.starts_with(&["cumulative", "upkeep"]) {
+        let mut text = "Cumulative upkeep".to_string();
+        if words.len() > 2 {
+            text.push(' ');
+            text.push_str(&words[2..].join(" "));
+        }
+        return Some(KeywordAction::MarkerText(text));
+    }
+
     // Bushido appears as "Bushido N" and is often followed by reminder text.
     if words.first().copied() == Some("bushido") {
         if words.len() >= 2

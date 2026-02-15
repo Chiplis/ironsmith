@@ -5139,6 +5139,23 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_cumulative_upkeep_line_as_keyword_marker() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Cumulative Upkeep Variant")
+            .parse_text("Cumulative upkeep—Sacrifice a creature.")
+            .expect("parse cumulative upkeep keyword line");
+
+        assert!(
+            def.spell_effect.is_none(),
+            "cumulative upkeep line should compile as an ability, not a spell effect"
+        );
+        let joined = compiled_lines(&def).join(" ");
+        assert!(
+            joined.to_ascii_lowercase().contains("cumulative upkeep"),
+            "expected cumulative upkeep text in compiled abilities, got {joined}"
+        );
+    }
+
+    #[test]
     fn parse_labeled_trigger_line_as_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Heroic Label Variant")
             .parse_text(
