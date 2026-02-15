@@ -420,6 +420,10 @@ enum EffectAst {
         target: TargetAst,
         duration: Until,
     },
+    PreventAllDamageToTarget {
+        target: TargetAst,
+        duration: Until,
+    },
     PreventDamageEach {
         amount: Value,
         filter: ObjectFilter,

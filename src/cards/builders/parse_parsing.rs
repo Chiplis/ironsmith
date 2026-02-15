@@ -783,6 +783,25 @@ fn split_effect_chain_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
+fn has_effect_head_without_verb(tokens: &[Token]) -> bool {
+    parse_prevent_next_damage_clause(tokens)
+        .ok()
+        .flatten()
+        .is_some()
+        || parse_prevent_all_damage_clause(tokens)
+            .ok()
+            .flatten()
+            .is_some()
+        || parse_can_attack_as_though_no_defender_clause(tokens)
+            .ok()
+            .flatten()
+            .is_some()
+}
+
+fn segment_has_effect_head(tokens: &[Token]) -> bool {
+    find_verb(tokens).is_some() || has_effect_head_without_verb(tokens)
+}
+
 fn join_sentences_with_period(sentences: &[Vec<Token>]) -> Vec<Token> {
     let mut joined = Vec::new();
     for (idx, sentence) in sentences.iter().enumerate() {
@@ -15035,6 +15054,12 @@ fn parse_gain_x_plus_life_sentence(
 
 fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = words(tokens);
+    let looks_like_can_attack_no_defender = words.windows(2).any(|window| window == ["can", "attack"])
+        && words.windows(2).any(|window| window == ["as", "though"])
+        && words.contains(&"defender");
+    if looks_like_can_attack_no_defender {
+        return Ok(None);
+    }
     let gain_idx = words
         .iter()
         .position(|word| matches!(*word, "gain" | "gains" | "has" | "have"));
@@ -17522,7 +17547,7 @@ fn parse_effect_chain_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardText
             segments.push(segment);
             continue;
         }
-        if find_verb(&segment).is_none() {
+        if !segment_has_effect_head(&segment) {
             if let Some(previous) = segments.last()
                 && let Some(expanded) = expand_missing_verb_segment(previous, &segment)
             {
@@ -17536,7 +17561,7 @@ fn parse_effect_chain_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardText
         }
         segments.push(segment);
     }
-    while segments.len() > 1 && find_verb(&segments[0]).is_none() {
+    while segments.len() > 1 && !segment_has_effect_head(&segments[0]) {
         let mut first = segments.remove(0);
         first.push(Token::Word("and".to_string(), TextSpan::synthetic()));
         let mut next = segments.remove(0);
@@ -17669,7 +17694,7 @@ fn expand_segments_with_comma_action_clauses(segments: Vec<Vec<Token>>) -> Vec<V
                 continue;
             }
 
-            if find_verb(&part).is_some() {
+            if segment_has_effect_head(&part) {
                 local_parts.push(part);
                 continue;
             }
@@ -17762,7 +17787,7 @@ fn expand_segments_with_multi_create_clauses(segments: Vec<Vec<Token>>) -> Vec<V
                 }
                 continue;
             }
-            if find_verb(&part).is_some() {
+            if segment_has_effect_head(&part) {
                 local_parts.push(part);
                 continue;
             }
@@ -18245,6 +18270,12 @@ fn run_clause_primitives(tokens: &[Token]) -> Result<Option<EffectAst>, CardText
         },
         ClausePrimitive {
             parser: parse_prevent_next_damage_clause,
+        },
+        ClausePrimitive {
+            parser: parse_prevent_all_damage_clause,
+        },
+        ClausePrimitive {
+            parser: parse_can_attack_as_though_no_defender_clause,
         },
         ClausePrimitive {
             parser: parse_keyword_mechanic_clause,
@@ -19404,6 +19435,81 @@ fn parse_prevent_next_damage_clause(tokens: &[Token]) -> Result<Option<EffectAst
     Ok(Some(EffectAst::PreventDamage {
         amount,
         target,
+        duration: Until::EndOfTurn,
+    }))
+}
+
+fn parse_prevent_all_damage_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    let prefix = ["prevent", "all", "damage", "that", "would", "be", "dealt", "to"];
+    if !clause_words.starts_with(&prefix) {
+        return Ok(None);
+    }
+    if clause_words.len() <= prefix.len() + 1 {
+        return Err(CardTextError::ParseError(format!(
+            "missing prevent-all damage target (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    if clause_words[clause_words.len().saturating_sub(2)..] != ["this", "turn"] {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported prevent-all damage duration (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let target_words = &clause_words[prefix.len()..clause_words.len() - 2];
+    if target_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing prevent-all damage target (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let target_tokens = target_words
+        .iter()
+        .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let target = parse_target_phrase(&target_tokens)?;
+
+    Ok(Some(EffectAst::PreventAllDamageToTarget {
+        target,
+        duration: Until::EndOfTurn,
+    }))
+}
+
+fn parse_can_attack_as_though_no_defender_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    let Some(can_idx) = clause_words.iter().position(|word| *word == "can") else {
+        return Ok(None);
+    };
+    let subject_words = &clause_words[..can_idx];
+    let tail = &clause_words[can_idx..];
+    let has_core = tail.starts_with(&["can", "attack"])
+        && tail.windows(2).any(|window| window == ["as", "though"])
+        && tail.contains(&"turn")
+        && tail.contains(&"have")
+        && tail.last().copied() == Some("defender");
+    if !has_core {
+        return Ok(None);
+    }
+
+    let target = if subject_words.is_empty() {
+        TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
+    } else {
+        let subject_tokens = subject_words
+            .iter()
+            .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        parse_target_phrase(&subject_tokens)?
+    };
+
+    Ok(Some(EffectAst::GrantAbilitiesToTarget {
+        target,
+        abilities: vec![StaticAbility::can_attack_as_though_no_defender()],
         duration: Until::EndOfTurn,
     }))
 }

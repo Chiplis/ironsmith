@@ -7823,6 +7823,39 @@ fn describe_effect_impl(effect: &Effect) -> String {
             timing
         );
     }
+    if let Some(prevent_all_target) =
+        effect.downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>()
+    {
+        let filter = &prevent_all_target.damage_filter;
+        let is_default_filter = !filter.combat_only
+            && !filter.noncombat_only
+            && filter.from_source.is_none()
+            && filter.from_specific_source.is_none()
+            && filter
+                .from_colors
+                .as_ref()
+                .is_none_or(|colors| colors.is_empty())
+            && filter
+                .from_card_types
+                .as_ref()
+                .is_none_or(|types| types.is_empty());
+        let damage_text = if is_default_filter {
+            "damage".to_string()
+        } else {
+            describe_damage_filter(filter)
+        };
+        let timing = if matches!(prevent_all_target.duration, Until::EndOfTurn) {
+            "this turn".to_string()
+        } else {
+            describe_until(&prevent_all_target.duration)
+        };
+        return format!(
+            "Prevent all {} that would be dealt to {} {}",
+            damage_text,
+            describe_choose_spec(&prevent_all_target.target),
+            timing
+        );
+    }
     if let Some(prevent_from) =
         effect.downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>()
     {
@@ -9033,6 +9066,22 @@ fn normalize_known_low_tail_phrase(text: &str) -> String {
             return format!("{prefix}: {merged}");
         }
         return merged;
+    }
+    if let Some((left, right)) = split_once_ascii_ci(trimmed, ". ")
+        && left.to_ascii_lowercase().contains(" counter on ")
+        && right
+            .trim()
+            .to_ascii_lowercase()
+            .starts_with("prevent all damage that would be dealt to ")
+        && right.trim().to_ascii_lowercase().contains(" this turn")
+    {
+        let right_clause = lowercase_first(right.trim().trim_end_matches('.'));
+        let merged = format!(
+            "{} and {}",
+            left.trim().trim_end_matches('.'),
+            right_clause
+        );
+        return format!("{merged}.");
     }
     if let Some((first_clause, rest)) =
         trimmed.split_once(". For each opponent's creature, Deal ")
@@ -16791,6 +16840,17 @@ mod tests {
             "Target player loses 1 life. Target player reveals their hand.",
         );
         assert_eq!(normalized, "Target player loses 1 life and reveals their hand.");
+    }
+
+    #[test]
+    fn known_low_tail_merges_counter_then_prevent_all_damage() {
+        let normalized = normalize_known_low_tail_phrase(
+            "Put a +1/+1 counter on this creature. Prevent all damage that would be dealt to it this turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Put a +1/+1 counter on this creature and prevent all damage that would be dealt to it this turn."
+        );
     }
 
     #[test]

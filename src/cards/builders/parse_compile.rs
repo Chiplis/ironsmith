@@ -231,6 +231,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::PumpForEach { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
         | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::PreventAllDamageToTarget { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
             matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
         }
@@ -577,6 +578,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::PumpForEach { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
         | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::PreventAllDamageToTarget { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
             target_references_tag(target, IT_TAG)
         }
@@ -1914,6 +1916,11 @@ fn compile_effect(
                 Effect::prevent_damage(amount.clone(), spec, duration.clone())
             })
         }
+        EffectAst::PreventAllDamageToTarget { target, duration } => compile_effect_for_target(
+            target,
+            ctx,
+            |spec| Effect::prevent_all_damage_to_target(spec, duration.clone()),
+        ),
         EffectAst::PreventDamageEach {
             amount,
             filter,

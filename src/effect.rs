@@ -1797,6 +1797,12 @@ impl Effect {
         Self::new(PreventAllDamageEffect::matching(filter, until))
     }
 
+    /// Create a "prevent all damage to target" effect.
+    pub fn prevent_all_damage_to_target(target: ChooseSpec, until: Until) -> Self {
+        use crate::effects::PreventAllDamageToTargetEffect;
+        Self::new(PreventAllDamageToTargetEffect::new(target, until))
+    }
+
     /// Create a "grant abilities to all matching creatures" effect with explicit duration.
     pub fn grant_abilities_all(
         filter: ObjectFilter,

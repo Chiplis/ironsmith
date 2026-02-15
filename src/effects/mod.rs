@@ -70,7 +70,7 @@ pub use combat::{
     EnterAttackingEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
     GrantAbilitiesTargetEffect, ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect,
     ModifyPowerToughnessForEachEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
-    PreventDamageEffect, SetBasePowerToughnessEffect,
+    PreventAllDamageToTargetEffect, PreventDamageEffect, SetBasePowerToughnessEffect,
 };
 pub use composition::{
     AdaptEffect, BolsterEffect, ChooseModeEffect, ChooseObjectsEffect, ConditionalEffect,
