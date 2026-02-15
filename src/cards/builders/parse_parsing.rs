@@ -18171,7 +18171,7 @@ fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError>
         {
             stripped.remove(0);
         }
-        let mut effects = parse_effect_chain_with_sentence_primitives(&stripped)?;
+        let mut effects = parse_effect_chain(&stripped)?;
         for effect in &mut effects {
             bind_implicit_player_context(effect, player);
         }
@@ -18183,11 +18183,68 @@ fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError>
         && !starts_with_each_player
     {
         let stripped = remove_first_word(tokens, "may");
-        let effects = parse_effect_chain_with_sentence_primitives(&stripped)?;
+        let effects = parse_effect_chain(&stripped)?;
         return Ok(vec![EffectAst::May { effects }]);
     }
 
+    if let Some(unless_action) = parse_or_action_clause(tokens)? {
+        return Ok(vec![unless_action]);
+    }
+
     parse_effect_chain_with_sentence_primitives(tokens)
+}
+
+fn parse_or_action_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.contains(&"or") {
+        return Ok(None);
+    }
+
+    let mut option_tokens = split_on_or(tokens);
+    if option_tokens.len() != 2 {
+        return Ok(None);
+    }
+
+    let normalize_option = |mut option: Vec<Token>| {
+        while option
+            .first()
+            .is_some_and(|token| token.is_word("and") || token.is_word("or"))
+        {
+            option.remove(0);
+        }
+        trim_commas(&option).to_vec()
+    };
+
+    let first = normalize_option(option_tokens.remove(0));
+    let second = normalize_option(option_tokens.remove(0));
+    if first.is_empty() || second.is_empty() {
+        return Ok(None);
+    }
+
+    let first_starts_effect =
+        find_verb(&first).is_some_and(|(_, verb_idx)| verb_idx == 0)
+            || has_effect_head_without_verb(&first);
+    let second_starts_effect =
+        find_verb(&second).is_some_and(|(_, verb_idx)| verb_idx == 0)
+            || has_effect_head_without_verb(&second);
+    if !first_starts_effect || !second_starts_effect {
+        return Ok(None);
+    }
+
+    let first_effects = match parse_effect_chain_with_sentence_primitives(&first) {
+        Ok(effects) if !effects.is_empty() => effects,
+        _ => return Ok(None),
+    };
+    let second_effects = match parse_effect_chain_with_sentence_primitives(&second) {
+        Ok(effects) if !effects.is_empty() => effects,
+        _ => return Ok(None),
+    };
+
+    Ok(Some(EffectAst::UnlessAction {
+        effects: first_effects,
+        alternative: second_effects,
+        player: PlayerAst::Implicit,
+    }))
 }
 
 fn parse_effect_chain_with_sentence_primitives(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
@@ -24516,21 +24573,29 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
             target_count,
         ));
     }
+    let second_word_is_object_head = remaining_words
+        .get(1)
+        .is_some_and(|word| {
+            matches!(
+                *word,
+                "creature"
+                    | "creatures"
+                    | "permanent"
+                    | "permanents"
+                    | "spell"
+                    | "spells"
+                    | "source"
+                    | "sources"
+                    | "card"
+                    | "cards"
+            ) || parse_card_type(word).is_some()
+                || word
+                    .strip_suffix('s')
+                    .is_some_and(|singular| parse_card_type(singular).is_some())
+        });
     if remaining_words.len() >= 3
         && remaining_words[0] == "that"
-        && matches!(
-            remaining_words[1],
-            "creature"
-                | "creatures"
-                | "permanent"
-                | "permanents"
-                | "spell"
-                | "spells"
-                | "source"
-                | "sources"
-                | "card"
-                | "cards"
-        )
+        && second_word_is_object_head
         && matches!(remaining_words[2], "controller" | "controllers" | "owner" | "owners")
     {
         let player = if remaining_words[2].starts_with("owner") {

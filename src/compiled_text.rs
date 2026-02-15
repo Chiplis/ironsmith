@@ -2394,6 +2394,17 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("Destroy target black or red creature that's attacking or blocking{rest}");
     }
+    if let Some((left, right)) = normalized.split_once(". ")
+        && let Some(target_desc) = left.strip_prefix("Destroy target ")
+        && let Some(other_desc) = right.strip_prefix("Destroy all other ")
+        && let Some((shares_desc, tail)) =
+            other_desc.split_once(" that shares a color with that object")
+        && shares_desc.eq_ignore_ascii_case(target_desc)
+    {
+        return format!(
+            "Destroy target {target_desc} and each other {shares_desc} that shares a color with it{tail}"
+        );
+    }
     if let Some(tail) = normalized.strip_prefix("you draw ")
         && let Some(count) = tail.strip_suffix(" cards")
     {
@@ -2486,6 +2497,7 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized
         .replace("This creatures get ", "This creature gets ")
         .replace("This creatures gain ", "This creature gains ")
+        .replace("this permanent gets +", "this creature gets +")
         .replace(", If ", ", if ")
         .replace(", Transform ", ", transform ")
         .replace("Counter target spell. that object's controller mills ", "Counter target spell, then its controller mills ")
@@ -2658,6 +2670,13 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "As an additional cost to cast this spell, discard a card",
         )
         ;
+    if normalized.contains("you may ")
+        && normalized.contains(" unless you ")
+        && !normalized.contains(" unless you pay ")
+        && !normalized.contains(" unless you pays ")
+    {
+        normalized = normalized.replacen(" unless you ", " or ", 1);
+    }
     normalized = normalized
         .replace("Return a Island", "Return an Island")
         .replace("Return a artifact", "Return an artifact")
@@ -16796,6 +16815,24 @@ mod tests {
                 "At the beginning of your end step: you discard a card and you lose 2 life. sacrifice a creature."
             ),
             "At the beginning of your end step: you discard a card and you lose 2 life, then sacrifice a creature."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "Destroy target enchantment. Destroy all other enchantment that shares a color with that object."
+            ),
+            "Destroy target enchantment and each other enchantment that shares a color with it."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "Whenever this creature attacks, you may sacrifice an artifact unless you discard a card. If you do, draw a card. this permanent gets +2/+0 until end of turn."
+            ),
+            "Whenever this creature attacks, you may sacrifice an artifact or discard a card. If you do, draw a card. this creature gets +2/+0 until end of turn."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "Whenever an opponent casts a spell, you may draw a card unless you pay {1}."
+            ),
+            "Whenever an opponent casts a spell, you may draw a card unless you pay {1}."
         );
     }
 

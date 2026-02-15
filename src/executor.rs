@@ -337,6 +337,9 @@ impl<'a> ExecutionContext<'a> {
             self.set_tagged_objects("triggering", snapshots.clone());
             self.set_tagged_objects("it", snapshots);
         }
+        if self.iterated_player.is_none() {
+            self.iterated_player = event.player();
+        }
 
         // If the event is vote-related, compute tags from THIS ability controller's perspective.
         if let Some(voting_event) = event.downcast::<crate::events::PlayersFinishedVotingEvent>() {

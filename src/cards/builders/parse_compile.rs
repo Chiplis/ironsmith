@@ -90,10 +90,10 @@ fn compile_statement_effects(effects: &[EffectAst]) -> Result<Vec<Effect>, CardT
 
 fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
-        TriggerSpec::SpellCast { caster, .. } => Some(caster.clone()),
-        TriggerSpec::SpellCopied { copier, .. } => Some(copier.clone()),
-        TriggerSpec::PlayerLosesLife(player) => Some(player.clone()),
-        TriggerSpec::PlayerSacrifices { player, .. } => Some(player.clone()),
+        TriggerSpec::SpellCast { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::SpellCopied { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerLosesLife(_) => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::BeginningOfUpkeep(player)
         | TriggerSpec::BeginningOfDrawStep(player)
         | TriggerSpec::BeginningOfCombat(player)
@@ -103,7 +103,7 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
             if *player == PlayerFilter::Any {
                 Some(PlayerFilter::Active)
             } else {
-                Some(player.clone())
+                Some(PlayerFilter::IteratedPlayer)
             }
         }
         TriggerSpec::Custom(_) => None,
@@ -4800,7 +4800,16 @@ fn resolve_target_spec_with_choices(
     target: &TargetAst,
     ctx: &CompileContext,
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {
-    let spec = choose_spec_for_target(target);
+    let mut spec = choose_spec_for_target(target);
+    if let TargetAst::Player(filter, explicit_target_span) = target {
+        if explicit_target_span.is_none() && matches!(filter, PlayerFilter::Target(_)) {
+            if let Some(last_filter) = &ctx.last_player_filter {
+                spec = ChooseSpec::Player(last_filter.clone());
+            } else if ctx.iterated_player {
+                spec = ChooseSpec::Player(PlayerFilter::IteratedPlayer);
+            }
+        }
+    }
     let spec = resolve_choose_spec_it_tag(&spec, ctx)?;
     let choices = if spec.is_target() {
         vec![spec.clone()]
