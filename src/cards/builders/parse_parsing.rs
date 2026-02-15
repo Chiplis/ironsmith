@@ -10968,6 +10968,261 @@ fn parse_sentence_return_with_counters_on_it(
     parse_return_with_counters_on_it_sentence(tokens)
 }
 
+fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool {
+    match target {
+        TargetAst::Object(filter, _, _) => {
+            filter.subtypes = vec![subtype];
+            true
+        }
+        TargetAst::WithCount(inner, _) => replace_target_subtype(inner, subtype),
+        _ => false,
+    }
+}
+
+fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> Option<EffectAst> {
+    match base {
+        EffectAst::ReturnToHand { target } => {
+            let mut cloned_target = target.clone();
+            replace_target_subtype(&mut cloned_target, subtype).then_some(EffectAst::ReturnToHand {
+                target: cloned_target,
+            })
+        }
+        EffectAst::ReturnToBattlefield {
+            target,
+            tapped,
+            controller,
+        } => {
+            let mut cloned_target = target.clone();
+            replace_target_subtype(&mut cloned_target, subtype).then_some(
+                EffectAst::ReturnToBattlefield {
+                    target: cloned_target,
+                    tapped: *tapped,
+                    controller: *controller,
+                },
+            )
+        }
+        EffectAst::ReturnAllToHand { filter } => {
+            let mut cloned_filter = filter.clone();
+            cloned_filter.subtypes = vec![subtype];
+            Some(EffectAst::ReturnAllToHand {
+                filter: cloned_filter,
+            })
+        }
+        EffectAst::ReturnAllToBattlefield { filter, tapped } => {
+            let mut cloned_filter = filter.clone();
+            cloned_filter.subtypes = vec![subtype];
+            Some(EffectAst::ReturnAllToBattlefield {
+                filter: cloned_filter,
+                tapped: *tapped,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn parse_draw_then_connive_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(comma_then_idx) = tokens.windows(2).position(|window| {
+        matches!(window[0], Token::Comma(_)) && window[1].is_word("then")
+    }) else {
+        return Ok(None);
+    };
+
+    let head_tokens = trim_commas(&tokens[..comma_then_idx]);
+    let tail_tokens = trim_commas(&tokens[comma_then_idx + 2..]);
+    if head_tokens.is_empty() || tail_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if !tail_tokens
+        .iter()
+        .any(|token| token.is_word("connive") || token.is_word("connives"))
+    {
+        return Ok(None);
+    }
+
+    let mut head_effects = parse_effect_chain(&head_tokens)?;
+    if head_effects.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(connive_effect) = parse_connive_clause(&tail_tokens)? else {
+        return Ok(None);
+    };
+    head_effects.push(connive_effect);
+    Ok(Some(head_effects))
+}
+
+fn parse_sentence_draw_then_connive(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_draw_then_connive_sentence(tokens)
+}
+
+fn parse_each_player_return_with_additional_counter_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    let inner_start_word_idx =
+        if clause_words.starts_with(&["for", "each", "player"])
+            || clause_words.starts_with(&["for", "each", "players"])
+        {
+            3
+        } else if clause_words.starts_with(&["each", "player"])
+            || clause_words.starts_with(&["each", "players"])
+        {
+            2
+        } else {
+            return Ok(None);
+        };
+
+    let Some(inner_start_token_idx) = token_index_for_word_index(tokens, inner_start_word_idx)
+    else {
+        return Ok(None);
+    };
+    let inner_tokens = trim_commas(&tokens[inner_start_token_idx..]);
+    if inner_tokens.is_empty() {
+        return Ok(None);
+    }
+    if !inner_tokens
+        .first()
+        .is_some_and(|token| token.is_word("return") || token.is_word("returns"))
+    {
+        return Ok(None);
+    }
+
+    let Some(with_idx) = inner_tokens.iter().rposition(|token| token.is_word("with")) else {
+        return Ok(None);
+    };
+    if with_idx + 1 >= inner_tokens.len() {
+        return Ok(None);
+    }
+
+    let return_clause_tokens = trim_commas(&inner_tokens[..with_idx]);
+    if return_clause_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let counter_clause_tokens = trim_commas(&inner_tokens[with_idx + 1..]);
+    let Some(on_idx) = counter_clause_tokens
+        .iter()
+        .rposition(|token| token.is_word("on"))
+    else {
+        return Ok(None);
+    };
+    if on_idx + 1 >= counter_clause_tokens.len() {
+        return Ok(None);
+    }
+
+    let on_target_words = words(&counter_clause_tokens[on_idx + 1..]);
+    if on_target_words != ["it"] && on_target_words != ["them"] {
+        return Ok(None);
+    }
+
+    let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
+    let descriptor_words = words(&descriptor_tokens);
+    if descriptor_tokens.is_empty() || !descriptor_words.contains(&"additional") {
+        return Ok(None);
+    }
+
+    let (count, counter_type) = parse_counter_descriptor(&descriptor_tokens)?;
+    let mut per_player_effects = parse_effect_chain_inner(&return_clause_tokens)?;
+    if per_player_effects.is_empty() {
+        return Ok(None);
+    }
+    if !per_player_effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::ReturnToBattlefield { .. } | EffectAst::ReturnAllToBattlefield { .. }
+        )
+    }) {
+        return Ok(None);
+    }
+
+    per_player_effects.push(EffectAst::PutCounters {
+        counter_type,
+        count: Value::Fixed(count as i32),
+        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        target_count: None,
+        distributed: false,
+    });
+
+    Ok(Some(vec![EffectAst::ForEachPlayer {
+        effects: per_player_effects,
+    }]))
+}
+
+fn parse_sentence_each_player_return_with_additional_counter(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_each_player_return_with_additional_counter_sentence(tokens)
+}
+
+fn parse_return_then_do_same_for_subtypes_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("return")) {
+        return Ok(None);
+    }
+    let Some(comma_then_idx) = tokens.windows(2).position(|window| {
+        matches!(window[0], Token::Comma(_)) && window[1].is_word("then")
+    }) else {
+        return Ok(None);
+    };
+
+    let head_tokens = trim_commas(&tokens[..comma_then_idx]);
+    let tail_tokens = trim_commas(&tokens[comma_then_idx + 2..]);
+    if head_tokens.is_empty() || tail_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let tail_words = words(&tail_tokens);
+    if !tail_words.starts_with(&["do", "the", "same", "for"]) {
+        return Ok(None);
+    }
+    let subtype_words = &tail_words[4..];
+    if subtype_words.is_empty() {
+        return Ok(None);
+    }
+
+    let mut extra_subtypes = Vec::new();
+    for word in subtype_words {
+        if matches!(*word, "and" | "or") {
+            continue;
+        }
+        let Some(subtype) =
+            parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+        else {
+            return Ok(None);
+        };
+        extra_subtypes.push(subtype);
+    }
+    if extra_subtypes.is_empty() {
+        return Ok(None);
+    }
+
+    let mut effects = parse_effect_chain(&head_tokens)?;
+    if effects.len() != 1 {
+        return Ok(None);
+    }
+    let base_effect = effects[0].clone();
+    for subtype in extra_subtypes {
+        let Some(cloned) = clone_return_effect_with_subtype(&base_effect, subtype) else {
+            return Ok(None);
+        };
+        effects.push(cloned);
+    }
+
+    Ok(Some(effects))
+}
+
+fn parse_sentence_return_then_do_same_for_subtypes(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_return_then_do_same_for_subtypes_sentence(tokens)
+}
+
 fn parse_sacrifice_any_number_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -12001,12 +12256,24 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parser: parse_sentence_comma_then_chain_special,
     },
     SentencePrimitive {
+        name: "draw-then-connive",
+        parser: parse_sentence_draw_then_connive,
+    },
+    SentencePrimitive {
+        name: "return-then-do-same-for-subtypes",
+        parser: parse_sentence_return_then_do_same_for_subtypes,
+    },
+    SentencePrimitive {
         name: "put-counter-sequence",
         parser: parse_sentence_put_counter_sequence,
     },
     SentencePrimitive {
         name: "return-with-counters-on-it",
         parser: parse_sentence_return_with_counters_on_it,
+    },
+    SentencePrimitive {
+        name: "each-player-return-with-additional-counter",
+        parser: parse_sentence_each_player_return_with_additional_counter,
     },
     SentencePrimitive {
         name: "sacrifice-any-number",
@@ -21199,8 +21466,11 @@ fn parse_get(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst,
             Some(SubjectAst::Player(player)) => player,
             _ => PlayerAst::Implicit,
         };
+        let count = parse_add_mana_equal_amount_value(tokens)
+            .or(parse_dynamic_cost_modifier_value(tokens)?)
+            .unwrap_or(Value::Fixed(energy_count as i32));
         return Ok(EffectAst::EnergyCounters {
-            count: Value::Fixed(energy_count as i32),
+            count,
             player,
         });
     }

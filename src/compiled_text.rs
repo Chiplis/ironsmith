@@ -467,6 +467,7 @@ fn looks_like_trigger_condition(head: &str) -> bool {
         " deal damage",
         " create ",
         " unlock ",
+        "beginning of",
     ]
     .iter()
     .any(|needle| lower.contains(needle))
@@ -497,7 +498,9 @@ fn normalize_trigger_colon_clause(line: &str) -> Option<String> {
         tail.to_string()
     };
 
-    if lower_head.starts_with("when ")
+    if lower_head.starts_with("the beginning ") {
+        Some(format!("At {normalized_head}, {normalized_tail}"))
+    } else if lower_head.starts_with("when ")
         || lower_head.starts_with("whenever ")
         || lower_head.starts_with("at the beginning ")
     {
@@ -10107,6 +10110,24 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             rest.trim()
         );
     }
+    if let Some((left, right)) = split_once_ascii_ci(&normalized, ". ")
+        && let Some(rest) = strip_prefix_ascii_ci(left, "For each player, Return all ")
+        && let Some(cards) = strip_suffix_ascii_ci(rest, " from their graveyard to the battlefield")
+        && let Some(counter_clause) = strip_prefix_ascii_ci(right, "Put ")
+            .or_else(|| strip_prefix_ascii_ci(right, "put "))
+    {
+        let trimmed_counter = counter_clause.trim_end_matches('.');
+        if let Some(counter_text) = strip_prefix_ascii_ci(trimmed_counter, "a ")
+            .or_else(|| strip_prefix_ascii_ci(trimmed_counter, "an "))
+            .and_then(|tail| strip_suffix_ascii_ci(tail, " counter on it"))
+        {
+            return format!(
+                "Each player returns each {} from their graveyard to the battlefield with an additional {} counter on it.",
+                cards.trim(),
+                counter_text.trim()
+            );
+        }
+    }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "For each player, Return all ")
         && let Some(cards) = strip_suffix_ascii_ci(rest, " from their graveyard to the battlefield.")
             .or_else(|| strip_suffix_ascii_ci(rest, " from their graveyard to the battlefield"))
@@ -10115,6 +10136,36 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "Each player returns each {} from their graveyard to the battlefield.",
             cards.trim()
         );
+    }
+    if normalized.contains(". Return card ")
+        && normalized
+            .split(". ")
+            .all(|clause| clause.starts_with("Return card "))
+    {
+        let mut subtypes = Vec::new();
+        for clause in normalized.trim_end_matches('.').split(". ") {
+            let Some(rest) = clause.strip_prefix("Return card ") else {
+                subtypes.clear();
+                break;
+            };
+            let Some((subtype, tail)) = rest.split_once(" from your graveyard to your hand") else {
+                subtypes.clear();
+                break;
+            };
+            if !tail.is_empty() {
+                subtypes.clear();
+                break;
+            }
+            subtypes.push(subtype.trim().to_string());
+        }
+        if subtypes.len() >= 2 {
+            let first = subtypes.remove(0);
+            return format!(
+                "Return {} card from your graveyard to your hand, then do the same for {}.",
+                with_indefinite_article(&first),
+                join_with_and(&subtypes)
+            );
+        }
     }
     if let Some((left, right)) = split_once_ascii_ci(&normalized, ". ")
         && (left.contains("you gain ") || left.contains("You gain "))
@@ -16570,6 +16621,39 @@ mod tests {
         assert_eq!(
             normalized,
             "Whenever you unlock this door, create a token that's a copy of target creature you control."
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_the_beginning_trigger_head() {
+        let normalized = normalize_common_semantic_phrasing(
+            "The beginning of your first main phase: Sacrifice this enchantment unless you Pay {E}.",
+        );
+        assert_eq!(
+            normalized,
+            "At the beginning of your first main phase, sacrifice this enchantment unless you Pay {E}."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_for_each_player_return_with_additional_counter_bundle() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "For each player, Return all creature card from their graveyard to the battlefield. Put a -1/-1 counter on it.",
+        );
+        assert_eq!(
+            normalized,
+            "Each player returns each creature card from their graveyard to the battlefield with an additional -1/-1 counter on it."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_repeated_return_subtype_chain_to_do_same_for() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Return card Pirate from your graveyard to your hand. Return card Vampire from your graveyard to your hand. Return card Dinosaur from your graveyard to your hand. Return card Merfolk from your graveyard to your hand.",
+        );
+        assert_eq!(
+            normalized,
+            "Return a Pirate card from your graveyard to your hand, then do the same for Vampire, Dinosaur, and Merfolk."
         );
     }
 }

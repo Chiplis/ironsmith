@@ -2449,11 +2449,12 @@ mod effect_parse_tests {
     use crate::effects::CantEffect;
     use crate::effects::{
         AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect,
-        AddScaledManaEffect, CounterEffect, CreateTokenCopyEffect, DestroyEffect, DiscardEffect,
-        DrawCardsEffect, ExchangeControlEffect, ExileEffect, ExileInsteadOfGraveyardEffect,
-        ForEachObject, GainControlEffect, GrantPlayFromGraveyardEffect, LookAtHandEffect,
-        ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, PutCountersEffect,
-        RemoveUpToAnyCountersEffect, ReturnAllToBattlefieldEffect,
+        AddScaledManaEffect, ConniveEffect, CounterEffect, CreateTokenCopyEffect, DestroyEffect,
+        DiscardEffect, DrawCardsEffect, EnergyCountersEffect, ExchangeControlEffect, ExileEffect,
+        ExileInsteadOfGraveyardEffect, ForEachObject, ForPlayersEffect, GainControlEffect,
+        GrantPlayFromGraveyardEffect, LookAtHandEffect, ModifyPowerToughnessEffect,
+        ModifyPowerToughnessForEachEffect, PutCountersEffect, RemoveUpToAnyCountersEffect,
+        ReturnAllToBattlefieldEffect,
         ReturnFromGraveyardToBattlefieldEffect, ReturnToHandEffect, SacrificeEffect,
         SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipCombatPhasesEffect,
         SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect,
@@ -3645,6 +3646,27 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             debug.contains("PutCountersEffect"),
             "expected +1/+1 counter effect in if-you-do branch, got {debug}"
         );
+    }
+
+    #[test]
+    fn parse_get_energy_equal_to_tagged_spell_mana_value() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Electrosiphon Variant")
+            .parse_text("Counter target spell. You get an amount of {E} (energy counters) equal to its mana value.")
+            .expect("mana-value-scaled energy clause should parse");
+
+        let effects = def.spell_effect.as_ref().expect("spell effects");
+        let energy = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<EnergyCountersEffect>())
+            .expect("expected EnergyCountersEffect");
+
+        match &energy.count {
+            Value::ManaValueOf(spec) => match spec.as_ref() {
+                ChooseSpec::Tagged(tag) => assert_eq!(tag.as_str(), IT_TAG),
+                other => panic!("expected tagged mana-value reference, got {other:?}"),
+            },
+            other => panic!("expected mana-value scaling for energy counters, got {other:?}"),
+        }
     }
 
     #[test]
@@ -6521,6 +6543,73 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             joined.contains("Whenever you sacrifice an artifact"),
             "expected sacrifice trigger wording, got {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_unstable_experiment_draw_then_connive_preserves_draw() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Unstable Experiment Variant")
+            .parse_text(
+                "Target player draws a card, then up to one target creature you control connives. (Draw a card, then discard a card. If you discarded a nonland card, put a +1/+1 counter on that creature.)",
+            )
+            .expect("draw-then-connive sentence should parse");
+
+        let effects = def.spell_effect.as_ref().expect("spell effects");
+        assert!(
+            effects
+                .iter()
+                .any(|effect| effect.downcast_ref::<DrawCardsEffect>().is_some()),
+            "expected DrawCardsEffect, got {effects:?}"
+        );
+        assert!(
+            effects
+                .iter()
+                .any(|effect| effect.downcast_ref::<ConniveEffect>().is_some()),
+            "expected ConniveEffect, got {effects:?}"
+        );
+    }
+
+    #[test]
+    fn parse_grim_captains_call_then_do_same_for_subtypes_expands_each_return() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Grim Captain's Call Variant")
+            .parse_text(
+                "Return a Pirate card from your graveyard to your hand, then do the same for Vampire, Dinosaur, and Merfolk.",
+            )
+            .expect("then-do-the-same-for subtype sentence should parse");
+
+        let lines = compiled_lines(&def);
+        let spell_line = lines
+            .iter()
+            .find(|line| line.starts_with("Spell effects"))
+            .expect("expected spell effects line");
+        assert!(
+            spell_line.contains("Pirate")
+                && spell_line.contains("Vampire")
+                && spell_line.contains("Dinosaur")
+                && spell_line.contains("Merfolk"),
+            "expected all subtype returns in compiled output, got {spell_line}"
+        );
+    }
+
+    #[test]
+    fn parse_each_player_return_with_additional_counter_appends_counter_effect() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Pyrrhic Revival Variant")
+            .parse_text(
+                "Each player returns each creature card from their graveyard to the battlefield with an additional -1/-1 counter on it.",
+            )
+            .expect("for-each return-with-additional-counter sentence should parse");
+
+        let effects = def.spell_effect.as_ref().expect("spell effects");
+        let for_players = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<ForPlayersEffect>())
+            .expect("expected ForPlayersEffect");
+        let debug = format!("{for_players:?}");
+        assert!(
+            debug.contains("ReturnAllToBattlefieldEffect")
+                && debug.contains("PutCountersEffect")
+                && debug.contains("MinusOneMinusOne"),
+            "expected return + -1/-1 counter effects in for-players branch, got {debug}"
         );
     }
 }

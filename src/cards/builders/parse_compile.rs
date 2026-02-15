@@ -2375,15 +2375,18 @@ fn compile_effect(
             let resolved_filter = resolve_it_tag(filter, ctx)?;
             Ok((vec![Effect::return_all_to_hand(resolved_filter)], Vec::new()))
         }
-        EffectAst::ReturnAllToBattlefield { filter, tapped } => Ok((
-            vec![Effect::new(
-                crate::effects::ReturnAllToBattlefieldEffect::new(
-                    resolve_it_tag(filter, ctx)?,
-                    *tapped,
-                ),
-            )],
-            Vec::new(),
-        )),
+        EffectAst::ReturnAllToBattlefield { filter, tapped } => {
+            let mut effect = Effect::new(crate::effects::ReturnAllToBattlefieldEffect::new(
+                resolve_it_tag(filter, ctx)?,
+                *tapped,
+            ));
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("returned");
+                effect = effect.tag(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
+            Ok((vec![effect], Vec::new()))
+        }
         EffectAst::ExchangeControl { filter, count } => {
             let first = ChooseSpec::Object(filter.clone());
             let second = ChooseSpec::Object(filter.clone());
