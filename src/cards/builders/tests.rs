@@ -8245,3 +8245,26 @@ fn parse_you_and_attacking_player_each_draw_and_lose_sentence() {
         "expected life loss for attacking player in shared clause, got {rendered}"
     );
 }
+
+#[test]
+fn parse_rhystic_lightning_unless_payment_then_reduced_damage() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rhystic Lightning Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "This spell deals 4 damage to any target unless that permanent's controller or that player pays {2}. If they do, this spell deals 2 damage to the permanent or player.",
+        )
+        .expect("rhystic unless-payment clause should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("unless") && rendered.contains("pays {2}"),
+        "expected unless-payment branch to remain explicit, got {rendered}"
+    );
+    assert!(
+        (rendered.contains("if they do")
+            || rendered.contains("if that doesn't happen")
+            || rendered.contains("if that doesnt happen"))
+            && rendered.contains("deal 2 damage"),
+        "expected reduced-damage paid branch to remain explicit, got {rendered}"
+    );
+}

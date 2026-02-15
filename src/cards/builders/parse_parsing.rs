@@ -10529,6 +10529,22 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
                 carried_context = Some(context);
             }
         }
+        if sentence_effects.len() == 1
+            && let Some(previous_effect) = effects.last()
+            && let Some(EffectAst::IfResult {
+                predicate,
+                effects: if_result_effects,
+            }) = sentence_effects.first_mut()
+        {
+            if matches!(predicate, IfResultPredicate::Did)
+                && matches!(previous_effect, EffectAst::UnlessPays { .. })
+            {
+                *predicate = IfResultPredicate::DidNot;
+            }
+            if let Some(previous_target) = primary_damage_target_from_effect(previous_effect) {
+                replace_it_damage_target_in_effects(if_result_effects, &previous_target);
+            }
+        }
         let has_instead = sentence.iter().any(|token| token.is_word("instead"));
         if has_instead && sentence_effects.len() == 1 && effects.len() >= 1 {
             if matches!(
@@ -10567,6 +10583,45 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
 
     parser_trace("parse_effect_sentences:done", tokens);
     Ok(effects)
+}
+
+fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
+    match effect {
+        EffectAst::DealDamage { target, .. } | EffectAst::DealDamageEqualToPower { target, .. } => {
+            Some(target.clone())
+        }
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => if_true
+            .iter()
+            .find_map(primary_damage_target_from_effect)
+            .or_else(|| if_false.iter().find_map(primary_damage_target_from_effect)),
+        EffectAst::UnlessPays { effects, .. }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::MayByTaggedController { effects, .. }
+        | EffectAst::IfResult { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachPlayerDoesNot { effects, .. }
+        | EffectAst::ForEachOpponentDoesNot { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachTaggedPlayer { effects, .. }
+        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects }
+        | EffectAst::VoteOption { effects, .. }
+        | EffectAst::UnlessAction {
+            effects,
+            alternative: _,
+            ..
+        } => effects.iter().find_map(primary_damage_target_from_effect),
+        _ => None,
+    }
 }
 
 fn replace_it_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
@@ -12760,6 +12815,27 @@ fn try_build_unless(
         (PlayerAst::You, 1)
     } else if after_words.starts_with(&["any", "player"]) {
         (PlayerAst::Any, 2)
+    } else if after_words.len() >= 6
+        && after_words[0] == "that"
+        && matches!(
+            after_words[1],
+            "creature" | "creatures" | "permanent" | "permanents" | "source" | "sources"
+        )
+        && matches!(after_words[2], "controller" | "controllers")
+        && after_words[3] == "or"
+        && after_words[4] == "that"
+        && after_words[5] == "player"
+    {
+        (PlayerAst::ItsController, 6)
+    } else if after_words.len() >= 3
+        && after_words[0] == "that"
+        && matches!(
+            after_words[1],
+            "creature" | "creatures" | "permanent" | "permanents" | "source" | "sources"
+        )
+        && matches!(after_words[2], "controller" | "controllers")
+    {
+        (PlayerAst::ItsController, 3)
     } else if after_words.starts_with(&["they"]) {
         (PlayerAst::That, 1)
     } else if after_words.starts_with(&["defending", "player"]) {
@@ -24484,6 +24560,19 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
     if player_or_planeswalker {
         return Ok(wrap_target_count(
             TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, target_span),
+            target_count,
+        ));
+    }
+
+    if matches!(
+        remaining_words.as_slice(),
+        ["permanent", "or", "player"]
+            | ["permanents", "or", "players"]
+            | ["player", "or", "permanent"]
+            | ["players", "or", "permanents"]
+    ) {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span),
             target_count,
         ));
     }
