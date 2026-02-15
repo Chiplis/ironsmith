@@ -5156,6 +5156,51 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_rejects_investigate_for_each_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Declaration Variant").parse_text(
+            "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.",
+        );
+        assert!(
+            result.is_err(),
+            "unsupported investigate-for-each clause should fail parse instead of collapsing to a single investigate"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_phase_out_until_leaves_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Oubliette Variant").parse_text(
+            "When this enchantment enters, target creature phases out until this enchantment leaves the battlefield.",
+        );
+        assert!(
+            result.is_err(),
+            "unsupported phase-out-until-leaves clause should fail parse instead of mis-targeting objects"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_same_name_as_another_in_hand_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Hint Insanity Variant").parse_text(
+            "Target player reveals their hand. That player discards all nonland cards with the same name as another card in their hand.",
+        );
+        assert!(
+            result.is_err(),
+            "unsupported same-name-as-another-in-hand discard clause should fail parse instead of discarding entire hand"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_for_each_mana_from_spent_clause() {
+        let result =
+            CardDefinitionBuilder::new(CardId::new(), "Cataclysmic Prospecting Variant").parse_text(
+                "For each mana from a Desert spent to cast this spell, create a tapped Treasure token.",
+            );
+        assert!(
+            result.is_err(),
+            "unsupported for-each-mana-from-spent clause should fail parse instead of iterating over spells"
+        );
+    }
+
+    #[test]
     fn parse_labeled_trigger_line_as_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Heroic Label Variant")
             .parse_text(

@@ -11992,6 +11992,107 @@ fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextErr
             sentence_words.join(" ")
         )));
     }
+    let has_phase_out_until_leaves = sentence_words
+        .iter()
+        .any(|word| matches!(*word, "phase" | "phases" | "phased"))
+        && sentence_words.contains(&"until")
+        && sentence_words
+            .windows(3)
+            .any(|window| window == ["leaves", "the", "battlefield"]);
+    if has_phase_out_until_leaves {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported phase-out-until-leaves clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_investigate_for_each = sentence_words
+        .iter()
+        .any(|word| *word == "investigate" || *word == "investigates")
+        && sentence_words
+            .windows(2)
+            .any(|window| window == ["for", "each"]);
+    if has_investigate_for_each {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported investigate-for-each clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_same_name_as_another_in_hand = sentence_words
+        .windows(6)
+        .any(|window| window == ["same", "name", "as", "another", "card", "in"])
+        && sentence_words.contains(&"hand");
+    if has_same_name_as_another_in_hand {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported same-name-as-another-in-hand discard clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_for_each_mana_from_spent_to_cast = sentence_words
+        .windows(4)
+        .any(|window| window == ["for", "each", "mana", "from"])
+        && sentence_words.contains(&"spent")
+        && sentence_words
+            .windows(4)
+            .any(|window| window == ["cast", "this", "spell", "create"]);
+    if has_for_each_mana_from_spent_to_cast {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported for-each-mana-from-spent clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_when_you_sacrifice_this_way = sentence_words
+        .windows(3)
+        .any(|window| window == ["when", "you", "sacrifice"])
+        && sentence_words
+            .windows(2)
+            .any(|window| window == ["this", "way"]);
+    if has_when_you_sacrifice_this_way {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported when-you-sacrifice-this-way clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_sacrifice_any_number_then_draw_that_many = sentence_words
+        .iter()
+        .any(|word| *word == "sacrifice" || *word == "sacrifices")
+        && sentence_words
+            .windows(3)
+            .any(|window| window == ["any", "number", "of"])
+        && sentence_words
+            .iter()
+            .any(|word| *word == "draw" || *word == "draws")
+        && sentence_words
+            .windows(2)
+            .any(|window| window == ["that", "many"]);
+    if has_sacrifice_any_number_then_draw_that_many {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported sacrifice-any-number-then-draw-that-many clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_copy_spell_legendary_exception = sentence_words.contains(&"copy")
+        && sentence_words.contains(&"spell")
+        && sentence_words.contains(&"legendary")
+        && (sentence_words.contains(&"except") || sentence_words.contains(&"isnt"));
+    if has_copy_spell_legendary_exception {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported copy-spell legendary-exception clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_return_each_creature_that_isnt_list = sentence_words
+        .starts_with(&["return", "each", "creature", "that", "isnt"])
+        && sentence_words
+            .iter()
+            .filter(|word| **word == "or")
+            .count()
+            >= 1;
+    if has_return_each_creature_that_isnt_list {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported return-each-creature-that-isnt-list clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
     if sentence_words.starts_with(&["round", "up", "each", "time"]) {
         // "Round up each time." is reminder text for half P/T copy effects.
         // The semantic behavior is represented by the underlying token-copy primitive.
