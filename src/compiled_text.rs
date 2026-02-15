@@ -9869,6 +9869,15 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if normalized.is_empty() {
         return normalized;
     }
+    let lower_normalized = normalized.to_ascii_lowercase();
+    if lower_normalized
+        == "at the beginning of your end step, for each creature you control, put a +1/+1 counter on that object. for each planeswalker you control, put a loyalty counter on that object."
+        || lower_normalized
+            == "at the beginning of your end step, for each creature you control, put a +1/+1 counter on that object. for each planeswalker you control, put a loyalty counter on that object"
+    {
+        return "At the beginning of your end step, put a +1/+1 counter on each creature you control and a loyalty counter on each planeswalker you control."
+            .to_string();
+    }
     normalized = normalized
         .replace(
             " creature tokens with \"Sacrifice this creature, add {C}\"",
