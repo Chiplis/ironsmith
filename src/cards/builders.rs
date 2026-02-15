@@ -4935,6 +4935,20 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_token_with_prowess_keyword_in_rendering() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Prowess Token Probe")
+            .parse_text("Create a 4/4 red Dragon Elemental creature token with flying and prowess.")
+            .expect("parse token creation with prowess");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains("Prowess"),
+            "expected prowess keyword in token rendering, got: {joined}"
+        );
+    }
+
+    #[test]
     fn parse_gain_control_target_creature_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Threaten")
             .parse_text("Gain control of target creature until end of turn.")

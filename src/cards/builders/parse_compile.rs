@@ -4092,6 +4092,9 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if words.contains(&"flying") {
             builder = builder.flying();
         }
+        if words.contains(&"prowess") {
+            builder = builder.prowess();
+        }
         if words.contains(&"vigilance") {
             builder = builder.vigilance();
         }
