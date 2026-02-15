@@ -759,6 +759,43 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Activate only as a sorcery and only once each turn",
         )
         .replace(
+            "you sacrifice another creature you control",
+            "sacrifice another creature",
+        )
+        .replace(
+            "you sacrifice a creature you control",
+            "sacrifice a creature",
+        )
+        .replace(
+            "you sacrifice an artifact you control",
+            "sacrifice an artifact",
+        )
+        .replace("you sacrifice a land you control", "sacrifice a land")
+        .replace(
+            "you sacrifice a permanent you control",
+            "sacrifice a permanent",
+        )
+        .replace(
+            "you sacrifice two creatures you control",
+            "sacrifice two creatures",
+        )
+        .replace(
+            "you sacrifice three creatures you control",
+            "sacrifice three creatures",
+        )
+        .replace(
+            "you may sacrifice another creature you control",
+            "you may sacrifice another creature",
+        )
+        .replace(
+            "you may sacrifice a creature you control",
+            "you may sacrifice a creature",
+        )
+        .replace(
+            "you may sacrifice an artifact you control",
+            "you may sacrifice an artifact",
+        )
+        .replace(
             "Create a Powerstone artifact token tapped under your control",
             "Create a tapped Powerstone token",
         )
