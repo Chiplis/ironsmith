@@ -76,6 +76,10 @@ impl TriggerMatcher for PlayerDrawsCardTrigger {
         match &self.player {
             PlayerFilter::You => format!("Whenever you {}", action),
             PlayerFilter::Any => format!("Whenever a player {}", action),
+            PlayerFilter::Opponent => format!("Whenever an opponent {}", action),
+            PlayerFilter::Specific(_) | PlayerFilter::IteratedPlayer => {
+                format!("Whenever that player {}", action)
+            }
             _ => format!("Whenever {:?} {}", self.player, action),
         }
     }

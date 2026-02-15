@@ -205,6 +205,7 @@ enum TriggerSpec {
     YouGainLife,
     PlayerLosesLife(PlayerFilter),
     YouDrawCard,
+    PlayerDrawsCard(PlayerFilter),
     PlayerSacrifices {
         player: PlayerFilter,
         filter: ObjectFilter,

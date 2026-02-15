@@ -9578,8 +9578,14 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         }
     }
 
-    if words.as_slice() == ["you", "draw", "a", "card"] {
-        return Ok(TriggerSpec::YouDrawCard);
+    if words.ends_with(&["draw", "a", "card"]) || words.ends_with(&["draws", "a", "card"]) {
+        let subject = &words[..words.len().saturating_sub(3)];
+        if subject == ["you"] {
+            return Ok(TriggerSpec::YouDrawCard);
+        }
+        if let Some(player) = parse_trigger_subject_player_filter(subject) {
+            return Ok(TriggerSpec::PlayerDrawsCard(player));
+        }
     }
 
     if let Some(sacrifice_idx) = tokens
