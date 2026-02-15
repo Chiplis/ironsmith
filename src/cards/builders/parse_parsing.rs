@@ -11876,6 +11876,28 @@ fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextErr
             sentence_words.join(" ")
         )));
     }
+    let has_spent_to_cast_this_spell = sentence_words
+        .windows(6)
+        .any(|window| window == ["was", "spent", "to", "cast", "this", "spell"]);
+    if has_spent_to_cast_this_spell {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported spent-to-cast conditional clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_would_enter_instead_replacement = sentence_words
+        .iter()
+        .any(|word| *word == "would")
+        && sentence_words
+            .iter()
+            .any(|word| *word == "enter" || *word == "enters")
+        && sentence_words.iter().any(|word| *word == "instead");
+    if has_would_enter_instead_replacement {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported would-enter replacement clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
     if sentence_words.starts_with(&["round", "up", "each", "time"]) {
         // "Round up each time." is reminder text for half P/T copy effects.
         // The semantic behavior is represented by the underlying token-copy primitive.

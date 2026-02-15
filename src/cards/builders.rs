@@ -5039,6 +5039,28 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_rejects_spent_to_cast_conditional_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Firespout Variant").parse_text(
+            "Firespout deals 3 damage to each creature without flying if {R} was spent to cast this spell and 3 damage to each creature with flying if {G} was spent to cast this spell.",
+        );
+        assert!(
+            result.is_err(),
+            "unsupported spent-to-cast conditional clause should fail parse instead of partially compiling damage effects"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_would_enter_replacement_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Mistcaller Variant").parse_text(
+            "Sacrifice this creature: Until end of turn, if a nontoken creature would enter and it wasn't cast, exile it instead.",
+        );
+        assert!(
+            result.is_err(),
+            "unsupported would-enter replacement clause should fail parse instead of collapsing to an immediate exile effect"
+        );
+    }
+
+    #[test]
     fn parse_labeled_trigger_line_as_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Heroic Label Variant")
             .parse_text(
