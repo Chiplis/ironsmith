@@ -696,7 +696,9 @@ fn is_basic_color_word(word: &str) -> bool {
 }
 
 fn starts_with_inline_token_rules_tail(words: &[&str]) -> bool {
-    words.starts_with(&["when", "this", "token"])
+    words.starts_with(&["when"])
+        || words.starts_with(&["whenever"])
+        || words.starts_with(&["when", "this", "token"])
         || words.starts_with(&["whenever", "this", "token"])
         || words.starts_with(&["this", "token"])
         || words.starts_with(&["that", "token"])
@@ -719,8 +721,39 @@ fn starts_with_inline_token_rules_tail(words: &[&str]) -> bool {
         || words.starts_with(&["it", "gains"])
         || words.starts_with(&["they", "have"])
         || words.starts_with(&["they", "gain"])
+        || words.starts_with(&["equip"])
+        || words.starts_with(&["equipped", "creature"])
+        || words.starts_with(&["enchanted", "creature"])
         || words.starts_with(&["r"])
         || words.starts_with(&["t"])
+}
+
+fn starts_with_inline_token_rules_continuation(words: &[&str]) -> bool {
+    matches!(
+        words.first().copied(),
+        Some(
+            "gain"
+                | "gains"
+                | "draw"
+                | "draws"
+                | "add"
+                | "deal"
+                | "deals"
+                | "destroy"
+                | "destroys"
+                | "exile"
+                | "exiles"
+                | "return"
+                | "returns"
+                | "tap"
+                | "untap"
+                | "sacrifice"
+                | "create"
+                | "put"
+                | "fights"
+                | "fight"
+        )
+    )
 }
 
 fn is_token_creation_context(words: &[&str]) -> bool {
@@ -969,8 +1002,11 @@ fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> Vec<Vec<Tok
             if before_words.first() == Some(&"unless") {
                 continue;
             }
-            let is_inline_token_rules_split = is_token_creation_context(&before_words)
-                && starts_with_inline_token_rules_tail(&after_words);
+            let is_inline_token_rules_split =
+                (is_token_creation_context(&before_words)
+                    || has_inline_token_rules_context(&before_words))
+                    && (starts_with_inline_token_rules_tail(&after_words)
+                        || starts_with_inline_token_rules_continuation(&after_words));
             if is_inline_token_rules_split {
                 continue;
             }
@@ -16824,6 +16860,7 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "mountain" => Some(Subtype::Mountain),
         "forest" => Some(Subtype::Forest),
         "urzas" => Some(Subtype::Urzas),
+        "cave" | "caves" => Some(Subtype::Cave),
         "gate" | "gates" => Some(Subtype::Gate),
         "locus" | "loci" => Some(Subtype::Locus),
         "advisor" => Some(Subtype::Advisor),
@@ -23190,63 +23227,59 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         let with_tail_end = for_each_idx.unwrap_or(tail_words.len());
         if with_idx + 1 < with_tail_end {
             let with_words = &tail_words[with_idx + 1..with_tail_end];
-            let starts_with_attached_token_rules = with_words.starts_with(&["equipped", "creature"])
-                || with_words.starts_with(&["enchanted", "creature"]);
-            if !starts_with_attached_token_rules {
-                let rules_text_start = with_words.iter().position(|word| {
+            let rules_text_start = with_words.iter().position(|word| {
+                matches!(
+                    *word,
+                    "when"
+                        | "whenever"
+                        | "if"
+                        | "t"
+                        | "this"
+                        | "that"
+                        | "it"
+                        | "those"
+                        | "sacrifice"
+                        | "add"
+                        | "draw"
+                        | "deals"
+                        | "deal"
+                )
+            });
+            let include_end = rules_text_start.unwrap_or(with_words.len());
+            let preserve_rules_tail = rules_text_start
+                .is_some_and(|start| start < with_words.len())
+                && with_words[include_end..].iter().any(|word| {
                     matches!(
                         *word,
                         "when"
                             | "whenever"
-                            | "if"
-                            | "t"
-                            | "this"
-                            | "that"
-                            | "it"
-                            | "those"
+                            | "at"
                             | "sacrifice"
-                            | "add"
+                            | "return"
+                            | "counter"
                             | "draw"
+                            | "add"
                             | "deals"
                             | "deal"
+                            | "gets"
+                            | "gain"
+                            | "gains"
+                            | "cant"
+                            | "can"
+                            | "block"
                     )
                 });
-                let include_end = rules_text_start.unwrap_or(with_words.len());
-                let preserve_rules_tail = rules_text_start
-                    .is_some_and(|start| start < with_words.len())
-                    && with_words[include_end..].iter().any(|word| {
-                        matches!(
-                            *word,
-                            "when"
-                                | "whenever"
-                                | "at"
-                                | "sacrifice"
-                                | "return"
-                                | "counter"
-                                | "draw"
-                                | "add"
-                                | "deals"
-                                | "deal"
-                                | "gets"
-                                | "gain"
-                                | "gains"
-                                | "cant"
-                                | "can"
-                                | "block"
-                        )
-                    });
-                if include_end > 0 {
-                    name_words.extend(with_words[..include_end].iter().copied());
-                    if preserve_rules_tail {
-                        // Keep quoted token rules text tails so token lowering can
-                        // reconstruct granted abilities instead of dropping them.
-                        name_words.extend(with_words[include_end..].iter().copied());
-                    }
-                } else {
-                    // Preserve quoted token rules text so token compilation can
-                    // attach the ability to the created token definition.
-                    name_words.extend(with_words.iter().copied());
+            if include_end > 0 {
+                name_words.extend(with_words[..include_end].iter().copied());
+                if preserve_rules_tail {
+                    // Keep quoted token rules text tails so token lowering can
+                    // reconstruct granted abilities instead of dropping them.
+                    name_words.extend(with_words[include_end..].iter().copied());
                 }
+            } else {
+                // Preserve quoted token rules text so token compilation can
+                // attach the ability to the created token definition.
+                name_words.extend(with_words.iter().copied());
             }
         }
     }

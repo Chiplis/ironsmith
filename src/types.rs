@@ -30,6 +30,7 @@ pub enum Subtype {
 
     // Non-basic land types
     Urzas,
+    Cave,
     Gate,
     Locus,
 
@@ -298,6 +299,7 @@ impl Subtype {
                 | Subtype::Forest
                 // Non-basic land types
                 | Subtype::Urzas
+                | Subtype::Cave
         )
     }
 

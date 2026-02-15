@@ -3907,6 +3907,54 @@ fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) -> Ability 
     }
 }
 
+fn token_combat_damage_gain_control_target_artifact_ability() -> Ability {
+    let target = ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::artifact().controlled_by(PlayerFilter::DamagedPlayer),
+    ));
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_deals_combat_damage_to_player(),
+            effects: vec![Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec_runtime(
+                    target.clone(),
+                    crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController,
+                    Until::Forever,
+                ),
+            )],
+            choices: vec![target],
+            intervening_if: None,
+            once_each_turn: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(
+            "Whenever this token deals combat damage to a player, gain control of target artifact that player controls."
+                .to_string(),
+        ),
+    }
+}
+
+fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name: &str) -> Ability {
+    let target = ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .named(card_name.to_string()),
+    ));
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_leaves_battlefield(),
+            effects: vec![Effect::return_from_graveyard_to_hand(target.clone())],
+            choices: vec![target],
+            intervening_if: None,
+            once_each_turn: false,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(format!(
+            "When this token leaves the battlefield, return target card named {card_name} from your graveyard to your hand."
+        )),
+    }
+}
+
 fn parse_token_mana_symbol(word: &str) -> Option<ManaSymbol> {
     match word {
         "w" => Some(ManaSymbol::White),
@@ -4082,6 +4130,8 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         .collect();
     let has_word = |needle: &str| words.iter().any(|word| *word == needle);
     let has_explicit_pt = words.iter().any(|word| parse_token_pt(word).is_some());
+    let has_equipment_rules_subject =
+        has_word("equipment") && words.windows(2).any(|window| window == ["equipped", "creature"]);
 
     if has_word("treasure") && !words.contains(&"creature") {
         return Some(crate::cards::tokens::treasure_token_definition());
@@ -4130,7 +4180,10 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
         return Some(builder.build());
     }
-    if has_word("artifact") && !words.contains(&"creature") && !has_explicit_pt {
+    if has_word("artifact")
+        && !has_explicit_pt
+        && (!words.contains(&"creature") || has_equipment_rules_subject)
+    {
         let mut subtypes = Vec::new();
         for word in &words {
             if let Some(subtype) = parse_subtype_word(word)
@@ -4301,10 +4354,15 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
     }
     if words.contains(&"creature") {
         let mut card_types = vec![CardType::Creature];
-        if words.contains(&"artifact") {
+        let first_creature_idx = words.iter().position(|word| *word == "creature");
+        let artifact_before_creature =
+            first_creature_idx.is_some_and(|idx| words[..idx].contains(&"artifact"));
+        let enchantment_before_creature =
+            first_creature_idx.is_some_and(|idx| words[..idx].contains(&"enchantment"));
+        if artifact_before_creature {
             card_types.insert(0, CardType::Artifact);
         }
-        if words.contains(&"enchantment") {
+        if enchantment_before_creature {
             card_types.insert(0, CardType::Enchantment);
         }
 
@@ -4509,6 +4567,30 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         {
             builder =
                 builder.with_ability(token_noncreature_spell_each_opponent_damage_ability(amount));
+        }
+        if words.contains(&"whenever")
+            && words.contains(&"token")
+            && words.contains(&"deals")
+            && words.contains(&"combat")
+            && words.contains(&"damage")
+            && words.contains(&"player")
+            && words.contains(&"gain")
+            && words.contains(&"control")
+            && words.contains(&"artifact")
+        {
+            builder = builder.with_ability(token_combat_damage_gain_control_target_artifact_ability());
+        }
+        if words.contains(&"when")
+            && words.contains(&"leaves")
+            && words.contains(&"battlefield")
+            && words.contains(&"return")
+            && words.contains(&"named")
+            && words.contains(&"graveyard")
+            && words.contains(&"hand")
+            && let Some(card_name) = extract_named_card_name(&words)
+        {
+            builder = builder
+                .with_ability(token_leaves_return_named_from_graveyard_to_hand_ability(&card_name));
         }
         if has_word("pest")
             && words.contains(&"when")
