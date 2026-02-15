@@ -189,6 +189,25 @@ fn mana_ability_condition_met(
                     .count() as u32;
                 count >= *required_count
             }
+            ManaAbilityCondition::ControlCreatureWithPowerAtLeast(required_power) => {
+                game.battlefield.iter().any(|&perm_id| {
+                    game.object(perm_id).is_some_and(|perm| {
+                        perm.controller == source.controller
+                            && perm.is_creature()
+                            && perm.power().is_some_and(|power| power >= *required_power as i32)
+                    })
+                })
+            }
+            ManaAbilityCondition::ControlCreaturesTotalPowerAtLeast(required_power) => {
+                let total_power = game
+                    .battlefield
+                    .iter()
+                    .filter_map(|&perm_id| game.object(perm_id))
+                    .filter(|perm| perm.controller == source.controller && perm.is_creature())
+                    .map(|perm| perm.power().unwrap_or(0).max(0))
+                    .sum::<i32>();
+                total_power >= *required_power as i32
+            }
             ManaAbilityCondition::CardInYourGraveyard {
                 card_types,
                 subtypes,

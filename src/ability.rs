@@ -526,6 +526,14 @@ pub enum ManaAbilityCondition {
     /// Used for conditions like "Activate only if you control five or more lands."
     ControlAtLeastLands(u32),
 
+    /// Controller must control a creature with power at least N.
+    /// Used for ferocious-style mana activation checks.
+    ControlCreatureWithPowerAtLeast(u32),
+
+    /// Controller's creatures must have total power at least N.
+    /// Used for formidable-style mana activation checks.
+    ControlCreaturesTotalPowerAtLeast(u32),
+
     /// Controller must have a matching card in their graveyard.
     /// Used for clauses like "Activate only if there is an Elf card in your graveyard."
     CardInYourGraveyard {

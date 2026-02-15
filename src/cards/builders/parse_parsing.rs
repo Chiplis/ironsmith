@@ -7708,11 +7708,46 @@ fn parse_activation_condition(tokens: &[Token]) -> Option<ManaAbilityCondition> 
             subtypes,
         });
     }
+    if line_words.starts_with(&[
+        "activate",
+        "only",
+        "if",
+        "creatures",
+        "you",
+        "control",
+        "have",
+        "total",
+        "power",
+    ]) {
+        let threshold_word = line_words.get(9)?;
+        let threshold = parse_cardinal_u32(threshold_word)?;
+        let tail = &line_words[10..];
+        if tail == ["or", "greater"] {
+            return Some(ManaAbilityCondition::ControlCreaturesTotalPowerAtLeast(
+                threshold,
+            ));
+        }
+        return None;
+    }
     if !line_words.starts_with(&["activate", "only", "if", "you", "control"]) {
         return None;
     }
 
     let after_control = &tokens[5..];
+    let control_tail = words(after_control);
+    if control_tail.starts_with(&["a", "creature", "with", "power"])
+        || control_tail.starts_with(&["creature", "with", "power"])
+    {
+        let power_idx = control_tail.iter().position(|word| *word == "power")?;
+        let threshold = parse_cardinal_u32(control_tail.get(power_idx + 1)?)?;
+        let tail = &control_tail[power_idx + 2..];
+        if tail == ["or", "greater"] {
+            return Some(ManaAbilityCondition::ControlCreatureWithPowerAtLeast(
+                threshold,
+            ));
+        }
+        return None;
+    }
     if let Some((count, used)) = parse_number(after_control) {
         let tail = words(&after_control[used..]);
         if tail == ["or", "more", "artifact"] || tail == ["or", "more", "artifacts"] {
@@ -7722,7 +7757,6 @@ fn parse_activation_condition(tokens: &[Token]) -> Option<ManaAbilityCondition> 
             return Some(ManaAbilityCondition::ControlAtLeastLands(count));
         }
     }
-    let control_tail = words(after_control);
     if control_tail == ["an", "artifact"]
         || control_tail == ["a", "artifact"]
         || control_tail == ["artifact"]
@@ -7746,6 +7780,11 @@ fn parse_activation_condition(tokens: &[Token]) -> Option<ManaAbilityCondition> 
     }
 
     Some(ManaAbilityCondition::ControlLandWithSubtype(subtypes))
+}
+
+fn parse_cardinal_u32(word: &str) -> Option<u32> {
+    let token = Token::Word(word.to_string(), TextSpan::synthetic());
+    parse_number(&[token]).map(|(value, _)| value)
 }
 
 fn parse_enters_tapped_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {

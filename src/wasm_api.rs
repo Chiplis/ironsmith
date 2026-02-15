@@ -3114,6 +3114,12 @@ fn describe_mana_condition(condition: &crate::ability::ManaAbilityCondition) -> 
                 format!("you control {count} or more lands")
             }
         }
+        crate::ability::ManaAbilityCondition::ControlCreatureWithPowerAtLeast(power) => {
+            format!("you control a creature with power {power} or greater")
+        }
+        crate::ability::ManaAbilityCondition::ControlCreaturesTotalPowerAtLeast(power) => {
+            format!("creatures you control have total power {power} or greater")
+        }
         crate::ability::ManaAbilityCondition::CardInYourGraveyard {
             card_types,
             subtypes,

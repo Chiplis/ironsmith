@@ -8382,6 +8382,12 @@ fn describe_mana_activation_condition(condition: &crate::ability::ManaAbilityCon
                 format!("Activate only if you control {count} or more lands")
             }
         }
+        crate::ability::ManaAbilityCondition::ControlCreatureWithPowerAtLeast(power) => {
+            format!("Activate only if you control a creature with power {power} or greater")
+        }
+        crate::ability::ManaAbilityCondition::ControlCreaturesTotalPowerAtLeast(power) => {
+            format!("Activate only if creatures you control have total power {power} or greater")
+        }
         crate::ability::ManaAbilityCondition::CardInYourGraveyard {
             card_types,
             subtypes,

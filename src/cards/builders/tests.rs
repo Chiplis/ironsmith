@@ -3572,6 +3572,42 @@ fn parse_graveyard_card_mana_activation_condition() {
 }
 
 #[test]
+fn parse_creature_power_mana_activation_condition() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ferocious Mana Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Add {G}{G}. Activate only if you control a creature with power 4 or greater.")
+        .expect("creature-power mana activation condition should parse");
+
+    let lines = compiled_lines(&def);
+    let mana_line = lines
+        .iter()
+        .find(|line| line.contains("Mana ability"))
+        .expect("expected mana ability line");
+    assert!(
+        mana_line.contains("Activate only if you control a creature with power 4 or greater"),
+        "expected creature-power activation condition in compiled text, got {mana_line}"
+    );
+}
+
+#[test]
+fn parse_total_power_mana_activation_condition() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Formidable Mana Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Add {C}{C}{C}. Activate only if creatures you control have total power 8 or greater.")
+        .expect("total-power mana activation condition should parse");
+
+    let lines = compiled_lines(&def);
+    let mana_line = lines
+        .iter()
+        .find(|line| line.contains("Mana ability"))
+        .expect("expected mana ability line");
+    assert!(
+        mana_line.contains("Activate only if creatures you control have total power 8 or greater"),
+        "expected total-power activation condition in compiled text, got {mana_line}"
+    );
+}
+
+#[test]
 fn parse_inline_whenever_clause_keeps_its_controller_subject() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Noxious Assault Variant")
         .card_types(vec![CardType::Sorcery])
