@@ -776,6 +776,8 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         normalized = format!("{}, then put {}", left.trim_end_matches('.'), right);
     }
     normalized = normalized
+        .replace("this enchantment enters", "this permanent enters")
+        .replace("This enchantment enters", "This permanent enters")
         .replace(
             "target opponent's artifact or enchantment",
             "target artifact or enchantment an opponent controls",
@@ -856,6 +858,32 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
             ". Target opponent discards ",
         )
         .replace("that player controls", "they control")
+        .replace("sacrifice a creature you control", "sacrifice a creature")
+        .replace("Sacrifice a creature you control", "Sacrifice a creature")
+        .replace(
+            "sacrifice three creatures you control",
+            "sacrifice three creatures",
+        )
+        .replace(
+            "Sacrifice three creatures you control",
+            "Sacrifice three creatures",
+        )
+        .replace(
+            "Tag the object attached to this Aura as 'enchanted'. ",
+            "",
+        )
+        .replace(
+            "tag the object attached to this Aura as 'enchanted'. ",
+            "",
+        )
+        .replace(
+            "Destroy target tagged object 'enchanted'",
+            "Destroy enchanted creature",
+        )
+        .replace(
+            "destroy target tagged object 'enchanted'",
+            "destroy enchanted creature",
+        )
         .replace("Counter spell", "Counter that spell")
         .replace("counter spell", "counter that spell");
     if let Some((prefix, tail)) = normalized.split_once("For each opponent, Deal ")
