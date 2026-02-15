@@ -420,6 +420,7 @@ pub fn player_filter_matches_with_context(
     match spec {
         PlayerFilter::Any => true,
         PlayerFilter::You => player == controller,
+        PlayerFilter::NotYou => player != controller,
         PlayerFilter::Opponent => player != controller,
         PlayerFilter::Target(_) => true,
         PlayerFilter::Specific(id) => player == *id,

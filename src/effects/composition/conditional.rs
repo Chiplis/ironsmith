@@ -273,6 +273,13 @@ fn resolve_condition_player_simple(
         PlayerFilter::You => Some(controller),
         PlayerFilter::Specific(id) => Some(*id),
         PlayerFilter::Active => Some(game.turn.active_player),
+        PlayerFilter::NotYou => game.players.iter().find_map(|p| {
+            if p.id != controller && p.is_in_game() {
+                Some(p.id)
+            } else {
+                None
+            }
+        }),
         PlayerFilter::Opponent => game.players.iter().find_map(|p| {
             if p.id != controller && p.is_in_game() {
                 Some(p.id)

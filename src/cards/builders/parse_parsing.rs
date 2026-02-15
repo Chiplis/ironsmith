@@ -2009,6 +2009,9 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_creatures_cant_block_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(abilities) = parse_enters_tapped_with_counters_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(ability) = parse_enters_with_counters_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -4462,6 +4465,51 @@ fn parse_has_base_power_toughness_static_line(
     Ok(Some(StaticAbility::set_base_power_toughness(
         filter, power, toughness,
     )))
+}
+
+fn parse_enters_tapped_with_counters_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.is_empty() {
+        return Ok(None);
+    }
+
+    let enters_idx = clause_words
+        .iter()
+        .position(|word| *word == "enter" || *word == "enters");
+    let Some(enters_idx) = enters_idx else {
+        return Ok(None);
+    };
+    let with_idx = clause_words.iter().position(|word| *word == "with");
+    let Some(with_idx) = with_idx else {
+        return Ok(None);
+    };
+    if with_idx <= enters_idx {
+        return Ok(None);
+    }
+
+    let tapped_between = clause_words[enters_idx + 1..with_idx]
+        .iter()
+        .any(|word| *word == "tapped");
+    if !tapped_between {
+        return Ok(None);
+    }
+    if !clause_words
+        .iter()
+        .any(|word| *word == "counter" || *word == "counters")
+    {
+        return Ok(None);
+    }
+    if !is_source_reference_words(&clause_words[..enters_idx]) {
+        return Ok(None);
+    }
+
+    let Some(counters) = parse_enters_with_counters_line(tokens)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![StaticAbility::enters_tapped_ability(), counters]))
 }
 
 fn parse_enters_with_counters_line(
@@ -24449,16 +24497,18 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
     if remaining_words.as_slice() == ["equipped", "creature"]
         || remaining_words.as_slice() == ["equipped", "creatures"]
     {
+        let filter = parse_object_filter(tokens, false)?;
         return Ok(wrap_target_count(
-            TargetAst::Tagged(TagKey::from("equipped"), span),
+            TargetAst::Object(filter, None, None),
             target_count,
         ));
     }
     if remaining_words.as_slice() == ["enchanted", "creature"]
         || remaining_words.as_slice() == ["enchanted", "creatures"]
     {
+        let filter = parse_object_filter(tokens, false)?;
         return Ok(wrap_target_count(
-            TargetAst::Tagged(TagKey::from("enchanted"), span),
+            TargetAst::Object(filter, None, None),
             target_count,
         ));
     }
@@ -25452,10 +25502,10 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                     filter.owner = Some(PlayerFilter::target_opponent());
                 }
                 ["you", "dont", "control"] => {
-                    filter.controller = Some(PlayerFilter::Opponent);
+                    filter.controller = Some(PlayerFilter::NotYou);
                 }
                 ["you", "dont", "own"] => {
-                    filter.owner = Some(PlayerFilter::Opponent);
+                    filter.owner = Some(PlayerFilter::NotYou);
                 }
                 _ => {}
             }
@@ -25472,9 +25522,9 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             {
                 filter.owner = Some(PlayerFilter::You);
             } else if window == ["you", "do", "not", "control"] {
-                filter.controller = Some(PlayerFilter::Opponent);
+                filter.controller = Some(PlayerFilter::NotYou);
             } else if window == ["you", "do", "not", "own"] {
-                filter.owner = Some(PlayerFilter::Opponent);
+                filter.owner = Some(PlayerFilter::NotYou);
             }
         }
     }

@@ -1008,6 +1008,16 @@ fn resolve_player_filter(
             }
             Ok(ctx.controller)
         }
+        PlayerFilter::NotYou => {
+            for player in game.players.iter() {
+                if player.id != ctx.controller && player.is_in_game() {
+                    return Ok(player.id);
+                }
+            }
+            Err(ExecutionError::UnresolvableValue(
+                "NotYou filter requires another in-game player".to_string(),
+            ))
+        }
         PlayerFilter::Opponent => {
             // Single opponent - try to find one from targets, otherwise error
             for target in &ctx.targets {
@@ -1091,6 +1101,12 @@ fn resolve_player_filter_to_list(
             }
             Err(ExecutionError::InvalidTarget)
         }
+        PlayerFilter::NotYou => Ok(game
+            .players
+            .iter()
+            .filter(|p| p.id != ctx.controller && p.is_in_game())
+            .map(|p| p.id)
+            .collect()),
         PlayerFilter::Opponent => Ok(game
             .players
             .iter()

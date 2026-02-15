@@ -5034,6 +5034,21 @@ fn render_enchanted_tap_untap_compacts_tag_prelude() {
 }
 
 #[test]
+fn render_aura_etb_tap_keeps_enchanted_creature_subject() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Claustrophobia Variant")
+        .parse_text(
+            "Enchant creature\nWhen this Aura enters, tap enchanted creature.\nEnchanted creature doesn't untap during its controller's untap step.",
+        )
+        .expect("aura etb tap clause should parse");
+    let joined = crate::compiled_text::compiled_lines(&def).join("\n");
+    let lower = joined.to_ascii_lowercase();
+    assert!(
+        lower.contains("when this aura enters, tap enchanted creature"),
+        "expected enchanted creature subject in ETB tap rendering, got {joined}"
+    );
+}
+
+#[test]
 fn parse_draw_then_put_two_cards_from_hand_on_top_preserves_count() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Brainstorm Variant")
         .parse_text("Draw three cards, then put two cards from your hand on top of your library in any order.")
@@ -5997,9 +6012,25 @@ fn parse_storage_depletion_and_ki_counters() {
     CardDefinitionBuilder::new(CardId::new(), "Storage Variant")
         .parse_text("{2}, {T}: Put a storage counter on this land.")
         .expect("storage counter line should parse");
-    CardDefinitionBuilder::new(CardId::new(), "Depletion Variant")
+    let depletion = CardDefinitionBuilder::new(CardId::new(), "Depletion Variant")
         .parse_text("This land enters tapped with two depletion counters on it.")
         .expect("depletion counter line should parse");
+    let depletion_static_ids: Vec<_> = depletion
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        depletion_static_ids.contains(&StaticAbilityId::EntersTapped),
+        "expected enters-tapped static ability for tapped-with-counters line, got {depletion_static_ids:?}"
+    );
+    assert!(
+        depletion_static_ids.contains(&StaticAbilityId::EnterWithCounters),
+        "expected enters-with-counters static ability for tapped-with-counters line, got {depletion_static_ids:?}"
+    );
     CardDefinitionBuilder::new(CardId::new(), "Ki Variant")
         .parse_text("Whenever you cast a Spirit or Arcane spell, you may put a ki counter on this creature.")
         .expect("ki counter line should parse");

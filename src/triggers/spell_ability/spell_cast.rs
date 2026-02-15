@@ -190,6 +190,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         if let Some(player_filter) = targets_player {
             target_parts.push(match player_filter {
                 PlayerFilter::You => "you".to_string(),
+                PlayerFilter::NotYou => "a player other than you".to_string(),
                 PlayerFilter::Opponent => "an opponent".to_string(),
                 PlayerFilter::Any => "a player".to_string(),
                 PlayerFilter::Specific(_) => "that player".to_string(),
@@ -201,6 +202,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::IteratedPlayer => "that player".to_string(),
                 PlayerFilter::Target(inner) => match inner.as_ref() {
                     PlayerFilter::You => "you".to_string(),
+                    PlayerFilter::NotYou => "a player other than you".to_string(),
                     PlayerFilter::Opponent => "an opponent".to_string(),
                     PlayerFilter::Any => "a player".to_string(),
                     _ => "target player".to_string(),

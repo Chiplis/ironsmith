@@ -633,6 +633,7 @@ pub fn player_matches_filter_with_combat(
     match filter {
         PlayerFilter::Any => true,
         PlayerFilter::You => player_id == controller,
+        PlayerFilter::NotYou => player_id != controller,
         PlayerFilter::Opponent => player_id != controller,
         PlayerFilter::Active => game.turn.active_player == player_id,
         PlayerFilter::Teammate => false, // In 2-player games, no teammates

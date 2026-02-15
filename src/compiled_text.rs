@@ -30,6 +30,7 @@ fn with_effect_render_depth<F: FnOnce() -> String>(render: F) -> String {
 fn describe_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::You => "you".to_string(),
+        PlayerFilter::NotYou => "a player other than you".to_string(),
         PlayerFilter::Opponent => "an opponent".to_string(),
         PlayerFilter::Any => "a player".to_string(),
         PlayerFilter::Target(inner) => {
@@ -1956,6 +1957,13 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Creatures your opponents control enter tapped".to_string();
     }
+    if normalized == "An opponent's artifact or creature or land enter the battlefield tapped."
+        || normalized == "An opponent's artifact or creature or land enter the battlefield tapped"
+        || normalized == "An opponent's artifact or creature or land enters the battlefield tapped."
+        || normalized == "An opponent's artifact or creature or land enters the battlefield tapped"
+    {
+        return "Artifacts, creatures, and lands your opponents control enter tapped".to_string();
+    }
     if let Some(subject) = normalized.strip_suffix(" have flashback as long as it's your turn") {
         return format!(
             "During your turn, {} have flashback. Its flashback cost is equal to its mana cost",
@@ -2071,6 +2079,12 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "All Sliver creatures have {}",
             normalize_keyword_predicate_case(rest)
         );
+    }
+    if let Some(rest) = normalized.strip_prefix("Creatures get ") {
+        return format!("All creatures get {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("creatures get ") {
+        return format!("all creatures get {rest}");
     }
     if let Some(rest) = normalized.strip_prefix("creatures have ") {
         return format!(
@@ -3044,6 +3058,7 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
 
     let controller_suffix = match controller {
         Some(PlayerFilter::You) => Some("you control"),
+        Some(PlayerFilter::NotYou) => Some("you don't control"),
         Some(PlayerFilter::Opponent) => Some("an opponent controls"),
         Some(PlayerFilter::Any) => Some("a player controls"),
         Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they control"),
@@ -3055,6 +3070,7 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
 
     let owner_suffix = match owner {
         Some(PlayerFilter::You) => Some("you own"),
+        Some(PlayerFilter::NotYou) => Some("you don't own"),
         Some(PlayerFilter::Opponent) => Some("an opponent owns"),
         Some(PlayerFilter::Any) => Some("a player owns"),
         Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they own"),
@@ -3238,7 +3254,9 @@ fn describe_goad_target(spec: &ChooseSpec) -> String {
             if looks_like_plain_creature_filter {
                 if let Some(controller) = filter.controller.as_ref() {
                     return match controller {
-                        PlayerFilter::Opponent => "all creatures you don't control".to_string(),
+                        PlayerFilter::Opponent | PlayerFilter::NotYou => {
+                            "all creatures you don't control".to_string()
+                        }
                         PlayerFilter::Target(inner) => {
                             let who = describe_player_filter(inner);
                             if who == "player" {
@@ -4169,25 +4187,60 @@ fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
     }
 }
 
+fn describe_attached_object_for_tag(tag: &str, spec: Option<&ChooseSpec>) -> String {
+    let default = match tag {
+        "enchanted" => "enchanted permanent",
+        "equipped" => "equipped creature",
+        _ => "attached object",
+    };
+
+    if tag != "enchanted" {
+        return default.to_string();
+    }
+
+    let Some(ChooseSpec::Object(filter)) = spec else {
+        return default.to_string();
+    };
+    let references_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+    });
+    if !references_tag {
+        return default.to_string();
+    }
+
+    if filter.card_types.len() == 1 && filter.all_card_types.is_empty() {
+        return format!(
+            "enchanted {}",
+            describe_card_type_word_local(filter.card_types[0])
+        );
+    }
+
+    default.to_string()
+}
+
 fn describe_tag_attached_then_tap_or_untap(
     tag_attached: &crate::effects::TagAttachedToSourceEffect,
     next: &Effect,
 ) -> Option<String> {
     let tag = tag_attached.tag.as_str();
-    let attached_object = match tag {
-        "enchanted" => "enchanted permanent",
-        "equipped" => "equipped creature",
-        _ => return None,
-    };
+    if !matches!(tag, "enchanted" | "equipped") {
+        return None;
+    }
 
     if let Some(tap) = next.downcast_ref::<crate::effects::TapEffect>()
         && choose_spec_references_tag(&tap.spec, tag)
     {
+        let attached_object = describe_attached_object_for_tag(tag, Some(&tap.spec));
         return Some(format!("Tap {attached_object}"));
     }
     if let Some(untap) = next.downcast_ref::<crate::effects::UntapEffect>()
         && choose_spec_references_tag(&untap.spec, tag)
     {
+        let attached_object = describe_attached_object_for_tag(tag, Some(&untap.spec));
         return Some(format!("Untap {attached_object}"));
     }
     None
@@ -11738,6 +11791,29 @@ fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<String> {
     let mut idx = 0usize;
 
     while idx < lines.len() {
+        if idx + 1 < lines.len() {
+            let left = lines[idx].trim().trim_end_matches('.');
+            let right = lines[idx + 1].trim().trim_end_matches('.');
+            if let Some(subject) = left
+                .strip_suffix(" enters tapped")
+                .or_else(|| left.strip_suffix(" enter tapped"))
+                && let Some(counter_clause) = right.strip_prefix("Enters the battlefield with ")
+            {
+                let subject = subject.trim();
+                if !subject.is_empty() {
+                    let enter_verb = if subject_is_plural(subject) {
+                        "enter"
+                    } else {
+                        "enters"
+                    };
+                    merged.push(format!(
+                        "{subject} {enter_verb} tapped with {counter_clause}"
+                    ));
+                    idx += 2;
+                    continue;
+                }
+            }
+        }
         if idx + 1 < lines.len()
             && let Some(left_subject) = split_lose_all_abilities_clause(lines[idx].trim())
         {
@@ -13293,6 +13369,11 @@ fn format_cost_words(words: &[&str]) -> Option<String> {
             idx += 1;
             continue;
         }
+        if word.chars().all(|ch| ch.is_ascii_digit()) {
+            parts.push(format!("{{{word}}}"));
+            idx += 1;
+            continue;
+        }
         if is_cost_symbol_word(word) {
             parts.push(format!("{{{}}}", word.to_ascii_uppercase()));
             idx += 1;
@@ -13372,6 +13453,16 @@ fn normalize_granted_activated_ability_clause(text: &str) -> Option<String> {
             }
             effect_idx = Some(idx);
             break;
+        }
+    }
+    if effect_idx.is_none() && words.len() >= 2 {
+        let leading_cost = words[0] == "t"
+            || is_cost_symbol_word(words[0])
+            || words[0].chars().all(|ch| ch.is_ascii_digit());
+        let starts_effect = is_effect_verb_word(words[1])
+            || matches!(words[1], "this" | "target" | "you" | "each" | "a" | "an");
+        if leading_cost && starts_effect {
+            effect_idx = Some(1);
         }
     }
     let effect_idx = effect_idx?;
@@ -15188,6 +15279,13 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_all_creatures_get_clause() {
+        let normalized =
+            normalize_common_semantic_phrasing("Creatures get -2/-2 until end of turn.");
+        assert_eq!(normalized, "All creatures get -2/-2 until end of turn.");
+    }
+
+    #[test]
     fn normalizes_put_land_card_in_hand_phrase() {
         let normalized = normalize_common_semantic_phrasing(
             "{T}: you may Put land card in your hand onto the battlefield.",
@@ -15304,6 +15402,19 @@ mod tests {
         assert_eq!(
             merged[0],
             "Static ability 1: Creatures you control have Flying and First strike."
+        );
+    }
+
+    #[test]
+    fn merges_adjacent_static_heading_enters_tapped_with_counters_lines() {
+        let merged = merge_adjacent_static_heading_lines(vec![
+            "Static ability 1: This land enters tapped.".to_string(),
+            "Static ability 2: Enters the battlefield with 2 charge counter(s).".to_string(),
+        ]);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merged[0],
+            "Static ability 1: This land enters tapped with 2 charge counter(s)"
         );
     }
 

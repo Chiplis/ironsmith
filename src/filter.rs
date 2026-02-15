@@ -220,6 +220,11 @@ pub enum PlayerFilter {
     /// The controller of the source ability
     You,
 
+    /// Any player other than the source controller.
+    ///
+    /// Used for clauses like "you don't control" / "you don't own".
+    NotYou,
+
     /// An opponent of the controller
     Opponent,
 
@@ -282,6 +287,8 @@ impl PlayerFilter {
             PlayerFilter::Any => true,
 
             PlayerFilter::You => ctx.you.is_some_and(|you| player == you),
+
+            PlayerFilter::NotYou => ctx.you.map_or(true, |you| player != you),
 
             PlayerFilter::Opponent => ctx.opponents.contains(&player),
 
@@ -2076,6 +2083,12 @@ impl ObjectFilter {
                     }
                     controller_suffix = Some("you control".to_string());
                 }
+                PlayerFilter::NotYou => {
+                    if !self.other {
+                        parts.push("a".to_string());
+                    }
+                    controller_suffix = Some("you don't control".to_string());
+                }
                 PlayerFilter::Opponent => parts.push("an opponent's".to_string()),
                 PlayerFilter::Any => {}
                 PlayerFilter::Active => parts.push("the active player's".to_string()),
@@ -2112,6 +2125,7 @@ impl ObjectFilter {
         if !owner_conveyed_by_zone && let Some(ref owner) = self.owner {
             owner_suffix = Some(match owner {
                 PlayerFilter::You => "you own".to_string(),
+                PlayerFilter::NotYou => "you don't own".to_string(),
                 PlayerFilter::Opponent => "an opponent owns".to_string(),
                 PlayerFilter::Any => "a player owns".to_string(),
                 PlayerFilter::Active => "the active player owns".to_string(),
@@ -2662,6 +2676,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::Any => "a player's".to_string(),
         PlayerFilter::You => "your".to_string(),
+        PlayerFilter::NotYou => "a non-you player's".to_string(),
         PlayerFilter::Opponent => "an opponent's".to_string(),
         PlayerFilter::Teammate => "a teammate's".to_string(),
         PlayerFilter::Active => "the active player's".to_string(),
@@ -2686,6 +2701,7 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::Any => "player".to_string(),
         PlayerFilter::You => "you".to_string(),
+        PlayerFilter::NotYou => "player other than you".to_string(),
         PlayerFilter::Opponent => "opponent".to_string(),
         PlayerFilter::Teammate => "teammate".to_string(),
         PlayerFilter::Active => "active player".to_string(),
