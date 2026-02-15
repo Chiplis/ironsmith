@@ -5741,6 +5741,41 @@ fn parse_filter_has_granted_ability_line(
         return Ok(None);
     }
     let subject_words = words(&subject_tokens);
+    if subject_words.iter().any(|word| {
+        matches!(
+            *word,
+            "deal"
+                | "deals"
+                | "create"
+                | "creates"
+                | "draw"
+                | "draws"
+                | "destroy"
+                | "destroys"
+                | "exile"
+                | "exiles"
+                | "return"
+                | "returns"
+                | "sacrifice"
+                | "sacrifices"
+                | "put"
+                | "puts"
+                | "gain"
+                | "gains"
+                | "lose"
+                | "loses"
+                | "discard"
+                | "discards"
+                | "counter"
+                | "counters"
+                | "search"
+                | "reveals"
+                | "investigate"
+                | "investigates"
+        )
+    }) {
+        return Ok(None);
+    }
     if subject_words.contains(&"may") {
         return Ok(None);
     }

@@ -5109,6 +5109,25 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_spell_with_it_has_token_trigger_stays_as_spell_effects() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Make Mischief Variant")
+            .parse_text(
+                "This spell deals 1 damage to any target. Create a 1/1 red Devil creature token. It has \"When this token dies, it deals 1 damage to any target.\"",
+            )
+            .expect("parse spell with token dies trigger rider");
+
+        assert!(
+            def.abilities.is_empty(),
+            "spell line with token trigger rider should not collapse into a granted static ability"
+        );
+        let spell_debug = format!("{:?}", def.spell_effect);
+        assert!(
+            spell_debug.contains("DealDamageEffect") && spell_debug.contains("CreateTokenEffect"),
+            "expected direct damage + token creation effects, got {spell_debug}"
+        );
+    }
+
+    #[test]
     fn parse_labeled_trigger_line_as_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Heroic Label Variant")
             .parse_text(
