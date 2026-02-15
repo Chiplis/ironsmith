@@ -9469,7 +9469,7 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
 }
 
 fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
-    if words.contains(&"your") {
+    if contains_your_team_words(words) || words.contains(&"your") {
         PlayerFilter::You
     } else if contains_opponent_word(words) {
         PlayerFilter::Opponent
@@ -9479,7 +9479,7 @@ fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
 }
 
 fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
-    if words.contains(&"you") {
+    if contains_your_team_words(words) || words.contains(&"you") {
         PlayerFilter::You
     } else if contains_opponent_word(words) {
         PlayerFilter::Opponent
@@ -9490,6 +9490,13 @@ fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
 
 fn contains_opponent_word(words: &[&str]) -> bool {
     words.contains(&"opponent") || words.contains(&"opponents")
+}
+
+fn contains_your_team_words(words: &[&str]) -> bool {
+    words.windows(2).any(|window| window == ["your", "team"])
+        || words
+            .windows(3)
+            .any(|window| window == ["on", "your", "team"])
 }
 
 fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
@@ -9509,6 +9516,13 @@ fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter>
         || subject == ["one", "or", "more", "opponents"]
     {
         return Some(PlayerFilter::Opponent);
+    }
+    if subject.ends_with(&["on", "your", "team"])
+        && subject
+            .iter()
+            .any(|word| matches!(*word, "player" | "players"))
+    {
+        return Some(PlayerFilter::You);
     }
     None
 }
@@ -22105,6 +22119,14 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
         .collect();
     let target_span = if explicit_target { span } else { None };
 
+    if remaining_words.as_slice() == ["player", "on", "your", "team"]
+        || remaining_words.as_slice() == ["players", "on", "your", "team"]
+    {
+        return Ok(wrap_target_count(
+            TargetAst::Player(PlayerFilter::You, target_span),
+            target_count,
+        ));
+    }
     if remaining_words.as_slice() == ["player"] || remaining_words.as_slice() == ["players"] {
         return Ok(wrap_target_count(
             TargetAst::Player(PlayerFilter::Any, target_span),
@@ -22795,6 +22817,12 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     if all_words.len() >= 3 {
         for window in all_words.windows(3) {
             match window {
+                ["your", "team", "control"] | ["your", "team", "controls"] => {
+                    filter.controller = Some(PlayerFilter::You);
+                }
+                ["your", "team", "own"] | ["your", "team", "owns"] => {
+                    filter.owner = Some(PlayerFilter::You);
+                }
                 ["that", "player", "control"] | ["that", "player", "controls"] => {
                     filter.controller = Some(PlayerFilter::IteratedPlayer);
                 }
@@ -22825,7 +22853,15 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     }
     if all_words.len() >= 4 {
         for window in all_words.windows(4) {
-            if window == ["you", "do", "not", "control"] {
+            if window[1..] == ["your", "team", "control"]
+                || window[1..] == ["your", "team", "controls"]
+            {
+                filter.controller = Some(PlayerFilter::You);
+            } else if window[1..] == ["your", "team", "own"]
+                || window[1..] == ["your", "team", "owns"]
+            {
+                filter.owner = Some(PlayerFilter::You);
+            } else if window == ["you", "do", "not", "control"] {
                 filter.controller = Some(PlayerFilter::Opponent);
             } else if window == ["you", "do", "not", "own"] {
                 filter.owner = Some(PlayerFilter::Opponent);
