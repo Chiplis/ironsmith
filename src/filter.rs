@@ -2288,13 +2288,24 @@ impl ObjectFilter {
         };
 
         let subtype_phrase = if !self.subtypes.is_empty() {
-            Some(
-                self.subtypes
-                    .iter()
-                    .map(|t| format!("{:?}", t))
-                    .collect::<Vec<_>>()
-                    .join(" or "),
-            )
+            let mut parts = Vec::new();
+            let mut remaining = self.subtypes.clone();
+            let outlaw_pack = [
+                Subtype::Assassin,
+                Subtype::Mercenary,
+                Subtype::Pirate,
+                Subtype::Rogue,
+                Subtype::Warlock,
+            ];
+            if outlaw_pack
+                .iter()
+                .all(|subtype| remaining.contains(subtype))
+            {
+                parts.push("outlaw".to_string());
+                remaining.retain(|subtype| !outlaw_pack.contains(subtype));
+            }
+            parts.extend(remaining.iter().map(|subtype| format!("{subtype:?}")));
+            Some(parts.join(" or "))
         } else {
             None
         };
@@ -2905,6 +2916,29 @@ mod tests {
             filter.description(),
             "non-Vampire non-Werewolf non-Zombie creature"
         );
+    }
+
+    #[test]
+    fn test_filter_description_compacts_full_outlaw_subtype_pack() {
+        let filter = ObjectFilter::creature()
+            .with_subtype(crate::types::Subtype::Assassin)
+            .with_subtype(crate::types::Subtype::Mercenary)
+            .with_subtype(crate::types::Subtype::Pirate)
+            .with_subtype(crate::types::Subtype::Rogue)
+            .with_subtype(crate::types::Subtype::Warlock);
+        assert_eq!(filter.description(), "outlaw creature");
+    }
+
+    #[test]
+    fn test_filter_description_compacts_outlaw_pack_with_extra_subtypes() {
+        let filter = ObjectFilter::creature()
+            .with_subtype(crate::types::Subtype::Assassin)
+            .with_subtype(crate::types::Subtype::Mercenary)
+            .with_subtype(crate::types::Subtype::Pirate)
+            .with_subtype(crate::types::Subtype::Rogue)
+            .with_subtype(crate::types::Subtype::Warlock)
+            .with_subtype(crate::types::Subtype::Wizard);
+        assert_eq!(filter.description(), "outlaw or Wizard creature");
     }
 
     #[test]
