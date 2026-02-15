@@ -4850,6 +4850,34 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_spell_cast_second_each_turn_trigger_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Second Spell Probe")
+            .parse_text("Whenever you cast your second spell each turn, draw a card.")
+            .expect("parse second-spell-each-turn trigger");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains("Whenever you cast another spell"),
+            "expected second-spell qualifier in trigger text, got {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_player_casts_their_second_spell_trigger_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Any Player Second Spell Probe")
+            .parse_text("Whenever a player casts their second spell each turn, draw a card.")
+            .expect("parse player-second-spell-each-turn trigger");
+
+        let lines = compiled_lines(&def);
+        let joined = lines.join(" ");
+        assert!(
+            joined.contains("Whenever a player casts another spell"),
+            "expected player second-spell qualifier in trigger text, got {joined}"
+        );
+    }
+
+    #[test]
     fn parse_put_counter_for_each_filter_on_target() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Moldgraf Millipede Probe")
             .parse_text(

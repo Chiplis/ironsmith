@@ -9348,6 +9348,9 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         return format!("This creature enters with {rendered_count} +1/+1 {counter_word} on it.");
     }
 
+    if let Some(rewritten) = normalize_for_each_player_discard_draw_chain(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_for_each_player_draw_discard_chain(&normalized) {
         normalized = rewritten;
     }
@@ -10242,6 +10245,37 @@ fn normalize_for_each_player_draw_discard_chain(text: &str) -> Option<String> {
         "Each player draws {}, then discards {}{at_random}.",
         render_card_count_phrase(draw_count_raw),
         render_card_count_phrase(discard_count_raw)
+    );
+    Some(format!(
+        "{}{}",
+        prefix,
+        lower_clause_after_prefix(prefix, &clause)
+    ))
+}
+
+fn normalize_for_each_player_discard_draw_chain(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let for_each_marker = "for each player, that player discards ";
+    let plain_marker = "each player discards ";
+    let (prefix, tail) = if let Some(idx) = lower.find(for_each_marker) {
+        (&text[..idx], &text[idx + for_each_marker.len()..])
+    } else if let Some(idx) = lower.find(plain_marker) {
+        (&text[..idx], &text[idx + plain_marker.len()..])
+    } else {
+        return None;
+    };
+    let (discard_clause, rest) = tail.split_once(". ")?;
+    let draw_tail = strip_prefix_ascii_ci(rest, "For each player, that player draws ")
+        .or_else(|| strip_prefix_ascii_ci(rest, "Each player draws "))
+        .or_else(|| strip_prefix_ascii_ci(rest, "that player draws "))?;
+    let draw_clause = draw_tail.trim().trim_end_matches('.');
+    if draw_clause.is_empty() {
+        return None;
+    }
+    let clause = format!(
+        "Each player discards {}, then draws {}.",
+        discard_clause.trim(),
+        draw_clause
     );
     Some(format!(
         "{}{}",
@@ -14441,6 +14475,25 @@ mod tests {
         assert_eq!(
             normalized_plain,
             "When this creature enters, each player draws two cards, then discards a card at random."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_for_each_player_discard_then_draw_chain() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "For each player, that player discards their hand. For each player, that player draws 7 cards.",
+        );
+        assert_eq!(
+            normalized,
+            "Each player discards their hand, then draws 7 cards."
+        );
+
+        let normalized_plain = normalize_compiled_post_pass_effect(
+            "Each player discards their hand. that player draws that many minus one cards.",
+        );
+        assert_eq!(
+            normalized_plain,
+            "Each player discards their hand, then draws that many minus one cards."
         );
     }
 

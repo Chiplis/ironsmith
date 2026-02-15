@@ -9321,6 +9321,11 @@ fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>,
         &clause_words,
         &["second", "spell", "cast", "this", "turn"],
     ) || contains_word_sequence(&clause_words, &["second", "spell", "this", "turn"])
+        || contains_word_sequence(&clause_words, &["your", "second", "spell", "each", "turn"])
+        || contains_word_sequence(&clause_words, &["their", "second", "spell", "each", "turn"])
+        || contains_word_sequence(&clause_words, &["your", "second", "spell", "this", "turn"])
+        || contains_word_sequence(&clause_words, &["their", "second", "spell", "this", "turn"])
+        || contains_word_sequence(&clause_words, &["second", "spell", "each", "turn"])
     {
         Some(2)
     } else {
