@@ -4173,6 +4173,41 @@ fn parse_cant_attack_unless_defending_player_controls_island_line() {
 }
 
 #[test]
+fn parse_attacks_trigger_targeting_defending_player_creature_keeps_controller_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fiend Binder Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever this creature attacks, tap target creature defending player controls.")
+        .expect("defending-player target filter should parse");
+
+    let compiled = crate::compiled_text::compiled_lines(&def).join("\n");
+    assert!(
+        compiled
+            .to_ascii_lowercase()
+            .contains("target creature defending player controls"),
+        "expected compiled text to keep defending-player control qualifier, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_attached_gets_plus_and_attacks_each_combat_if_able_keeps_both_statics() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Furor Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Enchant creature\nEnchanted creature gets +2/+2 and attacks each combat if able.")
+        .expect("attached gets+attacks static clause should parse");
+
+    let compiled = crate::compiled_text::compiled_lines(&def).join("\n");
+    let lower = compiled.to_ascii_lowercase();
+    assert!(
+        lower.contains("enchanted creature gets +2/+2"),
+        "expected compiled text to keep attached +2/+2 clause, got {compiled}"
+    );
+    assert!(
+        lower.contains("enchanted creature attacks each combat if able"),
+        "expected compiled text to keep attached must-attack clause, got {compiled}"
+    );
+}
+
+#[test]
 fn parse_self_damaging_any_target_clause_with_shared_deal_verb() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Pinger Variant")
         .card_types(vec![CardType::Creature])

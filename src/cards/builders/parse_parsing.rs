@@ -1982,6 +1982,9 @@ fn parse_static_ability_line(
     if let Some(abilities) = parse_attached_gets_and_has_ability_line(tokens)? {
         return Ok(Some(abilities));
     }
+    if let Some(abilities) = parse_gets_and_attacks_each_combat_if_able_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(ability) = parse_attacks_each_combat_if_able_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -4391,6 +4394,59 @@ fn parse_anthem_and_keyword_line(
     Ok(Some(result))
 }
 
+fn parse_gets_and_attacks_each_combat_if_able_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clause_words = words(tokens);
+    let Some(get_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("get") || token.is_word("gets"))
+    else {
+        return Ok(None);
+    };
+    let Some(and_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
+        (idx > get_idx && token.is_word("and")).then_some(idx)
+    }) else {
+        return Ok(None);
+    };
+    let Some(attack_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
+        (idx > and_idx && (token.is_word("attack") || token.is_word("attacks"))).then_some(idx)
+    }) else {
+        return Ok(None);
+    };
+
+    let attack_tail = words(&tokens[attack_idx..]);
+    if attack_tail.as_slice() != ["attacks", "each", "combat", "if", "able"]
+        && attack_tail.as_slice() != ["attack", "each", "combat", "if", "able"]
+    {
+        return Ok(None);
+    }
+
+    let clause = parse_anthem_clause(tokens, get_idx, and_idx)?;
+    let mut result = vec![build_anthem_static_ability(&clause)];
+    let granted = match &clause.subject {
+        AnthemSubjectAst::Source => GrantAbility::source(StaticAbility::must_attack()),
+        AnthemSubjectAst::Filter(filter) => {
+            GrantAbility::new(filter.clone(), StaticAbility::must_attack())
+        }
+    };
+    let granted = if let Some(condition) = &clause.condition {
+        granted.with_condition(condition.clone())
+    } else {
+        granted
+    };
+    result.push(StaticAbility::new(granted));
+
+    if result.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "failed to parse gets-and-attacks clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    Ok(Some(result))
+}
+
 fn parse_anthem_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
     // Targeted "gets +N/+N" text is usually a one-shot spell/ability effect,
@@ -5503,14 +5559,34 @@ fn parse_attacks_each_combat_if_able_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
-    if words.as_slice() == ["this", "attacks", "each", "combat", "if", "able"]
-        || words.as_slice() == ["attacks", "each", "combat", "if", "able"]
-        || words.len() >= 5
-            && words[words.len() - 5..] == ["attacks", "each", "combat", "if", "able"]
+    let Some(attack_idx) = words
+        .iter()
+        .position(|word| *word == "attack" || *word == "attacks")
+    else {
+        return Ok(None);
+    };
+    if words[attack_idx..] != ["attacks", "each", "combat", "if", "able"]
+        && words[attack_idx..] != ["attack", "each", "combat", "if", "able"]
     {
+        return Ok(None);
+    }
+
+    if attack_idx == 0 {
         return Ok(Some(StaticAbility::must_attack()));
     }
-    Ok(None)
+
+    let subject_tokens = trim_commas(&tokens[..attack_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(Some(StaticAbility::must_attack()));
+    }
+    let subject = parse_anthem_subject(&subject_tokens)?;
+    match subject {
+        AnthemSubjectAst::Source => Ok(Some(StaticAbility::must_attack())),
+        AnthemSubjectAst::Filter(filter) => Ok(Some(StaticAbility::grant_ability(
+            filter,
+            StaticAbility::must_attack(),
+        ))),
+    }
 }
 
 fn parse_additional_land_play_line(
@@ -25485,6 +25561,12 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                 }
                 ["that", "player", "control"] | ["that", "player", "controls"] => {
                     filter.controller = Some(PlayerFilter::IteratedPlayer);
+                }
+                ["defending", "player", "control"] | ["defending", "player", "controls"] => {
+                    filter.controller = Some(PlayerFilter::Defending);
+                }
+                ["attacking", "player", "control"] | ["attacking", "player", "controls"] => {
+                    filter.controller = Some(PlayerFilter::Attacking);
                 }
                 ["that", "player", "own"] | ["that", "player", "owns"] => {
                     filter.owner = Some(PlayerFilter::IteratedPlayer);

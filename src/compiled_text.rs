@@ -967,7 +967,29 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "An opponent's nonbasic creature or land enter the battlefield tapped",
             "Creatures and nonbasic lands your opponents control enter tapped",
+        )
+        .replace(
+            "with \"Sacrifice this creature, add {C}\"",
+            "with \"Sacrifice this creature: Add {C}.\"",
+        )
+        .replace(
+            "with \"sacrifice this creature, add {C}\"",
+            "with \"Sacrifice this creature: Add {C}.\"",
         );
+    if let Some(amount) =
+        strip_prefix_ascii_ci(&normalized, "Whenever enchanted land is tapped for mana, add ")
+            .and_then(|tail| {
+                strip_suffix_ascii_ci(tail, " to that object's controller's mana pool.")
+                    .or_else(|| {
+                        strip_suffix_ascii_ci(tail, " to that object's controller's mana pool")
+                    })
+            })
+    {
+        return format!(
+            "Whenever enchanted land is tapped for mana, its controller adds an additional {}.",
+            amount.trim()
+        );
+    }
     if let Some((left, right)) = normalized.split_once(". ")
         && left.to_ascii_lowercase().contains("target creature")
         && right.eq_ignore_ascii_case("Untap it.")
@@ -989,6 +1011,20 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         && right.eq_ignore_ascii_case("Tap it")
     {
         normalized = format!("{}. Tap that creature.", left.trim_end_matches('.'));
+    }
+    if let Some((left, right)) = normalized.split_once(". ")
+        && (left.eq_ignore_ascii_case("Untap one or two target creatures")
+            || left.eq_ignore_ascii_case("Untap up to two target creatures"))
+        && let Some(buff_clause) = strip_suffix_ascii_ci(right.trim(), " until end of turn.")
+            .or_else(|| strip_suffix_ascii_ci(right.trim(), " until end of turn"))
+        && let Some(buff) = strip_prefix_ascii_ci(buff_clause.trim(), "it gets ")
+            .or_else(|| strip_prefix_ascii_ci(buff_clause.trim(), "It gets "))
+    {
+        return format!(
+            "{}. They each get {} until end of turn.",
+            left.trim_end_matches('.'),
+            buff.trim()
+        );
     }
     if let Some((prefix, suffix)) =
         normalized.split_once(", reveal it, put it on top of library, then shuffle")
@@ -1015,6 +1051,29 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             .replace(" on it. Put ", " and ");
     }
     let lower_normalized = normalized.to_ascii_lowercase();
+    if let Some(tail) = strip_prefix_ascii_ci(
+        &normalized,
+        "You take an extra turn after this one. At the beginning of your next end step, ",
+    ) && tail
+        .trim()
+        .trim_end_matches('.')
+        .eq_ignore_ascii_case("you lose the game")
+    {
+        return "Take an extra turn after this one. At the beginning of that turn's end step, you lose the game".to_string();
+    }
+    if let Some(amount) =
+        strip_prefix_ascii_ci(&normalized, "At the beginning of your upkeep, deal ").and_then(
+            |tail| {
+                strip_suffix_ascii_ci(tail, " damage to you.")
+                    .or_else(|| strip_suffix_ascii_ci(tail, " damage to you"))
+            },
+        )
+    {
+        return format!(
+            "At the beginning of your upkeep, this creature deals {} damage to you.",
+            amount.trim()
+        );
+    }
     if lower_normalized == "cards in hand have flash"
         || lower_normalized == "cards in hand have flash."
     {
@@ -7804,16 +7863,16 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Goad {}", describe_goad_target(&goad.target));
     }
     if let Some(extra_turn) = effect.downcast_ref::<crate::effects::ExtraTurnEffect>() {
+        let player = describe_player_filter(&extra_turn.player);
         return format!(
-            "{} takes an extra turn after this one",
-            describe_player_filter(&extra_turn.player)
+            "{} {} an extra turn after this one",
+            player,
+            player_verb(&player, "take", "takes")
         );
     }
     if let Some(lose_game) = effect.downcast_ref::<crate::effects::LoseTheGameEffect>() {
-        return format!(
-            "{} loses the game",
-            describe_player_filter(&lose_game.player)
-        );
+        let player = describe_player_filter(&lose_game.player);
+        return format!("{} {} the game", player, player_verb(&player, "lose", "loses"));
     }
     if let Some(skip_draw) = effect.downcast_ref::<crate::effects::SkipDrawStepEffect>() {
         return format!(
@@ -9665,6 +9724,23 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if normalized.is_empty() {
         return normalized;
     }
+    normalized = normalized
+        .replace(
+            " creature tokens with \"Sacrifice this creature, add {C}\"",
+            " creature tokens. They have \"Sacrifice this creature: Add {C}.\"",
+        )
+        .replace(
+            " creature token with \"Sacrifice this creature, add {C}\"",
+            " creature token. It has \"Sacrifice this creature: Add {C}.\"",
+        )
+        .replace(
+            " creature tokens with \"sacrifice this creature, add {C}\"",
+            " creature tokens. They have \"Sacrifice this creature: Add {C}.\"",
+        )
+        .replace(
+            " creature token with \"sacrifice this creature, add {C}\"",
+            " creature token. It has \"Sacrifice this creature: Add {C}.\"",
+        );
     if let Some((prefix, tail)) =
         split_once_ascii_ci(&normalized, "At the beginning of the next end step, sacrifice this spell")
         && prefix.to_ascii_lowercase().contains("create ")
@@ -10645,9 +10721,13 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
 
     normalized = normalized
         .replace("you takes", "you take")
+        .replace("You takes", "You take")
         .replace("you loses", "you lose")
+        .replace("You loses", "You lose")
         .replace("you draws", "you draw")
+        .replace("You draws", "You draw")
         .replace("you pays", "you pay")
+        .replace("You pays", "You pay")
         .replace("you skips their next turn", "you skip your next turn")
         .replace("youre", "you're")
         .replace(
@@ -14712,7 +14792,9 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         .replace("each another ", "each other ")
         .replace("each another creature", "each other creature")
         .replace("you takes ", "you take ")
+        .replace("You takes ", "You take ")
         .replace("you loses ", "you lose ")
+        .replace("You loses ", "You lose ")
         .replace(" damage to it", " damage to that creature")
         .replace("+-", "-")
         .replace(" gets 0/+", " gets +0/+")
@@ -15062,6 +15144,28 @@ mod tests {
         let normalized =
             normalize_common_semantic_phrasing("For each opponent, that player draws a card");
         assert_eq!(normalized, "Each opponent draws a card");
+    }
+
+    #[test]
+    fn normalizes_enchanted_land_tapped_for_mana_additional_clause() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Whenever enchanted land is tapped for mana, add {G}{G} to that object's controller's mana pool.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever enchanted land is tapped for mana, its controller adds an additional {G}{G}."
+        );
+    }
+
+    #[test]
+    fn normalizes_spawn_token_inline_quoted_cost_punctuation() {
+        let normalized = normalize_common_semantic_phrasing(
+            "When this permanent enters, create two 0/1 colorless Eldrazi Spawn creature tokens with \"Sacrifice this creature, add {C}\"",
+        );
+        assert_eq!(
+            normalized,
+            "When this permanent enters, create two 0/1 colorless Eldrazi Spawn creature tokens with \"Sacrifice this creature: Add {C}.\""
+        );
     }
 
     #[test]
@@ -16488,6 +16592,38 @@ mod tests {
         assert_eq!(
             normalized,
             "Take an extra turn after this one. At the beginning of that turn's end step, you lose the game"
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_extra_turn_sentence_with_turn_clause_second() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You take an extra turn after this one. At the beginning of your next end step, you lose the game.",
+        );
+        assert_eq!(
+            normalized,
+            "Take an extra turn after this one. At the beginning of that turn's end step, you lose the game"
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_untap_plural_pronoun_buff_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Untap up to two target creatures. it gets +2/+2 until end of turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Untap up to two target creatures. They each get +2/+2 until end of turn."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_upkeep_damage_clause_with_implicit_source() {
+        let normalized =
+            normalize_compiled_post_pass_effect("At the beginning of your upkeep, deal 1 damage to you.");
+        assert_eq!(
+            normalized,
+            "At the beginning of your upkeep, this creature deals 1 damage to you."
         );
     }
 
