@@ -517,7 +517,10 @@ fn looks_like_modal_label(segment: &str) -> bool {
     if trimmed.is_empty() {
         return false;
     }
-    if trimmed.contains('.') || trimmed.contains(':') || trimmed.contains(',') || trimmed.contains(';')
+    if trimmed.contains('.')
+        || trimmed.contains(':')
+        || trimmed.contains(',')
+        || trimmed.contains(';')
     {
         return false;
     }
@@ -536,7 +539,8 @@ fn looks_like_modal_label(segment: &str) -> bool {
 
 fn strip_modal_option_labels(line: &str) -> String {
     let lower = line.to_ascii_lowercase();
-    if !lower.contains("choose one") && !lower.contains("choose two") && !lower.contains("choose ") {
+    if !lower.contains("choose one") && !lower.contains("choose two") && !lower.contains("choose ")
+    {
         return line.to_string();
     }
     if !line.contains('—') {
@@ -601,8 +605,14 @@ fn expand_create_list_clause(line: &str) -> String {
 fn split_common_semantic_conjunctions(line: &str) -> String {
     let mut normalized = line.to_string();
     normalized = normalized
-        .replace(" or you fully unlock a room", " and whenever you fully unlock a room")
-        .replace(" or you fully unlock a Room", " and whenever you fully unlock a Room");
+        .replace(
+            " or you fully unlock a room",
+            " and whenever you fully unlock a room",
+        )
+        .replace(
+            " or you fully unlock a Room",
+            " and whenever you fully unlock a Room",
+        );
     normalized = normalized.replace(
         "Whenever another creature enters under your control",
         "Whenever another creature you control enters",
@@ -698,7 +708,10 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         && left.eq_ignore_ascii_case("Counter target spell")
         && !right.trim().is_empty()
     {
-        normalized = format!("Counter target spell and Deal {}", right.trim_end_matches('.'));
+        normalized = format!(
+            "Counter target spell and Deal {}",
+            right.trim_end_matches('.')
+        );
     }
     if let Some((left, right)) = normalized.split_once(". Counter that spell")
         && left
@@ -741,7 +754,9 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
     if let Some((left, right)) = normalized.split_once(". Deal ")
         && left.starts_with("Deal ")
         && left.to_ascii_lowercase().contains("target creature")
-        && right.to_ascii_lowercase().contains("damage to that object's controller")
+        && right
+            .to_ascii_lowercase()
+            .contains("damage to that object's controller")
     {
         normalized = format!(
             "{} and Deal {}",
@@ -765,9 +780,7 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
             .strip_suffix(" counter on it.")
             .or_else(|| right_trimmed.strip_suffix(" counter on it"))
         {
-            normalized = format!(
-                "{left} to the battlefield. Put {counter_phrase} counter on it."
-            );
+            normalized = format!("{left} to the battlefield. Put {counter_phrase} counter on it.");
         }
     }
     if let Some((left, right)) = normalized.split_once(". Put ")
@@ -887,14 +900,8 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
             "Sacrifice three creatures you control",
             "Sacrifice three creatures",
         )
-        .replace(
-            "Tag the object attached to this Aura as 'enchanted'. ",
-            "",
-        )
-        .replace(
-            "tag the object attached to this Aura as 'enchanted'. ",
-            "",
-        )
+        .replace("Tag the object attached to this Aura as 'enchanted'. ", "")
+        .replace("tag the object attached to this Aura as 'enchanted'. ", "")
         .replace(
             "Destroy target tagged object 'enchanted'",
             "Destroy enchanted creature",
@@ -961,10 +968,7 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
     }
     if let Some((left, right)) = normalized.split_once(". Proliferate") {
         let left = left.trim().trim_end_matches('.');
-        let right_tail = right
-            .trim_start_matches('.')
-            .trim_start_matches(',')
-            .trim();
+        let right_tail = right.trim_start_matches('.').trim_start_matches(',').trim();
         if right_tail.is_empty() {
             normalized = format!("{left}, then proliferate.");
         } else {
@@ -972,10 +976,7 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         }
     } else if let Some((left, right)) = normalized.split_once(". proliferate") {
         let left = left.trim().trim_end_matches('.');
-        let right_tail = right
-            .trim_start_matches('.')
-            .trim_start_matches(',')
-            .trim();
+        let right_tail = right.trim_start_matches('.').trim_start_matches(',').trim();
         if right_tail.is_empty() {
             normalized = format!("{left}, then proliferate.");
         } else {
@@ -1037,7 +1038,10 @@ fn normalize_target_count_wording_for_compare(line: &str) -> String {
 
 fn normalize_for_each_player_conditional_for_compare(line: &str) -> String {
     let lower = line.to_ascii_lowercase();
-    let player_prefixes = ["for each player, if that player ", "for each player, if they "];
+    let player_prefixes = [
+        "for each player, if that player ",
+        "for each player, if they ",
+    ];
     for player_prefix in player_prefixes {
         if !lower.starts_with(player_prefix) {
             continue;
@@ -1057,8 +1061,7 @@ fn normalize_for_each_player_conditional_for_compare(line: &str) -> String {
         if !lower.starts_with(opponent_prefix) {
             continue;
         }
-        let Some((condition, action)) =
-            line[opponent_prefix.len()..].split_once(", that player ")
+        let Some((condition, action)) = line[opponent_prefix.len()..].split_once(", that player ")
         else {
             continue;
         };
@@ -1829,6 +1832,95 @@ fn normalize_card_self_references(text: &str, card_name: &str) -> String {
     normalized
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnlessPayPayerRole {
+    You,
+    NonYou,
+}
+
+fn unless_pay_payer_role(clause: &str) -> Option<UnlessPayPayerRole> {
+    let lower = clause.to_ascii_lowercase();
+    let (_, tail) = lower.split_once("unless ")?;
+    let tokens = tokenize_text(tail);
+    let pay_idx = tokens
+        .iter()
+        .position(|token| matches!(token.as_str(), "pay" | "pays" | "paying" | "paid"))?;
+    if pay_idx == 0 {
+        return None;
+    }
+
+    let payer_tokens = &tokens[..pay_idx];
+    if payer_tokens
+        .iter()
+        .any(|token| matches!(token.as_str(), "you" | "your"))
+    {
+        return Some(UnlessPayPayerRole::You);
+    }
+    if payer_tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "opponent"
+                | "player"
+                | "that"
+                | "they"
+                | "controller"
+                | "their"
+                | "them"
+                | "its"
+                | "it"
+        )
+    }) {
+        return Some(UnlessPayPayerRole::NonYou);
+    }
+    None
+}
+
+fn count_unless_pay_role_mismatches(
+    oracle_clauses: &[String],
+    oracle_tokens: &[Vec<String>],
+    compiled_clauses: &[String],
+    compiled_tokens: &[Vec<String>],
+) -> usize {
+    let mut mismatches = 0usize;
+
+    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
+        let Some(oracle_role) = unless_pay_payer_role(oracle_clause) else {
+            continue;
+        };
+        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
+            continue;
+        };
+
+        let mut best_match: Option<(usize, f32)> = None;
+        for (compiled_idx, compiled_token_set) in compiled_tokens.iter().enumerate() {
+            let score = jaccard_similarity(oracle_token_set, compiled_token_set);
+            if best_match.is_none_or(|(_, best)| score > best) {
+                best_match = Some((compiled_idx, score));
+            }
+        }
+
+        let Some((compiled_idx, overlap)) = best_match else {
+            continue;
+        };
+
+        // Require moderate lexical overlap so we only compare semantically related clauses.
+        if overlap < 0.55 {
+            continue;
+        }
+
+        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
+            continue;
+        };
+        if let Some(compiled_role) = unless_pay_payer_role(compiled_clause)
+            && compiled_role != oracle_role
+        {
+            mismatches += 1;
+        }
+    }
+
+    mismatches
+}
+
 fn compare_semantics(
     card_name: &str,
     oracle_text: &str,
@@ -1905,6 +1997,12 @@ fn compare_semantics(
 
     let mut similarity_score = min_coverage;
     let mut mismatch = semantic_gap || line_gap || empty_gap;
+    let unless_pay_role_mismatch_count = count_unless_pay_role_mismatches(
+        &oracle_clauses,
+        &oracle_tokens,
+        &compiled_clauses,
+        &compiled_tokens,
+    );
 
     if let Some(cfg) = embedding {
         let oracle_emb = oracle_clauses
@@ -1925,6 +2023,12 @@ fn compare_semantics(
         if fused_score < cfg.mismatch_threshold {
             mismatch = true;
         }
+    }
+
+    if unless_pay_role_mismatch_count > 0 {
+        let penalty = 0.20 * unless_pay_role_mismatch_count as f32;
+        similarity_score = (similarity_score - penalty).max(0.0);
+        mismatch = true;
     }
 
     (
@@ -2896,5 +3000,44 @@ mod tests {
         assert!(!mismatch);
         assert!(oracle_coverage >= 0.5);
         assert!(compiled_coverage >= 0.5);
+    }
+
+    #[test]
+    fn test_unless_pay_role_detection_distinguishes_you_vs_non_you() {
+        assert_eq!(
+            unless_pay_payer_role("you may draw a card unless that player pays {1}."),
+            Some(UnlessPayPayerRole::NonYou)
+        );
+        assert_eq!(
+            unless_pay_payer_role("you may draw a card unless you pay {1}."),
+            Some(UnlessPayPayerRole::You)
+        );
+    }
+
+    #[test]
+    fn test_compare_semantics_penalizes_unless_pay_role_inversion() {
+        let oracle =
+            "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}.";
+        let compiled = vec![
+            "Triggered ability 1: Whenever an opponent casts a spell, you may draw a card unless you pay {1}.".to_string(),
+        ];
+        let (_oracle_coverage, _compiled_coverage, similarity_score, _line_delta, mismatch) =
+            compare_semantics(
+                "Rhystic Study",
+                oracle,
+                &compiled,
+                Some(EmbeddingConfig {
+                    dims: 384,
+                    mismatch_threshold: 0.99,
+                }),
+            );
+        assert!(
+            mismatch,
+            "payer-role inversion must count as semantic mismatch"
+        );
+        assert!(
+            similarity_score < 0.99,
+            "payer-role inversion should not remain above strict 0.99 score floor (score={similarity_score})"
+        );
     }
 }
