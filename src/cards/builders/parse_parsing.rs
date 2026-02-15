@@ -22837,18 +22837,18 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         }
     }
 
+    // Object filters should not absorb trailing duration clauses such as
+    // "... until this enchantment leaves the battlefield".
+    if let Some(until_token_idx) = base_tokens.iter().position(|token| token.is_word("until"))
+        && until_token_idx > 0
+    {
+        base_tokens.truncate(until_token_idx);
+    }
+
     let mut all_words: Vec<&str> = words(&base_tokens)
         .into_iter()
         .filter(|word| !is_article(word) && *word != "instead")
         .collect();
-
-    // Object filters should not absorb trailing duration clauses such as
-    // "... until this enchantment leaves the battlefield".
-    if let Some(until_idx) = all_words.iter().position(|word| *word == "until")
-        && until_idx > 0
-    {
-        all_words.truncate(until_idx);
-    }
 
     while all_words.len() >= 2 && all_words[0] == "one" && all_words[1] == "of" {
         all_words.drain(0..2);
