@@ -776,6 +776,11 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         normalized = format!("{}, then put {}", left.trim_end_matches('.'), right);
     }
     normalized = normalized
+        .replace(", then ", ". ")
+        .replace(", Then ", ". ")
+        .replace(", and then ", ". ")
+        .replace(", And then ", ". ");
+    normalized = normalized
         .replace("this enchantment enters", "this permanent enters")
         .replace("This enchantment enters", "This permanent enters")
         .replace(
@@ -2728,6 +2733,15 @@ mod tests {
                 "Whenever this creature attacks, draw a card".to_string(),
                 "You lose 1 life".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn test_semantic_clauses_split_then_chain() {
+        let clauses = semantic_clauses("Scry 1, then draw a card.");
+        assert_eq!(
+            clauses,
+            vec!["Scry 1".to_string(), "draw a card".to_string()]
         );
     }
 

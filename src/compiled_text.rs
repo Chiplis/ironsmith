@@ -4506,6 +4506,19 @@ fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(with_id) = filtered[idx + 1].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(sacrifice) = with_id
+                .effect
+                .downcast_ref::<crate::effects::SacrificeEffect>()
+            && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(sacrifice) =
                 filtered[idx + 1].downcast_ref::<crate::effects::SacrificeEffect>()
             && let Some(compact) = describe_choose_then_sacrifice(choose, sacrifice)
