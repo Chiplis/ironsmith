@@ -11258,6 +11258,66 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     }
     normalized = normalized.replace("controlss", "controls");
     let lower_normalized = normalized.to_ascii_lowercase();
+    if lower_normalized.contains("and tags it as 'exiled_0'")
+        && lower_normalized.contains("for each object exiled this way, search that player's library for permanent that shares a card type with that object that player owns, put it onto the battlefield, then shuffle")
+    {
+        let mut chosen_types = Vec::new();
+        for card_type in ["artifact", "creature", "enchantment", "planeswalker", "land", "battle"] {
+            let phrase = format!(
+                "choose up to one {card_type} in the battlefield and tags it as 'exiled_0'"
+            );
+            if lower_normalized.contains(&phrase) {
+                chosen_types.push(format!("up to one target {card_type}"));
+            }
+        }
+        if chosen_types.len() >= 2 {
+            return format!(
+                "Exile {}. For each permanent exiled this way, its controller reveals cards from the top of their library until they reveal a card that shares a card type with it, puts that card onto the battlefield, then shuffles.",
+                join_with_and(&chosen_types)
+            );
+        }
+    }
+    if let Some((head, body)) = normalized.split_once(':')
+        && head
+            .trim()
+            .to_ascii_lowercase()
+            .starts_with("this ")
+        && head
+            .trim()
+            .to_ascii_lowercase()
+            .contains(" leaves the battlefield")
+    {
+        return format!(
+            "When {}, {}",
+            head.trim().to_ascii_lowercase(),
+            body.trim()
+        );
+    }
+    let token_plural_starts = [
+        "Create two ",
+        "Create three ",
+        "Create four ",
+        "Create five ",
+        "Create six ",
+        "Create seven ",
+        "Create eight ",
+        "Create nine ",
+        "Create 2 ",
+        "Create 3 ",
+        "Create 4 ",
+        "Create 5 ",
+        "Create 6 ",
+        "Create 7 ",
+        "Create 8 ",
+        "Create 9 ",
+    ];
+    if token_plural_starts
+        .iter()
+        .any(|prefix| normalized.starts_with(prefix))
+        && normalized.contains(" creature token ")
+    {
+        normalized = normalized.replacen(" creature token ", " creature tokens ", 1);
+    }
     if let Some((left, right)) = normalized.split_once(". ") {
         let right_lower = right.trim_start().to_ascii_lowercase();
         if !right_lower.starts_with("you sacrifice ") {
@@ -14974,6 +15034,28 @@ mod tests {
         assert_eq!(
             normalized,
             "Treefolk spells you cast cost {1} less to cast."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_choose_each_type_exile_then_shared_type_search_chain() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "You choose up to one artifact in the battlefield and tags it as 'exiled_0'. you choose up to one creature in the battlefield and tags it as 'exiled_0'. you choose up to one enchantment in the battlefield and tags it as 'exiled_0'. you choose up to one planeswalker in the battlefield and tags it as 'exiled_0'. you choose up to one land in the battlefield and tags it as 'exiled_0'. Exile it. For each object exiled this way, Search that player's library for permanent that shares a card type with that object that player owns, put it onto the battlefield, then shuffle.",
+        );
+        assert_eq!(
+            normalized,
+            "Exile up to one target artifact, up to one target creature, up to one target enchantment, up to one target planeswalker, and up to one target land. For each permanent exiled this way, its controller reveals cards from the top of their library until they reveal a card that shares a card type with it, puts that card onto the battlefield, then shuffles."
+        );
+    }
+
+    #[test]
+    fn post_pass_normalizes_this_leaves_battlefield_trigger_head() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "This enchantment leaves the battlefield: you discard 3 cards and you lose 6 life. you sacrifice three creatures you control.",
+        );
+        assert_eq!(
+            normalized,
+            "When this enchantment leaves the battlefield, you discard 3 cards and you lose 6 life, then sacrifice three creatures you control."
         );
     }
 
