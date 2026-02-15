@@ -205,6 +205,10 @@ enum TriggerSpec {
     YouGainLife,
     PlayerLosesLife(PlayerFilter),
     YouDrawCard,
+    PlayerSacrifices {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     Dies(ObjectFilter),
     SpellCast {
         filter: Option<ObjectFilter>,
@@ -6278,6 +6282,21 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             !joined.contains("target artifact or creature or enchantment or land card"),
             "for-each choice should not force target wording: {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_you_sacrifice_trigger_clause_uses_sacrifice_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Crime Novelist Trigger Variant")
+            .parse_text(
+                "Whenever you sacrifice an artifact, put a +1/+1 counter on this creature and add {R}.",
+            )
+            .expect("sacrifice trigger clause should parse as a trigger");
+
+        let joined = crate::compiled_text::compiled_lines(&def).join(" ");
+        assert!(
+            joined.contains("Whenever you sacrifice an artifact"),
+            "expected sacrifice trigger wording, got {joined}"
         );
     }
 }

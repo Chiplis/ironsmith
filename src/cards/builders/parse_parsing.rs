@@ -9263,6 +9263,53 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         return Ok(TriggerSpec::YouDrawCard);
     }
 
+    if let Some(sacrifice_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("sacrifice") || token.is_word("sacrifices"))
+    {
+        let subject_words = &words[..sacrifice_idx];
+        if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
+            let mut filter_tokens = &tokens[sacrifice_idx + 1..];
+            if filter_tokens
+                .first()
+                .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+            {
+                filter_tokens = &filter_tokens[1..];
+            }
+
+            let filter = if filter_tokens.is_empty() {
+                ObjectFilter::permanent()
+            } else if filter_tokens
+                .first()
+                .is_some_and(|token| token.is_word("this") || token.is_word("it"))
+            {
+                let mut filter = ObjectFilter::source();
+                let filter_words: Vec<&str> =
+                    filter_tokens.iter().filter_map(Token::as_word).collect();
+                if filter_words.contains(&"artifact") {
+                    filter = filter.with_type(CardType::Artifact);
+                } else if filter_words.contains(&"creature") {
+                    filter = filter.with_type(CardType::Creature);
+                } else if filter_words.contains(&"enchantment") {
+                    filter = filter.with_type(CardType::Enchantment);
+                } else if filter_words.contains(&"land") {
+                    filter = filter.with_type(CardType::Land);
+                } else if filter_words.contains(&"planeswalker") {
+                    filter = filter.with_type(CardType::Planeswalker);
+                }
+                filter
+            } else {
+                parse_object_filter(filter_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported sacrifice trigger filter (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?
+            };
+            return Ok(TriggerSpec::PlayerSacrifices { player, filter });
+        }
+    }
+
     let last = words
         .last()
         .ok_or_else(|| CardTextError::ParseError("empty trigger clause".to_string()))?;

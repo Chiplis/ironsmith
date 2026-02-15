@@ -20,6 +20,9 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::YouGainLife => Trigger::you_gain_life(),
         TriggerSpec::PlayerLosesLife(player) => Trigger::player_loses_life(player),
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
+        TriggerSpec::PlayerSacrifices { player, filter } => {
+            Trigger::player_sacrifices(player, filter)
+        }
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
         TriggerSpec::SpellCast {
             filter,
@@ -90,6 +93,7 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
         TriggerSpec::SpellCast { caster, .. } => Some(caster.clone()),
         TriggerSpec::SpellCopied { copier, .. } => Some(copier.clone()),
         TriggerSpec::PlayerLosesLife(player) => Some(player.clone()),
+        TriggerSpec::PlayerSacrifices { player, .. } => Some(player.clone()),
         TriggerSpec::BeginningOfUpkeep(player)
         | TriggerSpec::BeginningOfDrawStep(player)
         | TriggerSpec::BeginningOfCombat(player)
