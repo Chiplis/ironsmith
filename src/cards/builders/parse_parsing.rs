@@ -274,6 +274,17 @@ fn replace_names_with_map(
             )
     }
 
+    fn preceded_by_named_keyword(bytes: &[u8], mut idx: usize) -> bool {
+        while idx > 0 && !bytes[idx - 1].is_ascii_alphanumeric() {
+            idx -= 1;
+        }
+        let end = idx;
+        while idx > 0 && bytes[idx - 1].is_ascii_alphanumeric() {
+            idx -= 1;
+        }
+        idx < end && &bytes[idx..end] == b"named"
+    }
+
     let lower = line.to_ascii_lowercase();
     let bytes = lower.as_bytes();
     let full_bytes = full_name.as_bytes();
@@ -288,6 +299,7 @@ fn replace_names_with_map(
             && bytes[idx..].starts_with(full_bytes)
             && has_word_boundaries_at(bytes, idx, full_bytes.len())
             && !(idx == 0 && is_single_word_keyword_verb(full_name))
+            && !preceded_by_named_keyword(bytes, idx)
         {
             let name_len = full_bytes.len().max(1);
             for j in 0..4 {
@@ -302,6 +314,7 @@ fn replace_names_with_map(
             && bytes[idx..].starts_with(short_bytes)
             && has_word_boundaries_at(bytes, idx, short_bytes.len())
             && !(idx == 0 && is_single_word_keyword_verb(short_name))
+            && !preceded_by_named_keyword(bytes, idx)
         {
             let name_len = short_bytes.len().max(1);
             for j in 0..4 {

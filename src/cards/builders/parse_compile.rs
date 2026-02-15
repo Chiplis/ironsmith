@@ -3998,7 +3998,28 @@ fn title_case_words(words: &[&str]) -> String {
         .join(" ")
 }
 
-fn extract_named_card_name(words: &[&str]) -> Option<String> {
+fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
+    phrase
+        .split_whitespace()
+        .filter(|word| !word.is_empty())
+        .map(|word| {
+            let mut out = String::with_capacity(word.len());
+            let mut uppercased = false;
+            for ch in word.chars() {
+                if !uppercased && ch.is_ascii_alphabetic() {
+                    out.extend(ch.to_uppercase());
+                    uppercased = true;
+                } else {
+                    out.push(ch);
+                }
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn extract_named_card_name(words: &[&str], source_text: &str) -> Option<String> {
     let named_idx = words.iter().position(|word| *word == "named")?;
     let stop_words = [
         "from", "to", "and", "with", "that", "it", "at", "until", "if", "where",
@@ -4010,6 +4031,23 @@ fn extract_named_card_name(words: &[&str]) -> Option<String> {
     if end <= named_idx + 1 {
         return None;
     }
+    let name_word_count = end - (named_idx + 1);
+
+    if let Some(named_pos) = source_text.find("named") {
+        let after_named = &source_text[named_pos + "named".len()..];
+        let raw_words: Vec<&str> = after_named
+            .split_whitespace()
+            .take(name_word_count)
+            .collect();
+        if raw_words.len() == name_word_count {
+            let raw_name = raw_words.join(" ");
+            let titled = title_case_phrase_preserving_punctuation(raw_name.as_str());
+            if !titled.is_empty() {
+                return Some(titled);
+            }
+        }
+    }
+
     Some(title_case_words(&words[named_idx + 1..end]))
 }
 
@@ -4498,7 +4536,7 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
             && words.contains(&"graveyard")
             && words.contains(&"battlefield")
             && !words.contains(&"beginning")
-            && let Some(card_name) = extract_named_card_name(&words)
+            && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
             && let Some(sacrifice_idx) = words.iter().position(|word| *word == "sacrifice")
         {
             let mut mana_symbols = Vec::new();
@@ -4527,7 +4565,7 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
             && words.contains(&"named")
             && words.contains(&"graveyard")
             && words.contains(&"battlefield")
-            && let Some(card_name) = extract_named_card_name(&words)
+            && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
         {
             builder = builder.with_ability(
                 token_upkeep_sacrifice_return_named_from_graveyard_ability(
@@ -4632,7 +4670,7 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
             && words.contains(&"named")
             && words.contains(&"graveyard")
             && words.contains(&"hand")
-            && let Some(card_name) = extract_named_card_name(&words)
+            && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
         {
             builder = builder
                 .with_ability(token_leaves_return_named_from_graveyard_to_hand_ability(&card_name));

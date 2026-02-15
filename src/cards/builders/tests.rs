@@ -2,6 +2,7 @@ use super::*;
 use crate::ability::AbilityKind;
 use crate::color::Color;
 use crate::compiled_text::{compiled_lines, oracle_like_lines};
+use crate::effects::{CreateTokenEffect, ReturnFromGraveyardToHandEffect, SearchLibraryEffect};
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 
@@ -3352,7 +3353,9 @@ fn parse_until_prefix_gets_and_gains_quoted_ability_keeps_grant() {
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("outlaw creatures you control get +1/+0")
-            && rendered.contains("gain t this creature deals damage equal to its power to target creature")
+            && rendered.contains(
+                "gain t this creature deals damage equal to its power to target creature"
+            )
             && rendered.contains("until end of turn"),
         "expected pump and granted activated ability wording, got {rendered}"
     );
@@ -3575,7 +3578,9 @@ fn parse_graveyard_card_mana_activation_condition() {
 fn parse_creature_power_mana_activation_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ferocious Mana Variant")
         .card_types(vec![CardType::Creature])
-        .parse_text("{T}: Add {G}{G}. Activate only if you control a creature with power 4 or greater.")
+        .parse_text(
+            "{T}: Add {G}{G}. Activate only if you control a creature with power 4 or greater.",
+        )
         .expect("creature-power mana activation condition should parse");
 
     let lines = compiled_lines(&def);
@@ -5787,6 +5792,116 @@ fn parse_rekindling_style_token_upkeep_trigger_is_preserved() {
             )
             && lower.contains("gains haste until end of turn"),
         "expected preserved upkeep return trigger on token, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_ozox_nested_token_return_keeps_named_card_literal() {
+    let canonical = |name: &str| {
+        name.chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .map(|ch| ch.to_ascii_lowercase())
+            .collect::<String>()
+    };
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ozox, the Clattering King")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Ozox can't block.\nWhen Ozox dies, create Jumblebones, a legendary 2/1 black Skeleton creature token with \"Jumblebones can't block\" and \"When Jumblebones leaves the battlefield, return target card named Ozox, the Clattering King from your graveyard to your hand.\"")
+        .expect("ozox nested token return clause should parse");
+
+    let outer_trigger = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected outer dies trigger");
+    let create = outer_trigger
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+        .expect("expected token creation effect");
+
+    let token_trigger = create
+        .token
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected token leaves-the-battlefield trigger");
+    let return_effect = token_trigger
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ReturnFromGraveyardToHandEffect>())
+        .expect("expected return-from-graveyard effect");
+
+    let filter = match return_effect.target.base() {
+        ChooseSpec::Object(filter) => filter,
+        other => panic!("expected object-target choose spec, got {other:?}"),
+    };
+    let parsed_name = filter
+        .name
+        .as_deref()
+        .expect("expected named-card filter on nested token trigger");
+    assert_ne!(
+        parsed_name.to_ascii_lowercase(),
+        "this",
+        "named-card filter must not collapse to 'this'"
+    );
+    assert_eq!(
+        canonical(parsed_name),
+        canonical("Ozox, the Clattering King"),
+        "expected nested named filter to preserve semantic card-name identity"
+    );
+}
+
+#[test]
+fn parse_search_named_self_keeps_literal_card_name_filter() {
+    let canonical = |name: &str| {
+        name.chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .map(|ch| ch.to_ascii_lowercase())
+            .collect::<String>()
+    };
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Battalion Foot Soldier")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you may search your library for any number of cards named Battalion Foot Soldier, reveal them, put them into your hand, then shuffle.",
+        )
+        .expect("named-self library search should parse");
+
+    let trigger = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected enters trigger");
+    let search = trigger
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<SearchLibraryEffect>())
+        .expect("expected search-library effect");
+
+    let parsed_name = search
+        .filter
+        .name
+        .as_deref()
+        .expect("expected named filter in search-library effect");
+    assert_ne!(
+        parsed_name.to_ascii_lowercase(),
+        "this",
+        "named-self search filter must not collapse to 'this'"
+    );
+    assert_eq!(
+        canonical(parsed_name),
+        canonical("Battalion Foot Soldier"),
+        "expected search filter to preserve semantic self-name identity after 'named'"
     );
 }
 
@@ -8265,7 +8380,7 @@ fn parse_rhystic_lightning_unless_payment_then_reduced_damage() {
             || rendered.contains("if that doesn't happen")
             || rendered.contains("if that doesnt happen"))
             && rendered.contains("deal 2 damage"),
-            "expected reduced-damage paid branch to remain explicit, got {rendered}"
+        "expected reduced-damage paid branch to remain explicit, got {rendered}"
     );
 }
 

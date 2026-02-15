@@ -17,6 +17,17 @@ use crate::tag::TagKey;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
+fn normalize_name_for_match(name: &str) -> String {
+    name.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
+}
+
+fn names_match(lhs: &str, rhs: &str) -> bool {
+    lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
+}
+
 // ============================================================================
 // Object Reference (for cross-effect tagging)
 // ============================================================================
@@ -1319,12 +1330,12 @@ impl ObjectFilter {
 
         // Name check
         if let Some(required_name) = &self.name
-            && !object.name.eq_ignore_ascii_case(required_name)
+            && !names_match(&object.name, required_name)
         {
             return false;
         }
         if let Some(excluded_name) = &self.excluded_name
-            && object.name.eq_ignore_ascii_case(excluded_name)
+            && names_match(&object.name, excluded_name)
         {
             return false;
         }
@@ -1464,7 +1475,7 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::SameNameAsTagged => {
                     if !tagged_snapshots
                         .iter()
-                        .any(|s| s.name.eq_ignore_ascii_case(&object.name))
+                        .any(|s| names_match(&s.name, &object.name))
                     {
                         return false;
                     }
@@ -1478,12 +1489,12 @@ impl ObjectFilter {
                     }
                 }
                 TaggedOpbjectRelation::SameManaValueAsTagged => {
-                    let object_mana_value =
-                        object.mana_cost.as_ref().map_or(0, |mc| mc.mana_value() as i32);
+                    let object_mana_value = object
+                        .mana_cost
+                        .as_ref()
+                        .map_or(0, |mc| mc.mana_value() as i32);
                     if !tagged_snapshots.iter().any(|s| {
-                        s.mana_cost
-                            .as_ref()
-                            .map_or(0, |mc| mc.mana_value() as i32)
+                        s.mana_cost.as_ref().map_or(0, |mc| mc.mana_value() as i32)
                             == object_mana_value
                     }) {
                         return false;
@@ -1790,12 +1801,12 @@ impl ObjectFilter {
 
         // Name check
         if let Some(required_name) = &self.name
-            && !snapshot.name.eq_ignore_ascii_case(required_name)
+            && !names_match(&snapshot.name, required_name)
         {
             return false;
         }
         if let Some(excluded_name) = &self.excluded_name
-            && snapshot.name.eq_ignore_ascii_case(excluded_name)
+            && names_match(&snapshot.name, excluded_name)
         {
             return false;
         }
@@ -1954,7 +1965,7 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::SameNameAsTagged => {
                     if !tagged_snapshots
                         .iter()
-                        .any(|s| s.name.eq_ignore_ascii_case(&snapshot.name))
+                        .any(|s| names_match(&s.name, &snapshot.name))
                     {
                         return false;
                     }
@@ -1973,9 +1984,7 @@ impl ObjectFilter {
                         .as_ref()
                         .map_or(0, |mc| mc.mana_value() as i32);
                     if !tagged_snapshots.iter().any(|s| {
-                        s.mana_cost
-                            .as_ref()
-                            .map_or(0, |mc| mc.mana_value() as i32)
+                        s.mana_cost.as_ref().map_or(0, |mc| mc.mana_value() as i32)
                             == snapshot_mana_value
                     }) {
                         return false;
@@ -2167,8 +2176,9 @@ impl ObjectFilter {
                 }
                 TaggedOpbjectRelation::SameManaValueAsTagged => {
                     if constraint.tag.as_str().starts_with("sacrifice_cost_") {
-                        post_noun_qualifiers
-                            .push("with the same mana value as the sacrificed creature".to_string());
+                        post_noun_qualifiers.push(
+                            "with the same mana value as the sacrificed creature".to_string(),
+                        );
                     } else {
                         post_noun_qualifiers
                             .push("with the same mana value as that object".to_string());
