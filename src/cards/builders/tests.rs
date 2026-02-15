@@ -1452,6 +1452,28 @@ fn test_render_leading_unless_payment_clause_keeps_unless_structure() {
 }
 
 #[test]
+fn parse_rhystic_study_unless_that_player_does_not_flip_to_you() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rhystic Study")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}.",
+        )
+        .expect("rhystic-study style unless-payment clause should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        !rendered.contains("unless you pay {1}"),
+        "payer should not collapse to you in rhystic-style trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains("unless that player pays {1}")
+            || rendered.contains("unless they pay {1}")
+            || rendered.contains("unless an opponent pays {1}"),
+        "expected non-you payer in rhystic-style trigger, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_creatures_without_flying_cant_attack_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Moat Probe")
         .card_types(vec![CardType::Enchantment])
