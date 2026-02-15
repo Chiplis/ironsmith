@@ -757,6 +757,24 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         "that an opponent's lands could produce",
         "that lands an opponent controls could produce",
     );
+    if let Some((left, right)) = normalized.split_once(" to the battlefield with ")
+        && (left.starts_with("Return ") || left.starts_with("return "))
+    {
+        let right_trimmed = right.trim();
+        if let Some(counter_phrase) = right_trimmed
+            .strip_suffix(" counter on it.")
+            .or_else(|| right_trimmed.strip_suffix(" counter on it"))
+        {
+            normalized = format!(
+                "{left} to the battlefield. Put {counter_phrase} counter on it."
+            );
+        }
+    }
+    if let Some((left, right)) = normalized.split_once(". Put ")
+        && (left.starts_with("Bolster ") || left.starts_with("bolster "))
+    {
+        normalized = format!("{}, then put {}", left.trim_end_matches('.'), right);
+    }
     normalized = normalized
         .replace(
             "target opponent's artifact or enchantment",
