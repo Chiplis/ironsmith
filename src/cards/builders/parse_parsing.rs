@@ -847,10 +847,19 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                         || after_words.starts_with(&["draws", "that", "many"])
                         || after_words.starts_with(&["create", "that", "many"])
                         || after_words.starts_with(&["creates", "that", "many"]));
+                let allow_gain_or_lose_life_equal_followup = !starts_with_for_each_player_or_opponent
+                    && has_back_ref
+                    && (after_words.starts_with(&["gain", "life", "equal", "to", "that"])
+                        || after_words.starts_with(&["gains", "life", "equal", "to", "that"])
+                        || after_words.starts_with(&["lose", "life", "equal", "to", "that"])
+                        || after_words.starts_with(&["loses", "life", "equal", "to", "that"]));
                 if has_effect_head && (!has_back_ref || allow_backref_split) {
                     split_point = Some(i);
                     break;
                 } else if has_effect_head && allow_that_many_followup {
+                    split_point = Some(i);
+                    break;
+                } else if has_effect_head && allow_gain_or_lose_life_equal_followup {
                     split_point = Some(i);
                     break;
                 }
@@ -2880,6 +2889,23 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
             ChooseSpec::Source
         };
         return Some(Value::PowerOf(Box::new(source)));
+    }
+
+    if matches!(
+        tail,
+        ["this", "creature", "toughness"]
+            | ["this", "creatures", "toughness"]
+            | ["its", "toughness"]
+            | ["that", "creature", "toughness"]
+            | ["that", "creatures", "toughness"]
+            | ["that", "objects", "toughness"]
+    ) {
+        let source = if tail[0] == "that" {
+            ChooseSpec::Tagged(TagKey::from(IT_TAG))
+        } else {
+            ChooseSpec::Source
+        };
+        return Some(Value::ToughnessOf(Box::new(source)));
     }
 
     if matches!(
