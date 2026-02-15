@@ -1179,6 +1179,95 @@ fn jaccard_similarity(a: &[String], b: &[String]) -> f32 {
     if union == 0.0 { 0.0 } else { inter / union }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnlessPayPayerRole {
+    You,
+    NonYou,
+}
+
+fn unless_pay_payer_role(clause: &str) -> Option<UnlessPayPayerRole> {
+    let lower = clause.to_ascii_lowercase();
+    let (_, tail) = lower.split_once("unless ")?;
+    let tokens = tokenize_text(tail);
+    let pay_idx = tokens
+        .iter()
+        .position(|token| matches!(token.as_str(), "pay" | "pays" | "paying" | "paid"))?;
+    if pay_idx == 0 {
+        return None;
+    }
+
+    let payer_tokens = &tokens[..pay_idx];
+    if payer_tokens
+        .iter()
+        .any(|token| matches!(token.as_str(), "you" | "your"))
+    {
+        return Some(UnlessPayPayerRole::You);
+    }
+    if payer_tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "opponent"
+                | "player"
+                | "that"
+                | "they"
+                | "controller"
+                | "their"
+                | "them"
+                | "its"
+                | "it"
+        )
+    }) {
+        return Some(UnlessPayPayerRole::NonYou);
+    }
+    None
+}
+
+fn count_unless_pay_role_mismatches(
+    oracle_clauses: &[String],
+    oracle_tokens: &[Vec<String>],
+    compiled_clauses: &[String],
+    compiled_tokens: &[Vec<String>],
+) -> usize {
+    let mut mismatches = 0usize;
+
+    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
+        let Some(oracle_role) = unless_pay_payer_role(oracle_clause) else {
+            continue;
+        };
+        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
+            continue;
+        };
+
+        let mut best_match: Option<(usize, f32)> = None;
+        for (compiled_idx, compiled_token_set) in compiled_tokens.iter().enumerate() {
+            let score = jaccard_similarity(oracle_token_set, compiled_token_set);
+            if best_match.is_none_or(|(_, best)| score > best) {
+                best_match = Some((compiled_idx, score));
+            }
+        }
+
+        let Some((compiled_idx, overlap)) = best_match else {
+            continue;
+        };
+
+        // Require moderate lexical overlap so we only compare semantically related clauses.
+        if overlap < 0.55 {
+            continue;
+        }
+
+        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
+            continue;
+        };
+        if let Some(compiled_role) = unless_pay_payer_role(compiled_clause)
+            && compiled_role != oracle_role
+        {
+            mismatches += 1;
+        }
+    }
+
+    mismatches
+}
+
 fn directional_coverage(from: &[Vec<String>], to: &[Vec<String>]) -> f32 {
     if from.is_empty() {
         return if to.is_empty() { 1.0 } else { 0.0 };
@@ -1261,6 +1350,12 @@ pub fn compare_semantics_scored(
 
     let mut similarity_score = min_coverage;
     let mut mismatch = semantic_gap || line_gap || empty_gap;
+    let unless_pay_role_mismatch_count = count_unless_pay_role_mismatches(
+        &oracle_clauses,
+        &oracle_tokens,
+        &compiled_clauses,
+        &compiled_tokens,
+    );
 
     if let Some(cfg) = embedding {
         let oracle_emb = oracle_clauses
@@ -1274,10 +1369,19 @@ pub fn compare_semantics_scored(
         let emb_oracle = directional_embedding_coverage(&oracle_emb, &compiled_emb);
         let emb_compiled = directional_embedding_coverage(&compiled_emb, &oracle_emb);
         let emb_min = emb_oracle.min(emb_compiled);
-        similarity_score = emb_min;
-        if emb_min < cfg.mismatch_threshold {
+        // Fuse embedding and lexical confidence so token overlap can rescue
+        // occasional embedding outliers.
+        let fused_score = 1.0 - (1.0 - emb_min.max(0.0)) * (1.0 - min_coverage.max(0.0));
+        similarity_score = fused_score;
+        if fused_score < cfg.mismatch_threshold {
             mismatch = true;
         }
+    }
+
+    if unless_pay_role_mismatch_count > 0 {
+        let penalty = 0.20 * unless_pay_role_mismatch_count as f32;
+        similarity_score = (similarity_score - penalty).max(0.0);
+        mismatch = true;
     }
 
     (
@@ -1301,7 +1405,7 @@ pub fn compare_semantics(
 
 #[cfg(test)]
 mod tests {
-    use super::compare_semantics_scored;
+    use super::{compare_semantics_scored, EmbeddingConfig};
 
     #[test]
     fn compare_semantics_ignores_choose_scaffolding_clause() {
@@ -1380,6 +1484,29 @@ mod tests {
         assert!(
             similarity >= 0.50,
             "expected normalization to preserve baseline similarity, got {similarity}"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_penalizes_unless_pay_role_inversion() {
+        let oracle =
+            "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}.";
+        let compiled = vec![String::from(
+            "Triggered ability 1: Whenever an opponent casts a spell, you may draw a card unless you pay {1}.",
+        )];
+        let (_oracle_coverage, _compiled_coverage, similarity, _line_delta, mismatch) =
+            compare_semantics_scored(
+                oracle,
+                &compiled,
+                Some(EmbeddingConfig {
+                    dims: 384,
+                    mismatch_threshold: 0.99,
+                }),
+            );
+        assert!(mismatch, "payer-role inversion must count as semantic mismatch");
+        assert!(
+            similarity < 0.99,
+            "payer-role inversion should not remain above strict 0.99 score floor (score={similarity})"
         );
     }
 }
