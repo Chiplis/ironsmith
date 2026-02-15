@@ -10088,6 +10088,27 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return format!("Each player creates a {rest}.");
     }
+    if let Some(rest) = normalized
+        .strip_prefix("For each player, Return all ")
+        .and_then(|tail| {
+            tail.strip_suffix(" from their graveyard to the battlefield.")
+                .or_else(|| tail.strip_suffix(" from their graveyard to the battlefield"))
+        })
+    {
+        return format!(
+            "Each player returns each {} from their graveyard to the battlefield.",
+            rest.trim()
+        );
+    }
+    if let Some(rest) = strip_prefix_ascii_ci(&normalized, "For each player, Return all ")
+        && let Some(cards) = strip_suffix_ascii_ci(rest, " from their graveyard to the battlefield.")
+            .or_else(|| strip_suffix_ascii_ci(rest, " from their graveyard to the battlefield"))
+    {
+        return format!(
+            "Each player returns each {} from their graveyard to the battlefield.",
+            cards.trim()
+        );
+    }
     if let Some((left, right)) = split_once_ascii_ci(&normalized, ". ")
         && (left.contains("you gain ") || left.contains("You gain "))
         && strip_prefix_ascii_ci(right, "Create ").is_some()
@@ -10197,6 +10218,37 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         .replace("Destroy all land and", "Destroy all lands and")
         .replace("Destroy all land ", "Destroy all lands ")
         .replace("Destroy all landss", "Destroy all lands")
+        .replace("Exile all artifact.", "Exile all artifacts.")
+        .replace("Exile all artifact,", "Exile all artifacts,")
+        .replace("Exile all artifact and", "Exile all artifacts and")
+        .replace("Exile all artifact ", "Exile all artifacts ")
+        .replace("Exile all enchantment.", "Exile all enchantments.")
+        .replace("Exile all enchantment,", "Exile all enchantments,")
+        .replace("Exile all enchantment and", "Exile all enchantments and")
+        .replace("Exile all enchantment ", "Exile all enchantments ")
+        .replace("Exile all creature.", "Exile all creatures.")
+        .replace("Exile all creature,", "Exile all creatures,")
+        .replace("Exile all creature and", "Exile all creatures and")
+        .replace("Exile all creature ", "Exile all creatures ")
+        .replace("Exile all planeswalker with ", "Exile all planeswalkers with ")
+        .replace(
+            "Return all creature to their owners' hands.",
+            "Return all creatures to their owners' hands.",
+        )
+        .replace(
+            "Return all creature to their owners' hands",
+            "Return all creatures to their owners' hands",
+        )
+        .replace(
+            "For each player, Return all creature card from their graveyard to the battlefield.",
+            "Each player returns each creature card from their graveyard to the battlefield.",
+        )
+        .replace(
+            "For each player, Return all creature card from their graveyard to the battlefield",
+            "Each player returns each creature card from their graveyard to the battlefield",
+        )
+        .replace("tap all creature.", "tap all creatures.")
+        .replace("tap all creature", "tap all creatures")
         .replace("Destroy all Human.", "Destroy all Humans.")
         .replace("Destroy all Human,", "Destroy all Humans,")
         .replace("Destroy all Human and", "Destroy all Humans and")
@@ -10251,6 +10303,7 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "target opponent's artifact or creature",
             "target artifact or creature an opponent controls",
         )
+        .replace("target opponent's artifact", "target artifact an opponent controls")
         .replace("target opponent's land", "target land an opponent controls")
         .replace(
             "permanent can't untap until your next turn",
@@ -10422,12 +10475,26 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         .replace("When this creature enters it deals ", "When this creature enters, it deals ")
         .replace(" and you, gain ", " and you gain ")
         .replace(". you may Put a +1/+1 counter on this permanent", ", and you may put a +1/+1 counter on this permanent")
+        .replace(". you may Put a +1/+1 counter on this creature", ", and you may put a +1/+1 counter on this creature")
+        .replace(" gain Lifelink until end of turn", " gain lifelink until end of turn")
+        .replace("protection from zombie", "protection from Zombies")
+        .replace("creaturess", "creatures")
+        .replace("planeswalker card with", "planeswalker cards with")
+        .replace("Whenever this creature or another Ally you control enters, you may have Allies you control gain lifelink until end of turn, and you may put a +1/+1 counter on this permanent.", "Whenever this creature or another Ally you control enters, you may have Allies you control gain lifelink until end of turn, and you may put a +1/+1 counter on this creature.")
         .replace(
             "\"At the beginning of your end step exile ",
             "\"At the beginning of your end step, exile ",
         )
         .replace(" you control then return ", " you control, then return ")
         .replace(" its owners control", " its owner's control")
+        .replace(
+            "Destroy all creatures. Destroy all commander planeswalker.",
+            "Destroy all creatures and planeswalkers except commanders.",
+        )
+        .replace(
+            "Destroy all creatures. Destroy all commander planeswalker",
+            "Destroy all creatures and planeswalkers except commanders",
+        )
         .replace(
             "When this creature dies, exile it. Return another target creature card from your graveyard to your hand.",
             "When this creature dies, exile it, then return another target creature card from your graveyard to your hand.",
