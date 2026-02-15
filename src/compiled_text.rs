@@ -7249,12 +7249,20 @@ fn describe_effect_impl(effect: &Effect) -> String {
         }
         if let Value::Count(filter) = &create_token.count {
             let token_blueprint = describe_token_blueprint(&create_token.token);
-            let mut text = format!(
-                "Create 1 {} under {} control for each {}",
-                token_blueprint,
-                describe_possessive_player_filter(&create_token.controller),
-                describe_for_each_filter(filter)
-            );
+            let mut text = if matches!(create_token.controller, PlayerFilter::You) {
+                format!(
+                    "Create 1 {} for each {}",
+                    token_blueprint,
+                    describe_for_each_filter(filter)
+                )
+            } else {
+                format!(
+                    "Create 1 {} under {} control for each {}",
+                    token_blueprint,
+                    describe_possessive_player_filter(&create_token.controller),
+                    describe_for_each_filter(filter)
+                )
+            };
             if create_token.enters_tapped {
                 text.push_str(", tapped");
             }
@@ -7269,12 +7277,16 @@ fn describe_effect_impl(effect: &Effect) -> String {
         let token_blueprint = describe_token_blueprint(&create_token.token);
         let count_text = describe_effect_count_backref(&create_token.count)
             .unwrap_or_else(|| describe_value(&create_token.count));
-        let mut text = format!(
-            "Create {} {} under {} control",
-            count_text,
-            token_blueprint,
-            describe_possessive_player_filter(&create_token.controller)
-        );
+        let mut text = if matches!(create_token.controller, PlayerFilter::You) {
+            format!("Create {} {}", count_text, token_blueprint)
+        } else {
+            format!(
+                "Create {} {} under {} control",
+                count_text,
+                token_blueprint,
+                describe_possessive_player_filter(&create_token.controller)
+            )
+        };
         if create_token.enters_tapped {
             text.push_str(", tapped");
         }
