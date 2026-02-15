@@ -3827,6 +3827,62 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_add_equal_to_sacrificed_creature_mana_value_uses_sacrifice_cost_tag() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Szeras Variant")
+            .parse_text(
+                "{T}, Sacrifice another creature: Add an amount of {B} equal to the sacrificed creature's mana value.",
+            )
+            .expect("sacrifice-scaled mana ability should parse");
+
+        let mana_ability = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Mana(mana) => Some(mana),
+                _ => None,
+            })
+            .expect("expected mana ability");
+        let effects = mana_ability
+            .effects
+            .as_ref()
+            .expect("expected scaled mana effects");
+        let add_scaled = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
+            .expect("expected AddScaledManaEffect");
+        assert_eq!(add_scaled.mana, vec![ManaSymbol::Black]);
+        match &add_scaled.amount {
+            Value::ManaValueOf(spec) => match spec.as_ref() {
+                ChooseSpec::Tagged(tag) => assert_eq!(tag.as_str(), "sacrifice_cost_0"),
+                other => panic!("expected sacrifice-cost tag reference, got {other:?}"),
+            },
+            other => panic!("expected mana-value scaling, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_add_that_much_colorless_uses_previous_effect_count() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Mana Seism Variant")
+            .parse_text("Sacrifice any number of lands, then add that much {C}.")
+            .expect("that-much mana spell should parse");
+
+        let effects = def.spell_effect.as_ref().expect("expected spell effects");
+        let add_scaled = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
+            .expect("expected AddScaledManaEffect");
+        assert_eq!(add_scaled.mana, vec![ManaSymbol::Colorless]);
+        assert!(
+            matches!(
+                add_scaled.amount,
+                Value::EffectValue(_) | Value::EffectValueOffset(_, _) | Value::EventValue(_)
+            ),
+            "expected dynamic backreference amount, got {:?}",
+            add_scaled.amount
+        );
+    }
+
+    #[test]
     fn parse_add_x_any_one_color_where_count_keeps_dynamic_amount() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Harabaz Druid Variant")
             .parse_text(

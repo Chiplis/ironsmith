@@ -6691,6 +6691,54 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 describe_mana_pool_owner(&add_scaled.player)
             );
         }
+        if let Value::EffectValue(_) = &add_scaled.amount {
+            return format!(
+                "Add that much {} to {}",
+                mana_text,
+                describe_mana_pool_owner(&add_scaled.player)
+            );
+        }
+        if let Value::EventValue(EventValueSpec::Amount)
+        | Value::EventValue(EventValueSpec::LifeAmount) = &add_scaled.amount
+        {
+            return format!(
+                "Add that much {} to {}",
+                mana_text,
+                describe_mana_pool_owner(&add_scaled.player)
+            );
+        }
+        if let Value::EffectValueOffset(_, offset) = &add_scaled.amount {
+            let amount_text = if *offset == 0 {
+                "that much".to_string()
+            } else if *offset > 0 {
+                format!("that much plus {}", offset)
+            } else {
+                format!("that much minus {}", -offset)
+            };
+            return format!(
+                "Add {} {} to {}",
+                amount_text,
+                mana_text,
+                describe_mana_pool_owner(&add_scaled.player)
+            );
+        }
+        if let Value::EventValueOffset(EventValueSpec::Amount, offset)
+        | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) = &add_scaled.amount
+        {
+            let amount_text = if *offset == 0 {
+                "that much".to_string()
+            } else if *offset > 0 {
+                format!("that much plus {}", offset)
+            } else {
+                format!("that much minus {}", -offset)
+            };
+            return format!(
+                "Add {} {} to {}",
+                amount_text,
+                mana_text,
+                describe_mana_pool_owner(&add_scaled.player)
+            );
+        }
         return format!(
             "Add {} {} time(s) to {}",
             mana_text,

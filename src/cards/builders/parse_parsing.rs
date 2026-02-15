@@ -2888,6 +2888,12 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
             | ["that", "spells", "mana", "value"]
             | ["that", "card", "mana", "value"]
             | ["that", "cards", "mana", "value"]
+            | ["the", "sacrificed", "creatures", "mana", "value"]
+            | ["the", "sacrificed", "artifacts", "mana", "value"]
+            | ["the", "sacrificed", "permanents", "mana", "value"]
+            | ["sacrificed", "creatures", "mana", "value"]
+            | ["sacrificed", "artifacts", "mana", "value"]
+            | ["sacrificed", "permanents", "mana", "value"]
             | ["its", "mana", "value"]
     ) {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
@@ -2904,6 +2910,14 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)));
     }
 
+    None
+}
+
+fn parse_add_mana_that_much_value(tokens: &[Token]) -> Option<Value> {
+    let words_all = words(tokens);
+    if words_all.starts_with(&["that", "much"]) {
+        return Some(Value::EventValue(EventValueSpec::Amount));
+    }
     None
 }
 
@@ -6074,6 +6088,7 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
 
             if !mana.is_empty() {
                 if let Some(amount) = dynamic_amount {
+                    let amount = resolve_mana_ability_scaled_amount_from_cost(amount, &mana_cost)?;
                     let mut effects =
                         vec![Effect::new(crate::effects::mana::AddScaledManaEffect::new(
                             mana,
@@ -6186,6 +6201,40 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
         },
         effects_ast: Some(effects_ast),
     }))
+}
+
+fn first_sacrifice_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
+    for cost in mana_cost.costs() {
+        let Some(effect) = cost.effect_ref() else {
+            continue;
+        };
+        let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+            continue;
+        };
+        if choose.tag.as_str().starts_with("sacrifice_cost_") {
+            return Some(choose.tag.clone());
+        }
+    }
+    None
+}
+
+fn resolve_mana_ability_scaled_amount_from_cost(
+    amount: Value,
+    mana_cost: &crate::cost::TotalCost,
+) -> Result<Value, CardTextError> {
+    if let Value::ManaValueOf(spec) = &amount
+        && let ChooseSpec::Tagged(tag) = spec.as_ref()
+        && tag.as_str() == IT_TAG
+    {
+        let Some(sac_tag) = first_sacrifice_cost_choice_tag(mana_cost) else {
+            return Err(CardTextError::ParseError(
+                "mana-value scaling requires a sacrificed object cost reference".to_string(),
+            ));
+        };
+        return Ok(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(sac_tag))));
+    }
+
+    Ok(amount)
 }
 
 fn infer_activated_functional_zones(
@@ -10826,30 +10875,47 @@ fn parse_sentence_return_with_counters_on_it(
 fn parse_sacrifice_any_number_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("sacrifice")) {
+    let (head_tokens, tail_tokens) = if let Some(then_idx) =
+        tokens.iter().position(|token| token.is_word("then"))
+    {
+        if then_idx == 0 {
+            return Ok(None);
+        }
+        (
+            trim_commas(&tokens[..then_idx]),
+            Some(trim_commas(&tokens[then_idx + 1..])),
+        )
+    } else {
+        (tokens.to_vec(), None)
+    };
+
+    if !head_tokens
+        .first()
+        .is_some_and(|token| token.is_word("sacrifice"))
+    {
         return Ok(None);
     }
 
     let mut idx = 1usize;
-    if !(tokens.get(idx).is_some_and(|token| token.is_word("any"))
-        && tokens
+    if !(head_tokens.get(idx).is_some_and(|token| token.is_word("any"))
+        && head_tokens
             .get(idx + 1)
             .is_some_and(|token| token.is_word("number")))
     {
         return Ok(None);
     }
     idx += 2;
-    if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+    if head_tokens.get(idx).is_some_and(|token| token.is_word("of")) {
         idx += 1;
     }
-    if idx >= tokens.len() {
+    if idx >= head_tokens.len() {
         return Err(CardTextError::ParseError(format!(
             "missing object after 'sacrifice any number of' (clause: '{}')",
             words(tokens).join(" ")
         )));
     }
 
-    let filter_tokens = trim_commas(&tokens[idx..]);
+    let filter_tokens = trim_commas(&head_tokens[idx..]);
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object after 'sacrifice any number of' (clause: '{}')",
@@ -10860,7 +10926,7 @@ fn parse_sacrifice_any_number_sentence(
     let filter = parse_object_filter(&filter_tokens, false)?;
     let tag = TagKey::from(IT_TAG);
 
-    Ok(Some(vec![
+    let mut effects = vec![
         EffectAst::ChooseObjects {
             filter,
             count: ChoiceCount::any_number(),
@@ -10871,7 +10937,15 @@ fn parse_sacrifice_any_number_sentence(
             filter: ObjectFilter::tagged(tag),
             player: PlayerAst::Implicit,
         },
-    ]))
+    ];
+    if let Some(tail_tokens) = tail_tokens
+        && !tail_tokens.is_empty()
+    {
+        let mut tail_effects = parse_effect_chain(&tail_tokens)?;
+        effects.append(&mut tail_effects);
+    }
+
+    Ok(Some(effects))
 }
 
 fn parse_sentence_sacrifice_any_number(
@@ -20749,6 +20823,14 @@ fn parse_add_mana(
     }
 
     if !mana.is_empty() {
+        if let Some(amount) = parse_add_mana_that_much_value(tokens) {
+            parser_trace_stack("parse_add_mana:scaled-that-much", tokens);
+            return Ok(EffectAst::AddManaScaled {
+                mana,
+                amount,
+                player,
+            });
+        }
         if let Some(amount) = parse_devotion_value_from_add_clause(tokens)? {
             parser_trace_stack("parse_add_mana:scaled-devotion", tokens);
             return Ok(EffectAst::AddManaScaled {

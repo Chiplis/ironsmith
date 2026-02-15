@@ -160,8 +160,9 @@ pub fn resolve_value(
                 })
         }
 
-        Value::PowerOf(_target_spec) => {
-            let target_id = find_target_object(&ctx.targets)?;
+        Value::PowerOf(target_spec) => {
+            let target_id =
+                resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
             // Try to get current object, fall back to LKI snapshot
             if let Some(obj) = game.object(target_id) {
                 game.calculated_power(target_id)
@@ -169,6 +170,12 @@ pub fn resolve_value(
                     .ok_or_else(|| {
                         ExecutionError::UnresolvableValue("Target has no power".to_string())
                     })
+            } else if let ChooseSpec::Tagged(tag) = target_spec.as_ref()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                snapshot.power.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Target had no power".to_string())
+                })
             } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
                 snapshot.power.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no power".to_string())
@@ -178,8 +185,9 @@ pub fn resolve_value(
             }
         }
 
-        Value::ToughnessOf(_target_spec) => {
-            let target_id = find_target_object(&ctx.targets)?;
+        Value::ToughnessOf(target_spec) => {
+            let target_id =
+                resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
             // Try to get current object, fall back to LKI snapshot
             if let Some(obj) = game.object(target_id) {
                 game.calculated_toughness(target_id)
@@ -187,6 +195,12 @@ pub fn resolve_value(
                     .ok_or_else(|| {
                         ExecutionError::UnresolvableValue("Target has no toughness".to_string())
                     })
+            } else if let ChooseSpec::Tagged(tag) = target_spec.as_ref()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                snapshot.toughness.ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Target had no toughness".to_string())
+                })
             } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
                 snapshot.toughness.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("Target had no toughness".to_string())
@@ -196,14 +210,25 @@ pub fn resolve_value(
             }
         }
 
-        Value::ManaValueOf(_target_spec) => {
-            let target_id = find_target_object(&ctx.targets)?;
+        Value::ManaValueOf(target_spec) => {
+            let target_id =
+                resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
             if let Some(obj) = game.object(target_id) {
                 obj.mana_cost
                     .as_ref()
                     .map(|cost| cost.mana_value() as i32)
                     .ok_or_else(|| {
                         ExecutionError::UnresolvableValue("Target has no mana value".to_string())
+                    })
+            } else if let ChooseSpec::Tagged(tag) = target_spec.as_ref()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                snapshot
+                    .mana_cost
+                    .as_ref()
+                    .map(|cost| cost.mana_value() as i32)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue("Target had no mana value".to_string())
                     })
             } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
                 snapshot
@@ -785,6 +810,18 @@ pub fn validate_target(
 // ============================================================================
 // Selection Resolution
 // ============================================================================
+
+fn resolve_primary_object_from_value_spec(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &ExecutionContext,
+) -> Result<ObjectId, ExecutionError> {
+    let objects = resolve_objects_from_spec(game, spec, ctx)?;
+    objects
+        .first()
+        .copied()
+        .ok_or(ExecutionError::InvalidTarget)
+}
 
 /// Resolve a ChooseSpec to a list of ObjectIds.
 ///
