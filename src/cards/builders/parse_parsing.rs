@@ -11898,6 +11898,59 @@ fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextErr
             sentence_words.join(" ")
         )));
     }
+    let has_different_mana_value_constraint = sentence_words
+        .windows(3)
+        .any(|window| window == ["different", "mana", "value"]);
+    if has_different_mana_value_constraint {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported different-mana-value constraint clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_most_common_color_constraint = sentence_words
+        .windows(5)
+        .any(|window| window == ["most", "common", "color", "among", "all"])
+        && sentence_words.contains(&"permanents");
+    if has_most_common_color_constraint {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported most-common-color constraint clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_power_vs_count_constraint = sentence_words.contains(&"power")
+        && sentence_words.windows(8).any(|window| {
+            window
+                == [
+                    "less", "than", "or", "equal", "to", "the", "number", "of",
+                ]
+        });
+    if has_power_vs_count_constraint {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported power-vs-count conditional clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
+    let has_put_into_graveyards_from_battlefield_this_turn = sentence_words.windows(8).any(
+        |window| {
+            window
+                == [
+                    "put",
+                    "into",
+                    "graveyards",
+                    "from",
+                    "the",
+                    "battlefield",
+                    "this",
+                    "turn",
+                ]
+        },
+    );
+    if has_put_into_graveyards_from_battlefield_this_turn {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported put-into-graveyards-from-battlefield count clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
     if sentence_words.starts_with(&["round", "up", "each", "time"]) {
         // "Round up each time." is reminder text for half P/T copy effects.
         // The semantic behavior is represented by the underlying token-copy primitive.

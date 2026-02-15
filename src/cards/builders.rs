@@ -5061,6 +5061,54 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_rejects_different_mana_value_constraint_clause() {
+        let result =
+            CardDefinitionBuilder::new(CardId::new(), "Agadeem Awakening Variant").parse_text(
+                "Return from your graveyard to the battlefield any number of target creature cards that each have a different mana value X or less.",
+            );
+        assert!(
+            result.is_err(),
+            "unsupported different-mana-value target constraint should fail parse instead of collapsing target restrictions"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_most_common_color_constraint_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Barrin Unmaking Variant")
+            .parse_text(
+                "Return target permanent to its owner's hand if that permanent shares a color with the most common color among all permanents or a color tied for most common.",
+            );
+        assert!(
+            result.is_err(),
+            "unsupported most-common-color conditional should fail parse instead of dropping the condition"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_power_vs_count_conditional_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Unified Strike Variant")
+            .parse_text(
+                "Exile target attacking creature if its power is less than or equal to the number of Soldiers on the battlefield.",
+            );
+        assert!(
+            result.is_err(),
+            "unsupported power-vs-count conditional should fail parse instead of narrowing target type"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_put_into_graveyards_from_battlefield_count_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Structural Assault Variant")
+            .parse_text(
+                "Destroy all artifacts, then this spell deals damage to each creature equal to the number of artifacts that were put into graveyards from the battlefield this turn.",
+            );
+        assert!(
+            result.is_err(),
+            "unsupported put-into-graveyards-from-battlefield count clause should fail parse instead of collapsing to a graveyard destroy effect"
+        );
+    }
+
+    #[test]
     fn parse_labeled_trigger_line_as_triggered_ability() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Heroic Label Variant")
             .parse_text(
