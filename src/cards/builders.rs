@@ -4986,6 +4986,17 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_rejects_divided_damage_distribution_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Fire at Will Variant").parse_text(
+            "Fire at Will deals 3 damage divided as you choose among one, two, or three target attacking or blocking creatures.",
+        );
+        assert!(
+            result.is_err(),
+            "unsupported divided-damage distribution should fail parse instead of collapsing into a single target damage effect"
+        );
+    }
+
+    #[test]
     fn parse_gain_control_target_creature_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Threaten")
             .parse_text("Gain control of target creature until end of turn.")

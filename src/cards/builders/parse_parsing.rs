@@ -18424,6 +18424,15 @@ fn parse_goad(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
 
 fn parse_deal_damage(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
+    let is_divided_as_you_choose_clause = clause_words.contains(&"divided")
+        && clause_words.contains(&"choose")
+        && clause_words.contains(&"among");
+    if is_divided_as_you_choose_clause {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported divided-damage distribution clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     if let Some(effect) = parse_deal_damage_equal_to_clause(tokens)? {
         return Ok(effect);
     }
