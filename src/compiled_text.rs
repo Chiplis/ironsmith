@@ -9103,6 +9103,13 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if normalized.is_empty() {
         return normalized;
     }
+    if let Some((prefix, tail)) =
+        split_once_ascii_ci(&normalized, "At the beginning of the next end step, sacrifice this spell")
+        && prefix.to_ascii_lowercase().contains("create ")
+        && prefix.to_ascii_lowercase().contains("token")
+    {
+        normalized = format!("{prefix}At the beginning of the next end step, sacrifice it{tail}");
+    }
     normalized = normalized.replace(
         "When this creature enters or this creature attacks,",
         "Whenever this creature enters or attacks,",
@@ -9171,6 +9178,15 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             return normalize_compiled_post_pass_effect(&format!("{merged} {tail}"));
         }
         return merged;
+    }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ". target player discards ")
+        && let Some((discard_tail, sacrifice_tail)) = split_once_ascii_ci(rest, ". sacrifice ")
+    {
+        return format!(
+            "{prefix}. Target player discards {} and sacrifices {}.",
+            discard_tail.trim(),
+            sacrifice_tail.trim().trim_end_matches('.')
+        );
     }
     if let Some((left, right)) = normalized.split_once(". ")
         && left.to_ascii_lowercase().starts_with("draw ")
@@ -15021,6 +15037,28 @@ mod tests {
         assert_eq!(
             normalized,
             "Exile all card in your hand. At the beginning of the next end step, return those cards to their owners' hands. Draw a card."
+        );
+    }
+
+    #[test]
+    fn post_pass_rewrites_token_copy_sacrifice_this_spell_tail() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Create a token that's a copy of target artifact or creature you control, with haste. At the beginning of the next end step, sacrifice this spell.",
+        );
+        assert_eq!(
+            normalized,
+            "Create a token that's a copy of target artifact or creature you control, with haste. At the beginning of the next end step, sacrifice it."
+        );
+    }
+
+    #[test]
+    fn post_pass_merges_target_player_discard_then_sacrifice_chain() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "Target player loses 1 life. target player discards a card. sacrifice a permanent.",
+        );
+        assert_eq!(
+            normalized,
+            "Target player loses 1 life. Target player discards a card and sacrifices a permanent."
         );
     }
 

@@ -853,6 +853,20 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace(" and you lose ", ". You lose ")
         .replace(" and you draw ", ". You draw ")
         .replace(" and you discard ", ". You discard ")
+        .replace(" and create ", ". Create ")
+        .replace(" and Create ", ". Create ")
+        .replace(" and add ", ". Add ")
+        .replace(" and Add ", ". Add ")
+        .replace(" and put ", ". Put ")
+        .replace(" and Put ", ". Put ")
+        .replace(" and target player draws ", ". Target player draws ")
+        .replace(" and target opponent draws ", ". Target opponent draws ")
+        .replace(" and each player draws ", ". Each player draws ")
+        .replace(" and each opponent draws ", ". Each opponent draws ")
+        .replace(" and target player gains ", ". Target player gains ")
+        .replace(" and target opponent gains ", ". Target opponent gains ")
+        .replace(" and each player gains ", ". Each player gains ")
+        .replace(" and each opponent gains ", ". Each opponent gains ")
         .replace(" and each opponent loses ", ". Each opponent loses ")
         .replace(" and each opponent discards ", ". Each opponent discards ")
         .replace(" and each player loses ", ". Each player loses ")
@@ -2743,6 +2757,16 @@ mod tests {
             clauses,
             vec!["Scry 1".to_string(), "draw a card".to_string()]
         );
+    }
+
+    #[test]
+    fn test_semantic_clauses_split_and_create_chain() {
+        let clauses = semantic_clauses(
+            "At the beginning of your upkeep, you lose 1 life and create a 1/1 black Faerie Rogue creature token with flying.",
+        );
+        assert_eq!(clauses.len(), 2);
+        assert!(clauses[0].to_ascii_lowercase().contains("you lose 1 life"));
+        assert!(clauses[1].to_ascii_lowercase().starts_with("create "));
     }
 
     #[test]
