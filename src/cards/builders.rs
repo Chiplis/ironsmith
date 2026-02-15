@@ -4974,6 +4974,18 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_rejects_enters_as_copy_with_except_ability_clause() {
+        let result = CardDefinitionBuilder::new(CardId::new(), "Evil Twin Variant")
+            .parse_text(
+                "You may have this creature enter as a copy of any creature on the battlefield, except it has \"{U}{B}, {T}: Destroy target creature with the same name as this creature.\"",
+            );
+        assert!(
+            result.is_err(),
+            "unsupported enters-as-copy replacement should fail parse instead of producing partial statement semantics"
+        );
+    }
+
+    #[test]
     fn parse_gain_control_target_creature_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Threaten")
             .parse_text("Gain control of target creature until end of turn.")

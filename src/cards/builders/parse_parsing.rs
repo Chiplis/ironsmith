@@ -11848,8 +11848,34 @@ fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextErr
             sentence_words.join(" ")
         )));
     }
+    if is_enters_as_copy_clause(&sentence_words) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported enters-as-copy replacement clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
 
     parse_effect_chain(tokens)
+}
+
+fn is_enters_as_copy_clause(words: &[&str]) -> bool {
+    let has_enter_before_as_copy = words
+        .windows(3)
+        .position(|window| window == ["as", "a", "copy"] || window == ["as", "an", "copy"])
+        .is_some_and(|idx| {
+            words[..idx]
+                .iter()
+                .any(|word| *word == "enter" || *word == "enters")
+        });
+    let has_enter_before_as_copy_no_article = words
+        .windows(2)
+        .position(|window| window == ["as", "copy"])
+        .is_some_and(|idx| {
+            words[..idx]
+                .iter()
+                .any(|word| *word == "enter" || *word == "enters")
+        });
+    has_enter_before_as_copy || has_enter_before_as_copy_no_article
 }
 
 fn strip_labeled_conditional_prefix(tokens: &[Token]) -> Option<&[Token]> {
