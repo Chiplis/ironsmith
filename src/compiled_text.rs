@@ -9306,23 +9306,25 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             counter_phrase.trim()
         );
     }
-    if let Some((prefix, _)) = split_once_ascii_ci(
-        &normalized,
-        ". Return it to the battlefield under its owner's control.",
-    )
-    .or_else(|| {
-        split_once_ascii_ci(
-            &normalized,
-            ". Return it to the battlefield under its owner's control",
-        )
-    }) && prefix.to_ascii_lowercase().contains("exile ")
+    if let Some(prefix) =
+        strip_suffix_ascii_ci(&normalized, ". Return it to the battlefield under its owner's control.")
+            .or_else(|| {
+                strip_suffix_ascii_ci(
+                    &normalized,
+                    ". Return it to the battlefield under its owner's control",
+                )
+            })
+        && prefix.to_ascii_lowercase().contains("exile ")
     {
         return format!("{prefix}, then return it to the battlefield under its owner's control.");
     }
-    if let Some((prefix, _)) =
-        split_once_ascii_ci(&normalized, ". Return it from graveyard to the battlefield tapped.")
+    if let Some(prefix) =
+        strip_suffix_ascii_ci(&normalized, ". Return it from graveyard to the battlefield tapped.")
             .or_else(|| {
-                split_once_ascii_ci(&normalized, ". Return it from graveyard to the battlefield tapped")
+                strip_suffix_ascii_ci(
+                    &normalized,
+                    ". Return it from graveyard to the battlefield tapped",
+                )
             })
         && prefix.to_ascii_lowercase().contains("exile ")
     {
@@ -15486,6 +15488,18 @@ mod tests {
         assert_eq!(
             normalize_sentence_surface_style("Slivercycling {{3}}."),
             "Slivercycling {3}."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "Exile up to one target artifact, creature, or enchantment you control. Return it to the battlefield under its owner's control. Draw a card."
+            ),
+            "Exile up to one target artifact, creature, or enchantment you control. Return it to the battlefield under its owner's control. Draw a card."
+        );
+        assert_eq!(
+            normalize_sentence_surface_style(
+                "Exile target creature. Return it from graveyard to the battlefield tapped. Draw a card."
+            ),
+            "Exile target creature. Return it from graveyard to the battlefield tapped. Draw a card."
         );
     }
 
