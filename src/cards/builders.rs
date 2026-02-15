@@ -247,6 +247,7 @@ enum PlayerAst {
     You,
     Any,
     Defending,
+    Attacking,
     Target,
     TargetOpponent,
     Opponent,

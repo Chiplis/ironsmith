@@ -9170,6 +9170,23 @@ fn strip_leading_trigger_intro(tokens: &[Token]) -> &[Token] {
     }
 }
 
+fn split_trigger_or_index(tokens: &[Token]) -> Option<usize> {
+    tokens.iter().enumerate().find_map(|(idx, token)| {
+        if !token.is_word("or") {
+            return None;
+        }
+        // Keep quantifiers like "one or more <subject>" intact.
+        let quantifier_or = idx > 0
+            && tokens
+                .get(idx - 1)
+                .is_some_and(|prev| prev.is_word("one"))
+            && tokens
+                .get(idx + 1)
+                .is_some_and(|next| next.is_word("more"));
+        if quantifier_or { None } else { Some(idx) }
+    })
+}
+
 fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> {
     let words = words(tokens);
 
@@ -9190,7 +9207,7 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         }
     }
 
-    if let Some(or_idx) = tokens.iter().position(|token| token.is_word("or")) {
+    if let Some(or_idx) = split_trigger_or_index(tokens) {
         let left_tokens = &tokens[..or_idx];
         let right_tokens = &tokens[or_idx + 1..];
         if !left_tokens.is_empty()
@@ -9712,6 +9729,19 @@ fn parse_trigger_subject_filter(
     }
 
     let mut subject_tokens = subject_tokens;
+    if subject_tokens.len() >= 3
+        && subject_tokens
+            .first()
+            .is_some_and(|token| token.is_word("one"))
+        && subject_tokens
+            .get(1)
+            .is_some_and(|token| token.is_word("or"))
+        && subject_tokens
+            .get(2)
+            .is_some_and(|token| token.is_word("more"))
+    {
+        subject_tokens = &subject_tokens[3..];
+    }
     let mut other = false;
     if subject_tokens
         .first()
@@ -10813,6 +10843,110 @@ fn parse_sentence_you_and_target_player_each_draw(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_target_player_each_draw_sentence(tokens)
+}
+
+fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.len() < 11 || !clause_words.starts_with(&["you", "and"]) {
+        return Ok(None);
+    }
+
+    let mut idx = 2usize;
+    if clause_words.get(idx) == Some(&"the") {
+        idx += 1;
+    }
+    if clause_words.get(idx) != Some(&"attacking")
+        || clause_words.get(idx + 1) != Some(&"player")
+    {
+        return Ok(None);
+    }
+    idx += 2;
+
+    if clause_words.get(idx) == Some(&"each") {
+        idx += 1;
+    }
+    if !matches!(clause_words.get(idx).copied(), Some("draw" | "draws")) {
+        return Ok(None);
+    }
+    idx += 1;
+
+    let draw_tokens = clause_words[idx..]
+        .iter()
+        .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let (draw_count, draw_used) = parse_value(&draw_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing shared draw count (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    if draw_tokens
+        .get(draw_used)
+        .and_then(Token::as_word)
+        .is_none_or(|word| word != "card" && word != "cards")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "missing card keyword in shared draw/lose sentence (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let after_draw_words = words(&draw_tokens[draw_used + 1..]);
+    if after_draw_words.first() != Some(&"and")
+        || !matches!(after_draw_words.get(1).copied(), Some("lose" | "loses"))
+    {
+        return Ok(None);
+    }
+
+    let lose_tokens = after_draw_words[2..]
+        .iter()
+        .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let (lose_amount, lose_used) = parse_value(&lose_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing shared life-loss amount (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    if lose_tokens
+        .get(lose_used)
+        .and_then(Token::as_word)
+        .is_none_or(|word| word != "life")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "missing life keyword in shared draw/lose sentence (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let trailing_words = words(&lose_tokens[lose_used + 1..]);
+    if !trailing_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing shared draw/lose clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    Ok(Some(vec![
+        EffectAst::Draw {
+            count: draw_count.clone(),
+            player: PlayerAst::You,
+        },
+        EffectAst::Draw {
+            count: draw_count,
+            player: PlayerAst::Attacking,
+        },
+        EffectAst::LoseLife {
+            amount: lose_amount.clone(),
+            player: PlayerAst::You,
+        },
+        EffectAst::LoseLife {
+            amount: lose_amount,
+            player: PlayerAst::Attacking,
+        },
+    ]))
 }
 
 fn parse_sentence_token_copy_modifier(
@@ -12763,6 +12897,10 @@ const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "you-and-target-player-each-draw",
         parser: parse_sentence_you_and_target_player_each_draw,
+    },
+    SentencePrimitive {
+        name: "you-and-attacking-player-each-draw-and-lose",
+        parser: parse_sentence_you_and_attacking_player_each_draw_and_lose,
     },
     SentencePrimitive {
         name: "sacrifice-it-next-end-step",
@@ -18520,6 +18658,11 @@ fn parse_leading_player_may(tokens: &[Token]) -> Option<PlayerAst> {
     if words.starts_with(&["defending", "player", "may"]) {
         return Some(PlayerAst::Defending);
     }
+    if words.starts_with(&["attacking", "player", "may"])
+        || words.starts_with(&["the", "attacking", "player", "may"])
+    {
+        return Some(PlayerAst::Attacking);
+    }
     if words.starts_with(&["its", "controller", "may"])
         || words.starts_with(&["their", "controller", "may"])
     {
@@ -20371,6 +20514,14 @@ fn parse_subject(tokens: &[Token]) -> SubjectAst {
     }
     if slice.ends_with(&["defending", "player"]) {
         return SubjectAst::Player(PlayerAst::Defending);
+    }
+    if slice.starts_with(&["attacking", "player"])
+        || slice.starts_with(&["the", "attacking", "player"])
+    {
+        return SubjectAst::Player(PlayerAst::Attacking);
+    }
+    if slice.ends_with(&["attacking", "player"]) {
+        return SubjectAst::Player(PlayerAst::Attacking);
     }
 
     if slice.starts_with(&["that", "player"]) {

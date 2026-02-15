@@ -3454,6 +3454,7 @@ fn resolve_non_target_player_filter(
         PlayerAst::You => Ok(PlayerFilter::You),
         PlayerAst::Any => Ok(PlayerFilter::Any),
         PlayerAst::Defending => Ok(PlayerFilter::Defending),
+        PlayerAst::Attacking => Ok(PlayerFilter::Attacking),
         PlayerAst::Target | PlayerAst::TargetOpponent => Err(CardTextError::ParseError(
             "target player requires explicit targeting".to_string(),
         )),

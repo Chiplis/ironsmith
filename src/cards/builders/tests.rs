@@ -8197,3 +8197,51 @@ fn parse_nesting_dragon_inline_token_rules_remain_attached_to_created_token() {
         "expected nested rule text not to split into immediate standalone effects, got {rendered}"
     );
 }
+
+#[test]
+fn parse_one_or_more_trigger_subject_does_not_split_on_or() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Yarus Trigger Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever one or more face-down creatures you control deal combat damage to a player, draw a card.",
+        )
+        .expect("one-or-more trigger subject should parse as a single trigger");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        !abilities_debug.contains("unimplemented_trigger"),
+        "expected no fallback custom trigger branch from 'one or more', got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("DealsCombatDamageToPlayerTrigger"),
+        "expected combat-damage-to-player trigger, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_you_and_attacking_player_each_draw_and_lose_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Karazikar Trigger Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever an opponent attacks another one of your opponents, you and the attacking player each draw a card and lose 1 life.",
+        )
+        .expect("shared attacking-player draw/lose sentence should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("you draw a card"),
+        "expected draw for you in shared clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("the attacking player draw"),
+        "expected draw for the attacking player in shared clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you lose 1 life"),
+        "expected life loss for you in shared clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("the attacking player lose 1 life"),
+        "expected life loss for attacking player in shared clause, got {rendered}"
+    );
+}

@@ -1647,6 +1647,19 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             life_amount.trim()
         );
     }
+    if let Some((prefix, tail)) = normalized
+        .split_once(", you draw a card. the attacking player draws a card. you lose ")
+        && let Some((life_amount, rest)) = tail.split_once(" life. the attacking player loses ")
+        && let Some(rest_amount) = rest
+            .strip_suffix(" life")
+            .or_else(|| rest.strip_suffix(" life."))
+        && life_amount.trim() == rest_amount.trim()
+    {
+        return format!(
+            "{prefix}, you and the attacking player each draw a card and lose {} life",
+            life_amount.trim()
+        );
+    }
     if let Some(rest) = normalized.strip_prefix("Target player sacrifices target player's ")
         && let Some((first_kind, tail)) =
             rest.split_once(". target player sacrifices target player's ")
@@ -16441,6 +16454,17 @@ mod tests {
         let normalized =
             normalize_known_low_tail_phrase("Draw three cards. target opponent draws 3 cards.");
         assert_eq!(normalized, "You and target opponent each draw three cards.");
+    }
+
+    #[test]
+    fn post_pass_normalizes_shared_attacking_player_draw_and_lose_clause() {
+        let normalized = normalize_known_low_tail_phrase(
+            "Whenever an opponent attacks another one of your opponents, you draw a card. the attacking player draws a card. you lose 1 life. the attacking player loses 1 life.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever an opponent attacks another one of your opponents, you and the attacking player each draw a card and lose 1 life"
+        );
     }
 
     #[test]
