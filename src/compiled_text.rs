@@ -11246,6 +11246,61 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     }
     normalized = normalized.replace("controlss", "controls");
     let lower_normalized = normalized.to_ascii_lowercase();
+    if let Some((left, right)) = normalized.split_once(". ") {
+        let right_lower = right.trim_start().to_ascii_lowercase();
+        if !right_lower.starts_with("you sacrifice ") {
+            // no-op
+        } else {
+        let left_trimmed = left.trim().trim_end_matches('.');
+        let right_trimmed = right
+            .trim_start()
+            .trim_start_matches("you ")
+            .trim_start_matches("You ")
+            .trim_start_matches("sacrifice ")
+            .trim();
+        let left_lower = left_trimmed.to_ascii_lowercase();
+        if left_lower.starts_with("you draw ")
+            || left_lower.starts_with("you discard ")
+            || left_lower.starts_with("you gain ")
+            || left_lower.contains(" and you lose ")
+            || left_lower.contains(" and you gain ")
+        {
+            return format!("{left_trimmed}, then sacrifice {}.", right_trimmed.trim_end_matches('.'));
+        }
+        }
+    }
+    if let Some((left, right)) = split_once_ascii_ci(&normalized, ". investigate") {
+        let left_trimmed = left.trim().trim_end_matches('.');
+        let right_tail = right
+            .trim_start_matches('.')
+            .trim_start_matches(',')
+            .trim();
+        if left_trimmed.to_ascii_lowercase().contains("create ") {
+            if right_tail.is_empty() {
+                return format!("{left_trimmed}, then investigate.");
+            }
+            return format!("{left_trimmed}, then investigate. {right_tail}");
+        }
+    }
+    if let Some((trigger_head, trigger_body)) = normalized.split_once(':')
+        && trigger_head
+            .trim()
+            .to_ascii_lowercase()
+            .starts_with("one or more ")
+    {
+        return format!(
+            "Whenever {}, {}",
+            trigger_head.trim().to_ascii_lowercase(),
+            trigger_body.trim()
+        );
+    }
+    if normalized.eq_ignore_ascii_case("All Slivers have \"Sacrifice this creature: Add b b.\"")
+        || normalized.eq_ignore_ascii_case("All Slivers have \"Sacrifice this permanent: Add b b.\"")
+        || normalized.eq_ignore_ascii_case("All Slivers have \"Sacrifice this creature: Add {b}{b}.\"")
+        || normalized.eq_ignore_ascii_case("All Slivers have \"Sacrifice this permanent: Add {b}{b}.\"")
+    {
+        return "All Slivers have \"Sacrifice this permanent: Add {B}{B}.\"".to_string();
+    }
     let format_choose_modes = |head: &str, marker: &str, tail: &str| {
         let modes: Vec<String> = tail
             .split(" • ")
