@@ -8380,3 +8380,24 @@ fn parse_due_respect_variant_renders_permanents_enter_tapped_compactly() {
         "expected no expanded permanent type list in enter-tapped wording, got {rendered}"
     );
 }
+
+#[test]
+fn parse_return_up_to_one_subtype_list_target_stays_single_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thwart Return Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return target creature card and up to one target Cleric, Rogue, Warrior, or Wizard creature card from your graveyard to the battlefield.",
+        )
+        .expect("subtype-list return clause should parse without splitting into multiple returns");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("up to one target cleric or rogue or warrior or wizard creature card"),
+        "expected subtype list to remain on a single return target clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("return card rogue from your graveyard")
+            && !rendered.contains("return card warrior from your graveyard"),
+        "expected no synthetic per-subtype return clauses, got {rendered}"
+    );
+}

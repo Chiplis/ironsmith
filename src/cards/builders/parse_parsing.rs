@@ -999,9 +999,9 @@ fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> Vec<Vec<Tok
                 continue;
             }
             let before_has_verb = find_verb(before.as_slice()).is_some();
-            let after_starts_effect =
-                find_verb(after.as_slice()).is_some_and(|(_, verb_idx)| verb_idx == 0)
-                    || parse_ability_line(after.as_slice()).is_some();
+            let after_starts_effect = find_verb(after.as_slice()).is_some_and(|(_, verb_idx)| {
+                verb_idx == 0
+            }) || has_effect_head_without_verb(after.as_slice());
             let before_words = words(before.as_slice());
             let after_words = words(after.as_slice());
             if before_words.first() == Some(&"unless") {
@@ -12267,12 +12267,42 @@ fn parse_sentence_return_multiple_targets(
         return Ok(None);
     }
 
-    let mut segments = Vec::new();
+    let mut segments: Vec<Vec<Token>> = Vec::new();
     for and_segment in split_on_and(&target_tokens) {
         for comma_segment in split_on_comma(&and_segment) {
             let trimmed = trim_commas(&comma_segment);
             if !trimmed.is_empty() {
-                segments.push(trimmed);
+                let trimmed_words = words(&trimmed);
+                let starts_new_target = trimmed_words.first().is_some_and(|word| {
+                    matches!(
+                        *word,
+                        "target"
+                            | "up"
+                            | "another"
+                            | "other"
+                            | "this"
+                            | "that"
+                            | "it"
+                            | "them"
+                            | "all"
+                            | "each"
+                    )
+                });
+                let mentions_target = trimmed_words.contains(&"target");
+                let starts_like_zone_suffix = trimmed_words.first().is_some_and(|word| {
+                    matches!(*word, "from" | "to" | "in" | "on" | "under")
+                });
+                if !segments.is_empty()
+                    && !starts_new_target
+                    && !mentions_target
+                    && !starts_like_zone_suffix
+                {
+                    let last = segments.last_mut().expect("segments is non-empty");
+                    last.push(Token::Comma(TextSpan::synthetic()));
+                    last.extend(trimmed.to_vec());
+                } else {
+                    segments.push(trimmed.to_vec());
+                }
             }
         }
     }

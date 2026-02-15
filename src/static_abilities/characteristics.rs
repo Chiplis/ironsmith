@@ -92,19 +92,32 @@ fn display_value(value: &Value) -> String {
         if normalized.is_empty() {
             return "objects".to_string();
         }
-        let mut parts = normalized.splitn(2, ' ');
-        let first = parts.next().unwrap_or_default();
-        let rest = parts.next();
-        let plural_first = if first.ends_with('s') {
-            first.to_string()
-        } else {
-            format!("{first}s")
-        };
-        if let Some(rest) = rest {
-            format!("{plural_first} {rest}")
-        } else {
-            plural_first
+        let mut words: Vec<String> = normalized.split_whitespace().map(str::to_string).collect();
+        let qualifier_start = words.iter().position(|word| {
+            matches!(
+                word.as_str(),
+                "you"
+                    | "an"
+                    | "a"
+                    | "target"
+                    | "that"
+                    | "in"
+                    | "from"
+                    | "with"
+                    | "without"
+                    | "on"
+                    | "under"
+            )
+        });
+        let noun_idx = qualifier_start
+            .and_then(|idx| idx.checked_sub(1))
+            .unwrap_or_else(|| words.len().saturating_sub(1));
+        if let Some(noun) = words.get_mut(noun_idx)
+            && !noun.ends_with('s')
+        {
+            noun.push('s');
         }
+        words.join(" ")
     };
 
     match value {
@@ -194,6 +207,20 @@ mod tests {
         assert_eq!(
             ability.display(),
             "This creature's power and toughness are each equal to 2 plus the number of creatures you control"
+        );
+    }
+
+    #[test]
+    fn test_display_count_with_color_adjective_pluralizes_card_not_color() {
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(crate::zone::Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+        filter.colors = Some(crate::color::ColorSet::BLACK);
+        let ability = CharacteristicDefiningPT::new(Value::Count(filter.clone()), Value::Count(filter));
+        assert!(
+            ability.display().contains("black cards in your graveyard"),
+            "expected color-adjective count to pluralize 'card', got {}",
+            ability.display()
         );
     }
 }
