@@ -22879,6 +22879,18 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         if all_words
             .get(with_idx + 1)
             .is_some_and(|word| *word == "no")
+            && all_words
+                .get(with_idx + 2)
+                .is_some_and(|word| matches!(*word, "ability" | "abilities"))
+        {
+            filter.no_abilities = true;
+            with_idx += 3;
+            continue;
+        }
+
+        if all_words
+            .get(with_idx + 1)
+            .is_some_and(|word| *word == "no")
             && let Some((counter_constraint, consumed)) =
                 parse_filter_counter_constraint_words(&all_words[with_idx + 2..])
         {

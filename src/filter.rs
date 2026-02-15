@@ -466,6 +466,9 @@ pub struct ObjectFilter {
     /// If true, object must have an activated ability with {T} in its cost.
     pub has_tap_activated_ability: bool,
 
+    /// If true, object must have no abilities.
+    pub no_abilities: bool,
+
     /// If true, the mana cost must not contain X
     pub no_x_in_cost: bool,
 
@@ -1368,6 +1371,9 @@ impl ObjectFilter {
         if self.has_tap_activated_ability && !object_has_tap_activated_ability(object) {
             return false;
         }
+        if self.no_abilities && !object.abilities.is_empty() {
+            return false;
+        }
 
         // Commander check
         if self.is_commander && !game.is_commander(object.id) {
@@ -1800,6 +1806,9 @@ impl ObjectFilter {
         if self.has_tap_activated_ability && !snapshot_has_tap_activated_ability(snapshot) {
             return false;
         }
+        if self.no_abilities && !snapshot.abilities.is_empty() {
+            return false;
+        }
 
         // Commander check
         if self.is_commander && !snapshot.is_commander {
@@ -2169,6 +2178,9 @@ impl ObjectFilter {
         }
         if self.entered_since_your_last_turn_ended {
             post_noun_qualifiers.push("that entered since your last turn ended".to_string());
+        }
+        if self.no_abilities {
+            post_noun_qualifiers.push("with no abilities".to_string());
         }
 
         let subtype_implies_type = !self.subtypes.is_empty()
