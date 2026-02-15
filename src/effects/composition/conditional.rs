@@ -440,22 +440,20 @@ fn evaluate_condition(
                 .battlefield
                 .iter()
                 .filter(|&&id| {
-                    game.object(id)
-                        .is_some_and(|obj| {
-                            obj.controller == ctx.controller
-                                && game.object_has_card_type(id, crate::types::CardType::Creature)
-                        })
+                    game.object(id).is_some_and(|obj| {
+                        obj.controller == ctx.controller
+                            && game.object_has_card_type(id, crate::types::CardType::Creature)
+                    })
                 })
                 .count();
             let target_count = game
                 .battlefield
                 .iter()
                 .filter(|&&id| {
-                    game.object(id)
-                        .is_some_and(|obj| {
-                            obj.controller == target_controller
-                                && game.object_has_card_type(id, crate::types::CardType::Creature)
-                        })
+                    game.object(id).is_some_and(|obj| {
+                        obj.controller == target_controller
+                            && game.object_has_card_type(id, crate::types::CardType::Creature)
+                    })
                 })
                 .count();
             Ok(you_count > target_count)

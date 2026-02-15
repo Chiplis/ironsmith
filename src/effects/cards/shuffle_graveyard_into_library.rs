@@ -50,4 +50,3 @@ impl EffectExecutor for ShuffleGraveyardIntoLibraryEffect {
         Box::new(self.clone())
     }
 }
-

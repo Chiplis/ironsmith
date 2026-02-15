@@ -406,7 +406,9 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     if let Some((left, right)) = normalized.split_once(". Deal ")
         && left.starts_with("Deal ")
         && left.to_ascii_lowercase().contains("target creature")
-        && right.to_ascii_lowercase().contains("damage to that object's controller")
+        && right
+            .to_ascii_lowercase()
+            .contains("damage to that object's controller")
     {
         normalized = format!(
             "{} and Deal {}",
@@ -1236,8 +1238,7 @@ mod tests {
 
     #[test]
     fn compare_semantics_normalizes_object_controller_wording() {
-        let oracle =
-            "Chandra's Outrage deals 4 damage to target creature and 2 damage to that creature's controller.";
+        let oracle = "Chandra's Outrage deals 4 damage to target creature and 2 damage to that creature's controller.";
         let compiled = vec![String::from(
             "Spell effects: Deal 4 damage to target creature. Deal 2 damage to that object's controller.",
         )];
@@ -1247,7 +1248,10 @@ mod tests {
             similarity >= 0.70,
             "expected controller wording normalization to keep similarity high, got {similarity}"
         );
-        assert!(!mismatch, "expected no mismatch for object/controller wording");
+        assert!(
+            !mismatch,
+            "expected no mismatch for object/controller wording"
+        );
     }
 
     #[test]

@@ -41,14 +41,23 @@ impl EffectExecutor for LookAtTopCardsEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let top_cards: Vec<_> = player.library.iter().rev().take(self.count).copied().collect();
+        let top_cards: Vec<_> = player
+            .library
+            .iter()
+            .rev()
+            .take(self.count)
+            .copied()
+            .collect();
         if top_cards.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
 
         let snapshots: Vec<ObjectSnapshot> = top_cards
             .iter()
-            .filter_map(|&id| game.object(id).map(|obj| ObjectSnapshot::from_object(obj, game)))
+            .filter_map(|&id| {
+                game.object(id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game))
+            })
             .collect();
         if snapshots.is_empty() {
             return Ok(EffectOutcome::count(0));
