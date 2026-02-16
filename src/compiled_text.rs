@@ -2850,6 +2850,14 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("Counter target instant", "Counter target instant spell")
         .replace("Counter target sorcery", "Counter target sorcery spell")
         .replace(
+            "Counter target enchantment or instant or sorcery",
+            "Counter target enchantment, instant, or sorcery spell",
+        )
+        .replace(
+            "Counter target artifact or creature or planeswalker",
+            "Counter target artifact, creature, or planeswalker spell",
+        )
+        .replace(
             "Counter target artifact or creature unless its controller pays ",
             "Counter target artifact or creature spell unless its controller pays ",
         )
@@ -18136,6 +18144,25 @@ mod tests {
         assert_eq!(
             normalized,
             "Whenever an opponent casts a creature spell, that player loses 2 life unless they pay {2}."
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_counter_type_lists() {
+        let swan_song = normalize_common_semantic_phrasing(
+            "Counter target enchantment or instant or sorcery.",
+        );
+        assert_eq!(
+            swan_song,
+            "Counter target enchantment, instant, or sorcery spell."
+        );
+
+        let strix = normalize_common_semantic_phrasing(
+            "Counter target artifact or creature or planeswalker.",
+        );
+        assert_eq!(
+            strix,
+            "Counter target artifact, creature, or planeswalker spell."
         );
     }
 
