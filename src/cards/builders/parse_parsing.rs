@@ -13284,6 +13284,12 @@ fn parse_sentence_exile_hand_and_graveyard_bundle(
     parse_exile_hand_and_graveyard_bundle_sentence(tokens)
 }
 
+fn parse_sentence_target_player_exiles_creature_and_graveyard(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_target_player_exiles_creature_and_graveyard_sentence(tokens)
+}
+
 fn parse_sentence_play_from_graveyard(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -13942,6 +13948,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "exile-hand-and-graveyard-bundle",
         parser: parse_sentence_exile_hand_and_graveyard_bundle,
+    },
+    SentencePrimitive {
+        name: "target-player-exiles-creature-and-graveyard",
+        parser: parse_sentence_target_player_exiles_creature_and_graveyard,
     },
     SentencePrimitive {
         name: "play-from-graveyard",
@@ -17284,6 +17294,75 @@ fn parse_exile_hand_and_graveyard_bundle_sentence(
         },
         EffectAst::ExileAll {
             filter: second_filter,
+        },
+    ]))
+}
+
+fn parse_target_player_exiles_creature_and_graveyard_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_tokens = trim_commas(tokens);
+    let clause_words = words(&clause_tokens);
+    if clause_words.len() < 8 {
+        return Ok(None);
+    }
+
+    let (subject_player, subject_filter) = if clause_words.starts_with(&["target", "opponent"]) {
+        (PlayerAst::TargetOpponent, PlayerFilter::target_opponent())
+    } else if clause_words.starts_with(&["target", "player"]) {
+        (PlayerAst::Target, PlayerFilter::target_player())
+    } else {
+        return Ok(None);
+    };
+
+    let verb_idx = 2usize;
+    if !matches!(
+        clause_words.get(verb_idx).copied(),
+        Some("exile") | Some("exiles")
+    ) {
+        return Ok(None);
+    }
+
+    let tail_words = &clause_words[verb_idx + 1..];
+    let Some(and_idx) = tail_words.iter().position(|word| *word == "and") else {
+        return Ok(None);
+    };
+    let creature_words = &tail_words[..and_idx];
+    let graveyard_words = &tail_words[and_idx + 1..];
+
+    if graveyard_words != ["their", "graveyard"] {
+        return Ok(None);
+    }
+
+    let creature_words = if creature_words.first().is_some_and(|word| is_article(word)) {
+        &creature_words[1..]
+    } else {
+        creature_words
+    };
+    let creature_clause_matches = creature_words == ["creature", "they", "control"]
+        || creature_words == ["creature", "that", "player", "controls"];
+    if !creature_clause_matches {
+        return Ok(None);
+    }
+
+    let mut creature_filter = ObjectFilter::creature();
+    creature_filter.controller = Some(subject_filter.clone());
+
+    let mut graveyard_filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+    graveyard_filter.owner = Some(subject_filter);
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter: creature_filter,
+            count: ChoiceCount::exactly(1),
+            player: subject_player,
+            tag: TagKey::from(IT_TAG),
+        },
+        EffectAst::ExileAll {
+            filter: ObjectFilter::tagged(IT_TAG),
+        },
+        EffectAst::ExileAll {
+            filter: graveyard_filter,
         },
     ]))
 }
