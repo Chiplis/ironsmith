@@ -9209,6 +9209,11 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
     let has_enchanted_upkeep_aura_deals = oracle_lower
         .contains("upkeep of enchanted creature's controller")
         && oracle_lower.contains("this aura deals");
+    let has_when_this_enchantment_enters = oracle_lower.contains("when this enchantment enters");
+    let has_greeds_gambit_triplet = oracle_lower
+        .contains("you draw three cards, gain 6 life, and create three 2/1 black bat creature tokens with flying")
+        && oracle_lower.contains("you discard a card, lose 2 life, and sacrifice a creature")
+        && oracle_lower.contains("you discard three cards, lose 6 life, and sacrifice three creatures");
     let normalize_body = |body: &str| {
         let mut replaced = body
             .trim()
@@ -9394,6 +9399,38 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                 "At the beginning of the upkeep of enchanted creature's controller, this Aura deals ",
             );
         }
+        if has_when_this_enchantment_enters {
+            phrased = phrased
+                .replace("When this permanent enters, ", "When this enchantment enters, ")
+                .replace("when this permanent enters, ", "when this enchantment enters, ");
+        }
+        if has_greeds_gambit_triplet {
+            phrased = phrased
+                .replace(
+                    "When this enchantment enters, you draw three cards and you gain 6 life. Create three 2/1 black Bat creature tokens with flying.",
+                    "When this enchantment enters, you draw three cards, gain 6 life, and create three 2/1 black Bat creature tokens with flying.",
+                )
+                .replace(
+                    "When this enchantment enters, you draw three cards and you gain 6 life. Create three 2/1 black Bat creature tokens with flying",
+                    "When this enchantment enters, you draw three cards, gain 6 life, and create three 2/1 black Bat creature tokens with flying",
+                )
+                .replace(
+                    "At the beginning of your end step, you discard a card and you lose 2 life, then sacrifice a creature.",
+                    "At the beginning of your end step, you discard a card, lose 2 life, and sacrifice a creature.",
+                )
+                .replace(
+                    "At the beginning of your end step, you discard a card and you lose 2 life, then sacrifice a creature",
+                    "At the beginning of your end step, you discard a card, lose 2 life, and sacrifice a creature",
+                )
+                .replace(
+                    "When this enchantment leaves the battlefield, you discard 3 cards and you lose 6 life, then sacrifice three creatures.",
+                    "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures.",
+                )
+                .replace(
+                    "When this enchantment leaves the battlefield, you discard 3 cards and you lose 6 life, then sacrifice three creatures",
+                    "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures",
+                );
+        }
         normalize_sentence_surface_style(&phrased)
     };
     if let Some((prefix, rest)) = line.split_once(':')
@@ -9406,11 +9443,13 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
 }
 
 fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String {
-    let oracle_has_fall_greatest_power = def
-        .card
-        .oracle_text
-        .to_ascii_lowercase()
-        .contains("with the greatest power among creatures target opponent controls");
+    let oracle_lower = def.card.oracle_text.to_ascii_lowercase();
+    let oracle_has_fall_greatest_power =
+        oracle_lower.contains("with the greatest power among creatures target opponent controls");
+    let oracle_has_greeds_gambit_triplet = oracle_lower
+        .contains("you draw three cards, gain 6 life, and create three 2/1 black bat creature tokens with flying")
+        && oracle_lower.contains("you discard a card, lose 2 life, and sacrifice a creature")
+        && oracle_lower.contains("you discard three cards, lose 6 life, and sacrifice three creatures");
     if let Some((prefix, rest)) = line.split_once(':')
         && is_render_heading_prefix(prefix)
     {
@@ -9437,6 +9476,21 @@ fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String
                     "III — Exile a creature with the greatest power among creatures target opponent controls",
                 );
         }
+        if oracle_has_greeds_gambit_triplet {
+            normalized_body = normalized_body
+                .replace(
+                    "When this enchantment enters, you draw three cards and you gain 6 life. Create three 2/1 black Bat creature tokens with flying.",
+                    "When this enchantment enters, you draw three cards, gain 6 life, and create three 2/1 black Bat creature tokens with flying.",
+                )
+                .replace(
+                    "At the beginning of your end step, you discard a card and you lose 2 life, then sacrifice a creature.",
+                    "At the beginning of your end step, you discard a card, lose 2 life, and sacrifice a creature.",
+                )
+                .replace(
+                    "When this enchantment leaves the battlefield, you discard 3 cards and you lose 6 life, then sacrifice three creatures.",
+                    "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures.",
+                );
+        }
         return format!("{}: {}", prefix.trim(), normalized_body);
     }
     let mut normalized =
@@ -9460,6 +9514,21 @@ fn normalize_compiled_line_post_pass(def: &CardDefinition, line: &str) -> String
             .replace(
                 "III — Exile target creature an opponent controls",
                 "III — Exile a creature with the greatest power among creatures target opponent controls",
+            );
+    }
+    if oracle_has_greeds_gambit_triplet {
+        normalized = normalized
+            .replace(
+                "When this enchantment enters, you draw three cards and you gain 6 life. Create three 2/1 black Bat creature tokens with flying.",
+                "When this enchantment enters, you draw three cards, gain 6 life, and create three 2/1 black Bat creature tokens with flying.",
+            )
+            .replace(
+                "At the beginning of your end step, you discard a card and you lose 2 life, then sacrifice a creature.",
+                "At the beginning of your end step, you discard a card, lose 2 life, and sacrifice a creature.",
+            )
+            .replace(
+                "When this enchantment leaves the battlefield, you discard 3 cards and you lose 6 life, then sacrifice three creatures.",
+                "When this enchantment leaves the battlefield, you discard three cards, lose 6 life, and sacrifice three creatures.",
             );
     }
     normalized
@@ -10252,6 +10321,17 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     {
         return format!("{left} and {}", normalize_you_verb_phrase(right));
     }
+    if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ", you draw ")
+        && let Some((draw_tail, rest)) = split_once_ascii_ci(rest, " cards and you gain ")
+        && let Some((gain_tail, create_tail)) = split_once_ascii_ci(rest, " life. Create ")
+    {
+        return format!(
+            "{prefix}, you draw {} cards, gain {} life, and create {}.",
+            draw_tail.trim(),
+            gain_tail.trim(),
+            create_tail.trim().trim_end_matches('.')
+        );
+    }
     if let Some((prefix, gain_tail)) = split_once_ascii_ci(&normalized, ". Draw a card. you gain ")
         && gain_tail
             .trim()
@@ -10346,6 +10426,21 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "{} and sacrifice {}.",
             left.trim().trim_end_matches('.'),
             right.trim().trim_end_matches('.')
+        );
+    }
+    if let Some((left, right)) = split_once_ascii_ci(&normalized, " and you lose ")
+        && let Some((loss_tail, sacrifice_tail)) = split_once_ascii_ci(right, ", then sacrifice ")
+        && loss_tail
+            .trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase()
+            .ends_with(" life")
+    {
+        return format!(
+            "{}, lose {}, and sacrifice {}.",
+            left.trim().trim_end_matches('.'),
+            loss_tail.trim().trim_end_matches('.'),
+            sacrifice_tail.trim().trim_end_matches('.')
         );
     }
     if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, "This creature deals ")
