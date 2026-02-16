@@ -3310,6 +3310,8 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         subject = subject[2..].to_string();
     } else if lower_subject.starts_with("an ") {
         subject = subject[3..].to_string();
+    } else if let Some(rest) = lower_subject.strip_prefix("another ") {
+        subject = format!("other {}", rest.trim());
     }
 
     let controller_suffix = match controller {
@@ -3482,7 +3484,7 @@ fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
             return "that Aura".to_string();
         }
         if filter.card_types.is_empty() && filter.subtypes.is_empty() {
-            return "those objects".to_string();
+            return "it".to_string();
         }
     }
     describe_choose_spec(spec)
@@ -5791,6 +5793,9 @@ fn describe_for_each_filter(filter: &ObjectFilter) -> String {
 
     let description = base_filter.description();
     let mut base = strip_indefinite_article(&description).to_string();
+    if let Some(rest) = base.strip_prefix("another ") {
+        base = format!("other {rest}");
+    }
     if let Some(rest) = base.strip_prefix("permanent ")
         && matches!(filter.zone, None | Some(Zone::Battlefield))
     {
@@ -9182,8 +9187,31 @@ fn card_self_reference_phrase(def: &CardDefinition) -> &'static str {
         .any(|subtype| matches!(subtype, crate::types::Subtype::Aura))
     {
         "this Aura"
+    } else if def
+        .card
+        .subtypes
+        .iter()
+        .any(|subtype| matches!(subtype, crate::types::Subtype::Equipment))
+    {
+        "this Equipment"
+    } else if def
+        .card
+        .subtypes
+        .iter()
+        .any(|subtype| matches!(subtype, crate::types::Subtype::Fortification))
+    {
+        "this Fortification"
+    } else if def
+        .card
+        .subtypes
+        .iter()
+        .any(|subtype| matches!(subtype, crate::types::Subtype::Saga))
+    {
+        "this Saga"
     } else if def.card.is_enchantment() {
         "this enchantment"
+    } else if def.card.has_card_type(CardType::Battle) {
+        "this battle"
     } else if def.card.is_land() {
         "this land"
     } else if def.card.is_artifact() {
@@ -9254,6 +9282,9 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
     let has_enchanted_upkeep_aura_deals = oracle_lower
         .contains("upkeep of enchanted creature's controller")
         && oracle_lower.contains("this aura deals");
+    let has_when_this_siege_enters = oracle_lower.contains("when this siege enters");
+    let has_when_this_saga_enters = oracle_lower.contains("when this saga enters");
+    let has_this_equipment = oracle_lower.contains("this equipment");
     let has_when_this_enchantment_enters = oracle_lower.contains("when this enchantment enters");
     let has_greeds_gambit_triplet = oracle_lower
         .contains("you draw three cards, gain 6 life, and create three 2/1 black bat creature tokens with flying")
@@ -9443,6 +9474,25 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                 "At the beginning of the upkeep of enchanted creature's controller, deal ",
                 "At the beginning of the upkeep of enchanted creature's controller, this Aura deals ",
             );
+        }
+        if has_this_equipment {
+            phrased = phrased
+                .replace("This artifact", "This Equipment")
+                .replace("this artifact", "this Equipment");
+        }
+        if has_when_this_siege_enters {
+            phrased = phrased
+                .replace("When this permanent enters, ", "When this Siege enters, ")
+                .replace("when this permanent enters, ", "when this Siege enters, ")
+                .replace("When this battle enters, ", "When this Siege enters, ")
+                .replace("when this battle enters, ", "when this Siege enters, ");
+        }
+        if has_when_this_saga_enters {
+            phrased = phrased
+                .replace("When this enchantment enters, ", "When this Saga enters, ")
+                .replace("when this enchantment enters, ", "when this Saga enters, ")
+                .replace("When this permanent enters, ", "When this Saga enters, ")
+                .replace("when this permanent enters, ", "when this Saga enters, ");
         }
         if has_when_this_enchantment_enters {
             phrased = phrased
@@ -12848,6 +12898,35 @@ fn merge_adjacent_simple_mana_add_lines(lines: Vec<String>) -> Vec<String> {
     merged
 }
 
+fn have_verb_for_subject(subject: &str) -> &'static str {
+    let lower = subject.to_ascii_lowercase();
+    if lower.starts_with("enchanted ")
+        || lower.starts_with("equipped ")
+        || lower.starts_with("this ")
+        || lower.starts_with("that ")
+    {
+        "has"
+    } else if lower.starts_with("creatures")
+        || lower.starts_with("other creatures")
+        || lower.starts_with("all ")
+        || lower.starts_with("those ")
+        || lower.contains("creatures ")
+    {
+        "have"
+    } else {
+        // Check if subject contains a plural noun
+        let plural_nouns = [
+            "permanents", "creatures", "artifacts", "enchantments", "lands",
+            "planeswalkers", "battles", "spells", "cards", "tokens",
+        ];
+        if plural_nouns.iter().any(|n| lower.contains(n)) {
+            "have"
+        } else {
+            "has"
+        }
+    }
+}
+
 fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
@@ -12859,6 +12938,7 @@ fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String> {
                 && let Some((right_subject, right_tail)) = split_have_clause(right)
                 && left_subject.eq_ignore_ascii_case(&right_subject)
             {
+                let verb = have_verb_for_subject(&left_subject);
                 let left_tail = normalize_keyword_predicate_case(&left_tail);
                 let right_tail = normalize_keyword_predicate_case(&right_tail);
                 let left_key = strip_parenthetical_segments(&left_tail).to_ascii_lowercase();
@@ -12867,9 +12947,9 @@ fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String> {
                     || left_key.contains(&format!(" and {right_key}"))
                     || left_key.ends_with(&format!(" {right_key}"))
                 {
-                    merged.push(format!("{left_subject} has {left_tail}"));
+                    merged.push(format!("{left_subject} {verb} {left_tail}"));
                 } else {
-                    merged.push(format!("{left_subject} has {left_tail} and {right_tail}"));
+                    merged.push(format!("{left_subject} {verb} {left_tail} and {right_tail}"));
                 }
                 idx += 2;
                 continue;
@@ -15881,12 +15961,13 @@ mod tests {
         compiled_lines, describe_additional_cost_effects, describe_for_each_filter,
         merge_adjacent_static_heading_lines, normalize_common_semantic_phrasing,
         normalize_compiled_post_pass_effect, normalize_create_under_control_clause,
-        normalize_known_low_tail_phrase, normalize_sentence_surface_style, pluralize_noun_phrase,
+        normalize_known_low_tail_phrase, normalize_rendered_line_for_card,
+        normalize_sentence_surface_style, pluralize_noun_phrase,
     };
     use crate::cards::CardDefinitionBuilder;
     use crate::filter::{ObjectFilter, PlayerFilter};
     use crate::ids::CardId;
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
     #[test]
@@ -17765,6 +17846,56 @@ mod tests {
                 .to_ascii_lowercase()
                 .contains("where x is the number of elves on the battlefield"),
             "expected explicit where-X count clause, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn renders_equipment_self_reference_and_singular_attach_target() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Equipment Render Variant")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .parse_text("When this Equipment enters, attach it to target creature you control.\nEquip {1}")
+            .expect("equipment self-reference should parse");
+
+        let rendered = compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains("When this Equipment enters, attach it to target creature you control."),
+            "expected equipment self-reference + singular attach wording, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn normalize_rendered_line_prefers_saga_self_reference_when_oracle_uses_saga() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Saga Render Variant")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Saga])
+            .parse_text("When this Saga enters, draw a card.")
+            .expect("saga line should parse");
+
+        let normalized = normalize_rendered_line_for_card(
+            &def,
+            "Triggered ability 1: When this enchantment enters, draw a card.",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 1: When this Saga enters, draw a card."
+        );
+    }
+
+    #[test]
+    fn normalize_rendered_line_prefers_siege_self_reference_when_oracle_uses_siege() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Siege Render Variant")
+            .card_types(vec![CardType::Battle])
+            .parse_text("When this Siege enters, draw a card.")
+            .expect("siege line should parse");
+
+        let normalized = normalize_rendered_line_for_card(
+            &def,
+            "Triggered ability 1: When this permanent enters, draw a card.",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 1: When this Siege enters, draw a card."
         );
     }
 

@@ -180,54 +180,85 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
         return subject;
     }
 
-    let (base, suffix) = split_subject_suffix(&subject);
-    let base = strip_indefinite_article(base);
-    if let Some(plural_base) = pluralize_terminal_noun(base) {
-        return format!("{plural_base}{suffix}");
-    }
-    if let Some((head, tail)) = base.rsplit_once(' ') {
-        let plural_head = pluralize_terminal_noun(head).unwrap_or_else(|| {
-            let lower = head.to_ascii_lowercase();
-            if lower.ends_with('y')
-                && lower.len() > 1
-                && !matches!(
-                    lower.chars().nth(lower.len() - 2),
-                    Some('a' | 'e' | 'i' | 'o' | 'u')
-                )
-            {
-                format!("{}ies", &head[..head.len() - 1])
-            } else if lower.ends_with('s')
-                || lower.ends_with('x')
-                || lower.ends_with('z')
-                || lower.ends_with("ch")
-                || lower.ends_with("sh")
-            {
-                format!("{head}es")
-            } else {
-                format!("{head}s")
+    // Strip indefinite article from the beginning.
+    let subject = if let Some(rest) = subject.strip_prefix("a ") {
+        rest.to_string()
+    } else if let Some(rest) = subject.strip_prefix("an ") {
+        rest.to_string()
+    } else {
+        subject
+    };
+
+    // Find the first known singular noun in the subject and pluralize it.
+    // This handles subjects like "card in graveyard", "creature you control with a counter on it"
+    // correctly, since the noun appears before zone/controller/qualifier suffixes.
+    const NOUNS: &[(&str, &str)] = &[
+        ("permanent", "permanents"),
+        ("creature", "creatures"),
+        ("artifact", "artifacts"),
+        ("enchantment", "enchantments"),
+        ("land", "lands"),
+        ("planeswalker", "planeswalkers"),
+        ("battle", "battles"),
+        ("spell", "spells"),
+        ("card", "cards"),
+        ("token", "tokens"),
+    ];
+
+    for &(singular, plural) in NOUNS {
+        // Look for the noun as a whole word in the subject.
+        if let Some(pos) = subject.to_ascii_lowercase().find(singular) {
+            let before_ok = pos == 0 || subject.as_bytes()[pos - 1] == b' ';
+            let after_pos = pos + singular.len();
+            let after_ok = after_pos >= subject.len()
+                || subject.as_bytes()[after_pos] == b' '
+                || subject.as_bytes()[after_pos] == b'.';
+            if before_ok && after_ok {
+                let prefix = &subject[..pos];
+                let suffix = &subject[after_pos..];
+                return format!("{prefix}{plural}{suffix}");
             }
-        });
-        return format!("{plural_head} {tail}{suffix}");
+        }
     }
-    let lower = base.to_ascii_lowercase();
-    let plural_base = if lower.ends_with('y')
-        && lower.len() > 1
-        && !matches!(
-            lower.chars().nth(lower.len() - 2),
-            Some('a' | 'e' | 'i' | 'o' | 'u')
-        ) {
-        format!("{}ies", &base[..base.len() - 1])
-    } else if lower.ends_with('s')
+
+    // Fallback for subtype-only filters (e.g., "Zombie you control", "Rat you control"):
+    // find the main noun (the word before " you control", " in graveyard", or similar suffixes)
+    // and pluralize it.
+    let (base, suffix) = split_subject_suffix(&subject);
+    if !base.is_empty() {
+        // Pluralize the last word of the base (the main noun/subtype).
+        if let Some((head, noun)) = base.rsplit_once(' ') {
+            let plural = simple_pluralize(noun);
+            return format!("{head} {plural}{suffix}");
+        }
+        // Single word base (e.g., just "Zombie").
+        let plural = simple_pluralize(base);
+        return format!("{plural}{suffix}");
+    }
+
+    subject
+}
+
+fn simple_pluralize(word: &str) -> String {
+    let lower = word.to_ascii_lowercase();
+    if lower.ends_with('s')
         || lower.ends_with('x')
         || lower.ends_with('z')
         || lower.ends_with("ch")
         || lower.ends_with("sh")
     {
-        format!("{base}es")
+        format!("{word}es")
+    } else if lower.ends_with('y')
+        && lower.len() > 1
+        && !matches!(
+            lower.chars().nth(lower.len() - 2),
+            Some('a' | 'e' | 'i' | 'o' | 'u')
+        )
+    {
+        format!("{}ies", &word[..word.len() - 1])
     } else {
-        format!("{base}s")
-    };
-    format!("{plural_base}{suffix}")
+        format!("{word}s")
+    }
 }
 
 fn grant_subject_text(filter: &ObjectFilter) -> String {
@@ -834,7 +865,7 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
     fn display(&self) -> String {
         format!(
             "{} lose {}",
-            subject_text(&self.filter),
+            pluralized_subject_text(&self.filter),
             self.ability.display()
         )
     }
@@ -880,7 +911,7 @@ impl StaticAbilityKind for RemoveAllAbilitiesForFilter {
     }
 
     fn display(&self) -> String {
-        format!("{} lose all abilities", subject_text(&self.filter))
+        format!("{} lose all abilities", pluralized_subject_text(&self.filter))
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -932,13 +963,12 @@ impl StaticAbilityKind for SetBasePowerToughnessForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = self.filter.description();
-        let lower = subject.to_ascii_lowercase();
-        let plural = lower.starts_with("all ")
-            || lower.starts_with("each ")
-            || lower.starts_with("those ")
-            || lower.ends_with('s');
-        let verb = if plural { "have" } else { "has" };
+        let subject = pluralized_subject_text(&self.filter);
+        let singular = subject.starts_with("enchanted ")
+            || subject.starts_with("equipped ")
+            || subject.starts_with("this ")
+            || subject.starts_with("that ");
+        let verb = if singular { "has" } else { "have" };
         format!(
             "{subject} {verb} base power and toughness {}/{}",
             self.power, self.toughness
@@ -1120,7 +1150,7 @@ impl StaticAbilityKind for SetColorsForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = subject_text(&self.filter);
+        let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
         let colors = join_with_and(&color_list(self.colors));
         format!("{subject} {verb} {colors}")
@@ -1167,7 +1197,7 @@ impl StaticAbilityKind for SetNameForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = subject_text(&self.filter);
+        let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
         format!("{subject} {verb} named {}", self.name)
     }
@@ -1219,7 +1249,7 @@ impl StaticAbilityKind for AddColorsForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = subject_text(&self.filter);
+        let subject = pluralized_subject_text(&self.filter);
         let (verb, possessive) = subject_verb_and_possessive(&subject);
         let colors = join_with_and(&color_list(self.colors));
         format!("{subject} {verb} {colors} in addition to {possessive} other colors")
@@ -1272,7 +1302,7 @@ impl StaticAbilityKind for AddCardTypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = subject_text(&self.filter);
+        let subject = pluralized_subject_text(&self.filter);
         let (verb, possessive) = subject_verb_and_possessive(&subject);
         let types = self
             .card_types
@@ -1332,7 +1362,7 @@ impl StaticAbilityKind for SetCardTypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = subject_text(&self.filter);
+        let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
         let types = self
             .card_types
@@ -1389,7 +1419,7 @@ impl StaticAbilityKind for AddSubtypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = subject_text(&self.filter);
+        let subject = pluralized_subject_text(&self.filter);
         let (verb, possessive) = subject_verb_and_possessive(&subject);
         let subtypes = self
             .subtypes
@@ -1449,7 +1479,7 @@ impl StaticAbilityKind for SetCreatureSubtypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = subject_text(&self.filter);
+        let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
         let subtypes = self
             .subtypes
@@ -1566,14 +1596,19 @@ impl StaticAbilityKind for RemoveSupertypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = self.filter.description();
+        let subject = pluralized_subject_text(&self.filter);
+        let singular = subject.starts_with("enchanted ")
+            || subject.starts_with("equipped ")
+            || subject.starts_with("this ")
+            || subject.starts_with("that ");
+        let verb = if singular { "is" } else { "are" };
         let supertypes = self
             .supertypes
             .iter()
             .map(|supertype| format!("{supertype:?}").to_ascii_lowercase())
             .collect::<Vec<_>>()
             .join(" and ");
-        format!("{subject} is no longer {supertypes}")
+        format!("{subject} {verb} no longer {supertypes}")
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
