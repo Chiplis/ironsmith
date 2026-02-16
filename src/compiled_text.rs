@@ -2908,6 +2908,14 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "As an additional cost to cast this spell, discard card",
             "As an additional cost to cast this spell, discard a card",
         )
+        .replace(
+            "At the beginning of each end step, that player ",
+            "At the beginning of each player's end step, that player ",
+        )
+        .replace(
+            "that player sacrifices an untapped land.",
+            "that player sacrifices an untapped land of their choice.",
+        )
         ;
     if normalized.contains("you may ")
         && normalized.contains(" unless you ")
@@ -18208,6 +18216,17 @@ mod tests {
         assert_eq!(
             normalized,
             "Whenever a creature blocks a black or red creature, the blocking creature gets +1/+1 until end of turn."
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_each_players_end_step_land_sacrifice() {
+        let normalized = normalize_common_semantic_phrasing(
+            "At the beginning of each end step, that player sacrifices an untapped land.",
+        );
+        assert_eq!(
+            normalized,
+            "At the beginning of each player's end step, that player sacrifices an untapped land of their choice."
         );
     }
 
