@@ -2384,7 +2384,14 @@ impl ObjectFilter {
         } else if !self.token && !subtype_implies_type {
             // Default noun depends on zone context.
             let default_noun = if self.source {
-                "source"
+                match self.zone {
+                    Some(Zone::Graveyard)
+                    | Some(Zone::Hand)
+                    | Some(Zone::Library)
+                    | Some(Zone::Exile)
+                    | Some(Zone::Command) => "card",
+                    _ => "source",
+                }
             } else {
                 match self.zone {
                     Some(Zone::Battlefield) | None => "permanent",

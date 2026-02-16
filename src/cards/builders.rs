@@ -2300,7 +2300,14 @@ mod target_parse_tests {
     fn parse_target_this_card_from_your_graveyard_as_source() {
         let tokens = tokenize_line("this card from your graveyard", 0);
         let target = parse_target_phrase(&tokens).expect("parse this card from your graveyard");
-        assert!(matches!(target, TargetAst::Source(_)));
+        match target {
+            TargetAst::Object(filter, _, _) => {
+                assert!(filter.source, "expected source filter");
+                assert_eq!(filter.zone, Some(Zone::Graveyard));
+                assert_eq!(filter.owner, Some(PlayerFilter::You));
+            }
+            _ => panic!("expected source-object graveyard target"),
+        }
     }
 
     #[test]

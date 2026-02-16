@@ -25536,7 +25536,12 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
         return Ok(wrap_target_count(TargetAst::Source(target_span), target_count));
     }
     if is_source_from_your_graveyard_words(&remaining_words) {
-        return Ok(wrap_target_count(TargetAst::Source(target_span), target_count));
+        let mut source_filter = ObjectFilter::source().in_zone(Zone::Graveyard);
+        source_filter.owner = Some(PlayerFilter::You);
+        return Ok(wrap_target_count(
+            TargetAst::Object(source_filter, target_span, None),
+            target_count,
+        ));
     }
     if remaining_words.starts_with(&["thiss", "power", "and", "toughness"]) {
         return Ok(wrap_target_count(TargetAst::Source(target_span), target_count));
