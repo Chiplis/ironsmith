@@ -10304,6 +10304,25 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             sacrifice_tail.trim().trim_end_matches('.')
         );
     }
+    if let Some((left, _right)) = split_once_ascii_ci(
+        &normalized,
+        ". Return all another card with the same name as that object from your graveyard to your hand.",
+    )
+    .or_else(|| {
+        split_once_ascii_ci(
+            &normalized,
+            ". Return all another card with the same name as that object from your graveyard to your hand",
+        )
+    })
+        && let Some(target_desc) = strip_prefix_ascii_ci(left.trim(), "Return target ").and_then(
+            |tail| strip_suffix_ascii_ci(tail.trim(), " from your graveyard to your hand"),
+        )
+    {
+        return format!(
+            "Return target {} and all other cards with the same name as that card from your graveyard to your hand.",
+            target_desc.trim()
+        );
+    }
     if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, "target player sacrifices ")
         && let Some((sacrifice_tail, lose_tail)) =
             split_once_ascii_ci(rest, ". target player loses ")

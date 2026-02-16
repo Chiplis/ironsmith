@@ -26110,9 +26110,16 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                     | ["that", "card"]
             )
         });
-    let has_same_name_as_tagged_spell = all_words
-        .windows(5)
-        .any(|window| window == ["same", "name", "as", "that", "spell"]);
+    let has_same_name_as_tagged_object = all_words.windows(5).any(|window| {
+        matches!(
+            window,
+            ["same", "name", "as", "that", "spell"]
+                | ["same", "name", "as", "that", "card"]
+                | ["same", "name", "as", "that", "object"]
+                | ["same", "name", "as", "that", "creature"]
+                | ["same", "name", "as", "that", "permanent"]
+        )
+    });
 
     if has_share_card_type {
         filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -26137,7 +26144,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             relation: TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     }
-    if has_same_name_as_tagged_spell {
+    if has_same_name_as_tagged_object {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
             relation: TaggedOpbjectRelation::SameNameAsTagged,
