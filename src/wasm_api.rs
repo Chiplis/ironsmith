@@ -3069,6 +3069,9 @@ fn describe_intervening_if(condition: &crate::ability::InterveningIfCondition) -
         crate::ability::InterveningIfCondition::FirstTimeThisTurn => {
             "this is the first time this turn".to_string()
         }
+        crate::ability::InterveningIfCondition::MaxTimesEachTurn(limit) => {
+            format!("triggers at most {limit} times each turn")
+        }
         crate::ability::InterveningIfCondition::WasEnchanted => {
             "the source was enchanted".to_string()
         }

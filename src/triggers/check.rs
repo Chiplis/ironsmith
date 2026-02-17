@@ -180,7 +180,6 @@ pub fn check_triggers(
                         effects: trigger_ability.effects.clone(),
                         choices: trigger_ability.choices.clone(),
                         intervening_if: trigger_ability.intervening_if.clone(),
-                        once_each_turn: trigger_ability.once_each_turn,
                     },
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
@@ -234,7 +233,6 @@ pub fn check_triggers(
                             effects: trigger_ability.effects.clone(),
                             choices: trigger_ability.choices.clone(),
                             intervening_if: trigger_ability.intervening_if.clone(),
-                            once_each_turn: trigger_ability.once_each_turn,
                         },
                         triggering_event: trigger_event.clone(),
                         source_stable_id: snapshot.stable_id,
@@ -330,7 +328,6 @@ pub fn check_delayed_triggers(
                     effects: delayed.effects.clone(),
                     choices: vec![],
                     intervening_if: None,
-                    once_each_turn: false,
                 },
                 triggering_event: trigger_event.clone(),
                 source_stable_id,
@@ -398,7 +395,6 @@ fn check_triggers_in_zone(
                     effects: trigger_ability.effects.clone(),
                     choices: trigger_ability.choices.clone(),
                     intervening_if: trigger_ability.intervening_if.clone(),
-                    once_each_turn: trigger_ability.once_each_turn,
                 },
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
@@ -530,6 +526,10 @@ pub fn verify_intervening_if(
             .map(|id| game.trigger_fire_count_this_turn(source_object_id, id) == 0)
             .unwrap_or(true),
 
+        InterveningIfCondition::MaxTimesEachTurn(limit) => trigger_identity
+            .map(|id| game.trigger_fire_count_this_turn(source_object_id, id) < *limit)
+            .unwrap_or(true),
+
         InterveningIfCondition::WasEnchanted => {
             // Check if the event has a snapshot and if it was enchanted
             event.snapshot().is_some_and(|s| s.was_enchanted)
@@ -593,7 +593,6 @@ mod tests {
                 effects: vec![Effect::draw(1)],
                 choices: vec![],
                 intervening_if: None,
-                once_each_turn: false,
             },
             triggering_event: TriggerEvent::new(ZoneChangeEvent::new(
                 ObjectId::from_raw(1),

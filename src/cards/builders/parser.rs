@@ -644,7 +644,7 @@ fn apply_line_ast(
         LineAst::Triggered {
             trigger,
             effects,
-            once_each_turn,
+            max_triggers_per_turn,
         } => {
             let (compiled_effects, choices) =
                 match compile_trigger_effects(Some(&trigger), &effects) {
@@ -657,7 +657,7 @@ fn apply_line_ast(
                         ));
                     }
                     Err(err) => return Err(err),
-                };
+            };
 
             let compiled_trigger = compile_trigger_spec(trigger);
             builder = builder.with_ability(Ability {
@@ -665,8 +665,8 @@ fn apply_line_ast(
                     trigger: compiled_trigger,
                     effects: compiled_effects,
                     choices,
-                    intervening_if: None,
-                    once_each_turn,
+                    intervening_if: max_triggers_per_turn
+                        .map(crate::ability::InterveningIfCondition::MaxTimesEachTurn),
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(info.raw_line.clone()),
@@ -821,7 +821,6 @@ fn finalize_pending_modal(
                 effects: vec![modal_effect],
                 choices: Vec::new(),
                 intervening_if: None,
-                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(pending.header.line_text),

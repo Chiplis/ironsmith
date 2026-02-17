@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use crate::ability::{Ability, AbilityKind, ActivationTiming};
+use crate::ability::{Ability, AbilityKind, ActivationTiming, InterveningIfCondition};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::effect::{
     ChoiceCount, Comparison, Condition, EffectPredicate, EventValueSpec, Until, Value,
@@ -9101,8 +9101,19 @@ fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
                 line.push_str(": ");
                 line.push_str(&clauses.join(": "));
             }
-            if triggered.once_each_turn {
-                line.push_str(". This ability triggers only once each turn");
+            if let Some(InterveningIfCondition::MaxTimesEachTurn(max)) =
+                triggered.intervening_if.as_ref()
+            {
+                if *max == 1 {
+                    line.push_str(". This ability triggers only once each turn");
+                } else if *max == 2 {
+                    line.push_str(". This ability triggers only twice each turn");
+                } else {
+                    line.push_str(". This ability triggers only ");
+                    line.push_str(&format!("{max}"));
+                    line.push_str(" times");
+                    line.push_str(" each turn");
+                }
             }
             vec![line]
         }

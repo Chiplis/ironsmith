@@ -56,7 +56,6 @@ impl Ability {
                 effects,
                 choices: vec![],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -71,7 +70,6 @@ impl Ability {
                 effects,
                 choices: vec![],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -344,9 +342,6 @@ pub struct TriggeredAbility {
     /// - If not enchanted when it dies, doesn't trigger at all
     /// - If enchanted when it dies but not when resolving (somehow), does nothing
     pub intervening_if: Option<InterveningIfCondition>,
-
-    /// Restriction marker for "This ability triggers only once each turn."
-    pub once_each_turn: bool,
 }
 
 impl TriggeredAbility {
@@ -390,6 +385,9 @@ pub enum InterveningIfCondition {
 
     /// "if this is the first time this ability triggered this turn"
     FirstTimeThisTurn,
+
+    /// "if this ability has triggered at most N times this turn"
+    MaxTimesEachTurn(u32),
 
     /// "if this creature was enchanted" (uses snapshot from LTB/death trigger)
     WasEnchanted,
@@ -463,6 +461,73 @@ impl ActivatedAbility {
     /// This checks cost components for a life payment effect and returns the amount.
     pub fn life_cost_amount(&self) -> Option<u32> {
         self.mana_cost.costs().iter().find_map(|c| c.life_amount())
+    }
+
+    /// Returns a per-turn activation cap from `timing` and textual restrictions,
+    /// if one is present.
+    ///
+    /// "Activate only once each turn" maps to `Some(1)` via `timing`.
+    /// "Activate only twice each turn" maps to `Some(2)` via restriction text.
+    pub fn max_activations_per_turn(&self) -> Option<u32> {
+        if self.timing == ActivationTiming::OncePerTurn {
+            return Some(1);
+        }
+
+        self.additional_restrictions
+            .iter()
+            .find_map(|restriction| parse_activation_max_times_per_turn(restriction))
+    }
+}
+
+fn parse_activation_max_times_per_turn(restriction: &str) -> Option<u32> {
+    let normalized = restriction
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c.is_ascii_whitespace() {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>();
+
+    let words: Vec<&str> = normalized.split_whitespace().collect();
+    if words.len() < 4 || !words.starts_with(&["activate", "only"]) {
+        return None;
+    }
+
+    let each_turn_pos = words
+        .windows(2)
+        .position(|window| window[0] == "each" && window[1] == "turn")?;
+
+    let count_pos = each_turn_pos.checked_sub(2)?;
+    let mut count_word = words[count_pos];
+    if count_word == "time" || count_word == "times" {
+        let count_pos = each_turn_pos.checked_sub(3)?;
+        count_word = words[count_pos];
+    }
+
+    parse_named_count_word(count_word)
+}
+
+fn parse_named_count_word(word: &str) -> Option<u32> {
+    if let Ok(value) = word.parse::<u32>() {
+        return Some(value);
+    }
+
+    match word {
+        "once" => Some(1),
+        "twice" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        "six" => Some(6),
+        "seven" => Some(7),
+        "eight" => Some(8),
+        "nine" => Some(9),
+        "ten" => Some(10),
+        _ => None,
     }
 }
 
@@ -892,7 +957,6 @@ mod tests {
                 ],
                 choices: vec![ChooseSpec::target_player()],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(

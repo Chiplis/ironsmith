@@ -4,8 +4,8 @@
 //! making it easy to define cards with their complete gameplay mechanics.
 
 use crate::ability::{
-    self, Ability, AbilityKind, ActivatedAbility, ActivationTiming, LevelAbility, ManaAbility,
-    ManaAbilityCondition, TriggeredAbility,
+    self, Ability, AbilityKind, ActivationTiming, LevelAbility, ManaAbility, ManaAbilityCondition,
+    TriggeredAbility,
 };
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::card::{CardBuilder, PowerToughness, PtValue};
@@ -153,7 +153,7 @@ enum LineAst {
     Triggered {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,
-        once_each_turn: bool,
+        max_triggers_per_turn: Option<u32>,
     },
     Statement {
         effects: Vec<EffectAst>,
@@ -1518,7 +1518,6 @@ impl CardDefinitionBuilder {
                 effects,
                 choices: vec![],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             // Functions from both zones because triggers can be checked at different points:
             // - From Battlefield: SBAs check triggers BEFORE moving object to graveyard
@@ -1575,7 +1574,6 @@ impl CardDefinitionBuilder {
                 effects,
                 choices: vec![],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             // Functions from both zones because triggers can be checked at different points:
             // - From Battlefield: SBAs check triggers BEFORE moving object to graveyard
@@ -1658,7 +1656,6 @@ impl CardDefinitionBuilder {
                 ],
                 choices: vec![],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Stack],
             text: Some("Storm".to_string()),
@@ -1874,7 +1871,6 @@ impl CardDefinitionBuilder {
                 effects,
                 choices: vec![target_spec],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -1897,7 +1893,6 @@ impl CardDefinitionBuilder {
                 effects,
                 choices: vec![],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -1994,7 +1989,6 @@ impl CardDefinitionBuilder {
                 effects: vec![Effect::may_cast_for_miracle_cost()],
                 choices: vec![],
                 intervening_if: None,
-                once_each_turn: false,
             }),
             functional_zones: vec![crate::zone::Zone::Hand], // Only triggers from hand
             text: Some("Miracle".to_string()),
@@ -5667,8 +5661,43 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             })
             .expect("expected triggered ability from labeled trigger line");
         assert!(
-            triggered.once_each_turn,
-            "expected 'This ability triggers only once each turn' suffix to set once_each_turn=true"
+            matches!(
+                triggered.intervening_if.as_ref(),
+                Some(crate::ability::InterveningIfCondition::MaxTimesEachTurn(1))
+            ),
+            "expected 'This ability triggers only once each turn' suffix to set an intervening-if cap"
+        );
+    }
+
+    #[test]
+    fn parse_labeled_trigger_line_preserves_twice_each_turn_suffix() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Nadu Label Variant")
+            .parse_text(
+                "The Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only twice each turn.",
+            )
+            .expect("parse reach line plus labeled twice-each-turn trigger");
+
+        let triggered = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("expected triggered ability from labeled trigger line");
+        assert!(
+            !matches!(
+                triggered.intervening_if.as_ref(),
+                Some(crate::ability::InterveningIfCondition::MaxTimesEachTurn(1))
+            ),
+            "expected 'This ability triggers only twice each turn' suffix not to set once-each-triggers"
+        );
+        assert!(
+            matches!(
+                triggered.intervening_if.as_ref(),
+                Some(crate::ability::InterveningIfCondition::MaxTimesEachTurn(2))
+            ),
+            "expected 'This ability triggers only twice each turn' to set a per-turn cap of 2"
         );
     }
 

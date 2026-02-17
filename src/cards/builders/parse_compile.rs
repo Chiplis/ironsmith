@@ -3840,7 +3840,6 @@ fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
             effects: vec![Effect::deal_damage(Value::Fixed(amount), target.clone())],
             choices: vec![target],
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(format!(
@@ -3857,7 +3856,6 @@ fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
             effects: vec![Effect::deal_damage(Value::Fixed(amount), target.clone())],
             choices: vec![target],
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(format!(
@@ -3874,7 +3872,6 @@ fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability {
             effects: vec![Effect::pump(-1, -1, target.clone(), Until::EndOfTurn)],
             choices: vec![target],
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(
@@ -3928,7 +3925,6 @@ fn token_damage_to_player_poison_counter_ability() -> Ability {
             )],
             choices: Vec::new(),
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(
@@ -3951,7 +3947,6 @@ fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) -> Ability 
             )])],
             choices: Vec::new(),
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(format!(
@@ -3976,7 +3971,6 @@ fn token_combat_damage_gain_control_target_artifact_ability() -> Ability {
             )],
             choices: vec![target],
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(
@@ -3999,7 +3993,6 @@ fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name: &str) -> 
             effects: vec![Effect::return_from_graveyard_to_hand(target.clone())],
             choices: vec![target],
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(format!(
@@ -4181,7 +4174,6 @@ fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
             effects,
             choices: vec![target],
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(text),
@@ -4204,7 +4196,6 @@ fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
             effects: vec![Effect::create_tokens(dragon, Value::Fixed(1))],
             choices: Vec::new(),
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(
@@ -4745,7 +4736,6 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     effects: vec![Effect::gain_life(1)],
                     choices: Vec::new(),
                     intervening_if: None,
-                    once_each_turn: false,
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some("When this token dies, you gain 1 life.".to_string()),

@@ -41,7 +41,6 @@ pub fn snapcaster_mage() -> CardDefinition {
             effects: vec![Effect::grant_flashback_until_eot_unified(target)],
             choices: vec![],
             intervening_if: None,
-            once_each_turn: false,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(

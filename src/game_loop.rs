@@ -54,7 +54,7 @@ use crate::rules::state_based::{apply_state_based_actions_with, check_state_base
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::triggers::{
-    DamageEventTarget, TriggerEvent, TriggerQueue, TriggeredAbilityEntry, check_triggers,
+    verify_intervening_if, DamageEventTarget, TriggerEvent, TriggerQueue, TriggeredAbilityEntry,
     generate_step_trigger_events,
 };
 use crate::turn::{
@@ -2704,8 +2704,8 @@ pub fn apply_priority_response_with_dm(
             // This allows rollback if the player makes an invalid choice
             state.save_checkpoint(game);
 
-            // Get the ability cost, effects, timing info, and source info for the stack entry
-            let (cost, effects, is_once_per_turn, source_stable_id, source_name, source_snapshot) =
+            // Get the ability cost, effects, tracking info, and source info for the stack entry
+            let (cost, effects, is_turn_capped, source_stable_id, source_name, source_snapshot) =
                 if let Some(obj) = game.object(*source) {
                     let stable_id = obj.stable_id;
                     let name = obj.name.clone();
@@ -2713,14 +2713,11 @@ pub fn apply_priority_response_with_dm(
                         ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                     if let Some(ability) = obj.abilities.get(*ability_index) {
                         if let AbilityKind::Activated(activated) = &ability.kind {
-                            let once_per_turn = matches!(
-                                activated.timing,
-                                crate::ability::ActivationTiming::OncePerTurn
-                            );
+                            let is_turn_capped = activated.max_activations_per_turn().is_some();
                             (
                                 activated.mana_cost.clone(),
                                 activated.effects.clone(),
-                                once_per_turn,
+                                is_turn_capped,
                                 stable_id,
                                 name,
                                 snapshot,
@@ -2874,7 +2871,7 @@ pub fn apply_priority_response_with_dm(
                     payment_trace,
                     remaining_mana_pips: Vec::new(), // Populated when entering PayingMana stage
                     remaining_sacrifice_costs: sacrifice_costs,
-                    is_once_per_turn,
+                    is_once_per_turn: is_turn_capped,
                     source_stable_id,
                     source_name,
                     source_snapshot,
@@ -2886,7 +2883,7 @@ pub fn apply_priority_response_with_dm(
                 continue_activation(game, trigger_queue, state, pending, &mut *decision_maker)
             } else {
                 // No choices needed - put ability on stack directly
-                if is_once_per_turn {
+                if is_turn_capped {
                     game.record_ability_activation(*source, *ability_index);
                 }
 
@@ -4929,7 +4926,7 @@ fn continue_activation(
             ))
         }
         ActivationStage::ReadyToFinalize => {
-            // Record activation for OncePerTurn abilities
+            // Record activation for per-turn-limited abilities
             if pending.is_once_per_turn {
                 game.record_ability_activation(pending.source, pending.ability_index);
             }
@@ -7452,6 +7449,9 @@ pub fn put_triggers_on_stack_with_dm(
 
     // Active player's triggers go on stack first (resolve last)
     for trigger in active_triggers {
+        if !can_stack_trigger_this_turn(game, &trigger) {
+            continue;
+        }
         if let Some(entry) =
             create_triggered_stack_entry_with_targets(game, &trigger, decision_maker)
         {
@@ -7462,6 +7462,9 @@ pub fn put_triggers_on_stack_with_dm(
 
     // Then other players' triggers (in turn order)
     for trigger in other_triggers {
+        if !can_stack_trigger_this_turn(game, &trigger) {
+            continue;
+        }
         if let Some(entry) =
             create_triggered_stack_entry_with_targets(game, &trigger, decision_maker)
         {
@@ -7471,6 +7474,30 @@ pub fn put_triggers_on_stack_with_dm(
     }
 
     Ok(())
+}
+
+fn can_stack_trigger_this_turn(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+) -> bool {
+    let Some(ref condition) = trigger.ability.intervening_if else {
+        return true;
+    };
+
+    match condition {
+        crate::ability::InterveningIfCondition::FirstTimeThisTurn
+        | crate::ability::InterveningIfCondition::MaxTimesEachTurn(_) => {
+            verify_intervening_if(
+                game,
+                condition,
+                trigger.controller,
+                &trigger.triggering_event,
+                trigger.source,
+                Some(trigger.trigger_identity),
+            )
+        }
+        _ => true,
+    }
 }
 
 /// Create a stack entry for a triggered ability, handling target selection.

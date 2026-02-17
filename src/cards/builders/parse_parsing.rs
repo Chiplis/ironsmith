@@ -1312,7 +1312,7 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
         return Ok(LineAst::Triggered {
             trigger: TriggerSpec::SagaChapter(chapters),
             effects,
-            once_each_turn: false,
+            max_triggers_per_turn: None,
         });
     }
 
@@ -5276,7 +5276,7 @@ fn parse_attached_has_keywords_and_triggered_ability_line(
         LineAst::Triggered {
             trigger,
             effects,
-            once_each_turn,
+            max_triggers_per_turn,
         } => {
             let (compiled_effects, choices) = compile_trigger_effects(Some(&trigger), &effects)?;
             Ability {
@@ -5284,8 +5284,8 @@ fn parse_attached_has_keywords_and_triggered_ability_line(
                     trigger: compile_trigger_spec(trigger),
                     effects: compiled_effects,
                     choices,
-                    intervening_if: None,
-                    once_each_turn,
+                    intervening_if: max_triggers_per_turn
+                        .map(crate::ability::InterveningIfCondition::MaxTimesEachTurn),
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(words(&trigger_tokens).join(" ")),
@@ -6376,14 +6376,14 @@ fn parse_filter_has_granted_ability_line(
             )));
         };
         Some(parsed.ability)
-    } else if let Some(parsed) = parse_cycling_line(ability_tokens)? {
+        } else if let Some(parsed) = parse_cycling_line(ability_tokens)? {
         Some(parsed.ability)
     } else if looks_like_trigger {
         match parse_triggered_line(ability_tokens)? {
             LineAst::Triggered {
                 trigger,
                 effects,
-                once_each_turn,
+                max_triggers_per_turn,
             } => {
                 let (compiled_effects, choices) =
                     compile_trigger_effects(Some(&trigger), &effects)?;
@@ -6392,8 +6392,8 @@ fn parse_filter_has_granted_ability_line(
                         trigger: compile_trigger_spec(trigger),
                         effects: compiled_effects,
                         choices,
-                        intervening_if: None,
-                        once_each_turn,
+                        intervening_if: max_triggers_per_turn
+                            .map(crate::ability::InterveningIfCondition::MaxTimesEachTurn),
                     }),
                     functional_zones: vec![Zone::Battlefield],
                     text: None,
@@ -6889,11 +6889,55 @@ fn is_trigger_only_restriction_sentence(tokens: &[Token]) -> bool {
     words.starts_with(&["this", "ability", "triggers", "only"])
 }
 
-fn triggered_once_each_turn_sentence(sentences: &[Vec<Token>]) -> bool {
-    sentences.iter().any(|sentence| {
+fn parse_triggered_times_each_turn_sentence(sentences: &[Vec<Token>]) -> Option<u32> {
+    sentences.iter().find_map(|sentence| {
         let words = words(sentence);
-        words.starts_with(&["this", "ability", "triggers", "only", "once", "each", "turn"])
+        parse_triggered_times_each_turn_from_words(&words)
     })
+}
+
+fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
+    if words.len() < 7 || !words.starts_with(&["this", "ability", "triggers", "only"]) {
+        return None;
+    }
+
+    let mut index = 4usize;
+    let count = match words.get(index) {
+        Some(word) if *word == "once" => Some(1),
+        Some(word) if *word == "twice" => Some(2),
+        Some(word) => parse_named_number(word),
+    }?;
+    index += 1;
+
+    if words.get(index) == Some(&"time") || words.get(index) == Some(&"times") {
+        index += 1;
+    }
+
+    if words.get(index) == Some(&"each") && words.get(index + 1) == Some(&"turn") {
+        Some(count)
+    } else {
+        None
+    }
+}
+
+fn parse_named_number(word: &str) -> Option<u32> {
+    if let Ok(value) = word.parse::<u32>() {
+        return Some(value);
+    }
+
+    match word {
+        "a" | "an" | "one" => Some(1),
+        "two" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        "six" => Some(6),
+        "seven" => Some(7),
+        "eight" => Some(8),
+        "nine" => Some(9),
+        "ten" => Some(10),
+        _ => None,
+    }
 }
 
 fn parse_level_up_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
@@ -9513,10 +9557,11 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
         let effects_tokens =
             rewrite_attached_controller_trigger_effect_tokens(trigger_tokens, &tokens[split_idx + 1..]);
         let effects = parse_effect_sentences(&effects_tokens)?;
+        let max_triggers_per_turn = parse_triggered_times_each_turn_sentence(&split_on_period(&effects_tokens));
         return Ok(LineAst::Triggered {
             trigger,
             effects,
-            once_each_turn: triggered_once_each_turn_sentence(&split_on_period(&effects_tokens)),
+            max_triggers_per_turn,
         });
     }
 
@@ -9532,12 +9577,13 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
                 rewrite_attached_controller_trigger_effect_tokens(trigger_tokens, effects_tokens);
             if let Ok(effects) = parse_effect_sentences(&rewritten_effects_tokens)
         {
+            let max_triggers_per_turn = parse_triggered_times_each_turn_sentence(&split_on_period(
+                &rewritten_effects_tokens,
+            ));
             return Ok(LineAst::Triggered {
                 trigger,
                 effects,
-                once_each_turn: triggered_once_each_turn_sentence(&split_on_period(
-                    &rewritten_effects_tokens,
-                )),
+                max_triggers_per_turn,
             });
         }
         }
@@ -16661,7 +16707,7 @@ fn parse_granted_activated_or_triggered_ability_for_gain(
             LineAst::Triggered {
                 trigger,
                 effects,
-                once_each_turn,
+                max_triggers_per_turn,
             } => {
                 let (compiled_effects, choices) = compile_trigger_effects(Some(&trigger), &effects)?;
                 Ability {
@@ -16669,8 +16715,8 @@ fn parse_granted_activated_or_triggered_ability_for_gain(
                         trigger: compile_trigger_spec(trigger),
                         effects: compiled_effects,
                         choices,
-                        intervening_if: None,
-                        once_each_turn,
+                        intervening_if: max_triggers_per_turn
+                            .map(crate::ability::InterveningIfCondition::MaxTimesEachTurn),
                     }),
                     functional_zones: vec![Zone::Battlefield],
                     text: None,

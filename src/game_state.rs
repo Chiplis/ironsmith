@@ -70,6 +70,10 @@ pub struct TurnCounterTracker {
     counters: HashMap<TurnCounterKey, u32>,
 }
 
+fn activated_ability_turn_counter_name(source: ObjectId, ability_index: usize) -> String {
+    format!("activated_ability:{}:{}", source.0, ability_index)
+}
+
 impl TurnCounterTracker {
     pub fn increment(&mut self, key: TurnCounterKey) {
         *self.counters.entry(key).or_insert(0) += 1;
@@ -2567,12 +2571,22 @@ impl GameState {
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
         self.activated_abilities_this_turn
             .insert((source, ability_index));
+        self.turn_counters
+            .increment_named(activated_ability_turn_counter_name(source, ability_index));
     }
 
     /// Check if an activated ability has been used this turn.
     pub fn ability_activated_this_turn(&self, source: ObjectId, ability_index: usize) -> bool {
         self.activated_abilities_this_turn
             .contains(&(source, ability_index))
+    }
+
+    /// Get how many times an activated ability has been used this turn.
+    pub fn ability_activation_count_this_turn(&self, source: ObjectId, ability_index: usize) -> u32 {
+        self.named_turn_counter(&activated_ability_turn_counter_name(
+            source,
+            ability_index,
+        ))
     }
 
     /// Returns the active player.

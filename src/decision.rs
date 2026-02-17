@@ -619,6 +619,11 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                 if let crate::ability::AbilityKind::Activated(activated) = &ability.kind {
                     // Validate the ability's cost can be paid
                     if can_pay_ability_cost(game, perm_id, player, &activated.mana_cost) {
+                        let max_activations_per_turn =
+                            activated.max_activations_per_turn();
+                        let activation_count =
+                            game.ability_activation_count_this_turn(perm_id, i);
+
                         // Check timing restrictions
                         let timing_ok = match activated.timing {
                             crate::ability::ActivationTiming::AnyTime => true,
@@ -633,7 +638,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                             }
                             crate::ability::ActivationTiming::OncePerTurn => {
                                 // Check if this ability has been activated this turn
-                                !game.ability_activated_this_turn(perm_id, i)
+                                activation_count == 0
                             }
                             crate::ability::ActivationTiming::DuringYourTurn => {
                                 game.turn.active_player == player
@@ -643,7 +648,10 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                             }
                         };
 
-                        if timing_ok {
+                        let under_turn_limit = max_activations_per_turn
+                            .map_or(true, |max| activation_count < max);
+
+                        if timing_ok && under_turn_limit {
                             actions.push(LegalAction::ActivateAbility {
                                 source: perm_id,
                                 ability_index: i,
