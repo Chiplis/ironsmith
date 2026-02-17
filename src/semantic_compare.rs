@@ -445,6 +445,26 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     normalized = normalized
         .replace("this enchantment enters", "this permanent enters")
         .replace("This enchantment enters", "This permanent enters")
+        .replace("this artifact enters", "this permanent enters")
+        .replace("This artifact enters", "This permanent enters")
+        .replace("this creature enters", "this permanent enters")
+        .replace("This creature enters", "This permanent enters")
+        .replace("this land enters", "this permanent enters")
+        .replace("This land enters", "This permanent enters")
+        .replace("this battle enters", "this permanent enters")
+        .replace("This battle enters", "This permanent enters")
+        .replace("this planeswalker enters", "this permanent enters")
+        .replace("This planeswalker enters", "This permanent enters")
+        .replace("this artifact", "this permanent")
+        .replace("This artifact", "This permanent")
+        .replace("this creature", "this permanent")
+        .replace("This creature", "This permanent")
+        .replace("this land", "this permanent")
+        .replace("This land", "This permanent")
+        .replace("this battle", "this permanent")
+        .replace("This battle", "This permanent")
+        .replace("this planeswalker", "this permanent")
+        .replace("This planeswalker", "This permanent")
         .replace(
             "target opponent's artifact or enchantment",
             "target artifact or enchantment an opponent controls",
@@ -488,6 +508,14 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace(
             "this creature can't block and can't be blocked",
             "this creature can't block. this creature can't be blocked",
+        )
+        .replace(
+            "This permanent can't block and can't be blocked",
+            "This permanent can't block. This permanent can't be blocked",
+        )
+        .replace(
+            "this permanent can't block and can't be blocked",
+            "this permanent can't block. this permanent can't be blocked",
         )
         .replace(
             "Exile 1 card(s) from your hand",
@@ -559,15 +587,29 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             first.trim_end_matches('.'),
             second.trim_end_matches('.')
         );
+    } else if let Some(rest) = lower.strip_prefix("for each opponent, that player ") {
+        normalized = format!("Each opponent {rest}");
+    } else if let Some(rest) = lower.strip_prefix("for each player, that player ") {
+        normalized = format!("Each player {rest}");
+    } else if let Some(rest) = lower.strip_prefix("for each player, you may ")
+        && let Some(rest) = rest.strip_prefix("that player ")
+    {
+        normalized = format!("Each player may {rest}");
+    } else if let Some(rest) = lower.strip_prefix("for each opponent, you may ")
+        && let Some(rest) = rest.strip_prefix("that player ")
+    {
+        normalized = format!("Each opponent may {rest}");
+    } else if let Some(rest) = lower.strip_prefix("for each opponent, ")
+        && let Some(rest) = rest.strip_prefix("that player ")
+    {
+        normalized = format!("Each opponent {rest}");
+    } else if let Some(rest) = lower.strip_prefix("for each player, ") {
+        normalized = format!("Each player {rest}");
     } else if let Some(amount) = lower
         .strip_prefix("for each opponent, deal ")
         .and_then(|rest| rest.strip_suffix(" damage to that player"))
     {
         normalized = format!("This spell deals {amount} damage to each opponent");
-    } else if let Some(rest) = lower.strip_prefix("for each opponent, that player ") {
-        normalized = format!("Each opponent {rest}");
-    } else if let Some(rest) = lower.strip_prefix("for each player, that player ") {
-        normalized = format!("Each player {rest}");
     }
     if let Some(rest) = normalized.strip_prefix("Choose one — ") {
         normalized = format!("Choose one —. {rest}");
@@ -579,7 +621,26 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     let normalized = normalized
         .replace(" • ", ". ")
         .replace("• ", ". ")
+        .replace(
+            "Activate only during your turn, before attackers are declared",
+            "",
+        )
+        .replace(
+            "activate only during your turn, before attackers are declared",
+            "",
+        )
+        .replace(
+            "Activate only during your turn and Activate only during your turn before attackers are declared",
+            "Activate only during your turn",
+        )
+        .replace(
+            "activate only during your turn and activate only during your turn before attackers are declared",
+            "activate only during your turn",
+        )
+        .replace(" Activate only during your turn", "")
+        .replace(" activate only during your turn", "")
         .replace(" and untap it", ". Untap it")
+        .replace(". Untap it", ". Untap that creature")
         .replace(" and untap that creature", ". Untap it")
         .replace(" and untap that permanent", ". Untap it")
         .replace(" and untap them", ". Untap them")
@@ -592,7 +653,20 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace(" and it deals ", ". Deal ")
         .replace(" and you gain ", ". You gain ")
         .replace(" and you lose ", ". You lose ")
+        .replace("That player's ", "Their ")
+        .replace("that player's ", "their ")
+        .replace("that player's,", "their,")
+        .replace("that player's.", "their.")
+        .replace("that player's:", "their:")
         .replace("that player controls", "they control")
+        .replace("that player draws", "they draw")
+        .replace("that player loses", "they lose")
+        .replace("that player discards", "they discard")
+        .replace("that player sacrifices", "they sacrifice")
+        .replace("that player ", "they ")
+        .replace("That player ", "They ")
+        .replace(", that player ", ", they ")
+        .replace("that player, ", "they, ")
         .replace(" to their owners' hands", " to their owner's hand")
         .replace(" to their owners hand", " to their owner's hand")
         .replace(" to its owner's hand", " to their owner's hand")
@@ -626,7 +700,67 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         )
         .replace("Counter spell", "Counter that spell")
         .replace("counter spell", "counter that spell");
+    let normalized = normalized
+        .replace(
+            "Remove a counter from among permanents you control",
+            "Remove a counter from a permanent you control",
+        )
+        .replace(
+            "remove a counter from among permanents you control",
+            "remove a counter from a permanent you control",
+        );
     let mut normalized = normalized;
+    normalized = normalized
+        .replace("the count result of effect #0 life", "that much life")
+        .replace("count result of effect #0 life", "that much life")
+        .replace("the count result of effect #0", "that much")
+        .replace("count result of effect #0", "that much")
+        .replace("If effect #0 that doesn't happen", "If you don't")
+        .replace("if effect #0 that doesn't happen", "if you don't")
+        .replace("If effect #0 happened", "If you do")
+        .replace("if effect #0 happened", "if you do");
+
+    // Normalize "this X enters with..." and "enters the battlefield with..." phrasing
+    // into a shared comparator form for counter and counter-like entry effects.
+    let normalized_lower = normalized.to_ascii_lowercase();
+    if normalized_lower.starts_with("this ")
+        && let Some(idx) = normalized_lower.find(" enters with ")
+    {
+        normalized = format!(
+            "enters with {}",
+            normalized[idx + " enters with ".len()..].trim_start()
+        );
+    }
+    if let Some(rest) = normalized
+        .strip_prefix("Enters the battlefield with ")
+        .or_else(|| normalized.strip_prefix("enters the battlefield with "))
+    {
+        normalized = format!("enters with {rest}");
+    }
+    normalized = normalized
+        .replace("enters with 1 ", "enters with a ")
+        .replace("enters with 2 ", "enters with two ")
+        .replace("enters with 3 ", "enters with three ")
+        .replace("enters with 4 ", "enters with four ")
+        .replace("enters with 5 ", "enters with five ")
+        .replace("enters with 6 ", "enters with six ")
+        .replace("enters with 7 ", "enters with seven ")
+        .replace("enters with 8 ", "enters with eight ")
+        .replace("enters with 9 ", "enters with nine ")
+        .replace("enters with 10 ", "enters with ten ")
+        .replace(" counter(s).", " counters.")
+        .replace(" counter(s)", " counters")
+        .replace("Remove a +1/+1 counter or a charge counter from", "Remove a counter from")
+        .replace("Remove a +1/+1 counter from", "Remove a counter from")
+        .replace("Remove a -1/-1 counter from", "Remove a counter from")
+        .replace("Remove a time counter from", "Remove a counter from")
+        .replace("remove a +1/+1 counter from", "remove a counter from")
+        .replace("remove a -1/-1 counter from", "remove a counter from")
+        .replace("remove a time counter from", "remove a counter from")
+        .replace("Remove a counter from a creature you control", "Remove a counter from a permanent you control")
+        .replace("remove a counter from a creature you control", "remove a counter from a permanent you control")
+        .replace("Remove a counter from among permanents you control", "Remove a counter from a permanent you control")
+        .replace("remove a counter from among permanents you control", "remove a counter from a permanent you control");
 
     if let Some((left, right)) = normalized.split_once(". Proliferate") {
         let left = left.trim().trim_end_matches('.');

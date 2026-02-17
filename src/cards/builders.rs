@@ -778,6 +778,8 @@ enum EffectAst {
         tapped: bool,
         attacking: bool,
         exile_at_end_of_combat: bool,
+        sacrifice_at_next_end_step: bool,
+        exile_at_next_end_step: bool,
     },
     ExileThatTokenAtEndOfCombat,
     Monstrosity {
@@ -3274,6 +3276,27 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             }),
             "should include remove counters effect"
         );
+    }
+
+    #[test]
+    fn parse_remove_typed_counter_from_text_for_each_card() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Descendant of Masumaro Variant")
+            .parse_text("Remove a +1/+1 counter from this creature for each card in target opponent's hand.")
+            .expect("parse typed counter removal for each");
+
+        let effects = def.spell_effect.expect("spell effect");
+        let for_each = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<ForEachObject>())
+            .expect("typed counter removal should use for-each wrapper");
+        let remove = for_each
+            .effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<RemoveUpToAnyCountersEffect>())
+            .expect("for-each wrapper should include remove-counters inner effect");
+
+        assert_eq!(remove.max_count, Value::Fixed(1));
+        assert_eq!(remove.target, ChooseSpec::Source);
     }
 
     #[test]

@@ -3,7 +3,9 @@
 use crate::cards::CardDefinition;
 use crate::effect::{Effect, EffectOutcome, EffectResult, Value};
 use crate::effects::helpers::resolve_value;
-use crate::effects::{EffectExecutor, EnterAttackingEffect, ScheduleDelayedTriggerEffect};
+use crate::effects::{
+    EffectExecutor, EnterAttackingEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect,
+};
 use crate::events::EnterBattlefieldEvent;
 use crate::events::zones::ZoneChangeEvent;
 use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
@@ -23,6 +25,10 @@ use crate::zone::Zone;
 /// * `enters_tapped` - Whether the tokens enter tapped
 /// * `enters_attacking` - Whether the tokens enter attacking
 /// * `exile_at_end_of_combat` - Whether to exile the tokens at end of combat
+/// * `sacrifice_at_next_end_step` - Whether to sacrifice the tokens at the
+///   beginning of the next end step.
+/// * `exile_at_next_end_step` - Whether to exile the tokens at the beginning
+///   of the next end step.
 ///
 /// # Example
 ///
@@ -65,6 +71,10 @@ pub struct CreateTokenEffect {
     pub enters_attacking: bool,
     /// Whether to exile the tokens at end of combat.
     pub exile_at_end_of_combat: bool,
+    /// Whether to sacrifice the tokens at the beginning of the next end step.
+    pub sacrifice_at_next_end_step: bool,
+    /// Whether to exile the tokens at the beginning of the next end step.
+    pub exile_at_next_end_step: bool,
 }
 
 impl PartialEq for CreateTokenEffect {
@@ -76,6 +86,8 @@ impl PartialEq for CreateTokenEffect {
             && self.enters_tapped == other.enters_tapped
             && self.enters_attacking == other.enters_attacking
             && self.exile_at_end_of_combat == other.exile_at_end_of_combat
+            && self.sacrifice_at_next_end_step == other.sacrifice_at_next_end_step
+            && self.exile_at_next_end_step == other.exile_at_next_end_step
     }
 }
 
@@ -89,6 +101,8 @@ impl CreateTokenEffect {
             enters_tapped: false,
             enters_attacking: false,
             exile_at_end_of_combat: false,
+            sacrifice_at_next_end_step: false,
+            exile_at_next_end_step: false,
         }
     }
 
@@ -117,6 +131,18 @@ impl CreateTokenEffect {
     /// Set whether to exile the tokens at end of combat.
     pub fn exile_at_end_of_combat(mut self) -> Self {
         self.exile_at_end_of_combat = true;
+        self
+    }
+
+    /// Set whether to sacrifice the tokens at the beginning of the next end step.
+    pub fn sacrifice_at_next_end_step(mut self) -> Self {
+        self.sacrifice_at_next_end_step = true;
+        self
+    }
+
+    /// Set whether to exile the tokens at the beginning of the next end step.
+    pub fn exile_at_next_end_step(mut self) -> Self {
+        self.exile_at_next_end_step = true;
         self
     }
 }
@@ -184,6 +210,29 @@ impl EffectExecutor for CreateTokenEffect {
             if self.exile_at_end_of_combat {
                 let schedule = ScheduleDelayedTriggerEffect::new(
                     Trigger::end_of_combat(),
+                    vec![Effect::exile(ChooseSpec::SpecificObject(id))],
+                    true,
+                    vec![id],
+                    PlayerFilter::Specific(controller_id),
+                );
+                let _ = execute_effect(game, &Effect::new(schedule), ctx)?;
+            }
+
+            if self.sacrifice_at_next_end_step {
+                let schedule = ScheduleDelayedTriggerEffect::new(
+                    Trigger::beginning_of_end_step(PlayerFilter::Any),
+                    vec![Effect::new(SacrificeTargetEffect::new(ChooseSpec::SpecificObject(
+                        id,
+                    )))],
+                    true,
+                    vec![id],
+                    PlayerFilter::Specific(controller_id),
+                );
+                let _ = execute_effect(game, &Effect::new(schedule), ctx)?;
+            }
+            if self.exile_at_next_end_step {
+                let schedule = ScheduleDelayedTriggerEffect::new(
+                    Trigger::beginning_of_end_step(PlayerFilter::Any),
                     vec![Effect::exile(ChooseSpec::SpecificObject(id))],
                     true,
                     vec![id],

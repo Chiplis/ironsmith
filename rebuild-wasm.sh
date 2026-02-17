@@ -6,18 +6,22 @@ PKG_DIR="$ROOT_DIR/pkg"
 DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
 FALSE_POSITIVES_FILE="$ROOT_DIR/scripts/semantic_false_positives.txt"
 
-THRESHOLD="${IRONSMITH_WASM_SEMANTIC_THRESHOLD:-}"
+# Prefer the parser threshold env var used by the audit tooling, then fall back
+# to the old wasm-specific var name.
+THRESHOLD="${IRONSMITH_PARSER_SEMANTIC_THRESHOLD:-${IRONSMITH_WASM_SEMANTIC_THRESHOLD:-}}"
 DIMS="${IRONSMITH_WASM_SEMANTIC_DIMS:-384}"
+MIN_CLUSTER_SIZE="${IRONSMITH_WASM_MIN_CLUSTER_SIZE:-1}"
 FEATURES="wasm,generated-registry"
 
 usage() {
   cat <<'USAGE'
-Usage: ./rebuild-wasm.sh [--threshold <float>] [--dims <int>] [--features <csv>]
+Usage: ./rebuild-wasm.sh [--threshold <float>] [--dims <int>] [--min-cluster-size <int>] [--features <csv>]
 
 Examples:
   ./rebuild-wasm.sh
   ./rebuild-wasm.sh --threshold 0.90
-  IRONSMITH_WASM_SEMANTIC_THRESHOLD=0.85 ./rebuild-wasm.sh
+  IRONSMITH_PARSER_SEMANTIC_THRESHOLD=0.85 ./rebuild-wasm.sh
+  ./rebuild-wasm.sh --min-cluster-size 1
 
 Notes:
   - --threshold enables semantic gating for generated-registry builds.
@@ -30,7 +34,7 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --threshold|--threhsold)
+    --threshold)
       [[ $# -ge 2 ]] || { echo "missing value for --threshold" >&2; exit 1; }
       THRESHOLD="$2"
       shift 2
@@ -38,6 +42,11 @@ while [[ $# -gt 0 ]]; do
     --dims)
       [[ $# -ge 2 ]] || { echo "missing value for --dims" >&2; exit 1; }
       DIMS="$2"
+      shift 2
+      ;;
+    --min-cluster-size)
+      [[ $# -ge 2 ]] || { echo "missing value for --min-cluster-size" >&2; exit 1; }
+      MIN_CLUSTER_SIZE="$2"
       shift 2
       ;;
     --features)
@@ -71,7 +80,7 @@ if [[ -n "$THRESHOLD" ]]; then
     --use-embeddings
     --embedding-dims "$DIMS"
     --embedding-threshold "$THRESHOLD"
-    --min-cluster-size 2
+    --min-cluster-size "$MIN_CLUSTER_SIZE"
     --top-clusters 0
     --examples 1
     --mismatch-names-out "$MISMATCH_NAMES_FILE"

@@ -786,6 +786,8 @@ fn compile_effects(
                 player,
                 tapped,
                 attacking,
+                sacrifice_at_next_end_step,
+                exile_at_next_end_step,
                 ..
             } = &effects[idx]
             && matches!(effects[idx + 1], EffectAst::ExileThatTokenAtEndOfCombat)
@@ -797,6 +799,8 @@ fn compile_effects(
                 tapped: *tapped,
                 attacking: *attacking,
                 exile_at_end_of_combat: true,
+                sacrifice_at_next_end_step: *sacrifice_at_next_end_step,
+                exile_at_next_end_step: *exile_at_next_end_step,
             };
             let (effect_list, effect_choices) = compile_effect(&effect, ctx)?;
             compiled.extend(effect_list);
@@ -2948,6 +2952,8 @@ fn compile_effect(
             tapped,
             attacking,
             exile_at_end_of_combat,
+            sacrifice_at_next_end_step,
+            exile_at_next_end_step,
         } => {
             let token = token_definition_for(name.as_str())
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
@@ -2966,6 +2972,12 @@ fn compile_effect(
             }
             if *exile_at_end_of_combat {
                 effect = effect.exile_at_end_of_combat();
+            }
+            if *sacrifice_at_next_end_step {
+                effect = effect.sacrifice_at_next_end_step();
+            }
+            if *exile_at_next_end_step {
+                effect = effect.exile_at_next_end_step();
             }
             Ok((vec![Effect::new(effect)], Vec::new()))
         }

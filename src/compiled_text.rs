@@ -700,6 +700,228 @@ fn normalize_chosen_creature_type_clause(text: &str) -> Option<String> {
         })
 }
 
+fn normalize_subject_signature_for_get_gain(subject: &str) -> String {
+    let mut words = Vec::new();
+    for raw_word in subject.split_whitespace() {
+        let lower = raw_word
+            .trim_matches(|ch: char| !ch.is_ascii_alphanumeric())
+            .to_ascii_lowercase();
+        if lower.is_empty() {
+            continue;
+        }
+        if matches!(
+            lower.as_str(),
+            "a"
+                | "an"
+                | "and"
+                | "another"
+                | "any"
+                | "each"
+                | "every"
+                | "other"
+                | "some"
+                | "the"
+                | "this"
+                | "their"
+                | "their's"
+                | "these"
+                | "them"
+                | "it"
+                | "its"
+                | "to"
+                | "with"
+                | "your"
+        ) {
+            continue;
+        }
+        let normalized = if lower.len() > 3 && lower.ends_with('s') {
+            lower[..lower.len() - 1].to_string()
+        } else {
+            lower
+        };
+        words.push(normalized);
+    }
+    words.join(" ")
+}
+
+fn normalize_sacrifice_implied_choice(sentence: &str) -> Option<String> {
+    let trimmed = sentence.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.contains("sacrifice") || lower.contains("choice") {
+        return None;
+    }
+
+    let (subject, mut body) = if let Some(rhs) = strip_prefix_ascii_ci(trimmed, "that player sacrifices ")
+    {
+        ("that player sacrifices ", rhs)
+    } else if let Some(rhs) = strip_prefix_ascii_ci(trimmed, "each player sacrifices ") {
+        ("each player sacrifices ", rhs)
+    } else if let Some(rhs) = strip_prefix_ascii_ci(trimmed, "its controller sacrifices ") {
+        ("its controller sacrifices ", rhs)
+    } else if let Some(rhs) =
+        strip_prefix_ascii_ci(trimmed, "that object's controller sacrifices ")
+    {
+        ("that object's controller sacrifices ", rhs)
+    } else if let Some(rhs) = strip_prefix_ascii_ci(trimmed, "that player's controller sacrifices ") {
+        ("that player's controller sacrifices ", rhs)
+    } else {
+        return None;
+    };
+
+    let mut body = body.trim().trim_end_matches('.').to_string();
+    let body_lower = body.to_ascii_lowercase();
+    if body_lower.contains("of your choice") || body_lower.contains("of their choice") {
+        return None;
+    }
+
+    for suffix in [
+        " that player controls",
+        " that object's controller controls",
+        " that object's controller's control",
+        " that your controller controls",
+        " its controller controls",
+        " your control",
+    ] {
+        if let Some(stripped) = strip_suffix_ascii_ci(body.as_str(), suffix) {
+            body = stripped.to_string();
+            break;
+        }
+    }
+
+    if let Some(rest) = strip_prefix_ascii_ci(&body, "a controller's ") {
+        body = rest.to_string();
+        if let Some(rest_tail) = strip_prefix_ascii_ci(&body, "a ") {
+            body = rest_tail.to_string();
+        } else {
+            body = format!("a {body}");
+        }
+    } else if let Some(rest) = strip_prefix_ascii_ci(&body, "an controller's ") {
+        body = rest.to_string();
+        if let Some(rest_tail) = strip_prefix_ascii_ci(&body, "an ") {
+            body = rest_tail.to_string();
+        } else {
+            body = format!("an {body}");
+        }
+    } else if let Some(rest) = strip_prefix_ascii_ci(&body, "the controller's ") {
+        body = rest.to_string();
+        if let Some(rest_tail) = strip_prefix_ascii_ci(&body, "the ") {
+            body = rest_tail.to_string();
+        } else {
+            body = format!("the {body}");
+        }
+    } else if let Some(rest) = strip_prefix_ascii_ci(&body, "controller's ") {
+        body = rest.to_string();
+    }
+
+    let mut split_at = body.len();
+    let split_markers = [" unless ", " if ", " then "];
+    for marker in split_markers {
+        if let Some(idx) = body.to_ascii_lowercase().find(marker) {
+            if idx < split_at {
+                split_at = idx;
+            }
+        }
+    }
+
+    if split_at == body.len() {
+        body = format!("{body} of their choice");
+    } else {
+        body = format!("{} of their choice{}", &body[..split_at], &body[split_at..]);
+    }
+
+    let mut rewritten = format!("{subject}{body}");
+    if trimmed.ends_with('.') {
+        rewritten.push('.');
+    }
+    Some(rewritten)
+}
+
+fn normalize_two_sentence_pump_and_gain_until_end_of_turn(left: &str, right: &str) -> Option<String> {
+    let left = left.trim().trim_end_matches('.');
+    let left_lower = left.to_ascii_lowercase();
+    if !left_lower.ends_with("until end of turn") && !left_lower.ends_with("until your turn") {
+        return None;
+    }
+
+    let mut get_idx = None;
+    for (needle, suffix_len) in [(" gets ", 5usize), (" get ", 4usize)] {
+        if let Some(idx) = left_lower.rfind(needle) {
+            match get_idx {
+                None => get_idx = Some((idx, suffix_len)),
+                Some((existing_idx, _)) if idx > existing_idx => get_idx = Some((idx, suffix_len)),
+                _ => {}
+            }
+        }
+    }
+    let (get_idx, get_suffix_len) = get_idx?;
+    let left_subject = left[..get_idx].trim();
+    if left_subject.is_empty() {
+        return None;
+    }
+    let left_get_keyword = if get_suffix_len == 5 { "gets" } else { "get" };
+    let left_pump_body = left[get_idx + get_suffix_len..].trim();
+    let left_pump_body = strip_suffix_ascii_ci(left_pump_body, " until end of turn")
+        .or_else(|| strip_suffix_ascii_ci(left_pump_body, " until your turn"))?
+        .trim();
+    let left_sig = normalize_subject_signature_for_get_gain(left_subject);
+    if left_sig.is_empty() {
+        return None;
+    }
+
+    let right = right.trim().trim_end_matches('.');
+    let right_lower = right.to_ascii_lowercase();
+    let mut gain_idx = None;
+    for (needle, suffix_len) in [(" gains ", 6usize), (" gain ", 5usize)] {
+        if let Some(idx) = right_lower.find(needle) {
+            match gain_idx {
+                None => gain_idx = Some((idx, suffix_len)),
+                Some((existing_idx, _)) if idx < existing_idx => gain_idx = Some((idx, suffix_len)),
+                _ => {}
+            }
+        }
+    }
+    let (gain_idx, gain_suffix_len) = gain_idx?;
+    let right_subject = right[..gain_idx].trim();
+    if right_subject.is_empty() {
+        return None;
+    }
+    let right_gain_body = right[gain_idx + gain_suffix_len..].trim();
+    let right_gain_body = strip_suffix_ascii_ci(right_gain_body, " until end of turn")
+        .or_else(|| strip_suffix_ascii_ci(right_gain_body, " until your turn"))?;
+    let right_sig = normalize_subject_signature_for_get_gain(right_subject);
+    if right_sig.is_empty() || right_sig != left_sig {
+        return None;
+    }
+
+    Some(format!(
+        "{} {} {} and gains {} until end of turn.",
+        left_subject,
+        left_get_keyword,
+        left_pump_body,
+        right_gain_body.trim(),
+    ))
+}
+
+fn normalize_pump_and_gain_until_end_of_turn(line: &str) -> Option<String> {
+    let segments: Vec<&str> = line.split(". ").collect();
+    if segments.len() < 2 {
+        return None;
+    }
+
+    let first = segments[0];
+    let second = segments[1];
+    let merged = normalize_two_sentence_pump_and_gain_until_end_of_turn(first, second)?;
+    if segments.len() == 2 {
+        return Some(merged);
+    }
+
+    Some(format!(
+        "{} {}",
+        merged,
+        segments[2..].join(". ").trim_start()
+    ))
+}
+
 fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     if let Some(rewritten) = normalize_granted_activated_ability_clause(&normalized) {
@@ -718,6 +940,9 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         normalized = format!("{}: {}", head.trim(), rewritten_tail);
     }
+    if let Some(rewritten) = normalize_pump_and_gain_until_end_of_turn(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_search_you_own_clause(&normalized) {
         normalized = rewritten;
     }
@@ -725,6 +950,9 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_reveal_tagged_draw_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_sacrifice_implied_choice(&normalized) {
         normalized = rewritten;
     }
     if let Some((tap_clause, untap_clause)) = normalized.split_once(". ")
@@ -764,6 +992,44 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized.contains("Other Elf you control get ") {
         normalized = normalized.replace("Other Elf you control get ", "Other Elves you control get ");
     }
+    normalized = normalized
+        .replace(
+            "you may target creature gets ",
+            "you may have target creature get ",
+        )
+        .replace(
+            "you may target creature gains ",
+            "you may have target creature gain ",
+        )
+        .replace(
+            "you may target creature loses ",
+            "you may have target creature lose ",
+        )
+        .replace(
+            "you may target creature reveals ",
+            "you may have target creature reveal ",
+        );
+    if normalized.starts_with("creatures you control get ") {
+        normalized = normalized.replacen(
+            "creatures you control get ",
+            "Each creature you control gets ",
+            1,
+        );
+    }
+    if normalized.starts_with("Creatures you control get ") {
+        normalized = normalized.replacen(
+            "Creatures you control get ",
+            "Each creature you control gets ",
+            1,
+        );
+    }
+    normalized = normalized
+        .replace(": creatures you control get ", ": Each creature you control gets ")
+        .replace(": Creatures you control get ", ": Each creature you control gets ")
+        .replace(". creatures you control get ", ". Each creature you control gets ")
+        .replace(". Creatures you control get ", ". Each creature you control gets ")
+        .replace("• creatures you control get ", "• Each creature you control gets ")
+        .replace("• Creatures you control get ", "• Each creature you control gets ");
     if let Some(rest) = normalized.strip_prefix("Target player discards ")
         && let Some((discard_count, loss_tail)) = rest.split_once(" cards. target player loses ")
         && let Some(loss_amount) = loss_tail.strip_suffix(" life.")
@@ -870,6 +1136,22 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("a another ", "another ")
         .replace("Whenever a another ", "Whenever another ")
         .replace("Others ", "Other ")
+        .replace(" that objects ", " that object ")
+        .replace(" that objects.", " that object.")
+        .replace(" that objects,", " that object,")
+        .replace(" to that objects", " to that object")
+        .replace(
+            "an opponent's creature enter the battlefield tapped",
+            "an opponent's creature enters the battlefield tapped",
+        )
+        .replace(
+            "opponent's artifact enter the battlefield tapped",
+            "opponent's artifact enters the battlefield tapped",
+        )
+        .replace(
+            "Creature enter the battlefield tapped",
+            "Creature enters the battlefield tapped",
+        )
         .replace(
             "When this permanent enters or this creature attacks",
             "Whenever this creature enters or attacks",
@@ -1037,6 +1319,10 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Search your library for a Forest card, put that card onto the battlefield, then shuffle",
         )
         .replace(
+            "Search your library for land Forest, put it onto the battlefield, then shuffle",
+            "Search your library for a Forest card, put that card onto the battlefield, then shuffle",
+        )
+        .replace(
             "for Aura or Equipment you own",
             "for an Aura or Equipment card",
         )
@@ -1125,6 +1411,22 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Artifacts and creatures your opponents control enter tapped",
         )
         .replace(
+            "An opponent's artifact enters the battlefield tapped.",
+            "Artifacts your opponents control enter the battlefield tapped.",
+        )
+        .replace(
+            "An opponent's artifact enters the battlefield tapped",
+            "Artifacts your opponents control enter the battlefield tapped",
+        )
+        .replace(
+            "An opponent's creature enters the battlefield tapped.",
+            "Creatures your opponents control enter the battlefield tapped.",
+        )
+        .replace(
+            "An opponent's creature enters the battlefield tapped",
+            "Creatures your opponents control enter the battlefield tapped",
+        )
+        .replace(
             "An opponent's nonbasic creature or land enter the battlefield tapped.",
             "Creatures and nonbasic lands your opponents control enter tapped.",
         )
@@ -1139,7 +1441,46 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "with \"sacrifice this creature, add {C}\"",
             "with \"Sacrifice this creature: Add {C}.\"",
+        )
+        .replace(
+            "Whenever a creature blocks, deal 1 damage to that object's controller.",
+            "Whenever a creature blocks, deal 1 damage to that creature's controller.",
+        )
+        .replace(
+            "Whenever a creature blocks, deal 1 damage to that object's controller",
+            "Whenever a creature blocks, deal 1 damage to that creature's controller",
+        )
+        .replace(
+            "Whenever a creature blocks, this enchantment deals 1 damage to that creature's controller.",
+            "Whenever a creature blocks, deal 1 damage to that creature's controller.",
+        )
+        .replace(
+            "Whenever a creature blocks, this enchantment deals 1 damage to that creature's controller",
+            "Whenever a creature blocks, deal 1 damage to that creature's controller",
         );
+    if let Some((heading, tail)) = split_once_ascii_ci(&normalized, ": ")
+        && let Some(rest) = strip_prefix_ascii_ci(
+            tail,
+            "Whenever a creature blocks, deal ",
+        )
+        && let Some(dmg) = rest.strip_suffix(" damage to that object's controller.")
+    {
+        normalized = format!(
+            "{heading}: Whenever a creature blocks, deal {dmg} damage to that creature's controller.",
+            heading = heading.trim_end_matches(':').trim()
+        );
+    } else if let Some((heading, tail)) = split_once_ascii_ci(&normalized, ": ")
+        && let Some(rest) = strip_prefix_ascii_ci(
+            tail,
+            "Whenever a creature blocks, deal ",
+        )
+        && let Some(dmg) = rest.strip_suffix(" damage to that object's controller")
+    {
+        normalized = format!(
+            "{heading}: Whenever a creature blocks, deal {dmg} damage to that creature's controller",
+            heading = heading.trim_end_matches(':').trim()
+        );
+    }
     if let Some(amount) =
         strip_prefix_ascii_ci(&normalized, "Whenever enchanted land is tapped for mana, add ")
             .and_then(|tail| {
@@ -1163,18 +1504,18 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         && left.to_ascii_lowercase().contains("target creature")
         && right.eq_ignore_ascii_case("Untap it")
     {
-        normalized = format!("{}. Untap that creature.", left.trim_end_matches('.'));
+        normalized = format!("{}. Untap that creature", left.trim_end_matches('.'));
     }
     if let Some((left, right)) = normalized.split_once(". ")
         && left.to_ascii_lowercase().contains("target creature")
         && right.eq_ignore_ascii_case("Tap it.")
     {
-        normalized = format!("{}. Tap that creature.", left.trim_end_matches('.'));
+        normalized = format!("{}. Tap it.", left.trim_end_matches('.'));
     } else if let Some((left, right)) = normalized.split_once(". ")
         && left.to_ascii_lowercase().contains("target creature")
         && right.eq_ignore_ascii_case("Tap it")
     {
-        normalized = format!("{}. Tap that creature.", left.trim_end_matches('.'));
+        normalized = format!("{}. Tap it", left.trim_end_matches('.'));
     }
     if let Some((left, right)) = normalized.split_once(". ")
         && (left.eq_ignore_ascii_case("Untap one or two target creatures")
@@ -1287,6 +1628,23 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         return "Exchange control of two target creatures".to_string();
     }
     if lower_normalized == "exchange control of permanent and permanent" {
+        return "Exchange control of two target permanents".to_string();
+    }
+    if lower_normalized.starts_with("exchange control of two target permanents that share a card type") {
+        return "Exchange control of two target permanents".to_string();
+    }
+    if lower_normalized.starts_with("exchange control of two target permanents that share a permanent type")
+    {
+        return "Exchange control of two target permanents".to_string();
+    }
+    if lower_normalized == "exchange control of two target permanents that share a card type"
+        || lower_normalized == "exchange control of two target permanents that share a card type."
+    {
+        return "Exchange control of two target permanents".to_string();
+    }
+    if lower_normalized == "exchange control of two target permanents that share a permanent type"
+        || lower_normalized == "exchange control of two target permanents that share a permanent type."
+    {
         return "Exchange control of two target permanents".to_string();
     }
     if lower_normalized == "destroy all an opponent's nonland permanent"
@@ -2416,6 +2774,16 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if let Some(rest) = normalized.strip_prefix("Whenever This or Whenever another ") {
         return format!("Whenever this or another {rest}");
+    }
+    if let Some((left, right)) = normalized.split_once(" or Whenever another ") {
+        if left.starts_with("Whenever ") {
+            return format!("{left} or another {right}");
+        }
+    }
+    if let Some((left, right)) = normalized.split_once(" or whenever another ") {
+        if left.starts_with("whenever ") {
+            return format!("{left} or another {right}");
+        }
     }
     if let Some(rest) = lower.strip_prefix("whenever this creature or whenever another ") {
         return format!("Whenever this creature or another {rest}");
@@ -5364,6 +5732,38 @@ fn describe_for_each_double_counters(for_each: &crate::effects::ForEachObject) -
     ))
 }
 
+fn normalize_put_counter_number_for_each(line: &str) -> Option<String> {
+    let (before, after) = split_once_ascii_ci(line, "put the number of ")?;
+    let (count_and_counter, after_target) = after.split_once(" counter(s) on ")?;
+    let (target, suffix) = after_target
+        .split_once(". ")
+        .map(|(target, tail)| (target, format!(". {tail}")))
+        .unwrap_or_else(|| (after_target.trim_end_matches('.'), String::new()));
+    let target = target.trim();
+
+    let count_filter = if let Some(filter) = count_and_counter.strip_suffix(" +1/+1") {
+        format!("a +1/+1 counter on {target} for each {filter}")
+    } else if let Some(filter) = count_and_counter.strip_suffix(" -1/-1") {
+        format!("a -1/-1 counter on {target} for each {filter}")
+    } else {
+        return None;
+    };
+
+    let mut rewritten = String::with_capacity(line.len());
+    rewritten.push_str(before);
+    if !before.is_empty() && !before.ends_with(' ') {
+        rewritten.push(' ');
+    }
+    rewritten.push_str("Put ");
+    rewritten.push_str(&count_filter);
+    if suffix.is_empty() {
+        rewritten.push('.');
+    } else {
+        rewritten.push_str(&suffix);
+    }
+    Some(rewritten)
+}
+
 fn strip_indefinite_article(text: &str) -> &str {
     let trimmed = text.trim();
     if let Some(rest) = trimmed
@@ -5962,6 +6362,8 @@ fn describe_compact_create_token(
     if create_token.enters_tapped
         || create_token.enters_attacking
         || create_token.exile_at_end_of_combat
+        || create_token.sacrifice_at_next_end_step
+        || create_token.exile_at_next_end_step
     {
         return None;
     }
@@ -7050,6 +7452,19 @@ fn describe_effect_impl(effect: &Effect) -> String {
         {
             target = format!("each of {target}");
         }
+        if let Value::Count(filter) = &put_counters.count
+            && matches!(
+                put_counters.counter_type,
+                crate::object::CounterType::PlusOnePlusOne
+                    | crate::object::CounterType::MinusOneMinusOne
+            )
+        {
+            return format!(
+                "Put a {} counter on {target} for each {}",
+                describe_counter_type(put_counters.counter_type),
+                filter.description()
+            );
+        }
         return format!(
             "Put {} on {}",
             describe_put_counter_phrase(&put_counters.count, put_counters.counter_type),
@@ -7865,6 +8280,12 @@ fn describe_effect_impl(effect: &Effect) -> String {
             if create_token.exile_at_end_of_combat {
                 text.push_str(", and exile them at end of combat");
             }
+            if create_token.sacrifice_at_next_end_step {
+                text.push_str(", and sacrifice it at the beginning of the next end step");
+            }
+            if create_token.exile_at_next_end_step {
+                text.push_str(", and exile it at the beginning of the next end step");
+            }
             return text;
         }
         let token_blueprint = describe_token_blueprint(&create_token.token);
@@ -7888,6 +8309,12 @@ fn describe_effect_impl(effect: &Effect) -> String {
         }
         if create_token.exile_at_end_of_combat {
             text.push_str(", and exile them at end of combat");
+        }
+        if create_token.sacrifice_at_next_end_step {
+            text.push_str(", and sacrifice it at the beginning of the next end step");
+        }
+        if create_token.exile_at_next_end_step {
+            text.push_str(", and exile it at the beginning of the next end step");
         }
         return text;
     }
@@ -10684,6 +11111,23 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             keyword_tail.trim().to_ascii_lowercase()
         );
     }
+    if let Some((left, right)) = split_once_ascii_ci(&normalized, ". creatures you control gain ")
+        && let Some((prefix, buff_tail)) = split_once_ascii_ci(left, "each creature you control gets ")
+        && let Some((buff, _)) = split_once_ascii_ci(buff_tail, " until end of turn")
+        && let Some((ability, _)) = split_once_ascii_ci(right, " until end of turn")
+    {
+        let prefix = prefix.trim_end();
+        let buff = buff.trim();
+        let ability = ability.trim().to_ascii_lowercase();
+        let left_clause = if prefix.is_empty() {
+            "Each creature you control gets".to_string()
+        } else if prefix.ends_with(' ') {
+            format!("{prefix}creatures you control get")
+        } else {
+            format!("{prefix} creatures you control get")
+        };
+        return format!("{left_clause} {buff} and gain {ability} until end of turn.");
+    }
     if let Some((prefix, rest)) = split_once_ascii_ci(&normalized, ", you mill ")
         && let Some((count_tail, put_tail)) = split_once_ascii_ci(rest, " cards. Put ")
     {
@@ -10905,16 +11349,8 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some((left, right)) = normalized.split_once(" or Whenever ") {
         return format!("{left} or {}", lowercase_first(right.trim_end_matches('.')));
     }
-    if let Some(rest) = normalized.strip_prefix("Put the number of ")
-        && let Some((count_and_counter, target_tail)) = rest.split_once(" counter(s) on ")
-    {
-        let target = target_tail.trim_end_matches('.');
-        if let Some(count_filter) = count_and_counter.strip_suffix(" +1/+1") {
-            return format!("Put a +1/+1 counter on {target} for each {count_filter}.");
-        }
-        if let Some(count_filter) = count_and_counter.strip_suffix(" -1/-1") {
-            return format!("Put a -1/-1 counter on {target} for each {count_filter}.");
-        }
+    if let Some(rewritten) = normalize_put_counter_number_for_each(&normalized) {
+        normalized = rewritten;
     }
     if let Some(rest) = strip_prefix_ascii_ci(&normalized, "For each ")
         && let Some((filter, tail)) =
@@ -11890,6 +12326,7 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "Exile all card in that object's owner's graveyard",
             "Exile its owner's graveyard",
         )
+        .replace("that object's controller's", "its controller's")
         .replace("cast spell Aura", "cast an Aura spell")
         .replace(
             "For each player, Put a card from that player's hand on top of that player's library",
@@ -14731,6 +15168,18 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     {
         return format!("Counter target spell. This spell deals {amount} damage to that spell's controller");
     }
+    if let Some(amount) = trimmed
+        .strip_prefix("Whenever a creature blocks, deal ")
+        .and_then(|rest| rest.strip_suffix(" damage to that object's controller."))
+    {
+        return format!("Whenever a creature blocks, deal {amount} damage to that creature's controller.");
+    }
+    if let Some(amount) = trimmed
+        .strip_prefix("Whenever a creature blocks, deal ")
+        .and_then(|rest| rest.strip_suffix(" damage to that object's controller"))
+    {
+        return format!("Whenever a creature blocks, deal {amount} damage to that creature's controller");
+    }
     if let Some(rest) = trimmed.strip_prefix("Choose one - ") {
         return format!("Choose one — {}", rest.trim());
     }
@@ -14769,7 +15218,8 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         return "This creature can't be blocked".to_string();
     }
     if let Some(rest) = trimmed.strip_prefix("Can't attack unless defending player controls ") {
-        if rest.eq_ignore_ascii_case("island") {
+        let rest = rest.trim().trim_end_matches('.').trim_end_matches(',');
+        if rest.eq_ignore_ascii_case("island") || rest.eq_ignore_ascii_case("an island") {
             return "This creature can't attack unless defending player controls an Island"
                 .to_string();
         }
@@ -15905,6 +16355,22 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         .replace(
             "reveal it, put it into hand",
             "reveal it, put it into your hand",
+        )
+        .replace(
+            "you may target creature gets ",
+            "you may have target creature get ",
+        )
+        .replace(
+            "you may target creature gains ",
+            "you may have target creature gain ",
+        )
+        .replace(
+            "you may target creature loses ",
+            "you may have target creature lose ",
+        )
+        .replace(
+            "you may target creature reveals ",
+            "you may have target creature reveal ",
         );
     normalized = normalize_common_semantic_phrasing(&normalized);
     normalized = normalize_zero_pt_prefix(&normalized);
@@ -16127,6 +16593,17 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_pump_and_gain_until_end_of_turn_sentence() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Each creature you control gets +3/+3 until end of turn. creatures you control gain Trample until end of turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Each creature you control gets +3/+3 and gains Trample until end of turn."
+        );
+    }
+
+    #[test]
     fn normalizes_other_elf_plural_surface() {
         let normalized =
             normalize_common_semantic_phrasing("Other Elf you control get +1/+1.");
@@ -16256,6 +16733,39 @@ mod tests {
         assert_eq!(
             normalized,
             "Target player sacrifices a creature of their choice"
+        );
+    }
+
+    #[test]
+    fn normalizes_each_player_sacrifice_choice_phrasing() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Triggered ability 1: At the beginning of each player's upkeep, that player sacrifices an artifact.",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 1: At the beginning of each player's upkeep, that player sacrifices an artifact of their choice."
+        );
+    }
+
+    #[test]
+    fn normalizes_each_player_sacrifice_without_controls() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Triggered ability 1: When this creature enters, each player sacrifices two creatures that player controls.",
+        );
+        assert_eq!(
+            normalized,
+            "Triggered ability 1: When this creature enters, each player sacrifices two creatures of their choice."
+        );
+    }
+
+    #[test]
+    fn normalizes_its_controller_controller_owned_sacrifice() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Spell effects: For each creature, its controller sacrifices a controller's permanent unless its controller pays {1}.",
+        );
+        assert_eq!(
+            normalized,
+            "Spell effects: For each creature, its controller sacrifices a permanent of their choice unless its controller pays {1}."
         );
     }
 
@@ -17181,6 +17691,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_merges_get_and_gain_until_eot_for_each_creature_you_control() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters, each creature you control gets +1/+1 until end of turn. creatures you control gain Haste until end of turn",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature enters, creatures you control get +1/+1 and gain haste until end of turn."
+        );
+    }
+
+    #[test]
     fn post_pass_merges_mill_then_put_counter_chain() {
         let normalized = normalize_compiled_post_pass_effect(
             "When this permanent enters, you mill 2 cards. Put a +1/+1 counter on this permanent for each artifact or creature card in your graveyard.",
@@ -17731,6 +18252,17 @@ mod tests {
     }
 
     #[test]
+    fn post_pass_normalizes_you_may_target_creature_gets_clause() {
+        let normalized = normalize_compiled_post_pass_effect(
+            "When this creature enters, you may target creature gets -1/-1 until end of turn.",
+        );
+        assert_eq!(
+            normalized,
+            "When this creature enters, you may have target creature get -1/-1 until end of turn."
+        );
+    }
+
+    #[test]
     fn post_pass_normalizes_tidebinder_untap_lock_clause() {
         let normalized = normalize_compiled_post_pass_effect(
             "When this creature enters, tap target opponent's red or green creature. permanent can't untap while you control this creature.",
@@ -18242,6 +18774,17 @@ mod tests {
         assert_eq!(
             normalized,
             "When this creature enters, you may have target opponent sacrifice a creature of their choice."
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_creatures_you_control_get_phrase() {
+        let normalized = normalize_common_semantic_phrasing(
+            "Activated ability 1: {T}: creatures you control get +1/+2 until end of turn.",
+        );
+        assert_eq!(
+            normalized,
+            "Activated ability 1: {T}: Each creature you control gets +1/+2 until end of turn."
         );
     }
 

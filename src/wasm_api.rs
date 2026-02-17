@@ -3826,6 +3826,8 @@ fn describe_compact_create_token_ui(
     if create_token.enters_tapped
         || create_token.enters_attacking
         || create_token.exile_at_end_of_combat
+        || create_token.sacrifice_at_next_end_step
+        || create_token.exile_at_next_end_step
     {
         return None;
     }
@@ -4997,6 +4999,12 @@ fn describe_effect_core_expanded(
         if create_token.exile_at_end_of_combat {
             text.push_str(", and exile them at end of combat");
         }
+        if create_token.sacrifice_at_next_end_step {
+            text.push_str(", and sacrifice it at the beginning of the next end step");
+        }
+        if create_token.exile_at_next_end_step {
+            text.push_str(", and exile it at the beginning of the next end step");
+        }
         text.push('.');
         return Some(text);
     }
@@ -5321,6 +5329,7 @@ fn describe_player_filter(
     match filter {
         crate::target::PlayerFilter::You => "You".to_string(),
         crate::target::PlayerFilter::Opponent => "An opponent".to_string(),
+        crate::target::PlayerFilter::NotYou => "Another player".to_string(),
         crate::target::PlayerFilter::Any => "A player".to_string(),
         crate::target::PlayerFilter::Target(inner) => {
             let inner_text = describe_player_filter(inner, tagged_subjects);

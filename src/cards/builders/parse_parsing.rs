@@ -17358,8 +17358,8 @@ fn parse_target_player_exiles_creature_and_graveyard_sentence(
             player: subject_player,
             tag: TagKey::from(IT_TAG),
         },
-        EffectAst::ExileAll {
-            filter: ObjectFilter::tagged(IT_TAG),
+        EffectAst::Exile {
+            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
         },
         EffectAst::ExileAll {
             filter: graveyard_filter,
@@ -24260,6 +24260,36 @@ fn parse_copy_modifiers_from_tail(
     )
 }
 
+fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool) {
+    let has_beginning_of_end_step = tail_words.windows(6).any(|window| {
+        window == ["beginning", "of", "the", "next", "end", "step"]
+    }) || tail_words
+        .windows(5)
+        .any(|window| window == ["beginning", "of", "next", "end", "step"])
+        || tail_words
+            .windows(5)
+            .any(|window| window == ["beginning", "of", "the", "end", "step"])
+        || tail_words
+            .windows(4)
+            .any(|window| window == ["beginning", "of", "end", "step"]);
+    if !has_beginning_of_end_step {
+        return (false, false);
+    }
+
+    let has_sacrifice_reference = tail_words.contains(&"sacrifice")
+        && (tail_words.contains(&"token")
+            || tail_words.contains(&"permanent")
+            || tail_words.contains(&"it")
+            || tail_words.contains(&"them"));
+    let has_exile_reference = tail_words.contains(&"exile")
+        && (tail_words.contains(&"token")
+            || tail_words.contains(&"permanent")
+            || tail_words.contains(&"it")
+            || tail_words.contains(&"them"));
+
+    (has_sacrifice_reference, has_exile_reference)
+}
+
 fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
     let player = match subject {
         Some(SubjectAst::Player(player)) => player,
@@ -24387,29 +24417,8 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
                 .windows(2)
                 .any(|window| matches!(window, ["has", "haste"] | ["gain", "haste"] | ["gains", "haste"]))
                 || tail_words.contains(&"haste");
-            let has_beginning_of_end_step = tail_words.windows(6).any(|window| {
-                window == ["beginning", "of", "the", "next", "end", "step"]
-            }) || tail_words
-                .windows(5)
-                .any(|window| window == ["beginning", "of", "next", "end", "step"])
-                || tail_words
-                    .windows(5)
-                    .any(|window| window == ["beginning", "of", "the", "end", "step"])
-                || tail_words
-                    .windows(4)
-                    .any(|window| window == ["beginning", "of", "end", "step"]);
-            let has_sacrifice_reference = tail_words.contains(&"sacrifice")
-                && (tail_words.contains(&"token")
-                    || tail_words.contains(&"permanent")
-                    || tail_words.contains(&"it")
-                    || tail_words.contains(&"them"));
-            let has_exile_reference = tail_words.contains(&"exile")
-                && (tail_words.contains(&"token")
-                    || tail_words.contains(&"permanent")
-                    || tail_words.contains(&"it")
-                    || tail_words.contains(&"them"));
-            let sacrifice_at_next_end_step = has_beginning_of_end_step && has_sacrifice_reference;
-            let exile_at_next_end_step = has_beginning_of_end_step && has_exile_reference;
+            let (sacrifice_at_next_end_step, exile_at_next_end_step) =
+                parse_next_end_step_token_delay_flags(&tail_words);
             if let Some(of_idx) = tail_tokens.iter().position(|token| token.is_word("of")) {
                 let source_tokens = &tail_tokens[of_idx + 1..];
                 let source_end = source_tokens
@@ -24531,6 +24540,8 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
 
     tapped |= tail_words.contains(&"tapped");
     attacking |= tail_words.contains(&"attacking");
+    let (sacrifice_at_next_end_step, exile_at_next_end_step) =
+        parse_next_end_step_token_delay_flags(&tail_words);
     if let Some(count_override) = for_each_count_value {
         count_value = count_override;
     }
@@ -24542,6 +24553,8 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         tapped,
         attacking,
         exile_at_end_of_combat: false,
+        sacrifice_at_next_end_step,
+        exile_at_next_end_step,
     };
     Ok(create)
 }
@@ -24602,8 +24615,27 @@ fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         idx += 1;
     }
 
-    let target_tokens = &tokens[idx..];
-    let target = parse_target_phrase(target_tokens)?;
+    let target_tokens = trim_commas(&tokens[idx..]);
+    let for_each_idx = (0..target_tokens.len().saturating_sub(1))
+        .find(|i| target_tokens[*i].is_word("for") && target_tokens[*i + 1].is_word("each"));
+    if let Some(for_each_idx) = for_each_idx {
+        let base_target_tokens = trim_commas(&target_tokens[..for_each_idx]);
+        let count_filter_tokens = trim_commas(&target_tokens[for_each_idx + 2..]);
+        if !base_target_tokens.is_empty() && !count_filter_tokens.is_empty() {
+            if let (Ok(target), Ok(count_filter)) = (
+                parse_target_phrase(&base_target_tokens),
+                parse_object_filter(&count_filter_tokens, false),
+            ) {
+                return Ok(EffectAst::ForEachObject {
+                    filter: count_filter,
+                    effects: vec![EffectAst::RemoveUpToAnyCounters { amount, target }],
+                });
+            }
+        }
+    }
+
+    let target_tokens = trim_commas(&tokens[idx..]);
+    let target = parse_target_phrase(&target_tokens)?;
 
     let _ = up_to;
     Ok(EffectAst::RemoveUpToAnyCounters { amount, target })
@@ -25851,6 +25883,15 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         .into_iter()
         .filter(|word| !is_article(word) && *word != "instead")
         .collect();
+
+    if let Some((power, toughness)) = all_words
+        .first()
+        .and_then(|word| parse_unsigned_pt_word(word))
+    {
+        filter.power = Some(crate::filter::Comparison::Equal(power));
+        filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
+        all_words.remove(0);
+    }
 
     while all_words.len() >= 2 && all_words[0] == "one" && all_words[1] == "of" {
         all_words.drain(0..2);
