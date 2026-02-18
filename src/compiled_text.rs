@@ -282,16 +282,24 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
     }
 
     if !card.subtypes.is_empty() {
+        let name_lower = card.name.to_ascii_lowercase();
+        let subtype_words_lower = card
+            .subtypes
+            .iter()
+            .map(|subtype| format!("{subtype:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>();
         let subtype_text = card
             .subtypes
             .iter()
             .map(|subtype| format!("{subtype:?}"))
             .collect::<Vec<_>>()
             .join(" ");
+        let name_matches_any_subtype = subtype_words_lower.iter().any(|word| *word == name_lower);
         let use_name_for_creature = card.is_creature()
             && !card.name.trim().is_empty()
-            && card.name.to_ascii_lowercase() != "token"
-            && card.name.to_ascii_lowercase() != subtype_text.to_ascii_lowercase();
+            && name_lower != "token"
+            && name_lower != subtype_text.to_ascii_lowercase()
+            && !name_matches_any_subtype;
         if use_name_for_creature {
             parts.push(card.name.clone());
             if !subtype_text.is_empty() {
@@ -8596,10 +8604,14 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Investigate {}", describe_value(&investigate.count));
     }
     if let Some(poison) = effect.downcast_ref::<crate::effects::PoisonCountersEffect>() {
+        let amount = match poison.count {
+            Value::Fixed(1) => "a poison counter".to_string(),
+            _ => format!("{} poison counters", describe_value(&poison.count)),
+        };
         return format!(
-            "{} gets {} poison counter(s)",
+            "{} gets {}",
             describe_player_filter(&poison.player),
-            describe_value(&poison.count)
+            amount
         );
     }
     if let Some(pay_energy) = effect.downcast_ref::<crate::effects::PayEnergyEffect>() {
@@ -14488,6 +14500,10 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         .and_then(|rest| {
             rest.strip_suffix(" poison counter(s).")
                 .or_else(|| rest.strip_suffix(" poison counter(s)"))
+                .or_else(|| rest.strip_suffix(" poison counters."))
+                .or_else(|| rest.strip_suffix(" poison counters"))
+                .or_else(|| rest.strip_suffix(" poison counter."))
+                .or_else(|| rest.strip_suffix(" poison counter"))
         })
     {
         let count = count.trim();
