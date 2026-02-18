@@ -568,6 +568,15 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
             && debug.contains("\"__it__\""),
         "expected count to track sacrificed creatures this way, got {debug}"
     );
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("additional cost to cast this spell, you may sacrifice one or more creatures"),
+        "expected one-or-more sacrifice wording in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("copy this spell for each creature"),
+        "expected counted copy wording in compiled text, got {rendered}"
+    );
 }
 
 #[test]

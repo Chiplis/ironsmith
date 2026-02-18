@@ -836,6 +836,41 @@ fn normalize_sacrifice_implied_choice(sentence: &str) -> Option<String> {
     Some(rewritten)
 }
 
+fn normalize_choose_sacrifice_subject(chosen: &str) -> String {
+    let mut chosen = chosen.trim().trim_end_matches('.').to_string();
+    if let Some((before, _)) = split_once_ascii_ci(&chosen, " and tag it as ") {
+        chosen = before.to_string();
+    } else if let Some((before, _)) = split_once_ascii_ci(&chosen, " and tags it as ") {
+        chosen = before.to_string();
+    }
+    chosen = chosen
+        .strip_suffix(" in the battlefield")
+        .or_else(|| chosen.strip_suffix(" in the battlefields"))
+        .or_else(|| chosen.strip_suffix(" you control in the battlefield"))
+        .or_else(|| chosen.strip_suffix(" you control in the battlefields"))
+        .unwrap_or(chosen.as_str())
+        .trim()
+        .to_string();
+    if let Some(rest) = strip_prefix_ascii_ci(&chosen, "at least 1 ") {
+        chosen = rest.trim().to_string();
+    }
+    let chosen_words = chosen.split_whitespace().collect::<Vec<_>>();
+    if let Some(cutoff) = chosen_words
+        .iter()
+        .position(|word| word.eq_ignore_ascii_case("you") || word.eq_ignore_ascii_case("in"))
+        && cutoff > 0
+    {
+        chosen = chosen_words[..cutoff].join(" ");
+    }
+    chosen = chosen
+        .strip_prefix("a ")
+        .or_else(|| chosen.strip_prefix("an "))
+        .unwrap_or(chosen.as_str())
+        .trim()
+        .to_string();
+    pluralize_noun_phrase(&chosen)
+}
+
 fn normalize_two_sentence_pump_and_gain_until_end_of_turn(left: &str, right: &str) -> Option<String> {
     let left = left.trim().trim_end_matches('.');
     let left_lower = left.to_ascii_lowercase();
@@ -1790,33 +1825,32 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!("Each player creates a {token_desc}{tail}");
     }
+    if let Some(rest) = strip_prefix_ascii_ci(
+        &normalized,
+        "As an additional cost to cast this spell, you may choose at least 1 ",
+    ) && let Some((chosen, tail)) = split_once_ascii_ci(
+        rest,
+        ". you sacrifice all permanents you control",
+    ) {
+        let chosen_plural = normalize_choose_sacrifice_subject(chosen);
+        let tail = tail
+            .trim_start_matches('.')
+            .trim_start()
+            .trim_end_matches('.');
+        if tail.is_empty() {
+            return format!(
+                "As an additional cost to cast this spell, you may sacrifice one or more {chosen_plural}"
+            );
+        }
+        return format!(
+            "As an additional cost to cast this spell, you may sacrifice one or more {chosen_plural}. {}.",
+            capitalize_first(tail)
+        );
+    }
     if let Some(rest) = normalized.strip_prefix("You choose any number ")
         && let Some((chosen, tail)) = rest.split_once(". you sacrifice all permanents you control")
     {
-        let mut chosen = chosen.trim().trim_end_matches('.').to_string();
-        chosen = chosen
-            .strip_suffix(" in the battlefield")
-            .or_else(|| chosen.strip_suffix(" in the battlefields"))
-            .or_else(|| chosen.strip_suffix(" you control in the battlefield"))
-            .or_else(|| chosen.strip_suffix(" you control in the battlefields"))
-            .unwrap_or(chosen.as_str())
-            .trim()
-            .to_string();
-        let chosen_words = chosen.split_whitespace().collect::<Vec<_>>();
-        if let Some(cutoff) = chosen_words
-            .iter()
-            .position(|word| *word == "you" || *word == "in")
-            && cutoff > 0
-        {
-            chosen = chosen_words[..cutoff].join(" ");
-        }
-        chosen = chosen
-            .strip_prefix("a ")
-            .or_else(|| chosen.strip_prefix("an "))
-            .unwrap_or(chosen.as_str())
-            .trim()
-            .to_string();
-        let chosen_plural = pluralize_noun_phrase(&chosen);
+        let chosen_plural = normalize_choose_sacrifice_subject(chosen);
         let tail = tail
             .trim_start_matches('.')
             .trim_start()
@@ -1832,30 +1866,7 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rest) = normalized.strip_prefix("you choose any number ")
         && let Some((chosen, tail)) = rest.split_once(". you sacrifice all permanents you control")
     {
-        let mut chosen = chosen.trim().trim_end_matches('.').to_string();
-        chosen = chosen
-            .strip_suffix(" in the battlefield")
-            .or_else(|| chosen.strip_suffix(" in the battlefields"))
-            .or_else(|| chosen.strip_suffix(" you control in the battlefield"))
-            .or_else(|| chosen.strip_suffix(" you control in the battlefields"))
-            .unwrap_or(chosen.as_str())
-            .trim()
-            .to_string();
-        let chosen_words = chosen.split_whitespace().collect::<Vec<_>>();
-        if let Some(cutoff) = chosen_words
-            .iter()
-            .position(|word| *word == "you" || *word == "in")
-            && cutoff > 0
-        {
-            chosen = chosen_words[..cutoff].join(" ");
-        }
-        chosen = chosen
-            .strip_prefix("a ")
-            .or_else(|| chosen.strip_prefix("an "))
-            .unwrap_or(chosen.as_str())
-            .trim()
-            .to_string();
-        let chosen_plural = pluralize_noun_phrase(&chosen);
+        let chosen_plural = normalize_choose_sacrifice_subject(chosen);
         let tail = tail
             .trim_start_matches('.')
             .trim_start()
@@ -8598,6 +8609,15 @@ fn describe_effect_impl(effect: &Effect) -> String {
             && matches!(copy_spell.count, Value::Fixed(1))
         {
             return "Copy this spell".to_string();
+        }
+        if matches!(copy_spell.target, ChooseSpec::Source)
+            && let Value::Count(filter) = &copy_spell.count
+        {
+            let mut each_filter = filter.description();
+            if each_filter.ends_with('s') {
+                each_filter = each_filter.trim_end_matches('s').to_string();
+            }
+            return format!("Copy this spell for each {each_filter}");
         }
         return format!(
             "Copy {} {} time(s)",
