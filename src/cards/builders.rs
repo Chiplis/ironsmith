@@ -3425,6 +3425,31 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_saw_in_half_style_half_pt_copy_does_not_set_type_override() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Saw in Half Variant")
+            .parse_text("Create two tokens that are copies of target creature, except their power is half that creature's power and their toughness is half that creature's toughness. Round up each time.")
+            .expect("parse saw in half copy clause");
+
+        let effects = def.spell_effect.expect("spell effect");
+        let copy = effects
+            .iter()
+            .find_map(|e| e.downcast_ref::<CreateTokenCopyEffect>())
+            .expect("should include create-token-copy effect");
+        assert!(
+            copy.set_card_types.is_none(),
+            "half power/toughness wording should not imply a type override"
+        );
+        assert!(
+            copy.set_subtypes.is_none(),
+            "half power/toughness wording should not imply a subtype override"
+        );
+        assert!(
+            copy.set_colors.is_none(),
+            "half power/toughness wording should not imply a color override"
+        );
+    }
+
+    #[test]
     fn parse_shaleskin_bruiser_style_scaling_attack_trigger() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Shaleskin Bruiser Variant")
             .parse_text(

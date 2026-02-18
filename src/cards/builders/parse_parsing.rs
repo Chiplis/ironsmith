@@ -24838,44 +24838,50 @@ fn parse_copy_modifiers_from_tail(
             }
         }
     } else {
-        let descriptor_end = modifier_words
-            .iter()
-            .position(|word| matches!(*word, "with" | "has" | "have" | "gain" | "gains"))
-            .unwrap_or(modifier_words.len());
-        let descriptor_words = &modifier_words[..descriptor_end];
-        let mut colors = ColorSet::new();
-        let mut card_types = Vec::new();
-        let mut subtypes = Vec::new();
-        for word in descriptor_words {
-            if is_article(word)
-                || matches!(*word, "its" | "it" | "is" | "they" | "are")
-                || looks_like_pt_word(word)
-            {
-                continue;
+        let starts_with_identity_clause = modifier_words.starts_with(&["its"])
+            || modifier_words.starts_with(&["it", "is"])
+            || modifier_words.starts_with(&["theyre"])
+            || modifier_words.starts_with(&["they", "are"]);
+        if starts_with_identity_clause {
+            let descriptor_end = modifier_words
+                .iter()
+                .position(|word| matches!(*word, "with" | "has" | "have" | "gain" | "gains"))
+                .unwrap_or(modifier_words.len());
+            let descriptor_words = &modifier_words[..descriptor_end];
+            let mut colors = ColorSet::new();
+            let mut card_types = Vec::new();
+            let mut subtypes = Vec::new();
+            for word in descriptor_words {
+                if is_article(word)
+                    || matches!(*word, "its" | "it" | "is" | "they" | "are")
+                    || looks_like_pt_word(word)
+                {
+                    continue;
+                }
+                if let Some(color) = parse_color(word) {
+                    colors = colors.union(color);
+                }
+                if let Some(card_type) = parse_card_type(word)
+                    && !card_types.contains(&card_type)
+                {
+                    card_types.push(card_type);
+                }
+                if let Some(subtype) =
+                    parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+                    && !subtypes.contains(&subtype)
+                {
+                    subtypes.push(subtype);
+                }
             }
-            if let Some(color) = parse_color(word) {
-                colors = colors.union(color);
+            if !colors.is_empty() {
+                set_colors = Some(colors);
             }
-            if let Some(card_type) = parse_card_type(word)
-                && !card_types.contains(&card_type)
-            {
-                card_types.push(card_type);
+            if !card_types.is_empty() {
+                set_card_types = Some(card_types);
             }
-            if let Some(subtype) =
-                parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
-                && !subtypes.contains(&subtype)
-            {
-                subtypes.push(subtype);
+            if !subtypes.is_empty() {
+                set_subtypes = Some(subtypes);
             }
-        }
-        if !colors.is_empty() {
-            set_colors = Some(colors);
-        }
-        if !card_types.is_empty() {
-            set_card_types = Some(card_types);
-        }
-        if !subtypes.is_empty() {
-            set_subtypes = Some(subtypes);
         }
     }
 
