@@ -1,36 +1,80 @@
+Aeronaut Admiral
+Allied Teamwork
+Akul the Unrepentant
+Angelic Shield
+Angler Turtle
+Ancestral Katana
 Anthem of Champions
+Arc Blade
+Asceticism
 Atrocious Experiment
 Banners Raised
 Bar the Door
+Birchlore Rangers
+Burn Away
 Burn Bright
 Charge
+Charnel Serenade
 Chorus of Woe
 Collective Blessing
+Cyclical Evolution
 Cyclops of Eternal Fury
+Dakkon Blackblade
+Death Pit Offering
 Desperate Charge
+Dictate of Heliod
 Durkwood Baloth
+Emblem of the Warmind
+End the Festivities
 Ethereal Guidance
+Fabrication Module
+Festering March
 Fire Nation's Conquest
+Fires of Yavimaya
 Flowstone Surge
+Fortifying Provisions
 Gaea's Anthem
-Hold the Gates
+Gate to Phyrexia
 Glorious Anthem
 Glorious Charge
+Goblin Chainwhirler
+Goblin Warchief
+Graf Harvest
+Guild Summit
+Hammer of Purphoros
+Heartless Summoning
+Hold the Gates
 Inspired Charge
+Inspiring Refrain
 Kiss of the Amesha
 Knight of Old Benalia
+Llanowar Sentinel
+Liliana's Mastery
 Lotus Bloom
+Lumithread Field
 Madrush Cyclops
+Maelstrom Wanderer
 Makindi Stampede // Makindi Mesas
+Master Splicer
+Merrow Commerce
 Mox Tantalite
 Nova Cleric
+Ogre Slumlord
 Path of Anger's Flame
+Pledge of Unity
 Provisions Merchant
+Quintorius, Field Historian
+Rashel, Fist of Torm
+Reality Strobe
 Righteous Charge
-Root Greevil
+Rising of the Day
+Roiling Terrain
 Robber Fly
+Root Greevil
 Sandman, Shifting Scoundrel
+Sarkhan's Unsealing
 Scare Tactics
+Sea God's Scorn
 Shield Wall
 Sol Talisman
 Solidarity
@@ -38,7 +82,9 @@ Solitary Study // Endless Corridor
 Spidersilk Armor
 Steadfastness
 Sticky Fingers
+Strategic Betrayal
 Temur Ascendancy
+Thunderhead Gunner
 Tuktuk Rubblefort
 Veiling Oddity
 Virtuous Charge

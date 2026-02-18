@@ -24000,6 +24000,34 @@ fn parse_counter_type_from_tokens(tokens: &[Token]) -> Option<CounterType> {
     None
 }
 
+fn describe_counter_type_for_mode(counter_type: CounterType) -> String {
+    match counter_type {
+        CounterType::PlusOnePlusOne => "+1/+1".to_string(),
+        CounterType::MinusOneMinusOne => "-1/-1".to_string(),
+        other => format!("{other:?}").to_ascii_lowercase(),
+    }
+}
+
+fn describe_counter_phrase_for_mode(count: u32, counter_type: CounterType) -> String {
+    let counter_name = describe_counter_type_for_mode(counter_type);
+    if count == 1 {
+        format!("a {counter_name} counter")
+    } else {
+        format!("{count} {counter_name} counters")
+    }
+}
+
+fn sentence_case_mode_text(text: &str) -> String {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut out = String::new();
+    out.push(first.to_ascii_uppercase());
+    out.extend(chars);
+    out
+}
+
 fn parse_counter_descriptor(tokens: &[Token]) -> Result<(u32, CounterType), CardTextError> {
     let descriptor = trim_commas(tokens);
     let (count, used) = parse_number(&descriptor).ok_or_else(|| {
@@ -24080,6 +24108,27 @@ fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             effect
         }
     };
+
+    if let Some(mut effect) =
+        parse_put_or_remove_counter_choice(count, counter_type, &target_tokens, tokens)?
+    {
+        let mut predicate = trailing_predicate.clone();
+        if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
+            && let EffectAst::PutOrRemoveCounters { target, .. } = &mut effect
+            && merge_it_match_filter_into_target(target, filter)
+        {
+            predicate = None;
+        }
+        return Ok(if let Some(predicate) = predicate {
+            EffectAst::Conditional {
+                predicate,
+                if_true: vec![effect],
+                if_false: Vec::new(),
+            }
+        } else {
+            effect
+        });
+    }
 
     if let Some((target_count, used)) = parse_counter_target_count_prefix(&target_tokens)? {
         let target_phrase = &target_tokens[used..];
@@ -24180,6 +24229,124 @@ fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     } else {
         effect
     })
+}
+
+fn parse_put_or_remove_counter_choice(
+    put_count: u32,
+    put_counter_type: CounterType,
+    target_tokens: &[Token],
+    clause_tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(or_idx) = target_tokens
+        .windows(2)
+        .position(|window| window[0].is_word("or") && window[1].is_word("remove"))
+    else {
+        return Ok(None);
+    };
+
+    let base_target_tokens = trim_commas(&target_tokens[..or_idx]);
+    if base_target_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let remove_tokens = trim_commas(&target_tokens[or_idx + 1..]);
+    if remove_tokens.len() < 2 || !remove_tokens[0].is_word("remove") {
+        return Ok(None);
+    }
+
+    let mut idx = 1usize;
+    let (remove_count, used_remove_count) = parse_value(&remove_tokens[idx..]).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing counter removal amount in put-or-remove clause (clause: '{}')",
+            words(clause_tokens).join(" ")
+        ))
+    })?;
+    idx += used_remove_count;
+
+    let from_idx = remove_tokens[idx..]
+        .iter()
+        .position(|token| token.is_word("from"))
+        .map(|offset| idx + offset)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing 'from' in put-or-remove clause (clause: '{}')",
+                words(clause_tokens).join(" ")
+            ))
+        })?;
+
+    let remove_descriptor_tokens = trim_commas(&remove_tokens[idx..from_idx]);
+    let remove_counter_type = if remove_descriptor_tokens.is_empty() {
+        put_counter_type
+    } else {
+        if !remove_descriptor_tokens
+            .iter()
+            .any(|token| token.is_word("counter") || token.is_word("counters"))
+        {
+            return Err(CardTextError::ParseError(format!(
+                "missing counter keyword in put-or-remove remove clause (clause: '{}')",
+                words(clause_tokens).join(" ")
+            )));
+        }
+        parse_counter_type_from_tokens(&remove_descriptor_tokens).unwrap_or(put_counter_type)
+    };
+
+    let remove_target_tokens = trim_commas(&remove_tokens[from_idx + 1..]);
+    let remove_target_words = words(&remove_target_tokens);
+    let referential_remove_target = matches!(
+        remove_target_words.as_slice(),
+        ["it"]
+            | ["that", "permanent"]
+            | ["that", "artifact"]
+            | ["that", "creature"]
+            | ["that", "saga"]
+            | ["this", "permanent"]
+            | ["this", "artifact"]
+            | ["this", "creature"]
+    );
+    if !referential_remove_target {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported put-or-remove remove target (clause: '{}')",
+            words(clause_tokens).join(" ")
+        )));
+    }
+
+    let (target, target_count) =
+        if let Some((target_count, used_target_count)) =
+            parse_counter_target_count_prefix(&base_target_tokens)?
+        {
+            let target_phrase = &base_target_tokens[used_target_count..];
+            if target_phrase.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing counter target before put-or-remove remove clause (clause: '{}')",
+                    words(clause_tokens).join(" ")
+                )));
+            }
+            (parse_target_phrase(target_phrase)?, Some(target_count))
+        } else {
+            (parse_target_phrase(&base_target_tokens)?, None)
+        };
+
+    let target_phrase = words(&base_target_tokens).join(" ");
+    let put_mode_text = format!(
+        "Put {} on {}",
+        describe_counter_phrase_for_mode(put_count, put_counter_type),
+        target_phrase
+    );
+    let remove_mode_text = {
+        let remove_text = words(&remove_tokens).join(" ");
+        sentence_case_mode_text(&remove_text)
+    };
+
+    Ok(Some(EffectAst::PutOrRemoveCounters {
+        put_counter_type,
+        put_count: Value::Fixed(put_count as i32),
+        remove_counter_type,
+        remove_count,
+        put_mode_text,
+        remove_mode_text,
+        target,
+        target_count,
+    }))
 }
 
 fn parse_counter_target_count_prefix(

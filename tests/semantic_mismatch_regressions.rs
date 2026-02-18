@@ -1,10 +1,7 @@
 #![cfg(feature = "parser-tests-full")]
 
 use ironsmith::{
-    cards::CardDefinitionBuilder,
-    compiled_text::compiled_lines,
-    ids::CardId,
-    types::CardType,
+    cards::CardDefinitionBuilder, compiled_text::compiled_lines, ids::CardId, types::CardType,
 };
 
 fn rendered_lines(text: &str, name: &str, card_types: &[CardType]) -> String {
@@ -102,5 +99,23 @@ fn regression_semantic_mismatch_reckless_blaze_triggered_dies_clause() {
     assert!(
         rendered.contains("add {r}"),
         "expected colorless mana gain clause to remain, got {rendered}"
+    );
+}
+
+#[test]
+fn regression_semantic_mismatch_admonition_angel_nonland_permanent_target() {
+    let rendered = rendered_lines(
+        "Flying\nLandfall — Whenever a land you control enters, you may exile target nonland permanent other than this creature.\nWhen this creature leaves the battlefield, return all cards exiled with it to the battlefield under their owners' control.",
+        "Admonition Angel",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("nonland permanent"),
+        "expected landfall target to remain a nonland permanent, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("nonland creature"),
+        "landfall target should not narrow to creatures, got {rendered}"
     );
 }

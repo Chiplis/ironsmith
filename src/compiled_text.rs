@@ -7193,6 +7193,62 @@ fn describe_tap_or_untap_mode(choose_mode: &crate::effects::ChooseModeEffect) ->
     None
 }
 
+fn describe_put_or_remove_counter_mode(
+    choose_mode: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if choose_mode.modes.len() != 2 {
+        return None;
+    }
+    let is_choose_one = matches!(choose_mode.choose_count, Value::Fixed(1))
+        && choose_mode
+            .min_choose_count
+            .as_ref()
+            .is_none_or(|value| matches!(value, Value::Fixed(1)));
+    if !is_choose_one {
+        return None;
+    }
+
+    let mut put_mode: Option<(&crate::effects::PutCountersEffect, String)> = None;
+    let mut remove_mode: Option<(&crate::effects::RemoveCountersEffect, String)> = None;
+
+    for mode in &choose_mode.modes {
+        if mode.effects.len() != 1 {
+            return None;
+        }
+        let description = if mode.description.trim().is_empty() {
+            describe_effect_list(&mode.effects)
+        } else {
+            mode.description.trim().to_string()
+        };
+        let effect = &mode.effects[0];
+        if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+            put_mode = Some((put, description));
+            continue;
+        }
+        if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>() {
+            remove_mode = Some((remove, description));
+            continue;
+        }
+        return None;
+    }
+
+    let (put_effect, put_description) = put_mode?;
+    let (remove_effect, remove_description) = remove_mode?;
+    if put_effect.target != remove_effect.target {
+        return None;
+    }
+
+    let put_clause = put_description.trim().trim_end_matches('.');
+    let remove_clause = lowercase_first(remove_description.trim().trim_end_matches('.'));
+    if !put_clause.to_ascii_lowercase().starts_with("put ")
+        || !remove_clause.starts_with("remove ")
+    {
+        return None;
+    }
+
+    Some(format!("{put_clause} or {remove_clause}"))
+}
+
 fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) = describe_search_sequence(sequence) {
@@ -8321,6 +8377,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
         if let Some(compact) = describe_tap_or_untap_mode(choose_mode) {
+            return compact;
+        }
+        if let Some(compact) = describe_put_or_remove_counter_mode(choose_mode) {
             return compact;
         }
         let header = describe_mode_choice_header(

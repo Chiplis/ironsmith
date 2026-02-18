@@ -374,6 +374,16 @@ enum EffectAst {
         target_count: Option<ChoiceCount>,
         distributed: bool,
     },
+    PutOrRemoveCounters {
+        put_counter_type: CounterType,
+        put_count: Value,
+        remove_counter_type: CounterType,
+        remove_count: Value,
+        put_mode_text: String,
+        remove_mode_text: String,
+        target: TargetAst,
+        target_count: Option<ChoiceCount>,
+    },
     PutCountersAll {
         counter_type: CounterType,
         count: Value,

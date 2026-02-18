@@ -230,6 +230,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::Explore { target }
         | EffectAst::Goad { target }
         | EffectAst::PutCounters { target, .. }
+        | EffectAst::PutOrRemoveCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
         | EffectAst::TapOrUntap { target }
@@ -591,6 +592,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::Explore { target }
         | EffectAst::Goad { target }
         | EffectAst::PutCounters { target, .. }
+        | EffectAst::PutOrRemoveCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
         | EffectAst::TapOrUntap { target }
@@ -987,6 +989,7 @@ fn collect_tag_spans_from_effect(
         | EffectAst::Explore { target }
         | EffectAst::Goad { target }
         | EffectAst::PutCounters { target, .. }
+        | EffectAst::PutOrRemoveCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
         | EffectAst::TapOrUntap { target }
@@ -1740,6 +1743,46 @@ fn compile_effect(
             }
             let effect =
                 tag_object_target_effect(Effect::new(put_counters), &spec, ctx, "counters");
+            let choices = if spec.is_target() {
+                vec![spec.clone()]
+            } else {
+                Vec::new()
+            };
+            Ok((vec![effect], choices))
+        }
+        EffectAst::PutOrRemoveCounters {
+            put_counter_type,
+            put_count,
+            remove_counter_type,
+            remove_count,
+            put_mode_text,
+            remove_mode_text,
+            target,
+            target_count,
+        } => {
+            let (base_spec, _) = resolve_target_spec_with_choices(target, ctx)?;
+            let mut spec = base_spec;
+            if let Some(target_count) = target_count {
+                spec = spec.with_count(*target_count);
+            }
+
+            let put_effect = Effect::put_counters(*put_counter_type, put_count.clone(), spec.clone());
+            let remove_effect =
+                Effect::remove_counters(*remove_counter_type, remove_count.clone(), spec.clone());
+
+            use crate::effect::EffectMode;
+            let effect = Effect::choose_one(vec![
+                EffectMode {
+                    description: put_mode_text.clone(),
+                    effects: vec![put_effect],
+                },
+                EffectMode {
+                    description: remove_mode_text.clone(),
+                    effects: vec![remove_effect],
+                },
+            ]);
+
+            let effect = tag_object_target_effect(effect, &spec, ctx, "counters");
             let choices = if spec.is_target() {
                 vec![spec.clone()]
             } else {
