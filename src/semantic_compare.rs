@@ -310,6 +310,15 @@ fn split_common_clause_conjunctions(text: &str) -> String {
 
     normalized = strip_compiled_prefixes(&normalized);
     normalized = strip_not_named_phrase(&normalized);
+    let normalized_lower = normalized.to_ascii_lowercase();
+    if normalized_lower
+        .starts_with("target opponent chooses target creature an opponent controls. exile it. exile all ")
+        && (normalized_lower.contains(" in target opponent's graveyard")
+            || normalized_lower.contains(" in target opponent's graveyards"))
+    {
+        normalized = "Target opponent exiles a creature they control and their graveyard."
+            .to_string();
+    }
     normalized = normalized.replace(
         "Whenever another creature enters under your control",
         "Whenever another creature you control enters",
@@ -317,6 +326,14 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     normalized = normalized.replace(
         "whenever another creature enters under your control",
         "whenever another creature you control enters",
+    );
+    normalized = normalized.replace(
+        "Each creature you control gets ",
+        "Creatures you control get ",
+    );
+    normalized = normalized.replace(
+        "each creature you control gets ",
+        "creatures you control get ",
     );
 
     if normalized.starts_with("You draw ") {
@@ -377,6 +394,19 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         normalized = format!("This creature {normalized}");
     }
 
+    // Normalize split repeated target-player clauses.
+    for marker in [". Target player draws ", ". target player draws "] {
+        if let Some((left, right)) = normalized.split_once(marker)
+            && (left.starts_with("Target player gains ")
+                || left.starts_with("target player gains ")
+                || left.starts_with("Target player mills ")
+                || left.starts_with("target player mills "))
+        {
+            normalized = format!("{left} and draws {}", right.trim());
+            break;
+        }
+    }
+
     // Normalize split target-player draw/lose wording.
     if let Some((draw_part, lose_part)) = normalized.split_once(". target player loses ")
         && (draw_part.starts_with("Target player draws ")
@@ -390,6 +420,15 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             "Target player draws {draw_tail} and loses {}",
             lose_part.trim()
         );
+    }
+    for marker in [". Target player loses ", ". target player loses "] {
+        if let Some((left, lose_part)) = normalized.split_once(marker)
+            && (left.starts_with("Target player mills ") || left.starts_with("target player mills "))
+            && left.contains(" and draws ")
+        {
+            normalized = format!("{}, and loses {}", left.trim_end_matches('.'), lose_part.trim());
+            break;
+        }
     }
     if let Some((left, right)) = normalized.split_once(". Deal ") {
         let right = right.trim().trim_end_matches('.').trim();
@@ -1809,6 +1848,76 @@ mod tests {
         assert!(
             similarity >= 0.50,
             "expected normalization to preserve baseline similarity, got {similarity}"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_target_opponent_exile_creature_and_graveyard_phrasing() {
+        let oracle = "Target opponent exiles a creature they control and their graveyard.";
+        let compiled = vec![String::from(
+            "Spell effects: Target opponent chooses target creature an opponent controls. Exile it. Exile all card in target opponent's graveyards.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, None);
+        assert!(
+            similarity >= 0.95,
+            "expected normalized phrasing to keep similarity high, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for opponent creature+graveyard exile phrasing"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_each_creature_you_control_gets_anthem_wording() {
+        let oracle = "Creatures you control get +2/+2.";
+        let compiled = vec![String::from("Static ability 1: Each creature you control gets +2/+2.")];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, None);
+        assert!(
+            similarity >= 0.99,
+            "expected anthem singular/plural normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for each-creature vs creatures anthem wording"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_target_player_gain_then_draw_sentence_split() {
+        let oracle = "Target player gains 7 life and draws two cards.";
+        let compiled = vec![String::from(
+            "Spell effects: Target player gains 7 life. Target player draws two cards.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, None);
+        assert!(
+            similarity >= 0.99,
+            "expected gain-then-draw sentence split normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for gain-then-draw sentence split"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_target_player_mill_draw_lose_sentence_split() {
+        let oracle = "Target player mills two cards, draws two cards, and loses 2 life.";
+        let compiled = vec![String::from(
+            "Spell effects: Target player mills 2 cards. Target player draws two cards. target player loses 2 life.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, None);
+        assert!(
+            similarity >= 0.99,
+            "expected mill/draw/lose sentence split normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for mill/draw/lose sentence split"
         );
     }
 

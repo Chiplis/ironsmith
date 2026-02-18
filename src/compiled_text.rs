@@ -2380,6 +2380,13 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     ) {
         return format!("When this creature enters, target opponent chooses a creature they control. Destroy that creature{rest}");
     }
+    if lower_normalized
+        .starts_with("target opponent chooses target creature an opponent controls. exile it. exile all ")
+        && (lower_normalized.contains(" in target opponent's graveyard")
+            || lower_normalized.contains(" in target opponent's graveyards"))
+    {
+        return "Target opponent exiles a creature they control and their graveyard.".to_string();
+    }
     if normalized
         == "Whenever this creature blocks creature, permanent can't untap until your next turn"
         || normalized
@@ -13773,6 +13780,22 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     }
     normalized = normalized.replace("controlss", "controls");
     let lower_normalized = normalized.to_ascii_lowercase();
+    if let Some(rest) = lower_normalized.strip_prefix("spell effects: ")
+        && rest
+            .starts_with("target opponent chooses target creature an opponent controls. exile it. exile all ")
+        && (rest.contains(" in target opponent's graveyard")
+            || rest.contains(" in target opponent's graveyards"))
+    {
+        return "Spell effects: Target opponent exiles a creature they control and their graveyard."
+            .to_string();
+    }
+    if lower_normalized
+        .starts_with("target opponent chooses target creature an opponent controls. exile it. exile all ")
+        && (lower_normalized.contains(" in target opponent's graveyard")
+            || lower_normalized.contains(" in target opponent's graveyards"))
+    {
+        return "Target opponent exiles a creature they control and their graveyard.".to_string();
+    }
     if let Some((inner, payment)) = normalized.split_once(" unless a player pays ")
         && inner.starts_with("Search ")
     {
@@ -17353,6 +17376,28 @@ mod tests {
         assert_eq!(
             normalized,
             "Target opponent chooses a creature they control. Other creatures they control can't block this turn."
+        );
+    }
+
+    #[test]
+    fn normalizes_target_opponent_exiles_creature_and_graveyard_sentence() {
+        let normalized = normalize_sentence_surface_style(
+            "Target opponent chooses target creature an opponent controls. Exile it. Exile all card in target opponent's graveyards.",
+        );
+        assert_eq!(
+            normalized,
+            "Target opponent exiles a creature they control and their graveyard."
+        );
+    }
+
+    #[test]
+    fn normalizes_spell_effects_target_opponent_exiles_creature_and_graveyard_sentence() {
+        let normalized = normalize_sentence_surface_style(
+            "Spell effects: Target opponent chooses target creature an opponent controls. Exile it. Exile all card in target opponent's graveyards.",
+        );
+        assert_eq!(
+            normalized,
+            "Spell effects: Target opponent exiles a creature they control and their graveyard."
         );
     }
 
