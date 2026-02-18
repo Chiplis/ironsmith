@@ -11428,7 +11428,7 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
         }
         for effect in &mut sentence_effects {
             if let Some(context) = carried_context {
-                maybe_apply_carried_player(effect, context);
+                maybe_apply_carried_player_with_clause(effect, context, &sentence_tokens);
             }
             if let Some(context) = explicit_player_for_carry(effect) {
                 carried_context = Some(context);
@@ -17596,7 +17596,11 @@ fn parse_shuffle_graveyard_into_library_sentence(
             }
         } else {
             for effect in &mut trailing_effects {
-                maybe_apply_carried_player(effect, CarryContext::Player(player));
+                maybe_apply_carried_player_with_clause(
+                    effect,
+                    CarryContext::Player(player),
+                    &trailing_tokens,
+                );
             }
         }
         effects.extend(trailing_effects);
@@ -19536,7 +19540,7 @@ fn parse_effect_chain_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardText
     for segment in segments {
         let mut effect = parse_effect_clause(&segment)?;
         if let Some(context) = carried_context {
-            maybe_apply_carried_player(&mut effect, context);
+            maybe_apply_carried_player_with_clause(&mut effect, context, &segment);
         }
         if let Some(context) = explicit_player_for_carry(&effect) {
             carried_context = Some(context);
@@ -19873,7 +19877,8 @@ fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
 fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: CarryContext) {
     match carried_context {
         CarryContext::Player(carried_player) => match effect {
-            EffectAst::DiscardHand { player }
+            EffectAst::Draw { player, .. }
+            | EffectAst::DiscardHand { player }
             | EffectAst::Discard { player, .. }
             | EffectAst::GainLife { player, .. }
             | EffectAst::LoseLife { player, .. }
@@ -19907,6 +19912,46 @@ fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: CarryCont
             }
         }
     }
+}
+
+fn clause_words_for_carry(tokens: &[Token]) -> Vec<&str> {
+    let mut clause_words = words(tokens);
+    while clause_words
+        .first()
+        .is_some_and(|word| *word == "then" || *word == "and")
+    {
+        clause_words.remove(0);
+    }
+    clause_words
+}
+
+fn should_skip_draw_player_carry(
+    effect: &EffectAst,
+    carried_context: CarryContext,
+    clause_tokens: &[Token],
+) -> bool {
+    if !matches!(carried_context, CarryContext::Player(_)) {
+        return false;
+    }
+    let EffectAst::Draw { player, .. } = effect else {
+        return false;
+    };
+    if !matches!(*player, PlayerAst::Implicit) {
+        return false;
+    }
+    let clause_words = clause_words_for_carry(clause_tokens);
+    matches!(clause_words.first().copied(), Some("draw"))
+}
+
+fn maybe_apply_carried_player_with_clause(
+    effect: &mut EffectAst,
+    carried_context: CarryContext,
+    clause_tokens: &[Token],
+) {
+    if should_skip_draw_player_carry(effect, carried_context, clause_tokens) {
+        return;
+    }
+    maybe_apply_carried_player(effect, carried_context);
 }
 
 fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {

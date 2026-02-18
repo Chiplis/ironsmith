@@ -3122,6 +3122,64 @@ fn parse_sacrifice_then_lose_life_carries_target_player_to_second_clause() {
 }
 
 #[test]
+fn parse_target_player_gain_then_draw_carries_target_player_to_draw_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kiss of the Amesha Variant")
+        .parse_text("Target player gains 7 life and draws two cards.")
+        .expect("gain-then-draw line should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("target player draws two cards"),
+        "expected carried target player for draw clause, got {joined}"
+    );
+}
+
+#[test]
+fn parse_target_player_mill_draw_lose_chain_carries_target_player_to_draw_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Atrocious Experiment Variant")
+        .parse_text("Target player mills two cards, draws two cards, and loses 2 life.")
+        .expect("mill-draw-lose line should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("target player draws two cards"),
+        "expected carried target player for chained draw clause, got {joined}"
+    );
+}
+
+#[test]
+fn parse_target_player_mill_then_imperative_draw_does_not_carry_target_player() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Pilfered Plans Variant")
+        .parse_text("Target player mills two cards. Draw two cards.")
+        .expect("mill-then-draw line should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        !joined.contains("target player draws two cards"),
+        "imperative draw clause should not carry target player, got {joined}"
+    );
+}
+
+#[test]
+fn parse_defending_player_discard_then_draws_carries_defending_player() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Robber Fly Variant")
+        .parse_text(
+            "Whenever this creature becomes blocked, defending player discards all cards from their hand, then draws that many cards.",
+        )
+        .expect("defending-player discard-then-draw line should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("defending player draws that many cards"),
+        "expected defending player to carry into draws clause, got {joined}"
+    );
+}
+
+#[test]
 fn parse_target_opponent_sacrifice_discard_lose_chain_keeps_all_predicates() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Archon Chain Variant")
         .parse_text(
