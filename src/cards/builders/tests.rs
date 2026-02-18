@@ -644,6 +644,25 @@ fn test_parse_additional_cost_tap_four_untapped_artifacts_creatures_or_lands() {
 }
 
 #[test]
+fn test_parse_target_opponent_gains_control_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Witch Engine Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Add {B}{B}{B}{B}. Target opponent gains control of this creature. (Activate only as an instant.)")
+        .expect("parse target-opponent gain-control clause");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ChangeControllerToPlayer(Target(Opponent))"),
+        "expected gain-control runtime modification to resolve target opponent, got {debug}"
+    );
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target opponent gains control of this"),
+        "expected compiled text to preserve target opponent control change, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_attacks_with_subject_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attack Filter Probe")
         .card_types(vec![CardType::Enchantment])

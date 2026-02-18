@@ -3,7 +3,9 @@
 use crate::continuous::{ContinuousEffect, EffectSourceType, EffectTarget, Modification};
 use crate::effect::{ChoiceCount, EffectOutcome, EffectResult, Until, Value};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_from_spec, resolve_value, validate_target};
+use crate::effects::helpers::{
+    resolve_objects_from_spec, resolve_player_filter, resolve_value, validate_target,
+};
 use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
@@ -16,6 +18,8 @@ use crate::zone::Zone;
 pub enum RuntimeModification {
     /// Change controller to the executing effect's controller.
     ChangeControllerToEffectController,
+    /// Change controller to a resolved player filter.
+    ChangeControllerToPlayer(crate::target::PlayerFilter),
     /// Resolve power/toughness deltas at execution, then apply layer 7c modification.
     ModifyPowerToughness { power: Value, toughness: Value },
     /// Resolve power delta at execution, then apply layer 7c modification.
@@ -252,6 +256,9 @@ impl ApplyContinuousEffect {
             RuntimeModification::ChangeControllerToEffectController => {
                 Ok(Modification::ChangeController(ctx.controller))
             }
+            RuntimeModification::ChangeControllerToPlayer(player) => Ok(
+                Modification::ChangeController(resolve_player_filter(game, player, ctx)?),
+            ),
             RuntimeModification::ModifyPowerToughness { power, toughness } => {
                 Ok(Modification::ModifyPowerToughness {
                     power: resolve_value(game, power, ctx)?,

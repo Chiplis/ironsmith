@@ -22971,7 +22971,7 @@ fn parse_gain_life(
 
 fn parse_gain_control(
     tokens: &[Token],
-    _subject: Option<SubjectAst>,
+    subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
     let has_dynamic_power_bound = clause_words.contains(&"power")
@@ -23038,6 +23038,10 @@ fn parse_gain_control(
         .map(|dur_idx| &tokens[dur_idx..])
         .unwrap_or(&[]);
     let duration = parse_control_duration(duration_tokens)?;
+    let player = match subject {
+        Some(SubjectAst::Player(player)) => player,
+        _ => PlayerAst::Implicit,
+    };
     match target_ast {
         TargetAst::Player(filter, _) => Ok(EffectAst::ControlPlayer {
             player: PlayerFilter::Target(Box::new(filter)),
@@ -23056,6 +23060,7 @@ fn parse_gain_control(
             };
             Ok(EffectAst::GainControl {
                 target: target_ast,
+                player,
                 duration: until,
             })
         }

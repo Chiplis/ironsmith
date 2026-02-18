@@ -4772,6 +4772,12 @@ fn describe_apply_continuous_clauses(
             crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController => {
                 clauses.push("changes controller to this effect's controller".to_string());
             }
+            crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(player) => {
+                clauses.push(format!(
+                    "changes controller to {}",
+                    describe_player_filter(player)
+                ));
+            }
         }
     }
 
@@ -4790,6 +4796,18 @@ fn describe_apply_continuous_effect(
         )
     {
         let mut text = format!("Gain control of {target}");
+        if !matches!(effect.until, Until::Forever) {
+            text.push(' ');
+            text.push_str(&describe_until(&effect.until));
+        }
+        return Some(text);
+    }
+    if effect.modification.is_none()
+        && effect.additional_modifications.is_empty()
+        && let [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(player)] =
+            effect.runtime_modifications.as_slice()
+    {
+        let mut text = format!("{} gains control of {target}", describe_player_filter(player));
         if !matches!(effect.until, Until::Forever) {
             text.push(' ');
             text.push_str(&describe_until(&effect.until));

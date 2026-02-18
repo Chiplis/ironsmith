@@ -2132,14 +2132,33 @@ fn compile_effect(
             let effect = Effect::exile_instead_of_graveyard_this_turn(player_filter);
             Ok((vec![effect], Vec::new()))
         }
-        EffectAst::GainControl { target, duration } => {
-            compile_tagged_effect_for_target(target, ctx, "controlled", |spec| {
+        EffectAst::GainControl {
+            target,
+            player,
+            duration,
+        } => {
+            let (spec, mut choices) = resolve_target_spec_with_choices(target, ctx)?;
+            let (controller, mut controller_choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            choices.append(&mut controller_choices);
+            let runtime_modification = if matches!(controller, PlayerFilter::You) {
+                crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController
+            } else {
+                crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
+                    controller,
+                )
+            };
+            let effect = tag_object_target_effect(
                 Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
-                    spec,
-                    crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController,
+                    spec.clone(),
+                    runtime_modification,
                     duration.clone(),
-                ))
-            })
+                )),
+                &spec,
+                ctx,
+                "controlled",
+            );
+            Ok((vec![effect], choices))
         }
         EffectAst::ControlPlayer { player, duration } => {
             let (start, duration) = match duration {

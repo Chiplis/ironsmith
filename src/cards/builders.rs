@@ -517,6 +517,7 @@ enum EffectAst {
     },
     GainControl {
         target: TargetAst,
+        player: PlayerAst,
         duration: Until,
     },
     ControlPlayer {
