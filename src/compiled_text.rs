@@ -9108,44 +9108,61 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if text == "toxic" || text.starts_with("toxic ") {
         return Some(raw_text.to_string());
     }
-    let mut cycling_rendered = Vec::new();
-    for (idx, word) in words.iter().enumerate() {
-        if !word.ends_with("cycling") {
-            continue;
-        }
-        let next = words.get(idx + 1);
-        let has_cost = next.is_none_or(|next| is_cycling_cost_word(next));
-        if !has_cost {
-            continue;
-        }
-        let mut chars = word.chars();
-        let base = match chars.next() {
-            Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
-            None => "Cycling".to_string(),
-        };
-        let mut cost_tokens = Vec::new();
-        let mut j = idx + 1;
-        while let Some(word) = words.get(j) {
-            if is_cycling_cost_word(word) {
-                cost_tokens.push(*word);
-                j += 1;
+    let first_cycling_idx = words
+        .iter()
+        .position(|word| trim_cycling_punctuation(word).ends_with("cycling"));
+    let is_cycling_clause = first_cycling_idx.is_some_and(|idx| {
+        !words[..idx]
+            .iter()
+            .any(|word| matches!(*word, "has" | "have"))
+    });
+    if is_cycling_clause {
+        let mut cycling_rendered = Vec::new();
+        for (idx, word) in words.iter().enumerate() {
+            let keyword = trim_cycling_punctuation(word);
+            if !keyword.ends_with("cycling") {
+                continue;
+            }
+            let next = words.get(idx + 1).map(|next| trim_cycling_punctuation(next));
+            let has_cost = next.is_none_or(is_cycling_cost_word);
+            if !has_cost {
+                continue;
+            }
+            let mut chars = keyword.chars();
+            let mut base = match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => "Cycling".to_string(),
+            };
+            if keyword == "landcycling"
+                && idx > 0
+                && trim_cycling_punctuation(words[idx - 1]) == "basic"
+            {
+                base = "Basic landcycling".to_string();
+            }
+            let mut cost_tokens = Vec::new();
+            let mut j = idx + 1;
+            while let Some(word) = words.get(j).map(|word| trim_cycling_punctuation(word)) {
+                if is_cycling_cost_word(word) {
+                    cost_tokens.push(word);
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+            if cost_tokens.is_empty() {
+                cycling_rendered.push(base);
             } else {
-                break;
+                let cost = cost_tokens
+                    .iter()
+                    .map(|word| render_cycling_cost_token(word))
+                    .collect::<Vec<_>>()
+                    .join("");
+                cycling_rendered.push(format!("{} {}", base, cost));
             }
         }
-        if cost_tokens.is_empty() {
-            cycling_rendered.push(base);
-        } else {
-            let cost = cost_tokens
-                .iter()
-                .map(|word| format!("{{{}}}", word.to_ascii_uppercase()))
-                .collect::<Vec<_>>()
-                .join("");
-            cycling_rendered.push(format!("{} {}", base, cost));
+        if !cycling_rendered.is_empty() {
+            return Some(cycling_rendered.join(", "));
         }
-    }
-    if !cycling_rendered.is_empty() {
-        return Some(cycling_rendered.join(", "));
     }
     if text == "prowess" {
         return Some("Prowess".to_string());
@@ -9166,6 +9183,19 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(raw_text.to_string());
     }
     None
+}
+
+fn trim_cycling_punctuation(word: &str) -> &str {
+    word.trim_matches(|ch: char| matches!(ch, ',' | '.' | ';'))
+}
+
+fn render_cycling_cost_token(word: &str) -> String {
+    let upper = word.to_ascii_uppercase();
+    if upper.starts_with('{') && upper.ends_with('}') {
+        upper
+    } else {
+        format!("{{{upper}}}")
+    }
 }
 
 fn is_cycling_cost_word(word: &str) -> bool {
@@ -9992,7 +10022,9 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
         if has_basic_landcycling {
             phrased = phrased
                 .replace("Landcycling {", "Basic landcycling {")
-                .replace("landcycling {", "basic landcycling {");
+                .replace("landcycling {", "basic landcycling {")
+                .replace("Basic basic landcycling {", "Basic landcycling {")
+                .replace("basic basic landcycling {", "basic landcycling {");
         }
         if has_target_blocked_creature {
             phrased = phrased

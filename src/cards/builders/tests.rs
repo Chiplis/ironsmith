@@ -2501,6 +2501,21 @@ fn test_render_multiple_cycling_variants_with_reminder_text() {
 }
 
 #[test]
+fn test_parse_multiple_cycling_variants_merges_search_filter_subtypes() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Variant Filter")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Mountaincycling {2}, forestcycling {2} ({2}, Discard this card: Search your library for a Mountain or Forest card, reveal it, put it into your hand, then shuffle.)")
+        .expect("parse cycling variants with reminder");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("subtypes: [Mountain, Forest]")
+            || debug.contains("subtypes: [Forest, Mountain]"),
+        "expected merged mountain/forest cycling search filter, got {debug}"
+    );
+}
+
+#[test]
 fn test_render_cycling_includes_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Cost Variant")
         .card_types(vec![CardType::Creature])
@@ -2511,6 +2526,44 @@ fn test_render_cycling_includes_cost() {
     assert!(
         lines.iter().any(|line| line.contains("Cycling {2}{U}")),
         "expected cycling cost in render, got {lines:?}"
+    );
+}
+
+#[test]
+fn test_render_basic_landcycling_as_keyword_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Basic Landcycling Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player loses 4 life and you gain 4 life.\nBasic landcycling {1}{B} ({1}{B}, Discard this card: Search your library for a basic land card, reveal it, put it into your hand, then shuffle.)",
+        )
+        .expect("parse basic landcycling line");
+
+    let lines = compiled_lines(&def);
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("Basic landcycling {1}{B}")),
+        "expected basic landcycling keyword in render, got {lines:?}"
+    );
+}
+
+#[test]
+fn test_parse_cycling_pay_life_keeps_keyword_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Street Wraith Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Cycling—Pay 2 life. ({2}, Discard this card: Draw a card.)")
+        .expect("parse life-cycling line");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Cycling—Pay 2 life"),
+        "expected rendered life-cycling keyword, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("DiscardEffect") && debug.contains("DrawCardsEffect"),
+        "expected life-cycling to remain a discard+draw activated ability, got {debug}"
     );
 }
 

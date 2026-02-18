@@ -7148,44 +7148,57 @@ fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTex
         return Ok(None);
     }
 
-    let cost_start = cycling_idx + 1;
-    if cost_start >= tokens.len() {
+    let cycling_groups = parse_cycling_keyword_cost_groups(tokens);
+    let Some((first_keyword_tokens, first_cost_tokens)) = cycling_groups.first() else {
+        return Ok(None);
+    };
+    if first_cost_tokens.is_empty() {
         return Ok(None);
     }
 
-    let cost_end = tokens[cost_start..]
-        .iter()
-        .position(|token| matches!(token, Token::Comma(_)))
-        .map(|idx| cost_start + idx)
-        .unwrap_or(tokens.len());
-    if cost_end <= cost_start {
-        return Ok(None);
+    let base_cost_words = words(first_cost_tokens);
+    if cycling_groups.iter().skip(1).any(|(_, cost_tokens)| words(cost_tokens) != base_cost_words) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported mixed cycling costs (clause: '{}')",
+            words(tokens).join(" ")
+        )));
     }
 
-    let (base_cost, cost_effects) = parse_activation_cost(&tokens[cost_start..cost_end])?;
+    let (base_cost, cost_effects) = parse_activation_cost(first_cost_tokens)?;
     let mut full_cost_effects = cost_effects;
     full_cost_effects.push(Effect::discard(1));
     let mana_cost = crate::ability::merge_cost_effects(base_cost.clone(), full_cost_effects);
 
-    let cycling_tokens = &tokens[..cost_start];
-    let search_filter = parse_cycling_search_filter(cycling_tokens)?;
+    let mut search_filter = parse_cycling_search_filter(first_keyword_tokens)?;
+    for (keyword_tokens, _) in cycling_groups.iter().skip(1) {
+        let next_filter = parse_cycling_search_filter(keyword_tokens)?;
+        match (&mut search_filter, next_filter) {
+            (Some(current), Some(next)) => merge_cycling_search_filters(current, &next),
+            (None, None) => {}
+            _ => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported mixed cycling variants (clause: '{}')",
+                    words(tokens).join(" ")
+                )));
+            }
+        }
+    }
     let effect = if let Some(filter) = search_filter {
         Effect::search_library_to_hand(filter, true)
     } else {
         Effect::draw(1)
     };
 
-    let keyword_text = words(cycling_tokens).join(" ");
     let cost_text = base_cost
         .mana_cost()
         .map(|cost| cost.to_oracle())
-        .unwrap_or_else(|| words(&tokens[cost_start..cost_end]).join(" "));
+        .unwrap_or_else(|| base_cost_words.join(" "));
     let render_text = if let Some(group) = parse_cycling_keyword_group_text(tokens) {
         group
-    } else if keyword_text.is_empty() {
+    } else if words(first_keyword_tokens).is_empty() {
         cost_text
     } else {
-        format!("{keyword_text} {cost_text}")
+        format!("{} {cost_text}", words(first_keyword_tokens).join(" "))
     };
 
     Ok(Some(ParsedAbility {
@@ -7204,30 +7217,78 @@ fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTex
     }))
 }
 
-fn parse_cycling_keyword_group_text(tokens: &[Token]) -> Option<String> {
+fn parse_cycling_keyword_cost_groups(tokens: &[Token]) -> Vec<(Vec<Token>, Vec<Token>)> {
+    let mut groups = Vec::new();
     let mut idx = 0usize;
-    let mut parts = Vec::new();
 
-    loop {
-        let keyword = tokens.get(idx).and_then(Token::as_word)?;
-        if !keyword.ends_with("cycling") {
-            break;
+    while idx < tokens.len() {
+        if tokens
+            .get(idx)
+            .is_some_and(|token| matches!(token, Token::Comma(_) | Token::Semicolon(_)))
+        {
+            idx += 1;
+            continue;
         }
-        idx += 1;
 
-        let mut cost_parts = Vec::new();
-        while let Some(word) = tokens.get(idx).and_then(Token::as_word) {
-            if is_cycling_cost_word(word) {
-                cost_parts.push(word.to_string());
+        let keyword_start = idx;
+        let mut keyword_end: Option<usize> = None;
+        while idx < tokens.len() {
+            let Some(word) = tokens[idx].as_word() else {
+                break;
+            };
+            if word.ends_with("cycling") {
+                keyword_end = Some(idx);
                 idx += 1;
-            } else {
                 break;
             }
+            idx += 1;
         }
-        if cost_parts.is_empty() {
+        let Some(keyword_end) = keyword_end else {
+            break;
+        };
+
+        let cost_start = idx;
+        if tokens.get(idx).is_some_and(|token| token.is_word("pay")) {
+            // Handle life-cycling style costs like "Cycling—Pay 2 life."
+            while idx < tokens.len() {
+                let Some(word) = tokens[idx].as_word() else {
+                    break;
+                };
+                idx += 1;
+                if word == "life" {
+                    break;
+                }
+            }
+        } else {
+            while idx < tokens.len() {
+                let Some(word) = tokens[idx].as_word() else {
+                    break;
+                };
+                // Reminder text often starts with "{N}, discard this card" and would
+                // otherwise be consumed as part of the cycling cost.
+                let looks_like_reminder_cost = idx > cost_start
+                    && word.chars().all(|ch| ch.is_ascii_digit())
+                    && tokens
+                        .get(idx + 1)
+                        .is_some_and(|token| matches!(token, Token::Comma(_)))
+                    && tokens
+                        .get(idx + 2)
+                        .and_then(Token::as_word)
+                        .is_some_and(|next| next == "discard");
+                if looks_like_reminder_cost || !is_cycling_cost_word(word) {
+                    break;
+                }
+                idx += 1;
+            }
+        }
+        if idx == cost_start {
             break;
         }
-        parts.push(format!("{keyword} {}", cost_parts.join("")));
+
+        groups.push((
+            tokens[keyword_start..=keyword_end].to_vec(),
+            tokens[cost_start..idx].to_vec(),
+        ));
 
         if tokens.get(idx).is_some_and(|token| matches!(token, Token::Comma(_))) {
             idx += 1;
@@ -7236,11 +7297,58 @@ fn parse_cycling_keyword_group_text(tokens: &[Token]) -> Option<String> {
         break;
     }
 
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join(", "))
+    groups
+}
+
+fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilter) {
+    for supertype in &extra.supertypes {
+        if !base.supertypes.contains(supertype) {
+            base.supertypes.push(*supertype);
+        }
     }
+    for card_type in &extra.card_types {
+        if !base.card_types.contains(card_type) {
+            base.card_types.push(*card_type);
+        }
+    }
+    for subtype in &extra.subtypes {
+        if !base.subtypes.contains(subtype) {
+            base.subtypes.push(*subtype);
+        }
+    }
+    if let Some(colors) = extra.colors {
+        base.colors = Some(base.colors.map_or(colors, |existing| existing.union(colors)));
+    }
+}
+
+fn parse_cycling_keyword_group_text(tokens: &[Token]) -> Option<String> {
+    let groups = parse_cycling_keyword_cost_groups(tokens);
+    if groups.is_empty() {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    for (keyword_tokens, cost_tokens) in groups {
+        let keyword = words(&keyword_tokens).join(" ");
+        if keyword.is_empty() {
+            continue;
+        }
+        let cost_words = words(&cost_tokens);
+        let cost = if cost_words.len() >= 3
+            && cost_words[0] == "pay"
+            && cost_words[2] == "life"
+        {
+            format!("pay {} life", cost_words[1])
+        } else {
+            parse_activation_cost(&cost_tokens)
+                .ok()
+                .and_then(|(total_cost, _)| total_cost.mana_cost().map(|cost| cost.to_oracle()))
+                .unwrap_or_else(|| cost_words.join(" "))
+        };
+        parts.push(format!("{keyword} {cost}"));
+    }
+
+    if parts.is_empty() { None } else { Some(parts.join(", ")) }
 }
 
 fn is_cycling_cost_word(word: &str) -> bool {
