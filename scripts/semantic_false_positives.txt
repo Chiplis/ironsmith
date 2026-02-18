@@ -1,4 +1,5 @@
 Anthem of Champions
+Atrocious Experiment
 Banners Raised
 Bar the Door
 Burn Bright
@@ -16,6 +17,7 @@ Hold the Gates
 Glorious Anthem
 Glorious Charge
 Inspired Charge
+Kiss of the Amesha
 Knight of Old Benalia
 Lotus Bloom
 Madrush Cyclops
