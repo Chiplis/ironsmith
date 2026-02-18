@@ -21589,11 +21589,29 @@ fn parse_copy_spell_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTe
         }
     }
 
-    let copy_target_tokens = trim_commas(if let Some(idx) = split_idx {
+    let mut count = Value::Fixed(1);
+    let mut copy_target_tail = if let Some(idx) = split_idx {
         &tail[..idx]
     } else {
         tail
-    });
+    };
+    if let Some(for_each_idx) = copy_target_tail
+        .windows(2)
+        .position(|window| window[0].is_word("for") && window[1].is_word("each"))
+    {
+        let count_filter_tokens = trim_commas(&copy_target_tail[for_each_idx + 2..]);
+        if count_filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing count filter after 'for each' in copy clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let count_filter = parse_object_filter(&count_filter_tokens, false)?;
+        count = Value::Count(count_filter);
+        copy_target_tail = &copy_target_tail[..for_each_idx];
+    }
+
+    let copy_target_tokens = trim_commas(copy_target_tail);
     if copy_target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing spell target in copy clause (clause: '{}')",
@@ -21639,7 +21657,7 @@ fn parse_copy_spell_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTe
 
     Ok(Some(EffectAst::CopySpell {
         target,
-        count: Value::Fixed(1),
+        count,
         player,
         may_choose_new_targets,
     }))
@@ -25842,8 +25860,32 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
             && tokens
                 .get(idx + used + 1)
                 .is_some_and(|token| token.is_word("target"));
+        let mut object_selector_idx = idx + used;
+        while tokens
+            .get(object_selector_idx)
+            .and_then(Token::as_word)
+            .is_some_and(|word| {
+                matches!(
+                    word,
+                    "tapped"
+                        | "untapped"
+                        | "attacking"
+                        | "blocking"
+                        | "other"
+                        | "another"
+                        | "nonartifact"
+                        | "noncreature"
+                        | "nonland"
+                        | "nontoken"
+                        | "legendary"
+                        | "basic"
+                )
+            })
+        {
+            object_selector_idx += 1;
+        }
         let next_is_object_selector = tokens
-            .get(idx + used)
+            .get(object_selector_idx)
             .and_then(Token::as_word)
             .is_some_and(|word| {
                 parse_card_type(word).is_some()
@@ -27284,11 +27326,29 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                 .iter()
                 .all(|segment| segment.iter().any(|word| word == qualifier))
         };
+        let shared_leading_qualifier = |qualifier: &str, opposite: &str| {
+            if qualifier_in_all_segments(qualifier) {
+                return true;
+            }
+            if all_words.iter().any(|word| *word == opposite) {
+                return false;
+            }
+            let Some(first_segment) = segment_words_lists.first() else {
+                return false;
+            };
+            if !first_segment.iter().any(|word| word == qualifier) {
+                return false;
+            }
+            segment_words_lists
+                .iter()
+                .skip(1)
+                .all(|segment| !segment.iter().any(|word| word == opposite))
+        };
 
-        if filter.tapped && !qualifier_in_all_segments("tapped") {
+        if filter.tapped && !shared_leading_qualifier("tapped", "untapped") {
             filter.tapped = false;
         }
-        if filter.untapped && !qualifier_in_all_segments("untapped") {
+        if filter.untapped && !shared_leading_qualifier("untapped", "tapped") {
             filter.untapped = false;
         }
     }

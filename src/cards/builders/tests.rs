@@ -541,6 +541,100 @@ fn test_parse_then_controller_may_copy_spell_and_choose_new_targets() {
 }
 
 #[test]
+fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "As an additional cost to cast this spell, you may sacrifice one or more creatures. When you do, copy this spell for each creature sacrificed this way.\nDraw a card.",
+        )
+        .expect("parse copy-this-spell for each sacrificed creature");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected when-you-do triggered ability");
+    let debug = format!("{:?}", triggered.effects);
+    assert!(
+        debug.contains("CopySpellEffect") && debug.contains("target: Source"),
+        "expected copy-this-spell target to remain source, got {debug}"
+    );
+    assert!(
+        debug.contains("count: Count(")
+            && debug.contains("Creature")
+            && debug.contains("\"__it__\""),
+        "expected count to track sacrificed creatures this way, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_additional_cost_tap_two_untapped_creatures_and_or_lands() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fear of Exposure")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, tap two untapped creatures and/or lands you control.\nTrample",
+        )
+        .expect("parse tap-two additional cost");
+
+    let tap = def
+        .cost_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::TapEffect>())
+        .expect("expected tap cost effect");
+    let (inner, count) = match &tap.spec {
+        ChooseSpec::WithCount(inner, count) => (inner.as_ref(), count),
+        other => panic!("expected counted tap spec, got {other:?}"),
+    };
+    assert_eq!(count.min, 2, "expected two taps, got {count:?}");
+    assert_eq!(count.max, Some(2), "expected exactly two taps, got {count:?}");
+    let filter = match inner {
+        ChooseSpec::Object(filter) => filter,
+        other => panic!("expected object tap filter, got {other:?}"),
+    };
+    assert!(filter.untapped, "expected untapped requirement, got {filter:?}");
+    assert!(
+        filter.card_types.contains(&CardType::Creature) && filter.card_types.contains(&CardType::Land),
+        "expected creature/land tap filter, got {filter:?}"
+    );
+}
+
+#[test]
+fn test_parse_additional_cost_tap_four_untapped_artifacts_creatures_or_lands() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Guardian of the Great Door")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, tap four untapped artifacts, creatures, and/or lands you control.\nFlying",
+        )
+        .expect("parse tap-four additional cost");
+
+    let tap = def
+        .cost_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::TapEffect>())
+        .expect("expected tap cost effect");
+    let (inner, count) = match &tap.spec {
+        ChooseSpec::WithCount(inner, count) => (inner.as_ref(), count),
+        other => panic!("expected counted tap spec, got {other:?}"),
+    };
+    assert_eq!(count.min, 4, "expected four taps, got {count:?}");
+    assert_eq!(count.max, Some(4), "expected exactly four taps, got {count:?}");
+    let filter = match inner {
+        ChooseSpec::Object(filter) => filter,
+        other => panic!("expected object tap filter, got {other:?}"),
+    };
+    assert!(filter.untapped, "expected untapped requirement, got {filter:?}");
+    assert!(
+        filter.card_types.contains(&CardType::Artifact)
+            && filter.card_types.contains(&CardType::Creature)
+            && filter.card_types.contains(&CardType::Land),
+        "expected artifact/creature/land tap filter, got {filter:?}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_attacks_with_subject_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Attack Filter Probe")
         .card_types(vec![CardType::Enchantment])
