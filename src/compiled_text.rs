@@ -9454,7 +9454,13 @@ fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
         let trigger_display = schedule.trigger.display();
-        let trigger_text = trigger_display.trim().trim_end_matches('.');
+        let mut trigger_text = trigger_display.trim().trim_end_matches('.').to_string();
+        if schedule.until_end_of_turn {
+            let trigger_lower = trigger_text.to_ascii_lowercase();
+            if !trigger_lower.contains(" this turn") {
+                trigger_text.push_str(" this turn");
+            }
+        }
         let trigger_lower = trigger_text.to_ascii_lowercase();
         let delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
         if schedule.one_shot
@@ -9484,7 +9490,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
         if trigger_lower.starts_with("at ") {
             return format!("{trigger_text}, {delayed_text}");
         }
-        return format!("At {}, {delayed_text}", lowercase_first(trigger_text));
+        return format!("At {}, {delayed_text}", lowercase_first(&trigger_text));
     }
     if let Some(exile_instead) =
         effect.downcast_ref::<crate::effects::ExileInsteadOfGraveyardEffect>()

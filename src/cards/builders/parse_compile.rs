@@ -323,6 +323,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
@@ -460,6 +461,7 @@ fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
@@ -554,6 +556,7 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
@@ -680,6 +683,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayer { effects }
@@ -1031,6 +1035,7 @@ fn collect_tag_spans_from_effect(
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
@@ -1435,6 +1440,7 @@ fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
             | EffectAst::DelayedUntilNextEndStep { effects, .. }
             | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
             | EffectAst::DelayedUntilEndOfCombat { effects }
+            | EffectAst::DelayedTriggerThisTurn { effects, .. }
             | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
             | EffectAst::UnlessPays { effects, .. }
             | EffectAst::VoteOption { effects, .. } => {
@@ -2374,6 +2380,20 @@ fn compile_effect(
                 Vec::new(),
                 PlayerFilter::You,
             ));
+            Ok((vec![effect], choices))
+        }
+        EffectAst::DelayedTriggerThisTurn { trigger, effects } => {
+            let (delayed_effects, choices) = compile_trigger_effects(Some(trigger), effects)?;
+            let effect = Effect::new(
+                crate::effects::ScheduleDelayedTriggerEffect::new(
+                    compile_trigger_spec(trigger.clone()),
+                    delayed_effects,
+                    false,
+                    Vec::new(),
+                    PlayerFilter::You,
+                )
+                .until_end_of_turn(),
+            );
             Ok((vec![effect], choices))
         }
         EffectAst::DelayedWhenLastObjectDiesThisTurn { filter, effects } => {

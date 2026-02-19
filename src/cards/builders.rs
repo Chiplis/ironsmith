@@ -558,6 +558,10 @@ enum EffectAst {
     DelayedUntilEndOfCombat {
         effects: Vec<EffectAst>,
     },
+    DelayedTriggerThisTurn {
+        trigger: TriggerSpec,
+        effects: Vec<EffectAst>,
+    },
     DelayedWhenLastObjectDiesThisTurn {
         filter: Option<ObjectFilter>,
         effects: Vec<EffectAst>,

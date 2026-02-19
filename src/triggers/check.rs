@@ -52,6 +52,8 @@ pub struct DelayedTrigger {
     pub one_shot: bool,
     /// Optional minimum turn number before this delayed trigger can fire.
     pub not_before_turn: Option<u32>,
+    /// Optional turn number after which this delayed trigger expires.
+    pub expires_at_turn: Option<u32>,
     /// Specific objects this trigger targets.
     pub target_objects: Vec<ObjectId>,
     /// The controller of this delayed trigger.
@@ -118,6 +120,7 @@ pub fn compute_delayed_trigger_identity(delayed: &DelayedTrigger) -> TriggerIden
     delayed.effects.len().hash(&mut hasher);
     delayed.one_shot.hash(&mut hasher);
     delayed.not_before_turn.hash(&mut hasher);
+    delayed.expires_at_turn.hash(&mut hasher);
     delayed.controller.hash(&mut hasher);
     for effect in &delayed.effects {
         format!("{:?}", effect).hash(&mut hasher);
@@ -275,6 +278,13 @@ pub fn check_delayed_triggers(
     let mut to_remove = Vec::new();
 
     for (idx, delayed) in game.delayed_triggers.iter().enumerate() {
+        if delayed
+            .expires_at_turn
+            .is_some_and(|max_turn| game.turn.turn_number > max_turn)
+        {
+            to_remove.push(idx);
+            continue;
+        }
         if delayed
             .not_before_turn
             .is_some_and(|min_turn| game.turn.turn_number < min_turn)

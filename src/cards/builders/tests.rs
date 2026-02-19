@@ -8328,6 +8328,60 @@ fn parse_each_of_up_to_target_damage_clause() {
 }
 
 #[test]
+fn parse_spell_delayed_trigger_this_turn_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Song of Blood Variant")
+        .parse_text(
+            "Mill four cards. Whenever a creature attacks this turn, it gets +1/+0 until end of turn for each creature card put into your graveyard this way.",
+        )
+        .expect("spell delayed trigger clause should parse");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling effect, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("until_end_of_turn: true"),
+        "expected delayed trigger to expire at end of turn, got {spell_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("whenever creature attacks this turn"),
+        "expected rendered delayed trigger wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_saga_chapter_delayed_trigger_this_turn_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Origin Variant")
+        .parse_text(
+            "III — Whenever an Assassin you control attacks this turn, create a 1/1 black Assassin creature token with menace that's tapped and attacking.",
+        )
+        .expect("saga chapter delayed trigger clause should parse");
+
+    let ability_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("SagaChapterTrigger"),
+        "expected saga chapter trigger, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling in chapter effect, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("until_end_of_turn: true"),
+        "expected delayed chapter trigger to expire at end of turn, got {ability_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("whenever a assassin you control attacks this turn"),
+        "expected rendered chapter delayed trigger wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_target_player_sacrifices_artifact_and_land_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Structural Collapse")
         .parse_text(

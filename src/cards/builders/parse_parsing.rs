@@ -11865,6 +11865,7 @@ fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::VoteOption { effects, .. }
         | EffectAst::UnlessAction {
@@ -11915,6 +11916,7 @@ fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAst) {
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::VoteOption { effects, .. } => {
             replace_it_damage_target_in_effects(effects, target);
@@ -15099,6 +15101,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parser: parse_sentence_delayed_until_next_end_step,
     },
     SentencePrimitive {
+        name: "delayed-trigger-this-turn",
+        parser: parse_sentence_delayed_trigger_this_turn,
+    },
+    SentencePrimitive {
         name: "delayed-when-that-dies-this-turn",
         parser: parse_delayed_when_that_dies_this_turn_sentence,
     },
@@ -15652,6 +15658,75 @@ fn parse_delayed_until_next_end_step_sentence(
 
     Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
         player,
+        effects: delayed_effects,
+    }]))
+}
+
+fn parse_sentence_delayed_trigger_this_turn(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("when") || token.is_word("whenever")) {
+        return Ok(None);
+    }
+
+    let Some(comma_idx) = tokens.iter().position(|token| matches!(token, Token::Comma(_))) else {
+        return Ok(None);
+    };
+
+    let mut trigger_tokens = trim_commas(&tokens[..comma_idx]);
+    if trigger_tokens
+        .first()
+        .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+    {
+        trigger_tokens = trigger_tokens[1..].to_vec();
+    }
+    if trigger_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed trigger clause before comma (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    let trigger_words = words(&trigger_tokens);
+    if trigger_words.len() < 3 || !trigger_words.ends_with(&["this", "turn"]) {
+        return Ok(None);
+    }
+
+    let trim_start = token_index_for_word_index(&trigger_tokens, trigger_words.len() - 2)
+        .unwrap_or(trigger_tokens.len());
+    let trigger_core_tokens = trim_commas(&trigger_tokens[..trim_start]);
+    if trigger_core_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed trigger clause before 'this turn' (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+    let trigger = parse_trigger_clause(&trigger_core_tokens)?;
+    if matches!(trigger, TriggerSpec::Custom(_)) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported delayed trigger clause (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    let remainder = trim_commas(&tokens[comma_idx + 1..]);
+    if remainder.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed trigger effect clause (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    let delayed_effects = parse_effect_chain(&remainder)?;
+    if delayed_effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed trigger effect clause (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+        trigger,
         effects: delayed_effects,
     }]))
 }
@@ -20996,6 +21071,7 @@ fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::UnlessPays { effects, .. }
         | EffectAst::VoteOption { effects, .. } => {
@@ -22271,6 +22347,7 @@ fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
             | EffectAst::DelayedUntilNextEndStep { effects, .. }
             | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
             | EffectAst::DelayedUntilEndOfCombat { effects }
+            | EffectAst::DelayedTriggerThisTurn { effects, .. }
             | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
             | EffectAst::UnlessPays { effects, .. }
             | EffectAst::VoteOption { effects, .. } => force_implicit_token_controller_you(effects),

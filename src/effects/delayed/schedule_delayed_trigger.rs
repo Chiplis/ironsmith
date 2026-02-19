@@ -16,6 +16,7 @@ pub struct ScheduleDelayedTriggerEffect {
     pub effects: Vec<crate::effect::Effect>,
     pub one_shot: bool,
     pub start_next_turn: bool,
+    pub until_end_of_turn: bool,
     pub target_objects: Vec<crate::ids::ObjectId>,
     pub target_tag: Option<TagKey>,
     pub target_filter: Option<ObjectFilter>,
@@ -35,6 +36,7 @@ impl ScheduleDelayedTriggerEffect {
             effects,
             one_shot,
             start_next_turn: false,
+            until_end_of_turn: false,
             target_objects,
             target_tag: None,
             target_filter: None,
@@ -54,6 +56,7 @@ impl ScheduleDelayedTriggerEffect {
             effects,
             one_shot,
             start_next_turn: false,
+            until_end_of_turn: false,
             target_objects: Vec::new(),
             target_tag: Some(target_tag.into()),
             target_filter: None,
@@ -68,6 +71,11 @@ impl ScheduleDelayedTriggerEffect {
 
     pub fn starting_next_turn(mut self) -> Self {
         self.start_next_turn = true;
+        self
+    }
+
+    pub fn until_end_of_turn(mut self) -> Self {
+        self.until_end_of_turn = true;
         self
     }
 }
@@ -101,6 +109,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                     } else {
                         None
                     },
+                    expires_at_turn: if self.until_end_of_turn {
+                        Some(game.turn.turn_number)
+                    } else {
+                        None
+                    },
                     target_objects: vec![snapshot.object_id],
                     controller: controller_id,
                 };
@@ -116,6 +129,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             one_shot: self.one_shot,
             not_before_turn: if self.start_next_turn {
                 Some(game.turn.turn_number.saturating_add(1))
+            } else {
+                None
+            },
+            expires_at_turn: if self.until_end_of_turn {
+                Some(game.turn.turn_number)
             } else {
                 None
             },
