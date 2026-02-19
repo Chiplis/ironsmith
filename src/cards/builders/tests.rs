@@ -1275,12 +1275,44 @@ fn test_parse_exile_cards_from_single_graveyard_without_fallback() {
 
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("graveyard"),
-        "expected graveyard wording in rendered text, got {rendered}"
+        rendered.contains("single graveyard"),
+        "expected single-graveyard wording in rendered text, got {rendered}"
     );
     assert!(
         !rendered.contains("unsupported parser line fallback"),
         "single-graveyard exile clause should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_each_of_them_gets_clause_targets_selected_objects() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hope and Glory Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Untap two target creatures. Each of them gets +1/+1 until end of turn.")
+        .expect("each-of-them gets clause should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("untap two target creatures"),
+        "expected untap-target-creatures clause in rendered text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("this spell gets +1/+1"),
+        "selected creatures should be pumped, not the spell itself: {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_return_cards_at_random_from_graveyard_to_hand() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make a Wish Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Return two cards at random from your graveyard to your hand.")
+        .expect("return-at-random clause should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("return two cards at random from your graveyard to your hand"),
+        "expected random graveyard return wording in rendered text, got {rendered}"
     );
 }
 
@@ -5139,6 +5171,48 @@ fn render_search_library_for_card_uses_card_noun() {
     assert!(
         joined.contains("search your library for a card"),
         "expected search filter to render as card, got {joined}"
+    );
+}
+
+#[test]
+fn parse_search_target_player_library_and_exile_cards() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Denying Wind Variant")
+        .parse_text("Search target player's library for up to seven cards and exile them. Then that player shuffles.")
+        .expect("target-player search-and-exile clause should parse");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("search target player's library for up to seven cards and exile")
+            && joined.contains("shuffle target player's library"),
+        "expected search/exile/shuffle rendering, got {joined}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("zone: Library")
+            && debug.contains("zone: Exile"),
+        "expected search-from-library into exile sequence, got {debug}"
+    );
+}
+
+#[test]
+fn parse_destroy_then_search_target_opponent_library_preserves_destroy_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Life's Finale Variant")
+        .parse_text("Destroy all creatures, then search target opponent's library for up to three creature cards and put them into their graveyard. Then that player shuffles.")
+        .expect("destroy-then-search clause should parse");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("destroy all creatures")
+            && joined.contains("search target player's library for up to three creature")
+            && joined.contains("put them into target player's graveyard")
+            && joined.contains("shuffle target player's library"),
+        "expected destroy and search/put/shuffle chain, got {joined}"
+    );
+    assert!(
+        !joined.contains("destroy all creatures card in an opponent's libraries"),
+        "search clause should not degrade into destroy-library fallback, got {joined}"
     );
 }
 

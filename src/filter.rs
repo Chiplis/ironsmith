@@ -393,6 +393,10 @@ pub struct ObjectFilter {
     /// Owner filter (None = any owner)
     pub owner: Option<PlayerFilter>,
 
+    /// If true, card choices from graveyard must come from one graveyard.
+    /// Used for Oracle clauses like "target cards from a single graveyard".
+    pub single_graveyard: bool,
+
     /// If set, only match spells/abilities that target a player matching this filter.
     pub targets_player: Option<PlayerFilter>,
 
@@ -723,6 +727,12 @@ impl ObjectFilter {
     /// Set the owner filter.
     pub fn owned_by(mut self, owner: PlayerFilter) -> Self {
         self.owner = Some(owner);
+        self
+    }
+
+    /// Require card choices to come from a single graveyard.
+    pub fn single_graveyard(mut self) -> Self {
+        self.single_graveyard = true;
         self
     }
 
@@ -2687,6 +2697,8 @@ impl ObjectFilter {
                         describe_possessive_player_filter(owner),
                         zone_name
                     ));
+                } else if zone == Zone::Graveyard && self.single_graveyard {
+                    parts.push("in single graveyard".to_string());
                 } else {
                     parts.push(format!("in {}", zone_name));
                 }

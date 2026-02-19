@@ -13249,10 +13249,11 @@ fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool {
 
 fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> Option<EffectAst> {
     match base {
-        EffectAst::ReturnToHand { target } => {
+        EffectAst::ReturnToHand { target, random } => {
             let mut cloned_target = target.clone();
             replace_target_subtype(&mut cloned_target, subtype).then_some(EffectAst::ReturnToHand {
                 target: cloned_target,
+                random: *random,
             })
         }
         EffectAst::ReturnToBattlefield {
@@ -14371,7 +14372,7 @@ fn parse_sentence_return_targets_of_creature_type_of_choice(
             player: PlayerAst::You,
             tag: chosen_type_tag,
         },
-        EffectAst::ReturnToHand { target },
+        EffectAst::ReturnToHand { target, random: false },
     ]))
 }
 
@@ -14525,7 +14526,10 @@ fn parse_sentence_return_multiple_targets(
                     controller: ReturnControllerAst::Preserve,
                 });
             } else {
-                effects.push(EffectAst::ReturnToHand { target });
+                effects.push(EffectAst::ReturnToHand {
+                    target,
+                    random: false,
+                });
             }
         }
     }
@@ -17020,6 +17024,7 @@ fn parse_same_name_target_fanout_sentence(
         }
         "return" => EffectAst::ReturnToHand {
             target: first_target,
+            random: false,
         },
         _ => unreachable!("verb already filtered"),
     };
@@ -17530,9 +17535,10 @@ fn parse_exile_then_return_same_object_sentence(
                 controller,
             }
         }
-        EffectAst::ReturnToHand { target } if target_references_it_tag(&target) => {
+        EffectAst::ReturnToHand { target, random } if target_references_it_tag(&target) => {
             EffectAst::ReturnToHand {
                 target: TargetAst::Tagged(TagKey::from("exiled_0"), None),
+                random,
             }
         }
         _ => return Ok(None),
@@ -18596,7 +18602,10 @@ fn parse_search_library_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words_all = words(tokens);
-    let Some(search_idx) = tokens.iter().position(|token| token.is_word("search")) else {
+    let Some(search_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("search") || token.is_word("searches"))
+    else {
         return Ok(None);
     };
     if tokens[..search_idx]
@@ -18619,14 +18628,63 @@ fn parse_search_library_sentence(
     {
         subject_tokens = &subject_tokens[..subject_tokens.len().saturating_sub(1)];
     }
-    let player = match parse_subject(subject_tokens) {
+    let mut leading_effects = Vec::new();
+    if !subject_tokens.is_empty() && find_verb(subject_tokens).is_some() {
+        let mut leading_tokens = trim_commas(subject_tokens);
+        while leading_tokens
+            .last()
+            .is_some_and(|token| token.is_word("then") || token.is_word("and"))
+        {
+            leading_tokens.pop();
+        }
+        if !leading_tokens.is_empty() {
+            leading_effects = parse_effect_chain_with_sentence_primitives(&leading_tokens)?;
+        }
+        subject_tokens = &[];
+    }
+    let mut player = match parse_subject(subject_tokens) {
         SubjectAst::Player(player) => player,
-        _ => PlayerAst::You,
+        _ => PlayerAst::Implicit,
     };
 
     let search_tokens = &tokens[search_idx..];
     let search_words = words(search_tokens);
-    if !search_words.starts_with(&["search", "your", "library", "for"]) {
+    let Some(search_verb) = search_words.first().copied() else {
+        return Ok(None);
+    };
+    if !matches!(search_verb, "search" | "searches") {
+        return Ok(None);
+    }
+    let search_body_words = &search_words[1..];
+    let mut search_player_target: Option<TargetAst> = None;
+    let mut forced_library_owner: Option<PlayerFilter> = None;
+    if search_body_words.starts_with(&["your", "library", "for"])
+        || search_body_words.starts_with(&["their", "library", "for"])
+    {
+        // Keep player from parsed subject/default context.
+    } else if search_body_words.starts_with(&["target", "player", "library", "for"])
+        || search_body_words.starts_with(&["target", "players", "library", "for"])
+    {
+        search_player_target = Some(parse_target_phrase(&search_tokens[1..3])?);
+        forced_library_owner = Some(PlayerFilter::target_player());
+    } else if search_body_words.starts_with(&["target", "opponent", "library", "for"])
+        || search_body_words.starts_with(&["target", "opponents", "library", "for"])
+    {
+        search_player_target = Some(parse_target_phrase(&search_tokens[1..3])?);
+        forced_library_owner = Some(PlayerFilter::target_opponent());
+    } else if search_body_words.starts_with(&["that", "player", "library", "for"])
+        || search_body_words.starts_with(&["that", "players", "library", "for"])
+    {
+        player = PlayerAst::That;
+    } else if search_body_words.starts_with(&["its", "controller", "library", "for"])
+        || search_body_words.starts_with(&["its", "controllers", "library", "for"])
+    {
+        player = PlayerAst::ItsController;
+    } else if search_body_words.starts_with(&["its", "owner", "library", "for"])
+        || search_body_words.starts_with(&["its", "owners", "library", "for"])
+    {
+        player = PlayerAst::ItsOwner;
+    } else {
         return Ok(None);
     }
     let mentions_nth_from_top = search_words
@@ -18645,16 +18703,23 @@ fn parse_search_library_sentence(
         .position(|token| token.is_word("for"))
         .unwrap_or(3);
     let put_idx = search_tokens.iter().position(|token| token.is_word("put"));
-    let Some(put_idx) = put_idx else {
+    let exile_idx = search_tokens.windows(3).position(|window| {
+        window[0].is_word("and")
+            && (window[1].is_word("exile") || window[1].is_word("exiles"))
+            && (window[2].is_word("them")
+                || window[2].is_word("those")
+                || window[2].is_word("thosecards"))
+    });
+    let Some(filter_boundary) = put_idx.or(exile_idx) else {
         return Err(CardTextError::ParseError(format!(
-            "missing put clause in search-library sentence (clause: '{}')",
+            "missing put-or-exile clause in search-library sentence (clause: '{}')",
             words_all.join(" ")
         )));
     };
 
     let filter_end = {
-        let mut end = put_idx;
-        for idx in (for_idx + 1)..put_idx {
+        let mut end = filter_boundary;
+        for idx in (for_idx + 1)..filter_boundary {
             if !matches!(search_tokens[idx], Token::Comma(_)) {
                 continue;
             }
@@ -18664,7 +18729,7 @@ fn parse_search_library_sentence(
                 break;
             }
         }
-        if end == put_idx
+        if end == filter_boundary
             && let Some(idx) = search_tokens
                 .iter()
                 .position(|token| token.is_word("reveal") || token.is_word("then"))
@@ -18691,6 +18756,15 @@ fn parse_search_library_sentence(
     {
         count = ChoiceCount::any_number();
         count_used = 2;
+    } else if count_tokens.len() >= 2
+        && count_tokens[0].is_word("that")
+        && count_tokens[1].is_word("many")
+    {
+        count = ChoiceCount::any_number();
+        count_used = 2;
+    } else if count_tokens.first().is_some_and(|token| token.is_word("all")) {
+        count = ChoiceCount::any_number();
+        count_used = 1;
     } else if count_tokens.len() >= 2
         && count_tokens[0].is_word("up")
         && count_tokens[1].is_word("to")
@@ -18849,6 +18923,11 @@ fn parse_search_library_sentence(
             relation: TaggedOpbjectRelation::SameNameAsTagged,
         });
     }
+    if filter.owner.is_none()
+        && let Some(owner) = forced_library_owner
+    {
+        filter.owner = Some(owner);
+    }
     normalize_search_library_filter(&mut filter);
 
     if words_all.contains(&"mana") && words_all.contains(&"cost") {
@@ -18865,19 +18944,23 @@ fn parse_search_library_sentence(
         }
     }
 
-    let put_clause_words = words(&search_tokens[put_idx..]);
-    let destination = if put_clause_words.contains(&"graveyard") {
-        Zone::Graveyard
-    } else if put_clause_words.contains(&"hand") {
-        Zone::Hand
-    } else if put_clause_words.contains(&"top") {
-        Zone::Library
+    let destination = if let Some(put_idx) = put_idx {
+        let put_clause_words = words(&search_tokens[put_idx..]);
+        if put_clause_words.contains(&"graveyard") {
+            Zone::Graveyard
+        } else if put_clause_words.contains(&"hand") {
+            Zone::Hand
+        } else if put_clause_words.contains(&"top") {
+            Zone::Library
+        } else {
+            Zone::Battlefield
+        }
     } else {
-        Zone::Battlefield
+        Zone::Exile
     };
 
     let reveal = words_all.contains(&"reveal");
-    let trailing_discard_before_shuffle = {
+    let trailing_discard_before_shuffle = if let Some(put_idx) = put_idx {
         let discard_idx = search_tokens
             .iter()
             .position(|token| token.is_word("discard") || token.is_word("discards"));
@@ -18888,9 +18971,12 @@ fn parse_search_library_sentence(
             (discard_idx, shuffle_idx),
             (Some(discard_idx), Some(shuffle_idx)) if discard_idx > put_idx && discard_idx < shuffle_idx
         )
+    } else {
+        false
     };
     let shuffle = words_all.contains(&"shuffle") && !trailing_discard_before_shuffle;
-    let split_battlefield_and_hand = words_all.contains(&"battlefield")
+    let split_battlefield_and_hand = put_idx.is_some()
+        && words_all.contains(&"battlefield")
         && words_all.contains(&"hand")
         && words_all.contains(&"other")
         && words_all.contains(&"one");
@@ -18956,10 +19042,14 @@ fn parse_search_library_sentence(
         effects.push(EffectAst::ShuffleLibrary { player });
     }
 
+    if let Some(target) = search_player_target {
+        effects.insert(0, EffectAst::TargetOnly { target });
+    }
+
     if let Some(and_idx) = search_tokens
         .iter()
         .enumerate()
-        .skip(put_idx)
+        .skip(put_idx.unwrap_or(filter_boundary))
         .find_map(|(idx, token)| token.is_word("and").then_some(idx))
     {
         let trailing_tokens = trim_commas(&search_tokens[and_idx + 1..]);
@@ -18993,6 +19083,11 @@ fn parse_search_library_sentence(
                 );
             }
         }
+    }
+
+    if !leading_effects.is_empty() {
+        leading_effects.extend(effects);
+        return Ok(Some(leading_effects));
     }
 
     Ok(Some(effects))
@@ -21146,6 +21241,18 @@ fn parse_effect_chain_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardText
             }
             continue;
         }
+        if let Some(segment_effects) = parse_search_library_sentence(&segment)? {
+            for mut effect in segment_effects {
+                if let Some(context) = carried_context {
+                    maybe_apply_carried_player_with_clause(&mut effect, context, &segment);
+                }
+                if let Some(context) = explicit_player_for_carry(&effect) {
+                    carried_context = Some(context);
+                }
+                effects.push(effect);
+            }
+            continue;
+        }
         let mut effect = parse_effect_clause(&segment)?;
         if let Some(context) = carried_context {
             maybe_apply_carried_player_with_clause(&mut effect, context, &segment);
@@ -21720,6 +21827,16 @@ fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
         | EffectAst::PutIntoHand {
             player: effect_player,
             ..
+        }
+        | EffectAst::SearchLibrary {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::ShuffleGraveyardIntoLibrary {
+            player: effect_player,
+        }
+        | EffectAst::ShuffleLibrary {
+            player: effect_player,
         }
         | EffectAst::CreateToken {
             player: effect_player,
@@ -22454,13 +22571,17 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
                 let (power, toughness, duration) =
                     parse_get_modifier_values_with_tail(modifier_tail, power, toughness)?;
 
-                let normalized_subject_words: Vec<&str> = subject_words
+                let mut normalized_subject_words: Vec<&str> = subject_words
                     .iter()
                     .copied()
                     .filter(|word| *word != "each")
                     .collect();
+                if normalized_subject_words.first().copied() == Some("of") {
+                    normalized_subject_words.remove(0);
+                }
                 if normalized_subject_words.as_slice() == ["it"]
                     || normalized_subject_words.as_slice() == ["they"]
+                    || normalized_subject_words.as_slice() == ["them"]
                 {
                     return Ok(EffectAst::Pump {
                         power: power.clone(),
@@ -26073,7 +26194,20 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             ))
         })?;
 
-    let target_tokens = &tokens[..to_idx];
+    let mut target_tokens_vec = tokens[..to_idx].to_vec();
+    let mut random = false;
+    let mut random_idx = 0usize;
+    while random_idx + 1 < target_tokens_vec.len() {
+        if target_tokens_vec[random_idx].is_word("at")
+            && target_tokens_vec[random_idx + 1].is_word("random")
+        {
+            random = true;
+            target_tokens_vec.drain(random_idx..random_idx + 2);
+            break;
+        }
+        random_idx += 1;
+    }
+    let target_tokens = target_tokens_vec.as_slice();
     let destination_words_full = words(&tokens[to_idx + 1..]);
     let mut destination_words = destination_words_full.clone();
     let mut destination_excluded_subtypes: Vec<Subtype> = Vec::new();
@@ -26251,7 +26385,7 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             controller: return_controller,
         })
     } else {
-        Ok(EffectAst::ReturnToHand { target })
+        Ok(EffectAst::ReturnToHand { target, random })
     }
 }
 
@@ -29332,11 +29466,13 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     if all_words.first().is_some_and(|word| *word == "single")
         && all_words.get(1).is_some_and(|word| *word == "graveyard")
     {
+        filter.single_graveyard = true;
         all_words.remove(0);
     }
     let mut single_idx = 0usize;
     while single_idx + 1 < all_words.len() {
         if all_words[single_idx] == "single" && all_words[single_idx + 1] == "graveyard" {
+            filter.single_graveyard = true;
             all_words.remove(single_idx);
             continue;
         }

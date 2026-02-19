@@ -26,17 +26,19 @@ use crate::zone::Zone;
 pub struct ReturnFromGraveyardToHandEffect {
     /// The targeting specification (for UI/validation purposes).
     pub target: ChooseSpec,
+    /// Whether the cards are selected at random (text-level semantics).
+    pub random: bool,
 }
 
 impl ReturnFromGraveyardToHandEffect {
     /// Create a new return from graveyard to hand effect.
-    pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+    pub fn new(target: ChooseSpec, random: bool) -> Self {
+        Self { target, random }
     }
 
     /// Create an effect targeting any card in a graveyard.
     pub fn any_card() -> Self {
-        Self::new(ChooseSpec::card_in_zone(Zone::Graveyard))
+        Self::new(ChooseSpec::card_in_zone(Zone::Graveyard), false)
     }
 }
 

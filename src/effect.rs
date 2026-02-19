@@ -1529,8 +1529,13 @@ impl Effect {
 
     /// Create a "return target card from graveyard to hand" effect.
     pub fn return_from_graveyard_to_hand(target: ChooseSpec) -> Self {
+        Self::return_from_graveyard_to_hand_with_random(target, false)
+    }
+
+    /// Create a "return target card from graveyard to hand" effect with optional random selection wording.
+    pub fn return_from_graveyard_to_hand_with_random(target: ChooseSpec, random: bool) -> Self {
         use crate::effects::ReturnFromGraveyardToHandEffect;
-        Self::new(ReturnFromGraveyardToHandEffect::new(target))
+        Self::new(ReturnFromGraveyardToHandEffect::new(target, random))
     }
 
     /// Create a "return target card from graveyard to battlefield" effect.

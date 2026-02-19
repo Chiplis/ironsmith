@@ -4292,7 +4292,13 @@ fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> String {
                     Some(owner) => {
                         format!(" in {} graveyard", describe_possessive_player_filter(owner))
                     }
-                    None => " in graveyard".to_string(),
+                    None => {
+                        if filter.single_graveyard {
+                            " in single graveyard".to_string()
+                        } else {
+                            " in graveyard".to_string()
+                        }
+                    }
                 };
                 if let Some(stripped) = text.strip_suffix(&suffix) {
                     return stripped.to_string();
@@ -4316,7 +4322,13 @@ fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> String {
                     Some(owner) => {
                         format!(" in {} graveyard", describe_possessive_player_filter(owner))
                     }
-                    None => " in graveyard".to_string(),
+                    None => {
+                        if filter.single_graveyard {
+                            " in single graveyard".to_string()
+                        } else {
+                            " in graveyard".to_string()
+                        }
+                    }
                 };
                 if let Some(stripped) = text.strip_suffix(&suffix) {
                     let stripped = strip_leading_article(stripped);
@@ -4370,15 +4382,29 @@ fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> String {
                         }
                     }
                 } else {
+                    let singular_inner = inner_text.clone();
+                    let plural_inner = pluralize_noun_phrase(strip_leading_article(&inner_text));
                     if count.is_dynamic_x() {
-                        return format!("X {inner_text}");
+                        return format!("X {plural_inner}");
                     }
                     match (count.min, count.max) {
-                        (0, None) => format!("any number of {inner_text}"),
-                        (min, None) => format!("at least {min} {inner_text}"),
-                        (0, Some(max)) => format!("up to {max} {inner_text}"),
-                        (min, Some(max)) if min == max => format!("{min} {inner_text}"),
-                        (min, Some(max)) => format!("{min} to {max} {inner_text}"),
+                        (0, None) => format!("any number of {plural_inner}"),
+                        (min, None) => format!("at least {min} {plural_inner}"),
+                        (0, Some(max)) => {
+                            if max == 1 {
+                                format!("up to {max} {singular_inner}")
+                            } else {
+                                format!("up to {max} {plural_inner}")
+                            }
+                        }
+                        (min, Some(max)) if min == max => {
+                            if min == 1 {
+                                format!("{min} {singular_inner}")
+                            } else {
+                                format!("{min} {plural_inner}")
+                            }
+                        }
+                        (min, Some(max)) => format!("{min} to {max} {plural_inner}"),
                     }
                 }
             }
@@ -6422,6 +6448,7 @@ fn pluralize_noun_phrase(phrase: &str) -> String {
         " in your graveyard",
         " in target player's graveyard",
         " in that player's graveyard",
+        " in single graveyard",
         " in a graveyard",
         " in graveyard",
         " in your hand",
@@ -7458,9 +7485,13 @@ fn describe_with_id_then_choose_new_targets(
 }
 
 enum SearchDestination {
-    Battlefield { tapped: bool },
+    Battlefield {
+        tapped: bool,
+        controller: PlayerFilter,
+    },
     Hand,
     Graveyard,
+    Exile,
     LibraryTop,
 }
 
@@ -7478,6 +7509,7 @@ fn describe_search_choose_for_each(
     if for_each.tag != choose.tag || for_each.effects.len() != 1 {
         return None;
     }
+    let library_owner_filter = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
 
     let destination = if let Some(put) =
         for_each.effects[0].downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
@@ -7485,7 +7517,10 @@ fn describe_search_choose_for_each(
         if !matches!(put.target, ChooseSpec::Iterated) {
             return None;
         }
-        SearchDestination::Battlefield { tapped: put.tapped }
+        SearchDestination::Battlefield {
+            tapped: put.tapped,
+            controller: put.controller.clone(),
+        }
     } else if let Some(return_to_hand) =
         for_each.effects[0].downcast_ref::<crate::effects::ReturnToHandEffect>()
     {
@@ -7500,11 +7535,16 @@ fn describe_search_choose_for_each(
             return None;
         }
         if move_to_zone.zone == Zone::Battlefield {
-            SearchDestination::Battlefield { tapped: false }
+            SearchDestination::Battlefield {
+                tapped: false,
+                controller: choose.chooser.clone(),
+            }
         } else if move_to_zone.zone == Zone::Hand {
             SearchDestination::Hand
         } else if move_to_zone.zone == Zone::Graveyard {
             SearchDestination::Graveyard
+        } else if move_to_zone.zone == Zone::Exile {
+            SearchDestination::Exile
         } else if move_to_zone.zone == Zone::Library && move_to_zone.to_top {
             SearchDestination::LibraryTop
         } else {
@@ -7515,15 +7555,23 @@ fn describe_search_choose_for_each(
     };
 
     if let Some(shuffle) = shuffle
-        && shuffle.player != choose.chooser
+        && shuffle.player != *library_owner_filter
     {
         return None;
     }
 
+    let mut implied_filter = choose.filter.clone();
+    // The searched library owner is already called out by "Search ... library".
+    implied_filter.owner = None;
+    let implied_filter_text = if implied_filter == ObjectFilter::default() {
+        "card".to_string()
+    } else {
+        implied_filter.description()
+    };
     let filter_text = if choose.description.trim().is_empty()
         || choose.description.trim().eq_ignore_ascii_case("objects")
     {
-        choose.filter.description()
+        implied_filter_text
     } else {
         choose.description.trim().to_string()
     };
@@ -7550,22 +7598,32 @@ fn describe_search_choose_for_each(
 
     let mut text;
     match destination {
-        SearchDestination::Battlefield { tapped } => {
+        SearchDestination::Battlefield { tapped, controller } => {
+            let control_suffix = if controller == *library_owner_filter {
+                String::new()
+            } else {
+                format!(
+                    " under {} control",
+                    describe_possessive_player_filter(&controller)
+                )
+            };
             text = if shuffle.is_some() && shuffle_before_move {
                 format!(
-                    "Search {} library for {}{}, shuffle, then put {} onto the battlefield",
-                    describe_possessive_player_filter(&choose.chooser),
+                    "Search {} library for {}{}, shuffle, then put {} onto the battlefield{}",
+                    describe_possessive_player_filter(library_owner_filter),
                     selection_text,
                     reveal_clause,
-                    pronoun
+                    pronoun,
+                    control_suffix
                 )
             } else {
                 format!(
-                    "Search {} library for {}{}, put {} onto the battlefield",
-                    describe_possessive_player_filter(&choose.chooser),
+                    "Search {} library for {}{}, put {} onto the battlefield{}",
+                    describe_possessive_player_filter(library_owner_filter),
                     selection_text,
                     reveal_clause,
-                    pronoun
+                    pronoun,
+                    control_suffix
                 )
             };
             if tapped {
@@ -7576,20 +7634,20 @@ fn describe_search_choose_for_each(
             text = if shuffle.is_some() && shuffle_before_move {
                 format!(
                     "Search {} library for {}{}, shuffle, then put {} into {} hand",
-                    describe_possessive_player_filter(&choose.chooser),
+                    describe_possessive_player_filter(library_owner_filter),
                     selection_text,
                     reveal_clause,
                     pronoun,
-                    describe_possessive_player_filter(&choose.chooser)
+                    describe_possessive_player_filter(library_owner_filter)
                 )
             } else {
                 format!(
                     "Search {} library for {}{}, put {} into {} hand",
-                    describe_possessive_player_filter(&choose.chooser),
+                    describe_possessive_player_filter(library_owner_filter),
                     selection_text,
                     reveal_clause,
                     pronoun,
-                    describe_possessive_player_filter(&choose.chooser)
+                    describe_possessive_player_filter(library_owner_filter)
                 )
             };
         }
@@ -7597,20 +7655,39 @@ fn describe_search_choose_for_each(
             text = if shuffle.is_some() && shuffle_before_move {
                 format!(
                     "Search {} library for {}{}, shuffle, then put {} into {} graveyard",
-                    describe_possessive_player_filter(&choose.chooser),
+                    describe_possessive_player_filter(library_owner_filter),
                     selection_text,
                     reveal_clause,
                     pronoun,
-                    describe_possessive_player_filter(&choose.chooser)
+                    describe_possessive_player_filter(library_owner_filter)
                 )
             } else {
                 format!(
                     "Search {} library for {}{}, put {} into {} graveyard",
-                    describe_possessive_player_filter(&choose.chooser),
+                    describe_possessive_player_filter(library_owner_filter),
                     selection_text,
                     reveal_clause,
                     pronoun,
-                    describe_possessive_player_filter(&choose.chooser)
+                    describe_possessive_player_filter(library_owner_filter)
+                )
+            };
+        }
+        SearchDestination::Exile => {
+            text = if shuffle.is_some() && shuffle_before_move {
+                format!(
+                    "Search {} library for {}{}, shuffle, then exile {}",
+                    describe_possessive_player_filter(library_owner_filter),
+                    selection_text,
+                    reveal_clause,
+                    pronoun,
+                )
+            } else {
+                format!(
+                    "Search {} library for {}{}, exile {}",
+                    describe_possessive_player_filter(library_owner_filter),
+                    selection_text,
+                    reveal_clause,
+                    pronoun,
                 )
             };
         }
@@ -7618,20 +7695,20 @@ fn describe_search_choose_for_each(
             text = if shuffle.is_some() && shuffle_before_move {
                 format!(
                     "Search {} library for {}{}, then shuffle and put {} on top of {} library",
-                    describe_possessive_player_filter(&choose.chooser),
+                    describe_possessive_player_filter(library_owner_filter),
                     selection_text,
                     reveal_clause,
                     pronoun,
-                    describe_possessive_player_filter(&choose.chooser)
+                    describe_possessive_player_filter(library_owner_filter)
                 )
             } else {
                 format!(
                     "Search {} library for {}{}, put {} on top of {} library",
-                    describe_possessive_player_filter(&choose.chooser),
+                    describe_possessive_player_filter(library_owner_filter),
                     selection_text,
                     reveal_clause,
                     pronoun,
-                    describe_possessive_player_filter(&choose.chooser)
+                    describe_possessive_player_filter(library_owner_filter)
                 )
             };
             if !choose.count.is_single() {
@@ -8688,6 +8765,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(return_from_gy) =
         effect.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
     {
+        let random_suffix = if return_from_gy.random { " at random" } else { "" };
         if let Some(owner) = graveyard_owner_from_spec(&return_from_gy.target) {
             let target_text = describe_choose_spec_without_graveyard_zone(&return_from_gy.target);
             let from_text = match &owner {
@@ -8698,11 +8776,12 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 Some(owner) => format!("{} hand", describe_possessive_player_filter(owner)),
                 None => owner_hand_phrase_for_spec(&return_from_gy.target).to_string(),
             };
-            return format!("Return {target_text} from {from_text} to {to_text}");
+            return format!("Return {target_text}{random_suffix} from {from_text} to {to_text}");
         }
         return format!(
-            "Return {} from a graveyard to {}",
+            "Return {}{} from a graveyard to {}",
             describe_choose_spec_without_graveyard_zone(&return_from_gy.target),
+            random_suffix,
             owner_hand_phrase_for_spec(&return_from_gy.target)
         );
     }
@@ -13721,6 +13800,8 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     normalized = normalized
         .replace(" in target player's hand", " from their hand")
         .replace(" in that player's hand", " from their hand")
+        .replace(" card in single graveyard", " card from a single graveyard")
+        .replace(" cards in single graveyard", " cards from a single graveyard")
         .replace(" card in graveyard", " card from a graveyard")
         .replace(" cards in graveyard", " cards from a graveyard")
         .replace(
@@ -17523,6 +17604,12 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
     if trimmed.starts_with("Exile ") && trimmed.contains("target cards in graveyard") {
         return trimmed.replace(
             "target cards in graveyard",
+            "target cards from a single graveyard",
+        );
+    }
+    if trimmed.starts_with("Exile ") && trimmed.contains("target cards from a graveyard") {
+        return trimmed.replace(
+            "target cards from a graveyard",
             "target cards from a single graveyard",
         );
     }

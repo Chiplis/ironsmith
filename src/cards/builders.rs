@@ -644,6 +644,7 @@ enum EffectAst {
     },
     ReturnToHand {
         target: TargetAst,
+        random: bool,
     },
     ReturnToBattlefield {
         target: TargetAst,

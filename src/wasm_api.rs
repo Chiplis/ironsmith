@@ -3913,6 +3913,7 @@ enum SearchDestination {
     Battlefield { tapped: bool },
     Hand,
     Graveyard,
+    Exile,
     LibraryTop,
 }
 
@@ -3932,6 +3933,7 @@ fn describe_search_choose_for_each(
     if for_each.tag != choose.tag || for_each.effects.len() != 1 {
         return None;
     }
+    let library_owner_filter = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
 
     let destination = if let Some(put) =
         for_each.effects[0].downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
@@ -3959,6 +3961,8 @@ fn describe_search_choose_for_each(
             SearchDestination::Hand
         } else if move_to_zone.zone == crate::zone::Zone::Graveyard {
             SearchDestination::Graveyard
+        } else if move_to_zone.zone == crate::zone::Zone::Exile {
+            SearchDestination::Exile
         } else if move_to_zone.zone == crate::zone::Zone::Library && move_to_zone.to_top {
             SearchDestination::LibraryTop
         } else {
@@ -3969,18 +3973,30 @@ fn describe_search_choose_for_each(
     };
 
     if let Some(shuffle) = shuffle
-        && shuffle.player != choose.chooser
+        && shuffle.player != *library_owner_filter
     {
         return None;
     }
 
-    let chooser = describe_player_filter(&choose.chooser, tagged_subjects);
+    let chooser = describe_player_filter(library_owner_filter, tagged_subjects);
     let library_owner = if chooser == "You" {
         "your".to_string()
     } else {
         format!("{}'s", strip_leading_article(&chooser).to_ascii_lowercase())
     };
-    let filter_text = choose.filter.description();
+    let mut implied_filter = choose.filter.clone();
+    if implied_filter
+        .owner
+        .as_ref()
+        .is_some_and(|owner| owner == &choose.chooser)
+    {
+        implied_filter.owner = None;
+    }
+    let filter_text = if implied_filter == crate::filter::ObjectFilter::default() {
+        "card".to_string()
+    } else {
+        implied_filter.description()
+    };
     let selection_text = if choose.count.is_single() {
         with_indefinite_article(&filter_text)
     } else {
@@ -4027,6 +4043,15 @@ fn describe_search_choose_for_each(
                 format!(
                     "Search {library_owner} library for {selection_text}, put {pronoun} into {library_owner} graveyard"
                 )
+            }
+        }
+        SearchDestination::Exile => {
+            if shuffle.is_some() && shuffle_before_move {
+                format!(
+                    "Search {library_owner} library for {selection_text}, shuffle, then exile {pronoun}"
+                )
+            } else {
+                format!("Search {library_owner} library for {selection_text}, exile {pronoun}")
             }
         }
         SearchDestination::LibraryTop => {

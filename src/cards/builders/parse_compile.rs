@@ -250,7 +250,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::Regenerate { target }
         | EffectAst::TargetOnly { target }
         | EffectAst::RemoveUpToAnyCounters { target, .. }
-        | EffectAst::ReturnToHand { target }
+        | EffectAst::ReturnToHand { target, .. }
         | EffectAst::ReturnToBattlefield { target, .. }
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
@@ -621,7 +621,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::Regenerate { target }
         | EffectAst::TargetOnly { target }
         | EffectAst::RemoveUpToAnyCounters { target, .. }
-        | EffectAst::ReturnToHand { target }
+        | EffectAst::ReturnToHand { target, .. }
         | EffectAst::ReturnToBattlefield { target, .. }
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
@@ -1027,7 +1027,7 @@ fn collect_tag_spans_from_effect(
         | EffectAst::Regenerate { target }
         | EffectAst::TargetOnly { target }
         | EffectAst::RemoveUpToAnyCounters { target, .. }
-        | EffectAst::ReturnToHand { target }
+        | EffectAst::ReturnToHand { target, .. }
         | EffectAst::ReturnToBattlefield { target, .. }
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
@@ -2581,12 +2581,12 @@ fn compile_effect(
             };
             Ok((vec![Effect::goad(spec)], choices))
         }
-        EffectAst::ReturnToHand { target } => {
+        EffectAst::ReturnToHand { target, random } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
             let from_graveyard = target_mentions_graveyard(target);
             let effect = tag_object_target_effect(
                 if from_graveyard {
-                    Effect::return_from_graveyard_to_hand(spec.clone())
+                    Effect::return_from_graveyard_to_hand_with_random(spec.clone(), *random)
                 } else {
                     Effect::new(crate::effects::ReturnToHandEffect::with_spec(spec.clone()))
                 },
@@ -3893,10 +3893,15 @@ fn compile_effect(
             if filter.owner.is_none() && !matches!(player_filter, PlayerFilter::You) {
                 filter.owner = Some(player_filter.clone());
             }
+            let owner_matches_chooser = filter
+                .owner
+                .as_ref()
+                .is_none_or(|owner| owner == &player_filter);
             let use_search_effect = *shuffle
                 && count.min == 0
                 && count.max == Some(1)
-                && !(*destination == Zone::Battlefield && *tapped);
+                && *destination != Zone::Battlefield
+                && owner_matches_chooser;
             if use_search_effect {
                 let effects = vec![Effect::search_library(
                     filter,
@@ -3930,8 +3935,12 @@ fn compile_effect(
                 let choose = if *reveal { choose.reveal() } else { choose };
 
                 let to_top = matches!(destination, Zone::Library);
-                let move_effect = if *destination == Zone::Battlefield && *tapped {
-                    Effect::put_onto_battlefield(ChooseSpec::Iterated, true, player_filter.clone())
+                let move_effect = if *destination == Zone::Battlefield {
+                    Effect::put_onto_battlefield(
+                        ChooseSpec::Iterated,
+                        *tapped,
+                        player_filter.clone(),
+                    )
                 } else {
                     Effect::move_to_zone(ChooseSpec::Iterated, *destination, to_top)
                 };
