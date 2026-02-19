@@ -236,6 +236,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
         None
     }
 
+    /// Returns an inline granted ability when this static ability wraps one.
+    fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
+        None
+    }
+
     /// Returns true if this grants indestructible.
     fn has_indestructible(&self) -> bool {
         false
@@ -430,6 +435,10 @@ impl StaticAbility {
 
     pub fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
         self.0.color_choice_as_enters()
+    }
+
+    pub fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
+        self.0.granted_inline_ability()
     }
 
     /// Get the display text for this ability.

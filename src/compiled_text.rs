@@ -4878,7 +4878,11 @@ fn describe_apply_continuous_clauses(
             clauses.push(format!("{verb} base toughness {}", describe_value(value)));
         }
         crate::continuous::Modification::AddAbility(ability) => {
-            clauses.push(format!("{gains} {}", ability.display()));
+            if let Some(inline) = ability.granted_inline_ability() {
+                clauses.push(format!("{gains} {}", describe_inline_ability(inline)));
+            } else {
+                clauses.push(format!("{gains} {}", ability.display()));
+            }
         }
         crate::continuous::Modification::AddAbilityGeneric(ability) => {
             clauses.push(format!("{gains} {}", describe_inline_ability(ability)));
@@ -5712,7 +5716,7 @@ fn describe_inline_ability(ability: &Ability) -> String {
     if let Some(text) = &ability.text
         && !text.trim().is_empty()
     {
-        return text.trim().to_string();
+        return normalize_inline_ability_text(ability, text.trim());
     }
     match &ability.kind {
         AbilityKind::Static(static_ability) => static_ability.display(),
@@ -5722,6 +5726,52 @@ fn describe_inline_ability(ability: &Ability) -> String {
         AbilityKind::Activated(_) => "an activated ability".to_string(),
         AbilityKind::Mana(_) => "a mana ability".to_string(),
     }
+}
+
+fn activated_ability_has_source_tap_cost(activated: &crate::ability::ActivatedAbility) -> bool {
+    activated.mana_cost.costs().iter().any(|cost| {
+        cost.requires_tap()
+            || cost.effect_ref().is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::TapEffect>()
+                    .is_some_and(|tap| matches!(tap.spec, ChooseSpec::Source))
+            })
+    })
+}
+
+fn activated_ability_has_source_untap_cost(activated: &crate::ability::ActivatedAbility) -> bool {
+    activated.mana_cost.costs().iter().any(|cost| {
+        cost.requires_untap()
+            || cost.effect_ref().is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::UntapEffect>()
+                    .is_some_and(|untap| matches!(untap.spec, ChooseSpec::Source))
+            })
+    })
+}
+
+fn normalize_inline_ability_text(ability: &Ability, text: &str) -> String {
+    let trimmed = text.trim();
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return trimmed.to_string();
+    };
+
+    let lower = trimmed.to_ascii_lowercase();
+    if activated_ability_has_source_tap_cost(activated)
+        && lower.starts_with("t ")
+        && let Some((_, rest)) = trimmed.split_once(' ')
+        && !rest.trim().is_empty()
+    {
+        return format!("{{T}}: {}", rest.trim());
+    }
+    if activated_ability_has_source_untap_cost(activated)
+        && lower.starts_with("q ")
+        && let Some((_, rest)) = trimmed.split_once(' ')
+        && !rest.trim().is_empty()
+    {
+        return format!("{{Q}}: {}", rest.trim());
+    }
+    trimmed.to_string()
 }
 
 fn normalize_cost_phrase(text: &str) -> String {

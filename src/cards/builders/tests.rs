@@ -3111,6 +3111,26 @@ fn parse_exile_numbered_cards_from_graveyard_preserves_choice_count() {
 }
 
 #[test]
+fn render_granted_activated_ability_keeps_tap_symbol() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Brawl Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Until end of turn, all creatures gain \"{T}: This creature deals damage equal to its power to target creature.\"",
+        )
+        .expect("grant-tap-ability clause should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("{T}: this creature deals damage equal to its power to target creature"),
+        "expected granted tap ability to preserve tap symbol, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("gain t this creature deals"),
+        "granted tap ability should not lose the tap symbol: {rendered}"
+    );
+}
+
+#[test]
 fn parse_lose_life_for_each_with_multiplier_uses_scaled_count_value() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Rain of Daggers Variant")
         .card_types(vec![CardType::Sorcery])

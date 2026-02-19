@@ -1734,6 +1734,10 @@ impl StaticAbilityKind for AttachedAbilityGrant {
         Box::new(self.clone())
     }
 
+    fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
+        Some(&self.ability)
+    }
+
     fn generate_effects(
         &self,
         source: ObjectId,
@@ -1788,6 +1792,10 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
         Box::new(self.clone())
+    }
+
+    fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
+        Some(&self.ability)
     }
 
     fn generate_effects(
