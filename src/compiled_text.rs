@@ -295,12 +295,13 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
             .collect::<Vec<_>>()
             .join(" ");
         let name_matches_any_subtype = subtype_words_lower.iter().any(|word| *word == name_lower);
-        let use_name_for_creature = card.is_creature()
-            && !card.name.trim().is_empty()
+        let name_is_distinct = !card.name.trim().is_empty()
             && name_lower != "token"
             && name_lower != subtype_text.to_ascii_lowercase()
             && !name_matches_any_subtype;
-        if use_name_for_creature {
+        let use_name_for_creature = card.is_creature() && name_is_distinct;
+        let use_name_for_noncreature = !card.is_creature() && name_is_distinct;
+        if use_name_for_creature || use_name_for_noncreature {
             parts.push(card.name.clone());
             if !subtype_text.is_empty() {
                 parts.push(subtype_text);

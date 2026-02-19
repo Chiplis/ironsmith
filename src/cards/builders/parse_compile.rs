@@ -4629,12 +4629,53 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         return Some(builder.build());
     }
     if has_word("vehicle") && has_word("artifact") && !words.contains(&"creature") {
-        let mut builder = CardDefinitionBuilder::new(CardId::new(), "Vehicle")
+        let explicit_name_from_words = words.iter().find_map(|word| {
+            if parse_token_pt(word).is_some() {
+                return None;
+            }
+            if !word
+                .chars()
+                .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-')
+            {
+                return None;
+            }
+            if matches!(
+                *word,
+                "artifact"
+                    | "token"
+                    | "tokens"
+                    | "vehicle"
+                    | "colorless"
+                    | "named"
+                    | "with"
+                    | "and"
+                    | "crew"
+                    | "flying"
+                    | "white"
+                    | "blue"
+                    | "black"
+                    | "red"
+                    | "green"
+            ) {
+                return None;
+            }
+            if parse_card_type(word).is_some() || parse_subtype_word(word).is_some() {
+                return None;
+            }
+            Some(title_case_words(&[*word]))
+        });
+        let token_name = extract_named_card_name(&words, lower.as_str())
+            .or(explicit_name_from_words)
+            .unwrap_or_else(|| "Vehicle".to_string());
+        let mut builder = CardDefinitionBuilder::new(CardId::new(), token_name)
             .token()
             .card_types(vec![CardType::Artifact])
             .subtypes(vec![Subtype::Vehicle]);
         if let Some((power, toughness)) = words.iter().find_map(|word| parse_token_pt(word)) {
             builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
+        }
+        if words.contains(&"flying") {
+            builder = builder.flying();
         }
         if let Some(crew_amount) = parse_crew_amount(&words) {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::custom(

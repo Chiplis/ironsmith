@@ -6316,6 +6316,29 @@ fn parse_token_with_banding_keyword_modifier() {
 }
 
 #[test]
+fn parse_named_vehicle_token_with_flying_and_crew() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lita Token Variant")
+        .parse_text(
+            "{3}{W}, {T}: Create a 5/5 colorless Vehicle artifact token named Zeppelin with flying and crew 3.",
+        )
+        .expect("named vehicle token should preserve flying and crew");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("name: \"Zeppelin\""),
+        "expected created token name to be Zeppelin, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("Flying"),
+        "expected created token to keep flying, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("crew 3"),
+        "expected created token crew marker, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_damage_not_removed_during_cleanup_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ancient Adamantoise Variant")
         .parse_text("Damage isn't removed from this creature during cleanup steps.")
