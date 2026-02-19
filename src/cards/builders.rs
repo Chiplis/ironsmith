@@ -4988,6 +4988,48 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_modal_activated_header_with_counter_cost() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Power Conduit Variant")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(
+                "{T}, Remove a counter from a permanent you control: Choose one —\n• Put a charge counter on target artifact.\n• Put a +1/+1 counter on target creature.",
+            )
+            .expect("modal activated header should parse as activated ability");
+
+        let activated = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .expect("expected activated ability");
+        assert!(
+            !def.abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+            "should not produce triggered abilities: {:?}",
+            def.abilities
+        );
+
+        let cost_debug = format!("{:?}", activated.mana_cost);
+        assert!(
+            cost_debug.contains("RemoveAnyCountersAmongCost"),
+            "expected remove-counters-among activation cost, got {cost_debug}"
+        );
+
+        let lines = compiled_lines(&def);
+        let line = lines
+            .iter()
+            .find(|line| line.starts_with("Activated ability"))
+            .expect("expected activated ability rendered line");
+        assert!(
+            line.contains("Remove a counter from a permanent you control"),
+            "expected cost text in activated rendering, got {line}"
+        );
+    }
+
+    #[test]
     fn parse_remove_charge_counter_from_this_artifact_cost() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ox Cart Variant")
             .card_types(vec![CardType::Artifact])

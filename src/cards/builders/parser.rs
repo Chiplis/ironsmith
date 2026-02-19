@@ -7,10 +7,19 @@ struct ModalHeader {
     same_mode_more_than_once: bool,
     commander_allows_both: bool,
     trigger: Option<TriggerSpec>,
+    activated: Option<ModalActivatedHeader>,
     prefix_effects: Vec<Effect>,
     prefix_choices: Vec<ChooseSpec>,
     modal_gate: Option<ModalGate>,
     line_text: String,
+}
+
+#[derive(Clone)]
+struct ModalActivatedHeader {
+    mana_cost: TotalCost,
+    functional_zones: Vec<Zone>,
+    timing: ActivationTiming,
+    additional_restrictions: Vec<String>,
 }
 
 struct PendingModal {
@@ -827,27 +836,60 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
         .any(|window| window == ["same", "mode", "more", "than", "once"]);
 
     let mut trigger = None;
+    let mut activated = None;
     let mut effect_start_idx = 0usize;
-    if let Some(comma_idx) = tokens
+    if let Some(colon_idx) = tokens
         .iter()
-        .position(|token| matches!(token, Token::Comma(_)))
+        .position(|token| matches!(token, Token::Colon(_)))
+        .filter(|idx| *idx < choose_idx)
     {
-        if choose_idx > comma_idx {
-            let start_idx = if tokens.first().is_some_and(|token| {
-                token.is_word("whenever") || token.is_word("when") || token.is_word("at")
-            }) {
-                1
-            } else {
-                0
-            };
-            if comma_idx > start_idx {
-                let trigger_tokens = &tokens[start_idx..comma_idx];
-                if !trigger_tokens.is_empty() {
-                    trigger = Some(parse_trigger_clause(trigger_tokens)?);
-                }
+        let cost_region = &tokens[..colon_idx];
+        if let Some(cost_start) = find_activation_cost_start(cost_region) {
+            let cost_tokens = &cost_region[cost_start..];
+            if !cost_tokens.is_empty() && starts_with_activation_cost(cost_tokens) {
+                let (mana_cost, cost_effects) = parse_activation_cost(cost_tokens)?;
+                let mana_cost = crate::ability::merge_cost_effects(mana_cost, cost_effects);
+
+                let prechoose_tokens = trim_commas(&tokens[colon_idx + 1..choose_idx]).to_vec();
+                let effect_sentences = if prechoose_tokens.is_empty() {
+                    Vec::new()
+                } else {
+                    split_on_period(&prechoose_tokens)
+                };
+                let functional_zones =
+                    infer_activated_functional_zones(cost_tokens, &effect_sentences);
+
+                activated = Some(ModalActivatedHeader {
+                    mana_cost,
+                    functional_zones,
+                    timing: ActivationTiming::AnyTime,
+                    additional_restrictions: Vec::new(),
+                });
+                effect_start_idx = colon_idx + 1;
             }
-            effect_start_idx = comma_idx + 1;
         }
+    }
+
+    if activated.is_none()
+        && let Some(comma_idx) = tokens
+            .iter()
+            .position(|token| matches!(token, Token::Comma(_)))
+        && choose_idx > comma_idx
+    {
+        let start_idx = if tokens.first().is_some_and(|token| {
+            token.is_word("whenever") || token.is_word("when") || token.is_word("at")
+        }) {
+            1
+        } else {
+            0
+        };
+        if comma_idx > start_idx {
+            let trigger_tokens = &tokens[start_idx..comma_idx];
+            if !trigger_tokens.is_empty() {
+                trigger = Some(parse_trigger_clause(trigger_tokens)?);
+            }
+        }
+        effect_start_idx = comma_idx + 1;
     }
 
     let prechoose_tokens = trim_commas(&tokens[effect_start_idx..choose_idx]).to_vec();
@@ -856,6 +898,8 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
         (Vec::new(), Vec::new())
     } else if let Some(trigger_spec) = trigger.as_ref() {
         compile_trigger_effects(Some(trigger_spec), &prefix_effects_ast)?
+    } else if activated.is_some() {
+        compile_trigger_effects(None, &prefix_effects_ast)?
     } else {
         (compile_statement_effects(&prefix_effects_ast)?, Vec::new())
     };
@@ -866,6 +910,7 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
         same_mode_more_than_once,
         commander_allows_both,
         trigger,
+        activated,
         prefix_effects,
         prefix_choices,
         modal_gate,
@@ -1023,6 +1068,7 @@ fn finalize_pending_modal(
         same_mode_more_than_once,
         commander_allows_both,
         trigger,
+        activated,
         prefix_effects,
         prefix_choices,
         modal_gate,
@@ -1096,6 +1142,18 @@ fn finalize_pending_modal(
                 intervening_if: None,
             }),
             functional_zones: vec![Zone::Battlefield],
+            text: Some(line_text),
+        });
+    } else if let Some(activated) = activated {
+        builder = builder.with_ability(Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: activated.mana_cost,
+                effects: combined_effects,
+                choices: prefix_choices,
+                timing: activated.timing,
+                additional_restrictions: activated.additional_restrictions,
+            }),
+            functional_zones: activated.functional_zones,
             text: Some(line_text),
         });
     } else if let Some(ref mut existing) = builder.spell_effect {

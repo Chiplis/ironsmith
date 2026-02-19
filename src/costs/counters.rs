@@ -661,6 +661,14 @@ fn format_counter_type(counter_type: &CounterType) -> &'static str {
 }
 
 fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String {
+    if is_simple_permanent_you_control_filter(filter) {
+        return if plural {
+            "permanents you control".to_string()
+        } else {
+            "a permanent you control".to_string()
+        };
+    }
+
     if is_simple_nonland_permanent_you_control_filter(filter) {
         return if plural {
             "nonland permanents you control".to_string()
@@ -682,6 +690,24 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
     } else {
         format!("a {noun} you control")
     }
+}
+
+fn is_simple_permanent_you_control_filter(filter: &ObjectFilter) -> bool {
+    let base = ObjectFilter::permanent().you_control();
+    if *filter == base {
+        return true;
+    }
+
+    let mut expanded = base;
+    expanded.card_types = vec![
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    *filter == expanded
 }
 
 fn simple_you_controlled_battlefield_card_type(filter: &ObjectFilter) -> Option<CardType> {
@@ -996,6 +1022,15 @@ mod tests {
         let result = cost.pay(&mut game, &mut ctx);
         assert_eq!(result, Ok(CostPaymentResult::Paid));
         assert_eq!(game.counter_count(card_id, CounterType::PlusOnePlusOne), 1);
+    }
+
+    #[test]
+    fn test_remove_any_counters_among_display_permanent_you_control_singular() {
+        let cost = RemoveAnyCountersAmongCost::new(1, ObjectFilter::permanent().you_control());
+        assert_eq!(
+            cost.display(),
+            "Remove a counter from a permanent you control"
+        );
     }
 
     #[test]
