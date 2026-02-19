@@ -18509,11 +18509,12 @@ fn parse_search_library_sentence(
         }
     }
 
-    let destination = if words_all.contains(&"graveyard") {
+    let put_clause_words = words(&search_tokens[put_idx..]);
+    let destination = if put_clause_words.contains(&"graveyard") {
         Zone::Graveyard
-    } else if words_all.contains(&"hand") {
+    } else if put_clause_words.contains(&"hand") {
         Zone::Hand
-    } else if words_all.contains(&"top") && words_all.contains(&"library") {
+    } else if put_clause_words.contains(&"top") {
         Zone::Library
     } else {
         Zone::Battlefield
