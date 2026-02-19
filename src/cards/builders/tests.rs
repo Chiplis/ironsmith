@@ -6587,6 +6587,40 @@ fn parse_gain_choice_of_keywords_clause() {
 }
 
 #[test]
+fn parse_gain_choice_of_three_keywords_clause_compiles_to_mode_choice() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Assassin Initiate Variant")
+        .parse_text("{1}: This creature gains your choice of flying, deathtouch, or lifelink until end of turn.")
+        .expect("three-option gain-choice keyword clause should parse");
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ChooseModeEffect"),
+        "expected three-option keyword grant to compile as a modal choice, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("Flying")
+            && abilities_debug.contains("Deathtouch")
+            && abilities_debug.contains("Lifelink"),
+        "expected all three keyword options to be represented, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_search_same_name_reference_filter_in_graveyard() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Frostpyre Arcanist Variant")
+        .parse_text("When this creature enters, search your library for an instant or sorcery card with the same name as a card in your graveyard, reveal it, put it into your hand, then shuffle.")
+        .expect("same-name reference search clause should parse");
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("SameNameAsTagged"),
+        "expected same-name search to use tagged same-name constraint, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("same_name_reference"),
+        "expected same-name search to tag a reference object, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn parse_alternative_cost_with_return_to_hand_segment() {
     CardDefinitionBuilder::new(CardId::new(), "Borderpost Variant")
         .parse_text("You may pay {1} and return a basic land you control to its owner's hand rather than pay this spell's mana cost.")

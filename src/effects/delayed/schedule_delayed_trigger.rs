@@ -115,6 +115,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                         None
                     },
                     target_objects: vec![snapshot.object_id],
+                    ability_source: None,
                     controller: controller_id,
                 };
                 game.delayed_triggers.push(delayed);
@@ -138,6 +139,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 None
             },
             target_objects: self.target_objects.clone(),
+            ability_source: None,
             controller: controller_id,
         };
 

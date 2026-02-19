@@ -1601,6 +1601,7 @@ impl GameState {
                     {
                         target.attachments.push(new_id);
                     }
+                    self.continuous_effects.record_attachment(new_id);
                 }
             }
         }

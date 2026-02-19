@@ -76,6 +76,7 @@ impl EffectExecutor for AttachObjectsEffect {
             {
                 target_mut.attachments.push(object_id);
             }
+            game.continuous_effects.record_attachment(object_id);
             attached_count += 1;
         }
 

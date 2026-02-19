@@ -50,6 +50,7 @@ impl EffectExecutor for ExileTaggedWhenSourceLeavesEffect {
                 not_before_turn: None,
                 expires_at_turn: None,
                 target_objects: vec![ctx.source],
+                ability_source: None,
                 controller: controller_id,
             };
             game.delayed_triggers.push(delayed);
@@ -63,4 +64,3 @@ impl EffectExecutor for ExileTaggedWhenSourceLeavesEffect {
         Box::new(self.clone())
     }
 }
-

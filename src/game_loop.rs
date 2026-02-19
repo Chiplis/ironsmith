@@ -1160,6 +1160,7 @@ fn resolve_stack_entry_full(
                     {
                         target.attachments.push(result.new_id);
                     }
+                    game.continuous_effects.record_attachment(result.new_id);
                 }
 
                 // Check for ETB triggers and add them to the trigger queue
@@ -8393,6 +8394,7 @@ mod tests {
             not_before_turn: None,
             expires_at_turn: None,
             target_objects: vec![stangg_id],
+            ability_source: None,
             controller: alice,
         });
 
@@ -8466,6 +8468,81 @@ mod tests {
         assert!(
             !game.battlefield.contains(&stangg_id),
             "Stangg should be sacrificed when Stangg Twin leaves the battlefield"
+        );
+    }
+
+    #[test]
+    fn test_stangg_linked_twin_sacrifice_survives_legend_rule_for_other_twin() {
+        use crate::ability::AbilityKind;
+        use crate::cards::CardDefinitionBuilder;
+        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::ids::CardId;
+
+        let mut game = setup_game();
+        let mut trigger_queue = TriggerQueue::new();
+        let alice = PlayerId::from_index(0);
+
+        let oracle = "When Stangg enters, create Stangg Twin, a legendary 3/4 red and green Human Warrior creature token. Exile that token when Stangg leaves the battlefield. Sacrifice Stangg when that token leaves the battlefield.";
+        let def = CardDefinitionBuilder::new(CardId::new(), "Stangg")
+            .parse_text(oracle)
+            .expect("parse stangg text");
+        let etb = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered)
+                    if format!("{:?}", triggered.effects).contains("CreateTokenEffect") =>
+                {
+                    Some(triggered.clone())
+                }
+                _ => None,
+            })
+            .expect("expected stangg ETB trigger");
+
+        let stangg_a = create_creature(&mut game, "Stangg", alice, 3, 4);
+        let stangg_b = create_creature(&mut game, "Stangg", alice, 3, 4);
+
+        for source in [stangg_a, stangg_b] {
+            let mut dm = crate::decision::AutoPassDecisionMaker;
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            for effect in &etb.effects {
+                execute_effect(&mut game, effect, &mut ctx)
+                    .expect("stangg ETB effect should resolve");
+            }
+        }
+
+        let twins_before_sba = game
+            .battlefield
+            .iter()
+            .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Stangg Twin"))
+            .count();
+        assert_eq!(
+            twins_before_sba, 2,
+            "expected two Stangg Twin tokens before legend rule applies"
+        );
+
+        check_and_apply_sbas(&mut game, &mut trigger_queue).expect("apply SBAs");
+
+        let twins_after_sba = game
+            .battlefield
+            .iter()
+            .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Stangg Twin"))
+            .count();
+        assert_eq!(twins_after_sba, 1, "legend rule should keep only one Twin");
+
+        put_triggers_on_stack(&mut game, &mut trigger_queue).expect("queue triggered abilities");
+        while !game.stack_is_empty() {
+            resolve_stack_entry(&mut game).expect("resolve trigger");
+        }
+
+        let stangg_after_resolution = game
+            .battlefield
+            .iter()
+            .filter(|&&id| game.object(id).is_some_and(|obj| obj.name == "Stangg"))
+            .count();
+        assert_eq!(
+            stangg_after_resolution, 1,
+            "only the Stangg linked to the Twin that left should be sacrificed"
         );
     }
 

@@ -238,6 +238,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target }
         | EffectAst::ExileWhenSourceLeaves { target }
+        | EffectAst::SacrificeSourceWhenLeaves { target }
         | EffectAst::ExileUntilSourceLeaves { target }
         | EffectAst::LookAtHand { target }
         | EffectAst::Transform { target }
@@ -253,6 +254,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::PumpForEach { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
         | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
             matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
@@ -286,6 +288,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::PumpAll { filter, .. }
         | EffectAst::UntapAll { filter }
         | EffectAst::GrantAbilitiesAll { filter, .. }
+        | EffectAst::GrantAbilitiesChoiceAll { filter, .. }
         | EffectAst::Enchant { filter }
         | EffectAst::SearchLibrary { filter, .. } => filter
             .tagged_constraints
@@ -606,6 +609,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target }
         | EffectAst::ExileWhenSourceLeaves { target }
+        | EffectAst::SacrificeSourceWhenLeaves { target }
         | EffectAst::ExileUntilSourceLeaves { target }
         | EffectAst::LookAtHand { target }
         | EffectAst::Transform { target }
@@ -621,6 +625,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::PumpForEach { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
         | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
             target_references_tag(target, IT_TAG)
@@ -656,6 +661,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::PumpAll { filter, .. }
         | EffectAst::UntapAll { filter }
         | EffectAst::GrantAbilitiesAll { filter, .. }
+        | EffectAst::GrantAbilitiesChoiceAll { filter, .. }
         | EffectAst::Enchant { filter }
         | EffectAst::SearchLibrary { filter, .. } => filter
             .tagged_constraints
@@ -1009,6 +1015,7 @@ fn collect_tag_spans_from_effect(
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target }
         | EffectAst::ExileWhenSourceLeaves { target }
+        | EffectAst::SacrificeSourceWhenLeaves { target }
         | EffectAst::ExileUntilSourceLeaves { target }
         | EffectAst::LookAtHand { target }
         | EffectAst::Transform { target }
@@ -3089,6 +3096,24 @@ fn compile_effect(
             ));
             Ok((vec![effect], choices))
         }
+        EffectAst::SacrificeSourceWhenLeaves { target } => {
+            let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            let ChooseSpec::Tagged(tag) = spec.base() else {
+                return Err(CardTextError::ParseError(
+                    "cannot compile 'sacrifice this source when ... leaves' without tagged context"
+                        .to_string(),
+                ));
+            };
+            let effect = Effect::new(
+                crate::effects::ScheduleEffectsWhenTaggedLeavesEffect::new(
+                    tag.clone(),
+                    vec![Effect::sacrifice_source()],
+                    PlayerFilter::You,
+                )
+                .with_current_source_as_ability_source(),
+            );
+            Ok((vec![effect], choices))
+        }
         EffectAst::ExileUntilSourceLeaves { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
             let mut effect = Effect::exile_until_source_leaves(spec.clone());
@@ -3753,6 +3778,28 @@ fn compile_effect(
 
             Ok((vec![Effect::new(apply)], Vec::new()))
         }
+        EffectAst::GrantAbilitiesChoiceAll {
+            filter,
+            abilities,
+            duration,
+        } => {
+            if abilities.is_empty() {
+                return Ok((Vec::new(), Vec::new()));
+            }
+            let resolved_filter = resolve_it_tag(filter, ctx)?;
+            let modes = abilities
+                .iter()
+                .map(|ability| EffectMode {
+                    description: String::new(),
+                    effects: vec![Effect::grant_abilities_all(
+                        resolved_filter.clone(),
+                        vec![ability.clone()],
+                        duration.clone(),
+                    )],
+                })
+                .collect::<Vec<_>>();
+            Ok((vec![Effect::choose_one(modes)], Vec::new()))
+        }
         EffectAst::GrantAbilitiesToTarget {
             target,
             abilities,
@@ -3778,6 +3825,36 @@ fn compile_effect(
                 }
 
                 Effect::new(apply)
+            })
+        }
+        EffectAst::GrantAbilitiesChoiceToTarget {
+            target,
+            abilities,
+            duration,
+        } => {
+            if abilities.is_empty() {
+                return compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec))
+                });
+            }
+
+            compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+                let modes = abilities
+                    .iter()
+                    .map(|ability| EffectMode {
+                        description: if matches!(spec, ChooseSpec::Source) {
+                            format!("This creature gains {} until end of turn.", ability.display())
+                        } else {
+                            String::new()
+                        },
+                        effects: vec![Effect::new(crate::effects::GrantAbilitiesTargetEffect::new(
+                            spec.clone(),
+                            vec![ability.clone()],
+                            duration.clone(),
+                        ))],
+                    })
+                    .collect::<Vec<_>>();
+                Effect::choose_one(modes)
             })
         }
         EffectAst::Transform { target } => {

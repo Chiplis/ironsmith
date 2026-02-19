@@ -52,6 +52,15 @@ impl EffectExecutor for AttachToEffect {
             return Ok(EffectOutcome::resolved());
         }
 
+        // Detach from previous parent if needed.
+        let previous_parent = game.object(ctx.source).and_then(|source| source.attached_to);
+        if let Some(previous_parent) = previous_parent
+            && previous_parent != target_id
+            && let Some(parent) = game.object_mut(previous_parent)
+        {
+            parent.attachments.retain(|id| *id != ctx.source);
+        }
+
         // Attach the source to the target
         if let Some(source) = game.object_mut(ctx.source) {
             source.attached_to = Some(target_id);
@@ -62,6 +71,7 @@ impl EffectExecutor for AttachToEffect {
         {
             target.attachments.push(ctx.source);
         }
+        game.continuous_effects.record_attachment(ctx.source);
 
         Ok(EffectOutcome::resolved())
     }

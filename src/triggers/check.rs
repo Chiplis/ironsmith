@@ -56,6 +56,9 @@ pub struct DelayedTrigger {
     pub expires_at_turn: Option<u32>,
     /// Specific objects this trigger targets.
     pub target_objects: Vec<ObjectId>,
+    /// Optional source object to use for the triggered ability when it fires.
+    /// If unset, the watched/target object is used as the source.
+    pub ability_source: Option<ObjectId>,
     /// The controller of this delayed trigger.
     pub controller: PlayerId,
 }
@@ -305,22 +308,33 @@ pub fn check_delayed_triggers(
             }
 
             fired = true;
+            let ability_source = delayed.ability_source.unwrap_or(source);
             let source_stable_id = game
-                .object(source)
+                .object(ability_source)
                 .map(|o| o.stable_id)
                 .or_else(|| {
-                    if trigger_event.object_id() == Some(source) {
+                    game.find_object_by_stable_id(StableId::from(ability_source))
+                        .and_then(|id| game.object(id))
+                        .map(|o| o.stable_id)
+                })
+                .or_else(|| {
+                    if trigger_event.object_id() == Some(ability_source) {
                         trigger_event.snapshot().map(|snapshot| snapshot.stable_id)
                     } else {
                         None
                     }
                 })
-                .unwrap_or_else(|| StableId::from(source));
+                .unwrap_or_else(|| StableId::from(ability_source));
             let source_name = game
-                .object(source)
+                .object(ability_source)
                 .map(|o| o.name.clone())
                 .or_else(|| {
-                    if trigger_event.object_id() == Some(source) {
+                    game.find_object_by_stable_id(source_stable_id)
+                        .and_then(|id| game.object(id))
+                        .map(|o| o.name.clone())
+                })
+                .or_else(|| {
+                    if trigger_event.object_id() == Some(ability_source) {
                         trigger_event
                             .snapshot()
                             .map(|snapshot| snapshot.name.clone())
@@ -331,7 +345,7 @@ pub fn check_delayed_triggers(
                 .unwrap_or_else(|| "Delayed Trigger".to_string());
 
             triggered.push(TriggeredAbilityEntry {
-                source,
+                source: ability_source,
                 controller: delayed.controller,
                 ability: TriggeredAbility {
                     trigger: delayed.trigger.clone(),

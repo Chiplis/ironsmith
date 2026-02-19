@@ -4666,6 +4666,79 @@ fn describe_compact_protection_choice(effect: &Effect) -> Option<String> {
     })
 }
 
+fn describe_compact_keyword_choice(effect: &Effect) -> Option<String> {
+    let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if choose_mode.min_choose_count.is_some()
+        || !matches!(choose_mode.choose_count, Value::Fixed(1))
+        || choose_mode.modes.len() < 2
+    {
+        return None;
+    }
+
+    let mut subject: Option<String> = None;
+    let mut plural_subject = false;
+    let mut abilities = Vec::new();
+
+    for mode in &choose_mode.modes {
+        if mode.effects.len() != 1 {
+            return None;
+        }
+        if let Some(grant_target) = mode.effects[0].downcast_ref::<crate::effects::GrantAbilitiesTargetEffect>() {
+            if !matches!(grant_target.duration, Until::EndOfTurn) || grant_target.abilities.len() != 1 {
+                return None;
+            }
+            let mode_subject = describe_choose_spec(&grant_target.target);
+            if let Some(existing) = &subject {
+                if existing != &mode_subject {
+                    return None;
+                }
+            } else {
+                plural_subject = choose_spec_is_plural(&grant_target.target);
+                subject = Some(mode_subject);
+            }
+            abilities.push(grant_target.abilities[0].display().to_ascii_lowercase());
+            continue;
+        }
+        if let Some(grant_all) = mode.effects[0].downcast_ref::<crate::effects::GrantAbilitiesAllEffect>() {
+            if !grant_all.filter.source
+                || !matches!(grant_all.duration, Until::EndOfTurn)
+                || grant_all.abilities.len() != 1
+            {
+                return None;
+            }
+            let mode_subject = if grant_all.filter.card_types.contains(&CardType::Creature) {
+                "this creature".to_string()
+            } else {
+                "this permanent".to_string()
+            };
+            if let Some(existing) = &subject {
+                if existing != &mode_subject {
+                    return None;
+                }
+            } else {
+                plural_subject = false;
+                subject = Some(mode_subject);
+            }
+            abilities.push(grant_all.abilities[0].display().to_ascii_lowercase());
+            continue;
+        }
+        return None;
+    }
+
+    abilities.sort();
+    abilities.dedup();
+    if abilities.len() < 2 {
+        return None;
+    }
+
+    let subject = subject?;
+    let verb = if plural_subject { "gain" } else { "gains" };
+    let choice_text = join_with_or(&abilities);
+    Some(format!(
+        "{subject} {verb} your choice of {choice_text} until end of turn"
+    ))
+}
+
 fn describe_mana_symbol(symbol: ManaSymbol) -> String {
     match symbol {
         ManaSymbol::White => "{W}".to_string(),
@@ -8873,6 +8946,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Choose {}", describe_choose_spec(&target_only.target));
     }
     if let Some(compact) = describe_compact_protection_choice(effect) {
+        return compact;
+    }
+    if let Some(compact) = describe_compact_keyword_choice(effect) {
         return compact;
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {

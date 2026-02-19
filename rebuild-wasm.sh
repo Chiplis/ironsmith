@@ -81,6 +81,7 @@ if [[ -n "$THRESHOLD" ]]; then
   SAFE_THRESHOLD="${THRESHOLD//./_}"
   RUN_ID="${SAFE_THRESHOLD}_${DIMS}_${TIMESTAMP}"
   MISMATCH_NAMES_FILE="${TMPDIR:-/tmp}/ironsmith_wasm_mismatch_names_${RUN_ID}.txt"
+  FILTERED_SKIP_NAMES_FILE="${TMPDIR:-/tmp}/ironsmith_wasm_skip_names_${RUN_ID}.txt"
   FAILURES_REPORT="${TMPDIR:-/tmp}/ironsmith_wasm_threshold_failures_${RUN_ID}.json"
   CLUSTER_REPORT="${TMPDIR:-/tmp}/ironsmith_wasm_cluster_report_${RUN_ID}.json"
   MISMATCH_REPORT="$REPORTS_DIR/ironsmith_wasm_semantic_mismatch_report_${RUN_ID}.json"
@@ -105,8 +106,42 @@ if [[ -n "$THRESHOLD" ]]; then
   fi
   "${AUDIT_CMD[@]}"
 
-  EXCLUDED_COUNT="$(rg -cve '^\\s*$' "$MISMATCH_NAMES_FILE" 2>/dev/null || true)"
-  export IRONSMITH_GENERATED_REGISTRY_SKIP_NAMES_FILE="$MISMATCH_NAMES_FILE"
+  if [[ -f "$FALSE_POSITIVES_FILE" ]]; then
+    awk '
+      NR == FNR {
+        line = $0
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        if (line == "" || line ~ /^#/) {
+          next
+        }
+        if (line ~ /^Name:/) {
+          sub(/^Name:[[:space:]]*/, "", line)
+          if (line == "") {
+            next
+          }
+        } else if (line ~ /:/) {
+          next
+        }
+        excluded[tolower(line)] = 1
+        next
+      }
+      {
+        line = $0
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        if (line == "") {
+          next
+        }
+        if (!(tolower(line) in excluded)) {
+          print line
+        }
+      }
+    ' "$FALSE_POSITIVES_FILE" "$MISMATCH_NAMES_FILE" > "$FILTERED_SKIP_NAMES_FILE"
+  else
+    cp -f "$MISMATCH_NAMES_FILE" "$FILTERED_SKIP_NAMES_FILE"
+  fi
+
+  EXCLUDED_COUNT="$(rg -cve '^\\s*$' "$FILTERED_SKIP_NAMES_FILE" 2>/dev/null || true)"
+  export IRONSMITH_GENERATED_REGISTRY_SKIP_NAMES_FILE="$FILTERED_SKIP_NAMES_FILE"
   echo "[INFO] semantic gating active: excluding ${EXCLUDED_COUNT} below-threshold card(s)"
   cp -f "$FAILURES_REPORT" "$MISMATCH_REPORT"
   jq --arg ts "$TIMESTAMP" --arg threshold "$THRESHOLD" --arg dims "$DIMS" '

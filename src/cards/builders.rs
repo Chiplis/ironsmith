@@ -761,6 +761,9 @@ enum EffectAst {
     ExileWhenSourceLeaves {
         target: TargetAst,
     },
+    SacrificeSourceWhenLeaves {
+        target: TargetAst,
+    },
     ExileUntilSourceLeaves {
         target: TargetAst,
     },
@@ -891,7 +894,17 @@ enum EffectAst {
         abilities: Vec<StaticAbility>,
         duration: Until,
     },
+    GrantAbilitiesChoiceAll {
+        filter: ObjectFilter,
+        abilities: Vec<StaticAbility>,
+        duration: Until,
+    },
     GrantAbilitiesToTarget {
+        target: TargetAst,
+        abilities: Vec<StaticAbility>,
+        duration: Until,
+    },
+    GrantAbilitiesChoiceToTarget {
         target: TargetAst,
         abilities: Vec<StaticAbility>,
         duration: Until,

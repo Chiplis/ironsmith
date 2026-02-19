@@ -11470,27 +11470,12 @@ fn parse_sentence_sacrifice_source_when_that_token_leaves(
         return None;
     }
 
-    let (created_name, created_player) = last_created_token_info(prior_effects)?;
-    let token_name = linked_token_name_from_create_name(created_name.as_str())?;
-    let mut filter = ObjectFilter::default().token().named(token_name.clone());
-    if let Some(controller) = controller_filter_for_token_player(created_player) {
-        filter.controller = Some(controller);
-    }
+    let (created_name, _created_player) = last_created_token_info(prior_effects)?;
+    let _token_name = linked_token_name_from_create_name(created_name.as_str())?;
 
-    let ability = Ability {
-        kind: AbilityKind::Triggered(TriggeredAbility {
-            trigger: Trigger::leaves_battlefield(filter),
-            effects: vec![Effect::sacrifice_source()],
-            choices: Vec::new(),
-            intervening_if: None,
-        }),
-        functional_zones: vec![Zone::Battlefield],
-        text: Some(format!(
-            "When token named {token_name} leaves the battlefield, sacrifice this source."
-        )),
-    };
-
-    Some(EffectAst::GrantAbilityToSource { ability })
+    Some(EffectAst::SacrificeSourceWhenLeaves {
+        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+    })
 }
 
 fn is_generic_token_reminder_sentence(tokens: &[Token]) -> bool {
@@ -12892,7 +12877,8 @@ fn parse_sentence_put_counter_sequence(
                 for effect in &mut gain_effects {
                     match effect {
                         EffectAst::Pump { target, .. }
-                        | EffectAst::GrantAbilitiesToTarget { target, .. } => {
+                        | EffectAst::GrantAbilitiesToTarget { target, .. }
+                        | EffectAst::GrantAbilitiesChoiceToTarget { target, .. } => {
                             if let TargetAst::Tagged(tag, _) = target
                                 && tag.as_str() == IT_TAG
                             {
@@ -14151,7 +14137,9 @@ fn parse_sentence_pump_creature_type_of_choice(
         let mut patched = false;
         for effect in &mut gain_effects {
             match effect {
-                EffectAst::PumpAll { filter, .. } | EffectAst::GrantAbilitiesAll { filter, .. } => {
+                EffectAst::PumpAll { filter, .. }
+                | EffectAst::GrantAbilitiesAll { filter, .. }
+                | EffectAst::GrantAbilitiesChoiceAll { filter, .. } => {
                     if !filter
                         .tagged_constraints
                         .iter()
@@ -18067,14 +18055,20 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
     }
     let ability_tokens = trim_commas(&tokens[ability_start_token_idx..ability_end_token_idx]);
 
-    let mut abilities = if let Some(actions) = parse_ability_line(&ability_tokens)
-        .or_else(|| parse_choice_of_abilities(&ability_tokens))
-    {
+    let mut grant_is_choice = false;
+    let mut abilities = if let Some(actions) = parse_ability_line(&ability_tokens) {
         reject_unimplemented_keyword_actions(&actions, &words.join(" "))?;
         actions
             .into_iter()
             .filter_map(keyword_action_to_static_ability)
-        .collect::<Vec<_>>()
+            .collect::<Vec<_>>()
+    } else if let Some(actions) = parse_choice_of_abilities(&ability_tokens) {
+        grant_is_choice = true;
+        reject_unimplemented_keyword_actions(&actions, &words.join(" "))?;
+        actions
+            .into_iter()
+            .filter_map(keyword_action_to_static_ability)
+            .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
@@ -18140,11 +18134,19 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
                 duration: duration.clone(),
             });
         }
-        effects.push(EffectAst::GrantAbilitiesToTarget {
-            target,
-            abilities,
-            duration,
-        });
+        if grant_is_choice {
+            effects.push(EffectAst::GrantAbilitiesChoiceToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        } else {
+            effects.push(EffectAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        }
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }
@@ -18162,11 +18164,19 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
                 duration: duration.clone(),
             });
         }
-        effects.push(EffectAst::GrantAbilitiesToTarget {
-            target,
-            abilities,
-            duration,
-        });
+        if grant_is_choice {
+            effects.push(EffectAst::GrantAbilitiesChoiceToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        } else {
+            effects.push(EffectAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        }
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }
@@ -18182,11 +18192,19 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
             });
         }
         let target = parse_target_phrase(&real_subject_tokens)?;
-        effects.push(EffectAst::GrantAbilitiesToTarget {
-            target,
-            abilities,
-            duration,
-        });
+        if grant_is_choice {
+            effects.push(EffectAst::GrantAbilitiesChoiceToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        } else {
+            effects.push(EffectAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+            });
+        }
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }
@@ -18206,11 +18224,19 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
             duration: duration.clone(),
         });
     }
-    effects.push(EffectAst::GrantAbilitiesAll {
-        filter,
-        abilities,
-        duration,
-    });
+    if grant_is_choice {
+        effects.push(EffectAst::GrantAbilitiesChoiceAll {
+            filter,
+            abilities,
+            duration,
+        });
+    } else {
+        effects.push(EffectAst::GrantAbilitiesAll {
+            filter,
+            abilities,
+            duration,
+        });
+    }
     effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
 
     Ok(Some(effects))
@@ -18318,21 +18344,41 @@ fn append_gain_ability_trailing_effects(
 }
 
 fn parse_choice_of_abilities(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
-    let words = words(tokens);
-    if words.len() < 6 || !words.starts_with(&["your", "choice", "of"]) {
+    let tokens = trim_commas(tokens);
+    let words = words(&tokens);
+    let prefix_words = if words.starts_with(&["your", "choice", "of"]) {
+        3usize
+    } else if words.starts_with(&["your", "choice", "from"]) {
+        3usize
+    } else {
+        return None;
+    };
+    if words.len() <= prefix_words + 1 {
         return None;
     }
 
-    let or_idx = words.iter().position(|word| *word == "or")?;
-    if or_idx <= 3 || or_idx + 1 >= words.len() {
+    let start_idx = token_index_for_word_index(&tokens, prefix_words)?;
+    let option_tokens = trim_commas(&tokens[start_idx..]);
+    if option_tokens.is_empty() {
         return None;
     }
 
-    let left = vec![Token::Word(words[3].to_string(), TextSpan::synthetic())];
-    let right = vec![Token::Word(words[or_idx + 1].to_string(), TextSpan::synthetic())];
-    let left_action = parse_ability_phrase(&left)?;
-    let right_action = parse_ability_phrase(&right)?;
-    Some(vec![left_action, right_action])
+    let mut actions = Vec::new();
+    for segment in split_on_or(&option_tokens) {
+        let segment = trim_commas(&segment);
+        if segment.is_empty() {
+            continue;
+        }
+        let action = parse_ability_phrase(&segment)?;
+        if !actions.contains(&action) {
+            actions.push(action);
+        }
+    }
+
+    if actions.len() < 2 {
+        return None;
+    }
+    Some(actions)
 }
 
 fn parse_gain_ability_to_source_sentence(
@@ -18390,6 +18436,52 @@ fn parse_search_library_disjunction_filter(filter_tokens: &[Token]) -> Option<Ob
     let mut filter = ObjectFilter::default();
     filter.any_of = branches;
     Some(filter)
+}
+
+fn split_search_same_name_reference_filter(tokens: &[Token]) -> Option<(Vec<Token>, Vec<Token>)> {
+    let words_all = words(tokens);
+    let (start_word_idx, phrase_len) =
+        if let Some(idx) = words_all
+            .windows(5)
+            .position(|window| window == ["with", "the", "same", "name", "as"])
+        {
+            (idx, 5usize)
+        } else if let Some(idx) = words_all
+            .windows(4)
+            .position(|window| window == ["with", "same", "name", "as"])
+        {
+            (idx, 4usize)
+        } else {
+            return None;
+        };
+
+    let start_token_idx = token_index_for_word_index(tokens, start_word_idx)?;
+    let end_token_idx =
+        token_index_for_word_index(tokens, start_word_idx + phrase_len).unwrap_or(tokens.len());
+    let base_filter_tokens = trim_commas(&tokens[..start_token_idx]);
+    let reference_tokens = trim_commas(&tokens[end_token_idx..]);
+    Some((base_filter_tokens, reference_tokens))
+}
+
+fn is_same_name_that_reference_words(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["that", "card"]
+            | ["that", "cards"]
+            | ["that", "creature"]
+            | ["that", "creatures"]
+            | ["that", "permanent"]
+            | ["that", "permanents"]
+            | ["that", "spell"]
+            | ["that", "spells"]
+            | ["that", "object"]
+            | ["that", "objects"]
+            | ["those", "cards"]
+            | ["those", "creatures"]
+            | ["those", "permanents"]
+            | ["those", "spells"]
+            | ["those", "objects"]
+    )
 }
 
 fn normalize_search_library_filter(filter: &mut ObjectFilter) {
@@ -18542,8 +18634,61 @@ fn parse_search_library_sentence(
         )));
     }
 
-    let filter_tokens = &search_tokens[filter_start..filter_end];
-    let filter_words: Vec<&str> = words(filter_tokens)
+    enum SameNameReference {
+        TaggedIt,
+        Target(TargetAst),
+        Choose { filter: ObjectFilter, tag: TagKey },
+    }
+
+    let raw_filter_tokens = trim_commas(&search_tokens[filter_start..filter_end]);
+    let mut filter_tokens = raw_filter_tokens.clone();
+    let mut same_name_reference: Option<SameNameReference> = None;
+    if let Some((base_filter_tokens, reference_tokens)) =
+        split_search_same_name_reference_filter(&raw_filter_tokens)
+    {
+        if base_filter_tokens.is_empty() || reference_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "incomplete same-name search filter in search-library sentence (clause: '{}')",
+                words_all.join(" ")
+            )));
+        }
+        filter_tokens = base_filter_tokens;
+        let reference_words = words(&reference_tokens);
+        same_name_reference = if is_same_name_that_reference_words(&reference_words) {
+            Some(SameNameReference::TaggedIt)
+        } else if reference_words.iter().any(|word| *word == "target") {
+            let target = parse_target_phrase(&reference_tokens).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported target same-name reference in search-library sentence (clause: '{}')",
+                    words_all.join(" ")
+                ))
+            })?;
+            Some(SameNameReference::Target(target))
+        } else {
+            let mut reference_filter_tokens = reference_tokens.clone();
+            let mut other_reference = false;
+            if reference_filter_tokens
+                .first()
+                .is_some_and(|token| token.is_word("another") || token.is_word("other"))
+            {
+                other_reference = true;
+                reference_filter_tokens = trim_commas(&reference_filter_tokens[1..]);
+            }
+            let reference_filter =
+                parse_object_filter(&reference_filter_tokens, other_reference).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported same-name reference filter in search-library sentence (clause: '{}')",
+                    words_all.join(" ")
+                ))
+            })?;
+            Some(SameNameReference::Choose {
+                filter: reference_filter,
+                tag: TagKey::from("same_name_reference"),
+            })
+        };
+    }
+
+    let filter_words: Vec<&str> = words(&filter_tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -18586,10 +18731,10 @@ fn parse_search_library_sentence(
         && filter_words.contains(&"ability")
         && filter_words.contains(&"or")
     {
-        if let Some(disjunction_filter) = parse_search_library_disjunction_filter(filter_tokens) {
+        if let Some(disjunction_filter) = parse_search_library_disjunction_filter(&filter_tokens) {
             disjunction_filter
         } else {
-            parse_object_filter(filter_tokens, false).map_err(|_| {
+            parse_object_filter(&filter_tokens, false).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported search filter in search-library sentence (clause: '{}')",
                     words_all.join(" ")
@@ -18597,13 +18742,22 @@ fn parse_search_library_sentence(
             })?
         }
     } else {
-        parse_object_filter(filter_tokens, false).map_err(|_| {
+        parse_object_filter(&filter_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported search filter in search-library sentence (clause: '{}')",
                 words_all.join(" ")
             ))
         })?
     };
+    if let Some(same_name_tag) = same_name_reference.as_ref().map(|reference| match reference {
+        SameNameReference::TaggedIt | SameNameReference::Target(_) => TagKey::from(IT_TAG),
+        SameNameReference::Choose { tag, .. } => tag.clone(),
+    }) {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: same_name_tag.clone(),
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+    }
     normalize_search_library_filter(&mut filter);
 
     if words_all.contains(&"mana") && words_all.contains(&"cost") {
@@ -18726,6 +18880,26 @@ fn parse_search_library_sentence(
             if starts_with_life_clause {
                 let trailing_effect = parse_effect_clause(&trailing_tokens)?;
                 effects.push(trailing_effect);
+            }
+        }
+    }
+
+    if let Some(reference) = same_name_reference {
+        match reference {
+            SameNameReference::TaggedIt => {}
+            SameNameReference::Target(target) => {
+                effects.insert(0, EffectAst::TargetOnly { target });
+            }
+            SameNameReference::Choose { filter, tag } => {
+                effects.insert(
+                    0,
+                    EffectAst::ChooseObjects {
+                        filter,
+                        count: ChoiceCount::exactly(1),
+                        player,
+                        tag,
+                    },
+                );
             }
         }
     }

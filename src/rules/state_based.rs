@@ -106,6 +106,9 @@ pub fn check_state_based_actions(game: &GameState) -> Vec<StateBasedAction> {
     // Check permanent state-based actions
     check_permanent_sbas(game, &mut actions);
 
+    // Check Role Aura uniqueness (one Role Aura per controller per permanent)
+    check_role_sbas(game, &mut actions);
+
     // Check token/copy cleanup
     check_token_cleanup(game, &mut actions);
 
@@ -254,6 +257,74 @@ fn check_permanent_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
                 .unwrap_or(0);
             if lore_count >= max_chapter {
                 actions.push(StateBasedAction::SagaSacrifice(obj_id));
+            }
+        }
+    }
+}
+
+/// Check Role Aura uniqueness.
+///
+/// Per MTG rule 704.5y: if a permanent has multiple Role Auras attached that are
+/// controlled by the same player, the one with the most recent timestamp stays
+/// and the others are put into their owners' graveyards.
+fn check_role_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
+    use std::collections::HashMap;
+
+    let mut roles_by_target_and_controller: HashMap<(ObjectId, PlayerId), Vec<ObjectId>> =
+        HashMap::new();
+
+    for &obj_id in &game.battlefield {
+        let Some(obj) = game.object(obj_id) else {
+            continue;
+        };
+        if !game.object_has_card_type(obj_id, CardType::Enchantment) {
+            continue;
+        }
+        let calculated_subtypes = game.calculated_subtypes(obj_id);
+        if !calculated_subtypes.contains(&Subtype::Aura)
+            || !calculated_subtypes.contains(&Subtype::Role)
+        {
+            continue;
+        }
+        let Some(attached_id) = obj.attached_to else {
+            continue;
+        };
+        if game
+            .object(attached_id)
+            .is_none_or(|attached| attached.zone != Zone::Battlefield)
+        {
+            continue;
+        }
+        roles_by_target_and_controller
+            .entry((attached_id, obj.controller))
+            .or_default()
+            .push(obj_id);
+    }
+
+    for (_group, mut roles) in roles_by_target_and_controller {
+        if roles.len() < 2 {
+            continue;
+        }
+
+        roles.sort_by_key(|role_id| {
+            let timestamp = game
+                .continuous_effects
+                .get_attachment_timestamp(*role_id)
+                .or_else(|| game.continuous_effects.get_entry_timestamp(*role_id))
+                .unwrap_or(0);
+            (timestamp, role_id.0)
+        });
+        let keep_role = roles.last().copied();
+
+        for role_id in roles {
+            if Some(role_id) == keep_role {
+                continue;
+            }
+            if !actions
+                .iter()
+                .any(|action| matches!(action, StateBasedAction::AuraFallsOff(id) if *id == role_id))
+            {
+                actions.push(StateBasedAction::AuraFallsOff(role_id));
             }
         }
     }
@@ -613,6 +684,13 @@ mod tests {
     use crate::ids::CardId;
     use crate::types::Subtype;
 
+    fn role_aura_card(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura, Subtype::Role])
+            .build()
+    }
+
     /// Tests that creatures with lethal damage marked die as a state-based action.
     ///
     /// Scenario: Alice controls a Grizzly Bears (2/2) that has taken 2 damage from
@@ -817,6 +895,109 @@ mod tests {
             actions
                 .iter()
                 .any(|a| matches!(a, StateBasedAction::PlaneswalkerDies(id) if *id == pw_id))
+        );
+    }
+
+    #[test]
+    fn test_role_sba_keeps_most_recent_role_for_same_controller() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature_card = CardBuilder::new(CardId::new(), "Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        let role_card = role_aura_card("Wicked Role");
+        let older_role_id = game.create_object_from_card(&role_card, alice, Zone::Battlefield);
+        let newer_role_id = game.create_object_from_card(&role_card, alice, Zone::Battlefield);
+
+        if let Some(role) = game.object_mut(older_role_id) {
+            role.attached_to = Some(creature_id);
+        }
+        if let Some(role) = game.object_mut(newer_role_id) {
+            role.attached_to = Some(creature_id);
+        }
+        if let Some(creature) = game.object_mut(creature_id) {
+            creature.attachments.push(older_role_id);
+            creature.attachments.push(newer_role_id);
+        }
+
+        // Record attachment order so "newest attached Role survives" is deterministic.
+        game.continuous_effects.record_attachment(older_role_id);
+        game.continuous_effects.record_attachment(newer_role_id);
+
+        let actions = check_state_based_actions(&game);
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, StateBasedAction::AuraFallsOff(id) if *id == older_role_id)),
+            "Older Role should be put into graveyard by SBA"
+        );
+        assert!(
+            !actions
+                .iter()
+                .any(|a| matches!(a, StateBasedAction::AuraFallsOff(id) if *id == newer_role_id)),
+            "Most recently attached Role should be kept"
+        );
+
+        apply_state_based_actions(&mut game);
+
+        assert!(
+            game.object(older_role_id).is_none(),
+            "Older Role should have left the battlefield"
+        );
+        assert!(
+            game.object(newer_role_id).is_some(),
+            "Newer Role should remain on the battlefield"
+        );
+        assert_eq!(
+            game.player(alice).expect("Alice exists").graveyard.len(),
+            1,
+            "One Role should be in the graveyard"
+        );
+    }
+
+    #[test]
+    fn test_role_sba_allows_one_role_per_controller_on_same_permanent() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let creature_card = CardBuilder::new(CardId::new(), "Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        let role_card = role_aura_card("Wicked Role");
+        let alice_role_id = game.create_object_from_card(&role_card, alice, Zone::Battlefield);
+        let bob_role_id = game.create_object_from_card(&role_card, bob, Zone::Battlefield);
+
+        if let Some(role) = game.object_mut(alice_role_id) {
+            role.attached_to = Some(creature_id);
+        }
+        if let Some(role) = game.object_mut(bob_role_id) {
+            role.attached_to = Some(creature_id);
+        }
+        if let Some(creature) = game.object_mut(creature_id) {
+            creature.attachments.push(alice_role_id);
+            creature.attachments.push(bob_role_id);
+        }
+
+        let actions = check_state_based_actions(&game);
+        assert!(
+            !actions
+                .iter()
+                .any(|a| matches!(a, StateBasedAction::AuraFallsOff(id) if *id == alice_role_id)),
+            "Alice's Role should remain"
+        );
+        assert!(
+            !actions
+                .iter()
+                .any(|a| matches!(a, StateBasedAction::AuraFallsOff(id) if *id == bob_role_id)),
+            "Bob's Role should remain"
         );
     }
 
