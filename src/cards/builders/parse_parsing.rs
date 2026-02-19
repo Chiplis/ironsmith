@@ -985,6 +985,11 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                             || after_words.starts_with(&[
                                 "that", "objects", "deals", "damage", "equal", "to",
                             ]));
+                let allow_for_each_damage_followup = has_back_ref
+                    && (after_words.starts_with(&["each"])
+                        || after_words.starts_with(&["for", "each"]))
+                    && after_words.iter().any(|word| *word == "deal" || *word == "deals")
+                    && after_words.iter().any(|word| *word == "damage");
                 let allow_return_with_counter_followup =
                     !starts_with_for_each_player_or_opponent
                         && has_back_ref
@@ -1010,6 +1015,9 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                     split_point = Some(i);
                     break;
                 } else if has_effect_head && allow_deal_damage_equal_power_followup {
+                    split_point = Some(i);
+                    break;
+                } else if has_effect_head && allow_for_each_damage_followup {
                     split_point = Some(i);
                     break;
                 } else if has_effect_head && allow_return_with_counter_followup {
@@ -13929,6 +13937,69 @@ fn parse_sentence_return_multiple_targets(
     Ok(Some(effects))
 }
 
+fn parse_sentence_for_each_of_target_objects(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if !(clause_words.starts_with(&["for", "each"]) || clause_words.first() == Some(&"each")) {
+        return Ok(None);
+    }
+
+    let Some(comma_idx) = tokens
+        .iter()
+        .position(|token| matches!(token, Token::Comma(_)))
+    else {
+        return Ok(None);
+    };
+    if comma_idx == 0 || comma_idx + 1 >= tokens.len() {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[..comma_idx]);
+    let Some((mut filter, count)) = parse_for_each_targeted_object_subject(&subject_tokens)? else {
+        return Ok(None);
+    };
+    if filter.zone == Some(Zone::Battlefield)
+        && filter.controller.is_none()
+        && filter.tagged_constraints.is_empty()
+    {
+        // Keep this unrestricted to avoid implicit "you control" defaulting in ChooseObjects
+        // compilation for plain "target permanent(s)" clauses.
+        filter.controller = Some(PlayerFilter::Any);
+    }
+
+    let effect_tokens = trim_commas(&tokens[comma_idx + 1..]);
+    if effect_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing effect after for-each target subject (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let mut per_target_effects = parse_effect_chain(&effect_tokens)?;
+    for effect in &mut per_target_effects {
+        bind_implicit_player_context(effect, PlayerAst::You);
+    }
+    if per_target_effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "for-each target follow-up produced no effects (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter,
+            count,
+            player: PlayerAst::Implicit,
+            tag: TagKey::from(IT_TAG),
+        },
+        EffectAst::ForEachTagged {
+            tag: TagKey::from(IT_TAG),
+            effects: per_target_effects,
+        },
+    ]))
+}
+
 fn parse_distribute_counters_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.first().copied() != Some("distribute") {
@@ -14666,6 +14737,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "return-multiple-targets",
         parser: parse_sentence_return_multiple_targets,
+    },
+    SentencePrimitive {
+        name: "for-each-of-target-objects",
+        parser: parse_sentence_for_each_of_target_objects,
     },
     SentencePrimitive {
         name: "return-creature-type-of-choice",
@@ -19484,6 +19559,30 @@ fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPredicate> {
     if words.len() >= 2 && words[0] == "they" && words[1] == "do" {
         return Some(IfResultPredicate::Did);
     }
+    if words.len() >= 4
+        && words[0] == "you"
+        && matches!(
+            words[1],
+            "remove" | "removed" | "sacrifice" | "sacrificed" | "discard" | "discarded"
+                | "exile" | "exiled"
+        )
+        && words[words.len() - 2] == "this"
+        && words[words.len() - 1] == "way"
+    {
+        return Some(IfResultPredicate::Did);
+    }
+    if words.len() >= 4
+        && words[0] == "they"
+        && matches!(
+            words[1],
+            "remove" | "removed" | "sacrifice" | "sacrificed" | "discard" | "discarded"
+                | "exile" | "exiled"
+        )
+        && words[words.len() - 2] == "this"
+        && words[words.len() - 1] == "way"
+    {
+        return Some(IfResultPredicate::Did);
+    }
 
     if words.len() >= 5
         && (words[0] == "that" || words[0] == "it")
@@ -20523,6 +20622,22 @@ fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
             player: effect_player,
             ..
         }
+        | EffectAst::CreateToken {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::CreateTokenCopy {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::CreateTokenCopyFromSource {
+            player: effect_player,
+            ..
+        }
+        | EffectAst::CreateTokenWithMods {
+            player: effect_player,
+            ..
+        }
         | EffectAst::CopySpell {
             player: effect_player,
             ..
@@ -21356,7 +21471,22 @@ fn parse_for_each_object_subject(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let filter_words = words(filter_tokens);
+    let mut normalized_filter_tokens: Vec<Token> = filter_tokens.to_vec();
+    if let Some(attached_idx) = filter_tokens.iter().position(|token| token.is_word("attached"))
+        && filter_tokens
+            .get(attached_idx + 1)
+            .is_some_and(|token| token.is_word("to"))
+        && attached_idx > 0
+    {
+        let attached_tail_words = words(&filter_tokens[attached_idx + 2..]);
+        let attached_to_creature = attached_tail_words.starts_with(&["creature"])
+            || attached_tail_words.starts_with(&["a", "creature"]);
+        if attached_to_creature {
+            normalized_filter_tokens = trim_commas(&filter_tokens[..attached_idx]);
+        }
+    }
+
+    let filter_words = words(&normalized_filter_tokens);
     if filter_words.is_empty() {
         return Ok(None);
     }
@@ -21374,7 +21504,48 @@ fn parse_for_each_object_subject(
         return Ok(None);
     }
 
-    Ok(Some(parse_object_filter(filter_tokens, false)?))
+    Ok(Some(parse_object_filter(&normalized_filter_tokens, false)?))
+}
+
+fn parse_for_each_targeted_object_subject(
+    subject_tokens: &[Token],
+) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let subject_words = words(subject_tokens);
+    if subject_words.is_empty() {
+        return Ok(None);
+    }
+
+    let mut target_tokens = if subject_words.starts_with(&["for", "each"]) {
+        &subject_tokens[2..]
+    } else if subject_words.first() == Some(&"each") {
+        &subject_tokens[1..]
+    } else {
+        return Ok(None);
+    };
+    if target_tokens
+        .first()
+        .is_some_and(|token| token.is_word("of"))
+    {
+        target_tokens = &target_tokens[1..];
+    }
+    if target_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let target = match parse_target_phrase(target_tokens) {
+        Ok(target) => target,
+        Err(_) => return Ok(None),
+    };
+    let TargetAst::WithCount(inner, count) = target else {
+        return Ok(None);
+    };
+    let TargetAst::Object(filter, _, _) = *inner else {
+        return Ok(None);
+    };
+    Ok(Some((filter, count)))
 }
 
 fn has_demonstrative_object_reference(words: &[&str]) -> bool {
@@ -27752,6 +27923,20 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         filter.source = true;
     }
 
+    if let Some(its_attached_idx) = all_words
+        .windows(3)
+        .position(|window| window == ["its", "attached", "to"])
+    {
+        // Oracle often writes "the creature it's attached to"; tokenizer
+        // normalization yields "its attached to", so restore the object-link
+        // form parse_object_filter already understands.
+        let mut normalized = Vec::with_capacity(all_words.len() + 1);
+        normalized.extend_from_slice(&all_words[..its_attached_idx]);
+        normalized.extend(["attached", "to", "it"]);
+        normalized.extend_from_slice(&all_words[its_attached_idx + 3..]);
+        all_words = normalized;
+    }
+
     if let Some(attached_idx) = all_words.iter().position(|word| *word == "attached")
         && all_words.get(attached_idx + 1) == Some(&"to")
     {
@@ -27992,6 +28177,12 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     let contains_unqualified_spell_word = all_words.iter().enumerate().any(|(idx, word)| {
         matches!(*word, "spell" | "spells") && !is_tagged_spell_reference_at(idx)
     });
+    let mentions_ability_word = all_words
+        .iter()
+        .any(|word| matches!(*word, "ability" | "abilities"));
+    if contains_unqualified_spell_word && !mentions_ability_word {
+        filter.has_mana_cost = true;
+    }
 
     if all_words.len() >= 2 {
         for window in all_words.windows(2) {

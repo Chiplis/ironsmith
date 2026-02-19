@@ -2653,6 +2653,23 @@ fn compile_effect(
             player,
             mana,
         } => {
+            if effects.len() == 1
+                && let EffectAst::ForEachObject {
+                    filter,
+                    effects: per_object_effects,
+                } = &effects[0]
+            {
+                let rewritten = EffectAst::ForEachObject {
+                    filter: filter.clone(),
+                    effects: vec![EffectAst::UnlessPays {
+                        effects: per_object_effects.clone(),
+                        player: *player,
+                        mana: mana.clone(),
+                    }],
+                };
+                return compile_effect(&rewritten, ctx);
+            }
+
             let previous_last_player_filter = ctx.last_player_filter.clone();
             let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
             let player_filter =
@@ -2668,6 +2685,23 @@ fn compile_effect(
             alternative,
             player,
         } => {
+            if effects.len() == 1
+                && let EffectAst::ForEachObject {
+                    filter,
+                    effects: per_object_effects,
+                } = &effects[0]
+            {
+                let rewritten = EffectAst::ForEachObject {
+                    filter: filter.clone(),
+                    effects: vec![EffectAst::UnlessAction {
+                        effects: per_object_effects.clone(),
+                        alternative: alternative.clone(),
+                        player: *player,
+                    }],
+                };
+                return compile_effect(&rewritten, ctx);
+            }
+
             let previous_last_player_filter = ctx.last_player_filter.clone();
             let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
             let (alt_effects, alt_choices) = compile_effects(alternative, ctx)?;
@@ -2718,7 +2752,14 @@ fn compile_effect(
         }
         EffectAst::ForEachObject { filter, effects } => {
             let resolved_filter = resolve_it_tag(filter, ctx)?;
-            let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
+            let (inner_effects, inner_choices) = with_preserved_compile_context(
+                ctx,
+                |ctx| {
+                    ctx.last_effect_id = None;
+                    ctx.last_object_tag = Some(IT_TAG.to_string());
+                },
+                |ctx| compile_effects(effects, ctx),
+            )?;
             let effect = Effect::for_each(resolved_filter, inner_effects);
             Ok((vec![effect], inner_choices))
         }

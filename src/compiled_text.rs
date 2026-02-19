@@ -3769,13 +3769,46 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     subject
 }
 
+fn describe_demonstrative_tagged_object_spec(spec: &ChooseSpec) -> Option<String> {
+    let ChooseSpec::Object(filter) = spec else {
+        return None;
+    };
+    let has_it_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == "__it__"
+    });
+    if !has_it_tag {
+        return None;
+    }
+
+    let mut base = filter.clone();
+    base.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == "__it__")
+    });
+
+    let base_desc = strip_leading_article(&base.description())
+        .trim()
+        .to_string();
+    if base_desc.is_empty() {
+        Some("that object".to_string())
+    } else {
+        Some(format!("that {base_desc}"))
+    }
+}
+
 fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
         ChooseSpec::Target(inner) => {
+            if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
+                return tagged_text;
+            }
             let inner_text = describe_choose_spec(inner);
             if inner_text == "it" {
                 inner_text
             } else if inner_text.starts_with("this ") {
+                inner_text
+            } else if inner_text.starts_with("that ") || inner_text.starts_with("those ") {
                 inner_text
             } else if inner_text.starts_with("target ") {
                 inner_text
@@ -4020,8 +4053,16 @@ fn describe_card_choice_count(count: ChoiceCount) -> String {
 fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> String {
     match spec {
         ChooseSpec::Target(inner) => {
+            if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
+                return tagged_text;
+            }
             let inner_text = describe_choose_spec_without_graveyard_zone(inner);
             if inner_text == "it" {
+                inner_text
+            } else if inner_text.starts_with("this ")
+                || inner_text.starts_with("that ")
+                || inner_text.starts_with("those ")
+            {
                 inner_text
             } else if inner_text.starts_with("target ") {
                 inner_text
@@ -5321,6 +5362,17 @@ fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(for_each) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) = describe_choose_then_for_each_copy(choose, for_each)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(for_each) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
         {
             let shuffle = filtered
                 .get(idx + 2)
@@ -6156,6 +6208,50 @@ fn describe_choose_then_destroy(
         with_indefinite_article(&description)
     };
     Some(format!("{chooser} {choose_verb} {chosen}. Destroy it"))
+}
+
+fn describe_choose_then_for_each_copy(
+    choose: &crate::effects::ChooseObjectsEffect,
+    for_each: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    if choose.is_search || choose.count.is_single() {
+        return None;
+    }
+    if for_each.tag != choose.tag || for_each.effects.len() != 1 {
+        return None;
+    }
+    let create_copy =
+        for_each.effects[0].downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    if !matches!(create_copy.target, ChooseSpec::Tagged(ref tag) if tag == &choose.tag) {
+        return None;
+    }
+    if create_copy.controller != PlayerFilter::You
+        || create_copy.enters_tapped
+        || create_copy.has_haste
+        || create_copy.enters_attacking
+        || create_copy.exile_at_end_of_combat
+        || create_copy.sacrifice_at_next_end_step
+        || create_copy.exile_at_next_end_step
+        || create_copy.pt_adjustment.is_some()
+        || !create_copy.added_card_types.is_empty()
+        || !create_copy.added_subtypes.is_empty()
+        || !create_copy.removed_supertypes.is_empty()
+        || create_copy.set_base_power_toughness.is_some()
+        || create_copy.set_colors.is_some()
+        || create_copy.set_card_types.is_some()
+        || create_copy.set_subtypes.is_some()
+        || !create_copy.granted_static_abilities.is_empty()
+    {
+        return None;
+    }
+
+    let selected = describe_choose_spec(
+        &ChooseSpec::target(ChooseSpec::Object(choose.filter.clone())).with_count(choose.count),
+    );
+    Some(format!(
+        "For each of {selected}, create {} tokens that are copies of that permanent",
+        describe_value(&create_copy.count)
+    ))
 }
 
 fn describe_choose_then_cant_block(
@@ -7210,25 +7306,45 @@ fn describe_put_or_remove_counter_mode(
 
     let mut put_mode: Option<(&crate::effects::PutCountersEffect, String)> = None;
     let mut remove_mode: Option<(&crate::effects::RemoveCountersEffect, String)> = None;
+    let mut remove_followup_mode: Option<crate::effects::ChooseModeEffect> = None;
 
     for mode in &choose_mode.modes {
-        if mode.effects.len() != 1 {
-            return None;
-        }
         let description = if mode.description.trim().is_empty() {
             describe_effect_list(&mode.effects)
         } else {
             mode.description.trim().to_string()
         };
-        let effect = &mode.effects[0];
-        if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
-            put_mode = Some((put, description));
-            continue;
+        if mode.effects.len() == 1 {
+            let effect = &mode.effects[0];
+            if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+                put_mode = Some((put, description));
+                continue;
+            }
+            if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>() {
+                remove_mode = Some((remove, description));
+                continue;
+            }
+            return None;
         }
-        if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>() {
+
+        if mode.effects.len() == 2
+            && let Some(with_id) = mode.effects[0].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(remove) = with_id
+                .effect
+                .downcast_ref::<crate::effects::RemoveCountersEffect>()
+            && let Some(if_effect) = mode.effects[1].downcast_ref::<crate::effects::IfEffect>()
+            && if_effect.condition == with_id.id
+            && matches!(if_effect.predicate, EffectPredicate::Happened)
+            && if_effect.else_.is_empty()
+            && if_effect.then.len() == 1
+            && let Some(followup_choose) =
+                if_effect.then[0].downcast_ref::<crate::effects::ChooseModeEffect>()
+        {
             remove_mode = Some((remove, description));
+            remove_followup_mode = Some(followup_choose.clone());
             continue;
         }
+
         return None;
     }
 
@@ -7240,10 +7356,19 @@ fn describe_put_or_remove_counter_mode(
 
     let put_clause = put_description.trim().trim_end_matches('.');
     let remove_clause = lowercase_first(remove_description.trim().trim_end_matches('.'));
-    if !put_clause.to_ascii_lowercase().starts_with("put ")
-        || !remove_clause.starts_with("remove ")
+    if !put_clause.to_ascii_lowercase().starts_with("put ") || !remove_clause.starts_with("remove ")
     {
         return None;
+    }
+
+    if let Some(followup_choose) = remove_followup_mode {
+        let followup_text = describe_effect(&Effect::new(followup_choose));
+        let followup_clause = lowercase_first(followup_text.trim());
+        let removed_counter =
+            describe_put_counter_phrase(&remove_effect.count, remove_effect.counter_type);
+        return Some(format!(
+            "{put_clause} or {remove_clause}. When you remove {removed_counter} this way, {followup_clause}"
+        ));
     }
 
     Some(format!("{put_clause} or {remove_clause}"))
@@ -7586,6 +7711,25 @@ fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
         let inner_text = describe_effect_list(&unless_action.effects);
+        if unless_action.alternative.len() == 1
+            && let Some(lose_life) =
+                unless_action.alternative[0].downcast_ref::<crate::effects::LoseLifeEffect>()
+            && let ChooseSpec::Player(alternative_player) = &lose_life.player
+            && *alternative_player == unless_action.player
+        {
+            let payer = match alternative_player {
+                PlayerFilter::Any => "any player".to_string(),
+                _ => describe_player_filter(alternative_player),
+            };
+            let pay_verb = player_verb(&payer, "pay", "pays");
+            return format!(
+                "{} unless {} {} {} life",
+                inner_text,
+                payer,
+                pay_verb,
+                describe_value(&lose_life.amount)
+            );
+        }
         let alt_text = describe_effect_list(&unless_action.alternative);
         let player = describe_player_filter(&unless_action.player);
         let unless_clause = if alt_text == player || alt_text.starts_with(&format!("{player} ")) {
@@ -7628,6 +7772,13 @@ fn describe_effect_impl(effect: &Effect) -> String {
             "Put {} on {}",
             describe_put_counter_phrase(&put_counters.count, put_counters.counter_type),
             target
+        );
+    }
+    if let Some(remove_counters) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>() {
+        return format!(
+            "Remove {} from {}",
+            describe_put_counter_phrase(&remove_counters.count, remove_counters.counter_type),
+            describe_choose_spec(&remove_counters.target)
         );
     }
     if let Some(move_counters) = effect.downcast_ref::<crate::effects::MoveAllCountersEffect>() {
@@ -8390,10 +8541,53 @@ fn describe_effect_impl(effect: &Effect) -> String {
             .modes
             .iter()
             .map(|mode| {
-                let description = ensure_trailing_period(mode.description.trim());
+                let description_raw = mode.description.trim();
+                let description = ensure_trailing_period(description_raw);
                 let mode_effects = describe_effect_list(&mode.effects);
                 if !description.trim().is_empty() {
-                    description
+                    let mode_effects_trimmed = mode_effects.trim();
+                    if mode_effects_trimmed.is_empty() {
+                        return description;
+                    }
+
+                    let effects_lower = mode_effects_trimmed.to_ascii_lowercase();
+                    let description_lower = description_raw.to_ascii_lowercase();
+                    let has_followup = (effects_lower.contains("if you do")
+                        || effects_lower.contains("if they do")
+                        || effects_lower.contains("choose one")
+                        || effects_lower.contains("choose one or"))
+                        && !description_lower.contains("if you do")
+                        && !description_lower.contains("if they do")
+                        && !description_lower.contains("choose one");
+
+                    if !has_followup {
+                        return description;
+                    }
+
+                    let mut followup = mode_effects_trimmed.to_string();
+                    if let Some((_, tail)) = followup.split_once(". ") {
+                        followup = tail.trim().to_string();
+                    } else if let Some((_, tail)) = followup.split_once('.') {
+                        followup = tail.trim().to_string();
+                    }
+                    let description_head = description.trim_end_matches('.');
+                    if followup.is_empty() {
+                        if let Some(stripped) = mode_effects_trimmed.strip_prefix(description_head)
+                        {
+                            followup = stripped.trim_start_matches('.').trim().to_string();
+                        } else {
+                            followup = mode_effects_trimmed.to_string();
+                        }
+                    }
+                    if followup.is_empty() {
+                        description
+                    } else {
+                        format!(
+                            "{} {}",
+                            description_head,
+                            ensure_trailing_period(followup.trim())
+                        )
+                    }
                 } else {
                     ensure_trailing_period(mode_effects.trim())
                 }
@@ -8482,7 +8676,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
             Value::Fixed(1) => format!("Create a token that's a copy of {target}"),
             Value::Fixed(n) => format!("Create {n} tokens that are copies of {target}"),
             _ => format!(
-                "Create {} token copy/copies of {target}",
+                "Create {} tokens that are copies of {target}",
                 describe_value(&create_copy.count)
             ),
         };

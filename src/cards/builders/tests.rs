@@ -7904,6 +7904,97 @@ fn parse_when_you_do_followup_clause_as_result_conditional() {
 }
 
 #[test]
+fn parse_modal_trigger_header_keeps_prefix_effect_and_result_gate() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Immard Variant")
+        .parse_text(
+            "Whenever this creature enters or attacks, put a charge counter on it or remove one from it. When you remove a counter this way, choose one —\n• This creature deals 4 damage to any target.\n• This creature gains lifelink and indestructible until end of turn.",
+        )
+        .expect("modal triggered header should keep prefix effect and conditional gate");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("PutCountersEffect")
+            && abilities_debug.contains("RemoveCountersEffect"),
+        "expected put/remove counters effect before modal branch, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("IfEffect") && abilities_debug.contains("ChooseModeEffect"),
+        "expected modal branch to be gated by prior effect result, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("put a charge counter on it or remove one from it"),
+        "expected put/remove prefix wording to remain, got {rendered}"
+    );
+    assert!(
+        (rendered.contains("if you do") || rendered.contains("when you remove"))
+            && rendered.contains("choose one"),
+        "expected conditional choose-one followup wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_aura_barbs_attached_target_contraction_keeps_second_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Aura Barbs Variant")
+        .parse_text(
+            "Each enchantment deals 2 damage to its controller, then each Aura attached to a creature deals 2 damage to the creature it's attached to.",
+        )
+        .expect("attached-target contraction should parse");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.matches("ForEachObject").count() >= 2,
+        "expected both for-each damage clauses, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("AttachedToTaggedObject"),
+        "expected second clause target to stay linked to attached object, got {spell_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("for each aura"),
+        "expected rendered text to keep aura damage clause, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_for_each_of_x_target_permanents_builds_choose_then_for_each_tagged() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Doppelgang Variant")
+        .parse_text(
+            "For each of X target permanents, create X tokens that are copies of that permanent.",
+        )
+        .expect("for-each of X target permanents should parse");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ChooseObjectsEffect"),
+        "expected explicit target choice effect, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("dynamic_x: true"),
+        "expected dynamic X target count, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ForEachTaggedEffect"),
+        "expected per-target iteration over chosen objects, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("CreateTokenCopyEffect"),
+        "expected token copy follow-up effect, got {spell_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered
+            .to_ascii_lowercase()
+            .contains("for each of x target permanents"),
+        "expected rendered text to keep 'for each of X target permanents', got {rendered}"
+    );
+}
+
+#[test]
 fn parse_nonhistoric_filter_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Historic Filter Variant")
         .parse_text("Return each nonland permanent that's not historic to its owner's hand.")

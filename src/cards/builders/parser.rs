@@ -7,12 +7,21 @@ struct ModalHeader {
     same_mode_more_than_once: bool,
     commander_allows_both: bool,
     trigger: Option<TriggerSpec>,
+    prefix_effects: Vec<Effect>,
+    prefix_choices: Vec<ChooseSpec>,
+    modal_gate: Option<ModalGate>,
     line_text: String,
 }
 
 struct PendingModal {
     header: ModalHeader,
     modes: Vec<EffectMode>,
+}
+
+#[derive(Clone)]
+struct ModalGate {
+    predicate: EffectPredicate,
+    remove_mode_only: bool,
 }
 
 #[derive(Default)]
@@ -818,6 +827,7 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
         .any(|window| window == ["same", "mode", "more", "than", "once"]);
 
     let mut trigger = None;
+    let mut effect_start_idx = 0usize;
     if let Some(comma_idx) = tokens
         .iter()
         .position(|token| matches!(token, Token::Comma(_)))
@@ -836,8 +846,19 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
                     trigger = Some(parse_trigger_clause(trigger_tokens)?);
                 }
             }
+            effect_start_idx = comma_idx + 1;
         }
     }
+
+    let prechoose_tokens = trim_commas(&tokens[effect_start_idx..choose_idx]).to_vec();
+    let (prefix_effects_ast, modal_gate) = parse_modal_header_prefix_effects(&prechoose_tokens)?;
+    let (prefix_effects, prefix_choices) = if prefix_effects_ast.is_empty() {
+        (Vec::new(), Vec::new())
+    } else if let Some(trigger_spec) = trigger.as_ref() {
+        compile_trigger_effects(Some(trigger_spec), &prefix_effects_ast)?
+    } else {
+        (compile_statement_effects(&prefix_effects_ast)?, Vec::new())
+    };
 
     Ok(Some(ModalHeader {
         min,
@@ -845,8 +866,146 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
         same_mode_more_than_once,
         commander_allows_both,
         trigger,
+        prefix_effects,
+        prefix_choices,
+        modal_gate,
         line_text: info.raw_line.clone(),
     }))
+}
+
+fn parse_modal_header_prefix_effects(
+    tokens: &[Token],
+) -> Result<(Vec<EffectAst>, Option<ModalGate>), CardTextError> {
+    if tokens.is_empty() {
+        return Ok((Vec::new(), None));
+    }
+
+    let (prefix_tokens, modal_gate) = strip_trailing_modal_gate_clause(tokens);
+    if prefix_tokens.is_empty() {
+        return Ok((Vec::new(), modal_gate));
+    }
+
+    let effects = parse_effect_sentences(&prefix_tokens)?;
+    if effects.is_empty() {
+        return Err(CardTextError::ParseError(
+            "modal header prefix produced no effects".to_string(),
+        ));
+    }
+
+    Ok((effects, modal_gate))
+}
+
+fn strip_trailing_modal_gate_clause(tokens: &[Token]) -> (Vec<Token>, Option<ModalGate>) {
+    let sentence_start = tokens
+        .iter()
+        .rposition(|token| matches!(token, Token::Period(_)))
+        .map(|idx| idx + 1)
+        .unwrap_or(0);
+    let sentence_tokens = trim_commas(&tokens[sentence_start..]);
+    if sentence_tokens.is_empty() {
+        return (tokens.to_vec(), None);
+    }
+    if !sentence_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if") || token.is_word("when"))
+    {
+        return (tokens.to_vec(), None);
+    }
+
+    let comma_idx = sentence_tokens
+        .iter()
+        .position(|token| matches!(token, Token::Comma(_)))
+        .unwrap_or(sentence_tokens.len());
+    if comma_idx <= 1 {
+        return (tokens.to_vec(), None);
+    }
+
+    let predicate_tokens = &sentence_tokens[1..comma_idx];
+    let Some(predicate) = parse_if_result_predicate(predicate_tokens) else {
+        return (tokens.to_vec(), None);
+    };
+
+    let trailing_tokens = if comma_idx < sentence_tokens.len() {
+        trim_commas(&sentence_tokens[comma_idx + 1..])
+    } else {
+        Vec::new()
+    };
+    if !trailing_tokens.is_empty() {
+        return (tokens.to_vec(), None);
+    }
+
+    let mut prefix_tokens = tokens[..sentence_start].to_vec();
+    while matches!(prefix_tokens.last(), Some(Token::Comma(_))) {
+        prefix_tokens.pop();
+    }
+
+    let effect_predicate = match predicate {
+        IfResultPredicate::Did => EffectPredicate::Happened,
+        IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
+        IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
+    };
+    let predicate_words = words(predicate_tokens);
+    let remove_mode_only = predicate_words.len() >= 2
+        && matches!(predicate_words[0], "you" | "they")
+        && matches!(predicate_words[1], "remove" | "removed");
+
+    (
+        prefix_tokens,
+        Some(ModalGate {
+            predicate: effect_predicate,
+            remove_mode_only,
+        }),
+    )
+}
+
+fn try_merge_modal_into_remove_mode(
+    effects: &mut Vec<Effect>,
+    modal_effect: Effect,
+    predicate: EffectPredicate,
+) -> bool {
+    let Some(last_effect) = effects.pop() else {
+        return false;
+    };
+
+    let Some(choose_mode) = last_effect.downcast_ref::<crate::effects::ChooseModeEffect>() else {
+        effects.push(last_effect);
+        return false;
+    };
+    if choose_mode.modes.len() < 2 {
+        effects.push(last_effect);
+        return false;
+    }
+
+    let Some(remove_mode_idx) = choose_mode
+        .modes
+        .iter()
+        .position(|mode| mode.description.to_ascii_lowercase().starts_with("remove "))
+    else {
+        effects.push(last_effect);
+        return false;
+    };
+
+    let mut modes = choose_mode.modes.clone();
+    let remove_mode = &mut modes[remove_mode_idx];
+    let gate_id = EffectId(1_000_000_000);
+    if let Some(last_remove_effect) = remove_mode.effects.pop() {
+        remove_mode
+            .effects
+            .push(Effect::with_id(gate_id.0, last_remove_effect));
+        remove_mode
+            .effects
+            .push(Effect::if_then(gate_id, predicate, vec![modal_effect]));
+    } else {
+        remove_mode.effects.push(modal_effect);
+    }
+
+    effects.push(Effect::new(crate::effects::ChooseModeEffect {
+        modes,
+        choose_count: choose_mode.choose_count.clone(),
+        min_choose_count: choose_mode.min_choose_count.clone(),
+        allow_repeated_modes: choose_mode.allow_repeated_modes,
+    }));
+    true
 }
 
 fn finalize_pending_modal(
@@ -857,16 +1016,28 @@ fn finalize_pending_modal(
         return builder;
     };
 
-    let modes = pending.modes;
+    let PendingModal { header, modes } = pending;
+    let ModalHeader {
+        min: header_min,
+        max: header_max,
+        same_mode_more_than_once,
+        commander_allows_both,
+        trigger,
+        prefix_effects,
+        prefix_choices,
+        modal_gate,
+        line_text,
+    } = header;
+
     if modes.is_empty() {
         return builder;
     }
 
     let mode_count = modes.len() as u32;
-    let max = pending.header.max.unwrap_or(mode_count).min(mode_count);
-    let min = pending.header.min.min(max);
+    let max = header_max.unwrap_or(mode_count).min(mode_count);
+    let min = header_min.min(max);
 
-    let modal_effect = if pending.header.commander_allows_both {
+    let modal_effect = if commander_allows_both {
         let max_both = mode_count.min(2).max(1);
         let choose_both = if max_both == 1 {
             Effect::choose_one(modes.clone())
@@ -879,7 +1050,7 @@ fn finalize_pending_modal(
             vec![choose_both],
             vec![choose_one],
         )
-    } else if pending.header.same_mode_more_than_once && min == max {
+    } else if same_mode_more_than_once && min == max {
         Effect::choose_exactly_allow_repeated_modes(max, modes)
     } else if min == 1 && max == 1 {
         Effect::choose_one(modes)
@@ -889,22 +1060,48 @@ fn finalize_pending_modal(
         Effect::choose_up_to(max, min, modes)
     };
 
-    if let Some(trigger) = pending.header.trigger {
+    let mut combined_effects = prefix_effects;
+    if let Some(modal_gate) = modal_gate {
+        if modal_gate.remove_mode_only
+            && try_merge_modal_into_remove_mode(
+                &mut combined_effects,
+                modal_effect.clone(),
+                modal_gate.predicate.clone(),
+            )
+        {
+            // Modal branch fused directly into the remove mode.
+        } else if let Some(last_effect) = combined_effects.pop() {
+            // Use an out-of-band effect id so modal gating does not collide with parser-assigned ids.
+            let gate_id = EffectId(1_000_000_000);
+            combined_effects.push(Effect::with_id(gate_id.0, last_effect));
+            combined_effects.push(Effect::if_then(
+                gate_id,
+                modal_gate.predicate,
+                vec![modal_effect],
+            ));
+        } else {
+            combined_effects.push(modal_effect);
+        }
+    } else {
+        combined_effects.push(modal_effect);
+    }
+
+    if let Some(trigger) = trigger {
         let compiled_trigger = compile_trigger_spec(trigger);
         builder = builder.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: compiled_trigger,
-                effects: vec![modal_effect],
-                choices: Vec::new(),
+                effects: combined_effects,
+                choices: prefix_choices,
                 intervening_if: None,
             }),
             functional_zones: vec![Zone::Battlefield],
-            text: Some(pending.header.line_text),
+            text: Some(line_text),
         });
     } else if let Some(ref mut existing) = builder.spell_effect {
-        existing.push(modal_effect);
+        existing.extend(combined_effects);
     } else {
-        builder.spell_effect = Some(vec![modal_effect]);
+        builder.spell_effect = Some(combined_effects);
     }
 
     builder

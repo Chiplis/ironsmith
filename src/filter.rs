@@ -612,6 +612,7 @@ impl ObjectFilter {
     pub fn spell() -> Self {
         Self {
             zone: Some(Zone::Stack),
+            has_mana_cost: true,
             ..Default::default()
         }
     }
@@ -2397,7 +2398,13 @@ impl ObjectFilter {
             } else {
                 match self.zone {
                     Some(Zone::Battlefield) | None => "permanent",
-                    Some(Zone::Stack) => "spell",
+                    Some(Zone::Stack) => {
+                        if self.has_mana_cost {
+                            "spell"
+                        } else {
+                            "spell or ability"
+                        }
+                    }
                     Some(Zone::Graveyard)
                     | Some(Zone::Hand)
                     | Some(Zone::Library)
