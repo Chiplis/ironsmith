@@ -85,8 +85,10 @@ Immerwolf
 Inspired Charge
 Inspiring Refrain
 Intangible Virtue
+Jeska, Warrior Adept
 Killing Wave
 Kiss of the Amesha
+Kamahl, Pit Fighter
 Knight of Old Benalia
 Landslide
 Legion Lieutenant
@@ -139,6 +141,7 @@ Solidarity
 Solitary Study // Endless Corridor
 Somberwald Beastmaster
 Spidersilk Armor
+Staff of Nin
 Stangg
 Steadfastness
 Sticky Fingers
