@@ -29660,6 +29660,8 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     let mut saw_subtype = false;
     let mut negated_word_indices = std::collections::HashSet::new();
     let mut negated_historic_indices = std::collections::HashSet::new();
+    let is_text_negation_word =
+        |word: &str| matches!(word, "not" | "isnt" | "isn't" | "arent" | "aren't");
     for idx in 0..all_words.len().saturating_sub(1) {
         if all_words[idx] != "non" {
             continue;
@@ -29699,6 +29701,54 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             negated_word_indices.insert(idx + 1);
         }
     }
+    for idx in 0..all_words.len() {
+        if !is_text_negation_word(all_words[idx]) {
+            continue;
+        }
+        let mut target_idx = idx + 1;
+        if target_idx >= all_words.len() {
+            continue;
+        }
+        if is_article(all_words[target_idx]) {
+            target_idx += 1;
+            if target_idx >= all_words.len() {
+                continue;
+            }
+        }
+
+        let negated_word = all_words[target_idx];
+        if negated_word == "historic" {
+            filter.nonhistoric = true;
+            negated_historic_indices.insert(target_idx);
+        }
+        if negated_word == "commander" || negated_word == "commanders" {
+            filter.noncommander = true;
+            negated_word_indices.insert(target_idx);
+        }
+        if let Some(card_type) = parse_card_type(negated_word)
+            && !filter.excluded_card_types.contains(&card_type)
+        {
+            filter.excluded_card_types.push(card_type);
+            negated_word_indices.insert(target_idx);
+        }
+        if let Some(supertype) = parse_supertype_word(negated_word)
+            && !filter.excluded_supertypes.contains(&supertype)
+        {
+            filter.excluded_supertypes.push(supertype);
+            negated_word_indices.insert(target_idx);
+        }
+        if let Some(color) = parse_color(negated_word) {
+            filter.excluded_colors = filter.excluded_colors.union(color);
+            negated_word_indices.insert(target_idx);
+        }
+        if let Some(subtype) = parse_subtype_word(negated_word)
+            .or_else(|| negated_word.strip_suffix('s').and_then(parse_subtype_word))
+            && !filter.excluded_subtypes.contains(&subtype)
+        {
+            filter.excluded_subtypes.push(subtype);
+            negated_word_indices.insert(target_idx);
+        }
+    }
     for idx in 0..all_words.len().saturating_sub(1) {
         if all_words[idx] == "not" && all_words[idx + 1] == "historic" {
             filter.nonhistoric = true;
@@ -29727,8 +29777,8 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             "commander" | "commanders" => {
                 let prev = idx.checked_sub(1).and_then(|i| all_words.get(i)).copied();
                 let prev2 = idx.checked_sub(2).and_then(|i| all_words.get(i)).copied();
-                let negated_by_phrase = matches!(prev, Some("not" | "isnt"))
-                    || (prev.is_some_and(is_article) && matches!(prev2, Some("not" | "isnt")));
+                let negated_by_phrase = prev.is_some_and(is_text_negation_word)
+                    || (prev.is_some_and(is_article) && prev2.is_some_and(is_text_negation_word));
                 if is_negated_word || negated_by_phrase {
                     filter.noncommander = true;
                 } else {

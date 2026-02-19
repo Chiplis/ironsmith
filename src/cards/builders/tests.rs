@@ -8379,6 +8379,21 @@ fn parse_nonhistoric_filter_clause() {
 }
 
 #[test]
+fn parse_isnt_subtype_filter_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Heliod Filter Variant")
+        .parse_text(
+            "When this creature enters, return target enchantment card that isn't a God from your graveyard to your hand.",
+        )
+        .expect("subtype negation filter should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("not god"),
+        "expected negated subtype wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_same_name_damage_fanout_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Homing Lightning")
         .parse_text(
