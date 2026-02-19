@@ -19809,6 +19809,7 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "thopter" => Some(Subtype::Thopter),
         "thrull" => Some(Subtype::Thrull),
         "tiefling" => Some(Subtype::Tiefling),
+        "tentacle" | "tentacles" => Some(Subtype::Tentacle),
         "toy" => Some(Subtype::Toy),
         "treefolk" => Some(Subtype::Treefolk),
         "triskelavite" | "triskelavites" => Some(Subtype::Triskelavite),

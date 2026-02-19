@@ -201,6 +201,7 @@ pub enum Subtype {
     Thopter,
     Thrull,
     Tiefling,
+    Tentacle,
     Toy,
     Treefolk,
     Triskelavite,
@@ -471,6 +472,7 @@ impl Subtype {
                 | Subtype::Thopter
                 | Subtype::Thrull
                 | Subtype::Tiefling
+                | Subtype::Tentacle
                 | Subtype::Toy
                 | Subtype::Treefolk
                 | Subtype::Triskelavite
