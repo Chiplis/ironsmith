@@ -19747,6 +19747,7 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "mutant" => Some(Subtype::Mutant),
         "myr" => Some(Subtype::Myr),
         "naga" => Some(Subtype::Naga),
+        "necron" | "necrons" => Some(Subtype::Necron),
         "nightmare" => Some(Subtype::Nightmare),
         "ninja" => Some(Subtype::Ninja),
         "noble" => Some(Subtype::Noble),

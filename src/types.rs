@@ -139,6 +139,7 @@ pub enum Subtype {
     Mutant,
     Myr,
     Naga,
+    Necron,
     Nightmare,
     Ninja,
     Noble,
@@ -412,6 +413,7 @@ impl Subtype {
                 | Subtype::Mutant
                 | Subtype::Myr
                 | Subtype::Naga
+                | Subtype::Necron
                 | Subtype::Nightmare
                 | Subtype::Ninja
                 | Subtype::Noble
