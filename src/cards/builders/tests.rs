@@ -9168,6 +9168,40 @@ fn parse_one_or_more_trigger_subject_does_not_split_on_or() {
         abilities_debug.contains("DealsCombatDamageToPlayerTrigger"),
         "expected combat-damage-to-player trigger, got {abilities_debug}"
     );
+    assert!(
+        abilities_debug.contains("face_down: Some(true)"),
+        "expected face-down qualifier to be preserved on trigger subject filter, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_face_down_target_filter_for_destroy_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nosy Goblin Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}, Sacrifice this creature: Destroy target face-down creature.")
+        .expect("face-down target destroy ability should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("destroy target face-down creature"),
+        "expected face-down target qualifier in compiled text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_face_down_static_anthem_filter() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Secret Plans Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Face-down creatures you control get +0/+1.\nWhenever a permanent you control is turned face up, draw a card.",
+        )
+        .expect("face-down anthem line should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("face-down creatures you control get +0/+1"),
+        "expected face-down qualifier preserved on anthem, got {rendered}"
+    );
 }
 
 #[test]

@@ -461,6 +461,9 @@ pub struct ObjectFilter {
     /// If true, must be a nontoken
     pub nontoken: bool,
 
+    /// If set, require face-down (true) or face-up (false) permanents.
+    pub face_down: Option<bool>,
+
     /// If true, must be "another" (not the source)
     pub other: bool,
 
@@ -782,6 +785,18 @@ impl ObjectFilter {
     /// Require the object to be a nontoken.
     pub fn nontoken(mut self) -> Self {
         self.nontoken = true;
+        self
+    }
+
+    /// Require the object to be face down.
+    pub fn face_down(mut self) -> Self {
+        self.face_down = Some(true);
+        self
+    }
+
+    /// Require the object to be face up.
+    pub fn face_up(mut self) -> Self {
+        self.face_down = Some(false);
         self
     }
 
@@ -1262,6 +1277,11 @@ impl ObjectFilter {
             return false;
         }
         if self.nontoken && object.kind == ObjectKind::Token {
+            return false;
+        }
+        if let Some(require_face_down) = self.face_down
+            && game.is_face_down(object.id) != require_face_down
+        {
             return false;
         }
 
@@ -1785,6 +1805,11 @@ impl ObjectFilter {
         if self.nontoken && snapshot.is_token {
             return false;
         }
+        if let Some(require_face_down) = self.face_down
+            && snapshot.face_down != require_face_down
+        {
+            return false;
+        }
 
         // "Other" check (not the source)
         if self.other
@@ -2202,6 +2227,13 @@ impl ObjectFilter {
         // Handle token/nontoken
         if self.nontoken {
             parts.push("nontoken".to_string());
+        }
+        if let Some(face_down) = self.face_down {
+            parts.push(if face_down {
+                "face-down".to_string()
+            } else {
+                "face-up".to_string()
+            });
         }
         if let Some(colors) = self.colors {
             let mut color_words = Vec::new();
@@ -3163,6 +3195,52 @@ mod tests {
     fn test_filter_description_includes_tapped_state() {
         let filter = ObjectFilter::creature().tapped();
         assert_eq!(filter.description(), "tapped creature");
+    }
+
+    #[test]
+    fn test_filter_description_includes_face_down_state() {
+        let filter = ObjectFilter::creature().face_down();
+        assert_eq!(filter.description(), "face-down creature");
+    }
+
+    #[test]
+    fn test_filter_matches_face_down_state() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::game_state::GameState;
+        use crate::ids::CardId;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let controller = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(1), "Face-Down Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let object_id = game.create_object_from_card(&card, controller, Zone::Battlefield);
+
+        let ctx = FilterContext::new(controller).with_source(object_id);
+        let face_down_filter = ObjectFilter::creature().face_down();
+        let face_up_filter = ObjectFilter::creature().face_up();
+
+        let object = game.object(object_id).expect("created object should exist");
+        assert!(
+            face_up_filter.matches(object, &ctx, &game),
+            "face-up filter should match by default"
+        );
+        assert!(
+            !face_down_filter.matches(object, &ctx, &game),
+            "face-down filter should not match a face-up object"
+        );
+
+        game.set_face_down(object_id);
+        let object = game.object(object_id).expect("created object should exist");
+        assert!(
+            face_down_filter.matches(object, &ctx, &game),
+            "face-down filter should match after object is set face down"
+        );
+        assert!(
+            !face_up_filter.matches(object, &ctx, &game),
+            "face-up filter should not match a face-down object"
+        );
     }
 
     #[test]

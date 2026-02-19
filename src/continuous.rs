@@ -2355,6 +2355,11 @@ fn filter_matches_with_controller(
     if filter.nontoken && object.kind == crate::object::ObjectKind::Token {
         return false;
     }
+    if let Some(require_face_down) = filter.face_down
+        && game.is_face_down(object.id) != require_face_down
+    {
+        return false;
+    }
 
     let is_tapped = game.is_tapped(object.id);
     if filter.tapped && !is_tapped {

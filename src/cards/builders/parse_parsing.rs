@@ -28146,6 +28146,33 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         all_words.drain(idx..idx + 6);
     }
 
+    let mut face_state_idx = 0usize;
+    while face_state_idx < all_words.len() {
+        if matches!(all_words[face_state_idx], "face-down" | "facedown") {
+            filter.face_down = Some(true);
+            all_words.remove(face_state_idx);
+            continue;
+        }
+        if matches!(all_words[face_state_idx], "face-up" | "faceup") {
+            filter.face_down = Some(false);
+            all_words.remove(face_state_idx);
+            continue;
+        }
+        if face_state_idx + 1 < all_words.len() && all_words[face_state_idx] == "face" {
+            if all_words[face_state_idx + 1] == "down" {
+                filter.face_down = Some(true);
+                all_words.drain(face_state_idx..face_state_idx + 2);
+                continue;
+            }
+            if all_words[face_state_idx + 1] == "up" {
+                filter.face_down = Some(false);
+                all_words.drain(face_state_idx..face_state_idx + 2);
+                continue;
+            }
+        }
+        face_state_idx += 1;
+    }
+
     if all_words
         .windows(3)
         .any(|window| window == ["entered", "this", "turn"])
@@ -28160,15 +28187,6 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     }) {
         return Err(CardTextError::ParseError(format!(
             "unsupported counter-state object filter (clause: '{}')",
-            all_words.join(" ")
-        )));
-    }
-    if all_words
-        .iter()
-        .any(|word| *word == "face-down" || *word == "facedown")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported face-down object filter (clause: '{}')",
             all_words.join(" ")
         )));
     }
@@ -29202,6 +29220,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         || filter.other
         || filter.token
         || filter.nontoken
+        || filter.face_down.is_some()
         || filter.tapped
         || filter.untapped
         || filter.attacking
@@ -29250,6 +29269,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         || filter.zone.is_some()
         || filter.token
         || filter.nontoken
+        || filter.face_down.is_some()
         || filter.tapped
         || filter.untapped
         || filter.attacking
