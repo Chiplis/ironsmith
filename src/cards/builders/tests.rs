@@ -2386,6 +2386,32 @@ fn test_parse_trigger_when_this_creature_is_turned_face_up() {
 }
 
 #[test]
+fn test_parse_trigger_when_face_down_permanent_is_turned_face_up() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sumala Trigger Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever a face-down permanent you control is turned face up, put a +1/+1 counter on it and a +1/+1 counter on this creature.",
+        )
+        .expect("parse filtered turned-face-up trigger line");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("PermanentTurnedFaceUpTrigger"),
+        "expected filtered turned-face-up trigger matcher, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("unimplemented_trigger"),
+        "expected no custom-trigger fallback for turned-face-up filter, got {abilities_debug}"
+    );
+
+    let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        compiled.contains("whenever a face-down permanent you control is turned face up"),
+        "expected turned-face-up trigger text to preserve face-down filter, got {compiled}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_this_or_another_enchantment_enters() {
     let tokens = tokenize_line("this creature or another enchantment you control enters", 0);
     let trigger = parse_trigger_clause(&tokens).expect("parse constellation-style trigger");

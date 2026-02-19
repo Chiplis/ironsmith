@@ -530,6 +530,11 @@ impl Trigger {
         ))
     }
 
+    /// Create a "when [filter] is turned face up" trigger.
+    pub fn turned_face_up(filter: ObjectFilter) -> Self {
+        Self::new(PermanentTurnedFaceUpTrigger::new(filter))
+    }
+
     /// Create a "whenever players finish voting" trigger.
     ///
     /// This is represented as a keyword-action trigger on "vote".

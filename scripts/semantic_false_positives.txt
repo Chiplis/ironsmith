@@ -43,6 +43,7 @@ Fires of Yavimaya
 Flowstone Surge
 Flamerush Rider
 Fortifying Provisions
+Fugitive Codebreaker
 Gaea's Anthem
 Gate to Phyrexia
 Glorious Anthem
@@ -102,6 +103,7 @@ Spidersilk Armor
 Steadfastness
 Sticky Fingers
 Strategic Betrayal
+Sumala Sentry
 Temur Ascendancy
 Thunderhead Gunner
 Tormod's Crypt

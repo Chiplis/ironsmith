@@ -10588,6 +10588,16 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         return Ok(TriggerSpec::ThisTurnedFaceUp);
     }
 
+    if words.ends_with(&["is", "turned", "face", "up"])
+        || words.ends_with(&["are", "turned", "face", "up"])
+    {
+        let subject_tokens = &tokens[..tokens.len().saturating_sub(4)];
+        return Ok(match parse_trigger_subject_filter(subject_tokens)? {
+            Some(filter) => TriggerSpec::TurnedFaceUp(filter),
+            None => TriggerSpec::ThisTurnedFaceUp,
+        });
+    }
+
     if words.as_slice()
         == [
             "this", "creature", "becomes", "the", "target", "of", "a", "spell", "or", "ability",

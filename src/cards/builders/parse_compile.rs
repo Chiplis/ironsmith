@@ -16,6 +16,7 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::ThisBecomesUntapped => Trigger::becomes_untapped(),
         TriggerSpec::ThisTurnedFaceUp => Trigger::this_is_turned_face_up(),
+        TriggerSpec::TurnedFaceUp(filter) => Trigger::turned_face_up(filter),
         TriggerSpec::ThisBecomesTargeted => Trigger::becomes_targeted(),
         TriggerSpec::ThisDealsDamage => Trigger::this_deals_damage(),
         TriggerSpec::ThisDealsDamageToPlayer { player, amount } => {

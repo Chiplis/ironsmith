@@ -195,6 +195,7 @@ enum TriggerSpec {
     ThisBecomesTapped,
     ThisBecomesUntapped,
     ThisTurnedFaceUp,
+    TurnedFaceUp(ObjectFilter),
     ThisBecomesTargeted,
     ThisDealsDamage,
     ThisDealsDamageToPlayer {

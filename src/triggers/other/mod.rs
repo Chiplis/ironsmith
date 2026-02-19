@@ -6,6 +6,7 @@ mod each_players_turn;
 mod event_kind;
 mod keyword_action;
 mod permanent_becomes_tapped;
+mod permanent_turned_face_up;
 mod player_sacrifices;
 mod transforms;
 
@@ -15,5 +16,6 @@ pub use each_players_turn::EachPlayersTurnTrigger;
 pub use event_kind::{EventKindTrigger, ThisEventObjectTrigger};
 pub use keyword_action::KeywordActionTrigger;
 pub use permanent_becomes_tapped::PermanentBecomesTappedTrigger;
+pub use permanent_turned_face_up::PermanentTurnedFaceUpTrigger;
 pub use player_sacrifices::PlayerSacrificesTrigger;
 pub use transforms::TransformsTrigger;
