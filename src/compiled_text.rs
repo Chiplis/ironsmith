@@ -5753,6 +5753,7 @@ fn cleanup_decompiled_text(text: &str) -> String {
         ("you gets", "you get"),
         ("you puts", "you put"),
         ("a artifact", "an artifact"),
+        ("a Assassin", "an Assassin"),
         ("a another", "another"),
         ("a enchantment", "an enchantment"),
         ("a untapped", "an untapped"),
@@ -9461,6 +9462,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 trigger_text.push_str(" this turn");
             }
         }
+        trigger_text = cleanup_decompiled_text(&trigger_text);
         let trigger_lower = trigger_text.to_ascii_lowercase();
         let delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
         if schedule.one_shot
@@ -11447,6 +11449,13 @@ fn rewrite_return_with_counters_on_it_sequence(text: &str) -> Option<String> {
     }
 
     let mut return_clause = clauses.first()?.to_string();
+    let mut chapter_prefix = String::new();
+    if let Some((prefix, rest)) = return_clause.split_once("— ")
+        && rest.trim_start().starts_with("Return ")
+    {
+        chapter_prefix = format!("{} — ", prefix.trim_end());
+        return_clause = rest.trim_start().to_string();
+    }
     if !return_clause.starts_with("Return ") || !return_clause.contains(" to the battlefield") {
         return None;
     }
@@ -11469,10 +11478,15 @@ fn rewrite_return_with_counters_on_it_sequence(text: &str) -> Option<String> {
             "Return target permanent card from your graveyard to the battlefield".to_string();
     }
 
-    Some(format!(
+    let rewritten = format!(
         "{return_clause} with {} on it.",
         join_with_and(&counter_descriptions)
-    ))
+    );
+    if chapter_prefix.is_empty() {
+        Some(rewritten)
+    } else {
+        Some(format!("{chapter_prefix}{rewritten}"))
+    }
 }
 
 fn chapter_number_to_roman(chapter: u32) -> Option<&'static str> {
@@ -19995,6 +20009,30 @@ mod tests {
         assert_eq!(
             normalized,
             "Exile target creature. At the beginning of the next end step, return that card to the battlefield under its owner's control with a +1/+1 counter on it."
+        );
+
+        let normalized = normalize_compiled_post_pass_effect(
+            "Return target Assassin creature card from your graveyard to the battlefield. Put a +1/+1 counter on it.",
+        );
+        assert_eq!(
+            normalized,
+            "Return target Assassin creature card from your graveyard to the battlefield with a +1/+1 counter on it."
+        );
+
+        let normalized = normalize_compiled_post_pass_effect(
+            "III — Return target Assassin creature card from your graveyard to the battlefield. Put a +1/+1 counter on it.",
+        );
+        assert_eq!(
+            normalized,
+            "III — Return target Assassin creature card from your graveyard to the battlefield with a +1/+1 counter on it."
+        );
+
+        let normalized = normalize_compiled_post_pass_effect(
+            "Whenever a Assassin you control attacks this turn, put a +1/+1 counter on it.",
+        );
+        assert_eq!(
+            normalized,
+            "Whenever an Assassin you control attacks this turn, put a +1/+1 counter on it."
         );
 
         let normalized = normalize_compiled_post_pass_effect(
