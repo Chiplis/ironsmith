@@ -10725,15 +10725,21 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         let subject_words = &words[..sacrifice_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
             let mut filter_tokens = &tokens[sacrifice_idx + 1..];
+            let mut other = false;
             if filter_tokens
                 .first()
                 .is_some_and(|token| token.is_word("another") || token.is_word("other"))
             {
+                other = true;
                 filter_tokens = &filter_tokens[1..];
             }
 
             let filter = if filter_tokens.is_empty() {
-                ObjectFilter::permanent()
+                let mut filter = ObjectFilter::permanent();
+                if other {
+                    filter.other = true;
+                }
+                filter
             } else if filter_tokens
                 .first()
                 .is_some_and(|token| token.is_word("this") || token.is_word("it"))
@@ -10754,7 +10760,7 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
                 }
                 filter
             } else {
-                parse_object_filter(filter_tokens, false).map_err(|_| {
+                parse_object_filter(filter_tokens, other).map_err(|_| {
                     CardTextError::ParseError(format!(
                         "unsupported sacrifice trigger filter (clause: '{}')",
                         words.join(" ")

@@ -9259,6 +9259,28 @@ fn parse_you_and_attacking_player_each_draw_and_lose_sentence() {
 }
 
 #[test]
+fn parse_player_sacrifices_trigger_preserves_another_qualifier() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Furnace Celebration Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever you sacrifice another permanent, you may pay {2}. If you do, this enchantment deals 2 damage to any target.",
+        )
+        .expect("player-sacrifices trigger with another qualifier should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("other: true"),
+        "expected sacrifice trigger filter to keep 'another' qualifier, got {abilities_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("sacrifice another permanent"),
+        "expected rendered trigger to preserve 'another permanent', got {rendered}"
+    );
+}
+
+#[test]
 fn parse_rhystic_lightning_unless_payment_then_reduced_damage() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rhystic Lightning Variant")
         .card_types(vec![CardType::Instant])
