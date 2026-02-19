@@ -48,6 +48,7 @@ End the Festivities
 Erdwal Illuminator
 Essence Feed
 Ethereal Guidance
+Evin, Waterdeep Opportunist
 Fabrication Module
 Fade Away
 Festering March
@@ -97,8 +98,11 @@ Mirror Mockery
 Mox Tantalite
 Mutilate
 Narcolepsy
+Necrotic Sliver
+No Witnesses
 Nova Cleric
 Ogre Slumlord
+Opaline Sliver
 Ozox, the Clattering King
 Path of Anger's Flame
 Phantom General
