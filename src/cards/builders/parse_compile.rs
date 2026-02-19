@@ -2507,13 +2507,30 @@ fn compile_effect(
             count,
             player,
             random,
-        } => compile_player_effect(
-            *player,
-            ctx,
-            true,
-            || Effect::discard_player(count.clone(), PlayerFilter::You, *random),
-            |filter| Effect::discard_player(count.clone(), filter, *random),
-        ),
+            filter,
+        } => {
+            let (resolved_player, choices) =
+                resolve_effect_player_filter(*player, ctx, true, false, true)?;
+            let resolved_filter = if let Some(filter) = filter {
+                let mut resolved = resolve_it_tag(filter, ctx)?;
+                if resolved.zone.is_none() {
+                    resolved.zone = Some(Zone::Hand);
+                }
+                if resolved.owner.is_none() {
+                    resolved.owner = Some(resolved_player.clone());
+                }
+                Some(resolved)
+            } else {
+                None
+            };
+            let effect = Effect::discard_player_filtered(
+                count.clone(),
+                resolved_player,
+                *random,
+                resolved_filter,
+            );
+            Ok((vec![effect], choices))
+        }
         EffectAst::Connive { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
             let effect = Effect::connive(spec.clone());

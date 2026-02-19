@@ -14804,10 +14804,13 @@ fn try_build_unless(
         }
     }
 
-    // Try action-based alternative: "unless you [verb] [object]"
-    // Both the main effects and the alternative must parse successfully.
-    if let Ok(alternative) = parse_effect_chain(after_unless) {
+    // Try full-clause parsing first to preserve existing behavior for explicit
+    // player phrasing such as "unless that player ...".
+    if let Ok(mut alternative) = parse_effect_chain(after_unless) {
         if !alternative.is_empty() {
+            for effect in &mut alternative {
+                bind_implicit_player_context(effect, player);
+            }
             return Ok(Some(EffectAst::UnlessAction {
                 effects,
                 alternative,
@@ -25143,24 +25146,40 @@ fn parse_discard(
     })?;
 
     let rest = &tokens[used..];
-    if rest
-        .first()
-        .and_then(Token::as_word)
-        .is_some_and(|word| word != "card" && word != "cards")
-    {
+    let rest_words = words(rest);
+    let Some(card_word_idx) = rest_words
+        .iter()
+        .position(|word| *word == "card" || *word == "cards")
+    else {
         return Err(CardTextError::ParseError(
             "missing card keyword".to_string(),
         ));
+    };
+
+    let card_token_idx = token_index_for_word_index(rest, card_word_idx).unwrap_or(rest.len());
+    let qualifier_tokens = trim_commas(&rest[..card_token_idx]);
+    let mut discard_filter = None;
+    if !qualifier_tokens.is_empty() {
+        let mut filter = parse_object_filter(&qualifier_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported discard card qualifier (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        filter.zone = Some(Zone::Hand);
+        discard_filter = Some(filter);
     }
 
-    let rest_words = words(rest);
-    let trailing = if rest_words.len() > 1 {
-        &rest_words[1..]
+    let trailing_tokens = if card_word_idx + 1 < rest_words.len() {
+        let trailing_token_idx =
+            token_index_for_word_index(rest, card_word_idx + 1).unwrap_or(rest.len());
+        &rest[trailing_token_idx..]
     } else {
-        &[][..]
+        &[]
     };
-    let random = trailing == ["at", "random"];
-    if !trailing.is_empty() && !random {
+    let trailing_words = words(trailing_tokens);
+    let random = trailing_words.as_slice() == ["at", "random"];
+    if !trailing_words.is_empty() && !random {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing discard clause (clause: '{}')",
             clause_words.join(" ")
@@ -25171,6 +25190,7 @@ fn parse_discard(
         count,
         player,
         random,
+        filter: discard_filter,
     })
 }
 

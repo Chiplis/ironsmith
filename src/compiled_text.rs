@@ -3710,6 +3710,53 @@ fn describe_card_count(value: &Value) -> String {
     }
 }
 
+fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter>) -> String {
+    let Some(filter) = filter else {
+        return describe_card_count(value);
+    };
+
+    let card_phrase = describe_discard_card_phrase(filter);
+    let plural_card_phrase = pluralize_discard_card_phrase(&card_phrase);
+    match value {
+        Value::Fixed(1) => format!("a {card_phrase}"),
+        Value::Fixed(n) => format!("{n} {plural_card_phrase}"),
+        _ => {
+            if let Some(backref) = describe_effect_count_backref(value) {
+                format!("{backref} {plural_card_phrase}")
+            } else {
+                format!("{} {plural_card_phrase}", describe_value(value))
+            }
+        }
+    }
+}
+
+fn describe_discard_card_phrase(filter: &ObjectFilter) -> String {
+    let mut bare = filter.clone();
+    bare.zone = None;
+    bare.controller = None;
+    bare.owner = None;
+    bare.targets_player = None;
+    bare.targets_object = None;
+    bare.tagged_constraints.clear();
+
+    let mut phrase = strip_indefinite_article(&bare.description()).to_string();
+    if phrase.is_empty() || phrase == "object" || phrase == "objects" {
+        return "card".to_string();
+    }
+    if !phrase.contains("card") {
+        phrase.push_str(" card");
+    }
+    phrase
+}
+
+fn pluralize_discard_card_phrase(phrase: &str) -> String {
+    if phrase.ends_with('s') {
+        phrase.to_string()
+    } else {
+        format!("{phrase}s")
+    }
+}
+
 fn describe_effect_count_backref(value: &Value) -> Option<String> {
     match value {
         Value::EffectValue(_) => Some("that many".to_string()),
@@ -6931,7 +6978,7 @@ fn describe_draw_then_discard(
         player_verb(&player, "draw", "draws"),
         describe_card_count(&draw.count),
         player_verb(&player, "discard", "discards"),
-        describe_card_count(&discard.count)
+        describe_discard_count(&discard.count, discard.card_filter.as_ref())
     );
     if discard.random {
         text.push_str(" at random");
@@ -8083,7 +8130,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
             "{} {} {}{}",
             player,
             player_verb(&player, "discard", "discards"),
-            describe_card_count(&discard.count),
+            describe_discard_count(&discard.count, discard.card_filter.as_ref()),
             random_suffix
         );
     }

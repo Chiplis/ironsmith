@@ -2652,8 +2652,24 @@ impl Effect {
 
     /// Create a "discard" effect for a specific player.
     pub fn discard_player(count: impl Into<Value>, player: PlayerFilter, random: bool) -> Self {
+        Self::discard_player_filtered(count, player, random, None)
+    }
+
+    /// Create a "discard" effect for a specific player, optionally restricted
+    /// to cards matching an object filter (for example, "discard a creature card").
+    pub fn discard_player_filtered(
+        count: impl Into<Value>,
+        player: PlayerFilter,
+        random: bool,
+        card_filter: Option<crate::filter::ObjectFilter>,
+    ) -> Self {
         use crate::effects::DiscardEffect;
-        Self::new(DiscardEffect::new(count, player, random))
+        Self::new(DiscardEffect::new_with_filter(
+            count,
+            player,
+            random,
+            card_filter,
+        ))
     }
 
     /// Create a "discard hand" effect.

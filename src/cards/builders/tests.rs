@@ -7923,6 +7923,33 @@ fn parse_counter_unless_or_mana_choice_fails_strictly() {
 }
 
 #[test]
+fn parse_exile_it_unless_discard_creature_card_as_unless_action() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Body Snatcher Variant")
+        .parse_text("When this creature enters, exile it unless you discard a creature card.")
+        .expect("triggered unless-discard clause should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("UnlessActionEffect"),
+        "expected unless-action lowering, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("DiscardEffect"),
+        "expected discard alternative action, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("tag: TagKey(\"triggering\")"),
+        "expected triggering-object tag for 'it', got {abilities_debug}"
+    );
+
+    let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("unless you discard a creature card"),
+        "expected unless-discard wording to render, got {joined}"
+    );
+}
+
+#[test]
 fn parse_filter_with_counter_on_it_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Razorfin Variant")
         .parse_text("{1}{U}, {T}: Return target creature with a counter on it to its owner's hand.")

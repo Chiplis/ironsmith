@@ -4,6 +4,7 @@ use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::executor::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilter;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
@@ -34,15 +35,28 @@ pub struct DiscardEffect {
     pub player: PlayerFilter,
     /// Whether to discard at random.
     pub random: bool,
+    /// Optional hand-card restriction for cards that can be discarded.
+    pub card_filter: Option<ObjectFilter>,
 }
 
 impl DiscardEffect {
     /// Create a new discard effect.
     pub fn new(count: impl Into<Value>, player: PlayerFilter, random: bool) -> Self {
+        Self::new_with_filter(count, player, random, None)
+    }
+
+    /// Create a new discard effect with an optional card filter.
+    pub fn new_with_filter(
+        count: impl Into<Value>,
+        player: PlayerFilter,
+        random: bool,
+        card_filter: Option<ObjectFilter>,
+    ) -> Self {
         Self {
             count: count.into(),
             player,
             random,
+            card_filter,
         }
     }
 
@@ -87,6 +101,13 @@ impl EffectExecutor for DiscardEffect {
             .player(player_id)
             .map(|p| p.hand.iter().copied().collect())
             .unwrap_or_default();
+        if let Some(filter) = &self.card_filter {
+            let filter_ctx = ctx.filter_context(game);
+            hand_cards.retain(|card_id| {
+                game.object(*card_id)
+                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+            });
+        }
 
         let required = count.min(hand_cards.len());
         if required == 0 {

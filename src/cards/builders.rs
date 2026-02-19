@@ -606,6 +606,7 @@ enum EffectAst {
         count: Value,
         player: PlayerAst,
         random: bool,
+        filter: Option<ObjectFilter>,
     },
     Connive {
         target: TargetAst,
