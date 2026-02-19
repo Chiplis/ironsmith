@@ -1,27 +1,29 @@
+A-Ominous Parcel
+A-Riveteers Initiate
 Aeronaut Admiral
-Allied Teamwork
+Afterburner Expert
 Akul the Unrepentant
+Allied Teamwork
+Ancestral Katana
 Angelic Shield
 Angelic Voices
 Angler Turtle
-Arahbo, the First Fang
-A-Ominous Parcel
-A-Riveteers Initiate
-Ancestral Katana
 Anthem of Champions
+Arahbo, the First Fang
 Arc Blade
 Asceticism
 Ashling, Rekindled // Ashling, Rimebound
 Atrocious Experiment
-Afterburner Expert
 Banners Raised
 Bar the Door
+Battle Strain
 Birchlore Rangers
-Brass Squire
 Body Snatcher
+Brass Squire
 Burn Away
 Burn Bright
 Cadaverous Bloom
+Campus Guide
 Charge
 Charnel Serenade
 Chittering Skitterling
@@ -33,31 +35,36 @@ Creeping Trailblazer
 Cyclical Evolution
 Cyclops of Eternal Fury
 Dakkon Blackblade
+Dandân
 Dauntless Dourbark
 Death Pit Offering
 Desperate Charge
 Dictate of Heliod
 Durkwood Baloth
-Emperor Crocodile
+Elder Arthur Maxson
 Emblem of the Warmind
+Emperor Crocodile
 End the Festivities
+Erdwal Illuminator
 Ethereal Guidance
 Fabrication Module
 Fade Away
 Festering March
 Fire Nation's Conquest
 Fires of Yavimaya
-Flowstone Surge
 Flamerush Rider
-Fortifying Provisions
+Flowstone Surge
 Forerunner of the Legion
+Fortifying Provisions
 Fugitive Codebreaker
 Gaea's Anthem
 Gate to Phyrexia
+Generous Patron
 Glorious Anthem
 Glorious Charge
-Goblin Chainwhirler
+Glory of Warfare
 Gnostro, Voice of the Crags
+Goblin Chainwhirler
 Goblin Warchief
 Graf Harvest
 Guild Summit
@@ -65,58 +72,71 @@ Hammer of Purphoros
 Heartless Summoning
 Heat Shimmer
 Hold the Gates
+Ignorant Bliss
+Immerwolf
 Inspired Charge
 Inspiring Refrain
-Immerwolf
-Ignorant Bliss
+Intangible Virtue
 Killing Wave
 Kiss of the Amesha
 Knight of Old Benalia
-Llanowar Sentinel
+Legion Lieutenant
 Liliana's Mastery
+Llanowar Sentinel
 Lotus Bloom
 Lumithread Field
 Madrush Cyclops
 Maelstrom Wanderer
 Makindi Stampede // Makindi Mesas
 Master Splicer
-Mikaeus, the Lunarch
 Merrow Commerce
+Mikaeus, the Lunarch
+Mirrex
 Mirror Mockery
 Mox Tantalite
 Mutilate
 Narcolepsy
 Nova Cleric
 Ogre Slumlord
+Ozox, the Clattering King
 Path of Anger's Flame
+Phantom General
 Pledge of Unity
+Pollen-Shield Hare // Hare Raising
 Provisions Merchant
 Quintorius, Field Historian
+Radiating Lightning
 Rashel, Fist of Torm
 Reality Strobe
-Radiating Lightning
+Realm Razer
 Righteous Charge
 Rising of the Day
-Roiling Terrain
 Robber Fly
+Roiling Terrain
 Root Greevil
 Sandman, Shifting Scoundrel
 Sarkhan's Unsealing
 Scare Tactics
-Selfless Cathar
 Sea God's Scorn
+Selfless Cathar
+Shade of Trokair
 Shield Wall
 Sol Talisman
 Solidarity
 Solitary Study // Endless Corridor
+Somberwald Beastmaster
 Spidersilk Armor
+Stangg
 Steadfastness
 Sticky Fingers
 Strategic Betrayal
 Sumala Sentry
+Tajuru Beastmaster
+Tectonic Reformation
 Temur Ascendancy
 Thunderhead Gunner
 Tormod's Crypt
+Triumph of the Hordes
 Tuktuk Rubblefort
 Veiling Oddity
 Virtuous Charge
@@ -125,17 +145,3 @@ Warrior's Charge
 Warrior's Honor
 Wash Out
 Where Ancients Tread
-Battle Strain
-Campus Guide
-Dandân
-Elder Arthur Maxson
-Glory of Warfare
-Intangible Virtue
-Legion Lieutenant
-Mirrex
-Ozox, the Clattering King
-Phantom General
-Pollen-Shield Hare // Hare Raising
-Shade of Trokair
-Somberwald Beastmaster
-Tajuru Beastmaster
