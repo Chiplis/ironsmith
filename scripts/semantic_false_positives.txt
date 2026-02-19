@@ -2,6 +2,7 @@ Aeronaut Admiral
 Allied Teamwork
 Akul the Unrepentant
 Angelic Shield
+Angelic Voices
 Angler Turtle
 Arahbo, the First Fang
 A-Ominous Parcel
@@ -12,6 +13,7 @@ Arc Blade
 Asceticism
 Ashling, Rekindled // Ashling, Rimebound
 Atrocious Experiment
+Afterburner Expert
 Banners Raised
 Bar the Door
 Birchlore Rangers
@@ -48,6 +50,7 @@ Fires of Yavimaya
 Flowstone Surge
 Flamerush Rider
 Fortifying Provisions
+Forerunner of the Legion
 Fugitive Codebreaker
 Gaea's Anthem
 Gate to Phyrexia
@@ -77,10 +80,12 @@ Madrush Cyclops
 Maelstrom Wanderer
 Makindi Stampede // Makindi Mesas
 Master Splicer
+Mikaeus, the Lunarch
 Merrow Commerce
 Mirror Mockery
 Mox Tantalite
 Mutilate
+Narcolepsy
 Nova Cleric
 Ogre Slumlord
 Path of Anger's Flame
