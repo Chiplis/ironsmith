@@ -285,6 +285,47 @@ fn replace_names_with_map(
         idx < end && &bytes[idx..end] == b"named"
     }
 
+    fn previous_word(bytes: &[u8], mut idx: usize) -> Option<&[u8]> {
+        while idx > 0 && !bytes[idx - 1].is_ascii_alphanumeric() {
+            idx -= 1;
+        }
+        let end = idx;
+        while idx > 0 && bytes[idx - 1].is_ascii_alphanumeric() {
+            idx -= 1;
+        }
+        (idx < end).then_some(&bytes[idx..end])
+    }
+
+    fn token_word_appears_before_sentence_end(bytes: &[u8], mut idx: usize) -> bool {
+        while idx < bytes.len() {
+            if bytes[idx] == b'.' || bytes[idx] == b';' {
+                break;
+            }
+            if bytes[idx..].starts_with(b"token")
+                && has_word_boundaries_at(bytes, idx, "token".len())
+            {
+                return true;
+            }
+            if bytes[idx..].starts_with(b"tokens")
+                && has_word_boundaries_at(bytes, idx, "tokens".len())
+            {
+                return true;
+            }
+            idx += 1;
+        }
+        false
+    }
+
+    fn appears_to_be_created_token_name(bytes: &[u8], idx: usize, name_len: usize) -> bool {
+        let Some(prev_word) = previous_word(bytes, idx) else {
+            return false;
+        };
+        if prev_word != b"create" && prev_word != b"creates" {
+            return false;
+        }
+        token_word_appears_before_sentence_end(bytes, idx + name_len)
+    }
+
     let lower = line.to_ascii_lowercase();
     let bytes = lower.as_bytes();
     let full_bytes = full_name.as_bytes();
@@ -300,6 +341,7 @@ fn replace_names_with_map(
             && has_word_boundaries_at(bytes, idx, full_bytes.len())
             && !(idx == 0 && is_single_word_keyword_verb(full_name))
             && !preceded_by_named_keyword(bytes, idx)
+            && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
         {
             let name_len = full_bytes.len().max(1);
             for j in 0..4 {
@@ -315,6 +357,7 @@ fn replace_names_with_map(
             && has_word_boundaries_at(bytes, idx, short_bytes.len())
             && !(idx == 0 && is_single_word_keyword_verb(short_name))
             && !preceded_by_named_keyword(bytes, idx)
+            && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
         {
             let name_len = short_bytes.len().max(1);
             for j in 0..4 {
@@ -11240,6 +11283,209 @@ fn effect_creates_any_token(effect: &EffectAst) -> bool {
     }
 }
 
+fn last_created_token_info(effects: &[EffectAst]) -> Option<(String, PlayerAst)> {
+    for effect in effects.iter().rev() {
+        if let Some(info) = created_token_info_from_effect(effect) {
+            return Some(info);
+        }
+    }
+    None
+}
+
+fn created_token_info_from_effect(effect: &EffectAst) -> Option<(String, PlayerAst)> {
+    match effect {
+        EffectAst::CreateToken { name, player, .. }
+        | EffectAst::CreateTokenWithMods { name, player, .. } => {
+            Some((name.clone(), *player))
+        }
+        EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::MayByTaggedController { effects, .. }
+        | EffectAst::IfResult { effects, .. }
+        | EffectAst::ForEachOpponentDoesNot { effects, .. }
+        | EffectAst::ForEachPlayerDoesNot { effects, .. }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
+        | EffectAst::ForEachTaggedPlayer { effects, .. }
+        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+        | EffectAst::VoteOption { effects, .. } => last_created_token_info(effects),
+        EffectAst::UnlessAction {
+            effects,
+            alternative,
+            ..
+        } => last_created_token_info(effects).or_else(|| last_created_token_info(alternative)),
+        _ => None,
+    }
+}
+
+fn title_case_token_word(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => {
+            let mut out = first.to_uppercase().to_string();
+            out.push_str(chars.as_str());
+            out
+        }
+        None => String::new(),
+    }
+}
+
+fn linked_token_name_from_create_name(raw_name: &str) -> Option<String> {
+    let words: Vec<&str> = raw_name.split_whitespace().collect();
+    if words.is_empty() {
+        return None;
+    }
+
+    let mut name_words = Vec::new();
+    for word in words {
+        if looks_like_pt_word(word)
+            || is_basic_color_word(word)
+            || is_article(word)
+            || matches!(
+                word,
+                "legendary"
+                    | "snow"
+                    | "basic"
+                    | "artifact"
+                    | "enchantment"
+                    | "land"
+                    | "creature"
+                    | "battle"
+                    | "instant"
+                    | "sorcery"
+                    | "planeswalker"
+                    | "token"
+                    | "tokens"
+                    | "with"
+                    | "that"
+                    | "which"
+                    | "named"
+                    | "and"
+                    | "or"
+            )
+            || parse_card_type(word).is_some()
+            || parse_subtype_word(word).is_some()
+        {
+            if !name_words.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if !word
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '\'' || ch == '-')
+        {
+            if !name_words.is_empty() {
+                break;
+            }
+            continue;
+        }
+        name_words.push(title_case_token_word(word));
+    }
+
+    if name_words.is_empty() {
+        None
+    } else {
+        Some(name_words.join(" "))
+    }
+}
+
+fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFilter> {
+    match player {
+        PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
+        PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::Target => Some(PlayerFilter::target_player()),
+        PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
+        PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
+        _ => None,
+    }
+}
+
+fn parse_sentence_exile_that_token_when_source_leaves(
+    tokens: &[Token],
+    prior_effects: &[EffectAst],
+) -> Option<EffectAst> {
+    let clause_words = words(tokens);
+    if clause_words.len() < 8
+        || clause_words[0] != "exile"
+        || clause_words[1] != "that"
+        || clause_words[2] != "token"
+        || !clause_words.ends_with(&["leaves", "the", "battlefield"])
+    {
+        return None;
+    }
+    let when_idx = clause_words.iter().position(|word| *word == "when")?;
+    if when_idx <= 2 || when_idx + 3 >= clause_words.len() {
+        return None;
+    }
+    let subject_words = &clause_words[when_idx + 1..clause_words.len() - 3];
+    if !is_source_reference_words(subject_words) {
+        return None;
+    }
+
+    let (created_name, created_player) = last_created_token_info(prior_effects)?;
+    let token_name = linked_token_name_from_create_name(created_name.as_str())?;
+
+    let mut filter = ObjectFilter::default().token().named(token_name);
+    if let Some(controller) = controller_filter_for_token_player(created_player) {
+        filter.controller = Some(controller);
+    }
+    Some(EffectAst::ExileUntilSourceLeaves {
+        target: TargetAst::Object(filter, span_from_tokens(tokens), None),
+    })
+}
+
+fn parse_sentence_sacrifice_source_when_that_token_leaves(
+    tokens: &[Token],
+    prior_effects: &[EffectAst],
+) -> Option<EffectAst> {
+    let clause_words = words(tokens);
+    if clause_words.len() < 8 || !matches!(clause_words[0], "sacrifice" | "sacrifices") {
+        return None;
+    }
+    let when_idx = clause_words.iter().position(|word| *word == "when")?;
+    if when_idx < 2 || when_idx + 4 > clause_words.len() {
+        return None;
+    }
+    let subject_words = &clause_words[1..when_idx];
+    if !is_source_reference_words(subject_words) {
+        return None;
+    }
+    if clause_words[when_idx + 1..] != ["that", "token", "leaves", "the", "battlefield"] {
+        return None;
+    }
+
+    let (created_name, created_player) = last_created_token_info(prior_effects)?;
+    let token_name = linked_token_name_from_create_name(created_name.as_str())?;
+    let mut filter = ObjectFilter::default().token().named(token_name.clone());
+    if let Some(controller) = controller_filter_for_token_player(created_player) {
+        filter.controller = Some(controller);
+    }
+
+    let ability = Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::leaves_battlefield(filter),
+            effects: vec![Effect::sacrifice_source()],
+            choices: Vec::new(),
+            intervening_if: None,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(format!(
+            "When token named {token_name} leaves the battlefield, sacrifice this source."
+        )),
+    };
+
+    Some(EffectAst::GrantAbilityToSource { ability })
+}
+
 fn is_generic_token_reminder_sentence(tokens: &[Token]) -> bool {
     let words = words(tokens);
     if words.is_empty() {
@@ -11704,6 +11950,25 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
                 "unsupported standalone token mana reminder clause (clause: '{}')",
                 words(&sentence_tokens).join(" ")
             )));
+        }
+        if let Some(effect) =
+            parse_sentence_exile_that_token_when_source_leaves(&sentence_tokens, &effects)
+        {
+            parser_trace("parse_effect_sentences:linked-token-exile-when-source-leaves", &sentence_tokens);
+            effects.push(effect);
+            sentence_idx += 1;
+            continue;
+        }
+        if let Some(effect) =
+            parse_sentence_sacrifice_source_when_that_token_leaves(&sentence_tokens, &effects)
+        {
+            parser_trace(
+                "parse_effect_sentences:linked-token-sacrifice-source-when-token-leaves",
+                &sentence_tokens,
+            );
+            effects.push(effect);
+            sentence_idx += 1;
+            continue;
         }
         if is_generic_token_reminder_sentence(&sentence_tokens)
             && effects.last().is_some_and(effect_creates_any_token)
@@ -26384,6 +26649,35 @@ fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool) {
     (has_sacrifice_reference, has_exile_reference)
 }
 
+fn trailing_create_at_next_end_step_clause(tail_words: &[&str]) -> Option<(usize, PlayerFilter)> {
+    let suffixes: &[(&[&str], PlayerFilter)] = &[
+        (&["at", "the", "beginning", "of", "your", "next", "end", "step"], PlayerFilter::You),
+        (&["at", "the", "beginning", "of", "the", "next", "end", "step"], PlayerFilter::Any),
+        (&["at", "the", "beginning", "of", "next", "end", "step"], PlayerFilter::Any),
+        (&["at", "the", "beginning", "of", "the", "end", "step"], PlayerFilter::Any),
+        (&["at", "the", "beginning", "of", "end", "step"], PlayerFilter::Any),
+    ];
+
+    for (suffix, player) in suffixes {
+        if tail_words.len() < suffix.len() {
+            continue;
+        }
+        let start = tail_words.len() - suffix.len();
+        if tail_words[start..] != **suffix {
+            continue;
+        }
+        if tail_words[..start]
+            .iter()
+            .any(|word| matches!(*word, "when" | "whenever"))
+        {
+            continue;
+        }
+        return Some((start, player.clone()));
+    }
+
+    None
+}
+
 fn split_copy_source_tail_modifiers(source_tokens: &[Token]) -> (Vec<Token>, bool, bool) {
     let mut split_idx: Option<usize> = None;
     for idx in 0..source_tokens.len() {
@@ -26468,8 +26762,17 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         .copied()
         .filter(|word| !is_article(word))
         .collect();
-    let tail_tokens = &tokens[idx + token_idx + 1..];
-    let tail_words = remaining_words[token_idx + 1..].to_vec();
+    let mut tail_tokens = tokens[idx + token_idx + 1..].to_vec();
+    let mut delayed_create_player = None;
+    let initial_tail_words = words(&tail_tokens);
+    if let Some((clause_start, player)) = trailing_create_at_next_end_step_clause(&initial_tail_words)
+    {
+        delayed_create_player = Some(player);
+        if let Some(cut_idx) = token_index_for_word_index(&tail_tokens, clause_start) {
+            tail_tokens.truncate(cut_idx);
+        }
+    }
+    let tail_words = words(&tail_tokens);
     let for_each_idx = tail_words
         .windows(2)
         .position(|window| window == ["for", "each"]);
@@ -26495,6 +26798,16 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         if let Some(filter) = for_each_wrap_filter.clone() {
             EffectAst::ForEachObject {
                 filter,
+                effects: vec![effect],
+            }
+        } else {
+            effect
+        }
+    };
+    let wrap_delayed_create = |effect: EffectAst| {
+        if let Some(player) = delayed_create_player {
+            EffectAst::DelayedUntilNextEndStep {
+                player,
                 effects: vec![effect],
             }
         } else {
@@ -26568,7 +26881,7 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
                 enters_attacking = parsed_attacking;
                 if !source_tokens.is_empty() {
                     let source = parse_target_phrase(&source_tokens)?;
-                    return Ok(wrap_for_each(EffectAst::CreateTokenCopyFromSource {
+                    let create = wrap_for_each(EffectAst::CreateTokenCopyFromSource {
                         source,
                         count: count_value.clone(),
                         player,
@@ -26587,10 +26900,11 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
                         removed_supertypes,
                         set_base_power_toughness,
                         granted_abilities,
-                    }));
+                    });
+                    return Ok(wrap_delayed_create(create));
                 }
             }
-            return Ok(wrap_for_each(EffectAst::CreateTokenCopy {
+            let create = wrap_for_each(EffectAst::CreateTokenCopy {
                 object: ObjectRefAst::It,
                 count: count_value.clone(),
                 player,
@@ -26609,7 +26923,8 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
                 removed_supertypes,
                 set_base_power_toughness,
                 granted_abilities,
-            }));
+            });
+            return Ok(wrap_delayed_create(create));
         }
         return Err(CardTextError::ParseError(
             "create clause missing token name".to_string(),
@@ -26708,7 +27023,7 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         sacrifice_at_next_end_step,
         exile_at_next_end_step,
     };
-    Ok(create)
+    Ok(wrap_delayed_create(wrap_for_each(create)))
 }
 
 fn parse_create_for_each_dynamic_count(tokens: &[Token]) -> Option<Value> {
@@ -26726,6 +27041,18 @@ fn parse_create_for_each_dynamic_count(tokens: &[Token]) -> Option<Value> {
             .starts_with(&["colors", "of", "mana", "used", "to", "cast", "this", "spell"])
     {
         return Some(Value::ColorsOfManaSpentToCastThisSpell);
+    }
+    if clause_words.starts_with(&["basic", "land", "type", "among", "lands", "you", "control"])
+        || clause_words
+            .starts_with(&["basic", "land", "types", "among", "lands", "you", "control"])
+        || clause_words
+            .starts_with(&["basic", "land", "type", "among", "the", "lands", "you", "control"])
+        || clause_words
+            .starts_with(&["basic", "land", "types", "among", "the", "lands", "you", "control"])
+    {
+        return Some(Value::BasicLandTypesAmong(
+            ObjectFilter::land().you_control(),
+        ));
     }
     None
 }

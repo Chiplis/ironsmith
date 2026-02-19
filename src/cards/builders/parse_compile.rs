@@ -4507,6 +4507,108 @@ fn extract_named_card_name(words: &[&str], source_text: &str) -> Option<String> 
     Some(title_case_words(&words[named_idx + 1..end]))
 }
 
+fn extract_leading_explicit_token_name(words: &[&str]) -> Option<String> {
+    let is_simple_name_word = |word: &str| {
+        word.chars()
+            .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-')
+    };
+    let is_descriptor = |word: &str| {
+        matches!(
+            word,
+            "legendary"
+                | "snow"
+                | "basic"
+                | "artifact"
+                | "enchantment"
+                | "creature"
+                | "land"
+                | "instant"
+                | "sorcery"
+                | "battle"
+                | "planeswalker"
+                | "token"
+                | "tokens"
+                | "white"
+                | "blue"
+                | "black"
+                | "red"
+                | "green"
+                | "colorless"
+                | "named"
+                | "with"
+                | "that"
+                | "which"
+                | "and"
+                | "or"
+                | "a"
+                | "an"
+                | "flying"
+                | "haste"
+                | "deathtouch"
+                | "trample"
+                | "vigilance"
+                | "lifelink"
+                | "menace"
+                | "reach"
+                | "hexproof"
+                | "indestructible"
+                | "prowess"
+                | "first"
+                | "double"
+                | "strike"
+                | "when"
+                | "whenever"
+                | "if"
+                | "this"
+                | "it"
+                | "those"
+                | "cant"
+                | "can"
+                | "attack"
+                | "block"
+                | "dies"
+                | "deals"
+                | "deal"
+                | "damage"
+                | "draw"
+                | "add"
+                | "sacrifice"
+                | "counter"
+                | "gets"
+                | "gains"
+                | "gain"
+        )
+    };
+    let first = *words.first()?;
+    if !is_simple_name_word(first)
+        || is_descriptor(first)
+        || parse_token_pt(first).is_some()
+        || parse_card_type(first).is_some()
+        || parse_subtype_word(first).is_some()
+    {
+        return None;
+    }
+
+    let mut name_words = vec![first];
+    for word in words.iter().skip(1) {
+        if !is_simple_name_word(word)
+            || is_descriptor(word)
+            || parse_token_pt(word).is_some()
+            || parse_card_type(word).is_some()
+            || parse_subtype_word(word).is_some()
+        {
+            break;
+        }
+        name_words.push(*word);
+    }
+
+    if name_words.len() < 2 {
+        None
+    } else {
+        Some(title_case_words(&name_words))
+    }
+}
+
 fn token_sacrifice_return_named_from_graveyard_ability(
     card_name: &str,
     mana_symbols: Vec<ManaSymbol>,
@@ -4923,7 +5025,11 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         let (power, toughness) = words.iter().find_map(|word| parse_token_pt(word))?;
 
         let mut subtypes = Vec::new();
-        for word in &words {
+        let subtype_scan_end = words
+            .iter()
+            .position(|word| parse_card_type(word).is_some())
+            .unwrap_or(words.len());
+        for word in &words[..subtype_scan_end] {
             if let Some(subtype) = parse_subtype_word(word)
                 .or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
                 && !subtypes.contains(&subtype)
@@ -4932,34 +5038,8 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
             }
         }
 
-        let explicit_name = words.first().copied().and_then(|word| {
-            let is_simple_name_word = word
-                .chars()
-                .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-');
-            if !is_simple_name_word {
-                return None;
-            }
-            let is_descriptor = matches!(
-                word,
-                "legendary"
-                    | "artifact"
-                    | "enchantment"
-                    | "creature"
-                    | "token"
-                    | "tokens"
-                    | "white"
-                    | "blue"
-                    | "black"
-                    | "red"
-                    | "green"
-                    | "colorless"
-                    | "named"
-            );
-            if is_descriptor || parse_subtype_word(word).is_some() {
-                return None;
-            }
-            Some(title_case_words(&[word]))
-        });
+        let explicit_name = extract_named_card_name(&words, lower.as_str())
+            .or_else(|| extract_leading_explicit_token_name(&words));
         let token_name = explicit_name.unwrap_or_else(|| {
             subtypes
                 .first()
@@ -5025,6 +5105,22 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
         if words.contains(&"reach") {
             builder = builder.reach();
+        }
+        if words.contains(&"crews")
+            && words.contains(&"vehicles")
+            && words.contains(&"power")
+            && words.contains(&"greater")
+            && words.contains(&"2")
+        {
+            let text = if words.contains(&"saddles") && words.contains(&"mounts") {
+                "This token saddles Mounts and crews Vehicles as though its power were 2 greater."
+            } else {
+                "This token crews Vehicles as though its power were 2 greater."
+            };
+            builder = builder.with_ability(Ability::static_ability(StaticAbility::custom(
+                "crew_as_though_power_were_2_greater",
+                text.to_string(),
+            )));
         }
         if words.contains(&"banding") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::custom(

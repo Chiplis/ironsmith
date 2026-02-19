@@ -5671,6 +5671,38 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_stangg_linked_token_leave_clauses_compile_semantically() {
+        let oracle = "When Stangg enters, create Stangg Twin, a legendary 3/4 red and green Human Warrior creature token. Exile that token when Stangg leaves the battlefield. Sacrifice Stangg when that token leaves the battlefield.";
+        let def = CardDefinitionBuilder::new(CardId::new(), "Stangg")
+            .parse_text(oracle)
+            .expect("parse Stangg linked-token leave clauses");
+
+        let joined = compiled_lines(&def).join(" ");
+        assert!(
+            joined.contains("Stangg Twin"),
+            "expected created token to keep explicit name, got {joined}"
+        );
+        assert!(
+            joined.contains("Exile")
+                && joined.contains("Stangg")
+                && joined.contains("leaves the battlefield"),
+            "expected linked exile/leaves semantics in compiled text, got {joined}"
+        );
+
+        let abilities_debug = format!("{:?}", def.abilities);
+        assert!(
+            abilities_debug.contains("ExileUntil")
+                || abilities_debug.contains("ExileUntilDuration"),
+            "expected exile-until-source-leaves effect in raw ability debug, got {abilities_debug}"
+        );
+        assert!(
+            abilities_debug.contains("leaves_battlefield")
+                || abilities_debug.contains("ZonePattern::Specific"),
+            "expected linked leaves-the-battlefield trigger in raw ability debug, got {abilities_debug}"
+        );
+    }
+
+    #[test]
     fn parse_rejects_enters_as_copy_with_except_ability_clause() {
         let result = CardDefinitionBuilder::new(CardId::new(), "Evil Twin Variant")
             .parse_text(

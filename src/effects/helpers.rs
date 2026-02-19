@@ -16,7 +16,7 @@ use crate::game_event::DamageTarget;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::{ChooseSpec, FilterContext, ObjectRef, PlayerFilter};
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 // ============================================================================
@@ -126,6 +126,54 @@ pub fn resolve_value(
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
                 .count() as i32;
             Ok(count * *multiplier)
+        }
+        Value::BasicLandTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = ctx.filter_context(game);
+            let candidate_ids: Vec<ObjectId> = match filter.zone {
+                Some(Zone::Battlefield) => game.battlefield.clone(),
+                Some(Zone::Graveyard) => game
+                    .players
+                    .iter()
+                    .flat_map(|player| player.graveyard.iter().copied())
+                    .collect(),
+                Some(Zone::Hand) => game
+                    .players
+                    .iter()
+                    .flat_map(|player| player.hand.iter().copied())
+                    .collect(),
+                Some(Zone::Library) => game
+                    .players
+                    .iter()
+                    .flat_map(|player| player.library.iter().copied())
+                    .collect(),
+                Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
+                Some(Zone::Exile) => game.exile.clone(),
+                Some(Zone::Command) => game.command_zone.clone(),
+                None => game.battlefield.clone(),
+            };
+
+            let mut seen = HashSet::new();
+            for obj in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                for subtype in &obj.subtypes {
+                    if matches!(
+                        subtype,
+                        Subtype::Plains
+                            | Subtype::Island
+                            | Subtype::Swamp
+                            | Subtype::Mountain
+                            | Subtype::Forest
+                    ) {
+                        seen.insert(subtype.clone());
+                    }
+                }
+            }
+            Ok(seen.len() as i32)
         }
         Value::CreaturesDiedThisTurn => Ok(game.creatures_died_this_turn as i32),
 

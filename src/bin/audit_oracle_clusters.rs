@@ -708,6 +708,60 @@ fn normalize_end_turn_creature_buff_split(line: &str) -> String {
     format!("{left}, and gains {gain_clause} until end of turn.")
 }
 
+fn normalize_create_named_token_article_for_compare(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    let marker = "create a ";
+    if let Some(idx) = lower.find(marker) {
+        let head = &line[..idx];
+        let tail = &line[idx + marker.len()..];
+        if tail.chars().next().is_some_and(|ch| ch.is_ascii_uppercase()) && tail.contains(", a ") {
+            return format!("{}create {}", head, tail);
+        }
+    }
+    line.to_string()
+}
+
+fn normalize_exile_named_token_until_source_leaves_for_compare(line: &str) -> String {
+    let marker = "Exile target a token named ";
+    let Some(start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let before = &line[..start];
+    let after = &line[start + marker.len()..];
+    for subject in ["this permanent", "this creature", "this source"] {
+        if let Some((_, rest)) =
+            after.split_once(&format!(" until {subject} leaves the battlefield"))
+        {
+            return format!(
+                "{}Exile that token when {subject} leaves the battlefield{}",
+                before, rest
+            );
+        }
+    }
+    line.to_string()
+}
+
+fn normalize_granted_named_token_leaves_sacrifice_source_for_compare(line: &str) -> String {
+    let marker = "Grant When token named ";
+    let Some(start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let before = &line[..start];
+    let after = &line[start + marker.len()..];
+    if let Some((_, rest)) = after.split_once(" leaves the battlefield, sacrifice this ")
+        && let Some((subject, rest_after_subject)) = rest.split_once(". to this ")
+        && matches!(subject, "permanent" | "creature" | "source")
+        && let Some(rest_suffix) = rest_after_subject.strip_prefix(subject)
+        && let Some(rest_suffix) = rest_suffix.strip_prefix('.')
+    {
+        return format!(
+            "{}Sacrifice this {} when that token leaves the battlefield.{}",
+            before, subject, rest_suffix
+        );
+    }
+    line.to_string()
+}
+
 fn expand_create_list_clause(line: &str) -> String {
     let trimmed = line.trim().trim_end_matches('.');
     let lower = trimmed.to_ascii_lowercase();
@@ -786,6 +840,9 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
                 .to_string();
         }
     }
+    normalized = normalize_create_named_token_article_for_compare(&normalized);
+    normalized = normalize_exile_named_token_until_source_leaves_for_compare(&normalized);
+    normalized = normalize_granted_named_token_leaves_sacrifice_source_for_compare(&normalized);
     normalized = normalized
         .replace(
             "At the beginning of each player's upkeep,",

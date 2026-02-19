@@ -530,6 +530,9 @@ pub enum Value {
     /// A scaled count of objects matching a filter (factor * count(filter)).
     CountScaled(ObjectFilter, i32),
 
+    /// Number of distinct basic land types among objects matching a filter.
+    BasicLandTypesAmong(ObjectFilter),
+
     /// Number of creatures that have died this turn.
     CreaturesDiedThisTurn,
 

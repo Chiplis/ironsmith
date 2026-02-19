@@ -246,6 +246,19 @@ fn describe_token_color_words(colors: crate::color::ColorSet, include_colorless:
 fn describe_token_blueprint(token: &CardDefinition) -> String {
     let card = &token.card;
     let mut parts = Vec::new();
+    let mut creature_name_prefix: Option<String> = None;
+
+    if !card.supertypes.is_empty() {
+        let supertypes = card
+            .supertypes
+            .iter()
+            .map(|supertype| format!("{supertype:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !supertypes.is_empty() {
+            parts.push(supertypes);
+        }
+    }
 
     if let Some(pt) = card.power_toughness {
         parts.push(format!(
@@ -258,18 +271,6 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
     let colors = describe_token_color_words(card.colors(), card.is_creature());
     if !colors.is_empty() {
         parts.push(colors);
-    }
-
-    if !card.supertypes.is_empty() {
-        let supertypes = card
-            .supertypes
-            .iter()
-            .map(|supertype| format!("{supertype:?}").to_ascii_lowercase())
-            .collect::<Vec<_>>()
-            .join(" ");
-        if !supertypes.is_empty() {
-            parts.push(supertypes);
-        }
     }
 
     if card.subtypes.is_empty()
@@ -301,7 +302,12 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
             && !name_matches_any_subtype;
         let use_name_for_creature = card.is_creature() && name_is_distinct;
         let use_name_for_noncreature = !card.is_creature() && name_is_distinct;
-        if use_name_for_creature || use_name_for_noncreature {
+        if use_name_for_creature {
+            creature_name_prefix = Some(card.name.clone());
+            if !subtype_text.is_empty() {
+                parts.push(subtype_text);
+            }
+        } else if use_name_for_noncreature {
             parts.push(card.name.clone());
             if !subtype_text.is_empty() {
                 parts.push(subtype_text);
@@ -361,6 +367,10 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
             text.push_str(" and ");
         }
         text.push_str(&join_with_and(&extra_ability_texts));
+    }
+
+    if let Some(name) = creature_name_prefix {
+        text = format!("{name}, {}", with_indefinite_article(&text));
     }
 
     text
@@ -975,6 +985,57 @@ fn normalize_pump_and_gain_until_end_of_turn(line: &str) -> Option<String> {
     ))
 }
 
+fn normalize_create_named_token_article(line: &str) -> String {
+    if let Some((head, tail)) = split_once_ascii_ci(line, "create a ")
+        && tail.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+        && tail.contains(", a ")
+    {
+        return format!("{}create {}", head, tail);
+    }
+    line.to_string()
+}
+
+fn normalize_exile_named_token_until_source_leaves(line: &str) -> String {
+    let marker = "Exile target a token named ";
+    let Some(start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let before = &line[..start];
+    let after = &line[start + marker.len()..];
+    for subject in ["this permanent", "this creature", "this source"] {
+        if let Some((_, rest)) =
+            after.split_once(&format!(" until {subject} leaves the battlefield"))
+        {
+            return format!(
+                "{}Exile that token when {subject} leaves the battlefield{}",
+                before, rest
+            );
+        }
+    }
+    line.to_string()
+}
+
+fn normalize_granted_named_token_leaves_sacrifice_source(line: &str) -> String {
+    let marker = "Grant When token named ";
+    let Some(start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let before = &line[..start];
+    let after = &line[start + marker.len()..];
+    if let Some((_, rest)) = after.split_once(" leaves the battlefield, sacrifice this ")
+        && let Some((subject, rest_after_subject)) = rest.split_once(". to this ")
+        && matches!(subject, "permanent" | "creature" | "source")
+        && let Some(rest_suffix) = rest_after_subject.strip_prefix(subject)
+        && let Some(rest_suffix) = rest_suffix.strip_prefix('.')
+    {
+        return format!(
+            "{}Sacrifice this {} when that token leaves the battlefield.{}",
+            before, subject, rest_suffix
+        );
+    }
+    line.to_string()
+}
+
 fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     if let Some(rewritten) = normalize_granted_activated_ability_clause(&normalized) {
@@ -996,6 +1057,9 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rewritten) = normalize_pump_and_gain_until_end_of_turn(&normalized) {
         normalized = rewritten;
     }
+    normalized = normalize_create_named_token_article(&normalized);
+    normalized = normalize_exile_named_token_until_source_leaves(&normalized);
+    normalized = normalize_granted_named_token_leaves_sacrifice_source(&normalized);
     if let Some(rewritten) = normalize_search_you_own_clause(&normalized) {
         normalized = rewritten;
     }
@@ -4645,6 +4709,9 @@ fn describe_value(value: &Value) -> String {
         Value::CountScaled(filter, multiplier) => {
             format!("{multiplier} times the number of {}", filter.description())
         }
+        Value::BasicLandTypesAmong(filter) => {
+            format!("the number of basic land types among {}", filter.description())
+        }
         Value::CreaturesDiedThisTurn => "the number of creatures that died this turn".to_string(),
         Value::CountPlayers(filter) => format!("the number of {}", describe_player_filter(filter)),
         Value::SourcePower => "this source's power".to_string(),
@@ -6687,6 +6754,17 @@ fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<Stri
 fn describe_create_for_each_count(value: &Value) -> Option<String> {
     match value {
         Value::Count(filter) => Some(describe_for_each_filter(filter)),
+        Value::BasicLandTypesAmong(filter) => {
+            let lands = describe_for_each_filter(filter);
+            let lands = if lands == "land" {
+                "lands".to_string()
+            } else if let Some(rest) = lands.strip_prefix("land ") {
+                format!("lands {rest}")
+            } else {
+                lands
+            };
+            Some(format!("basic land type among {lands}"))
+        }
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
         _ => None,
     }
@@ -6714,6 +6792,17 @@ fn describe_compact_token_count(value: &Value, token_name: &str) -> String {
                     describe_for_each_count_filter(filter)
                 )
             }
+        }
+        Value::BasicLandTypesAmong(filter) => {
+            let lands = describe_for_each_filter(filter);
+            let lands = if lands == "land" {
+                "lands".to_string()
+            } else if let Some(rest) = lands.strip_prefix("land ") {
+                format!("lands {rest}")
+            } else {
+                lands
+            };
+            format!("a {token_name} token for each basic land type among {lands}")
         }
         Value::CreaturesDiedThisTurn => {
             format!("a {token_name} token for each creature that died this turn")
@@ -20648,6 +20737,17 @@ mod tests {
         assert_eq!(
             normalized,
             "Return a Pirate card from your graveyard to your hand, then do the same for Vampire, Dinosaur, and Merfolk."
+        );
+    }
+
+    #[test]
+    fn common_semantic_phrasing_normalizes_stangg_linked_token_clauses() {
+        let normalized = normalize_common_semantic_phrasing(
+            "When Stangg enters, create a Stangg Twin, a legendary 3/4 red and green Human Warrior creature token. Exile target a token named Stangg Twin until this permanent leaves the battlefield. Grant When token named Stangg Twin leaves the battlefield, sacrifice this permanent. to this permanent.",
+        );
+        assert_eq!(
+            normalized,
+            "When Stangg enters, create Stangg Twin, a legendary 3/4 red and green Human Warrior creature token. Exile that token when this permanent leaves the battlefield. Sacrifice this permanent when that token leaves the battlefield."
         );
     }
 }

@@ -635,6 +635,32 @@ pub fn resolve_value(
                 .count() as i32;
             Ok(count * *multiplier)
         }
+        Value::BasicLandTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = ctx.filter_context(game);
+            let mut seen = HashSet::new();
+            for obj in game
+                .battlefield
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                for subtype in &obj.subtypes {
+                    if matches!(
+                        subtype,
+                        crate::types::Subtype::Plains
+                            | crate::types::Subtype::Island
+                            | crate::types::Subtype::Swamp
+                            | crate::types::Subtype::Mountain
+                            | crate::types::Subtype::Forest
+                    ) {
+                        seen.insert(subtype.clone());
+                    }
+                }
+            }
+            Ok(seen.len() as i32)
+        }
         Value::CreaturesDiedThisTurn => Ok(game.creatures_died_this_turn as i32),
 
         Value::CountPlayers(player_filter) => {

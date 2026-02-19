@@ -951,6 +951,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::XTimes(_)
         | Value::Count(_)
         | Value::CountScaled(_, _)
+        | Value::BasicLandTypesAmong(_)
         | Value::CreaturesDiedThisTurn
         | Value::CountPlayers(_)
         | Value::Devotion { .. }

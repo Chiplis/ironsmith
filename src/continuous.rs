@@ -2542,6 +2542,51 @@ fn resolve_value_with_context(
                 .count() as i32;
             count * *multiplier
         }
+        Value::BasicLandTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let controller = ctx
+                .objects
+                .get(&source)
+                .map(|o| o.controller)
+                .unwrap_or(crate::ids::PlayerId::from_index(0));
+
+            let filter_ctx = FilterContext {
+                you: Some(controller),
+                source: Some(source),
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                target_players: Vec::new(),
+                tagged_objects: std::collections::HashMap::new(),
+            };
+
+            let mut seen = HashSet::new();
+            for obj in ctx
+                .battlefield
+                .iter()
+                .filter_map(|&id| ctx.objects.get(&id))
+                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, ctx.game))
+            {
+                for subtype in &obj.subtypes {
+                    if matches!(
+                        subtype,
+                        Subtype::Plains
+                            | Subtype::Island
+                            | Subtype::Swamp
+                            | Subtype::Mountain
+                            | Subtype::Forest
+                    ) {
+                        seen.insert(subtype.clone());
+                    }
+                }
+            }
+            seen.len() as i32
+        }
         Value::CreaturesDiedThisTurn => ctx.game.creatures_died_this_turn as i32,
 
         Value::SourcePower => ctx
