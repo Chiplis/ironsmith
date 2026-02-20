@@ -1,10 +1,13 @@
 A-Ominous Parcel
 A-Riveteers Initiate
+Acquire
 Aeronaut Admiral
 Afterburner Expert
+Agent of Erebos
 Akul the Unrepentant
 Allied Teamwork
 Ancestral Katana
+Ancestral Vision
 Angelic Shield
 Angelic Voices
 Angler Turtle
@@ -13,51 +16,68 @@ Arahbo, the First Fang
 Arc Blade
 Asceticism
 Ashling, Rekindled // Ashling, Rimebound
+Atraxi Warden
 Atrocious Experiment
 Banners Raised
 Bar the Door
 Battle Strain
 Birchlore Rangers
 Body Snatcher
+Boggart Trawler // Boggart Bog
 Brass Squire
+Bribery
 Brightcap Badger // Fungus Frolic
+Bruenor Battlehammer
 Burn Away
 Burn Bright
 Cadaverous Bloom
 Campus Guide
+Chandra's Outrage
+Char
 Charge
 Charnel Serenade
 Charnel Troll
+Cheering Crowd
 Chittering Skitterling
 Chorus of Woe
 Collective Blessing
-Compulsive Research
 Compass Gnome
+Compulsive Research
 Copperhorn Scout
+Corpulent Corpse
+Counterbore
+Crashing Footfalls
 Creeping Trailblazer
+Crumble to Dust
 Cyclical Evolution
 Cyclops of Eternal Fury
 Dakkon Blackblade
 Dandân
 Dauntless Dourbark
+Dawnstrike Vanguard
 Death Pit Offering
 Desperate Charge
 Dictate of Heliod
 Durkwood Baloth
+Duskrider Peregrine
 Elder Arthur Maxson
 Emblem of the Warmind
 Emperor Crocodile
 End the Festivities
+Eradicate
 Erdwal Illuminator
+Errant Ephemeron
 Essence Feed
 Ethereal Guidance
 Evin, Waterdeep Opportunist
 Fabrication Module
 Fade Away
+Feast of Flesh
 Fervor
 Festering March
 Fire Nation's Conquest
 Fires of Yavimaya
+First Volley
 Flamerush Rider
 Flowstone Surge
 Forerunner of the Legion
@@ -65,39 +85,57 @@ Fortifying Provisions
 Fugitive Codebreaker
 Gaea's Anthem
 Gaea's Touch
+Gargadon
 Gate to Phyrexia
 Generous Patron
+Giant Dustwasp
+Gilded Cerodon
 Glorious Anthem
 Glorious Charge
 Glory of Warfare
 Gnostro, Voice of the Crags
+Go Blank
 Goblin Chainwhirler
 Goblin Warchief
 Graf Harvest
 Guild Summit
 Hammer of Purphoros
 Heartless Summoning
-Heat of Battle
 Heat Shimmer
+Heat of Battle
 Heliod, the Radiant Dawn // Heliod, the Warped Eclipse
+Heroes Remembered
 Hold the Gates
 Hum of the Radix
+Hunters' Feast
+Identity Crisis
 Ignorant Bliss
 Immerwolf
+Inevitable Betrayal
+Infiltrator il-Kor
 Inspired Charge
 Inspiring Refrain
 Intangible Virtue
+Invert the Skies
+Ivory Tower
 Jeska, Warrior Adept
+Jirina, Dauntless General
+Kamahl, Pit Fighter
+Keldon Halberdier
 Killing Wave
 Kiss of the Amesha
-Kamahl, Pit Fighter
+Kjeldoran War Cry
 Knight of Old Benalia
+Knight of Sursi
 Landslide
 Legion Lieutenant
+Life's Finale
 Liliana's Mastery
+Llanowar Mentor
 Llanowar Sentinel
 Loam Larva
 Lotus Bloom
+Loyal Drake
 Lumithread Field
 Madrush Cyclops
 Maelstrom Wanderer
@@ -105,9 +143,11 @@ Makindi Stampede // Makindi Mesas
 Master Splicer
 Merrow Commerce
 Mikaeus, the Lunarch
+Mindstab
 Mirrex
 Mirror Mockery
 Mox Tantalite
+Muscle Burst
 Mutilate
 Narcolepsy
 Necrotic Sliver
@@ -118,57 +158,91 @@ Ogre Slumlord
 Opaline Sliver
 Ozox, the Clattering King
 Path of Anger's Flame
+Petrified Plating
 Phantom General
 Pledge of Unity
+Plunder
 Pollen-Shield Hare // Hare Raising
+Profane Tutor
 Provisions Merchant
+Psionic Blast
+Quash
 Quintorius, Field Historian
 Radiating Lightning
 Rashel, Fist of Torm
 Reality Strobe
 Realm Razer
-Righteous Charge
+Resurgent Belief
+Rift Bolt
 Rift Sower
+Riftwing Cloudskate
+Righteous Charge
 Rising of the Day
 Robber Fly
 Roiling Terrain
 Root Greevil
+Saber Ants
+Sanctum of Eternity
+Sand Strangler
 Sandman, Shifting Scoundrel
 Sarkhan's Unsealing
+Saw in Half
 Scare Tactics
+Scion of Halaster
+Scour
 Sea God's Scorn
 Sea Serpent
+Search for Tomorrow
 Selfless Cathar
+Serpent Generator
 Shade of Trokair
 Shield Wall
+Shivan Meteor
 Sol Talisman
 Solidarity
 Solitary Study // Endless Corridor
 Somberwald Beastmaster
+Sowing Salt
+Sparkspitter
 Spidersilk Armor
+Splinter
 Staff of Nin
 Stangg
+Star Whale
+Static Prison
 Steadfastness
 Sticky Fingers
 Strategic Betrayal
 Sumala Sentry
+Suspended Sentence
 Tajuru Beastmaster
 Tajuru Warcaller
 Tectonic Reformation
 Temur Ascendancy
-Thunderhead Gunner
 Thirsting Bloodlord
+Thunderhead Gunner
+Tinybones Joins Up
 Tori D'Avenant, Fury Rider
 Tormod's Crypt
 Triumph of the Hordes
 Tuktuk Rubblefort
 Tymora's Invoker
+Unlicensed Hearse
+Unnerving Assault
+Uphill Battle
 Veiling Oddity
 Vibrating Sphere
-Viscerid Deepwalker
 Virtuous Charge
+Viscerid Deepwalker
 Vitalizing Wind
 Warrior's Charge
 Warrior's Honor
 Wash Out
+Watcher of Hours
+Wheel of Fate
 Where Ancients Tread
+Wretched Camel
+Nullstone Gargoyle
+Liliana's Triumph
+Raid Bombardment
+Cavalcade of Calamity
