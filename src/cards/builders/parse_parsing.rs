@@ -3412,6 +3412,47 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
         return None;
     }
 
+    let parse_power_or_toughness_segment = |segment: &[&str]| -> Option<Value> {
+        if segment == ["this", "creature", "power"]
+            || segment == ["this", "creatures", "power"]
+            || segment == ["its", "power"]
+        {
+            return Some(Value::PowerOf(Box::new(ChooseSpec::Source)));
+        }
+        if segment == ["this", "creature", "toughness"]
+            || segment == ["this", "creatures", "toughness"]
+            || segment == ["its", "toughness"]
+        {
+            return Some(Value::ToughnessOf(Box::new(ChooseSpec::Source)));
+        }
+        if segment == ["that", "creature", "power"]
+            || segment == ["that", "creatures", "power"]
+            || segment == ["that", "objects", "power"]
+        {
+            return Some(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+                IT_TAG,
+            )))));
+        }
+        if segment == ["that", "creature", "toughness"]
+            || segment == ["that", "creatures", "toughness"]
+            || segment == ["that", "objects", "toughness"]
+        {
+            return Some(Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+                IT_TAG,
+            )))));
+        }
+        None
+    };
+
+    if let Some(plus_idx) = tail.iter().position(|word| *word == "plus")
+        && plus_idx > 0
+        && plus_idx + 1 < tail.len()
+        && let Some(left) = parse_power_or_toughness_segment(&tail[..plus_idx])
+        && let Some(right) = parse_power_or_toughness_segment(&tail[plus_idx + 1..])
+    {
+        return Some(Value::Add(Box::new(left), Box::new(right)));
+    }
+
     if tail.starts_with(&["this", "creature", "power"])
         || tail.starts_with(&["this", "creatures", "power"])
         || tail.starts_with(&["its", "power"])
@@ -26736,6 +26777,25 @@ fn validate_life_keyword(rest: &[Token]) -> Result<(), CardTextError> {
     Ok(())
 }
 
+fn remap_source_stat_value_to_it(value: Value) -> Value {
+    match value {
+        Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+        }
+        Value::ToughnessOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+        }
+        Value::ManaValueOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+        }
+        Value::Add(left, right) => Value::Add(
+            Box::new(remap_source_stat_value_to_it(*left)),
+            Box::new(remap_source_stat_value_to_it(*right)),
+        ),
+        other => other,
+    }
+}
+
 fn parse_lose_life(
     tokens: &[Token],
     subject: Option<SubjectAst>,
@@ -26746,7 +26806,14 @@ fn parse_lose_life(
     };
 
     let clause_words = words(tokens);
-    if let Some(amount) = parse_life_equal_to_value(tokens)? {
+    if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
+        if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+            && (clause_words.windows(2).any(|window| window == ["its", "power"])
+                || clause_words.windows(2).any(|window| window == ["its", "toughness"])
+                || clause_words.windows(3).any(|window| window == ["its", "mana", "value"]))
+        {
+            amount = remap_source_stat_value_to_it(amount);
+        }
         return Ok(EffectAst::LoseLife { amount, player });
     }
     if clause_words.as_slice() == ["the", "game"] {

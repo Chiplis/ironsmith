@@ -8375,3 +8375,19 @@ fn parse_put_counters_equal_to_that_creatures_power() {
         "expected dynamic power-based counter amount, got {abilities_debug}"
     );
 }
+
+#[test]
+fn parse_lose_life_equal_to_power_plus_toughness() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phthisis Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy target creature. Its controller loses life equal to its power plus its toughness.")
+        .expect("power-plus-toughness life amount should parse");
+
+    let abilities_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        abilities_debug.contains("Add")
+            && abilities_debug.contains("PowerOf")
+            && abilities_debug.contains("ToughnessOf"),
+        "expected additive power+toughness life amount, got {abilities_debug}"
+    );
+}
