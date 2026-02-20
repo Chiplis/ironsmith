@@ -3,12 +3,12 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
 
 use ironsmith::cards::CardDefinitionBuilder;
 use ironsmith::compiled_text::compiled_lines;
 use ironsmith::ids::CardId;
-use serde::Serialize;
-use serde_json::Value;
 
 #[derive(Debug)]
 struct Args {
@@ -51,7 +51,7 @@ struct CardAudit {
     semantic_false_positive: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct JsonReport {
     cards_processed: usize,
     parse_failures: usize,
@@ -62,7 +62,7 @@ struct JsonReport {
     clusters: Vec<JsonCluster>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct JsonCluster {
     signature: String,
     size: usize,
@@ -75,13 +75,13 @@ struct JsonCluster {
     examples: Vec<JsonExample>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct JsonErrorCount {
     error: String,
     count: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct JsonExample {
     name: String,
     parse_error: Option<String>,
@@ -95,7 +95,7 @@ struct JsonExample {
     compiled_lines: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct JsonFailureReport {
     threshold: f32,
     cards_processed: usize,
@@ -103,7 +103,7 @@ struct JsonFailureReport {
     entries: Vec<JsonFailureEntry>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct JsonFailureEntry {
     name: String,
     parse_error: Option<String>,
@@ -4178,176 +4178,315 @@ fn read_name_set(path: &str) -> Result<HashSet<String>, Box<dyn std::error::Erro
         .collect())
 }
 
-fn pick_field<'a>(card: &'a Value, face: Option<&'a Value>, key: &str) -> Option<&'a str> {
-    card.get(key)
-        .and_then(Value::as_str)
-        .or_else(|| face.and_then(|f| f.get(key)).and_then(Value::as_str))
+fn is_stream_metadata_line(line: &str) -> bool {
+    line.starts_with("Mana cost:")
+        || line.starts_with("Type:")
+        || line.starts_with("Power/Toughness:")
+        || line.starts_with("Loyalty:")
+        || line.starts_with("Defense:")
 }
 
-fn has_acorn(card: &Value) -> bool {
-    card.get("has_acorn")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-}
-
-fn legalities_all_not_legal(card: &Value) -> bool {
-    let Some(legalities) = card.get("legalities").and_then(Value::as_object) else {
-        return false;
-    };
-    !legalities.is_empty()
-        && legalities
-            .values()
-            .all(|value| value.as_str().is_some_and(|item| item == "not_legal"))
-}
-
-fn contains_marker_with_boundaries(text: &str, marker: &str) -> bool {
-    text.match_indices(marker).any(|(start, _)| {
-        let before = text[..start].chars().next_back();
-        let end = start + marker.len();
-        let after = text[end..].chars().next();
-        !before.is_some_and(|ch| ch.is_ascii_alphabetic())
-            && !after.is_some_and(|ch| ch.is_ascii_alphabetic())
-    })
-}
-
-fn has_digital_only_oracle_marker(oracle_text: &str) -> bool {
-    let lower = oracle_text.to_ascii_lowercase();
-    [
-        "boon",
-        "conjure",
-        "double team",
-        "draft",
-        "heist",
-        "incorporate",
-        "intensity",
-        "intensify",
-        "perpetually",
-        "seek",
-        "specialize",
-        "spellbook",
-    ]
-    .iter()
-    .any(|marker| contains_marker_with_boundaries(&lower, marker))
-}
-
-fn is_non_playable(type_line: Option<&str>, oracle_text: Option<&str>, card: &Value) -> bool {
-    if card
-        .get("border_color")
-        .and_then(Value::as_str)
-        .is_some_and(|value| value.eq_ignore_ascii_case("silver"))
-    {
-        return true;
+fn parse_stream_block(lines: &[String]) -> Option<CardInput> {
+    if lines.is_empty() {
+        return None;
     }
-    if has_acorn(card) {
-        return true;
-    }
-    if legalities_all_not_legal(card) {
-        return true;
-    }
-    if card
-        .get("layout")
-        .and_then(Value::as_str)
-        .is_some_and(|layout| {
-            matches!(
-                layout.to_ascii_lowercase().as_str(),
-                "token"
-                    | "double_faced_token"
-                    | "emblem"
-                    | "planar"
-                    | "scheme"
-                    | "vanguard"
-                    | "art_series"
-                    | "reversible_card"
-            )
-        })
-    {
-        return true;
-    }
-    if let Some(type_line) = type_line {
-        let disallowed = [
-            "Token",
-            "Emblem",
-            "Plane",
-            "Scheme",
-            "Vanguard",
-            "Phenomenon",
-            "Conspiracy",
-            "Dungeon",
-            "Attraction",
-            "Contraption",
-        ];
-        if disallowed.iter().any(|needle| type_line.contains(needle)) {
-            return true;
-        }
-        if type_line.trim() == "Card" {
-            return true;
-        }
-    }
-    if oracle_text.is_some_and(|oracle| oracle.contains("Theme color")) {
-        return true;
-    }
-    if oracle_text.is_some_and(has_digital_only_oracle_marker) {
-        return true;
-    }
-    false
-}
-
-fn build_parse_input(card: &Value) -> Option<CardInput> {
-    let face = card
-        .get("card_faces")
-        .and_then(Value::as_array)
-        .and_then(|faces| faces.first());
-
-    let name = pick_field(card, face, "name")?.trim().to_string();
+    let name_line = lines[0].trim();
+    let name = name_line.strip_prefix("Name: ")?.trim().to_string();
     if name.is_empty() {
         return None;
     }
 
-    let mana_cost = pick_field(card, face, "mana_cost");
-    let type_line = pick_field(card, face, "type_line");
-    let oracle_text = pick_field(card, face, "oracle_text");
-    if is_non_playable(type_line, oracle_text, card) {
+    let parse_lines = lines[1..].to_vec();
+    let parse_input = parse_lines.join("\n").trim().to_string();
+    if parse_input.is_empty() {
         return None;
     }
-    let oracle_text = oracle_text?.trim().to_string();
+
+    let mut oracle_start = None;
+    for (idx, line) in parse_lines.iter().enumerate() {
+        if !is_stream_metadata_line(line.trim()) {
+            oracle_start = Some(idx);
+            break;
+        }
+    }
+    let oracle_start = oracle_start?;
+    let oracle_text = parse_lines[oracle_start..].join("\n").trim().to_string();
     if oracle_text.is_empty() {
         return None;
     }
 
-    let power = pick_field(card, face, "power");
-    let toughness = pick_field(card, face, "toughness");
-    let loyalty = pick_field(card, face, "loyalty");
-    let defense = pick_field(card, face, "defense");
-
-    let mut lines = Vec::new();
-    if let Some(mana_cost) = mana_cost.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("Mana cost: {}", mana_cost.trim()));
-    }
-    if let Some(type_line) = type_line.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("Type: {}", type_line.trim()));
-    }
-    if let (Some(power), Some(toughness)) = (power, toughness) {
-        if !power.trim().is_empty() && !toughness.trim().is_empty() {
-            lines.push(format!(
-                "Power/Toughness: {}/{}",
-                power.trim(),
-                toughness.trim()
-            ));
-        }
-    }
-    if let Some(loyalty) = loyalty.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("Loyalty: {}", loyalty.trim()));
-    }
-    if let Some(defense) = defense.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("Defense: {}", defense.trim()));
-    }
-    lines.push(oracle_text.clone());
-
     Some(CardInput {
         name,
         oracle_text,
-        parse_input: lines.join("\n"),
+        parse_input,
     })
+}
+
+fn load_card_inputs_from_stream(
+    cards_path: &str,
+) -> Result<Vec<CardInput>, Box<dyn std::error::Error>> {
+    let scripts_dir = format!("{}/scripts", env!("CARGO_MANIFEST_DIR"));
+    let python_code = r#"
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+from stream_scryfall_blocks import iter_json_array, build_block
+
+cards_path = Path(sys.argv[2])
+for card in iter_json_array(cards_path):
+    block = build_block(card)
+    if not block:
+        continue
+    print(block)
+    print("---")
+"#;
+    let mut child = Command::new("python3")
+        .arg("-c")
+        .arg(python_code)
+        .arg(&scripts_dir)
+        .arg(cards_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        std::io::Error::other("failed to capture stream_scryfall_blocks.py stdout")
+    })?;
+
+    let mut cards = Vec::new();
+    let mut block_lines = Vec::new();
+    let reader = BufReader::new(stdout);
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim() == "---" {
+            if let Some(card) = parse_stream_block(&block_lines) {
+                cards.push(card);
+            }
+            block_lines.clear();
+            continue;
+        }
+        block_lines.push(line);
+    }
+    if let Some(card) = parse_stream_block(&block_lines) {
+        cards.push(card);
+    }
+
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(std::io::Error::other(format!(
+            "scripts/stream_scryfall_blocks.py failed with status {status}"
+        ))
+        .into());
+    }
+
+    Ok(cards)
+}
+
+fn json_push_string(out: &mut String, value: &str) {
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{08}' => out.push_str("\\b"),
+            '\u{0C}' => out.push_str("\\f"),
+            c if c <= '\u{1F}' => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
+fn json_push_opt_string(out: &mut String, value: Option<&str>) {
+    if let Some(value) = value {
+        json_push_string(out, value);
+    } else {
+        out.push_str("null");
+    }
+}
+
+fn json_push_f32(out: &mut String, value: f32) {
+    if value.is_finite() {
+        out.push_str(&value.to_string());
+    } else {
+        out.push_str("0.0");
+    }
+}
+
+fn json_encode_failure_report(report: &JsonFailureReport) -> String {
+    let mut out = String::new();
+    out.push('{');
+    out.push_str("\"threshold\":");
+    json_push_f32(&mut out, report.threshold);
+    out.push(',');
+    out.push_str("\"cards_processed\":");
+    out.push_str(&report.cards_processed.to_string());
+    out.push(',');
+    out.push_str("\"failures\":");
+    out.push_str(&report.failures.to_string());
+    out.push(',');
+    out.push_str("\"entries\":[");
+    for (idx, entry) in report.entries.iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        out.push('{');
+        out.push_str("\"name\":");
+        json_push_string(&mut out, &entry.name);
+        out.push(',');
+        out.push_str("\"parse_error\":");
+        json_push_opt_string(&mut out, entry.parse_error.as_deref());
+        out.push(',');
+        out.push_str("\"oracle_coverage\":");
+        json_push_f32(&mut out, entry.oracle_coverage);
+        out.push(',');
+        out.push_str("\"compiled_coverage\":");
+        json_push_f32(&mut out, entry.compiled_coverage);
+        out.push(',');
+        out.push_str("\"similarity_score\":");
+        json_push_f32(&mut out, entry.similarity_score);
+        out.push(',');
+        out.push_str("\"line_delta\":");
+        out.push_str(&entry.line_delta.to_string());
+        out.push(',');
+        out.push_str("\"oracle_text\":");
+        json_push_string(&mut out, &entry.oracle_text);
+        out.push(',');
+        out.push_str("\"compiled_text\":");
+        json_push_string(&mut out, &entry.compiled_text);
+        out.push(',');
+        out.push_str("\"compiled_lines\":[");
+        for (line_idx, line) in entry.compiled_lines.iter().enumerate() {
+            if line_idx > 0 {
+                out.push(',');
+            }
+            json_push_string(&mut out, line);
+        }
+        out.push(']');
+        out.push('}');
+    }
+    out.push(']');
+    out.push('}');
+    out
+}
+
+fn json_encode_cluster_report(report: &JsonReport) -> String {
+    let mut out = String::new();
+    out.push('{');
+    out.push_str("\"cards_processed\":");
+    out.push_str(&report.cards_processed.to_string());
+    out.push(',');
+    out.push_str("\"parse_failures\":");
+    out.push_str(&report.parse_failures.to_string());
+    out.push(',');
+    out.push_str("\"semantic_mismatches\":");
+    out.push_str(&report.semantic_mismatches.to_string());
+    out.push(',');
+    out.push_str("\"semantic_false_positives\":");
+    out.push_str(&report.semantic_false_positives.to_string());
+    out.push(',');
+    out.push_str("\"clusters_total\":");
+    out.push_str(&report.clusters_total.to_string());
+    out.push(',');
+    out.push_str("\"clusters_reported\":");
+    out.push_str(&report.clusters_reported.to_string());
+    out.push(',');
+    out.push_str("\"clusters\":[");
+    for (idx, cluster) in report.clusters.iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        out.push('{');
+        out.push_str("\"signature\":");
+        json_push_string(&mut out, &cluster.signature);
+        out.push(',');
+        out.push_str("\"size\":");
+        out.push_str(&cluster.size.to_string());
+        out.push(',');
+        out.push_str("\"parse_failures\":");
+        out.push_str(&cluster.parse_failures.to_string());
+        out.push(',');
+        out.push_str("\"semantic_mismatches\":");
+        out.push_str(&cluster.semantic_mismatches.to_string());
+        out.push(',');
+        out.push_str("\"semantic_false_positives\":");
+        out.push_str(&cluster.semantic_false_positives.to_string());
+        out.push(',');
+        out.push_str("\"parse_failure_rate\":");
+        json_push_f32(&mut out, cluster.parse_failure_rate);
+        out.push(',');
+        out.push_str("\"semantic_mismatch_rate\":");
+        json_push_f32(&mut out, cluster.semantic_mismatch_rate);
+        out.push(',');
+        out.push_str("\"top_errors\":[");
+        for (error_idx, error) in cluster.top_errors.iter().enumerate() {
+            if error_idx > 0 {
+                out.push(',');
+            }
+            out.push('{');
+            out.push_str("\"error\":");
+            json_push_string(&mut out, &error.error);
+            out.push(',');
+            out.push_str("\"count\":");
+            out.push_str(&error.count.to_string());
+            out.push('}');
+        }
+        out.push(']');
+        out.push(',');
+        out.push_str("\"examples\":[");
+        for (example_idx, example) in cluster.examples.iter().enumerate() {
+            if example_idx > 0 {
+                out.push(',');
+            }
+            out.push('{');
+            out.push_str("\"name\":");
+            json_push_string(&mut out, &example.name);
+            out.push(',');
+            out.push_str("\"parse_error\":");
+            json_push_opt_string(&mut out, example.parse_error.as_deref());
+            out.push(',');
+            out.push_str("\"oracle_coverage\":");
+            json_push_f32(&mut out, example.oracle_coverage);
+            out.push(',');
+            out.push_str("\"compiled_coverage\":");
+            json_push_f32(&mut out, example.compiled_coverage);
+            out.push(',');
+            out.push_str("\"similarity_score\":");
+            json_push_f32(&mut out, example.similarity_score);
+            out.push(',');
+            out.push_str("\"line_delta\":");
+            out.push_str(&example.line_delta.to_string());
+            out.push(',');
+            out.push_str("\"oracle_excerpt\":");
+            json_push_string(&mut out, &example.oracle_excerpt);
+            out.push(',');
+            out.push_str("\"compiled_excerpt\":");
+            json_push_string(&mut out, &example.compiled_excerpt);
+            out.push(',');
+            out.push_str("\"oracle_text\":");
+            json_push_string(&mut out, &example.oracle_text);
+            out.push(',');
+            out.push_str("\"compiled_lines\":[");
+            for (line_idx, line) in example.compiled_lines.iter().enumerate() {
+                if line_idx > 0 {
+                    out.push(',');
+                }
+                json_push_string(&mut out, line);
+            }
+            out.push(']');
+            out.push('}');
+        }
+        out.push(']');
+        out.push('}');
+    }
+    out.push(']');
+    out.push('}');
+    out
 }
 
 fn set_parser_trace(enabled: bool) {
@@ -4372,11 +4511,7 @@ fn set_allow_unsupported(enabled: bool) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args().map_err(std::io::Error::other)?;
-    let file_contents = fs::read_to_string(&args.cards_path)?;
-    let cards_json: Value = serde_json::from_str(&file_contents)?;
-    let cards = cards_json
-        .as_array()
-        .ok_or_else(|| std::io::Error::other("cards json must be an array"))?;
+    let cards = load_card_inputs_from_stream(&args.cards_path)?;
 
     let original_trace = env::var("IRONSMITH_PARSER_TRACE").ok();
     let original_allow_unsupported = env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED").ok();
@@ -4406,15 +4541,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut audits = Vec::new();
-    for card in cards {
+    for card_input in cards {
         if let Some(limit) = args.limit
             && audits.len() >= limit
         {
             break;
         }
-        let Some(card_input) = build_parse_input(card) else {
-            continue;
-        };
 
         let trace_for_card = if args.parser_trace {
             true
@@ -4591,7 +4723,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             failures: entries.len(),
             entries,
         };
-        let payload = serde_json::to_string_pretty(&report)?;
+        let payload = json_encode_failure_report(&report);
         fs::write(path, payload)?;
         println!(
             "Wrote threshold failure report to {path} ({} cards)",
@@ -4821,7 +4953,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             clusters_reported: json_clusters.len(),
             clusters: json_clusters,
         };
-        let payload = serde_json::to_string_pretty(&report)?;
+        let payload = json_encode_cluster_report(&report);
         fs::write(&path, payload)?;
         println!("Wrote JSON report to {path}");
     }

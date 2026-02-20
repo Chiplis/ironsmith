@@ -38,8 +38,3 @@ fn render_definition(def: &CardDefinition) -> String {
 
     out
 }
-
-
-
-
-

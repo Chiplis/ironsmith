@@ -5286,6 +5286,11 @@ fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
         return Some(Value::CardsInHand(PlayerFilter::You));
     }
 
+    // where X is N plus the number of <objects>
+    if let Some(value) = parse_where_x_is_fixed_plus_number_of_filter_value(tokens) {
+        return Some(value);
+    }
+
     // where X is the number of <objects>
     if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
         return Some(value);
@@ -5326,6 +5331,38 @@ fn parse_where_x_is_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
     let filter_tokens = &tokens[object_start_token_idx..];
     let filter = parse_object_filter(filter_tokens, false).ok()?;
     Some(Value::Count(filter))
+}
+
+fn parse_where_x_is_fixed_plus_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
+    let words = words(tokens);
+    if !words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+
+    let value_start_idx = token_index_for_word_index(tokens, 3)?;
+    let (fixed_value, fixed_used) = parse_number(&tokens[value_start_idx..])?;
+    let plus_word_idx = 3 + fixed_used;
+    if words.get(plus_word_idx).copied() != Some("plus") {
+        return None;
+    }
+
+    let mut number_word_idx = plus_word_idx + 1;
+    if words.get(number_word_idx).copied() == Some("the") {
+        number_word_idx += 1;
+    }
+    if words.get(number_word_idx).copied() != Some("number")
+        || words.get(number_word_idx + 1).copied() != Some("of")
+    {
+        return None;
+    }
+
+    let filter_start_idx = token_index_for_word_index(tokens, number_word_idx + 2)?;
+    let filter_tokens = &tokens[filter_start_idx..];
+    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    Some(Value::Add(
+        Box::new(Value::Fixed(fixed_value as i32)),
+        Box::new(Value::Count(filter)),
+    ))
 }
 
 fn token_index_for_word_index(tokens: &[Token], word_index: usize) -> Option<usize> {
@@ -18038,6 +18075,204 @@ fn parse_gain_x_plus_life_sentence(
     Ok(Some(effects))
 }
 
+fn parse_simple_ability_duration(words_after_verb: &[&str]) -> Option<(usize, usize, Until)> {
+    if let Some(idx) = words_after_verb
+        .windows(4)
+        .position(|window| window == ["until", "end", "of", "turn"])
+    {
+        return Some((idx, 4, Until::EndOfTurn));
+    }
+    if let Some(idx) = words_after_verb.windows(4).position(|window| {
+        window == ["until", "your", "next", "turn"]
+            || window == ["until", "your", "next", "upkeep"]
+    }) {
+        return Some((idx, 4, Until::YourNextTurn));
+    }
+    if let Some(idx) = words_after_verb.windows(5).position(|window| {
+        window == ["until", "your", "next", "untap", "step"]
+            || window == ["during", "your", "next", "untap", "step"]
+    }) {
+        return Some((idx, 5, Until::YourNextTurn));
+    }
+    if let Some(idx) = words_after_verb
+        .windows(6)
+        .position(|window| window == ["for", "as", "long", "as", "you", "control"])
+    {
+        return Some((
+            idx,
+            words_after_verb.len().saturating_sub(idx),
+            Until::YouStopControllingThis,
+        ));
+    }
+    None
+}
+
+fn parse_simple_gain_ability_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    parse_simple_ability_modifier_clause(tokens, false)
+}
+
+fn parse_simple_lose_ability_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    parse_simple_ability_modifier_clause(tokens, true)
+}
+
+fn parse_simple_ability_modifier_clause(
+    tokens: &[Token],
+    losing: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    let verb_idx = clause_words.iter().position(|word| {
+        if losing {
+            matches!(*word, "lose" | "loses")
+        } else {
+            matches!(*word, "gain" | "gains")
+        }
+    });
+    let Some(verb_idx) = verb_idx else {
+        return Ok(None);
+    };
+    if verb_idx == 0 {
+        return Ok(None);
+    }
+    let Some(verb_token_idx) = token_index_for_word_index(tokens, verb_idx) else {
+        return Ok(None);
+    };
+
+    if !losing && matches!(clause_words[verb_idx], "gain" | "gains") {
+        let starts_with_life = clause_words
+            .get(verb_idx + 1)
+            .is_some_and(|word| *word == "life");
+        let starts_with_control = clause_words
+            .get(verb_idx + 1)
+            .is_some_and(|word| *word == "control");
+        if starts_with_life || starts_with_control {
+            return Ok(None);
+        }
+    }
+
+    let subject_tokens = trim_commas(&tokens[..verb_token_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if !losing
+        && let Some((subject_verb, _)) = find_verb(&subject_tokens)
+        && subject_verb != Verb::Get
+    {
+        return Ok(None);
+    }
+
+    let words_after_verb = &clause_words[verb_idx + 1..];
+    if words_after_verb.is_empty() {
+        return Ok(None);
+    }
+
+    let duration_phrase = parse_simple_ability_duration(words_after_verb);
+    if duration_phrase.is_none() {
+        return Ok(None);
+    }
+    let duration = duration_phrase
+        .as_ref()
+        .map(|(_, _, duration)| duration.clone())
+        .unwrap_or(Until::Forever);
+
+    let ability_end_word_idx = duration_phrase
+        .as_ref()
+        .map(|(start, _, _)| verb_idx + 1 + *start)
+        .unwrap_or(clause_words.len());
+    let ability_end_token_idx =
+        token_index_for_word_index(tokens, ability_end_word_idx).unwrap_or(tokens.len());
+    let ability_tokens = trim_commas(&tokens[verb_token_idx + 1..ability_end_token_idx]);
+    if ability_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut abilities = if let Some(actions) = parse_ability_line(&ability_tokens) {
+        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+        actions
+            .into_iter()
+            .filter_map(keyword_action_to_static_ability)
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    if abilities.is_empty()
+        && let Some(granted) =
+            parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
+    {
+        abilities.push(granted);
+    }
+    if abilities.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some((start, len, _)) = duration_phrase {
+        let tail_word_idx = verb_idx + 1 + start + len;
+        if let Some(tail_token_idx) = token_index_for_word_index(tokens, tail_word_idx) {
+            let trailing = trim_commas(&tokens[tail_token_idx..]);
+            if !trailing.is_empty() {
+                return Ok(None);
+            }
+        }
+    }
+
+    let subject_words = words(&subject_tokens);
+    let is_pronoun_subject = matches!(subject_words.as_slice(), ["it"] | ["they"] | ["them"]);
+    if is_pronoun_subject {
+        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens));
+        if losing {
+            return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
+                target,
+                abilities,
+                duration,
+            }));
+        }
+        return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+            target,
+            abilities,
+            duration,
+        }));
+    }
+
+    let is_demonstrative_subject = subject_words
+        .first()
+        .is_some_and(|word| *word == "that" || *word == "those");
+    if is_demonstrative_subject || subject_words.contains(&"target") {
+        let target = parse_target_phrase(&subject_tokens)?;
+        if losing {
+            return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
+                target,
+                abilities,
+                duration,
+            }));
+        }
+        return Ok(Some(EffectAst::GrantAbilitiesToTarget {
+            target,
+            abilities,
+            duration,
+        }));
+    }
+
+    let filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported subject in {}-ability clause (clause: '{}')",
+            if losing { "lose" } else { "gain" },
+            clause_words.join(" ")
+        ))
+    })?;
+    if losing {
+        return Ok(Some(EffectAst::RemoveAbilitiesAll {
+            filter,
+            abilities,
+            duration,
+        }));
+    }
+    Ok(Some(EffectAst::GrantAbilitiesAll {
+        filter,
+        abilities,
+        duration,
+    }))
+}
+
 fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = words(tokens);
     let looks_like_can_attack_no_defender = words.windows(2).any(|window| window == ["can", "attack"])
@@ -18089,6 +18324,12 @@ fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>
     } else {
         return Ok(None);
     };
+    if subject_start_token_idx < gain_token_idx
+        && let Some((subject_verb, _)) = find_verb(&tokens[subject_start_token_idx..gain_token_idx])
+        && subject_verb != Verb::Get
+    {
+        return Ok(None);
+    }
 
     let duration_phrase = if let Some(idx) = after_gain
         .windows(4)
@@ -18567,6 +18808,12 @@ fn is_same_name_that_reference_words(words: &[&str]) -> bool {
             | ["that", "cards"]
             | ["that", "creature"]
             | ["that", "creatures"]
+            | ["that", "artifact"]
+            | ["that", "artifacts"]
+            | ["that", "enchantment"]
+            | ["that", "enchantments"]
+            | ["that", "land"]
+            | ["that", "lands"]
             | ["that", "permanent"]
             | ["that", "permanents"]
             | ["that", "spell"]
@@ -18575,6 +18822,9 @@ fn is_same_name_that_reference_words(words: &[&str]) -> bool {
             | ["that", "objects"]
             | ["those", "cards"]
             | ["those", "creatures"]
+            | ["those", "artifacts"]
+            | ["those", "enchantments"]
+            | ["those", "lands"]
             | ["those", "permanents"]
             | ["those", "spells"]
             | ["those", "objects"]
@@ -18658,10 +18908,27 @@ fn parse_search_library_sentence(
     let search_body_words = &search_words[1..];
     let mut search_player_target: Option<TargetAst> = None;
     let mut forced_library_owner: Option<PlayerFilter> = None;
+    let mut include_hand_and_graveyard_bundle = false;
     if search_body_words.starts_with(&["your", "library", "for"])
         || search_body_words.starts_with(&["their", "library", "for"])
     {
         // Keep player from parsed subject/default context.
+    } else if search_body_words
+        .starts_with(&["its", "controller", "graveyard", "hand", "and", "library", "for"])
+        || search_body_words
+            .starts_with(&["its", "controllers", "graveyard", "hand", "and", "library", "for"])
+    {
+        player = PlayerAst::ItsController;
+        forced_library_owner = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
+        include_hand_and_graveyard_bundle = true;
+    } else if search_body_words
+        .starts_with(&["its", "owner", "graveyard", "hand", "and", "library", "for"])
+        || search_body_words
+            .starts_with(&["its", "owners", "graveyard", "hand", "and", "library", "for"])
+    {
+        player = PlayerAst::ItsOwner;
+        forced_library_owner = Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target));
+        include_hand_and_graveyard_bundle = true;
     } else if search_body_words.starts_with(&["target", "player", "library", "for"])
         || search_body_words.starts_with(&["target", "players", "library", "for"])
     {
@@ -18924,7 +19191,7 @@ fn parse_search_library_sentence(
         });
     }
     if filter.owner.is_none()
-        && let Some(owner) = forced_library_owner
+        && let Some(owner) = forced_library_owner.clone()
     {
         filter.owner = Some(owner);
     }
@@ -18980,6 +19247,11 @@ fn parse_search_library_sentence(
         && words_all.contains(&"hand")
         && words_all.contains(&"other")
         && words_all.contains(&"one");
+    let zone_bundle_filter = if include_hand_and_graveyard_bundle {
+        Some(filter.clone())
+    } else {
+        None
+    };
     let mut effects = if split_battlefield_and_hand {
         let battlefield_tapped = words_all.contains(&"tapped");
         vec![
@@ -19014,6 +19286,21 @@ fn parse_search_library_sentence(
             tapped: battlefield_tapped,
         }]
     };
+
+    if include_hand_and_graveyard_bundle
+        && let Some(base_filter) = zone_bundle_filter
+    {
+        for zone in [Zone::Graveyard, Zone::Hand] {
+            let mut zone_filter = base_filter.clone();
+            zone_filter.zone = Some(zone);
+            if zone_filter.owner.is_none() {
+                zone_filter.owner = forced_library_owner.clone();
+            }
+            effects.push(EffectAst::ExileAll {
+                filter: zone_filter,
+            });
+        }
+    }
 
     if trailing_discard_before_shuffle
         && let (Some(discard_idx), Some(shuffle_idx)) = (
@@ -21253,7 +21540,7 @@ fn parse_effect_chain_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardText
             }
             continue;
         }
-        let mut effect = parse_effect_clause(&segment)?;
+        let mut effect = parse_effect_clause_with_trailing_if(&segment)?;
         if let Some(context) = carried_context {
             maybe_apply_carried_player_with_clause(&mut effect, context, &segment);
         }
@@ -21265,6 +21552,49 @@ fn parse_effect_chain_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardText
     collapse_token_copy_next_end_step_exile_followup(&mut effects, tokens);
     collapse_token_copy_end_of_combat_exile_followup(&mut effects, tokens);
     Ok(effects)
+}
+
+fn parse_effect_clause_with_trailing_if(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+    let Some(if_idx) = tokens.iter().rposition(|token| token.is_word("if")) else {
+        return parse_effect_clause(tokens);
+    };
+    if if_idx == 0 || if_idx + 1 >= tokens.len() {
+        return parse_effect_clause(tokens);
+    }
+
+    let predicate_tokens = trim_commas(&tokens[if_idx + 1..]);
+    if predicate_tokens.is_empty() {
+        return parse_effect_clause(tokens);
+    }
+    let Ok(predicate) = parse_predicate(&predicate_tokens) else {
+        return parse_effect_clause(tokens);
+    };
+    if !matches!(
+        predicate,
+        PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+    ) {
+        return parse_effect_clause(tokens);
+    }
+
+    let leading = trim_commas(&tokens[..if_idx]);
+    if leading.is_empty() {
+        return parse_effect_clause(tokens);
+    }
+    let base_effect = if let Ok(effect) = parse_effect_clause(&leading) {
+        effect
+    } else if let Some(effect) = parse_simple_lose_ability_clause(&leading)? {
+        effect
+    } else if let Some(effect) = parse_simple_gain_ability_clause(&leading)? {
+        effect
+    } else {
+        return parse_effect_clause(tokens);
+    };
+
+    Ok(EffectAst::Conditional {
+        predicate,
+        if_true: vec![base_effect],
+        if_false: Vec::new(),
+    })
 }
 
 fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
@@ -27937,6 +28267,13 @@ fn parse_exile(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAs
             clause_words.join(" ")
         )));
     }
+    if let Some(effect) = parse_same_name_exile_hand_and_graveyard_clause(
+        tokens,
+        subject,
+        until_source_leaves,
+    )? {
+        return Ok(effect);
+    }
     if matches!(clause_words.first().copied(), Some("all" | "each")) {
         let filter_tokens = &tokens[1..];
         let mut filter = parse_object_filter(filter_tokens, false)?;
@@ -28045,6 +28382,81 @@ fn parse_exile(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAs
     } else {
         EffectAst::Exile { target }
     })
+}
+
+fn parse_same_name_exile_hand_and_graveyard_clause(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+    until_source_leaves: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["all", "cards"])
+        || !clause_words
+            .windows(3)
+            .any(|window| window == ["with", "that", "name"])
+    {
+        return Ok(None);
+    }
+
+    let Some(from_idx) = clause_words.iter().position(|word| *word == "from") else {
+        return Ok(None);
+    };
+    let Some(first_zone_idx) = (from_idx + 1..clause_words.len())
+        .find(|idx| matches!(clause_words[*idx], "hand" | "hands" | "graveyard" | "graveyards"))
+    else {
+        return Ok(None);
+    };
+
+    let owner_words = &clause_words[from_idx + 1..first_zone_idx];
+    let owner_from_subject = match subject {
+        Some(SubjectAst::Player(player)) => controller_filter_for_token_player(player),
+        _ => None,
+    };
+    let owner = match owner_words {
+        ["target", "player"] | ["target", "players"] => Some(PlayerFilter::target_player()),
+        ["target", "opponent"] | ["target", "opponents"] => Some(PlayerFilter::target_opponent()),
+        ["that", "player"] | ["that", "players"] => Some(PlayerFilter::IteratedPlayer),
+        ["your"] => Some(PlayerFilter::You),
+        ["their"] | ["his", "or", "her"] => owner_from_subject.or(Some(PlayerFilter::IteratedPlayer)),
+        [] => owner_from_subject,
+        _ => return Ok(None),
+    };
+    let Some(owner) = owner else {
+        return Ok(None);
+    };
+
+    let mut zones = Vec::new();
+    for word in &clause_words[first_zone_idx..] {
+        let Some(zone) = parse_zone_word(word) else {
+            continue;
+        };
+        if !matches!(zone, Zone::Hand | Zone::Graveyard) || zones.contains(&zone) {
+            continue;
+        }
+        zones.push(zone);
+    }
+    if zones.len() != 2 || !zones.contains(&Zone::Hand) || !zones.contains(&Zone::Graveyard) {
+        return Ok(None);
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.owner = Some(owner);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(IT_TAG),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    filter.any_of = zones
+        .into_iter()
+        .map(|zone| ObjectFilter::default().in_zone(zone))
+        .collect();
+
+    Ok(Some(if until_source_leaves {
+        EffectAst::ExileUntilSourceLeaves {
+            target: TargetAst::Object(filter, None, None),
+        }
+    } else {
+        EffectAst::ExileAll { filter }
+    }))
 }
 
 fn split_until_source_leaves_tail(tokens: &[Token]) -> (&[Token], bool) {

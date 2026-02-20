@@ -900,12 +900,22 @@ enum EffectAst {
         abilities: Vec<StaticAbility>,
         duration: Until,
     },
+    RemoveAbilitiesAll {
+        filter: ObjectFilter,
+        abilities: Vec<StaticAbility>,
+        duration: Until,
+    },
     GrantAbilitiesChoiceAll {
         filter: ObjectFilter,
         abilities: Vec<StaticAbility>,
         duration: Until,
     },
     GrantAbilitiesToTarget {
+        target: TargetAst,
+        abilities: Vec<StaticAbility>,
+        duration: Until,
+    },
+    RemoveAbilitiesFromTarget {
         target: TargetAst,
         abilities: Vec<StaticAbility>,
         duration: Until,
@@ -2258,7 +2268,6 @@ mod target_parse_tests {
         }
     }
 
-
     #[test]
     fn parse_target_artifact_or_enchantment() {
         let tokens = tokenize_line("target artifact or enchantment", 0);
@@ -2417,7 +2426,6 @@ mod target_parse_tests {
         );
     }
 
-
     #[test]
     fn parse_object_filter_cards_with_cycling_from_your_graveyard() {
         let tokens = tokenize_line("cards with cycling from your graveyard", 0);
@@ -2474,7 +2482,6 @@ mod target_parse_tests {
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert!(filter.card_types.contains(&CardType::Creature));
     }
-
 
     #[test]
     fn parse_target_djinn_or_efreet_includes_both_subtypes() {
@@ -2534,7 +2541,6 @@ mod target_parse_tests {
             "expected excluded Army subtype"
         );
     }
-
 }
 
 #[cfg(all(test, feature = "parser-tests-full"))]
@@ -2745,7 +2751,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
     #[test]
     fn parse_tap_one_or_two_targets_preserves_choice_count() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Probe Tap Two")
@@ -2760,7 +2765,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert_eq!(tap.spec.count().min, 1);
         assert_eq!(tap.spec.count().max, Some(2));
     }
-
 
     #[test]
     fn parse_tap_all_spirits_compiles_as_non_targeted_all() {
@@ -2853,8 +2857,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
-
     #[test]
     fn parse_draw_for_each_tapped_creature_target_opponent_controls() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Borrowing Arrows Variant")
@@ -2893,7 +2895,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
     #[test]
     fn parse_counter_spell_with_graveyard_reference_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Drown in the Loch Variant")
@@ -2910,7 +2911,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "should include counter effect"
         );
     }
-
 
     #[test]
     fn parse_enchanted_creature_has_base_power_toughness_as_static() {
@@ -3013,7 +3013,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
     #[test]
     fn parse_exile_target_nonland_not_exactly_two_colors_clause() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Ravnica Variant")
@@ -3043,7 +3042,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
     #[test]
     fn parse_search_to_battlefield_tapped_preserves_tapped_flag() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Roiling Regrowth Variant")
@@ -3070,7 +3068,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "should not leak choose-object internals in search display: {spell_line}"
         );
     }
-
 
     #[test]
     fn parse_double_counters_on_each_creature_from_text() {
@@ -3169,7 +3166,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "should include create-token-copy effect"
         );
     }
-
 
     #[test]
     fn parse_dino_dna_style_copy_modifier_with_trample() {
@@ -3292,7 +3288,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
     #[test]
     fn parse_adamant_mana_spent_conditional_compiles_semantically() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Turn into a Pumpkin Variant")
@@ -3368,7 +3363,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             conditional.condition
         );
     }
-
 
     #[test]
     fn create_token_render_preserves_cant_attack_or_block_alone_text() {
@@ -3655,7 +3649,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "hybrid mana symbol should preserve slash in token stream: {words:?}"
         );
     }
-
 
     #[test]
     fn parse_mana_vault_upkeep_pay_clause_includes_pay_mana_effect() {
@@ -4368,11 +4361,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
-
-
-
-
     #[test]
     fn parse_put_counters_on_each_creature_you_control_compiles_foreach() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Saga Counter Variant")
@@ -4393,8 +4381,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("expected nested PutCountersEffect");
         assert_eq!(put.target, ChooseSpec::Iterated);
     }
-
-
 
     #[test]
     fn parse_remove_counters_from_among_creatures_cost() {
@@ -4718,7 +4704,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
     #[test]
     fn parse_each_opponent_sacrifices_creature_of_their_choice_renders_compactly() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Each Opponent Sacrifice Variant")
@@ -4735,9 +4720,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected compact each-opponent sacrifice text, got {spell_line}"
         );
     }
-
-
-
 
     #[test]
     fn parse_unless_controller_pays_life_keeps_unless_branch() {
@@ -4863,7 +4845,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
     #[test]
     fn parse_spell_cast_from_graveyard_trigger_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Secrets of the Dead Probe")
@@ -4894,8 +4875,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
-
     #[test]
     fn parse_spell_cast_third_each_turn_trigger_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Third Spell Probe")
@@ -4909,7 +4888,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected third-spell qualifier in trigger text, got {joined}"
         );
     }
-
 
     #[test]
     fn parse_pest_token_subtype_in_token_rendering() {
@@ -4940,8 +4918,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected prowess keyword in token rendering, got: {joined}"
         );
     }
-
-
 
     #[test]
     fn parse_rejects_enters_as_copy_with_except_ability_clause() {
@@ -4988,7 +4964,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "unsupported choose-leading spell text should fail parse instead of falling back to a partial static ability"
         );
     }
-
 
     #[test]
     fn parse_rejects_spent_to_cast_conditional_clause() {
@@ -5280,7 +5255,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
     #[test]
     fn reject_conditional_gain_control_clause_instead_of_partial_parse() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Exert Influence Variant")
@@ -5294,7 +5268,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected strict conditional gain-control rejection, got {debug}"
         );
     }
-
 
     #[test]
     fn parse_commander_creatures_have_granted_cost_reduction() {
@@ -5318,8 +5291,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected rendered granted cost reduction context, got {joined}"
         );
     }
-
-
 
     #[test]
     fn parse_reveal_targets_hand_from_text() {
@@ -5365,9 +5336,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "should include transform effect"
         );
     }
-
-
-
 
     #[test]
     fn parse_activated_gets_dynamic_minus_x_plus_x() {
@@ -5422,7 +5390,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected strict where-X rejection, got {debug}"
         );
     }
-
 
     #[test]
     fn parse_metalcraft_self_buff_preserves_condition_and_subject() {
@@ -5486,7 +5453,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected descend condition text to be preserved, got: {display}"
         );
     }
-
 
     #[test]
     fn parse_conditional_anthem_and_keyword_applies_condition_to_both() {
@@ -5763,8 +5729,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
-
     #[test]
     fn parse_unless_any_player_pays_mana_prefix() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Rhystic Tutor Variant")
@@ -5835,7 +5799,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected combined disjunctive type filter, got {debug}"
         );
     }
-
 
     #[test]
     fn parse_for_each_player_who_didnt_tracks_did_not_result() {
@@ -5965,9 +5928,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
     }
 
-
-
-
     #[test]
     fn reject_target_player_dealt_damage_by_this_turn_subject() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Wicked Akuba Subject Variant")
@@ -6027,7 +5987,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected strict counter-ability target error, got {message}"
         );
     }
-
 
     #[test]
     fn reject_curly_apostrophe_negated_untap_clause() {
@@ -6089,7 +6048,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "for-each choice should not force target wording: {joined}"
         );
     }
-
 
     #[test]
     fn parse_unstable_experiment_draw_then_connive_preserves_draw() {
@@ -6157,7 +6115,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected return + -1/-1 counter effects in for-players branch, got {debug}"
         );
     }
-
 
     #[test]
     fn parse_spin_into_myth_fateseal_appends_scry_effect() {
@@ -6244,7 +6201,6 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected static RuleRestriction with transform prohibition, got {abilities_debug}"
         );
     }
-
 }
 
 #[cfg(all(test, feature = "parser-tests-full"))]

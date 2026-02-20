@@ -1046,6 +1046,75 @@ fn normalize_granted_named_token_leaves_sacrifice_source(line: &str) -> String {
     line.to_string()
 }
 
+fn normalize_same_name_search_bundle_clause(line: &str) -> Option<String> {
+    let (before_search, search_tail) =
+        split_once_ascii_ci(line, "Search its controller's library for ")?;
+    let (search_clause, rest_after_library) = split_once_ascii_ci(
+        search_tail,
+        ". Exile all cards with the same name as that object in its controller's graveyard.",
+    )?;
+    let (rest_after_hand, rest_after_shuffle) = split_once_ascii_ci(
+        rest_after_library,
+        "Exile all cards with the same name as that object in its controller's hand.",
+    )?;
+    if !rest_after_hand.trim().is_empty() {
+        return None;
+    }
+    let rest_after_shuffle = rest_after_shuffle.trim_start();
+    let rest_after_shuffle =
+        strip_prefix_ascii_ci(rest_after_shuffle, "Shuffle its controller's library.")?;
+
+    let normalized_search_clause = search_clause
+        .trim()
+        .replace(
+            "permanent with the same name as that object cards",
+            "cards with the same name as that object",
+        );
+    let normalized_search_clause = strip_suffix_ascii_ci(&normalized_search_clause, ", exile them")
+        .or_else(|| strip_suffix_ascii_ci(&normalized_search_clause, " and exile them"))
+        .unwrap_or(&normalized_search_clause)
+        .trim();
+
+    let mut rewritten = format!(
+        "{}Search its controller's graveyard, hand, and library for {} and exile them. Then that player shuffles.",
+        before_search, normalized_search_clause
+    );
+    if !rest_after_shuffle.trim().is_empty() {
+        rewritten.push(' ');
+        rewritten.push_str(rest_after_shuffle.trim());
+    }
+    Some(rewritten)
+}
+
+fn normalize_repeated_dynamic_buff(line: &str) -> Option<String> {
+    let (before_until, after_until) = split_once_ascii_ci(line, " until end of turn")?;
+    let (subject, buff) = split_once_ascii_ci(before_until, " gets ")?;
+    let (left, right) = buff.split_once('/')?;
+    if !left.trim().eq_ignore_ascii_case(right.trim()) {
+        return None;
+    }
+    let value_expr = left.trim();
+    let value_expr_lower = value_expr.to_ascii_lowercase();
+    if !value_expr_lower.contains("number of") {
+        return None;
+    }
+
+    let remainder = after_until.trim();
+    let mut rewritten = format!(
+        "{} gets +X/+X until end of turn, where X is {}.",
+        subject.trim(),
+        value_expr
+    );
+    if !remainder.is_empty() && remainder != "." {
+        let rest = remainder.trim_start_matches('.').trim();
+        if !rest.is_empty() {
+            rewritten.push(' ');
+            rewritten.push_str(rest);
+        }
+    }
+    Some(rewritten)
+}
+
 fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     if let Some(rewritten) = normalize_granted_activated_ability_clause(&normalized) {
@@ -1065,6 +1134,12 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = format!("{}: {}", head.trim(), rewritten_tail);
     }
     if let Some(rewritten) = normalize_pump_and_gain_until_end_of_turn(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_same_name_search_bundle_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_repeated_dynamic_buff(&normalized) {
         normalized = rewritten;
     }
     normalized = normalize_create_named_token_article(&normalized);
@@ -1189,7 +1264,31 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "you may target creature reveals ",
             "you may have target creature reveal ",
+        )
+        .replace(
+            ", put it onto the battlefield under your control",
+            ", put that card onto the battlefield under your control",
+        )
+        .replace(
+            "put them into target opponent's graveyard",
+            "put them into their graveyard",
         );
+    if normalized.contains("Search target opponent's library for ")
+        && normalized.contains(". Shuffle target opponent's library.")
+    {
+        normalized = normalized.replace(
+            ". Shuffle target opponent's library.",
+            ". Then that player shuffles.",
+        );
+    }
+    if normalized.contains("Search target player's library for ")
+        && normalized.contains(". Shuffle target player's library.")
+    {
+        normalized = normalized.replace(
+            ". Shuffle target player's library.",
+            ". Then that player shuffles.",
+        );
+    }
     if normalized.starts_with("creatures you control get ") {
         normalized = normalized.replacen(
             "creatures you control get ",
@@ -5091,6 +5190,7 @@ fn describe_apply_continuous_clauses(
     let gets = if plural_target { "get" } else { "gets" };
     let has = if plural_target { "have" } else { "has" };
     let gains = if plural_target { "gain" } else { "gains" };
+    let loses = if plural_target { "lose" } else { "loses" };
 
     let mut clauses = Vec::new();
 
@@ -5152,6 +5252,16 @@ fn describe_apply_continuous_clauses(
             } else {
                 clauses.push(format!("{gains} {}", ability.display()));
             }
+        }
+        crate::continuous::Modification::RemoveAbility(ability) => {
+            if let Some(inline) = ability.granted_inline_ability() {
+                clauses.push(format!("{loses} {}", describe_inline_ability(inline)));
+            } else {
+                clauses.push(format!("{loses} {}", ability.display()));
+            }
+        }
+        crate::continuous::Modification::RemoveAllAbilities => {
+            clauses.push(format!("{loses} all abilities"));
         }
         crate::continuous::Modification::AddAbilityGeneric(ability) => {
             clauses.push(format!("{gains} {}", describe_inline_ability(ability)));
@@ -8765,7 +8875,11 @@ fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(return_from_gy) =
         effect.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
     {
-        let random_suffix = if return_from_gy.random { " at random" } else { "" };
+        let random_suffix = if return_from_gy.random {
+            " at random"
+        } else {
+            ""
+        };
         if let Some(owner) = graveyard_owner_from_spec(&return_from_gy.target) {
             let target_text = describe_choose_spec_without_graveyard_zone(&return_from_gy.target);
             let from_text = match &owner {
@@ -13801,7 +13915,10 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         .replace(" in target player's hand", " from their hand")
         .replace(" in that player's hand", " from their hand")
         .replace(" card in single graveyard", " card from a single graveyard")
-        .replace(" cards in single graveyard", " cards from a single graveyard")
+        .replace(
+            " cards in single graveyard",
+            " cards from a single graveyard",
+        )
         .replace(" card in graveyard", " card from a graveyard")
         .replace(" cards in graveyard", " cards from a graveyard")
         .replace(
@@ -18981,7 +19098,10 @@ mod tests {
         let normalized = normalize_sentence_surface_style(
             "An opponent's creature enter the battlefield tapped.",
         );
-        assert_eq!(normalized, "An opponent's creature enter the battlefield tapped.");
+        assert_eq!(
+            normalized,
+            "An opponent's creature enter the battlefield tapped."
+        );
     }
 
     #[test]
@@ -19728,9 +19848,8 @@ mod tests {
 
     #[test]
     fn post_pass_normalizes_archangel_life_gain_graveyard_variant() {
-        let normalized = normalize_compiled_post_pass_effect(
-            "You gain 2 life for each card in your graveyard.",
-        );
+        let normalized =
+            normalize_compiled_post_pass_effect("You gain 2 life for each card in your graveyard.");
         assert_eq!(
             normalized,
             "You gain 2 life for each card in your graveyard."
@@ -20051,7 +20170,10 @@ mod tests {
     fn post_pass_normalizes_shared_draw_three_clause() {
         let normalized =
             normalize_known_low_tail_phrase("Draw three cards. target opponent draws 3 cards.");
-        assert_eq!(normalized, "Draw three cards. target opponent draws 3 cards.");
+        assert_eq!(
+            normalized,
+            "Draw three cards. target opponent draws 3 cards."
+        );
     }
 
     #[test]
@@ -20818,9 +20940,8 @@ mod tests {
 
     #[test]
     fn surface_style_normalizes_archangels_light_clause() {
-        let normalized = normalize_sentence_surface_style(
-            "You gain 2 life for each card in your graveyard.",
-        );
+        let normalized =
+            normalize_sentence_surface_style("You gain 2 life for each card in your graveyard.");
         assert_eq!(
             normalized,
             "You gain 2 life for each card in your graveyard."

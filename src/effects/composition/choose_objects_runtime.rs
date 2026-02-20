@@ -184,8 +184,7 @@ fn enforce_single_graveyard_choice_constraint(
             .map(|(_, ids)| ids.len())
             .unwrap_or(0);
         if available_for_owner < min
-            && let Some((best_owner, _)) =
-                owner_groups.iter().max_by_key(|(_, ids)| ids.len())
+            && let Some((best_owner, _)) = owner_groups.iter().max_by_key(|(_, ids)| ids.len())
         {
             preferred_owner = Some(*best_owner);
         }
@@ -194,7 +193,10 @@ fn enforce_single_graveyard_choice_constraint(
     let Some(preferred_owner) = preferred_owner else {
         return chosen;
     };
-    chosen.retain(|id| game.object(*id).is_some_and(|obj| obj.owner == preferred_owner));
+    chosen.retain(|id| {
+        game.object(*id)
+            .is_some_and(|obj| obj.owner == preferred_owner)
+    });
     chosen.truncate(max);
     chosen.sort();
     chosen.dedup();
@@ -334,8 +336,8 @@ mod tests {
         let filter = ObjectFilter::default()
             .in_zone(Zone::Graveyard)
             .single_graveyard();
-        let effect =
-            ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "chosen").in_zone(Zone::Graveyard);
+        let effect = ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "chosen")
+            .in_zone(Zone::Graveyard);
         let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("choose resolves");
 
         let EffectResult::Objects(chosen) = outcome.result else {
@@ -356,8 +358,8 @@ mod tests {
         let filter = ObjectFilter::default()
             .in_zone(Zone::Graveyard)
             .single_graveyard();
-        let effect =
-            ChooseObjectsEffect::new(filter, 3, PlayerFilter::You, "chosen").in_zone(Zone::Graveyard);
+        let effect = ChooseObjectsEffect::new(filter, 3, PlayerFilter::You, "chosen")
+            .in_zone(Zone::Graveyard);
         let candidates = vec![alice_card, bob_card_a, bob_card_b];
         let chosen = vec![alice_card, bob_card_a];
 

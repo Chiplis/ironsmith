@@ -2,9 +2,7 @@ use super::*;
 use crate::ability::AbilityKind;
 use crate::color::Color;
 use crate::compiled_text::{compiled_lines, oracle_like_lines};
-use crate::effects::{
-    AddManaEffect, CreateTokenEffect, ReturnFromGraveyardToHandEffect,
-};
+use crate::effects::{AddManaEffect, CreateTokenEffect, ReturnFromGraveyardToHandEffect};
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, PlayerFilter};
 
@@ -364,8 +362,6 @@ fn test_parse_enters_tapped_filter_keeps_opponent_controller_constraint() {
     );
 }
 
-
-
 #[test]
 fn test_parse_cohort_ability_word_prefix_keeps_cost_and_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ondu War Cleric")
@@ -675,7 +671,6 @@ fn test_parse_trigger_deals_combat_damage_with_subject_filter() {
     );
 }
 
-
 #[test]
 fn test_parse_trigger_this_blocks_filtered_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blocker Filter Probe")
@@ -804,7 +799,6 @@ fn test_parse_put_counter_then_it_deals_damage_equal_to_its_power() {
     );
 }
 
-
 #[test]
 fn test_parse_exile_named_source_with_time_counters() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Suspend Setup Variant")
@@ -826,14 +820,6 @@ fn test_parse_exile_named_source_with_time_counters() {
         "expected time counter placement, got {debug}"
     );
 }
-
-
-
-
-
-
-
-
 
 #[test]
 fn test_parse_keyword_marker_line() {
@@ -866,7 +852,6 @@ fn test_parse_marker_keyword_with_parameter_keeps_parameter_in_render() {
         "expected fabricate parameter in render output, got {rendered}"
     );
 }
-
 
 #[test]
 fn test_parse_marker_keyword_with_cost_keeps_cost_in_render() {
@@ -1709,7 +1694,6 @@ fn test_parse_first_spell_cost_modifier_marker_errors() {
     );
 }
 
-
 #[test]
 fn test_parse_other_anthem_subject_keeps_other() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Other Anthem Probe")
@@ -1835,7 +1819,6 @@ fn test_prevent_all_combat_damage_from_target_rendering() {
     );
 }
 
-
 #[test]
 fn test_parse_modal_choose_one_that_hasnt_been_chosen_sets_mode_memory() {
     let oracle = "{2}, {T}: Choose one that hasn't been chosen —\n\
@@ -1897,7 +1880,6 @@ fn test_keyword_marker_rejects_partial_trailing_clause() {
         "expected strict parse failure for trailing keyword clause, got {message}"
     );
 }
-
 
 #[test]
 fn test_parse_level_up_tiers_render_semantics() {
@@ -2099,8 +2081,6 @@ fn test_parse_trigger_when_face_down_permanent_is_turned_face_up() {
     );
 }
 
-
-
 #[test]
 fn test_parse_composed_anthems_keep_independent_land_conditions() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tek Variant")
@@ -2147,7 +2127,6 @@ fn test_parse_composed_anthems_keep_independent_land_conditions() {
         "composed static conditions must not collapse into one combined subtype filter: {debug}"
     );
 }
-
 
 #[test]
 fn test_parse_granted_keyword_and_must_attack_keeps_both_parts() {
@@ -2381,6 +2360,32 @@ fn parse_same_name_exile_with_that_player_controls_keeps_controller_link() {
     );
 }
 
+#[test]
+fn parse_legions_end_style_reveal_and_exile_keeps_same_name_hand_graveyard_bundle() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Legion's End Variant")
+        .parse_text(
+            "Exile target creature an opponent controls with mana value 2 or less and all other creatures that player controls with the same name as that creature. Then that player reveals their hand and exiles all cards with that name from their hand and graveyard.",
+        )
+        .expect("parse legion's end style reveal+exile sentence");
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("lookathandeffect"),
+        "expected reveal-hand effect for that player, got {debug}"
+    );
+    assert!(
+        debug.contains("samenameastagged"),
+        "expected same-name tagged relation in hand/graveyard exile filter, got {debug}"
+    );
+    assert!(
+        debug.contains("zone: some(hand)") && debug.contains("zone: some(graveyard)"),
+        "expected hand and graveyard zones in follow-up exile filter, got {debug}"
+    );
+    assert!(
+        debug.contains("controllerof"),
+        "expected 'that player' to resolve through controller-of tagged context, got {debug}"
+    );
+}
 
 #[test]
 fn parse_same_name_fanout_requires_full_reference_tail() {
@@ -2509,8 +2514,6 @@ fn render_during_turn_flashback_grant_keeps_mana_cost_clause() {
     );
 }
 
-
-
 #[test]
 fn render_gain_life_equal_to_its_power_uses_possessive_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Infernal Reckoning Variant")
@@ -2523,8 +2526,6 @@ fn render_gain_life_equal_to_its_power_uses_possessive_wording() {
         "expected possessive power wording, got {rendered}"
     );
 }
-
-
 
 #[test]
 fn render_artifact_land_self_reference_prefers_land() {
@@ -2578,7 +2579,6 @@ fn render_exile_from_graveyard_uses_from_preposition() {
         "graveyard wording should not use in-graveyard phrasing: {rendered}"
     );
 }
-
 
 #[test]
 fn render_granted_activated_ability_keeps_tap_symbol() {
@@ -2731,11 +2731,6 @@ fn parse_power_or_toughness_cant_be_blocked_subject_fails_loudly() {
     );
 }
 
-
-
-
-
-
 #[test]
 fn parse_target_player_gain_then_draw_carries_target_player_to_draw_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Kiss of the Amesha Variant")
@@ -2817,7 +2812,6 @@ fn parse_target_opponent_sacrifice_discard_lose_chain_keeps_all_predicates() {
         "expected life-loss clause in chain, got {joined}"
     );
 }
-
 
 #[test]
 fn parse_sacrifice_all_lands_clause_as_sacrifice_all() {
@@ -3307,7 +3301,6 @@ fn parse_granted_activated_ability_to_non_source_compiles_as_grant() {
     );
 }
 
-
 #[test]
 fn parse_put_into_hand_with_rest_tail_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Organ Hoarder Variant")
@@ -3393,7 +3386,6 @@ fn parse_mana_trigger_additional_clause_high_tide_fails_strictly() {
     );
 }
 
-
 #[test]
 fn parse_add_mana_chosen_color_tail() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Thriving Mana Variant")
@@ -3410,7 +3402,6 @@ fn parse_add_mana_chosen_color_tail() {
         "expected chosen-color mana render, got {mana_line}"
     );
 }
-
 
 #[test]
 fn parse_metalcraft_mana_activation_condition() {
@@ -3632,7 +3623,6 @@ fn parse_create_for_each_tail_wraps_create_effect() {
         "expected ForEachObject lowering, got {debug}"
     );
 }
-
 
 #[test]
 fn parse_earthbend_then_untap_keeps_tail_effect() {
@@ -4065,12 +4055,6 @@ fn parse_cant_attack_unless_defending_player_controls_island_line() {
     );
 }
 
-
-
-
-
-
-
 #[test]
 fn parse_morph_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Morph Variant")
@@ -4155,7 +4139,6 @@ fn parse_banding_keyword_line() {
     );
 }
 
-
 #[test]
 fn parse_filter_power_numeric_comparison_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Power Filter Variant")
@@ -4182,7 +4165,6 @@ fn parse_filter_dynamic_power_comparison_fails_instead_of_partial_parse() {
         "expected strict dynamic-power comparison error, got {message}"
     );
 }
-
 
 #[test]
 fn parse_return_up_to_x_target_fails_instead_of_partial_return() {
@@ -4443,8 +4425,6 @@ fn parse_spawn_scion_mana_reminder_without_context_fails_strictly() {
         .expect_err("standalone token reminder should fail");
 }
 
-
-
 #[test]
 fn parse_growth_spasm_style_spawn_reminder_stays_statement_not_static() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Growth Spasm Variant")
@@ -4552,8 +4532,6 @@ fn render_create_treasure_token_uses_compact_wording() {
     );
 }
 
-
-
 #[test]
 fn oracle_like_lines_compact_each_opponent_discard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Burglar Rat Variant")
@@ -4638,7 +4616,6 @@ fn oracle_like_lines_compact_lands_have_tap_for_any_color() {
         "expected quoted tap-mana grant wording, got {joined}"
     );
 }
-
 
 #[test]
 fn oracle_like_lines_preserve_negative_zero_toughness_delta() {
@@ -4804,7 +4781,6 @@ fn render_enchanted_tap_untap_compacts_tag_prelude() {
     );
 }
 
-
 #[test]
 fn parse_draw_then_put_two_cards_from_hand_on_top_preserves_count() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Brainstorm Variant")
@@ -4968,7 +4944,6 @@ fn render_artifacts_and_lands_enter_tapped_uses_union_types() {
     );
 }
 
-
 #[test]
 fn render_damage_each_creature_and_each_player_keeps_both_targets() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Steam Blast Variant")
@@ -5014,7 +4989,6 @@ fn render_granted_counter_subject_preserves_counter_clause() {
         "rendering regressed to broad permanent grant: {rendered}"
     );
 }
-
 
 #[test]
 fn render_subject_with_power_or_toughness_cant_be_blocked_preserves_filter() {
@@ -5066,9 +5040,6 @@ fn render_tap_cost_ability_filter_phrase() {
     );
 }
 
-
-
-
 #[test]
 fn render_enchanted_creatures_you_control_pluralizes() {
     let def = CardDefinitionBuilder::new(CardId::new(), "A Tale Variant")
@@ -5092,7 +5063,6 @@ fn render_allies_you_control_pluralizes() {
         "expected plural allies rendering, got {joined}"
     );
 }
-
 
 #[test]
 fn render_tap_or_untap_mode_compacts() {
@@ -5127,9 +5097,6 @@ fn render_tap_or_untap_mode_does_not_compact_when_targets_differ() {
     );
 }
 
-
-
-
 #[test]
 fn oracle_like_equipped_sacrifice_uses_card_name() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Ninja's Kunai")
@@ -5157,8 +5124,6 @@ fn assert_partial_parse_rejected(name: &str, text: &str) {
         "expected partial-parse rejection, got {message}"
     );
 }
-
-
 
 #[test]
 fn render_search_library_for_card_uses_card_noun() {
@@ -5197,6 +5162,30 @@ fn parse_search_target_player_library_and_exile_cards() {
 }
 
 #[test]
+fn parse_search_its_controller_graveyard_hand_and_library_exiles_same_name_cards() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Quash Variant")
+        .parse_text("Counter target spell. Search its controller's graveyard, hand, and library for all cards with the same name as that spell and exile them. Then that player shuffles.")
+        .expect("multi-zone same-name search-and-exile clause should parse");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        !joined.contains("exile target player"),
+        "search clause must not collapse into exile-player fallback, got {joined}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("zone: library")
+            && debug.contains("zone: some(graveyard)")
+            && debug.contains("zone: some(hand)")
+            && debug.contains("samenameastagged")
+            && debug.contains("controllerof")
+            && debug.contains("shufflelibraryeffect"),
+        "expected same-name exile across hand/graveyard/library and controller shuffle, got {debug}"
+    );
+}
+
+#[test]
 fn parse_destroy_then_search_target_opponent_library_preserves_destroy_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Life's Finale Variant")
         .parse_text("Destroy all creatures, then search target opponent's library for up to three creature cards and put them into their graveyard. Then that player shuffles.")
@@ -5205,14 +5194,31 @@ fn parse_destroy_then_search_target_opponent_library_preserves_destroy_clause() 
     let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         joined.contains("destroy all creatures")
-            && joined.contains("search target player's library for up to three creature")
-            && joined.contains("put them into target player's graveyard")
-            && joined.contains("shuffle target player's library"),
+            && joined.contains("search target opponent's library for up to three creature")
+            && joined.contains("put them into target opponent's graveyard")
+            && joined.contains("shuffle target opponent's library"),
         "expected destroy and search/put/shuffle chain, got {joined}"
     );
     assert!(
         !joined.contains("destroy all creatures card in an opponent's libraries"),
         "search clause should not degrade into destroy-library fallback, got {joined}"
+    );
+}
+
+#[test]
+fn parse_where_x_is_fixed_plus_number_of_filter_value() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Muscle Burst Variant")
+        .parse_text(
+            "Target creature gets +X/+X until end of turn, where X is 3 plus the number of cards named Muscle Burst in all graveyards.",
+        )
+        .expect("where-X fixed-plus-count gets clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("add(fixed(3), count(")
+            && debug.contains("name: some(\"muscle burst\")")
+            && debug.contains("zone: some(graveyard)"),
+        "expected fixed-plus-count where-X value in compiled effect, got {debug}"
     );
 }
 
@@ -5400,7 +5406,6 @@ fn parse_damage_to_target_player_or_planeswalker() {
         "expected compiled damage text, got {joined}"
     );
 }
-
 
 #[test]
 fn parse_that_much_damage_trigger_clause() {
@@ -5626,7 +5631,6 @@ fn parse_equip_with_once_each_turn_restriction() {
     );
 }
 
-
 #[test]
 fn parse_mercenary_token_with_tap_pump_ability() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mercenary Token Variant")
@@ -5657,7 +5661,6 @@ fn parse_deathpact_style_token_activation_is_preserved() {
         "expected preserved return-from-graveyard token activation, got {compiled}"
     );
 }
-
 
 #[test]
 fn parse_ozox_nested_token_return_keeps_named_card_literal() {
@@ -5721,8 +5724,6 @@ fn parse_ozox_nested_token_return_keeps_named_card_literal() {
         "expected nested named filter to preserve semantic card-name identity"
     );
 }
-
-
 
 #[test]
 fn render_sacrifice_all_non_ogres() {
@@ -5823,7 +5824,6 @@ fn parse_land_doesnt_untap_if_has_depletion_counter() {
     );
 }
 
-
 #[test]
 fn parse_destroy_target_attacking_or_blocking_creature_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Divine Verdict Variant")
@@ -5842,7 +5842,6 @@ fn parse_destroy_target_attacking_or_blocking_creature_clause() {
         "expected attacking/blocking destroy rendering, got {rendered}"
     );
 }
-
 
 #[test]
 fn parse_activate_only_restriction_inline_with_activated_ability() {
@@ -6057,8 +6056,6 @@ fn parse_put_multiple_counter_types_on_single_target() {
     );
 }
 
-
-
 #[test]
 fn parse_spells_cost_modifier_merges_second_color_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "High Seas Variant")
@@ -6149,14 +6146,6 @@ fn render_transform_source_uses_artifact_self_reference_for_artifacts() {
     );
 }
 
-
-
-
-
-
-
-
-
 #[test]
 fn render_choose_between_modes_as_choose_one_or_more() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Modal Variant")
@@ -6187,8 +6176,6 @@ fn render_each_player_create_clause_uses_each_player_creates() {
     );
 }
 
-
-
 #[test]
 fn render_put_counter_on_each_attacking_creature_from_for_each_form() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fumes Variant")
@@ -6202,7 +6189,6 @@ fn render_put_counter_on_each_attacking_creature_from_for_each_form() {
         "expected normalized each-attacking counter wording, got {joined}"
     );
 }
-
 
 #[test]
 fn render_daze_style_alternative_cost_clause_is_humanized() {
@@ -6286,9 +6272,6 @@ fn parse_conditional_type_list_predicate_uses_rightmost_comma_split() {
     );
 }
 
-
-
-
 #[test]
 fn parse_counter_unless_where_x_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Rethink Variant")
@@ -6319,8 +6302,6 @@ fn parse_counter_unless_plus_additional_stops_at_first_mana_segment() {
         "expected base payment segment to remain unduplicated, got {joined}"
     );
 }
-
-
 
 #[test]
 fn render_destroy_all_artifacts_and_enchantments_combines_split_sentence() {
@@ -6426,7 +6407,6 @@ fn parse_exile_it_unless_discard_creature_card_as_unless_action() {
     );
 }
 
-
 #[test]
 fn render_named_count_filter_keeps_named_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Powerstone Shard Variant")
@@ -6466,8 +6446,6 @@ fn parse_semantic_guard_is_disabled_by_default() {
         "expected parsed output while semantic guard is disabled, got {joined}"
     );
 }
-
-
 
 #[test]
 fn parse_shared_color_prevent_fanout_clause() {
@@ -6673,7 +6651,6 @@ fn parse_nonhistoric_filter_clause() {
     );
 }
 
-
 #[test]
 fn parse_same_name_damage_fanout_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Homing Lightning")
@@ -6756,7 +6733,6 @@ fn parse_spell_delayed_trigger_this_turn_clause() {
     );
 }
 
-
 #[test]
 fn parse_target_player_sacrifices_artifact_and_land_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Structural Collapse")
@@ -6775,7 +6751,6 @@ fn parse_target_player_sacrifices_artifact_and_land_clause() {
         "expected split sacrifice effects rather than artifact-or-land, got {rendered}"
     );
 }
-
 
 #[test]
 fn parse_each_player_create_uses_each_player_controller() {
@@ -6891,7 +6866,6 @@ fn render_attack_skip_untap_uses_controller_next_untap_step() {
     );
 }
 
-
 #[test]
 fn parse_rejects_three_dog_aura_copy_attachment_clause() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Three Dog Variant")
@@ -6908,9 +6882,6 @@ fn parse_rejects_three_dog_aura_copy_attachment_clause() {
     );
 }
 
-
-
-
 #[test]
 fn parse_defending_player_suffix_subject_keeps_player_binding() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper Variant")
@@ -6925,7 +6896,6 @@ fn parse_defending_player_suffix_subject_keeps_player_binding() {
         "expected defending-player life-loss wording, got {joined}"
     );
 }
-
 
 #[test]
 fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() {
@@ -6994,9 +6964,6 @@ fn render_exile_until_clause_keeps_target_filter_without_until_tail() {
         "expected nonland-permanent target filter, got {rendered}"
     );
 }
-
-
-
 
 #[test]
 fn parse_look_at_target_players_hand_keeps_targeting() {
@@ -7140,9 +7107,6 @@ fn parse_once_each_turn_play_from_exile_line_as_static_permission() {
     );
 }
 
-
-
-
 #[test]
 fn parse_manabond_reveal_hand_put_lands_from_it() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manabond Variant")
@@ -7161,7 +7125,6 @@ fn parse_manabond_reveal_hand_put_lands_from_it() {
         "expected lands to be moved from hand, got {rendered}"
     );
 }
-
 
 #[test]
 fn render_each_player_puts_card_from_hand_on_top() {
@@ -7194,8 +7157,6 @@ fn parse_conditional_doesnt_untap_static_line() {
     );
 }
 
-
-
 #[test]
 fn parse_then_if_conditional_sentence_is_preserved() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Then If Variant")
@@ -7211,7 +7172,6 @@ fn parse_then_if_conditional_sentence_is_preserved() {
         "expected then-if conditional to remain in compiled output, got {rendered}"
     );
 }
-
 
 #[test]
 fn parse_additional_cost_and_trigger_when_on_same_line() {
@@ -7565,7 +7525,6 @@ fn parse_minion_reflector_copy_clause_keeps_haste_and_end_step_sacrifice() {
     );
 }
 
-
 #[test]
 fn parse_not_dead_after_all_keeps_role_creation_and_attachment_in_granted_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Not Dead After All Variant")
@@ -7585,7 +7544,6 @@ fn parse_not_dead_after_all_keeps_role_creation_and_attachment_in_granted_trigge
         "expected created role token to be attached, got {debug}"
     );
 }
-
 
 #[test]
 fn parse_face_down_target_filter_for_destroy_effect() {
@@ -7616,7 +7574,6 @@ fn parse_face_down_static_anthem_filter() {
         "expected face-down qualifier preserved on anthem, got {rendered}"
     );
 }
-
 
 #[test]
 fn parse_player_sacrifices_trigger_preserves_another_qualifier() {
@@ -7679,7 +7636,6 @@ fn parse_slivercycling_grant_clause_as_static_grant_not_keyword_line() {
         "expected no standalone keyword-only parse for grant clause, got {rendered}"
     );
 }
-
 
 #[test]
 fn parse_gideon_planeswalker_predicate_keeps_subtype_constraint() {
@@ -7751,8 +7707,6 @@ fn parse_one_or_more_attack_trigger_preserves_one_or_more_compiled_text() {
         "expected one-or-more attack wording to remain explicit, got {rendered}"
     );
 }
-
-
 
 #[test]
 fn parse_one_or_more_enters_trigger_uses_batch_count_mode() {

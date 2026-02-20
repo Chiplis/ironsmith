@@ -259,6 +259,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::PumpForEach { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
         | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::RemoveAbilitiesFromTarget { target, .. }
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
@@ -293,6 +294,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::PumpAll { filter, .. }
         | EffectAst::UntapAll { filter }
         | EffectAst::GrantAbilitiesAll { filter, .. }
+        | EffectAst::RemoveAbilitiesAll { filter, .. }
         | EffectAst::GrantAbilitiesChoiceAll { filter, .. }
         | EffectAst::Enchant { filter }
         | EffectAst::SearchLibrary { filter, .. } => filter
@@ -630,6 +632,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::PumpForEach { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
         | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::RemoveAbilitiesFromTarget { target, .. }
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
@@ -666,6 +669,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::PumpAll { filter, .. }
         | EffectAst::UntapAll { filter }
         | EffectAst::GrantAbilitiesAll { filter, .. }
+        | EffectAst::RemoveAbilitiesAll { filter, .. }
         | EffectAst::GrantAbilitiesChoiceAll { filter, .. }
         | EffectAst::Enchant { filter }
         | EffectAst::SearchLibrary { filter, .. } => filter
@@ -1033,7 +1037,11 @@ fn collect_tag_spans_from_effect(
         | EffectAst::Pump { target, .. }
         | EffectAst::SetBasePower { target, .. }
         | EffectAst::SetBasePowerToughness { target, .. }
-        | EffectAst::PumpByLastEffect { target, .. } => {
+        | EffectAst::PumpByLastEffect { target, .. }
+        | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::RemoveAbilitiesFromTarget { target, .. }
+        | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
+        | EffectAst::PreventAllDamageToTarget { target, .. } => {
             collect_tag_spans_from_target(target, annotations, ctx);
         }
         EffectAst::MoveAllCounters { from, to } => {
@@ -1590,6 +1598,26 @@ fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>, Vec
         .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
         .collect();
     (effects, choices)
+}
+
+fn infer_player_filter_from_object_filter(filter: &ObjectFilter) -> Option<PlayerFilter> {
+    if let Some(owner) = &filter.owner {
+        return Some(owner.clone());
+    }
+    if let Some(controller) = &filter.controller {
+        return Some(controller.clone());
+    }
+    for constraint in &filter.tagged_constraints {
+        if matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::SameControllerAsTagged
+        ) {
+            return Some(PlayerFilter::ControllerOf(ObjectRef::tagged(
+                constraint.tag.as_str(),
+            )));
+        }
+    }
+    None
 }
 
 fn hand_exile_filter_and_count(
@@ -3058,8 +3086,17 @@ fn compile_effect(
         EffectAst::ExileAll { filter } => {
             let resolved_filter = resolve_it_tag(filter, ctx)?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
+            if let Some(player_filter) = infer_player_filter_from_object_filter(&resolved_filter) {
+                ctx.last_player_filter = Some(player_filter);
+            }
+            let keep_last_object_tag = resolved_filter.tagged_constraints.iter().any(|constraint| {
+                matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                )
+            });
             let mut effect = Effect::exile_all(resolved_filter);
-            if ctx.auto_tag_object_targets {
+            if ctx.auto_tag_object_targets && !keep_last_object_tag {
                 let tag = ctx.next_tag("exiled");
                 effect = effect.tag(tag.clone());
                 ctx.last_object_tag = Some(tag);
@@ -3792,6 +3829,31 @@ fn compile_effect(
 
             Ok((vec![Effect::new(apply)], Vec::new()))
         }
+        EffectAst::RemoveAbilitiesAll {
+            filter,
+            abilities,
+            duration,
+        } => {
+            if abilities.is_empty() {
+                return Ok((Vec::new(), Vec::new()));
+            }
+
+            let resolved_filter = resolve_it_tag(filter, ctx)?;
+            let mut apply = crate::effects::ApplyContinuousEffect::new(
+                crate::continuous::EffectTarget::Filter(resolved_filter),
+                crate::continuous::Modification::RemoveAbility(abilities[0].clone()),
+                duration.clone(),
+            )
+            .lock_filter_at_resolution();
+
+            for ability in abilities.iter().skip(1) {
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::RemoveAbility(ability.clone()),
+                );
+            }
+
+            Ok((vec![Effect::new(apply)], Vec::new()))
+        }
         EffectAst::GrantAbilitiesChoiceAll {
             filter,
             abilities,
@@ -3835,6 +3897,33 @@ fn compile_effect(
                 for ability in abilities.iter().skip(1) {
                     apply = apply.with_additional_modification(
                         crate::continuous::Modification::AddAbility(ability.clone()),
+                    );
+                }
+
+                Effect::new(apply)
+            })
+        }
+        EffectAst::RemoveAbilitiesFromTarget {
+            target,
+            abilities,
+            duration,
+        } => {
+            let Some(first_ability) = abilities.first() else {
+                return compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec))
+                });
+            };
+
+            compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+                let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
+                    spec,
+                    crate::continuous::Modification::RemoveAbility(first_ability.clone()),
+                    duration.clone(),
+                );
+
+                for ability in abilities.iter().skip(1) {
+                    apply = apply.with_additional_modification(
+                        crate::continuous::Modification::RemoveAbility(ability.clone()),
                     );
                 }
 
@@ -3893,6 +3982,12 @@ fn compile_effect(
             if filter.owner.is_none() && !matches!(player_filter, PlayerFilter::You) {
                 filter.owner = Some(player_filter.clone());
             }
+            ctx.last_player_filter = Some(
+                filter
+                    .owner
+                    .clone()
+                    .unwrap_or_else(|| player_filter.clone()),
+            );
             let owner_matches_chooser = filter
                 .owner
                 .as_ref()
