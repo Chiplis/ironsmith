@@ -508,6 +508,12 @@ pub struct ObjectFilter {
     /// Mana value comparison
     pub mana_value: Option<Comparison>,
 
+    /// Mana value must equal the number of `counter_type` counters on the source permanent.
+    ///
+    /// Parsed from Oracle clauses like:
+    /// - "with mana value equal to the number of charge counters on this artifact"
+    pub mana_value_eq_counters_on_source: Option<CounterType>,
+
     /// If true, the card must have a mana cost (not empty/None)
     /// Cards like suspend-only cards or back faces may not have a mana cost
     pub has_mana_cost: bool,
@@ -1400,6 +1406,23 @@ impl ObjectFilter {
                 return false;
             }
         }
+        if let Some(counter_type) = self.mana_value_eq_counters_on_source {
+            let Some(source_id) = ctx.source else {
+                return false;
+            };
+            let Some(source) = game.object(source_id) else {
+                return false;
+            };
+            let required = source.counters.get(&counter_type).copied().unwrap_or(0) as i32;
+            let mv = object
+                .mana_cost
+                .as_ref()
+                .map(|mc| mc.mana_value() as i32)
+                .unwrap_or(0);
+            if mv != required {
+                return false;
+            }
+        }
 
         // Has mana cost check (must have a non-empty mana cost)
         if self.has_mana_cost {
@@ -1904,6 +1927,23 @@ impl ObjectFilter {
                 .map(|mc| mc.mana_value() as i32)
                 .unwrap_or(0);
             if !mv_cmp.satisfies(mv) {
+                return false;
+            }
+        }
+        if let Some(counter_type) = self.mana_value_eq_counters_on_source {
+            let Some(source_id) = ctx.source else {
+                return false;
+            };
+            let Some(source) = game.object(source_id) else {
+                return false;
+            };
+            let required = source.counters.get(&counter_type).copied().unwrap_or(0) as i32;
+            let mv = snapshot
+                .mana_cost
+                .as_ref()
+                .map(|mc| mc.mana_value() as i32)
+                .unwrap_or(0);
+            if mv != required {
                 return false;
             }
         }
@@ -2689,6 +2729,12 @@ impl ObjectFilter {
             parts.push(format!(
                 "with mana value {}",
                 describe_comparison(mana_value)
+            ));
+        }
+        if let Some(counter_type) = self.mana_value_eq_counters_on_source {
+            parts.push(format!(
+                "with mana value equal to the number of {} counters on this artifact",
+                describe_counter_type(counter_type)
             ));
         }
         for ability in &self.static_abilities {

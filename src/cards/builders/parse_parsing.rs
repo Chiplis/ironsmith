@@ -26285,10 +26285,23 @@ fn parse_effect_with_verb(
             }
         }
         Verb::Put => {
-            if tokens
+            let has_onto = tokens.iter().any(|token| token.is_word("onto"));
+            let has_counter_words = tokens
                 .iter()
-                .any(|token| token.is_word("counter") || token.is_word("counters"))
-            {
+                .any(|token| token.is_word("counter") || token.is_word("counters"));
+
+            // Prefer zone moves like "... onto the battlefield" over counter placement because
+            // "counter(s)" may appear in subordinate clauses (e.g. "mana value equal to the number
+            // of charge counters on this artifact").
+            if has_onto {
+                if let Ok(effect) = parse_put_into_hand(tokens, subject) {
+                    Ok(effect)
+                } else if has_counter_words {
+                    parse_put_counters(tokens)
+                } else {
+                    parse_put_into_hand(tokens, subject)
+                }
+            } else if has_counter_words {
                 parse_put_counters(tokens)
             } else {
                 parse_put_into_hand(tokens, subject)
@@ -31990,6 +32003,86 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         .into_iter()
         .filter(|word| !is_article(word) && *word != "instead")
         .collect();
+
+    // Avoid treating reference phrases like "... with mana value equal to the number of charge
+    // counters on this artifact" as additional type selectors on the filtered object.
+    // (Aether Vial: "put a creature card with mana value equal to the number of charge counters
+    // on this artifact from your hand onto the battlefield.")
+    let mut mv_eq_counter_idx = 0usize;
+    while mv_eq_counter_idx + 11 < all_words.len() {
+        let window = &all_words[mv_eq_counter_idx..mv_eq_counter_idx + 12];
+        if window[0] == "with"
+            && window[1] == "mana"
+            && window[2] == "value"
+            && window[3] == "equal"
+            && window[4] == "to"
+            && window[5] == "number"
+            && window[6] == "of"
+            && matches!(window[8], "counter" | "counters")
+            && window[9] == "on"
+            && window[10] == "this"
+            && window[11] == "artifact"
+            && let Some(counter_type) = parse_counter_type_word(window[7])
+        {
+            filter.mana_value_eq_counters_on_source = Some(counter_type);
+            all_words.drain(mv_eq_counter_idx..mv_eq_counter_idx + 12);
+
+            // Also drop the reference phrase from the token-backed segment list so later
+            // card-type/subtype extraction doesn't incorrectly treat "artifact" as part of the
+            // filtered object's identity.
+            let segment_words = words(&segment_tokens);
+            let mut segment_match: Option<(usize, usize)> = None;
+            for len in [13usize, 12usize] {
+                let Some(idx) = segment_words.windows(len).position(|window| {
+                    if len == 13 {
+                        window[0] == "with"
+                            && window[1] == "mana"
+                            && window[2] == "value"
+                            && window[3] == "equal"
+                            && window[4] == "to"
+                            && window[5] == "the"
+                            && window[6] == "number"
+                            && window[7] == "of"
+                            && matches!(window[9], "counter" | "counters")
+                            && window[10] == "on"
+                            && window[11] == "this"
+                            && window[12] == "artifact"
+                            && parse_counter_type_word(window[8]).is_some()
+                    } else {
+                        window[0] == "with"
+                            && window[1] == "mana"
+                            && window[2] == "value"
+                            && window[3] == "equal"
+                            && window[4] == "to"
+                            && window[5] == "number"
+                            && window[6] == "of"
+                            && matches!(window[8], "counter" | "counters")
+                            && window[9] == "on"
+                            && window[10] == "this"
+                            && window[11] == "artifact"
+                            && parse_counter_type_word(window[7]).is_some()
+                    }
+                }) else {
+                    continue;
+                };
+                segment_match = Some((idx, len));
+                break;
+            }
+            if let Some((start_word_idx, len)) = segment_match
+                && let Some(start_token_idx) = token_index_for_word_index(&segment_tokens, start_word_idx)
+            {
+                let end_word_idx = start_word_idx + len;
+                let end_token_idx = token_index_for_word_index(&segment_tokens, end_word_idx)
+                    .unwrap_or(segment_tokens.len());
+                if start_token_idx < end_token_idx && end_token_idx <= segment_tokens.len() {
+                    segment_tokens.drain(start_token_idx..end_token_idx);
+                }
+            }
+
+            continue;
+        }
+        mv_eq_counter_idx += 1;
+    }
 
     let mut attached_exclusion_idx = 0usize;
     while attached_exclusion_idx + 2 < all_words.len() {
