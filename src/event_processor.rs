@@ -22,6 +22,7 @@ use crate::object::CounterType;
 use crate::replacement::{
     EventModification, ReplacementAction, ReplacementEffect, ReplacementEffectId,
 };
+use crate::types::CardType;
 use crate::zone::Zone;
 
 /// Priority order for replacement effects per Rule 616.1.
@@ -1552,11 +1553,26 @@ pub fn process_zone_change(
 
     game.update_replacement_effects();
 
+    // Finality counter rule text: "If a creature with a finality counter on it would die, exile it instead."
+    // Apply this as a baseline destination rewrite for battlefield->graveyard moves.
+    let mut requested_to = to;
+    if from == Zone::Battlefield
+        && to == Zone::Graveyard
+        && game.object_has_card_type(object, CardType::Creature)
+        && game
+            .object(object)
+            .and_then(|obj| obj.counters.get(&CounterType::Finality).copied())
+            .unwrap_or(0)
+            > 0
+    {
+        requested_to = Zone::Exile;
+    }
+
     let snapshot = game
         .object(object)
         .map(|o| crate::snapshot::ObjectSnapshot::from_object(o, game));
 
-    let event = Event::zone_change(object, from, to, snapshot);
+    let event = Event::zone_change(object, from, requested_to, snapshot);
     let result = process_with_dm(game, event.clone(), dm); // dm is already &mut Option
 
     match result {
@@ -1565,7 +1581,7 @@ pub fn process_zone_change(
             if let Some(zone_change) = downcast_event::<ZoneChangeEvent>(e.inner()) {
                 EventOutcome::Proceed(zone_change.to)
             } else {
-                EventOutcome::Proceed(to)
+                EventOutcome::Proceed(requested_to)
             }
         }
         TraitEventResult::Replaced { .. } => EventOutcome::Replaced,
@@ -2513,7 +2529,12 @@ pub fn process_event_with_chosen_replacement_trait(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::AutoPassDecisionMaker;
+    use crate::ids::CardId;
     use crate::ids::ObjectId;
+    use crate::types::CardType;
+    use crate::zone::Zone;
 
     #[test]
     fn test_replacement_priority_ordering() {
@@ -2685,5 +2706,54 @@ mod tests {
             final_damage, 3,
             "Without snapshot, missing source defaults to colorless and should not match red-only prevention"
         );
+    }
+
+    #[test]
+    fn test_finality_counter_replaces_dies_with_exile() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(1), "Finality Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::power_toughness::PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        if let Some(obj) = game.object_mut(creature_id) {
+            obj.add_counters(CounterType::Finality, 1);
+        }
+
+        let mut dm = AutoPassDecisionMaker;
+        let outcome = process_zone_change(
+            &mut game,
+            creature_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            &mut dm,
+        );
+
+        assert_eq!(outcome, EventOutcome::Proceed(Zone::Exile));
+    }
+
+    #[test]
+    fn test_finality_counter_does_not_redirect_noncreatures() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(2), "Finality Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        if let Some(obj) = game.object_mut(artifact_id) {
+            obj.add_counters(CounterType::Finality, 1);
+        }
+
+        let mut dm = AutoPassDecisionMaker;
+        let outcome = process_zone_change(
+            &mut game,
+            artifact_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            &mut dm,
+        );
+
+        assert_eq!(outcome, EventOutcome::Proceed(Zone::Graveyard));
     }
 }
