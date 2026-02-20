@@ -6386,6 +6386,37 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
             }
         }
 
+        // Final Fantasy "Chocobo" token text: a Bird token with a quoted landfall-ish pump ability.
+        // Example: Create a 2/2 green Bird creature token with
+        // "Whenever a land you control enters, this token gets +1/+0 until end of turn."
+        let is_land_you_control_enters_pump_token = words.contains(&"whenever")
+            && words.contains(&"land")
+            && words.contains(&"control")
+            && words.contains(&"enters")
+            && words.contains(&"this")
+            && words.contains(&"token")
+            && words.contains(&"gets")
+            && words.contains(&"+1/+0")
+            && words
+                .windows(4)
+                .any(|window| window == ["until", "end", "of", "turn"]);
+        if is_land_you_control_enters_pump_token {
+            let ability = Ability {
+                kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                    trigger: Trigger::enters_battlefield(ObjectFilter::land().you_control()),
+                    effects: vec![Effect::pump(1, 0, ChooseSpec::Source, Until::EndOfTurn)],
+                    choices: Vec::new(),
+                    intervening_if: None,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+                text: Some(
+                    "Whenever a land you control enters, this token gets +1/+0 until end of turn."
+                        .to_string(),
+                ),
+            };
+            builder = builder.with_ability(ability);
+        }
+
         return Some(builder.build());
     }
     None
