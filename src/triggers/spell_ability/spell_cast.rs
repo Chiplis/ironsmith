@@ -70,6 +70,7 @@ impl TriggerMatcher for SpellCastTrigger {
             PlayerFilter::You => e.caster == ctx.controller,
             PlayerFilter::Opponent => e.caster != ctx.controller,
             PlayerFilter::Any => true,
+            PlayerFilter::Active => e.caster == ctx.game.turn.active_player,
             PlayerFilter::Specific(id) => e.caster == *id,
             _ => true,
         };
@@ -144,6 +145,7 @@ impl TriggerMatcher for SpellCastTrigger {
             PlayerFilter::You => "you cast",
             PlayerFilter::Any => "a player casts",
             PlayerFilter::Opponent => "an opponent casts",
+            PlayerFilter::Active => "the active player casts",
             _ => "someone casts",
         };
         let mut spell_text = self
@@ -158,6 +160,7 @@ impl TriggerMatcher for SpellCastTrigger {
                 spell_text = match &self.caster {
                     PlayerFilter::You => format!("your {ordinal} spell each turn"),
                     PlayerFilter::Any => format!("their {ordinal} spell each turn"),
+                    PlayerFilter::Active => format!("their {ordinal} spell each turn"),
                     PlayerFilter::Opponent | PlayerFilter::Specific(_) => {
                         format!("that player's {ordinal} spell each turn")
                     }
@@ -167,6 +170,7 @@ impl TriggerMatcher for SpellCastTrigger {
                 let exact_suffix = match &self.caster {
                     PlayerFilter::You => format!(" as your {ordinal} spell this turn"),
                     PlayerFilter::Any => format!(" as the {ordinal} spell this turn"),
+                    PlayerFilter::Active => format!(" as that player's {ordinal} spell this turn"),
                     PlayerFilter::Opponent | PlayerFilter::Specific(_) => {
                         format!(" as that player's {ordinal} spell this turn")
                     }

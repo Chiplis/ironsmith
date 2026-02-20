@@ -11463,9 +11463,15 @@ fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {
 }
 
 fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
-    let has_each_turn = contains_word_sequence(words, &["each", "turn"]);
-    let has_this_turn = contains_word_sequence(words, &["this", "turn"]);
-    if !has_each_turn && !has_this_turn {
+    let has_turn_context = contains_word_sequence(words, &["each", "turn"])
+        || contains_word_sequence(words, &["this", "turn"])
+        || contains_word_sequence(words, &["of", "a", "turn"])
+        || contains_word_sequence(words, &["during", "your", "turn"])
+        || contains_word_sequence(words, &["during", "their", "turn"])
+        || contains_word_sequence(words, &["during", "an", "opponents", "turn"])
+        || contains_word_sequence(words, &["during", "opponents", "turn"])
+        || contains_word_sequence(words, &["during", "each", "opponents", "turn"]);
+    if !has_turn_context {
         return false;
     }
 
@@ -11484,6 +11490,21 @@ fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
     false
 }
 
+fn has_second_spell_turn_pattern(words: &[&str]) -> bool {
+    contains_word_sequence(words, &["second", "spell", "cast", "this", "turn"])
+        || contains_word_sequence(words, &["second", "spell", "this", "turn"])
+        || contains_word_sequence(words, &["your", "second", "spell", "each", "turn"])
+        || contains_word_sequence(words, &["their", "second", "spell", "each", "turn"])
+        || contains_word_sequence(words, &["your", "second", "spell", "this", "turn"])
+        || contains_word_sequence(words, &["their", "second", "spell", "this", "turn"])
+        || contains_word_sequence(words, &["second", "spell", "each", "turn"])
+        || contains_word_sequence(words, &["second", "spell", "during", "your", "turn"])
+        || contains_word_sequence(words, &["second", "spell", "during", "their", "turn"])
+        || contains_word_sequence(words, &["second", "spell", "during", "an", "opponents", "turn"])
+        || contains_word_sequence(words, &["second", "spell", "during", "opponents", "turn"])
+        || contains_word_sequence(words, &["second", "spell", "during", "each", "opponents", "turn"])
+}
+
 fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words.contains(&"spell") && !clause_words.contains(&"spells") {
@@ -11500,8 +11521,10 @@ fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>,
         return Ok(None);
     }
 
-    let actor = parse_subject_clause_player_filter(&clause_words);
-    let during_turn = if contains_word_sequence(&clause_words, &["during", "your", "turn"]) {
+    let mut actor = parse_subject_clause_player_filter(&clause_words);
+    let during_their_turn = contains_word_sequence(&clause_words, &["during", "their", "turn"])
+        || contains_word_sequence(&clause_words, &["during", "that", "players", "turn"]);
+    let mut during_turn = if contains_word_sequence(&clause_words, &["during", "your", "turn"]) {
         Some(PlayerFilter::You)
     } else if contains_word_sequence(&clause_words, &["during", "an", "opponents", "turn"])
         || contains_word_sequence(&clause_words, &["during", "opponents", "turn"])
@@ -11511,6 +11534,14 @@ fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>,
     } else {
         None
     };
+    if during_their_turn {
+        if matches!(actor, PlayerFilter::Any) {
+            actor = PlayerFilter::Active;
+            during_turn = None;
+        } else if during_turn.is_none() {
+            during_turn = Some(actor.clone());
+        }
+    }
     let has_other_than_first_spell_pattern = contains_word_sequence(
         &clause_words,
         &["other", "than", "your", "first", "spell"],
@@ -11521,23 +11552,15 @@ fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>,
         && clause_words.contains(&"spell")
         && clause_words.contains(&"casts")
         && clause_words.contains(&"turn"));
+    let second_spell_turn_pattern = has_second_spell_turn_pattern(&clause_words);
     let first_spell_each_turn = !has_other_than_first_spell_pattern
         && has_first_spell_each_turn_pattern(&clause_words);
     let exact_spells_this_turn = parse_exact_spell_count_each_turn(&clause_words)
-        .or_else(|| first_spell_each_turn.then_some(1));
+        .or_else(|| first_spell_each_turn.then_some(1))
+        .or_else(|| (!has_other_than_first_spell_pattern && second_spell_turn_pattern).then_some(2));
     let min_spells_this_turn = if exact_spells_this_turn.is_some() {
         None
-    } else if has_other_than_first_spell_pattern
-        || contains_word_sequence(
-        &clause_words,
-        &["second", "spell", "cast", "this", "turn"],
-    ) || contains_word_sequence(&clause_words, &["second", "spell", "this", "turn"])
-        || contains_word_sequence(&clause_words, &["your", "second", "spell", "each", "turn"])
-        || contains_word_sequence(&clause_words, &["their", "second", "spell", "each", "turn"])
-        || contains_word_sequence(&clause_words, &["your", "second", "spell", "this", "turn"])
-        || contains_word_sequence(&clause_words, &["their", "second", "spell", "this", "turn"])
-        || contains_word_sequence(&clause_words, &["second", "spell", "each", "turn"])
-    {
+    } else if has_other_than_first_spell_pattern {
         Some(2)
     } else {
         None
@@ -11682,7 +11705,24 @@ fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>,
     }
 
     if let Some(cast) = cast_idx {
-        let filter = parse_filter(tokens.get(cast + 1..).unwrap_or_default())?;
+        let mut filter_tokens = tokens.get(cast + 1..).unwrap_or_default();
+        if filter_tokens.is_empty() {
+            let mut prefix_tokens = &tokens[..cast];
+            while let Some(last_word) = prefix_tokens.last().and_then(Token::as_word) {
+                if matches!(last_word, "is" | "are" | "was" | "were" | "be" | "been") {
+                    prefix_tokens = &prefix_tokens[..prefix_tokens.len() - 1];
+                } else {
+                    break;
+                }
+            }
+            let has_spell_noun = prefix_tokens
+                .iter()
+                .any(|token| token.is_word("spell") || token.is_word("spells"));
+            if has_spell_noun {
+                filter_tokens = prefix_tokens;
+            }
+        }
+        let filter = parse_filter(filter_tokens)?;
         return Ok(Some(TriggerSpec::SpellCast {
             filter,
             caster: actor,
@@ -22699,17 +22739,42 @@ fn should_skip_draw_player_carry(
     carried_context: CarryContext,
     clause_tokens: &[Token],
 ) -> bool {
-    if !matches!(carried_context, CarryContext::Player(_)) {
-        return false;
-    }
-    let EffectAst::Draw { player, .. } = effect else {
-        return false;
-    };
-    if !matches!(*player, PlayerAst::Implicit) {
-        return false;
-    }
     let clause_words = clause_words_for_carry(clause_tokens);
-    matches!(clause_words.first().copied(), Some("draw"))
+    match carried_context {
+        CarryContext::Player(_) => {
+            let EffectAst::Draw { player, .. } = effect else {
+                return false;
+            };
+            if !matches!(*player, PlayerAst::Implicit) {
+                return false;
+            }
+            matches!(clause_words.first().copied(), Some("draw"))
+        }
+        CarryContext::ForEachPlayer
+        | CarryContext::ForEachTargetPlayers(_)
+        | CarryContext::ForEachOpponent => {
+            let is_implicit_vision_effect = matches!(
+                effect,
+                EffectAst::Draw {
+                    player: PlayerAst::Implicit,
+                    ..
+                } | EffectAst::Scry {
+                    player: PlayerAst::Implicit,
+                    ..
+                } | EffectAst::Surveil {
+                    player: PlayerAst::Implicit,
+                    ..
+                }
+            );
+            if !is_implicit_vision_effect {
+                return false;
+            }
+            matches!(
+                clause_words.first().copied(),
+                Some("draw" | "scry" | "surveil")
+            )
+        }
+    }
 }
 
 fn maybe_apply_carried_player_with_clause(
