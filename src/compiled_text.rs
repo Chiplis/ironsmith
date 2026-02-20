@@ -3598,6 +3598,7 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("target creature you don't control or planeswalker", "target creature or planeswalker you don't control")
         .replace("Counter target instant spell spell", "Counter target instant spell")
         .replace("Counter target sorcery spell spell", "Counter target sorcery spell")
+        .replace(" spell spell", " spell")
         .replace("the defending player", "defending player")
         .replace("Whenever this creature or Whenever another Ally you control enters", "Whenever this creature or another Ally you control enters")
         .replace("Chapter 1:", "I —")
@@ -10925,16 +10926,17 @@ fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(exile_instead) =
         effect.downcast_ref::<crate::effects::ExileInsteadOfGraveyardEffect>()
     {
+        let graveyard_owner = describe_possessive_player_filter(&exile_instead.player);
         return format!(
-            "If a card would be put into {}'s graveyard, exile it instead",
-            describe_player_filter(&exile_instead.player)
+            "If a card would be put into {graveyard_owner} graveyard, exile it instead"
         );
     }
     if let Some(grant_play) = effect.downcast_ref::<crate::effects::GrantPlayFromGraveyardEffect>()
     {
+        let player = describe_player_filter(&grant_play.player);
+        let graveyard_owner = describe_possessive_player_filter(&grant_play.player);
         return format!(
-            "{} may play lands and cast spells from their graveyard",
-            describe_player_filter(&grant_play.player)
+            "{player} may play lands and cast spells from {graveyard_owner} graveyard"
         );
     }
     if let Some(control_player) = effect.downcast_ref::<crate::effects::ControlPlayerEffect>() {
@@ -15227,7 +15229,7 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     }
     normalized = normalized
         .replace(" in target player's hand", " from their hand")
-        .replace(" in that player's hand", " from their hand")
+        .replace(" in that player's hand", " from that player's hand")
         .replace(" card in single graveyard", " card from a single graveyard")
         .replace(
             " cards in single graveyard",
@@ -15243,7 +15245,7 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             " in target player's graveyard",
             " from target player's graveyard",
         )
-        .replace(" in that player's graveyard", " from their graveyard")
+        .replace(" in that player's graveyard", " from that player's graveyard")
         .replace(
             "Exile all land card from target player's graveyard",
             "Exile all land cards from target player's graveyard",

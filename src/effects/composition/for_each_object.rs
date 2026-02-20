@@ -1,10 +1,12 @@
 //! ForEach effect implementation.
 
+use std::collections::HashSet;
+
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, TaggedOpbjectRelation};
 
 /// Effect that applies effects once for each object matching a filter.
 ///
@@ -45,11 +47,38 @@ impl EffectExecutor for ForEachObject {
     ) -> Result<EffectOutcome, ExecutionError> {
         let filter_ctx = ctx.filter_context(game);
 
-        // Find all objects matching the filter
-        let matching: Vec<_> = game
-            .battlefield
-            .iter()
-            .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+        // For "for each ... revealed/exiled/... this way" patterns, the filter can
+        // reference tagged cards outside the battlefield.
+        let has_only_is_tagged_constraints = !self.filter.tagged_constraints.is_empty()
+            && self
+                .filter
+                .tagged_constraints
+                .iter()
+                .all(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                });
+
+        let candidate_ids: Vec<_> = if has_only_is_tagged_constraints {
+            let mut seen = HashSet::new();
+            let mut ids = Vec::new();
+            for constraint in &self.filter.tagged_constraints {
+                let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) else {
+                    continue;
+                };
+                for snapshot in snapshots {
+                    if seen.insert(snapshot.object_id) {
+                        ids.push(snapshot.object_id);
+                    }
+                }
+            }
+            ids
+        } else {
+            game.battlefield.clone()
+        };
+
+        let matching: Vec<_> = candidate_ids
+            .into_iter()
+            .filter_map(|id| game.object(id).map(|obj| (id, obj)))
             .filter(|(_, obj)| self.filter.matches(obj, &filter_ctx, game))
             .map(|(id, _)| id)
             .collect();
@@ -84,7 +113,9 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;
     use crate::object::Object;
-    use crate::target::ChooseSpec;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::tag::TagKey;
+    use crate::target::{ChooseSpec, TaggedObjectConstraint};
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -100,6 +131,21 @@ mod tests {
             .build();
         let id = game.new_object_id();
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    fn create_library_card(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        card_types: Vec<CardType>,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build();
+        let id = game.new_object_id();
+        let obj = Object::from_card(id, &card, controller, Zone::Library);
         game.add_object(obj);
         id
     }
@@ -205,5 +251,44 @@ mod tests {
         let c2_obj = game.object(c2).expect("c2 should exist");
         assert_eq!(c1_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
         assert_eq!(c2_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
+    }
+
+    #[test]
+    fn test_for_each_uses_tagged_nonbattlefield_candidates_for_is_tagged_filters() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let revealed_creature = create_library_card(
+            &mut game,
+            "Revealed Creature",
+            alice,
+            vec![CardType::Creature],
+        );
+        let revealed_land = create_library_card(&mut game, "Revealed Land", alice, vec![CardType::Land]);
+
+        ctx.tag_object(
+            "revealed_0",
+            ObjectSnapshot::from_object(game.object(revealed_creature).unwrap(), &game),
+        );
+        ctx.tag_object(
+            "revealed_0",
+            ObjectSnapshot::from_object(game.object(revealed_land).unwrap(), &game),
+        );
+
+        let mut filter = ObjectFilter::default();
+        filter.excluded_card_types.push(CardType::Land);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("revealed_0"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        let initial_life = game.player(alice).unwrap().life;
+        let effect = ForEachObject::new(filter, vec![Effect::gain_life(1)]);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.result, EffectResult::Count(1));
+        assert_eq!(game.player(alice).unwrap().life, initial_life + 1);
     }
 }

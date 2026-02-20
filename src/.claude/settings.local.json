@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(ls:*)",
+      "Bash(cargo build:*)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(1)",
+      "Bash(tee:*)"
+    ]
+  }
+}

@@ -87,7 +87,10 @@ This document defines how we implement mechanics in code so behavior stays gener
    - add a parser lowerings test (success + failure paths)
    - add semantic test on representative card examples
    - verify via raw+rendered diff on oracle example
+   - regenerate semantic report files with:
+     `cargo run --quiet --no-default-features --bin rebuild_reports -- --threshold 0.99`
 2. For cluster work, measure impact by true mismatch movement, not by moving cards into failure buckets.
+3. Do not use `./rebuild-wasm.sh` for report-only iterations; reserve it for when wasm package artifacts are required.
 
 ## 8. Implementation Example: Boast in Current Engine
 
@@ -101,4 +104,3 @@ Boast is currently implemented as a composition of existing activated-ability pr
 This means:
 - it is generic activation plumbing, not a special-case card branch
 - reminder text is not treated as standalone semantics
-

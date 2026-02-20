@@ -52,7 +52,7 @@ It is optimized for:
 Use the full-card strict report as baseline:
 
 ```bash
-cargo run --quiet --bin audit_oracle_clusters -- \
+cargo run --quiet --no-default-features --bin audit_oracle_clusters -- \
   --cards /Users/chiplis/ironsmith/cards.json \
   --use-embeddings \
   --embedding-threshold 0.99 \
@@ -74,6 +74,12 @@ Notes:
 - Adjust `--min-cluster-size ` so you focus on reusable patterns first.
 - Save both JSON and mismatch-name outputs every run.
 - Semantic comparison for gating must use compiled output from the actual renderer path (never oracle-preserved text).
+
+To regenerate canonical report files used by the wasm workflow (without building wasm):
+
+```bash
+cargo run --quiet --no-default-features --bin rebuild_reports -- --threshold 0.99
+```
 
 Quickly inspect actionable semantic clusters:
 
@@ -254,7 +260,12 @@ At the end of each full loop:
 1. Build checks:
 ```bash
 cargo check -q
-./rebuild-wasm.sh
+cargo run --quiet --no-default-features --bin rebuild_reports -- --threshold 0.99
+```
+
+Optional (only when wasm artifacts are needed):
+```bash
+./rebuild-wasm.sh --threshold 0.99
 ```
 
 2. Full tests:
@@ -264,16 +275,7 @@ cargo test -q
 
 3. Full semantic audit at target threshold:
 ```bash
-cargo run --quiet --bin audit_oracle_clusters -- \
-  --cards /Users/chiplis/ironsmith/cards.json \
-  --use-embeddings \
-  --embedding-threshold 0.75 \
-  --false-positive-names /Users/chiplis/ironsmith/scripts/semantic_false_positives.txt \
-  --min-cluster-size 2 \
-  --top-clusters 200 \
-  --examples 3 \
-  --json-out /tmp/oracle_clusters_075_final.json \
-  --mismatch-names-out /tmp/mismatch_names_075_final.txt
+cargo run --quiet --no-default-features --bin rebuild_reports -- --threshold 0.75
 ```
 
 ---
