@@ -6117,6 +6117,23 @@ fn describe_condition(condition: &Condition) -> String {
             {
                 described_filter.controller = None;
             }
+            if matches!(
+                described_filter.zone,
+                Some(
+                    Zone::Graveyard
+                        | Zone::Hand
+                        | Zone::Library
+                        | Zone::Exile
+                        | Zone::Command
+                )
+            ) {
+                // For non-battlefield zones, the condition is about card presence rather than
+                // "control". Prefer oracle-style existential phrasing.
+                if described_filter.owner.is_none() {
+                    described_filter.owner = Some(player.clone());
+                }
+                return format!("there is {}", described_filter.description());
+            }
             format!(
                 "{} {} {}",
                 subject,
