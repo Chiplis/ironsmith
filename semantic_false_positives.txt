@@ -371,3 +371,5 @@ A-Celestial Regulator
 Celestial Regulator
 A-Nezumi Prowler
 Unexpected Fangs
+A-Bruenor Battlehammer
+A-Nadu, Winged Wisdom
