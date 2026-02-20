@@ -37,6 +37,26 @@ fn graveyard_candidate_players(
     vec![chooser_id]
 }
 
+fn library_candidate_players(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    filter_ctx: &crate::filter::FilterContext,
+    chooser_id: PlayerId,
+) -> Vec<PlayerId> {
+    if let Some(owner_filter) = &effect.filter.owner {
+        let owners = game
+            .players
+            .iter()
+            .map(|player| player.id)
+            .filter(|player_id| owner_filter.matches_player(*player_id, filter_ctx))
+            .collect::<Vec<_>>();
+        if !owners.is_empty() {
+            return owners;
+        }
+    }
+    vec![chooser_id]
+}
+
 fn collect_candidates(
     effect: &ChooseObjectsEffect,
     game: &GameState,
@@ -93,6 +113,35 @@ fn collect_candidates(
                     .filter_map(|owner_id| game.player(*owner_id))
                     .flat_map(|player| player.graveyard.iter())
                     .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                    .filter(|(_, obj)| effect.filter.matches(obj, &filter_ctx, game))
+                    .map(|(id, _)| id)
+                    .collect()
+            }
+        }
+        Zone::Library => {
+            if effect.top_only {
+                let owner_ids = library_candidate_players(effect, game, &filter_ctx, chooser_id);
+                let mut top_match = None;
+                for owner_id in owner_ids {
+                    let Some(player) = game.player(owner_id) else {
+                        continue;
+                    };
+                    if let Some((id, _)) = player
+                        .library
+                        .iter()
+                        .rev()
+                        .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                        .find(|(_, obj)| effect.filter.matches(obj, &filter_ctx, game))
+                    {
+                        top_match = Some(id);
+                        break;
+                    }
+                }
+                top_match.map(|id| vec![id]).unwrap_or_default()
+            } else {
+                game.objects_in_zone(search_zone)
+                    .into_iter()
+                    .filter_map(|id| game.object(id).map(|obj| (id, obj)))
                     .filter(|(_, obj)| effect.filter.matches(obj, &filter_ctx, game))
                     .map(|(id, _)| id)
                     .collect()
@@ -296,6 +345,13 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Graveyard)
     }
 
+    fn create_library_card(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library)
+    }
+
     #[test]
     fn test_compute_choice_bounds_clamps_to_candidates() {
         let (min, max) = compute_choice_bounds(ChoiceCount::exactly(3), 2);
@@ -366,5 +422,26 @@ mod tests {
         let normalized =
             enforce_single_graveyard_choice_constraint(&effect, &game, &candidates, chosen, 0, 3);
         assert_eq!(normalized, vec![alice_card]);
+    }
+
+    #[test]
+    fn test_top_only_library_selects_top_matching_card() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let _bottom = create_library_card(&mut game, "Bottom Card", alice);
+        let top = create_library_card(&mut game, "Top Card", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let filter = ObjectFilter::default()
+            .in_zone(Zone::Library)
+            .owned_by(PlayerFilter::You);
+        let effect = ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "chosen").top_only();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("choose resolves");
+
+        let EffectResult::Objects(chosen) = outcome.result else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(chosen, vec![top], "expected top library card to be chosen");
     }
 }

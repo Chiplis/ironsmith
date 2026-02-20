@@ -211,6 +211,48 @@ impl EffectExecutor for ChooseObjectsEffect {
                     0
                 }
             }
+            Zone::Library => {
+                if self.top_only {
+                    let owner_ids: Vec<_> = if let Some(owner_filter) = &self.filter.owner {
+                        game.players
+                            .iter()
+                            .map(|player| player.id)
+                            .filter(|player_id| owner_filter.matches_player(*player_id, &filter_ctx))
+                            .collect()
+                    } else {
+                        vec![chooser_id]
+                    };
+                    owner_ids
+                        .into_iter()
+                        .filter_map(|owner_id| game.player(owner_id))
+                        .find_map(|player| {
+                            player
+                                .library
+                                .iter()
+                                .rev()
+                                .filter_map(|&id| game.object(id))
+                                .find(|obj| {
+                                    if self.filter.other && obj.id == source {
+                                        return false;
+                                    }
+                                    self.filter.matches(obj, &filter_ctx, game)
+                                })
+                        })
+                        .map(|_| 1usize)
+                        .unwrap_or(0usize)
+                } else {
+                    game.objects_in_zone(search_zone)
+                        .into_iter()
+                        .filter_map(|id| game.object(id))
+                        .filter(|obj| {
+                            if self.filter.other && obj.id == source {
+                                return false;
+                            }
+                            self.filter.matches(obj, &filter_ctx, game)
+                        })
+                        .count()
+                }
+            }
             _ => {
                 // For other zones, check generic
                 game.objects_in_zone(search_zone)

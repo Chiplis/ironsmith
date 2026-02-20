@@ -1465,7 +1465,17 @@ impl StaticAbilityKind for DrawReplacementExileTopFaceDown {
             controller,
             WouldDrawCardMatcher::you(),
             ReplacementAction::Instead(vec![
-                Effect::reveal_top(PlayerFilter::You, TOP_CARD_TAG),
+                Effect::new(
+                    crate::effects::ChooseObjectsEffect::new(
+                        ObjectFilter::default()
+                            .in_zone(Zone::Library)
+                            .owned_by(PlayerFilter::You),
+                        1,
+                        PlayerFilter::You,
+                        TOP_CARD_TAG,
+                    )
+                    .top_only(),
+                ),
                 Effect::new(
                     crate::effects::ExileEffect::with_spec(ChooseSpec::tagged(TOP_CARD_TAG))
                         .with_face_down(true),
@@ -1668,9 +1678,18 @@ mod tests {
         let replacement = ability
             .generate_replacement_effect(ObjectId::from_raw(1), PlayerId::from_index(0))
             .expect("draw replacement should create replacement effect");
+        let ReplacementAction::Instead(effects) = &replacement.replacement else {
+            panic!("expected draw replacement to use an Instead action");
+        };
+        assert_eq!(effects.len(), 2, "expected choose+exile effect sequence");
+        let choose_debug = format!("{:?}", effects[0]);
         assert!(
-            matches!(replacement.replacement, ReplacementAction::Instead(_)),
-            "expected draw replacement to use an Instead action"
+            choose_debug.contains("ChooseObjectsEffect"),
+            "expected first effect to choose top library card, got {choose_debug}"
+        );
+        assert!(
+            !choose_debug.contains("RevealTopEffect"),
+            "draw replacement should not reveal the card, got {choose_debug}"
         );
     }
 
