@@ -8391,3 +8391,19 @@ fn parse_lose_life_equal_to_power_plus_toughness() {
         "expected additive power+toughness life amount, got {abilities_debug}"
     );
 }
+
+#[test]
+fn parse_creature_tapped_to_pay_additional_cost_targets_tap_cost_tag() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Swallow Whole Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, tap an untapped creature you control.\nExile target tapped creature. Put a +1/+1 counter on the creature tapped to pay this spell's additional cost.",
+        )
+        .expect("cost-linked tapped creature reference should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("tap_cost_0"),
+        "expected follow-up counter target to reference tap_cost_0, got {spell_debug}"
+    );
+}

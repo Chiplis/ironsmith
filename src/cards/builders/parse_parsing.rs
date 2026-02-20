@@ -30451,6 +30451,18 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
             target_count,
         ));
     }
+    if matches!(
+        remaining_words.as_slice(),
+        ["creature", "tapped", "to", "pay", "this", "spell", "additional", "cost"]
+            | ["creature", "tapped", "to", "pay", "this", "spells", "additional", "cost"]
+            | ["creature", "tapped", "to", "pay", "this", "spell", "additional", "costs"]
+            | ["creature", "tapped", "to", "pay", "this", "spells", "additional", "costs"]
+    ) {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from("tap_cost_0"), span),
+            target_count,
+        ));
+    }
 
     if tokens.get(idx).is_some_and(|token| token.is_word("any"))
         && tokens
