@@ -10107,26 +10107,23 @@ fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(modify_pt_each) =
         effect.downcast_ref::<crate::effects::ModifyPowerToughnessForEachEffect>()
     {
-        let (target_text, gets_verb) = match modify_pt_each.target.base() {
-            ChooseSpec::Object(filter) => {
-                let filter_text = pluralize_noun_phrase(strip_indefinite_article(
-                    &filter.description(),
-                ));
-                (filter_text, "get")
-            }
-            _ => (describe_choose_spec(&modify_pt_each.target), "gets"),
-        };
-        let each_text = if let Value::Count(filter) = &modify_pt_each.count {
-            describe_for_each_count_filter(filter)
+        let target_text = describe_choose_spec(&modify_pt_each.target);
+        let gets_verb = if choose_spec_is_plural(&modify_pt_each.target) {
+            "get"
         } else {
-            describe_value(&modify_pt_each.count)
+            "gets"
+        };
+        let each_text = match &modify_pt_each.count {
+            Value::Count(filter) => describe_for_each_count_filter(filter),
+            Value::BasicLandTypesAmong(filter) => describe_basic_land_types_among(filter),
+            _ => describe_value(&modify_pt_each.count),
         };
         return format!(
-            "{} {} +{} / +{} for each {} {}",
+            "{} {} {}/{} for each {} {}",
             target_text,
             gets_verb,
-            modify_pt_each.power_per,
-            modify_pt_each.toughness_per,
+            describe_signed_i32(modify_pt_each.power_per),
+            describe_signed_i32(modify_pt_each.toughness_per),
             each_text,
             describe_until(&modify_pt_each.duration)
         );

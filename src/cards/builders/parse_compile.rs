@@ -4103,16 +4103,16 @@ fn compile_effect(
             power_per,
             toughness_per,
             target,
-            count_filter,
+            count,
             duration,
         } => {
-            let resolved_count_filter = resolve_it_tag(count_filter, ctx)?;
+            let resolved_count = resolve_value_it_tag(count, ctx)?;
             compile_tagged_effect_for_target(target, ctx, "pumped", |spec| {
                 Effect::pump_for_each(
                     spec,
                     *power_per,
                     *toughness_per,
-                    Value::Count(resolved_count_filter.clone()),
+                    resolved_count.clone(),
                     duration.clone(),
                 )
             })

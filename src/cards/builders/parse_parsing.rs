@@ -23991,7 +23991,7 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
                 && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
             {
                 let modifier_tail = &tokens[verb_idx + 1..];
-                if let Some(count_filter) = parse_get_for_each_count_filter(modifier_tail)? {
+                if let Some(count) = parse_get_for_each_count_value(modifier_tail)? {
                     let modifier_words = words(modifier_tail);
                     let duration = if modifier_words.starts_with(&["until", "end", "of", "turn"])
                         || modifier_words
@@ -24025,7 +24025,7 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
                         power_per,
                         toughness_per,
                         target,
-                        count_filter,
+                        count,
                         duration,
                     });
                 }
@@ -24478,9 +24478,7 @@ fn parse_has_base_power_toughness_clause(
     }))
 }
 
-fn parse_get_for_each_count_filter(
-    tokens: &[Token],
-) -> Result<Option<ObjectFilter>, CardTextError> {
+fn parse_get_for_each_count_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
     let mut for_each_idx = None;
     for idx in 0..tokens.len().saturating_sub(1) {
         if tokens[idx].is_word("for") && tokens[idx + 1].is_word("each") {
@@ -24515,7 +24513,24 @@ fn parse_get_for_each_count_filter(
         ));
     }
 
-    Ok(Some(parse_object_filter(filter_tokens, other)?))
+    let filter_words = words(filter_tokens);
+    if filter_words.starts_with(&["basic", "land", "type", "among"])
+        || filter_words.starts_with(&["basic", "land", "types", "among"])
+    {
+        let mut scope_tokens = &filter_tokens[4..];
+        if scope_tokens.first().is_some_and(|token| token.is_word("the")) {
+            scope_tokens = &scope_tokens[1..];
+        }
+        if scope_tokens.is_empty() {
+            return Err(CardTextError::ParseError(
+                "missing scope after 'basic land type among' in gets clause".to_string(),
+            ));
+        }
+        let filter = parse_object_filter(scope_tokens, false)?;
+        return Ok(Some(Value::BasicLandTypesAmong(filter)));
+    }
+
+    Ok(Some(Value::Count(parse_object_filter(filter_tokens, other)?)))
 }
 
 fn value_contains_unbound_x(value: &Value) -> bool {

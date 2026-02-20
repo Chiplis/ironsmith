@@ -930,7 +930,7 @@ enum EffectAst {
         power_per: i32,
         toughness_per: i32,
         target: TargetAst,
-        count_filter: ObjectFilter,
+        count: Value,
         duration: Until,
     },
     PumpAll {
