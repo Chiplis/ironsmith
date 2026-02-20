@@ -3350,6 +3350,24 @@ fn describe_condition(
                 filter.description()
             )
         }
+        crate::effect::Condition::PlayerTaggedObjectMatches {
+            player,
+            tag,
+            filter,
+        } => {
+            format!(
+                "{} had the tagged object '{}' matching {}",
+                describe_player_filter(player, tagged_subjects),
+                tag.as_str(),
+                filter.description()
+            )
+        }
+        crate::effect::Condition::PlayerTappedLandForManaThisTurn { player } => {
+            format!(
+                "{} tapped a land for mana this turn",
+                describe_player_filter(player, tagged_subjects)
+            )
+        }
         crate::effect::Condition::Not(inner) => {
             if let crate::effect::Condition::TargetSpellManaSpentToCastAtLeast {
                 amount: 1,
