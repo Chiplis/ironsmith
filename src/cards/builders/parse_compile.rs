@@ -284,6 +284,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             if_false,
         } => {
             matches!(predicate, PredicateAst::TaggedMatches(t, _) if t.as_str() == tag)
+                || matches!(predicate, PredicateAst::PlayerTaggedObjectMatches { tag: t, .. } if t.as_str() == tag)
                 || effects_reference_tag(if_true, tag)
                 || effects_reference_tag(if_false, tag)
         }
@@ -356,8 +357,8 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
         | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects }
-        | EffectAst::ForEachPlayerDid { effects }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::UnlessPays { effects, .. } => effects_reference_tag(effects, tag),
         EffectAst::ForEachObject { filter, effects } => {
             filter
@@ -498,8 +499,8 @@ fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
         | EffectAst::ForEachTaggedPlayer { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
         | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects }
-        | EffectAst::ForEachPlayerDid { effects }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::UnlessPays { effects, .. }
         | EffectAst::VoteOption { effects, .. } => {
             effects.iter().any(effect_references_event_derived_amount)
@@ -592,8 +593,8 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
         | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects }
-        | EffectAst::ForEachPlayerDid { effects }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. }
         | EffectAst::UnlessPays { effects, .. } => effects_reference_its_controller(effects),
@@ -662,7 +663,12 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
             matches!(
                 predicate,
                 PredicateAst::ItIsLandCard | PredicateAst::ItMatches(_)
-            ) || effects_reference_it_tag(if_true)
+            ) || matches!(predicate, PredicateAst::TaggedMatches(t, _) if t.as_str() == IT_TAG)
+                || matches!(
+                    predicate,
+                    PredicateAst::PlayerTaggedObjectMatches { tag: t, .. } if t.as_str() == IT_TAG
+                )
+                || effects_reference_it_tag(if_true)
                 || effects_reference_it_tag(if_false)
         }
         EffectAst::DealDamageEach { filter, .. }
@@ -725,8 +731,8 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
         | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects }
-        | EffectAst::ForEachPlayerDid { effects }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::UnlessPays { effects, .. } => effects_reference_it_tag(effects),
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => true,
         EffectAst::ForEachObject { filter, effects } => {
@@ -1087,8 +1093,8 @@ fn collect_tag_spans_from_effect(
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
         | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects }
-        | EffectAst::ForEachPlayerDid { effects }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::UnlessPays { effects, .. } => {
             collect_tag_spans_from_effects_with_context(effects, annotations, ctx);
         }
@@ -1287,6 +1293,7 @@ fn compile_if_do_with_opponent_did(
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let EffectAst::ForEachOpponentDid {
         effects: second_effects,
+        predicate,
     } = second
     else {
         return Ok(None);
@@ -1296,6 +1303,22 @@ fn compile_if_do_with_opponent_did(
         effects: opponent_effects,
     } = first
     {
+        if let Some(predicate) = predicate {
+            let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
+            let followup = EffectAst::ForEachOpponent {
+                effects: vec![EffectAst::Conditional {
+                    predicate: predicate.clone(),
+                    if_true: second_effects.clone(),
+                    if_false: Vec::new(),
+                }],
+            };
+            let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
+            first_effects.extend(second_compiled);
+            for choice in second_choices {
+                push_choice(&mut choices, choice);
+            }
+            return Ok(Some((first_effects, choices)));
+        }
         let mut merged_opponent_effects = opponent_effects.clone();
         merged_opponent_effects.push(EffectAst::IfResult {
             predicate: IfResultPredicate::Did,
@@ -1312,6 +1335,22 @@ fn compile_if_do_with_opponent_did(
         effects: player_effects,
     } = first
     {
+        if let Some(predicate) = predicate {
+            let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
+            let followup = EffectAst::ForEachOpponent {
+                effects: vec![EffectAst::Conditional {
+                    predicate: predicate.clone(),
+                    if_true: second_effects.clone(),
+                    if_false: Vec::new(),
+                }],
+            };
+            let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
+            first_effects.extend(second_compiled);
+            for choice in second_choices {
+                push_choice(&mut choices, choice);
+            }
+            return Ok(Some((first_effects, choices)));
+        }
         let first_ast = EffectAst::ForEachPlayer {
             effects: player_effects.clone(),
         };
@@ -1344,6 +1383,23 @@ fn compile_if_do_with_opponent_did(
         return Ok(None);
     };
 
+    if let Some(predicate) = predicate {
+        let (mut first_compiled, mut choices) = compile_effect(first, ctx)?;
+        let followup = EffectAst::ForEachOpponent {
+            effects: vec![EffectAst::Conditional {
+                predicate: predicate.clone(),
+                if_true: second_effects.clone(),
+                if_false: Vec::new(),
+            }],
+        };
+        let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
+        first_compiled.extend(second_compiled);
+        for choice in second_choices {
+            push_choice(&mut choices, choice);
+        }
+        return Ok(Some((first_compiled, choices)));
+    }
+
     let Some(EffectAst::ForEachOpponent {
         effects: opponent_effects,
     }) = first_effects.first()
@@ -1375,6 +1431,7 @@ fn compile_if_do_with_player_did(
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let EffectAst::ForEachPlayerDid {
         effects: second_effects,
+        predicate,
     } = second
     else {
         return Ok(None);
@@ -1384,6 +1441,22 @@ fn compile_if_do_with_player_did(
         effects: player_effects,
     } = first
     {
+        if let Some(predicate) = predicate {
+            let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
+            let followup = EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::Conditional {
+                    predicate: predicate.clone(),
+                    if_true: second_effects.clone(),
+                    if_false: Vec::new(),
+                }],
+            };
+            let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
+            first_effects.extend(second_compiled);
+            for choice in second_choices {
+                push_choice(&mut choices, choice);
+            }
+            return Ok(Some((first_effects, choices)));
+        }
         let mut merged_player_effects = player_effects.clone();
         merged_player_effects.push(EffectAst::IfResult {
             predicate: IfResultPredicate::Did,
@@ -1404,6 +1477,23 @@ fn compile_if_do_with_player_did(
     else {
         return Ok(None);
     };
+
+    if let Some(predicate) = predicate {
+        let (mut first_compiled, mut choices) = compile_effect(first, ctx)?;
+        let followup = EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::Conditional {
+                predicate: predicate.clone(),
+                if_true: second_effects.clone(),
+                if_false: Vec::new(),
+            }],
+        };
+        let (second_compiled, second_choices) = compile_effect(&followup, ctx)?;
+        first_compiled.extend(second_compiled);
+        for choice in second_choices {
+            push_choice(&mut choices, choice);
+        }
+        return Ok(Some((first_compiled, choices)));
+    }
 
     let Some(EffectAst::ForEachPlayer {
         effects: player_effects,
@@ -1531,8 +1621,8 @@ fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
             | EffectAst::ForEachTagged { effects, .. }
             | EffectAst::ForEachOpponentDoesNot { effects }
             | EffectAst::ForEachPlayerDoesNot { effects }
-            | EffectAst::ForEachOpponentDid { effects }
-            | EffectAst::ForEachPlayerDid { effects }
+            | EffectAst::ForEachOpponentDid { effects, .. }
+            | EffectAst::ForEachPlayerDid { effects, .. }
             | EffectAst::ForEachTaggedPlayer { effects, .. }
             | EffectAst::DelayedUntilNextEndStep { effects, .. }
             | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
@@ -3467,9 +3557,14 @@ fn compile_effect(
         } => {
             let saved_last_tag = ctx.last_object_tag.clone();
             let (true_effects, true_choices) = compile_effects(if_true, ctx)?;
+            let true_last_tag = ctx.last_object_tag.clone();
             ctx.last_object_tag = saved_last_tag.clone();
             let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
-            ctx.last_object_tag = saved_last_tag.clone();
+            if if_false.is_empty() {
+                ctx.last_object_tag = true_last_tag.or(saved_last_tag.clone());
+            } else {
+                ctx.last_object_tag = saved_last_tag.clone();
+            }
             let condition = match predicate {
                 PredicateAst::ItIsLandCard => {
                     let tag = saved_last_tag.clone().ok_or_else(|| {
@@ -3499,7 +3594,19 @@ fn compile_effect(
                 PredicateAst::TaggedMatches(tag, filter) => {
                     let mut resolved = filter.clone();
                     resolved.zone = None;
-                    Condition::TaggedObjectMatches(tag.clone(), resolved)
+                    let resolved_tag = resolve_it_tag_key(tag, ctx)?;
+                    Condition::TaggedObjectMatches(resolved_tag, resolved)
+                }
+                PredicateAst::PlayerTaggedObjectMatches { player, tag, filter } => {
+                    let player = resolve_non_target_player_filter(*player, ctx)?;
+                    let mut resolved = resolve_it_tag(filter, ctx)?;
+                    resolved.zone = None;
+                    let resolved_tag = resolve_it_tag_key(tag, ctx)?;
+                    Condition::PlayerTaggedObjectMatches {
+                        player,
+                        tag: resolved_tag,
+                        filter: resolved,
+                    }
                 }
                 PredicateAst::PlayerControls { player, filter } => {
                     let player = resolve_non_target_player_filter(*player, ctx)?;
@@ -3579,6 +3686,10 @@ fn compile_effect(
                 PredicateAst::PlayerHasLessLifeThanYou { player } => {
                     let player = resolve_non_target_player_filter(*player, ctx)?;
                     Condition::PlayerHasLessLifeThanYou { player }
+                }
+                PredicateAst::PlayerTappedLandForManaThisTurn { player } => {
+                    let player = resolve_non_target_player_filter(*player, ctx)?;
+                    Condition::PlayerTappedLandForManaThisTurn { player }
                 }
                 PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
                 PredicateAst::SourceHasNoCounter(counter_type) => {
@@ -4482,6 +4593,16 @@ fn resolve_it_tag(
         }
     }
     Ok(resolved)
+}
+
+fn resolve_it_tag_key(tag: &TagKey, ctx: &CompileContext) -> Result<TagKey, CardTextError> {
+    if tag.as_str() != IT_TAG {
+        return Ok(tag.clone());
+    }
+    let resolved = ctx.last_object_tag.as_ref().ok_or_else(|| {
+        CardTextError::ParseError("unable to resolve 'it' without prior reference".to_string())
+    })?;
+    Ok(TagKey::from(resolved.as_str()))
 }
 
 fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey> {

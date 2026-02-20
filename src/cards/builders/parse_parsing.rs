@@ -16172,6 +16172,10 @@ fn try_build_unless(
 
 const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
+        name: "put-multiple-counters-on-target",
+        parser: parse_sentence_put_multiple_counters_on_target,
+    },
+    SentencePrimitive {
         name: "you-and-target-player-each-draw",
         parser: parse_sentence_you_and_target_player_each_draw,
     },
@@ -23324,8 +23328,8 @@ fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
         | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects }
-        | EffectAst::ForEachPlayerDid { effects }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
@@ -23557,6 +23561,9 @@ fn run_clause_primitives(tokens: &[Token]) -> Result<Option<EffectAst>, CardText
         },
         ClausePrimitive {
             parser: parse_connive_clause,
+        },
+        ClausePrimitive {
+            parser: parse_choose_target_and_verb_clause,
         },
         ClausePrimitive {
             parser: parse_verb_first_clause,
@@ -24624,8 +24631,8 @@ fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
             | EffectAst::ForEachTagged { effects, .. }
             | EffectAst::ForEachOpponentDoesNot { effects }
             | EffectAst::ForEachPlayerDoesNot { effects }
-            | EffectAst::ForEachOpponentDid { effects }
-            | EffectAst::ForEachPlayerDid { effects }
+            | EffectAst::ForEachOpponentDid { effects, .. }
+            | EffectAst::ForEachPlayerDid { effects, .. }
             | EffectAst::ForEachTaggedPlayer { effects, .. }
             | EffectAst::DelayedUntilNextEndStep { effects, .. }
             | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
@@ -24752,7 +24759,8 @@ fn parse_for_each_opponent_clause(tokens: &[Token]) -> Result<Option<EffectAst>,
             )));
         }
         let effects = parse_effect_chain_inner(&effect_tokens)?;
-        return Ok(Some(EffectAst::ForEachOpponentDid { effects }));
+        let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
+        return Ok(Some(EffectAst::ForEachOpponentDid { effects, predicate }));
     }
     if inner_words.starts_with(&["who", "does"])
         || inner_words.starts_with(&["who", "do"])
@@ -24777,7 +24785,10 @@ fn parse_for_each_opponent_clause(tokens: &[Token]) -> Result<Option<EffectAst>,
         for effect in &mut effects {
             bind_implicit_player_context(effect, PlayerAst::You);
         }
-        return Ok(Some(EffectAst::ForEachOpponentDid { effects }));
+        return Ok(Some(EffectAst::ForEachOpponentDid {
+            effects,
+            predicate: None,
+        }));
     }
 
     let effects = if inner_tokens.iter().any(|token| token.is_word("may")) {
@@ -24862,6 +24873,48 @@ fn parse_for_each_target_players_clause(tokens: &[Token]) -> Result<Option<Effec
         parse_effect_chain_inner(&inner_tokens)?
     };
     Ok(Some(EffectAst::ForEachTargetPlayers { count, effects }))
+}
+
+fn parse_who_did_this_way_predicate(
+    inner_tokens: &[Token],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let inner_words = words(inner_tokens);
+    if inner_words.first().copied() != Some("who") {
+        return Ok(None);
+    }
+    let Some(this_way_idx) = inner_words
+        .windows(2)
+        .position(|window| window == ["this", "way"])
+    else {
+        return Ok(None);
+    };
+    let verb = inner_words.get(1).copied().unwrap_or("");
+    let supports_tag = matches!(verb, "sacrificed" | "destroyed" | "exiled");
+    if !supports_tag {
+        return Ok(None);
+    }
+    if this_way_idx <= 2 {
+        return Ok(None);
+    }
+    let filter_start = token_index_for_word_index(inner_tokens, 2).unwrap_or(inner_tokens.len());
+    let filter_end =
+        token_index_for_word_index(inner_tokens, this_way_idx).unwrap_or(inner_tokens.len());
+    if filter_start >= filter_end {
+        return Ok(None);
+    }
+    let filter_tokens = trim_commas(&inner_tokens[filter_start..filter_end]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = match parse_object_filter(&filter_tokens, false) {
+        Ok(filter) => filter,
+        Err(_) => return Ok(None),
+    };
+    Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+        player: PlayerAst::That,
+        tag: TagKey::from(IT_TAG),
+        filter,
+    }))
 }
 
 fn parse_for_each_player_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
@@ -24968,6 +25021,47 @@ fn parse_for_each_player_clause(tokens: &[Token]) -> Result<Option<EffectAst>, C
     }
 
     let inner_words = words(&inner_tokens);
+    if inner_words.first().copied() == Some("who") {
+        let tapped_land_turn_idx = inner_words
+            .windows(7)
+            .position(|window| window == ["tapped", "a", "land", "for", "mana", "this", "turn"])
+            .map(|idx| idx + 6)
+            .or_else(|| {
+                inner_words
+                    .windows(6)
+                    .position(|window| window == ["tapped", "land", "for", "mana", "this", "turn"])
+                    .map(|idx| idx + 5)
+            });
+        if let Some(turn_idx) = tapped_land_turn_idx {
+            let effect_token_start =
+                token_index_for_word_index(&inner_tokens, turn_idx + 1).unwrap_or(inner_tokens.len());
+            let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
+            if effect_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing effect after 'each player who tapped a land for mana this turn' (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let branch_effects = if effect_tokens.iter().any(|token| token.is_word("may")) {
+                let stripped = remove_first_word(&effect_tokens, "may");
+                let inner_effects = parse_effect_chain_inner(&stripped)?;
+                vec![EffectAst::May {
+                    effects: inner_effects,
+                }]
+            } else {
+                parse_effect_chain_inner(&effect_tokens)?
+            };
+            return Ok(Some(EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::Conditional {
+                    predicate: PredicateAst::PlayerTappedLandForManaThisTurn {
+                        player: PlayerAst::That,
+                    },
+                    if_true: branch_effects,
+                    if_false: Vec::new(),
+                }],
+            }));
+        }
+    }
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
@@ -25011,7 +25105,8 @@ fn parse_for_each_player_clause(tokens: &[Token]) -> Result<Option<EffectAst>, C
             )));
         }
         let effects = parse_effect_chain_inner(&effect_tokens)?;
-        return Ok(Some(EffectAst::ForEachPlayerDid { effects }));
+        let predicate = parse_who_did_this_way_predicate(&inner_tokens)?;
+        return Ok(Some(EffectAst::ForEachPlayerDid { effects, predicate }));
     }
     if inner_words.starts_with(&["who", "does"])
         || inner_words.starts_with(&["who", "do"])
@@ -25036,7 +25131,10 @@ fn parse_for_each_player_clause(tokens: &[Token]) -> Result<Option<EffectAst>, C
         for effect in &mut effects {
             bind_implicit_player_context(effect, PlayerAst::You);
         }
-        return Ok(Some(EffectAst::ForEachPlayerDid { effects }));
+        return Ok(Some(EffectAst::ForEachPlayerDid {
+            effects,
+            predicate: None,
+        }));
     }
 
     let effects = if inner_tokens.iter().any(|token| token.is_word("may")) {
@@ -25472,6 +25570,74 @@ fn parse_verb_first_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTe
     };
 
     let effect = parse_effect_with_verb(verb, None, &tokens[1..])?;
+    Ok(Some(effect))
+}
+
+fn is_simple_chosen_object_reference(tokens: &[Token]) -> bool {
+    let words: Vec<&str> = words(tokens)
+        .into_iter()
+        .filter(|word| !is_article(word) && *word != "then")
+        .collect();
+    if words.is_empty() {
+        return false;
+    }
+    if words == ["it"] || words == ["them"] {
+        return true;
+    }
+    if has_demonstrative_object_reference(&words) {
+        return true;
+    }
+    false
+}
+
+fn parse_choose_target_and_verb_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["choose", "target"]) {
+        return Ok(None);
+    }
+
+    let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    if and_idx <= 1 {
+        return Ok(None);
+    }
+
+    let target_tokens = trim_commas(&tokens[1..and_idx]);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing target after choose clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    if find_verb(&target_tokens).is_some() {
+        return Ok(None);
+    }
+
+    let mut tail_tokens = trim_commas(&tokens[and_idx + 1..]);
+    if tail_tokens
+        .first()
+        .is_some_and(|token| token.is_word("then"))
+    {
+        tail_tokens = tail_tokens[1..].to_vec();
+    }
+    if tail_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some((verb, verb_idx)) = find_verb(&tail_tokens) else {
+        return Ok(None);
+    };
+    if verb_idx != 0 {
+        return Ok(None);
+    }
+
+    let rest_tokens = trim_commas(&tail_tokens[1..]);
+    if !is_simple_chosen_object_reference(&rest_tokens) {
+        return Ok(None);
+    }
+
+    let effect = parse_effect_with_verb(verb, None, &target_tokens)?;
     Ok(Some(effect))
 }
 
@@ -26246,11 +26412,13 @@ fn parse_deal_damage_with_amount(
             .windows(2)
             .any(|window| window == ["this", "way"])
     {
+        let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
         return Ok(EffectAst::ForEachOpponentDid {
             effects: vec![EffectAst::DealDamage {
                 amount: amount.clone(),
                 target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             }],
+            predicate,
         });
     }
     if target_words.starts_with(&["each", "player", "who"])
@@ -26258,11 +26426,13 @@ fn parse_deal_damage_with_amount(
             .windows(2)
             .any(|window| window == ["this", "way"])
     {
+        let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
         return Ok(EffectAst::ForEachPlayerDid {
             effects: vec![EffectAst::DealDamage {
                 amount: amount.clone(),
                 target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             }],
+            predicate,
         });
     }
 
@@ -27592,6 +27762,94 @@ fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     } else {
         effect
     })
+}
+
+fn parse_sentence_put_multiple_counters_on_target(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if !matches!(clause_words.first().copied(), Some("put") | Some("puts")) {
+        return Ok(None);
+    }
+
+    let Some(on_idx) = tokens.iter().position(|token| token.is_word("on")) else {
+        return Ok(None);
+    };
+    if on_idx < 2 {
+        return Ok(None);
+    }
+
+    let before_on = trim_commas(&tokens[1..on_idx]);
+    let Some(and_idx) = before_on.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    if and_idx == 0 || and_idx + 1 >= before_on.len() {
+        return Ok(None);
+    }
+
+    let first_desc = trim_commas(&before_on[..and_idx]);
+    let second_desc = trim_commas(&before_on[and_idx + 1..]);
+    if first_desc.is_empty() || second_desc.is_empty() {
+        return Ok(None);
+    }
+    if first_desc.iter().any(|token| matches!(token, Token::Comma(_)))
+        || second_desc.iter().any(|token| matches!(token, Token::Comma(_)))
+    {
+        return Ok(None);
+    }
+    let first_words = words(&first_desc);
+    let second_words = words(&second_desc);
+    if !first_words.iter().any(|word| *word == "counter" || *word == "counters")
+        || !second_words
+            .iter()
+            .any(|word| *word == "counter" || *word == "counters")
+    {
+        return Ok(None);
+    }
+
+    let (first_count, first_counter) = match parse_counter_descriptor(&first_desc) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    let (second_count, second_counter) = match parse_counter_descriptor(&second_desc) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+
+    let target_tokens = trim_commas(&tokens[on_idx + 1..]);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing counter target after on clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let target_words = words(&target_tokens);
+    if !target_words.iter().any(|word| *word == "target" || *word == "targets") {
+        return Ok(None);
+    }
+
+    let target = parse_target_phrase(&target_tokens)?;
+    if matches!(target, TargetAst::WithCount(_, _)) {
+        return Ok(None);
+    }
+
+    let first_effect = EffectAst::PutCounters {
+        counter_type: first_counter,
+        count: Value::Fixed(first_count as i32),
+        target: target.clone(),
+        target_count: None,
+        distributed: false,
+    };
+    let second_effect = EffectAst::PutCounters {
+        counter_type: second_counter,
+        count: Value::Fixed(second_count as i32),
+        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        target_count: None,
+        distributed: false,
+    };
+
+    Ok(Some(vec![first_effect, second_effect]))
 }
 
 fn parse_put_or_remove_counter_choice(
@@ -30596,6 +30854,16 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
         .copied()
         .filter(|word| !is_article(word))
         .collect();
+    if remaining_words.len() >= 2
+        && remaining_words[0] == "chosen"
+        && is_demonstrative_object_head(remaining_words[1])
+    {
+        let filter = parse_object_filter(tokens, false)?;
+        return Ok(wrap_target_count(
+            TargetAst::Object(filter, None, None),
+            target_count,
+        ));
+    }
     if remaining_words.as_slice() == ["equipped", "creature"]
         || remaining_words.as_slice() == ["equipped", "creatures"]
     {
@@ -31486,7 +31754,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         all_words.drain(idx..idx + 4);
     }
 
-    if all_words.len() >= 2 && matches!(all_words[0], "that" | "those") {
+    if all_words.len() >= 2 && matches!(all_words[0], "that" | "those" | "chosen") {
         let noun_idx = if all_words.get(1).is_some_and(|word| *word == "other") {
             2
         } else {

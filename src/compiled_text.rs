@@ -429,6 +429,27 @@ fn normalize_you_verb_phrase(text: &str) -> String {
     text.to_string()
 }
 
+fn normalize_third_person_verb_phrase(text: &str) -> String {
+    let replacements = [
+        ("pay ", "pays "),
+        ("lose ", "loses "),
+        ("gain ", "gains "),
+        ("draw ", "draws "),
+        ("discard ", "discards "),
+        ("sacrifice ", "sacrifices "),
+        ("choose ", "chooses "),
+        ("mill ", "mills "),
+        ("scry ", "scries "),
+        ("surveil ", "surveils "),
+    ];
+    for (from, to) in replacements {
+        if text.starts_with(from) {
+            return format!("{to}{}", &text[from.len()..]);
+        }
+    }
+    text.to_string()
+}
+
 #[allow(dead_code)]
 fn normalize_you_subject_phrase(text: &str) -> String {
     if let Some(rest) = text.strip_prefix("you ") {
@@ -6021,6 +6042,37 @@ fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
     }
 }
 
+fn tag_action_from_name(tag: &str) -> Option<&'static str> {
+    let base = tag.split('_').next().unwrap_or(tag);
+    match base {
+        "sacrificed" => Some("sacrificed"),
+        "destroyed" => Some("destroyed"),
+        "exiled" => Some("exiled"),
+        "died" => Some("died"),
+        _ => None,
+    }
+}
+
+fn describe_player_relative_condition(condition: &Condition) -> Option<String> {
+    match condition {
+        Condition::PlayerTappedLandForManaThisTurn { player } => {
+            if *player != PlayerFilter::IteratedPlayer {
+                return None;
+            }
+            Some("tapped a land for mana this turn".to_string())
+        }
+        Condition::PlayerTaggedObjectMatches { player, tag, filter } => {
+            if *player != PlayerFilter::IteratedPlayer {
+                return None;
+            }
+            let action = tag_action_from_name(tag.as_str())?;
+            let object_text = with_indefinite_article(&filter.description());
+            Some(format!("{action} {object_text} this way"))
+        }
+        _ => None,
+    }
+}
+
 fn describe_condition(condition: &Condition) -> String {
     match condition {
         Condition::YouControl(filter) => format!("you control {}", filter.description()),
@@ -6129,6 +6181,12 @@ fn describe_condition(condition: &Condition) -> String {
         Condition::CreatureDiedThisTurn => "a creature died this turn".to_string(),
         Condition::CastSpellThisTurn => "a spell was cast this turn".to_string(),
         Condition::AttackedThisTurn => "you attacked this turn".to_string(),
+        Condition::PlayerTappedLandForManaThisTurn { player } => {
+            format!(
+                "{} tapped a land for mana this turn",
+                describe_player_filter(player)
+            )
+        }
         Condition::NoSpellsWereCastLastTurn => "no spells were cast last turn".to_string(),
         Condition::TargetIsTapped => "the target is tapped".to_string(),
         Condition::TargetIsBlocked => "the target is blocked".to_string(),
@@ -6184,6 +6242,24 @@ fn describe_condition(condition: &Condition) -> String {
             tag.as_str(),
             filter.description()
         ),
+        Condition::PlayerTaggedObjectMatches { player, tag, filter } => {
+            if let Some(action) = tag_action_from_name(tag.as_str()) {
+                let object_text = with_indefinite_article(&filter.description());
+                format!(
+                    "{} {} {} this way",
+                    describe_player_filter(player),
+                    action,
+                    object_text
+                )
+            } else {
+                format!(
+                    "{} had the tagged object '{}' matching {}",
+                    describe_player_filter(player),
+                    tag.as_str(),
+                    filter.description()
+                )
+            }
+        }
         Condition::Not(inner) => {
             if let Condition::TargetSpellManaSpentToCastAtLeast {
                 amount: 1,
@@ -8748,6 +8824,34 @@ fn describe_effect_impl(effect: &Effect) -> String {
         }
         if let Some(compact) = describe_for_players_damage_and_controlled_damage(for_players) {
             return compact;
+        }
+        if for_players.effects.len() == 1
+            && let Some(conditional) =
+                for_players.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()
+            && conditional.if_false.is_empty()
+            && let Some(relative) = describe_player_relative_condition(&conditional.condition)
+        {
+            let player_filter_text = describe_player_filter(&for_players.filter);
+            let each_player = strip_leading_article(&player_filter_text);
+            if conditional.if_true.len() == 1
+                && let Some(damage) = conditional.if_true[0]
+                    .downcast_ref::<crate::effects::DealDamageEffect>()
+                && matches!(damage.target, ChooseSpec::Player(PlayerFilter::IteratedPlayer))
+            {
+                let amount_text = describe_value(&damage.amount);
+                return format!(
+                    "Deal {amount_text} damage to each {each_player} who {relative}"
+                );
+            }
+            let mut inner = describe_effect_list(&conditional.if_true);
+            if let Some(rest) = inner.strip_prefix("that player ") {
+                inner = rest.to_string();
+            }
+            if let Some(rest) = inner.strip_prefix("you ") {
+                inner = rest.to_string();
+            }
+            inner = normalize_third_person_verb_phrase(&inner);
+            return format!("Each {each_player} who {relative} {inner}");
         }
         if for_players.effects.len() == 1
             && let Some(may) = for_players.effects[0].downcast_ref::<crate::effects::MayEffect>()

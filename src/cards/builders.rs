@@ -306,6 +306,11 @@ enum PredicateAst {
     ItIsLandCard,
     ItMatches(ObjectFilter),
     TaggedMatches(TagKey, ObjectFilter),
+    PlayerTaggedObjectMatches {
+        player: PlayerAst,
+        tag: TagKey,
+        filter: ObjectFilter,
+    },
     PlayerControls {
         player: PlayerAst,
         filter: ObjectFilter,
@@ -334,6 +339,9 @@ enum PredicateAst {
         filter: ObjectFilter,
     },
     PlayerHasLessLifeThanYou {
+        player: PlayerAst,
+    },
+    PlayerTappedLandForManaThisTurn {
         player: PlayerAst,
     },
     SourceIsTapped,
@@ -769,9 +777,11 @@ enum EffectAst {
     },
     ForEachOpponentDid {
         effects: Vec<EffectAst>,
+        predicate: Option<PredicateAst>,
     },
     ForEachPlayerDid {
         effects: Vec<EffectAst>,
+        predicate: Option<PredicateAst>,
     },
     ForEachTaggedPlayer {
         tag: TagKey,

@@ -5704,6 +5704,10 @@ fn describe_value(
             "the number of {}",
             pluralize_noun_phrase(&describe_player_filter(filter, tagged_subjects))
         ),
+        crate::effect::Value::PartySize(filter) => format!(
+            "the number of creatures in {} party",
+            describe_player_filter_possessive(filter, tagged_subjects)
+        ),
         crate::effect::Value::SourcePower => "this source's power".to_string(),
         crate::effect::Value::SourceToughness => "this source's toughness".to_string(),
         crate::effect::Value::PowerOf(spec) => {

@@ -289,6 +289,17 @@ fn queue_ability_activated_event(
     } else {
         None
     };
+    if is_mana_ability {
+        let is_land_source = game
+            .object(source)
+            .map(|obj| obj.is_land())
+            .or_else(|| snapshot.as_ref().map(|snap| snap.is_land()))
+            .unwrap_or(false);
+        if is_land_source {
+            game.players_tapped_land_for_mana_this_turn
+                .insert(activator);
+        }
+    }
     let event = TriggerEvent::new(
         AbilityActivatedEvent::new(source, activator, is_mana_ability).with_snapshot(snapshot),
     );

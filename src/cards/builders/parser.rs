@@ -1102,8 +1102,8 @@ fn replace_modal_header_x_in_effect_ast(
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
         | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects }
-        | EffectAst::ForEachPlayerDid { effects }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }

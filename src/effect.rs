@@ -1226,6 +1226,9 @@ pub enum Condition {
     /// You attacked with one or more creatures this turn
     AttackedThisTurn,
 
+    /// A player tapped a land for mana this turn.
+    PlayerTappedLandForManaThisTurn { player: PlayerFilter },
+
     /// No spells were cast last turn
     NoSpellsWereCastLastTurn,
 
@@ -1282,6 +1285,13 @@ pub enum Condition {
 
     /// A tagged object matches a filter.
     TaggedObjectMatches(TagKey, ObjectFilter),
+
+    /// A tagged object matching a filter was controlled by the given player.
+    PlayerTaggedObjectMatches {
+        player: PlayerFilter,
+        tag: TagKey,
+        filter: ObjectFilter,
+    },
 
     /// Negate another condition
     Not(Box<Condition>),

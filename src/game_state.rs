@@ -909,6 +909,10 @@ pub struct GameState {
     /// Reset at the start of each turn.
     pub players_attacked_this_turn: HashSet<PlayerId>,
 
+    /// Players who tapped a land for mana this turn.
+    /// Reset at the start of each turn.
+    pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
+
     /// Creatures that attacked this turn.
     /// Used for activated ability restrictions like "Activate only if this creature attacked this turn".
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
@@ -1055,6 +1059,7 @@ impl GameState {
             spells_cast_this_turn_total: 0,
             spell_cast_order_this_turn: HashMap::new(),
             players_attacked_this_turn: HashSet::new(),
+            players_tapped_land_for_mana_this_turn: HashSet::new(),
             creatures_attacked_this_turn: HashSet::new(),
             spells_cast_last_turn_total: 0,
             library_searches_this_turn: HashSet::new(),
@@ -2413,6 +2418,7 @@ impl GameState {
         self.spells_cast_this_turn_total = 0;
         self.spell_cast_order_this_turn.clear();
         self.players_attacked_this_turn.clear();
+        self.players_tapped_land_for_mana_this_turn.clear();
         self.creatures_attacked_this_turn.clear();
         self.library_searches_this_turn.clear();
         self.creatures_entered_this_turn.clear();

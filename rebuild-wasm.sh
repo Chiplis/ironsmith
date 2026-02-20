@@ -4,7 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PKG_DIR="$ROOT_DIR/pkg"
 DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
-FALSE_POSITIVES_FILE="$ROOT_DIR/scripts/semantic_false_positives.txt"
+ROOT_FALSE_POSITIVES_FILE="$ROOT_DIR/semantic_false_positives.txt"
+LEGACY_FALSE_POSITIVES_FILE="$ROOT_DIR/scripts/semantic_false_positives.txt"
+if [[ -f "$ROOT_FALSE_POSITIVES_FILE" ]]; then
+  FALSE_POSITIVES_FILE="$ROOT_FALSE_POSITIVES_FILE"
+elif [[ -f "$LEGACY_FALSE_POSITIVES_FILE" ]]; then
+  FALSE_POSITIVES_FILE="$LEGACY_FALSE_POSITIVES_FILE"
+else
+  FALSE_POSITIVES_FILE=""
+fi
 PREFERRED_REPORTS_DIR="/reports"
 REPORTS_DIR="$PREFERRED_REPORTS_DIR"
 

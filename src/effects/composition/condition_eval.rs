@@ -284,6 +284,13 @@ fn evaluate_condition_simple(
         Condition::CreatureDiedThisTurn => game.creatures_died_this_turn > 0,
         Condition::CastSpellThisTurn => game.spells_cast_this_turn.values().any(|&count| count > 0),
         Condition::AttackedThisTurn => game.players_attacked_this_turn.contains(&controller),
+        Condition::PlayerTappedLandForManaThisTurn { player } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            game.players_tapped_land_for_mana_this_turn
+                .contains(&player_id)
+        }
         Condition::NoSpellsWereCastLastTurn => game.spells_cast_last_turn_total == 0,
         Condition::YouControlCommander => {
             // Check if the player controls a commander on the battlefield
@@ -327,6 +334,7 @@ fn evaluate_condition_simple(
             .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) == 0)
             .unwrap_or(false),
         Condition::TaggedObjectMatches(_, _) => false,
+        Condition::PlayerTaggedObjectMatches { .. } => false,
         Condition::Not(inner) => !evaluate_condition_simple(game, inner, controller, source),
         Condition::And(a, b) => {
             evaluate_condition_simple(game, a, controller, source)
@@ -509,6 +517,12 @@ fn evaluate_condition(
         }
         Condition::AttackedThisTurn => {
             Ok(game.players_attacked_this_turn.contains(&ctx.controller))
+        }
+        Condition::PlayerTappedLandForManaThisTurn { player } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(game
+                .players_tapped_land_for_mana_this_turn
+                .contains(&player_id))
         }
         Condition::NoSpellsWereCastLastTurn => Ok(game.spells_cast_last_turn_total == 0),
         Condition::TargetIsTapped => {
@@ -724,6 +738,23 @@ fn evaluate_condition(
                 return Ok(false);
             };
             Ok(filter.matches_snapshot(snapshot, &filter_ctx, game))
+        }
+        Condition::PlayerTaggedObjectMatches { player, tag, filter } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
+                return Ok(false);
+            };
+            let mut filter_ctx = ctx.filter_context(game);
+            filter_ctx.iterated_player = Some(player_id);
+            for snapshot in tagged {
+                if snapshot.controller != player_id {
+                    continue;
+                }
+                if filter.matches_snapshot(snapshot, &filter_ctx, game) {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         }
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
             let Some(source_obj) = game.object(ctx.source) else {
