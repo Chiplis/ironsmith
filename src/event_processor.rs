@@ -2714,7 +2714,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let card = CardBuilder::new(CardId::from_raw(1), "Finality Bear")
             .card_types(vec![CardType::Creature])
-            .power_toughness(crate::power_toughness::PowerToughness::fixed(2, 2))
+            .power_toughness(crate::PowerToughness::fixed(2, 2))
             .build();
         let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
         if let Some(obj) = game.object_mut(creature_id) {

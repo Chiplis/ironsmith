@@ -3412,15 +3412,13 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
         return None;
     }
 
-    if matches!(
-        tail,
-        ["this", "creature", "power"]
-            | ["this", "creatures", "power"]
-            | ["its", "power"]
-            | ["that", "creature", "power"]
-            | ["that", "creatures", "power"]
-            | ["that", "objects", "power"]
-    ) {
+    if tail.starts_with(&["this", "creature", "power"])
+        || tail.starts_with(&["this", "creatures", "power"])
+        || tail.starts_with(&["its", "power"])
+        || tail.starts_with(&["that", "creature", "power"])
+        || tail.starts_with(&["that", "creatures", "power"])
+        || tail.starts_with(&["that", "objects", "power"])
+    {
         let source = if tail[0] == "that" {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
@@ -3429,15 +3427,13 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
         return Some(Value::PowerOf(Box::new(source)));
     }
 
-    if matches!(
-        tail,
-        ["this", "creature", "toughness"]
-            | ["this", "creatures", "toughness"]
-            | ["its", "toughness"]
-            | ["that", "creature", "toughness"]
-            | ["that", "creatures", "toughness"]
-            | ["that", "objects", "toughness"]
-    ) {
+    if tail.starts_with(&["this", "creature", "toughness"])
+        || tail.starts_with(&["this", "creatures", "toughness"])
+        || tail.starts_with(&["its", "toughness"])
+        || tail.starts_with(&["that", "creature", "toughness"])
+        || tail.starts_with(&["that", "creatures", "toughness"])
+        || tail.starts_with(&["that", "objects", "toughness"])
+    {
         let source = if tail[0] == "that" {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
@@ -3446,20 +3442,18 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
         return Some(Value::ToughnessOf(Box::new(source)));
     }
 
-    if matches!(
-        tail,
-        ["that", "spell", "mana", "value"]
-            | ["that", "spells", "mana", "value"]
-            | ["that", "card", "mana", "value"]
-            | ["that", "cards", "mana", "value"]
-            | ["the", "sacrificed", "creatures", "mana", "value"]
-            | ["the", "sacrificed", "artifacts", "mana", "value"]
-            | ["the", "sacrificed", "permanents", "mana", "value"]
-            | ["sacrificed", "creatures", "mana", "value"]
-            | ["sacrificed", "artifacts", "mana", "value"]
-            | ["sacrificed", "permanents", "mana", "value"]
-            | ["its", "mana", "value"]
-    ) {
+    if tail.starts_with(&["that", "spell", "mana", "value"])
+        || tail.starts_with(&["that", "spells", "mana", "value"])
+        || tail.starts_with(&["that", "card", "mana", "value"])
+        || tail.starts_with(&["that", "cards", "mana", "value"])
+        || tail.starts_with(&["the", "sacrificed", "creatures", "mana", "value"])
+        || tail.starts_with(&["the", "sacrificed", "artifacts", "mana", "value"])
+        || tail.starts_with(&["the", "sacrificed", "permanents", "mana", "value"])
+        || tail.starts_with(&["sacrificed", "creatures", "mana", "value"])
+        || tail.starts_with(&["sacrificed", "artifacts", "mana", "value"])
+        || tail.starts_with(&["sacrificed", "permanents", "mana", "value"])
+        || tail.starts_with(&["its", "mana", "value"])
+    {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
             TagKey::from(IT_TAG),
         ))));
@@ -27244,12 +27238,23 @@ fn parse_counter_descriptor(tokens: &[Token]) -> Result<(u32, CounterType), Card
 }
 
 fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
-    let (count, used) = parse_number(tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!(
+    let words_all = words(tokens);
+    let (_count, used, count_value) = if words_all.starts_with(&["a", "number", "of"]) {
+        let Some(value) = parse_add_mana_equal_amount_value(tokens) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing counter amount (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        };
+        (1, 3, value)
+    } else if let Some((count, used)) = parse_number(tokens) {
+        (count, used, Value::Fixed(count as i32))
+    } else {
+        return Err(CardTextError::ParseError(format!(
             "missing counter amount (clause: '{}')",
             words(tokens).join(" ")
-        ))
-    })?;
+        )));
+    };
 
     let rest = &tokens[used..];
     let counter_type = parse_counter_type_from_tokens(rest).ok_or_else(|| {
@@ -27297,25 +27302,31 @@ fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         }
     };
 
-    if let Some(mut effect) =
-        parse_put_or_remove_counter_choice(count, counter_type, &target_tokens, tokens)?
+    if let Value::Fixed(fixed_count) = count_value
+        && fixed_count >= 0
+        && let Some(mut effect) = parse_put_or_remove_counter_choice(
+            fixed_count as u32,
+            counter_type,
+            &target_tokens,
+            tokens,
+        )?
     {
-        let mut predicate = trailing_predicate.clone();
-        if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
-            && let EffectAst::PutOrRemoveCounters { target, .. } = &mut effect
-            && merge_it_match_filter_into_target(target, filter)
-        {
-            predicate = None;
-        }
-        return Ok(if let Some(predicate) = predicate {
-            EffectAst::Conditional {
-                predicate,
-                if_true: vec![effect],
-                if_false: Vec::new(),
+            let mut predicate = trailing_predicate.clone();
+            if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()
+                && let EffectAst::PutOrRemoveCounters { target, .. } = &mut effect
+                && merge_it_match_filter_into_target(target, filter)
+            {
+                predicate = None;
             }
-        } else {
-            effect
-        });
+            return Ok(if let Some(predicate) = predicate {
+                EffectAst::Conditional {
+                    predicate,
+                    if_true: vec![effect],
+                    if_false: Vec::new(),
+                }
+            } else {
+                effect
+            });
     }
 
     if let Some((target_count, used)) = parse_counter_target_count_prefix(&target_tokens)? {
@@ -27335,7 +27346,7 @@ fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         }
         let effect = EffectAst::PutCounters {
             counter_type,
-            count: Value::Fixed(count as i32),
+            count: count_value.clone(),
             target,
             target_count: Some(target_count),
             distributed: false,
@@ -27358,7 +27369,7 @@ fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         let filter = parse_object_filter(&target_tokens[1..], false)?;
         return Ok(wrap_conditional(EffectAst::PutCountersAll {
             counter_type,
-            count: Value::Fixed(count as i32),
+            count: count_value,
             filter,
         }));
     }
@@ -27409,7 +27420,7 @@ fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     }
     let effect = EffectAst::PutCounters {
         counter_type,
-        count: Value::Fixed(count as i32),
+        count: count_value,
         target,
         target_count: None,
         distributed: false,

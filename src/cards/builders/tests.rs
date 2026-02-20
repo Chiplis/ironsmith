@@ -8358,3 +8358,20 @@ fn parse_lose_all_abilities_except_mana_static_clause() {
         "expected explicit except-mana wording, got {rendered}"
     );
 }
+
+#[test]
+fn parse_put_counters_equal_to_that_creatures_power() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "First Responder Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your end step, you may return another creature you control to its owner's hand, then put a number of +1/+1 counters equal to that creature's power on this creature.",
+        )
+        .expect("dynamic +1/+1 counter count should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("PowerOf")
+            || abilities_debug.contains("that creature's power"),
+        "expected dynamic power-based counter amount, got {abilities_debug}"
+    );
+}
