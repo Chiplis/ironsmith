@@ -204,6 +204,10 @@ enum TriggerSpec {
     },
     ThisDealsDamageTo(ObjectFilter),
     DealsDamage(ObjectFilter),
+    PlayerTapsForMana {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     ThisIsDealtDamage,
     YouGainLife,
     PlayerLosesLife(PlayerFilter),

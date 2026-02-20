@@ -10802,6 +10802,31 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         return Ok(spell_activity_trigger);
     }
 
+    if let Some(tap_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("tap") || token.is_word("taps"))
+    {
+        let subject_words = &words[..tap_idx];
+        if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
+            let after_tap = &tokens[tap_idx + 1..];
+            if let Some(for_idx) = after_tap.iter().position(|token| token.is_word("for"))
+                && for_idx > 0
+            {
+                let tail_words: Vec<&str> =
+                    after_tap[for_idx..].iter().filter_map(Token::as_word).collect();
+                if tail_words.first().copied() == Some("for") {
+                    let object_tokens = trim_commas(&after_tap[..for_idx]);
+                    let object_tokens = strip_leading_articles(&object_tokens);
+                    if !object_tokens.is_empty()
+                        && let Ok(filter) = parse_object_filter(&object_tokens, false)
+                    {
+                        return Ok(TriggerSpec::PlayerTapsForMana { player, filter });
+                    }
+                }
+            }
+        }
+    }
+
     if let Some(enters_idx) = tokens
         .iter()
         .position(|token| token.is_word("enters") || token.is_word("enter"))

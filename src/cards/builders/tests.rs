@@ -756,6 +756,40 @@ fn test_parse_trigger_opponent_discards_card() {
 }
 
 #[test]
+fn test_parse_trigger_tap_swamp_for_mana() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tap Swamp Trigger Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever you tap a Swamp for mana, add an additional {B}.")
+        .expect("parse tap-for-mana swamp trigger");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("TapForManaTrigger"),
+        "expected tap-for-mana trigger matcher, got {debug}"
+    );
+    assert!(
+        !debug.contains("unimplemented_trigger"),
+        "tap-for-mana trigger should not fall back to custom trigger, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_trigger_tap_creature_for_mana() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tap Creature Trigger Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever you tap a creature for mana, add an additional {G}.")
+        .expect("parse tap-for-mana creature trigger");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("TapForManaTrigger")
+            && debug.contains("card_types: [")
+            && debug.contains("Creature"),
+        "expected creature-filtered tap-for-mana trigger, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_unknown_non_source_subject_fails() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unknown Subject Probe")
         .card_types(vec![CardType::Enchantment])
