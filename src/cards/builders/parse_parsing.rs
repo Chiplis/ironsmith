@@ -10323,13 +10323,29 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
                 .first()
                 .is_some_and(|token| token.is_word("whenever") || token.is_word("when"))
         {
+            let trigger_prefix_tokens = &tokens[start_idx..split_idx];
             let tail = &tokens[split_idx + 1..];
+            let looks_like_discard_qualifier_tail =
+                looks_like_trigger_discard_qualifier_tail(trigger_prefix_tokens, tail);
             if looks_like_trigger_type_list_tail(tail)
                 || looks_like_trigger_color_list_tail(tail)
                 || looks_like_trigger_object_list_tail(tail)
                 || looks_like_trigger_numeric_list_tail(tail)
+                || looks_like_discard_qualifier_tail
             {
-                let next_comma_rel = if looks_like_trigger_numeric_list_tail(tail) {
+                let next_comma_rel = if looks_like_discard_qualifier_tail {
+                    tail.iter().enumerate().find_map(|(idx, token)| {
+                        if !matches!(token, Token::Comma(_)) {
+                            return None;
+                        }
+                        let before_words = words(&tail[..idx]);
+                        if before_words.contains(&"card") || before_words.contains(&"cards") {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    })
+                } else if looks_like_trigger_numeric_list_tail(tail) {
                     tail.iter().enumerate().rev().find_map(|(idx, token)| {
                         if matches!(token, Token::Comma(_)) {
                             Some(idx)
@@ -10514,6 +10530,43 @@ fn looks_like_trigger_object_list_tail(tokens: &[Token]) -> bool {
     tokens
         .iter()
         .any(|token| matches!(token, Token::Comma(_)))
+}
+
+fn looks_like_trigger_discard_qualifier_tail(
+    trigger_prefix_tokens: &[Token],
+    tail_tokens: &[Token],
+) -> bool {
+    if tail_tokens.is_empty() {
+        return false;
+    }
+
+    let prefix_words = words(trigger_prefix_tokens);
+    if !(prefix_words.contains(&"discard") || prefix_words.contains(&"discards")) {
+        return false;
+    }
+
+    let tail_words = words(tail_tokens);
+    if tail_words.is_empty() {
+        return false;
+    }
+
+    let Some(first_word) = tail_words.first().copied() else {
+        return false;
+    };
+    let typeish = parse_card_type(first_word).is_some()
+        || parse_non_type(first_word).is_some()
+        || matches!(first_word, "and" | "or");
+    if !typeish {
+        return false;
+    }
+
+    tail_tokens
+        .iter()
+        .position(|token| matches!(token, Token::Comma(_)))
+        .is_some_and(|comma_idx| {
+            let before_words = words(&tail_tokens[..comma_idx]);
+            before_words.contains(&"card") || before_words.contains(&"cards")
+        })
 }
 
 fn looks_like_trigger_type_list_tail(tokens: &[Token]) -> bool {
@@ -11114,6 +11167,20 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         }
     }
 
+    if let Some(discard_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("discard") || token.is_word("discards"))
+    {
+        let subject_words = &words[..discard_idx];
+        if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
+            if let Ok(filter) =
+                parse_discard_trigger_card_filter(&tokens[discard_idx + 1..], &words)
+            {
+                return Ok(TriggerSpec::PlayerDiscardsCard { player, filter });
+            }
+        }
+    }
+
     if let Some(sacrifice_idx) = tokens
         .iter()
         .position(|token| token.is_word("sacrifice") || token.is_word("sacrifices"))
@@ -11263,6 +11330,115 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
             ))
         }
         _ => Ok(TriggerSpec::Custom(words.join(" "))),
+    }
+}
+
+fn parse_discard_trigger_card_filter(
+    after_discard_tokens: &[Token],
+    clause_words: &[&str],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let remainder = trim_commas(after_discard_tokens);
+    if remainder.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing discard trigger card qualifier (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let remainder_words = words(&remainder);
+    let Some(card_word_idx) = remainder_words
+        .iter()
+        .position(|word| *word == "card" || *word == "cards")
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "missing discard trigger card keyword (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+
+    let qualifier_end =
+        token_index_for_word_index(&remainder, card_word_idx).unwrap_or(remainder.len());
+    let qualifier_tokens = trim_commas(&remainder[..qualifier_end]);
+    let mut qualifier_tokens = strip_leading_articles(&qualifier_tokens);
+    if qualifier_tokens.len() >= 2
+        && qualifier_tokens
+            .first()
+            .and_then(Token::as_word)
+            .and_then(parse_cardinal_u32)
+            .is_some()
+        && qualifier_tokens
+            .get(1)
+            .is_some_and(|token| token.is_word("or"))
+    {
+        qualifier_tokens = qualifier_tokens[2..].to_vec();
+    } else if qualifier_tokens
+        .first()
+        .and_then(Token::as_word)
+        .and_then(parse_cardinal_u32)
+        .is_some()
+    {
+        qualifier_tokens = qualifier_tokens[1..].to_vec();
+    }
+
+    let trailing_tokens = if card_word_idx + 1 < remainder_words.len() {
+        let trailing_start =
+            token_index_for_word_index(&remainder, card_word_idx + 1).unwrap_or(remainder.len());
+        trim_commas(&remainder[trailing_start..])
+    } else {
+        Vec::new()
+    };
+    if !trailing_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing discard trigger clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    if qualifier_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let qualifier_words = words(&qualifier_tokens);
+    if qualifier_words.as_slice() == ["one", "or", "more"] {
+        return Ok(None);
+    }
+
+    if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
+        return Ok(Some(filter));
+    }
+
+    let mut fallback = ObjectFilter::default();
+    let mut parsed_any = false;
+    for word in qualifier_words {
+        if matches!(word, "and" | "or") {
+            continue;
+        }
+        if let Some(non_type) = parse_non_type(word) {
+            if !fallback.excluded_card_types.contains(&non_type) {
+                fallback.excluded_card_types.push(non_type);
+            }
+            parsed_any = true;
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(word) {
+            if !fallback.card_types.contains(&card_type) {
+                fallback.card_types.push(card_type);
+            }
+            parsed_any = true;
+            continue;
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported discard trigger card qualifier (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    if parsed_any {
+        Ok(Some(fallback))
+    } else {
+        Err(CardTextError::ParseError(format!(
+            "unsupported discard trigger card qualifier (clause: '{}')",
+            clause_words.join(" ")
+        )))
     }
 }
 

@@ -711,6 +711,51 @@ fn test_parse_trigger_this_blocks_filtered_creature() {
 }
 
 #[test]
+fn test_parse_trigger_you_discard_filtered_card() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Discard Trigger Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever you discard a noncreature, nonland card, this creature fights up to one target creature you don't control.",
+        )
+        .expect("parse filtered discard trigger");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        !debug.contains("unimplemented_trigger"),
+        "discard trigger should not fall back to custom trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("YouDiscardCardTrigger"),
+        "expected dedicated discard trigger matcher, got {debug}"
+    );
+    assert!(
+        debug.contains("excluded_card_types: [")
+            && debug.contains("Creature")
+            && debug.contains("Land"),
+        "expected noncreature/nonland discard filter, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_trigger_opponent_discards_card() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Discard Trigger Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Whenever an opponent discards a card, that player loses 2 life.")
+        .expect("parse opponent discard trigger");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("YouDiscardCardTrigger") && debug.contains("player: Opponent"),
+        "expected opponent discard trigger matcher, got {debug}"
+    );
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("whenever an opponent discard a card"),
+        "expected discard trigger wording in compiled text, got {joined}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_unknown_non_source_subject_fails() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unknown Subject Probe")
         .card_types(vec![CardType::Enchantment])

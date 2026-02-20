@@ -457,7 +457,12 @@ impl Trigger {
 
     /// Create a "whenever you discard a card" trigger.
     pub fn you_discard_card() -> Self {
-        Self::new(YouDiscardCardTrigger)
+        Self::new(YouDiscardCardTrigger::new(PlayerFilter::You, None))
+    }
+
+    /// Create a "whenever [player] discards a [filter] card" trigger.
+    pub fn player_discards_card(player: PlayerFilter, filter: Option<ObjectFilter>) -> Self {
+        Self::new(YouDiscardCardTrigger::new(player, filter))
     }
 
     /// Create a "whenever a card is put into your graveyard" trigger.
