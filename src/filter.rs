@@ -2575,6 +2575,13 @@ impl ObjectFilter {
         {
             phrase.push_str(" card");
         }
+        if let Some((type_is_card_type, phrase)) = type_phrase.as_mut()
+            && *type_is_card_type
+            && matches!(self.zone, Some(Zone::Stack))
+            && !phrase.ends_with(" spell")
+        {
+            phrase.push_str(" spell");
+        }
 
         let creature_only = self.all_card_types.is_empty()
             && self.card_types.len() == 1
