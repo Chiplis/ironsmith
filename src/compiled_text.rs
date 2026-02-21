@@ -4430,6 +4430,12 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         _ => None,
     };
     if let Some(suffix) = controller_suffix {
+        if let Some((head, tail)) = subject.split_once(" named ") {
+            return format!("{} {} named {}", head.trim(), suffix, tail.trim());
+        }
+        if let Some((head, tail)) = subject.split_once(" not named ") {
+            return format!("{} {} not named {}", head.trim(), suffix, tail.trim());
+        }
         return format!("{subject} {suffix}");
     }
 
@@ -4448,6 +4454,12 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         _ => None,
     };
     if let Some(suffix) = owner_suffix {
+        if let Some((head, tail)) = subject.split_once(" named ") {
+            return format!("{} {} named {}", head.trim(), suffix, tail.trim());
+        }
+        if let Some((head, tail)) = subject.split_once(" not named ") {
+            return format!("{} {} not named {}", head.trim(), suffix, tail.trim());
+        }
         return format!("{subject} {suffix}");
     }
 

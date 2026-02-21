@@ -7011,6 +7011,21 @@ fn render_named_count_filter_keeps_named_clause() {
 }
 
 #[test]
+fn render_named_filter_preserves_articles_in_card_name() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cleric of the Forward Order Variant")
+        .parse_text(
+            "When this creature enters, you gain 2 life for each creature you control named Cleric of the Forward Order.",
+        )
+        .expect("named filter with article should parse");
+
+    let joined = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("named cleric of the forward order"),
+        "expected named filter to keep articles in card name, got {joined}"
+    );
+}
+
+#[test]
 fn render_nonsnow_filter_keeps_non_supertype() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hallowed Ground Variant")
         .parse_text("{W}{W}: Return target nonsnow land you control to its owner's hand.")

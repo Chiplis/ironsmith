@@ -32595,9 +32595,46 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     }
     let mut segment_tokens = base_tokens.clone();
 
-    let mut all_words: Vec<&str> = words(&base_tokens)
+    let all_words_with_articles: Vec<&str> = words(&base_tokens)
         .into_iter()
-        .filter(|word| !is_article(word) && *word != "instead")
+        .filter(|word| *word != "instead")
+        .collect();
+
+    let map_non_article_index = |non_article_idx: usize| -> Option<usize> {
+        let mut seen = 0usize;
+        for (idx, word) in all_words_with_articles.iter().enumerate() {
+            if is_article(word) {
+                continue;
+            }
+            if seen == non_article_idx {
+                return Some(idx);
+            }
+            seen += 1;
+        }
+        None
+    };
+
+    let map_non_article_end = |non_article_end: usize| -> Option<usize> {
+        let mut seen = 0usize;
+        for (idx, word) in all_words_with_articles.iter().enumerate() {
+            if is_article(word) {
+                continue;
+            }
+            if seen == non_article_end {
+                return Some(idx);
+            }
+            seen += 1;
+        }
+        if seen == non_article_end {
+            return Some(all_words_with_articles.len());
+        }
+        None
+    };
+
+    let mut all_words: Vec<&str> = all_words_with_articles
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
         .collect();
 
     // "legendary or Rat card" (Nashi, Moon's Legacy) is a supertype/subtype disjunction.
@@ -32928,7 +32965,15 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                 break;
             }
         }
-        let name_words = &all_words[not_named_idx + 2..name_end];
+        let full_not_named_idx = map_non_article_index(not_named_idx).unwrap_or(not_named_idx);
+        let full_name_end = map_non_article_end(name_end).unwrap_or(name_end);
+        let name_words = if full_not_named_idx + 2 <= full_name_end
+            && full_name_end <= all_words_with_articles.len()
+        {
+            &all_words_with_articles[full_not_named_idx + 2..full_name_end]
+        } else {
+            &all_words[not_named_idx + 2..name_end]
+        };
         if name_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing card name in not-named object filter (clause: '{}')",
@@ -32976,7 +33021,15 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                 break;
             }
         }
-        let name_words = &all_words[named_idx + 1..name_end];
+        let full_named_idx = map_non_article_index(named_idx).unwrap_or(named_idx);
+        let full_name_end = map_non_article_end(name_end).unwrap_or(name_end);
+        let name_words = if full_named_idx + 1 <= full_name_end
+            && full_name_end <= all_words_with_articles.len()
+        {
+            &all_words_with_articles[full_named_idx + 1..full_name_end]
+        } else {
+            &all_words[named_idx + 1..name_end]
+        };
         if name_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing card name in named object filter (clause: '{}')",
