@@ -7714,6 +7714,9 @@ fn pluralize_word(word: &str) -> String {
         return format!("{prefix} {}", pluralize_word(last));
     }
     let lower = word.to_ascii_lowercase();
+    if lower == "less" {
+        return word.to_string();
+    }
     if lower == "plains" || lower == "urzas" {
         return word.to_string();
     }
