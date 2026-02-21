@@ -476,6 +476,16 @@ fn quote_token_granted_ability_text(text: &str) -> String {
     format!("\"{trimmed}\"")
 }
 
+fn normalize_token_granted_static_ability_text(text: &str) -> String {
+    let mut normalized = normalize_sentence_surface_style(text);
+    if let Some(rest) = normalized.strip_prefix("This creature ") {
+        normalized = format!("This token {rest}");
+    } else if normalized == "This creature gets +1/+1." {
+        normalized = "This token gets +1/+1.".to_string();
+    }
+    normalized
+}
+
 fn player_verb(subject: &str, you_form: &'static str, other_form: &'static str) -> &'static str {
     if subject == "you" {
         you_form
@@ -11415,7 +11425,12 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return append_token_cleanup_sentences(text);
     }
     if let Some(create_copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() {
-        let target = describe_choose_spec(&create_copy.target);
+        let target = match &create_copy.target {
+            ChooseSpec::Tagged(tag) if tag.as_str().starts_with("exile_cost_") => {
+                "the exiled card".to_string()
+            }
+            _ => describe_choose_spec(&create_copy.target),
+        };
         let mut text = match create_copy.count {
             Value::Fixed(1) => format!("Create a token that's a copy of {target}"),
             Value::Fixed(n) => format!("Create {n} tokens that are copies of {target}"),
@@ -11531,13 +11546,14 @@ fn describe_effect_impl(effect: &Effect) -> String {
             text.push_str(", and it isn't legendary");
         }
         if !create_copy.granted_static_abilities.is_empty() {
-            let mut granted = create_copy
-                .granted_static_abilities
-                .iter()
-                .map(|ability| ability.display().to_ascii_lowercase())
-                .collect::<Vec<_>>();
-            granted.sort();
-            granted.dedup();
+            let mut granted = Vec::new();
+            for ability in &create_copy.granted_static_abilities {
+                let normalized = normalize_token_granted_static_ability_text(&ability.display());
+                let quoted = quote_token_granted_ability_text(&normalized);
+                if !granted.contains(&quoted) {
+                    granted.push(quoted);
+                }
+            }
             text.push_str(", and it has ");
             text.push_str(&join_with_and(&granted));
         }

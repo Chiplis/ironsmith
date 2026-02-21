@@ -7499,7 +7499,8 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
     if effects_ast.is_empty() {
         return Ok(None);
     }
-    let (effects, choices) = compile_trigger_effects(None, &effects_ast)?;
+    let seed_tag = last_exile_cost_choice_tag(&mana_cost).map(|tag| tag.as_str().to_string());
+    let (effects, choices) = compile_trigger_effects_seeded(None, &effects_ast, seed_tag)?;
     let mana_cost = crate::ability::merge_cost_effects(mana_cost, cost_effects);
 
     Ok(Some(ParsedAbility {
@@ -7535,6 +7536,22 @@ fn first_sacrifice_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option
         }
     }
     None
+}
+
+fn last_exile_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
+    let mut found = None;
+    for cost in mana_cost.costs() {
+        let Some(effect) = cost.effect_ref() else {
+            continue;
+        };
+        let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+            continue;
+        };
+        if choose.tag.as_str().starts_with("exile_cost_") {
+            found = Some(choose.tag.clone());
+        }
+    }
+    found
 }
 
 fn resolve_mana_ability_scaled_amount_from_cost(
@@ -30268,6 +30285,44 @@ fn parse_copy_modifiers_from_tail(
     }
     if has_modifier_keyword("trample") {
         granted_abilities.push(StaticAbility::trample());
+    }
+    if let Some(idx) = modifier_words
+        .windows(6)
+        .position(|window| window == ["this", "token", "gets", "+1/+1", "for", "each"])
+        .or_else(|| {
+            modifier_words
+                .windows(6)
+                .position(|window| window == ["this", "creature", "gets", "+1/+1", "for", "each"])
+        })
+    {
+        let mut tail = modifier_words.get(idx + 6..).unwrap_or_default();
+        while tail
+            .first()
+            .is_some_and(|word| is_article(word) || matches!(*word, "a" | "an" | "the"))
+        {
+            tail = &tail[1..];
+        }
+        if let Some(subtype_word) = tail.first().copied() {
+            let subtype = parse_subtype_word(subtype_word)
+                .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word));
+            let you_control = tail
+                .windows(2)
+                .any(|window| window == ["you", "control"]);
+            if let Some(subtype) = subtype
+                && you_control
+            {
+                let mut filter = ObjectFilter::default();
+                filter.zone = Some(Zone::Battlefield);
+                filter.controller = Some(PlayerFilter::You);
+                filter.subtypes = vec![subtype];
+                let count = AnthemCountExpression::MatchingFilter(filter);
+                let anthem = Anthem::for_source(0, 0).with_values(
+                    AnthemValue::scaled(1, count.clone()),
+                    AnthemValue::scaled(1, count),
+                );
+                granted_abilities.push(StaticAbility::new(anthem));
+            }
+        }
     }
 
     let addition_idx = modifier_words.windows(6).position(|window| {

@@ -222,6 +222,54 @@ fn compile_trigger_effects(
     Ok((compiled, choices))
 }
 
+fn compile_trigger_effects_seeded(
+    trigger: Option<&TriggerSpec>,
+    effects: &[EffectAst],
+    seed_last_object_tag: Option<String>,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let mut ctx = CompileContext::new();
+    ctx.last_object_tag = seed_last_object_tag;
+    ctx.last_player_filter = trigger.and_then(inferred_trigger_player_filter);
+    ctx.allow_life_event_value = trigger
+        .map(|trigger| trigger_supports_event_value(trigger, &EventValueSpec::Amount))
+        .unwrap_or(false);
+    let mut prelude = Vec::new();
+    for tag in ["equipped", "enchanted"] {
+        if effects_reference_tag(effects, tag) {
+            if ctx.last_object_tag.is_none() {
+                ctx.last_object_tag = Some(tag.to_string());
+            }
+            prelude.push(Effect::tag_attached_to_source(tag));
+        }
+    }
+    if ctx.last_object_tag.is_none()
+        && (effects_reference_it_tag(effects) || effects_reference_its_controller(effects))
+    {
+        let default_tag = if matches!(trigger, Some(TriggerSpec::ThisDealsDamageTo(_))) {
+            "damaged"
+        } else {
+            "triggering"
+        };
+        ctx.last_object_tag = Some(default_tag.to_string());
+    }
+    let (mut compiled, choices) = compile_effects(effects, &mut ctx)?;
+    if !prelude.is_empty() {
+        prelude.append(&mut compiled);
+        compiled = prelude;
+    }
+    if effects_reference_tag(effects, "triggering")
+        || matches!(ctx.last_object_tag.as_deref(), Some("triggering"))
+    {
+        compiled.insert(0, Effect::tag_triggering_object("triggering"));
+    }
+    if effects_reference_tag(effects, "damaged")
+        || matches!(ctx.last_object_tag.as_deref(), Some("damaged"))
+    {
+        compiled.insert(0, Effect::tag_triggering_damage_target("damaged"));
+    }
+    Ok((compiled, choices))
+}
+
 fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
     effects
         .iter()
@@ -4086,7 +4134,18 @@ fn compile_effect(
         } => {
             let count = resolve_value_it_tag(count, ctx)?;
             let player_filter = resolve_non_target_player_filter(*player, ctx)?;
-            let (source_spec, choices) = resolve_target_spec_with_choices(source, ctx)?;
+            let (mut source_spec, choices) = resolve_target_spec_with_choices(source, ctx)?;
+            if let Some(last_tag) = ctx.last_object_tag.as_deref()
+                && last_tag.starts_with("exile_cost_")
+                && let ChooseSpec::Object(filter) = &source_spec
+                && filter.zone == Some(Zone::Exile)
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                        && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                })
+            {
+                source_spec = ChooseSpec::Tagged(TagKey::from(last_tag));
+            }
             let mut effect =
                 crate::effects::CreateTokenCopyEffect::new(source_spec, count, player_filter);
             if *enters_tapped {
