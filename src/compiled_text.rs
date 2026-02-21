@@ -11204,6 +11204,40 @@ fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_compact_create_token(create_token) {
             return compact;
         }
+        let token_pronoun = if matches!(create_token.count, Value::Fixed(1)) {
+            "it"
+        } else {
+            "them"
+        };
+        let append_token_cleanup_sentences = |mut text: String| {
+            if create_token.exile_at_end_of_combat {
+                text.push_str(&format!(". Exile {token_pronoun} at end of combat"));
+            }
+            if create_token.sacrifice_at_next_end_step {
+                text.push_str(&format!(
+                    ". Sacrifice {token_pronoun} at the beginning of the next end step"
+                ));
+            }
+            if create_token.exile_at_next_end_step {
+                text.push_str(&format!(
+                    ". Exile {token_pronoun} at the beginning of the next end step"
+                ));
+            }
+            text
+        };
+        let append_token_entry_flags = |mut text: String| {
+            if create_token.enters_tapped && create_token.enters_attacking {
+                text.push_str(" that's tapped and attacking");
+                return text;
+            }
+            if create_token.enters_tapped {
+                text.push_str(", tapped");
+            }
+            if create_token.enters_attacking {
+                text.push_str(", attacking");
+            }
+            text
+        };
         if value_is_iterated_object_count(&create_token.count) {
             let token_blueprint = describe_token_blueprint(&create_token.token);
             let mut text = if matches!(create_token.controller, PlayerFilter::You) {
@@ -11215,22 +11249,8 @@ fn describe_effect_impl(effect: &Effect) -> String {
                     describe_possessive_player_filter(&create_token.controller)
                 )
             };
-            if create_token.enters_tapped {
-                text.push_str(", tapped");
-            }
-            if create_token.enters_attacking {
-                text.push_str(", attacking");
-            }
-            if create_token.exile_at_end_of_combat {
-                text.push_str(", and exile them at end of combat");
-            }
-            if create_token.sacrifice_at_next_end_step {
-                text.push_str(", and sacrifice it at the beginning of the next end step");
-            }
-            if create_token.exile_at_next_end_step {
-                text.push_str(", and exile it at the beginning of the next end step");
-            }
-            return text;
+            text = append_token_entry_flags(text);
+            return append_token_cleanup_sentences(text);
         }
         if let Some(for_each_count) = describe_create_for_each_count(&create_token.count) {
             let token_blueprint = describe_token_blueprint(&create_token.token);
@@ -11244,22 +11264,8 @@ fn describe_effect_impl(effect: &Effect) -> String {
                     for_each_count
                 )
             };
-            if create_token.enters_tapped {
-                text.push_str(", tapped");
-            }
-            if create_token.enters_attacking {
-                text.push_str(", attacking");
-            }
-            if create_token.exile_at_end_of_combat {
-                text.push_str(", and exile them at end of combat");
-            }
-            if create_token.sacrifice_at_next_end_step {
-                text.push_str(", and sacrifice it at the beginning of the next end step");
-            }
-            if create_token.exile_at_next_end_step {
-                text.push_str(", and exile it at the beginning of the next end step");
-            }
-            return text;
+            text = append_token_entry_flags(text);
+            return append_token_cleanup_sentences(text);
         }
         let token_blueprint = describe_token_blueprint(&create_token.token);
         let count_text = describe_effect_count_backref(&create_token.count)
@@ -11274,22 +11280,8 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 describe_possessive_player_filter(&create_token.controller)
             )
         };
-        if create_token.enters_tapped {
-            text.push_str(", tapped");
-        }
-        if create_token.enters_attacking {
-            text.push_str(", attacking");
-        }
-        if create_token.exile_at_end_of_combat {
-            text.push_str(", and exile them at end of combat");
-        }
-        if create_token.sacrifice_at_next_end_step {
-            text.push_str(", and sacrifice it at the beginning of the next end step");
-        }
-        if create_token.exile_at_next_end_step {
-            text.push_str(", and exile it at the beginning of the next end step");
-        }
-        return text;
+        text = append_token_entry_flags(text);
+        return append_token_cleanup_sentences(text);
     }
     if let Some(create_copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() {
         let target = describe_choose_spec(&create_copy.target);

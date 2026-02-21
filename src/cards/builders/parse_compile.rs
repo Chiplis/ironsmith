@@ -6122,6 +6122,31 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         if words.contains(&"reach") {
             builder = builder.reach();
         }
+        if let Some(upkeep_idx) = words
+            .windows(2)
+            .position(|window| window == ["cumulative", "upkeep"])
+        {
+            let mut cost_symbols = Vec::new();
+            for word in &words[upkeep_idx + 2..] {
+                if matches!(*word, "when" | "whenever" | "at") {
+                    break;
+                }
+                let Some(symbol) = parse_token_mana_symbol(word) else {
+                    break;
+                };
+                cost_symbols.push(symbol);
+            }
+            let text = if cost_symbols.is_empty() {
+                "Cumulative upkeep".to_string()
+            } else {
+                let cost = crate::mana::ManaCost::from_symbols(cost_symbols).to_oracle();
+                format!("Cumulative upkeep {cost}")
+            };
+            builder = builder.with_ability(Ability::static_ability(StaticAbility::custom(
+                "keyword_marker",
+                text,
+            )));
+        }
         if let Some(symbol) = parse_token_tap_add_single_mana_symbol(&words) {
             builder = builder.with_ability(token_tap_add_single_mana_ability(symbol));
         }
@@ -6242,6 +6267,38 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         {
             builder =
                 builder.with_ability(token_dies_target_creature_gets_minus_one_minus_one_ability());
+        }
+        if words.contains(&"when")
+            && words.contains(&"token")
+            && words.contains(&"leaves")
+            && words.contains(&"battlefield")
+            && words.contains(&"deals")
+            && words.contains(&"damage")
+            && words.contains(&"you")
+            && words.contains(&"each")
+            && words.contains(&"creature")
+            && words.contains(&"control")
+            && let Some(amount) = parse_deals_damage_amount(&words)
+        {
+            let ability = Ability {
+                kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                    trigger: Trigger::this_leaves_battlefield(),
+                    effects: vec![
+                        Effect::deal_damage(amount, ChooseSpec::SourceController),
+                        Effect::for_each(
+                            ObjectFilter::creature().you_control(),
+                            vec![Effect::deal_damage(amount, ChooseSpec::Iterated)],
+                        ),
+                    ],
+                    choices: Vec::new(),
+                    intervening_if: None,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+                text: Some(format!(
+                    "When this token leaves the battlefield, it deals {amount} damage to you and each creature you control."
+                )),
+            };
+            builder = builder.with_ability(ability);
         }
         if words.contains(&"bands")
             && words.contains(&"other")

@@ -194,6 +194,7 @@ pub enum Subtype {
     Specter,
     Spider,
     Spike,
+    Splinter,
     Spirit,
     Sponge,
     Squid,
@@ -214,6 +215,7 @@ pub enum Subtype {
     Vampire,
     Vedalken,
     Viashino,
+    Villain,
     Wall,
     Warlock,
     Warrior,
@@ -469,6 +471,7 @@ impl Subtype {
                 | Subtype::Specter
                 | Subtype::Spider
                 | Subtype::Spike
+                | Subtype::Splinter
                 | Subtype::Spirit
                 | Subtype::Sponge
                 | Subtype::Squid
@@ -489,6 +492,7 @@ impl Subtype {
                 | Subtype::Vampire
                 | Subtype::Vedalken
                 | Subtype::Viashino
+                | Subtype::Villain
                 | Subtype::Wall
                 | Subtype::Warlock
                 | Subtype::Warrior

@@ -12399,6 +12399,7 @@ fn title_case_token_word(word: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn linked_token_name_from_create_name(raw_name: &str) -> Option<String> {
     let words: Vec<&str> = raw_name.split_whitespace().collect();
     if words.is_empty() {
@@ -12475,16 +12476,23 @@ fn parse_sentence_exile_that_token_when_source_leaves(
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
     let clause_words = words(tokens);
-    if clause_words.len() < 8
-        || clause_words[0] != "exile"
-        || clause_words[1] != "that"
-        || clause_words[2] != "token"
-        || !clause_words.ends_with(&["leaves", "the", "battlefield"])
+    if clause_words.len() < 6 || !matches!(clause_words.first().copied(), Some("exile" | "exiles"))
     {
         return None;
     }
     let when_idx = clause_words.iter().position(|word| *word == "when")?;
-    if when_idx <= 2 || when_idx + 3 >= clause_words.len() {
+    if when_idx < 2 || when_idx + 3 >= clause_words.len() {
+        return None;
+    }
+    if !clause_words.ends_with(&["leaves", "the", "battlefield"]) {
+        return None;
+    }
+    let object_words = &clause_words[1..when_idx];
+    let is_created_token_reference = object_words == ["that", "token"]
+        || object_words == ["those", "tokens"]
+        || object_words == ["them"]
+        || object_words == ["it"];
+    if !is_created_token_reference {
         return None;
     }
     let subject_words = &clause_words[when_idx + 1..clause_words.len() - 3];
@@ -12492,8 +12500,7 @@ fn parse_sentence_exile_that_token_when_source_leaves(
         return None;
     }
 
-    let (created_name, _created_player) = last_created_token_info(prior_effects)?;
-    let _token_name = linked_token_name_from_create_name(created_name.as_str())?;
+    let _ = last_created_token_info(prior_effects)?;
 
     Some(EffectAst::ExileWhenSourceLeaves {
         target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
@@ -12520,8 +12527,7 @@ fn parse_sentence_sacrifice_source_when_that_token_leaves(
         return None;
     }
 
-    let (created_name, _created_player) = last_created_token_info(prior_effects)?;
-    let _token_name = linked_token_name_from_create_name(created_name.as_str())?;
+    let _ = last_created_token_info(prior_effects)?;
 
     Some(EffectAst::SacrificeSourceWhenLeaves {
         target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
@@ -12534,6 +12540,22 @@ fn is_generic_token_reminder_sentence(tokens: &[Token]) -> bool {
         return false;
     }
     if words.starts_with(&["it", "has"]) || words.starts_with(&["they", "have"]) {
+        return true;
+    }
+    if words.starts_with(&["when", "it"])
+        || words.starts_with(&["whenever", "it"])
+        || words.starts_with(&["when", "they"])
+        || words.starts_with(&["whenever", "they"])
+    {
+        return true;
+    }
+    let delayed_lifecycle_reference = matches!(words.first().copied(), Some("exile" | "sacrifice"))
+        && (is_beginning_of_end_step_words(&words) || is_end_of_combat_words(&words))
+        && (words.contains(&"token")
+            || words.contains(&"tokens")
+            || words.contains(&"it")
+            || words.contains(&"them"));
+    if delayed_lifecycle_reference {
         return true;
     }
     words.starts_with(&["when", "this", "token"])
@@ -12567,6 +12589,23 @@ fn append_token_reminder_to_last_create_effect(
     if reminder_words.starts_with(&["it", "has"]) || reminder_words.starts_with(&["they", "have"]) {
         reminder_words = reminder_words[2..].to_vec();
         prepend_with = true;
+    }
+    if reminder_words.starts_with(&["when", "it"]) {
+        let mut rewritten = vec!["when", "this", "token"];
+        rewritten.extend_from_slice(&reminder_words[2..]);
+        reminder_words = rewritten;
+    } else if reminder_words.starts_with(&["whenever", "it"]) {
+        let mut rewritten = vec!["whenever", "this", "token"];
+        rewritten.extend_from_slice(&reminder_words[2..]);
+        reminder_words = rewritten;
+    } else if reminder_words.starts_with(&["when", "they"]) {
+        let mut rewritten = vec!["when", "this", "token"];
+        rewritten.extend_from_slice(&reminder_words[2..]);
+        reminder_words = rewritten;
+    } else if reminder_words.starts_with(&["whenever", "they"]) {
+        let mut rewritten = vec!["whenever", "this", "token"];
+        rewritten.extend_from_slice(&reminder_words[2..]);
+        reminder_words = rewritten;
     }
     if reminder_words.is_empty() {
         return false;
@@ -21892,6 +21931,7 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "specter" => Some(Subtype::Specter),
         "spider" => Some(Subtype::Spider),
         "spike" => Some(Subtype::Spike),
+        "splinter" | "splinters" => Some(Subtype::Splinter),
         "spirit" => Some(Subtype::Spirit),
         "sponge" => Some(Subtype::Sponge),
         "squid" => Some(Subtype::Squid),
@@ -21912,6 +21952,7 @@ fn parse_subtype_word(word: &str) -> Option<Subtype> {
         "vampire" => Some(Subtype::Vampire),
         "vedalken" => Some(Subtype::Vedalken),
         "viashino" => Some(Subtype::Viashino),
+        "villain" | "villains" => Some(Subtype::Villain),
         "wall" => Some(Subtype::Wall),
         "warlock" => Some(Subtype::Warlock),
         "warrior" => Some(Subtype::Warrior),
@@ -30221,12 +30262,16 @@ fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool) {
 
     let has_sacrifice_reference = tail_words.contains(&"sacrifice")
         && (tail_words.contains(&"token")
+            || tail_words.contains(&"tokens")
             || tail_words.contains(&"permanent")
+            || tail_words.contains(&"permanents")
             || tail_words.contains(&"it")
             || tail_words.contains(&"them"));
     let has_exile_reference = tail_words.contains(&"exile")
         && (tail_words.contains(&"token")
+            || tail_words.contains(&"tokens")
             || tail_words.contains(&"permanent")
+            || tail_words.contains(&"permanents")
             || tail_words.contains(&"it")
             || tail_words.contains(&"them"));
 
