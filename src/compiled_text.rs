@@ -17215,7 +17215,9 @@ fn normalize_cost_payment_wording(line: &str) -> String {
 }
 
 fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, &str)> {
-    for verb in [" gets ", " get ", " has ", " have ", " gains ", " gain "] {
+    for verb in [
+        " gets ", " get ", " has ", " have ", " gains ", " gain ", " is ", " are ",
+    ] {
         if let Some((subject, rest)) = line.split_once(verb) {
             let subject = subject.trim();
             let rest = rest.trim();
@@ -17228,7 +17230,9 @@ fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, &str)> {
 }
 
 fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
-    matches!(left_verb, "gets" | "get") && matches!(right_verb, "has" | "have" | "gains" | "gain")
+    let is_gets = |verb: &str| matches!(verb, "gets" | "get");
+    let is_other = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain" | "is" | "are");
+    (is_gets(left_verb) && is_other(right_verb)) || (is_other(left_verb) && is_gets(right_verb))
 }
 
 fn normalize_keyword_predicate_case(predicate: &str) -> String {
@@ -17414,6 +17418,8 @@ fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<String> {
             && left_subject.eq_ignore_ascii_case(right_subject)
             && can_merge_subject_predicates(left_verb, right_verb)
         {
+            let left_rest = left_rest.trim_end_matches('.').trim();
+            let right_rest = right_rest.trim_end_matches('.').trim();
             merged.push(format!(
                 "{left_subject} {left_verb} {left_rest} and {right_verb} {right_rest}"
             ));
@@ -21171,6 +21177,20 @@ mod normalize_sentence_surface_style_tests {
         assert_eq!(
             normalized,
             "Target creature gets +1/+1 until end of turn. (It can't be blocked.)"
+        );
+    }
+
+    #[test]
+    fn merges_gets_and_is_predicates_across_sentences() {
+        let merged = super::merge_sentence_subject_predicates(
+            "This creature gets +1/+1 until end of turn. this creature is an artifact in addition to its other types.",
+        );
+        assert_eq!(
+            merged,
+            Some(
+                "This creature gets +1/+1 until end of turn and is an artifact in addition to its other types."
+                    .to_string()
+            )
         );
     }
 }
