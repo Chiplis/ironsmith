@@ -14220,6 +14220,39 @@ fn normalize_known_low_tail_phrase(text: &str) -> String {
             rest.trim()
         );
     }
+
+    // Common surface: "<subject> gain {T}: <ability>. until <duration>."
+    if let Some((before_until, duration)) = split_once_ascii_ci(sentence, ". until ") {
+        let (subject, ability, verb) = if let Some((subject, ability)) =
+            split_once_ascii_ci(before_until, " gain ")
+        {
+            (subject, ability, "gain")
+        } else if let Some((subject, ability)) = split_once_ascii_ci(before_until, " gains ") {
+            (subject, ability, "gains")
+        } else {
+            ("", "", "")
+        };
+
+        if !subject.is_empty() && !ability.is_empty() {
+            let ability = ability.trim();
+            if ability.starts_with("{T}:") || ability.starts_with("{Q}:") {
+                let mut quoted = ability.trim_end_matches('.').to_string();
+                quoted.push('.');
+                if let Some(pos) = subject.find('—') {
+                    let head = subject[..pos + '—'.len_utf8()].trim_end();
+                    let rest = subject[pos + '—'.len_utf8()..].trim_start();
+                    return format!(
+                        "{head} Until {duration}, {} {verb} \"{quoted}\"",
+                        lowercase_first(rest)
+                    );
+                }
+                return format!(
+                    "Until {duration}, {} {verb} \"{quoted}\"",
+                    lowercase_first(subject)
+                );
+            }
+        }
+    }
     if trimmed.contains("loses loses ") || trimmed.contains("gain one life") {
         return trimmed
             .replace("loses loses ", "loses ")
