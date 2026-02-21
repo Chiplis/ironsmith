@@ -8587,3 +8587,48 @@ fn parse_creature_tapped_to_pay_additional_cost_targets_tap_cost_tag() {
         "expected follow-up counter target to reference tap_cost_0, got {spell_debug}"
     );
 }
+
+#[test]
+fn parse_enchanted_base_pt_and_indestructible_without_nested_grant_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Almost Perfect Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Enchant creature\nEnchanted creature has base power and toughness 9/10 and has indestructible.",
+        )
+        .expect("base P/T + keyword aura clause should parse");
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+        "expected set-base-power/toughness static ability, got {static_ids:?}"
+    );
+    assert_eq!(
+        static_ids
+            .iter()
+            .filter(|id| **id == StaticAbilityId::GrantAbility)
+            .count(),
+        1,
+        "expected exactly one keyword grant static ability, got {static_ids:?}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("base power and toughness 9/10"),
+        "expected base P/T wording in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("indestructible"),
+        "expected granted indestructible wording in compiled output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("has permanents with base power and toughness"),
+        "expected no nested grant phrasing in compiled output, got {rendered}"
+    );
+}

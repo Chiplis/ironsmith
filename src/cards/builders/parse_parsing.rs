@@ -2106,6 +2106,10 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
         )),
         KeywordAction::Unblockable => Some(StaticAbility::unblockable()),
         KeywordAction::Devoid => Some(StaticAbility::make_colorless(ObjectFilter::source())),
+        KeywordAction::Annihilator(amount) => Some(StaticAbility::custom(
+            "annihilator",
+            format!("annihilator {amount}"),
+        )),
         KeywordAction::Marker(name) => Some(StaticAbility::custom(name, name.to_string())),
         KeywordAction::MarkerText(text) => {
             Some(StaticAbility::custom("keyword_marker", text))
@@ -2166,6 +2170,10 @@ fn parse_static_ability_line(
     }
     if let Some(ability) = parse_enchanted_has_activated_ability_line(tokens)? {
         return Ok(Some(vec![ability]));
+    }
+    if let Some(abilities) = parse_has_base_power_toughness_and_granted_keywords_static_line(tokens)?
+    {
+        return Ok(Some(abilities));
     }
     if let Some(ability) = parse_filter_has_granted_ability_line(tokens)? {
         return Ok(Some(vec![ability]));
@@ -2258,7 +2266,7 @@ fn parse_static_ability_line(
         return Ok(Some(vec![ability]));
     }
     if let Some(ability) = parse_equipped_creature_has_line(tokens)? {
-        return Ok(Some(vec![ability]));
+        return Ok(Some(ability));
     }
     if let Some(abilities) = parse_attached_has_keywords_and_triggered_ability_line(tokens)? {
         return Ok(Some(abilities));
@@ -5928,9 +5936,26 @@ fn parse_creatures_cant_block_line(
     Ok(None)
 }
 
+fn annihilator_granted_ability(amount: u32) -> Ability {
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_attacks(),
+            effects: vec![Effect::sacrifice_player(
+                ObjectFilter::permanent(),
+                Value::Fixed(amount as i32),
+                PlayerFilter::Defending,
+            )],
+            choices: vec![],
+            intervening_if: None,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(format!("Annihilator {amount}")),
+    }
+}
+
 fn parse_equipped_creature_has_line(
     tokens: &[Token],
-) -> Result<Option<StaticAbility>, CardTextError> {
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let words = words(tokens);
     let clause_text = words.join(" ");
     if words.len() < 4 || words[0] != "equipped" || words[1] != "creature" || words[2] != "has" {
@@ -5943,24 +5968,34 @@ fn parse_equipped_creature_has_line(
     }
 
     let mut abilities = Vec::new();
-    for segment in split_on_and(ability_tokens) {
-        if segment.is_empty() {
+    let mut extra_grants = Vec::new();
+    let Some(actions) = parse_ability_line(ability_tokens) else {
+        return Ok(None);
+    };
+    for action in actions {
+        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
+        if let KeywordAction::Annihilator(amount) = action {
+            extra_grants.push(StaticAbility::attached_ability_grant(
+                annihilator_granted_ability(amount),
+                format!("equipped creature has annihilator {amount}"),
+            ));
             continue;
         }
-        let Some(action) = parse_ability_phrase(&segment) else {
-            return Ok(None);
-        };
-        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
         if let Some(ability) = keyword_action_to_static_ability(action) {
             abilities.push(ability);
         }
     }
 
-    if abilities.is_empty() {
+    if abilities.is_empty() && extra_grants.is_empty() {
         return Ok(None);
     }
 
-    Ok(Some(StaticAbility::equipment_grant(abilities)))
+    let mut out = Vec::new();
+    if !abilities.is_empty() {
+        out.push(StaticAbility::equipment_grant(abilities));
+    }
+    out.extend(extra_grants);
+    Ok(Some(out))
 }
 
 fn parse_attached_has_keywords_and_triggered_ability_line(
@@ -6011,20 +6046,22 @@ fn parse_attached_has_keywords_and_triggered_ability_line(
 
     let clause_text = line_words.join(" ");
     let mut keyword_statics = Vec::new();
-    for segment in split_on_and(&keyword_tokens) {
-        if segment.is_empty() {
-            continue;
-        }
-        let Some(action) = parse_ability_phrase(&segment) else {
-            return Ok(None);
-        };
+    let mut extra_grants = Vec::new();
+    let Some(actions) = parse_ability_line(&keyword_tokens) else {
+        return Ok(None);
+    };
+    for action in actions {
         reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
-        let Some(static_ability) = keyword_action_to_static_ability(action) else {
-            continue;
-        };
-        keyword_statics.push(static_ability);
+        if let KeywordAction::Annihilator(amount) = action {
+            extra_grants.push(StaticAbility::attached_ability_grant(
+                annihilator_granted_ability(amount),
+                format!("{} has annihilator {amount}", if is_equipped { "equipped creature" } else { "enchanted creature" }),
+            ));
+        } else if let Some(static_ability) = keyword_action_to_static_ability(action) {
+            keyword_statics.push(static_ability);
+        }
     }
-    if keyword_statics.is_empty() {
+    if keyword_statics.is_empty() && extra_grants.is_empty() {
         return Ok(None);
     }
 
@@ -6072,6 +6109,7 @@ fn parse_attached_has_keywords_and_triggered_ability_line(
     for ability in keyword_statics {
         static_abilities.push(StaticAbility::grant_ability(filter.clone(), ability));
     }
+    static_abilities.extend(extra_grants);
     let subject_text = words(&tokens[..has_idx]).join(" ");
     let display = format!("{subject_text} has {}", words(&trigger_tokens).join(" "));
     static_abilities.push(StaticAbility::attached_ability_grant(triggered, display));
@@ -7071,6 +7109,112 @@ fn parse_enchanted_has_activated_ability_line(
         ability,
         token_words.join(" "),
     )))
+}
+
+fn parse_has_base_power_toughness_and_granted_keywords_static_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(has_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("has") || token.is_word("have"))
+    else {
+        return Ok(None);
+    };
+    if has_idx == 0 || has_idx + 1 >= tokens.len() {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[..has_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let subject_words = words(&subject_tokens);
+    if subject_words.contains(&"target") {
+        return Ok(None);
+    }
+    if subject_words.starts_with(&["until", "end", "of", "turn"])
+        || subject_words.starts_with(&["until", "your", "next", "turn"])
+    {
+        return Ok(None);
+    }
+
+    let rest_tokens = trim_commas(&tokens[has_idx + 1..]);
+    let rest_words = words(&rest_tokens);
+    if rest_words.len() < 8 || !rest_words.starts_with(&["base", "power", "and", "toughness"]) {
+        return Ok(None);
+    }
+    let (power, toughness) = parse_pt_modifier(rest_words[4]).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "invalid base power/toughness value (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    if rest_words[5] != "and" {
+        return Ok(None);
+    }
+    if !matches!(rest_words[6], "has" | "have" | "gain" | "gains") {
+        return Ok(None);
+    }
+
+    let Some(ability_start_idx) = token_index_for_word_index(&rest_tokens, 7) else {
+        return Err(CardTextError::ParseError(format!(
+            "missing granted keyword list after base power/toughness clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    let ability_tokens = trim_commas(&rest_tokens[ability_start_idx..]);
+    if ability_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing granted keyword list after base power/toughness clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let Some(actions) = parse_ability_line(&ability_tokens) else {
+        return Ok(None);
+    };
+    reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+    let granted = actions
+        .into_iter()
+        .filter_map(keyword_action_to_static_ability)
+        .collect::<Vec<_>>();
+    if granted.is_empty() {
+        return Ok(None);
+    }
+
+    let subject = match parse_anthem_subject(&subject_tokens) {
+        Ok(subject) => subject,
+        Err(_) => return Ok(None),
+    };
+
+    let mut compiled = Vec::new();
+    match subject {
+        AnthemSubjectAst::Source => {
+            compiled.push(StaticAbility::set_base_power_toughness(
+                ObjectFilter::source(),
+                power,
+                toughness,
+            ));
+            compiled.extend(granted);
+        }
+        AnthemSubjectAst::Filter(filter) => {
+            compiled.push(StaticAbility::set_base_power_toughness(
+                filter.clone(),
+                power,
+                toughness,
+            ));
+            for ability in granted {
+                compiled.push(StaticAbility::grant_ability(filter.clone(), ability));
+            }
+        }
+    }
+
+    Ok(Some(compiled))
 }
 
 fn parse_filter_has_granted_ability_line(
@@ -10344,6 +10488,16 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
             return Some(KeywordAction::Rampage(amount));
         }
         return Some(KeywordAction::Marker("rampage"));
+    }
+
+    // Annihilator appears as "Annihilator N" and is often followed by reminder text.
+    if words.first().copied() == Some("annihilator") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Annihilator(amount));
+        }
+        return Some(KeywordAction::Marker("annihilator"));
     }
 
     if words.as_slice().starts_with(&["battle", "cry"]) {

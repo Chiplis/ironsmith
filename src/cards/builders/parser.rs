@@ -557,6 +557,7 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         }
         KeywordAction::Unblockable => "This creature can't be blocked".to_string(),
         KeywordAction::Devoid => "Devoid".to_string(),
+        KeywordAction::Annihilator(amount) => format!("Annihilator {amount}"),
         KeywordAction::Marker(name) => title_case_words(name),
         KeywordAction::MarkerText(text) => text.clone(),
     }

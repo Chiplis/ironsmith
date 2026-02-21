@@ -91,6 +91,7 @@ enum KeywordAction {
     ProtectionFromSubtype(Subtype),
     Unblockable,
     Devoid,
+    Annihilator(u32),
     Marker(&'static str),
     MarkerText(String),
 }
@@ -1317,6 +1318,20 @@ impl CardDefinitionBuilder {
                         Zone::Command,
                     ]),
             ),
+            KeywordAction::Annihilator(amount) => self.with_ability(Ability {
+                kind: AbilityKind::Triggered(TriggeredAbility {
+                    trigger: Trigger::this_attacks(),
+                    effects: vec![Effect::sacrifice_player(
+                        ObjectFilter::permanent(),
+                        Value::Fixed(amount as i32),
+                        PlayerFilter::Defending,
+                    )],
+                    choices: vec![],
+                    intervening_if: None,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+                text: Some(format!("Annihilator {amount}")),
+            }),
             KeywordAction::Marker(name) => self.with_ability(Ability::static_ability(
                 StaticAbility::custom(name, name.to_string()),
             )),
