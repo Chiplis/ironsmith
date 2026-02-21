@@ -2716,10 +2716,16 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
     ) {
         return "When this creature is put into your graveyard from the battlefield, at the beginning of the next end step, you lose 1 life and return this card to your hand.".to_string();
     }
-    if let Some(condition) = normalized
-        .strip_prefix("This creature has Doesn't untap during your untap step as long as ")
+    if let Some((subject, condition)) =
+        normalized.split_once(" has Doesn't untap during your untap step as long as ")
+        && !subject.trim().is_empty()
+        && !condition.trim().is_empty()
     {
-        return format!("This creature doesn't untap during your untap step if {condition}");
+        return format!(
+            "{} doesn't untap during your untap step if {}",
+            subject.trim(),
+            condition.trim()
+        );
     }
     if lower_normalized == "creature with a +1/+1 counter on it you control have can't be blocked"
         || lower_normalized
@@ -12892,15 +12898,22 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                 .replace("card named This", &format!("card named {}", def.card.name))
                 .replace("card named this", &format!("card named {}", def.card.name));
         }
+        if let Some(rest) = replaced.strip_prefix("This enters ") {
+            replaced = format!("{self_ref_cap} enters {rest}");
+        }
+        if let Some(rest) = replaced.strip_prefix("Enters the battlefield with ") {
+            replaced = format!("{self_ref_cap} enters with {rest}");
+        }
+        if let Some(rest) = replaced.strip_prefix("enters the battlefield with ") {
+            replaced = format!("{self_ref} enters with {rest}");
+        }
         if oracle_mentions_name {
             let lowered = replaced.to_ascii_lowercase();
+            let self_ref_lower = self_ref.to_ascii_lowercase();
             let safe_name_substitution = lowered.starts_with("when this ")
                 || lowered.starts_with("whenever this ")
                 || lowered.starts_with("at the beginning of ")
-                || lowered.starts_with("this artifact enters ")
-                || lowered.starts_with("this enchantment enters ")
-                || lowered.starts_with("this land enters ")
-                || lowered.starts_with("this creature enters ")
+                || lowered.starts_with(&format!("{self_ref_lower} "))
                 || (oracle_mentions_display_possessive
                     && (lowered.starts_with("this creature's ")
                         || lowered.starts_with("this artifact's ")
@@ -12930,15 +12943,6 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
             replaced = replaced
                 .replace("Transform this creature", &format!("Transform {self_ref}"))
                 .replace("transform this creature", &format!("transform {self_ref}"));
-        }
-        if let Some(rest) = replaced.strip_prefix("This enters ") {
-            replaced = format!("{self_ref_cap} enters {rest}");
-        }
-        if let Some(rest) = replaced.strip_prefix("Enters the battlefield with ") {
-            replaced = format!("{self_ref_cap} enters with {rest}");
-        }
-        if let Some(rest) = replaced.strip_prefix("enters the battlefield with ") {
-            replaced = format!("{self_ref} enters with {rest}");
         }
         let mut phrased = normalize_common_semantic_phrasing(&replaced);
         if has_graveyard_activation {
