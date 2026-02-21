@@ -9616,6 +9616,20 @@ fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_for_each_double_counters(for_each) {
             return compact;
         }
+        if for_each.effects.len() == 1
+            && let Some(put) = for_each.effects[0].downcast_ref::<crate::effects::PutCountersEffect>()
+            && matches!(put.target, ChooseSpec::Iterated)
+            && put.target_count.is_none()
+            && !put.distributed
+        {
+            let description = for_each.filter.description();
+            let filter_text = strip_indefinite_article(&description);
+            return format!(
+                "Put {} on each {}",
+                describe_put_counter_phrase(&put.count, put.counter_type),
+                filter_text
+            );
+        }
         if let Some(subject) = describe_for_each_tagged_this_way_subject(&for_each.filter) {
             return format!("{subject}, {}", describe_effect_list(&for_each.effects));
         }

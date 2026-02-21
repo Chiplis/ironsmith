@@ -33490,6 +33490,9 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     if all_words
         .windows(4)
         .any(|window| window == ["that", "convoked", "this", "spell"])
+        || all_words
+            .windows(3)
+            .any(|window| window == ["that", "convoked", "it"])
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("convoked_this_spell"),

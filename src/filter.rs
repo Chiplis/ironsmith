@@ -2423,6 +2423,12 @@ impl ObjectFilter {
                     "it" => parts.push("that".to_string()),
                     "enchanted" => parts.push("enchanted".to_string()),
                     "equipped" => parts.push("equipped".to_string()),
+                    "convoked_this_spell" => {
+                        post_noun_qualifiers.push("that convoked this spell".to_string());
+                    }
+                    "improvised_this_spell" => {
+                        post_noun_qualifiers.push("that improvised this spell".to_string());
+                    }
                     crate::tag::SOURCE_EXILED_TAG => {
                         post_noun_qualifiers.push("exiled with this permanent".to_string());
                     }

@@ -223,6 +223,10 @@ pub struct Object {
     /// Mana actually spent to cast this object while it was a spell.
     /// Used by conditional text like "if at least three blue mana was spent to cast this spell".
     pub mana_spent_to_cast: ManaPool,
+    /// Permanents that contributed keyword-ability alternative payments while casting this object
+    /// as a spell (e.g., Convoke/Improvise). Used by later resolution-time references like
+    /// "each creature that convoked it".
+    pub keyword_payment_contributions_to_cast: Vec<crate::decision::KeywordPaymentContribution>,
     /// Cost effects (new unified model) - effects executed as part of paying costs.
     pub cost_effects: Vec<crate::effect::Effect>,
 
@@ -279,6 +283,7 @@ impl Object {
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            keyword_payment_contributions_to_cast: Vec::new(),
             cost_effects: Vec::new(),
             max_saga_chapter: None,
         }
@@ -342,6 +347,7 @@ impl Object {
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            keyword_payment_contributions_to_cast: Vec::new(),
             cost_effects: Vec::new(),
             max_saga_chapter: None,
         }
@@ -386,6 +392,7 @@ impl Object {
             optional_costs_paid: OptionalCostsPaid::default(),
             // Tokens are never cast.
             mana_spent_to_cast: ManaPool::default(),
+            keyword_payment_contributions_to_cast: Vec::new(),
             // Cost effects are copiable
             cost_effects: source.cost_effects.clone(),
             // Saga fields - copiable (a token copy of a saga is also a saga)
@@ -437,6 +444,7 @@ impl Object {
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            keyword_payment_contributions_to_cast: Vec::new(),
             cost_effects: Vec::new(),
             max_saga_chapter: None,
         }
@@ -830,6 +838,7 @@ impl Object {
             optional_costs: def.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
+            keyword_payment_contributions_to_cast: Vec::new(),
             cost_effects: def.cost_effects.clone(),
             max_saga_chapter: def.max_saga_chapter,
         }

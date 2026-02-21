@@ -4825,6 +4825,29 @@ fn parse_convoked_connive_clause_compiles_to_tagged_connive_iteration() {
 }
 
 #[test]
+fn parse_convoked_it_creature_etb_reference_compiles_to_tagged_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Venerated Loxodon Variant")
+        .parse_text(
+            "Convoke\nWhen this creature enters, put a +1/+1 counter on each creature that convoked it.",
+        )
+        .expect("parse convoked-it reference");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    let debug = format!("{:?}", triggered.effects);
+    assert!(
+        debug.contains("convoked_this_spell"),
+        "expected convoked tag reference in effects, got {debug}"
+    );
+}
+
+#[test]
 fn render_mother_of_runes_compacts_protection_choice_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mother of Runes Variant")
             .parse_text(

@@ -525,6 +525,7 @@ mod tests {
             optional_costs: vec![],
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
+            keyword_payment_contributions_to_cast: vec![],
             cost_effects: vec![],
             max_saga_chapter: None,
         }

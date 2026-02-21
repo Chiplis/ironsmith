@@ -1415,6 +1415,11 @@ impl GameState {
         // Reset zone-specific state on the object
         new_object.attached_to = None;
         new_object.attachments.clear();
+        // Casting-contribution state should not persist across arbitrary zone changes.
+        // Preserve it only for Stack -> Battlefield (a spell resolving into a permanent).
+        if !(old_zone == Zone::Stack && new_zone == Zone::Battlefield) {
+            new_object.keyword_payment_contributions_to_cast.clear();
+        }
 
         // Set battlefield state for new permanents
         if new_zone == Zone::Battlefield {

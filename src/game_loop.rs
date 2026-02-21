@@ -1136,6 +1136,9 @@ fn resolve_stack_entry_full(
             // (so ETB triggers can access kick count, etc.)
             if let Some(perm) = game.object_mut(entry.object_id) {
                 perm.optional_costs_paid = entry.optional_costs_paid.clone();
+                // Preserve Convoke/Improvise contributors for later triggered ability resolution.
+                perm.keyword_payment_contributions_to_cast =
+                    entry.keyword_payment_contributions.clone();
             }
 
             // Track creature ETBs for trap conditions (before the object moves zones)
@@ -7666,6 +7669,13 @@ fn triggered_to_stack_entry(game: &GameState, trigger: &TriggeredAbilityEntry) -
     .with_triggering_event(trigger.triggering_event.clone());
     if let Some(snapshot) = source_snapshot {
         entry = entry.with_source_snapshot(snapshot);
+    }
+    // Propagate keyword payment contributions from the source permanent's cast,
+    // so triggered abilities can reference "each creature that convoked it", etc.
+    if let Some(obj) = game.object(trigger.source)
+        && !obj.keyword_payment_contributions_to_cast.is_empty()
+    {
+        entry.keyword_payment_contributions = obj.keyword_payment_contributions_to_cast.clone();
     }
 
     // Copy intervening-if condition if present (must be rechecked at resolution time)
