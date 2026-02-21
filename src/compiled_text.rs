@@ -6958,6 +6958,30 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(for_players) =
+                filtered[idx].downcast_ref::<crate::effects::ForPlayersEffect>()
+            && for_players.filter == PlayerFilter::Opponent
+            && for_players.effects.len() == 1
+            && let Some(deal) =
+                for_players.effects[0].downcast_ref::<crate::effects::DealDamageEffect>()
+            && matches!(
+                deal.target,
+                ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+            )
+            && let Some(gain) = filtered[idx + 1].downcast_ref::<crate::effects::GainLifeEffect>()
+            && matches!(gain.player, ChooseSpec::Player(PlayerFilter::You))
+            && gain.amount == deal.amount
+            && !deal.source_is_combat
+            && matches!(deal.amount, Value::Count(_))
+        {
+            let amount_text = describe_value(&deal.amount);
+            parts.push(format!(
+                "it deals X damage to each opponent and you gain X life, where X is {amount_text}"
+            ));
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(deal) = filtered[idx].downcast_ref::<crate::effects::DealDamageEffect>()
             && let Some(gain) = filtered[idx + 1].downcast_ref::<crate::effects::GainLifeEffect>()
             && let Some(compact) = describe_deal_damage_then_gain_life(deal, gain)
