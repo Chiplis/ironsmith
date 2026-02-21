@@ -684,7 +684,40 @@ fn apply_line_ast(
                 Err(err) => return Err(err),
             };
 
-            if let Some(ref mut existing) = builder.spell_effect {
+            let normalized_line = info.normalized.normalized.as_str().to_ascii_lowercase();
+            if normalized_line.contains(" instead")
+                && compiled.len() == 1
+                && let Some(ref mut existing) = builder.spell_effect
+                && !existing.is_empty()
+                && let Some(replacement) =
+                    compiled[0].downcast_ref::<crate::effects::ConditionalEffect>()
+                && replacement.if_false.is_empty()
+                && let Some(previous_target) = existing
+                    .last()
+                    .and_then(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())
+                    .map(|damage| damage.target.clone())
+                && replacement.if_true.len() == 1
+                && let Some(replacement_damage) = replacement.if_true[0]
+                    .downcast_ref::<crate::effects::DealDamageEffect>()
+            {
+                let mut replacement = replacement.clone();
+                // If the replacement clause omitted a target, the parser will default it to
+                // "target player or planeswalker". For spells that are modifying prior damage,
+                // we want to preserve the original target.
+                if replacement_damage.target == ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::Any) {
+                    replacement.if_true = vec![Effect::deal_damage(
+                        replacement_damage.amount.clone(),
+                        previous_target,
+                    )];
+                }
+
+                let previous = existing.pop().expect("checked non-empty above");
+                existing.push(Effect::new(crate::effects::ConditionalEffect::new(
+                    replacement.condition,
+                    replacement.if_true,
+                    vec![previous],
+                )));
+            } else if let Some(ref mut existing) = builder.spell_effect {
                 existing.extend(compiled);
             } else {
                 builder.spell_effect = Some(compiled);

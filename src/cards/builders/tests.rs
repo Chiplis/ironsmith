@@ -3891,10 +3891,90 @@ fn parse_instead_if_control_keeps_prior_damage_target() {
 
     let rendered = compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Deal 4 damage to target attacking or blocking creature")
-            && rendered
-                .contains("Otherwise, Deal 2 damage to target attacking or blocking creature"),
-        "expected conditional to reuse the original creature target, got {rendered}"
+        rendered.contains("Deal 2 damage to target attacking or blocking creature")
+            && rendered.contains("It deals 4 damage instead if you control a Mount"),
+        "expected instead-if render with the original creature target, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_instead_if_control_omitted_target_reuses_prior_damage_target() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Invasive Maneuvers Variant")
+        .parse_text(
+            "Invasive Maneuvers deals 3 damage to target creature. It deals 5 damage instead if you control a Spacecraft.",
+        )
+        .expect("instead-if followup sentence should reuse prior target");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Deal 3 damage to target creature")
+            && rendered.contains("It deals 5 damage instead if you control a Spacecraft"),
+        "expected conditional to preserve the original creature target, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_instead_if_control_omitted_target_reuses_prior_damage_target_with_or_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Chandra's Triumph Variant")
+        .parse_text(
+            "Chandra's Triumph deals 3 damage to target creature or planeswalker an opponent controls. Chandra's Triumph deals 5 damage instead if you control a Chandra planeswalker.",
+        )
+        .expect("instead-if followup sentence should reuse prior target");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Deal 3 damage to target creature an opponent controls or planeswalker")
+            && rendered.contains("It deals 5 damage instead if you control"),
+        "expected conditional to preserve the original creature-or-planeswalker target, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_spell_line_instead_followup_merges_into_prior_spell_effect() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Galvanic Blast Variant")
+        .parse_text(
+            "Galvanic Blast deals 2 damage to any target.\nMetalcraft — Galvanic Blast deals 4 damage instead if you control three or more artifacts.",
+        )
+        .expect("metalcraft instead followup line should merge into prior spell effect");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Deal 2 damage to any target")
+            && rendered.contains("It deals 4 damage instead if you control three or more artifacts"),
+        "expected metalcraft line to replace prior damage amount and reuse target, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_spell_line_instead_followup_merges_non_control_predicate() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Cackling Flames Variant")
+        .parse_text(
+            "Cackling Flames deals 3 damage to any target.\nHellbent — Cackling Flames deals 5 damage instead if you have no cards in hand.",
+        )
+        .expect("hellbent instead followup line should merge into prior spell effect");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Deal 3 damage to any target")
+            && rendered.contains("It deals 5 damage instead if you have no cards in hand"),
+        "expected hellbent line to replace prior damage amount and reuse target, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_deal_damage_with_trailing_if_clause_emits_conditional() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kami's Flare Variant")
+        .parse_text(
+            "Kami's Flare deals 3 damage to target creature or planeswalker. Kami's Flare also deals 2 damage to that permanent's controller if you control a modified creature. (Equipment, Auras you control, and counters are modifications.)",
+        )
+        .expect("trailing if control clause should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Deal 3 damage to target creature or planeswalker")
+            && rendered.contains("If you control a modified creature")
+            && rendered.contains("Deal 2 damage to that object's controller"),
+        "expected conditional damage followup, got {rendered}"
     );
 }
 

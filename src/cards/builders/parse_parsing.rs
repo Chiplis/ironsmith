@@ -13181,13 +13181,14 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
                     mut if_false,
                 }) = sentence_effects.pop()
                 {
-                    if let Some(target) = previous_target {
-                        replace_it_damage_target_in_effects(&mut if_true, &target);
-                    }
-                    if_false.insert(0, previous);
-                    effects.push(EffectAst::Conditional {
-                        predicate,
-                        if_true,
+                if let Some(target) = previous_target {
+                    replace_it_damage_target_in_effects(&mut if_true, &target);
+                    replace_placeholder_damage_target_in_effects(&mut if_true, &target);
+                }
+                if_false.insert(0, previous);
+                effects.push(EffectAst::Conditional {
+                    predicate,
+                    if_true,
                         if_false,
                     });
                     sentence_idx += 1;
@@ -13248,6 +13249,74 @@ fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
 fn replace_it_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
     for effect in effects {
         replace_it_damage_target(effect, target);
+    }
+}
+
+fn is_placeholder_damage_target(target: &TargetAst) -> bool {
+    matches!(
+        target,
+        TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None)
+    )
+}
+
+fn replace_placeholder_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
+    for effect in effects {
+        replace_placeholder_damage_target(effect, target);
+    }
+}
+
+fn replace_placeholder_damage_target(effect: &mut EffectAst, target: &TargetAst) {
+    match effect {
+        EffectAst::DealDamage {
+            target: damage_target,
+            ..
+        }
+        | EffectAst::DealDamageEqualToPower {
+            target: damage_target,
+            ..
+        } => {
+            if is_placeholder_damage_target(damage_target) {
+                *damage_target = target.clone();
+            }
+        }
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => {
+            replace_placeholder_damage_target_in_effects(if_true, target);
+            replace_placeholder_damage_target_in_effects(if_false, target);
+        }
+        EffectAst::UnlessPays { effects, .. }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::MayByTaggedController { effects, .. }
+        | EffectAst::IfResult { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachTargetPlayers { effects, .. }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachPlayerDoesNot { effects, .. }
+        | EffectAst::ForEachOpponentDoesNot { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachTaggedPlayer { effects, .. }
+        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+        | EffectAst::VoteOption { effects, .. } => {
+            replace_placeholder_damage_target_in_effects(effects, target);
+        }
+        EffectAst::UnlessAction {
+            effects,
+            alternative,
+            ..
+        } => {
+            replace_placeholder_damage_target_in_effects(effects, target);
+            replace_placeholder_damage_target_in_effects(alternative, target);
+        }
+        _ => {}
     }
 }
 
@@ -27004,21 +27073,43 @@ fn parse_deal_damage_with_amount(
     {
         let pre_target_tokens = trim_commas(&target_tokens[..instead_idx]);
         let condition_tokens = trim_commas(&target_tokens[instead_idx + 2..]);
-        if let Some(predicate) = parse_instead_if_control_predicate(&condition_tokens)? {
-            let target = if pre_target_tokens.is_empty() {
-                TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None)
-            } else {
-                parse_target_phrase(&pre_target_tokens)?
-            };
-            return Ok(EffectAst::Conditional {
-                predicate,
-                if_true: vec![EffectAst::DealDamage {
-                    amount: amount.clone(),
-                    target,
-                }],
-                if_false: Vec::new(),
-            });
+        let predicate = if let Some(predicate) = parse_instead_if_control_predicate(&condition_tokens)?
+        {
+            predicate
+        } else {
+            parse_predicate(&condition_tokens)?
+        };
+        let target = if pre_target_tokens.is_empty() {
+            TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None)
+        } else {
+            parse_target_phrase(&pre_target_tokens)?
+        };
+        return Ok(EffectAst::Conditional {
+            predicate,
+            if_true: vec![EffectAst::DealDamage {
+                amount: amount.clone(),
+                target,
+            }],
+            if_false: Vec::new(),
+        });
+    }
+
+    if let Some(if_idx) = target_tokens.iter().position(|token| token.is_word("if")) {
+        let pre_target_tokens = trim_commas(&target_tokens[..if_idx]);
+        let condition_tokens = trim_commas(&target_tokens[if_idx + 1..]);
+        if pre_target_tokens.is_empty() || condition_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing if clause in damage effect (clause: '{}')",
+                words(tokens).join(" ")
+            )));
         }
+        let predicate = parse_predicate(&condition_tokens)?;
+        let target = parse_target_phrase(&pre_target_tokens)?;
+        return Ok(EffectAst::Conditional {
+            predicate,
+            if_true: vec![EffectAst::DealDamage { amount, target }],
+            if_false: Vec::new(),
+        });
     }
 
     let target_words = words(target_tokens);

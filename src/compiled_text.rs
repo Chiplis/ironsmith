@@ -9330,6 +9330,30 @@ fn describe_put_or_remove_counter_mode(
     Some(format!("{put_clause} or {remove_clause}"))
 }
 
+fn describe_conditional_damage_instead(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    if conditional.if_true.len() != 1 || conditional.if_false.len() != 1 {
+        return None;
+    }
+    let true_damage = conditional.if_true[0].downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let false_damage = conditional.if_false[0].downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if true_damage.source_is_combat || false_damage.source_is_combat {
+        return None;
+    }
+    if true_damage.target != false_damage.target {
+        return None;
+    }
+
+    let base_amount = describe_value(&false_damage.amount);
+    let instead_amount = describe_value(&true_damage.amount);
+    let target = describe_choose_spec(&true_damage.target);
+    let condition = describe_condition(&conditional.condition);
+    Some(format!(
+        "Deal {base_amount} damage to {target}. It deals {instead_amount} damage instead if {condition}"
+    ))
+}
+
 fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) = describe_search_sequence(sequence) {
@@ -10809,6 +10833,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return describe_effect(&with_id.effect);
     }
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        if let Some(compact) = describe_conditional_damage_instead(conditional) {
+            return compact;
+        }
         let true_branch = describe_effect_list(&conditional.if_true);
         let false_branch = describe_effect_list(&conditional.if_false);
         if false_branch.is_empty() {
