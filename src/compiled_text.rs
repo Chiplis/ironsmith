@@ -1531,6 +1531,7 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
                 );
         }
     }
+    normalized = normalized.replace(". you get ", ". You get ");
     for life in 1usize..=20 {
         let amount = life.to_string();
         normalized = normalized
@@ -11574,12 +11575,26 @@ fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(energy) = effect.downcast_ref::<crate::effects::EnergyCountersEffect>() {
         let player = describe_player_filter(&energy.player);
-        return format!(
-            "{} {} {} energy counter(s)",
-            player,
-            player_verb(&player, "get", "gets"),
-            describe_value(&energy.count)
-        );
+        let verb = player_verb(&player, "get", "gets");
+        return match &energy.count {
+            Value::Fixed(amount) if *amount > 0 => format!(
+                "{player} {verb} {}",
+                repeated_energy_symbols(*amount as usize)
+            ),
+            Value::Count(filter) => format!(
+                "{player} {verb} {{E}} for each {}",
+                describe_for_each_count_filter(filter)
+            ),
+            Value::CountScaled(filter, multiplier) if *multiplier > 0 => format!(
+                "{player} {verb} {} for each {}",
+                repeated_energy_symbols(*multiplier as usize),
+                describe_for_each_count_filter(filter)
+            ),
+            _ => format!(
+                "{player} {verb} an amount of {{E}} equal to {}",
+                describe_value(&energy.count)
+            ),
+        };
     }
     if let Some(connive) = effect.downcast_ref::<crate::effects::ConniveEffect>() {
         return format!("{} connives", describe_choose_spec(&connive.target));

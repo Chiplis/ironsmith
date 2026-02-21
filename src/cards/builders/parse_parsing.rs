@@ -29606,6 +29606,27 @@ fn parse_mill(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
     Ok(EffectAst::Mill { count, player })
 }
 
+fn parse_equal_to_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
+    let words_all = words(tokens);
+    let equal_idx = words_all
+        .windows(2)
+        .position(|window| window == ["equal", "to"])?;
+    let mut number_word_idx = equal_idx + 2;
+    if words_all.get(number_word_idx).copied() == Some("the") {
+        number_word_idx += 1;
+    }
+    if words_all.get(number_word_idx).copied() != Some("number")
+        || words_all.get(number_word_idx + 1).copied() != Some("of")
+    {
+        return None;
+    }
+    let filter_start_word_idx = number_word_idx + 2;
+    let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)?;
+    let filter_tokens = trim_edge_punctuation(&tokens[filter_start_token_idx..]);
+    let filter = parse_object_filter(&filter_tokens, false).ok()?;
+    Some(Value::Count(filter))
+}
+
 fn parse_get(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
     let words = words(tokens);
     if words.contains(&"poison") && words.contains(&"counter") {
@@ -29626,6 +29647,7 @@ fn parse_get(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst,
             _ => PlayerAst::Implicit,
         };
         let count = parse_add_mana_equal_amount_value(tokens)
+            .or(parse_equal_to_number_of_filter_value(tokens))
             .or(parse_dynamic_cost_modifier_value(tokens)?)
             .unwrap_or(Value::Fixed(energy_count as i32));
         return Ok(EffectAst::EnergyCounters {
