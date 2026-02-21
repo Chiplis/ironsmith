@@ -17230,9 +17230,14 @@ fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, &str)> {
 }
 
 fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
-    let is_gets = |verb: &str| matches!(verb, "gets" | "get");
-    let is_other = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain" | "is" | "are");
-    (is_gets(left_verb) && is_other(right_verb)) || (is_other(left_verb) && is_gets(right_verb))
+    let is_get = |verb: &str| matches!(verb, "gets" | "get");
+    let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
+    let is_state = |verb: &str| matches!(verb, "is" | "are");
+
+    (is_get(left_verb) && is_trait(right_verb))
+        || (is_trait(left_verb) && is_get(right_verb))
+        || ((left_verb == "gets" && right_verb == "is") || (left_verb == "is" && right_verb == "gets"))
+        || (is_state(left_verb) && is_state(right_verb))
 }
 
 fn normalize_keyword_predicate_case(predicate: &str) -> String {

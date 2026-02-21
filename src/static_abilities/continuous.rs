@@ -228,14 +228,30 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     // and pluralize it.
     let (base, suffix) = split_subject_suffix(&subject);
     if !base.is_empty() {
+        let prefix_all = suffix.is_empty()
+            && !base.contains(' ')
+            && base
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase());
         // Pluralize the last word of the base (the main noun/subtype).
         if let Some((head, noun)) = base.rsplit_once(' ') {
             let plural = simple_pluralize(noun);
-            return format!("{head} {plural}{suffix}");
+            let subject = format!("{head} {plural}{suffix}");
+            return if prefix_all {
+                format!("All {subject}")
+            } else {
+                subject
+            };
         }
         // Single word base (e.g., just "Zombie").
         let plural = simple_pluralize(base);
-        return format!("{plural}{suffix}");
+        let subject = format!("{plural}{suffix}");
+        return if prefix_all {
+            format!("All {subject}")
+        } else {
+            subject
+        };
     }
 
     subject
@@ -243,6 +259,34 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
 
 fn simple_pluralize(word: &str) -> String {
     let lower = word.to_ascii_lowercase();
+    if lower == "plains" || lower == "urzas" {
+        return word.to_string();
+    }
+    if lower == "elf" {
+        return if word
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            "Elves".to_string()
+        } else {
+            "elves".to_string()
+        };
+    }
+    if lower == "dwarf" {
+        return if word
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            "Dwarves".to_string()
+        } else {
+            "dwarves".to_string()
+        };
+    }
+    if lower == "myr" {
+        return word.to_string();
+    }
     if lower == "mouse" {
         return if word
             .chars()
@@ -271,6 +315,25 @@ fn simple_pluralize(word: &str) -> String {
         format!("{}ies", &word[..word.len() - 1])
     } else {
         format!("{word}s")
+    }
+}
+
+fn indefinite_article_for(word: &str) -> &'static str {
+    match word.chars().next().map(|ch| ch.to_ascii_lowercase()) {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+        _ => "a",
+    }
+}
+
+fn pluralize_terminal_word(phrase: &str) -> String {
+    if let Some((head, tail)) = phrase.rsplit_once(' ') {
+        if head.trim().is_empty() {
+            simple_pluralize(tail)
+        } else {
+            format!("{head} {}", simple_pluralize(tail))
+        }
+    } else {
+        simple_pluralize(phrase)
     }
 }
 
@@ -1493,14 +1556,36 @@ impl StaticAbilityKind for AddSubtypesForFilter {
     fn display(&self) -> String {
         let subject = pluralized_subject_text(&self.filter);
         let (verb, possessive) = subject_verb_and_possessive(&subject);
-        let subtypes = self
+        let subtype_words = self
             .subtypes
             .iter()
-            .map(|subtype| format!("{subtype:?}").to_ascii_lowercase())
+            .map(|subtype| format!("{subtype:?}"))
             .collect::<Vec<_>>();
+        let base_phrase = subtype_words.join(" ");
+        let subtype_phrase = if verb == "are" {
+            pluralize_terminal_word(&base_phrase)
+        } else if let Some(first) = subtype_words.first() {
+            format!("{} {base_phrase}", indefinite_article_for(first))
+        } else {
+            base_phrase
+        };
+        let filter_subject = subject_text(&self.filter);
+        let (base, suffix) = split_subject_suffix(&filter_subject);
+        let filter_is_single_creature_type =
+            suffix.is_empty()
+                && !base.contains(' ')
+                && base
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_uppercase());
+        let adding_creature_types = self.subtypes.iter().all(Subtype::is_creature_type);
+        let other_types = if filter_is_single_creature_type && adding_creature_types {
+            "other creature types"
+        } else {
+            "other types"
+        };
         format!(
-            "{subject} {verb} {} in addition to {possessive} other types",
-            join_with_and(&subtypes)
+            "{subject} {verb} {subtype_phrase} in addition to {possessive} {other_types}",
         )
     }
 
