@@ -2633,13 +2633,22 @@ impl ObjectFilter {
             if has_all_permanent_types {
                 Some((true, "permanent".to_string()))
             } else {
+                let joiner = if self.zone == Some(Zone::Stack)
+                    && self.card_types.len() == 2
+                    && self.card_types.contains(&CardType::Instant)
+                    && self.card_types.contains(&CardType::Sorcery)
+                {
+                    " and "
+                } else {
+                    " or "
+                };
                 Some((
                     true,
                     self.card_types
                         .iter()
                         .map(|t| format!("{:?}", t).to_lowercase())
                         .collect::<Vec<_>>()
-                        .join(" or "),
+                        .join(joiner),
                 ))
             }
         } else if !self.token && !subtype_implies_type {

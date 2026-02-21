@@ -7083,6 +7083,10 @@ fn finalize_spell_cast(
     game.spells_cast_this_turn_total = game.spells_cast_this_turn_total.saturating_add(1);
     game.spell_cast_order_this_turn
         .insert(new_id, game.spells_cast_this_turn_total);
+    if let Some(obj) = game.object(new_id) {
+        game.spells_cast_this_turn_snapshots
+            .push(ObjectSnapshot::from_object(obj, game));
+    }
 
     Ok(SpellCastResult {
         new_id,

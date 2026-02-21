@@ -921,6 +921,29 @@ pub fn resolve_value(
             Ok((count - 1).max(0))
         }
 
+        Value::SpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player, &ctx.filter_context(game), ctx)?;
+            let filter_ctx = ctx.filter_context(game);
+            let mut count: i32 = 0;
+            for snapshot in &game.spells_cast_this_turn_snapshots {
+                if *exclude_source && snapshot.object_id == ctx.source {
+                    continue;
+                }
+                if !player_ids.iter().any(|pid| *pid == snapshot.controller) {
+                    continue;
+                }
+                if filter.matches_snapshot(snapshot, &filter_ctx, game) {
+                    count = count.saturating_add(1);
+                }
+            }
+            Ok(count)
+        }
+
         Value::CardTypesInGraveyard(player_spec) => {
             use crate::types::CardType;
 

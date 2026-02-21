@@ -583,6 +583,19 @@ pub enum Value {
     /// Primarily used for storm on "you cast this spell" triggers.
     SpellsCastBeforeThisTurn(PlayerFilter),
 
+    /// Number of spells cast this turn by players matching `player` that also match `filter`.
+    ///
+    /// This is tracked at cast time using snapshots so spells still count even after they
+    /// resolve or otherwise leave the stack.
+    ///
+    /// If `exclude_source` is true, the current resolving spell (ExecutionContext source)
+    /// is excluded from the count. This supports "other spells you've cast this turn".
+    SpellsCastThisTurnMatching {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        exclude_source: bool,
+    },
+
     /// Number of distinct card types among cards in a player's graveyard
     CardTypesInGraveyard(PlayerFilter),
 

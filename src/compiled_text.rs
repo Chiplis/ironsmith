@@ -5537,6 +5537,21 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of spells cast before this spell this turn by {}",
             describe_player_filter(filter)
         ),
+        Value::SpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } => {
+            let base = pluralize_noun_phrase(&describe_for_each_filter(filter));
+            let mut out = format!(
+                "the number of {base} cast this turn by {}",
+                describe_player_filter(player)
+            );
+            if *exclude_source {
+                out.push_str(" other than this spell");
+            }
+            out
+        }
         Value::CardTypesInGraveyard(filter) => format!(
             "the number of distinct card types in {} graveyard",
             describe_possessive_player_filter(filter)
@@ -5633,6 +5648,34 @@ fn party_size_multiplier(value: &Value) -> Option<(PlayerFilter, i32)> {
             }
         }
         _ => None,
+    }
+}
+
+fn spells_cast_this_turn_multiplier(value: &Value) -> Option<(PlayerFilter, i32)> {
+    match value {
+        Value::SpellsCastThisTurn(filter) => Some((filter.clone(), 1)),
+        Value::Add(left, right) => {
+            let (left_filter, left_mult) = spells_cast_this_turn_multiplier(left)?;
+            let (right_filter, right_mult) = spells_cast_this_turn_multiplier(right)?;
+            if left_filter == right_filter {
+                Some((left_filter, left_mult + right_mult))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn describe_spells_cast_this_turn_each(filter: &PlayerFilter) -> String {
+    match filter {
+        PlayerFilter::You => "spell you've cast this turn".to_string(),
+        PlayerFilter::Opponent => "spell an opponent has cast this turn".to_string(),
+        PlayerFilter::Any => "spell cast this turn".to_string(),
+        other => format!(
+            "spell cast this turn by {}",
+            strip_leading_article(&describe_player_filter(other))
+        ),
     }
 }
 
@@ -8516,6 +8559,28 @@ fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<Stri
             "{player} {verb} a card for each {}",
             describe_for_each_filter(filter)
         )),
+        Value::SpellsCastThisTurn(spell_caster) => Some(format!(
+            "{player} {verb} a card for each {}",
+            describe_spells_cast_this_turn_each(spell_caster)
+        )),
+        Value::SpellsCastThisTurnMatching {
+            player: spell_caster,
+            filter,
+            exclude_source,
+        } => {
+            let base = describe_for_each_filter(filter);
+            let prefix = if *exclude_source { "other " } else { "" };
+            let tail = match spell_caster {
+                PlayerFilter::You => "you've cast this turn".to_string(),
+                PlayerFilter::Opponent => "an opponent has cast this turn".to_string(),
+                PlayerFilter::Any => "cast this turn".to_string(),
+                other => format!(
+                    "cast this turn by {}",
+                    strip_leading_article(&describe_player_filter(other))
+                ),
+            };
+            Some(format!("{player} {verb} a card for each {prefix}{base} {tail}"))
+        }
         Value::CountersOnSource(counter_type) => Some(format!(
             "{player} {verb} a card for each {} counter on this permanent",
             describe_counter_type(*counter_type)
@@ -10408,6 +10473,24 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 among
             );
         }
+        if let Some((spells_filter, multiplier)) = spells_cast_this_turn_multiplier(&gain.amount) {
+            let each = describe_spells_cast_this_turn_each(&spells_filter);
+            if multiplier <= 1 {
+                return format!(
+                    "{} {} 1 life for each {}",
+                    player,
+                    player_verb(&player, "gain", "gains"),
+                    each
+                );
+            }
+            return format!(
+                "{} {} {} life for each {}",
+                player,
+                player_verb(&player, "gain", "gains"),
+                multiplier,
+                each
+            );
+        }
         if let Value::Count(filter) = &gain.amount {
             return format!(
                 "{} {} 1 life for each {}",
@@ -10492,6 +10575,24 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 player_verb(&player, "lose", "loses"),
                 multiplier,
                 party_owner
+            );
+        }
+        if let Some((spells_filter, multiplier)) = spells_cast_this_turn_multiplier(&lose.amount) {
+            let each = describe_spells_cast_this_turn_each(&spells_filter);
+            if multiplier <= 1 {
+                return format!(
+                    "{} {} 1 life for each {}",
+                    player,
+                    player_verb(&player, "lose", "loses"),
+                    each
+                );
+            }
+            return format!(
+                "{} {} {} life for each {}",
+                player,
+                player_verb(&player, "lose", "loses"),
+                multiplier,
+                each
             );
         }
         if let Value::Count(filter) = &lose.amount {

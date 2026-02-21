@@ -2724,6 +2724,7 @@ fn resolve_value_with_context(
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
+        | Value::SpellsCastThisTurnMatching { .. }
         | Value::CardTypesInGraveyard(_)
         | Value::EffectValue(_)
         | Value::EffectValueOffset(_, _)

@@ -907,6 +907,14 @@ pub struct GameState {
     /// Reset at the start of each turn.
     pub spells_cast_this_turn_total: u32,
 
+    /// Snapshots of spells cast this turn, captured at cast time.
+    ///
+    /// This supports "spells you've cast this turn" counts that need to persist
+    /// even after spells resolve or change zones.
+    ///
+    /// Cleared at the start of each turn.
+    pub spells_cast_this_turn_snapshots: Vec<crate::snapshot::ObjectSnapshot>,
+
     /// Cast order for spells cast this turn (object id -> 1-based cast index).
     /// Cleared at the start of each turn.
     pub spell_cast_order_this_turn: HashMap<ObjectId, u32>,
@@ -1064,6 +1072,7 @@ impl GameState {
             turn_counters: TurnCounterTracker::default(),
             spells_cast_this_turn: HashMap::new(),
             spells_cast_this_turn_total: 0,
+            spells_cast_this_turn_snapshots: Vec::new(),
             spell_cast_order_this_turn: HashMap::new(),
             players_attacked_this_turn: HashSet::new(),
             players_tapped_land_for_mana_this_turn: HashSet::new(),
@@ -2433,6 +2442,7 @@ impl GameState {
         self.spells_cast_last_turn_total = self.spells_cast_this_turn_total;
         self.spells_cast_this_turn.clear();
         self.spells_cast_this_turn_total = 0;
+        self.spells_cast_this_turn_snapshots.clear();
         self.spell_cast_order_this_turn.clear();
         self.players_attacked_this_turn.clear();
         self.players_tapped_land_for_mana_this_turn.clear();

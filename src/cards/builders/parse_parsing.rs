@@ -3392,6 +3392,68 @@ fn parse_dynamic_cost_modifier_value(tokens: &[Token]) -> Result<Option<Value>, 
     {
         return Ok(Some(Value::CreaturesDiedThisTurn));
     }
+    // "for each spell you've cast this turn" (and limited variants like "instant and sorcery spell")
+    let has_spell_cast_turn = (filter_words.contains(&"spell") || filter_words.contains(&"spells"))
+        && (filter_words.contains(&"cast") || filter_words.contains(&"casts"))
+        && filter_words.contains(&"this")
+        && filter_words.contains(&"turn");
+    if has_spell_cast_turn {
+        let player = if filter_words
+            .iter()
+            .any(|word| matches!(*word, "you" | "your" | "youve"))
+        {
+            PlayerFilter::You
+        } else if filter_words
+            .iter()
+            .any(|word| matches!(*word, "opponent" | "opponents"))
+        {
+            PlayerFilter::Opponent
+        } else {
+            PlayerFilter::Any
+        };
+
+        let other_than_first = filter_words
+            .windows(4)
+            .any(|window| window == ["other", "than", "the", "first"]);
+        if other_than_first {
+            return Ok(Some(Value::Add(
+                Box::new(Value::SpellsCastThisTurn(player)),
+                Box::new(Value::Fixed(-1)),
+            )));
+        }
+
+        let exclude_source = filter_words.contains(&"other");
+        let has_instant = filter_words.contains(&"instant");
+        let has_sorcery = filter_words.contains(&"sorcery");
+        if has_instant || has_sorcery {
+            let mut filter = ObjectFilter::spell();
+            filter.card_types = if has_instant && has_sorcery {
+                vec![CardType::Instant, CardType::Sorcery]
+            } else if has_instant {
+                vec![CardType::Instant]
+            } else {
+                vec![CardType::Sorcery]
+            };
+            return Ok(Some(Value::SpellsCastThisTurnMatching {
+                player,
+                filter,
+                exclude_source,
+            }));
+        }
+
+        let simple = matches!(
+            filter_words.as_slice(),
+            ["spell", "youve", "cast", "this", "turn"]
+                | ["spells", "youve", "cast", "this", "turn"]
+                | ["spell", "you", "cast", "this", "turn"]
+                | ["spells", "you", "cast", "this", "turn"]
+                | ["spell", "your", "cast", "this", "turn"]
+                | ["spells", "your", "cast", "this", "turn"]
+        );
+        if simple {
+            return Ok(Some(Value::SpellsCastThisTurn(player)));
+        }
+    }
 
     if filter_words.windows(2).any(|pair| pair == ["card", "type"])
         && filter_words.contains(&"graveyard")
