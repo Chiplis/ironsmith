@@ -17687,6 +17687,35 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         Some(rewritten)
     };
     if !normalized.contains('\n') {
+        if lower_normalized.contains("you may choose the same mode more than once")
+            && normalized.contains(" • ")
+        {
+            return normalized.replace(" • ", "\n• ");
+        }
+        let normalized_trimmed = normalized.trim();
+        let lower_trimmed = normalized_trimmed.to_ascii_lowercase();
+        if lower_trimmed.starts_with("choose ") && normalized_trimmed.contains(" • ") {
+            let mut best_sep: Option<(usize, usize)> = None;
+            for sep in [" \u{2014} ", " - "] {
+                if let Some(idx) = lower_trimmed.find(sep) {
+                    match best_sep {
+                        None => best_sep = Some((idx, sep.len())),
+                        Some((best_idx, _)) if idx < best_idx => best_sep = Some((idx, sep.len())),
+                        _ => {}
+                    }
+                }
+            }
+            if let Some((idx, sep_len)) = best_sep {
+                let head = normalized_trimmed[..idx].trim();
+                let tail = normalized_trimmed[idx + sep_len..].trim();
+                if tail.contains(" • ")
+                    && !head.is_empty()
+                    && let Some(rewritten) = format_choose_modes("", &format!("{} —", capitalize_first(head)), tail)
+                {
+                    return rewritten;
+                }
+            }
+        }
         if let Some((head, tail)) = normalized.split_once(" choose one or more - ")
             && tail.contains(" • ")
             && let Some(rewritten) = format_choose_modes(head, " choose one or more —", tail)
@@ -20717,6 +20746,44 @@ pub fn oracle_like_lines(def: &CardDefinition) -> Vec<String> {
         .into_iter()
         .map(|line| normalize_sentence_surface_style(&line))
         .collect()
+}
+
+#[cfg(test)]
+mod normalize_sentence_surface_style_tests {
+    use super::normalize_sentence_surface_style;
+
+    #[test]
+    fn normalizes_choose_one_bullet_modes_to_multiline() {
+        let normalized = normalize_sentence_surface_style(
+            "Choose one — Tap target creature. • Untap target creature.",
+        );
+        assert_eq!(
+            normalized,
+            "Choose one —\n• Tap target creature.\n• Untap target creature."
+        );
+    }
+
+    #[test]
+    fn normalizes_choose_two_bullet_modes_to_multiline() {
+        let normalized = normalize_sentence_surface_style(
+            "Choose two - Destroy target artifact. • Destroy target enchantment. • Destroy target creature.",
+        );
+        assert_eq!(
+            normalized,
+            "Choose two —\n• Destroy target artifact.\n• Destroy target enchantment.\n• Destroy target creature."
+        );
+    }
+
+    #[test]
+    fn normalizes_choose_repeat_modes_to_multiline() {
+        let normalized = normalize_sentence_surface_style(
+            "Choose four. You may choose the same mode more than once. • You gain 4 life. • Draw a card.",
+        );
+        assert_eq!(
+            normalized,
+            "Choose four. You may choose the same mode more than once.\n• You gain 4 life.\n• Draw a card."
+        );
+    }
 }
 
 #[cfg(all(test, feature = "parser-tests-full"))]
