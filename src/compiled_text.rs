@@ -4385,6 +4385,7 @@ fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
     }
     if filter.owner.is_none() && !filter.single_graveyard && filter.zone == Some(Zone::Graveyard) {
         subject = subject.replace(" in graveyard", " in all graveyards");
+        subject = subject.replace(" in a graveyard", " in all graveyards");
     }
 
     let mentions_location = subject.contains(" in ") || subject.contains(" on ");
@@ -4488,6 +4489,11 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             return format!("{} {} not named {}", head.trim(), suffix, tail.trim());
         }
         return format!("{subject} {suffix}");
+    }
+
+    if owner.is_none() && !filter.single_graveyard && filter.zone == Some(Zone::Graveyard) {
+        subject = subject.replace(" in a graveyard", " in all graveyards");
+        subject = subject.replace(" in graveyard", " in all graveyards");
     }
 
     subject
