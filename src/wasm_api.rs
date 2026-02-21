@@ -3254,6 +3254,23 @@ fn describe_condition(
                 describe_player_filter(player, tagged_subjects)
             )
         }
+        crate::effect::Condition::PlayerControlsExactly {
+            player,
+            filter,
+            count,
+        } => {
+            let description = filter.description();
+            let stripped = strip_leading_article(&description);
+            let noun = if *count == 1 {
+                stripped.to_string()
+            } else {
+                pluralize_noun_phrase(stripped)
+            };
+            format!(
+                "{} controls exactly {count} {noun}",
+                describe_player_filter(player, tagged_subjects)
+            )
+        }
         crate::effect::Condition::PlayerControlsAtLeastWithDifferentPowers {
             player,
             filter,
@@ -3361,6 +3378,31 @@ fn describe_condition(
                 tag.as_str(),
                 filter.description()
             )
+        }
+        crate::effect::Condition::PlayerOwnsCardNamedInZones { player, name, zones } => {
+            let player_text = describe_player_filter(player, tagged_subjects);
+            if zones.is_empty() {
+                format!("{player_text} owns a card named {name}")
+            } else {
+                let possessive =
+                    describe_player_filter_possessive(player, tagged_subjects).to_ascii_lowercase();
+                let zone_phrases = zones
+                    .iter()
+                    .map(|zone| match zone {
+                        Zone::Exile => "in exile".to_string(),
+                        Zone::Hand => format!("in {possessive} hand"),
+                        Zone::Graveyard => format!("in {possessive} graveyard"),
+                        Zone::Library => format!("in {possessive} library"),
+                        Zone::Battlefield => "on the battlefield".to_string(),
+                        Zone::Stack => "on the stack".to_string(),
+                        Zone::Command => "in the command zone".to_string(),
+                    })
+                    .collect::<Vec<_>>();
+                format!(
+                    "{player_text} owns a card named {name} {}",
+                    join_words_with_and(&zone_phrases)
+                )
+            }
         }
         crate::effect::Condition::PlayerTappedLandForManaThisTurn { player } => {
             format!(
@@ -5706,6 +5748,12 @@ fn describe_value(
         crate::effect::Value::BasicLandTypesAmong(filter) => {
             format!(
                 "the number of basic land types among {}",
+                pluralize_noun_phrase(&filter.description())
+            )
+        }
+        crate::effect::Value::ColorsAmong(filter) => {
+            format!(
+                "the number of colors among {}",
                 pluralize_noun_phrase(&filter.description())
             )
         }

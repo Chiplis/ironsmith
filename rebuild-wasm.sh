@@ -23,6 +23,29 @@ DIMS="${IRONSMITH_WASM_SEMANTIC_DIMS:-384}"
 MIN_CLUSTER_SIZE="${IRONSMITH_WASM_MIN_CLUSTER_SIZE:-1}"
 FEATURES="wasm,generated-registry"
 
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "missing required command: $1" >&2
+    exit 1
+  }
+}
+
+count_nonempty_lines() {
+  awk 'NF { count += 1 } END { print count + 0 }' "$1"
+}
+
+resolve_reports_dir() {
+  local preferred="$1"
+  local fallback="$2"
+  if mkdir -p "$preferred" 2>/dev/null && [[ -w "$preferred" ]]; then
+    REPORTS_DIR="$preferred"
+    return
+  fi
+  REPORTS_DIR="$fallback"
+  mkdir -p "$REPORTS_DIR"
+  echo "[WARN] fallback to $REPORTS_DIR (could not write to $preferred)"
+}
+
 usage() {
   cat <<'USAGE'
 Usage: ./rebuild-wasm.sh [--threshold <float>] [--dims <int>] [--min-cluster-size <int>] [--features <csv>]
@@ -44,7 +67,7 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --threshold)
+    --threshold|--threhsold)
       [[ $# -ge 2 ]] || { echo "missing value for --threshold" >&2; exit 1; }
       THRESHOLD="$2"
       shift 2
@@ -77,13 +100,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$ROOT_DIR"
+require_cmd cargo
+require_cmd wasm-pack
 
 if [[ -n "$THRESHOLD" ]]; then
-  if ! mkdir -p "$REPORTS_DIR" 2>/dev/null; then
-    REPORTS_DIR="$ROOT_DIR/reports"
-    mkdir -p "$REPORTS_DIR"
-    echo "[WARN] fallback to $REPORTS_DIR (could not create $PREFERRED_REPORTS_DIR)"
-  fi
+  require_cmd awk
+  require_cmd jq
+  resolve_reports_dir "$REPORTS_DIR" "$ROOT_DIR/reports"
 
   TIMESTAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
   SAFE_THRESHOLD="${THRESHOLD//./_}"
@@ -148,7 +171,7 @@ if [[ -n "$THRESHOLD" ]]; then
     cp -f "$MISMATCH_NAMES_FILE" "$FILTERED_SKIP_NAMES_FILE"
   fi
 
-  EXCLUDED_COUNT="$(rg -cve '^\\s*$' "$FILTERED_SKIP_NAMES_FILE" 2>/dev/null || true)"
+  EXCLUDED_COUNT="$(count_nonempty_lines "$FILTERED_SKIP_NAMES_FILE")"
   export IRONSMITH_GENERATED_REGISTRY_SKIP_NAMES_FILE="$FILTERED_SKIP_NAMES_FILE"
   echo "[INFO] semantic gating active: excluding ${EXCLUDED_COUNT} below-threshold card(s)"
   cp -f "$FAILURES_REPORT" "$MISMATCH_REPORT"
