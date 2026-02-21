@@ -12831,6 +12831,10 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
     };
     let has_graveyard_activation = card_has_graveyard_activated_ability(def);
     let oracle_lower = def.card.oracle_text.to_ascii_lowercase();
+    let oracle_mentions_display_possessive = {
+        let lowered = display_name.to_ascii_lowercase();
+        !lowered.is_empty() && oracle_lower.contains(&format!("{lowered}'s "))
+    };
     let has_self_exile_from_hand = oracle_lower.contains("exile this card from your hand");
     let has_basic_landcycling = oracle_lower.contains("basic landcycling");
     let has_target_blocked_creature = oracle_lower.contains("target blocked creature");
@@ -12880,7 +12884,16 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                 || lowered.starts_with("this artifact enters ")
                 || lowered.starts_with("this enchantment enters ")
                 || lowered.starts_with("this land enters ")
-                || lowered.starts_with("this creature enters ");
+                || lowered.starts_with("this creature enters ")
+                || (oracle_mentions_display_possessive
+                    && (lowered.starts_with("this creature's ")
+                        || lowered.starts_with("this artifact's ")
+                        || lowered.starts_with("this enchantment's ")
+                        || lowered.starts_with("this land's ")
+                        || lowered.starts_with("this planeswalker's ")
+                        || lowered.starts_with("this battle's ")
+                        || lowered.starts_with("this permanent's ")
+                        || lowered.starts_with("this spell's ")));
             if safe_name_substitution {
                 if let Some(rest) = replaced.strip_prefix(&format!("When {self_ref} ")) {
                     replaced = format!("When {} {rest}", display_name);
