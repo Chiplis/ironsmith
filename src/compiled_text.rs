@@ -5292,7 +5292,18 @@ fn describe_value(value: &Value) -> String {
         Value::PowerOf(spec) => format!("{} power", describe_possessive_choose_spec(spec)),
         Value::ToughnessOf(spec) => format!("{} toughness", describe_possessive_choose_spec(spec)),
         Value::ManaValueOf(spec) => {
-            format!("{} mana value", describe_possessive_choose_spec(spec))
+            // For implicit off-battlefield references, oracle text usually prefers
+            // "that card's mana value" over "its mana value".
+            if let ChooseSpec::Tagged(tag) = spec.base()
+                && (tag.as_str().starts_with("revealed_")
+                    || tag.as_str().starts_with("searched_")
+                    || tag.as_str().starts_with("milled_")
+                    || tag.as_str().starts_with("discarded_"))
+            {
+                "that card's mana value".to_string()
+            } else {
+                format!("{} mana value", describe_possessive_choose_spec(spec))
+            }
         }
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))
@@ -6509,21 +6520,32 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
-        if idx + 1 < filtered.len()
-            && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
-            && let Some(move_back) =
-                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
-            && let Some(compact) = describe_exile_then_return(tagged, move_back)
-        {
-            parts.push(compact);
-            idx += 2;
-            continue;
-        }
-        if idx + 1 < filtered.len()
-            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
-            && let Some(choose_new) =
-                filtered[idx + 1].downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
-            && let Some(compact) = describe_with_id_then_choose_new_targets(with_id, choose_new)
+	        if idx + 1 < filtered.len()
+	            && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
+	            && let Some(move_back) =
+	                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+	            && let Some(compact) = describe_exile_then_return(tagged, move_back)
+	        {
+	            parts.push(compact);
+	            idx += 2;
+	            continue;
+	        }
+	        if idx + 1 < filtered.len()
+	            && let Some(reveal_top) =
+	                filtered[idx].downcast_ref::<crate::effects::RevealTopEffect>()
+	            && let Some(conditional) =
+	                filtered[idx + 1].downcast_ref::<crate::effects::ConditionalEffect>()
+	            && let Some(compact) = describe_reveal_top_then_if_put_into_hand(reveal_top, conditional)
+	        {
+	            parts.push(compact);
+	            idx += 2;
+	            continue;
+	        }
+	        if idx + 1 < filtered.len()
+	            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+	            && let Some(choose_new) =
+	                filtered[idx + 1].downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
+	            && let Some(compact) = describe_with_id_then_choose_new_targets(with_id, choose_new)
         {
             parts.push(compact);
             idx += 2;
@@ -6795,6 +6817,82 @@ fn describe_exile_then_return(
     };
     Some(format!(
         "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{controller_suffix}"
+    ))
+}
+
+fn describe_reveal_top_then_if_put_into_hand(
+    reveal_top: &crate::effects::RevealTopEffect,
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let reveal_tag = reveal_top.tag.as_ref()?;
+    let Condition::TaggedObjectMatches(cond_tag, filter) = &conditional.condition else {
+        return None;
+    };
+    if cond_tag != reveal_tag {
+        return None;
+    }
+    let move_to_zone = conditional.if_true[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Hand {
+        return None;
+    }
+    if !matches!(
+        move_to_zone.target.base(),
+        ChooseSpec::Tagged(tag) if tag == reveal_tag
+    ) {
+        return None;
+    }
+
+    let subject = describe_player_filter(&reveal_top.player);
+    let is_you = subject == "you";
+    let reveal_sentence = if is_you {
+        "Reveal the top card of your library".to_string()
+    } else {
+        let mut reveal_subject = subject;
+        if matches!(
+            reveal_top.player,
+            PlayerFilter::Defending | PlayerFilter::Attacking | PlayerFilter::DamagedPlayer
+        ) {
+            if let Some(rest) = reveal_subject.strip_prefix("the ") {
+                reveal_subject = rest.to_string();
+            }
+        }
+        let verb = player_verb(&reveal_subject, "reveal", "reveals");
+        format!("{reveal_subject} {verb} the top card of their library")
+    };
+
+    // Match the common oracle pattern for "if it's a <type> card".
+    let desc = filter.description();
+    let stripped = strip_leading_article(&desc).trim().to_ascii_lowercase();
+    let noun_phrase = if stripped.ends_with(" card") {
+        stripped.clone()
+    } else if matches!(
+        stripped.as_str(),
+        "land"
+            | "creature"
+            | "artifact"
+            | "enchantment"
+            | "planeswalker"
+            | "battle"
+            | "instant"
+            | "sorcery"
+    ) {
+        format!("{stripped} card")
+    } else {
+        return None;
+    };
+    let condition_text = format!("it's {}", with_indefinite_article(&noun_phrase));
+
+    let move_sentence = if is_you {
+        "put it into your hand".to_string()
+    } else {
+        "that player puts it into their hand".to_string()
+    };
+
+    Some(format!(
+        "{reveal_sentence}. If {condition_text}, {move_sentence}"
     ))
 }
 
@@ -7957,6 +8055,49 @@ fn describe_for_players_damage_and_controlled_damage(
     ))
 }
 
+fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let (subject, possessive) = match for_players.filter {
+        PlayerFilter::Any => ("Each player", "their"),
+        PlayerFilter::Opponent => ("Each opponent", "their"),
+        _ => return None,
+    };
+    if for_players.effects.len() != 3 {
+        return None;
+    }
+    let reveal = for_players.effects[0].downcast_ref::<crate::effects::RevealTopEffect>()?;
+    let reveal_tag = reveal.tag.as_ref()?;
+    if reveal.player != PlayerFilter::IteratedPlayer || !reveal_tag.as_str().starts_with("revealed_")
+    {
+        return None;
+    }
+    let lose = for_players.effects[1].downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    if lose.player != ChooseSpec::Player(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+    let Value::ManaValueOf(spec) = &lose.amount else {
+        return None;
+    };
+    if !matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == reveal_tag) {
+        return None;
+    }
+    let move_to_zone = for_players.effects[2].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Hand {
+        return None;
+    }
+    if !matches!(
+        move_to_zone.target.base(),
+        ChooseSpec::Tagged(tag) if tag == reveal_tag
+    ) {
+        return None;
+    }
+
+    Some(format!(
+        "{subject} reveals the top card of {possessive} library, loses life equal to that card's mana value, then puts it into {possessive} hand"
+    ))
+}
+
 fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<String> {
     let player = describe_player_filter(&draw.player);
     let verb = player_verb(&player, "draw", "draws");
@@ -9065,12 +9206,17 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_effect_list(&for_each_tagged.effects)
         );
     }
-    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
-        if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players) {
-            return compact;
-        }
-        if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
-            return compact;
+	    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+	        if let Some(compact) =
+	            describe_for_players_reveal_top_mana_value_life_then_put_into_hand(for_players)
+	        {
+	            return compact;
+	        }
+	        if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players) {
+	            return compact;
+	        }
+	        if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
+	            return compact;
         }
         if let Some(compact) = describe_for_players_damage_and_controlled_damage(for_players) {
             return compact;
@@ -9182,20 +9328,34 @@ fn describe_effect_impl(effect: &Effect) -> String {
             choose.tag.as_str()
         );
     }
-    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
-        let target = describe_choose_spec(&move_to_zone.target);
-        return match move_to_zone.zone {
-            Zone::Exile => format!("Exile {target}"),
-            Zone::Graveyard => format!("Put {target} into its owner's graveyard"),
-            Zone::Hand => format!(
-                "Return {target} to {}",
-                owner_hand_phrase_for_spec(&move_to_zone.target)
-            ),
-            Zone::Library => {
-                if let Some(owner) = hand_owner_from_spec(&move_to_zone.target) {
-                    let cards = describe_card_choice_count(move_to_zone.target.count());
-                    let from_zone = match &owner {
-                        Some(owner) => {
+	    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+	        let target = describe_choose_spec(&move_to_zone.target);
+	        return match move_to_zone.zone {
+	            Zone::Exile => format!("Exile {target}"),
+	            Zone::Graveyard => format!("Put {target} into its owner's graveyard"),
+	            Zone::Hand => {
+	                if let ChooseSpec::Tagged(tag) = move_to_zone.target.base()
+	                    && (tag.as_str().starts_with("revealed_")
+	                        || tag.as_str().starts_with("searched_")
+	                        || tag.as_str().starts_with("milled_")
+	                        || tag.as_str().starts_with("discarded_"))
+	                {
+	                    format!(
+	                        "Put {target} into {}",
+	                        owner_hand_phrase_for_spec(&move_to_zone.target)
+	                    )
+	                } else {
+	                    format!(
+	                        "Return {target} to {}",
+	                        owner_hand_phrase_for_spec(&move_to_zone.target)
+	                    )
+	                }
+	            }
+	            Zone::Library => {
+	                if let Some(owner) = hand_owner_from_spec(&move_to_zone.target) {
+	                    let cards = describe_card_choice_count(move_to_zone.target.count());
+	                    let from_zone = match &owner {
+	                        Some(owner) => {
                             format!("{} hand", describe_possessive_player_filter(owner))
                         }
                         None => "a hand".to_string(),
@@ -10240,13 +10400,29 @@ fn describe_effect_impl(effect: &Effect) -> String {
             destination
         );
     }
-    if let Some(reveal_top) = effect.downcast_ref::<crate::effects::RevealTopEffect>() {
-        let owner = describe_possessive_player_filter(&reveal_top.player);
-        // Revealing the top card is the semantic action; internal tag keys are
-        // scaffolding for later "it/that card" references and should not leak
-        // into compiled text.
-        return format!("Reveal the top card of {owner} library");
-    }
+	    if let Some(reveal_top) = effect.downcast_ref::<crate::effects::RevealTopEffect>() {
+	        // Revealing the top card is the semantic action; internal tag keys are
+	        // scaffolding for later "it/that card" references and should not leak
+	        // into compiled text.
+	        //
+	        // For "you", oracle text is typically imperative ("Reveal ..."). For other players,
+	        // oracle text typically uses a subject ("defending player reveals ...").
+	        if reveal_top.player == PlayerFilter::You {
+	            return "Reveal the top card of your library".to_string();
+	        }
+	        let mut subject = describe_player_filter(&reveal_top.player);
+	        if matches!(
+	            reveal_top.player,
+	            PlayerFilter::Defending | PlayerFilter::Attacking | PlayerFilter::DamagedPlayer
+	        ) {
+	            if let Some(rest) = subject.strip_prefix("the ") {
+	                subject = rest.to_string();
+	            }
+	        }
+	        let verb = player_verb(&subject, "reveal", "reveals");
+	        let pronoun = if subject == "you" { "your" } else { "their" };
+	        return format!("{subject} {verb} the top card of {pronoun} library");
+	    }
     if let Some(look_at_top) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
         let owner = describe_possessive_player_filter(&look_at_top.player);
         let count_text = small_number_word(look_at_top.count as u32)
