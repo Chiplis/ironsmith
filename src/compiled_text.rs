@@ -6191,11 +6191,12 @@ fn describe_condition(condition: &Condition) -> String {
                 }
                 return format!("there is {}", described_filter.description());
             }
+            let described = with_indefinite_article(strip_indefinite_article(&described_filter.description()));
             format!(
                 "{} {} {}",
                 subject,
                 player_verb(&subject, "control", "controls"),
-                described_filter.description()
+                described
             )
         }
         Condition::PlayerControlsAtLeast {
@@ -14305,6 +14306,51 @@ fn rewrite_granted_triggered_ability_quote(text: &str) -> Option<String> {
     None
 }
 
+fn normalize_conditional_target_player_pronouns(text: &str) -> String {
+    // Some oracles refer back to a previously-chosen target player inside an "If ..." clause
+    // using "that player" rather than repeating "target player/opponent".
+    if text.contains('•') {
+        return text.to_string();
+    }
+    let normalized = normalize_conditional_target_player_pronoun(text, "target opponent");
+    normalize_conditional_target_player_pronoun(&normalized, "target player")
+}
+
+fn normalize_conditional_target_player_pronoun(text: &str, phrase: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let marker = format!(", {phrase}");
+    let Some(pos) = lower.find(&marker) else {
+        return text.to_string();
+    };
+    let prefix = &lower[..pos];
+    if !prefix.contains(phrase) {
+        return text.to_string();
+    }
+    let clause = if let Some(idx) = prefix.rfind(". ") {
+        &prefix[idx + 2..]
+    } else if let Some(idx) = prefix.rfind("? ") {
+        &prefix[idx + 2..]
+    } else if let Some(idx) = prefix.rfind("! ") {
+        &prefix[idx + 2..]
+    } else if let Some(idx) = prefix.rfind('\n') {
+        &prefix[idx + 1..]
+    } else {
+        prefix
+    };
+    if !clause.trim_start().starts_with("if ") {
+        return text.to_string();
+    }
+
+    // `pos` is the start of ", {phrase}".
+    let start = pos + 2;
+    let end = start + phrase.len();
+    let mut rewritten = String::with_capacity(text.len());
+    rewritten.push_str(&text[..start]);
+    rewritten.push_str("that player");
+    rewritten.push_str(&text[end..]);
+    rewritten
+}
+
 fn normalize_compiled_post_pass_effect(text: &str) -> String {
     let mut normalized = text.trim().to_string();
     if normalized.is_empty() {
@@ -14316,6 +14362,7 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_one_or_more_combat_damage_treasure_line(&normalized) {
         normalized = rewritten;
     }
+    normalized = normalize_conditional_target_player_pronouns(&normalized);
     let lower_normalized = normalized.to_ascii_lowercase();
     if lower_normalized
         == "at the beginning of your end step, for each creature you control, put a +1/+1 counter on that object. for each planeswalker you control, put a loyalty counter on that object."
