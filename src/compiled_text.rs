@@ -4313,8 +4313,24 @@ fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
         .to_string();
     subject = pluralize_noun_phrase(&subject);
 
+    // Zone-restricted counts with no owner specified are typically phrased
+    // as "in all <zone>s" in oracle text ("all players' hands", "all graveyards").
+    if filter.owner.is_none() && filter.zone == Some(Zone::Hand) {
+        subject = subject.replace(" in hand", " in all players' hands");
+    }
+    if filter.owner.is_none()
+        && !filter.single_graveyard
+        && filter.zone == Some(Zone::Graveyard)
+    {
+        subject = subject.replace(" in graveyard", " in all graveyards");
+    }
+
     let mentions_location = subject.contains(" in ") || subject.contains(" on ");
-    let mentions_controller_or_owner = subject.contains(" controls") || subject.contains(" owns");
+    // Prefer filter metadata over brittle string matching. Oracle typically omits
+    // "on the battlefield" when "you control"/"an opponent controls"/ownership is stated.
+    let mentions_controller_or_owner =
+        filter.controller.is_some() || filter.owner.is_some() || subject.contains(" controls")
+            || subject.contains(" owns");
     let is_combat_restricted =
         filter.attacking || filter.nonattacking || filter.blocking || filter.nonblocking;
     if filter.zone == Some(Zone::Battlefield)
@@ -5285,7 +5301,7 @@ fn describe_counter_type(counter_type: crate::object::CounterType) -> String {
     }
 }
 
-fn describe_value(value: &Value) -> String {
+pub(crate) fn describe_value(value: &Value) -> String {
     match value {
         Value::Fixed(n) => n.to_string(),
         Value::Add(left, right) => {

@@ -4,13 +4,13 @@
 //! that are calculated dynamically.
 
 use super::{StaticAbilityId, StaticAbilityKind};
+use crate::compiled_text::describe_value;
 use crate::continuous::{
     ContinuousEffect, EffectSourceType, EffectTarget, Modification, PtSublayer,
 };
 use crate::effect::Value;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::target::PlayerFilter;
 
 /// Characteristic-defining ability for power/toughness.
 ///
@@ -42,13 +42,13 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
         if self.power == self.toughness {
             format!(
                 "This creature's power and toughness are each equal to {}",
-                display_value(&self.power)
+                describe_value(&self.power)
             )
         } else {
             format!(
                 "This creature's power is {}, and its toughness is {}",
-                display_value(&self.power),
-                display_value(&self.toughness)
+                describe_value(&self.power),
+                describe_value(&self.toughness)
             )
         }
     }
@@ -79,90 +79,11 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
     }
 }
 
-fn display_value(value: &Value) -> String {
-    let strip_article = |text: &str| {
-        text.strip_prefix("a ")
-            .or_else(|| text.strip_prefix("an "))
-            .or_else(|| text.strip_prefix("the "))
-            .unwrap_or(text)
-            .to_string()
-    };
-    let pluralize_phrase = |text: &str| {
-        let normalized = text.trim();
-        if normalized.is_empty() {
-            return "objects".to_string();
-        }
-        let mut words: Vec<String> = normalized.split_whitespace().map(str::to_string).collect();
-        let qualifier_start = words.iter().position(|word| {
-            matches!(
-                word.as_str(),
-                "you"
-                    | "an"
-                    | "a"
-                    | "target"
-                    | "that"
-                    | "in"
-                    | "from"
-                    | "with"
-                    | "without"
-                    | "on"
-                    | "under"
-            )
-        });
-        let noun_idx = qualifier_start
-            .and_then(|idx| idx.checked_sub(1))
-            .unwrap_or_else(|| words.len().saturating_sub(1));
-        if let Some(noun) = words.get_mut(noun_idx)
-            && !noun.ends_with('s')
-        {
-            noun.push('s');
-        }
-        words.join(" ")
-    };
-
-    match value {
-        Value::Fixed(n) => n.to_string(),
-        Value::Add(left, right) => format!("{} plus {}", display_value(left), display_value(right)),
-        Value::X => "X".to_string(),
-        Value::XTimes(k) => {
-            if *k == 1 {
-                "X".to_string()
-            } else {
-                format!("{} times X", k)
-            }
-        }
-        Value::SourcePower => "its power".to_string(),
-        Value::SourceToughness => "its toughness".to_string(),
-        Value::Count(filter) => {
-            let desc = strip_article(&filter.description());
-            let mut phrase = pluralize_phrase(&desc);
-            if matches!(filter.controller, Some(PlayerFilter::You))
-                && !phrase.contains("you control")
-            {
-                phrase.push_str(" you control");
-            } else if matches!(filter.controller, Some(PlayerFilter::Opponent))
-                && !phrase.contains("an opponent controls")
-                && !phrase.contains("opponents control")
-            {
-                phrase.push_str(" an opponent controls");
-            }
-            format!("the number of {phrase}")
-        }
-        Value::CountScaled(filter, multiplier) => {
-            let desc = strip_article(&filter.description());
-            let phrase = pluralize_phrase(&desc);
-            format!("{multiplier} times the number of {phrase}")
-        }
-        Value::CreaturesDiedThisTurn => "the number of creatures that died this turn".to_string(),
-        Value::CountPlayers(_) => "the number of players".to_string(),
-        _ => format!("{:?}", value),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::target::ObjectFilter;
+    use crate::target::PlayerFilter;
 
     #[test]
     fn test_characteristic_defining_pt() {
