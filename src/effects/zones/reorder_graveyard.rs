@@ -27,7 +27,10 @@ impl ReorderGraveyardEffect {
     }
 }
 
-fn normalize_order_response(response: Vec<crate::ids::ObjectId>, original: &[crate::ids::ObjectId]) -> Vec<crate::ids::ObjectId> {
+fn normalize_order_response(
+    response: Vec<crate::ids::ObjectId>,
+    original: &[crate::ids::ObjectId],
+) -> Vec<crate::ids::ObjectId> {
     let mut remaining = original.to_vec();
     let mut out = Vec::with_capacity(original.len());
     for id in response {
@@ -74,4 +77,3 @@ impl EffectExecutor for ReorderGraveyardEffect {
         Box::new(self.clone())
     }
 }
-

@@ -1571,22 +1571,19 @@ impl StaticAbilityKind for AddSubtypesForFilter {
         };
         let filter_subject = subject_text(&self.filter);
         let (base, suffix) = split_subject_suffix(&filter_subject);
-        let filter_is_single_creature_type =
-            suffix.is_empty()
-                && !base.contains(' ')
-                && base
-                    .chars()
-                    .next()
-                    .is_some_and(|ch| ch.is_ascii_uppercase());
+        let filter_is_single_creature_type = suffix.is_empty()
+            && !base.contains(' ')
+            && base
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase());
         let adding_creature_types = self.subtypes.iter().all(Subtype::is_creature_type);
         let other_types = if filter_is_single_creature_type && adding_creature_types {
             "other creature types"
         } else {
             "other types"
         };
-        format!(
-            "{subject} {verb} {subtype_phrase} in addition to {possessive} {other_types}",
-        )
+        format!("{subject} {verb} {subtype_phrase} in addition to {possessive} {other_types}",)
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {

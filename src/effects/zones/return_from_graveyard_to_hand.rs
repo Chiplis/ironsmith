@@ -67,7 +67,9 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
                 count.max.unwrap_or(count.min)
             };
             if requested == 0 {
-                return Ok(EffectOutcome::from_result(EffectResult::Objects(Vec::new())));
+                return Ok(EffectOutcome::from_result(
+                    EffectResult::Objects(Vec::new()),
+                ));
             }
 
             let filter_ctx = ctx.filter_context(game);

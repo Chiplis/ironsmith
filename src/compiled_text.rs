@@ -4383,19 +4383,17 @@ fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
     if filter.owner.is_none() && filter.zone == Some(Zone::Hand) {
         subject = subject.replace(" in hand", " in all players' hands");
     }
-    if filter.owner.is_none()
-        && !filter.single_graveyard
-        && filter.zone == Some(Zone::Graveyard)
-    {
+    if filter.owner.is_none() && !filter.single_graveyard && filter.zone == Some(Zone::Graveyard) {
         subject = subject.replace(" in graveyard", " in all graveyards");
     }
 
     let mentions_location = subject.contains(" in ") || subject.contains(" on ");
     // Prefer filter metadata over brittle string matching. Oracle typically omits
     // "on the battlefield" when "you control"/"an opponent controls"/ownership is stated.
-    let mentions_controller_or_owner =
-        filter.controller.is_some() || filter.owner.is_some() || subject.contains(" controls")
-            || subject.contains(" owns");
+    let mentions_controller_or_owner = filter.controller.is_some()
+        || filter.owner.is_some()
+        || subject.contains(" controls")
+        || subject.contains(" owns");
     let is_combat_restricted =
         filter.attacking || filter.nonattacking || filter.blocking || filter.nonblocking;
     if filter.zone == Some(Zone::Battlefield)
@@ -4495,7 +4493,10 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     subject
 }
 
-fn describe_for_each_spells_cast_this_turn(player: &PlayerFilter, other_than_first: bool) -> String {
+fn describe_for_each_spells_cast_this_turn(
+    player: &PlayerFilter,
+    other_than_first: bool,
+) -> String {
     let mut base = match player {
         PlayerFilter::You => "spell you've cast this turn".to_string(),
         PlayerFilter::Opponent => "spell an opponent has cast this turn".to_string(),
@@ -4532,7 +4533,9 @@ fn describe_demonstrative_tagged_object_filter(
             && constraint.tag.as_str() == implicit_tag)
     });
 
-    let base_desc = strip_leading_article(&base.description()).trim().to_string();
+    let base_desc = strip_leading_article(&base.description())
+        .trim()
+        .to_string();
     if base_desc.is_empty() {
         Some("that object".to_string())
     } else {
@@ -6163,7 +6166,10 @@ fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
             format!("{} can't gain life", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::SearchLibraries(filter) => {
-            format!("{} can't search libraries", describe_player_set_filter(filter))
+            format!(
+                "{} can't search libraries",
+                describe_player_set_filter(filter)
+            )
         }
         crate::effect::Restriction::CastSpells(filter) => {
             format!("{} can't cast spells", describe_player_set_filter(filter))
@@ -6172,7 +6178,10 @@ fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
             format!("{} can't draw cards", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::DrawExtraCards(filter) => {
-            format!("{} can't draw extra cards", describe_player_set_filter(filter))
+            format!(
+                "{} can't draw extra cards",
+                describe_player_set_filter(filter)
+            )
         }
         crate::effect::Restriction::ChangeLifeTotal(filter) => {
             format!(
@@ -8537,7 +8546,9 @@ fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::Count(filter) => Some(describe_for_each_filter(filter)),
         Value::BasicLandTypesAmong(filter) => Some(describe_basic_land_types_among(filter)),
         Value::ColorsAmong(filter) => Some(describe_colors_among(filter)),
-        Value::ColorsOfManaSpentToCastThisSpell => Some("color of mana spent to cast this spell".to_string()),
+        Value::ColorsOfManaSpentToCastThisSpell => {
+            Some("color of mana spent to cast this spell".to_string())
+        }
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
         _ => None,
     }
@@ -9576,7 +9587,8 @@ fn describe_conditional_damage_instead(
         return None;
     }
     let true_damage = conditional.if_true[0].downcast_ref::<crate::effects::DealDamageEffect>()?;
-    let false_damage = conditional.if_false[0].downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let false_damage =
+        conditional.if_false[0].downcast_ref::<crate::effects::DealDamageEffect>()?;
     if true_damage.source_is_combat || false_damage.source_is_combat {
         return None;
     }
@@ -10157,20 +10169,19 @@ fn describe_effect_impl(effect: &Effect) -> String {
         }
         if matches!(
             put_counters.counter_type,
-            crate::object::CounterType::PlusOnePlusOne | crate::object::CounterType::MinusOneMinusOne
+            crate::object::CounterType::PlusOnePlusOne
+                | crate::object::CounterType::MinusOneMinusOne
         ) && let Value::Add(left, right) = &put_counters.count
             && left == right
         {
             let per_text = match left.as_ref() {
                 Value::Count(filter) => Some(describe_for_each_count_filter(filter)),
-                Value::SpellsCastThisTurn(player) => Some(describe_for_each_spells_cast_this_turn(
-                    player,
-                    false,
-                )),
-                Value::SpellsCastBeforeThisTurn(player) => Some(describe_for_each_spells_cast_this_turn(
-                    player,
-                    true,
-                )),
+                Value::SpellsCastThisTurn(player) => {
+                    Some(describe_for_each_spells_cast_this_turn(player, false))
+                }
+                Value::SpellsCastBeforeThisTurn(player) => {
+                    Some(describe_for_each_spells_cast_this_turn(player, true))
+                }
                 Value::Add(inner, offset)
                     if matches!(offset.as_ref(), Value::Fixed(n) if *n == -1)
                         && matches!(inner.as_ref(), Value::SpellsCastThisTurn(_)) =>
@@ -10832,9 +10843,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_possessive_player_filter(&shuffle_gy.player)
         );
     }
-    if let Some(reorder_gy) =
-        effect.downcast_ref::<crate::effects::ReorderGraveyardEffect>()
-    {
+    if let Some(reorder_gy) = effect.downcast_ref::<crate::effects::ReorderGraveyardEffect>() {
         return format!(
             "Reorder {} graveyard as you choose",
             describe_possessive_player_filter(&reorder_gy.player)
@@ -11175,9 +11184,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
         let spec = crate::target::ChooseSpec::Tagged(cast_tagged.tag.clone());
         let target = if cast_tagged.as_copy {
             let tag = cast_tagged.tag.as_str();
-            let tag_is_numbered = tag
-                .rsplit_once('_')
-                .is_some_and(|(_, suffix)| !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()));
+            let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
+                !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
+            });
             if tag == "it" || tag_is_numbered {
                 "the copy".to_string()
             } else {
@@ -11218,7 +11227,8 @@ fn describe_effect_impl(effect: &Effect) -> String {
         }
 
         if may.effects.len() == 1
-            && let Some(cast_tagged) = may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
+            && let Some(cast_tagged) =
+                may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
             && cast_tagged.as_copy
         {
             let mut inner = describe_effect_list(&may.effects);
@@ -14391,14 +14401,15 @@ fn normalize_known_low_tail_phrase(text: &str) -> String {
             "For each creature you control, Put a +1/+1 counter on that object",
         ) && tail.trim().is_empty()
         {
-            let clause =
-                "Put a +1/+1 counter on each creature you control. Untap those creatures.";
+            let clause = "Put a +1/+1 counter on each creature you control. Untap those creatures.";
             let clause = lower_clause_after_prefix(head, clause);
             return format!("{head}{clause}");
         }
     }
-    if let Some((head, tail)) = split_once_ascii_ci(sentence, "For each creature you control, Put a +1/+1 counter on that object. that creature gains Vigilance, gains Trample, and gains Indestructible until end of turn")
-        && tail.trim().is_empty()
+    if let Some((head, tail)) = split_once_ascii_ci(
+        sentence,
+        "For each creature you control, Put a +1/+1 counter on that object. that creature gains Vigilance, gains Trample, and gains Indestructible until end of turn",
+    ) && tail.trim().is_empty()
     {
         let clause = "Put a +1/+1 counter on each creature you control. Those creatures gain vigilance, trample, and indestructible until end of turn.";
         let clause = lower_clause_after_prefix(head, clause);
@@ -14429,15 +14440,14 @@ fn normalize_known_low_tail_phrase(text: &str) -> String {
 
     // Common surface: "<subject> gain {T}: <ability>. until <duration>."
     if let Some((before_until, duration)) = split_once_ascii_ci(sentence, ". until ") {
-        let (subject, ability, verb) = if let Some((subject, ability)) =
-            split_once_ascii_ci(before_until, " gain ")
-        {
-            (subject, ability, "gain")
-        } else if let Some((subject, ability)) = split_once_ascii_ci(before_until, " gains ") {
-            (subject, ability, "gains")
-        } else {
-            ("", "", "")
-        };
+        let (subject, ability, verb) =
+            if let Some((subject, ability)) = split_once_ascii_ci(before_until, " gain ") {
+                (subject, ability, "gain")
+            } else if let Some((subject, ability)) = split_once_ascii_ci(before_until, " gains ") {
+                (subject, ability, "gains")
+            } else {
+                ("", "", "")
+            };
 
         if !subject.is_empty() && !ability.is_empty() {
             let ability = ability.trim();
@@ -16016,9 +16026,12 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         );
     }
     if normalized.contains(". Return ")
-        && normalized
-            .split(". ")
-            .all(|clause| clause.trim_start().to_ascii_lowercase().starts_with("return "))
+        && normalized.split(". ").all(|clause| {
+            clause
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("return ")
+        })
     {
         fn parse_return_subtype(clause: &str) -> Option<String> {
             let clause = clause.trim().trim_end_matches('.');
@@ -17443,7 +17456,8 @@ fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
 
     (is_get(left_verb) && is_trait(right_verb))
         || (is_trait(left_verb) && is_get(right_verb))
-        || ((left_verb == "gets" && right_verb == "is") || (left_verb == "is" && right_verb == "gets"))
+        || ((left_verb == "gets" && right_verb == "is")
+            || (left_verb == "is" && right_verb == "gets"))
         || (is_state(left_verb) && is_state(right_verb))
 }
 
@@ -18300,7 +18314,8 @@ fn normalize_sentence_surface_style(line: &str) -> String {
                 let tail = normalized_trimmed[idx + sep_len..].trim();
                 if tail.contains(" • ")
                     && !head.is_empty()
-                    && let Some(rewritten) = format_choose_modes("", &format!("{} —", capitalize_first(head)), tail)
+                    && let Some(rewritten) =
+                        format_choose_modes("", &format!("{} —", capitalize_first(head)), tail)
                 {
                     return rewritten;
                 }
@@ -19292,7 +19307,10 @@ fn card_has_graveyard_activated_ability(def: &CardDefinition) -> bool {
             // Avoid false positives where the EFFECT references the graveyard (Yawgmoth's Will),
             // but the activation itself happens on the battlefield. We only want to treat this as
             // a graveyard activation if the COST/activation line mentions the graveyard.
-            let cost = lower.split_once(':').map(|(left, _)| left).unwrap_or(&lower);
+            let cost = lower
+                .split_once(':')
+                .map(|(left, _)| left)
+                .unwrap_or(&lower);
             cost.contains("from your graveyard") || cost.contains("in your graveyard")
         });
         is_activated && (zone_marked || text_marked)

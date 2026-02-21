@@ -887,7 +887,9 @@ pub fn resolve_value(
                 max_count = Some(max_count.map_or(count, |prev| prev.max(count)));
             }
             Ok(max_count.ok_or_else(|| {
-                ExecutionError::UnresolvableValue("MaxCardsInHand requires a matching player".to_string())
+                ExecutionError::UnresolvableValue(
+                    "MaxCardsInHand requires a matching player".to_string(),
+                )
             })?)
         }
 

@@ -183,7 +183,11 @@ fn evaluate_condition_simple(
                 .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
                 .any(|obj| filter.matches(obj, &ctx, game))
         }
-        Condition::PlayerOwnsCardNamedInZones { player, name, zones } => {
+        Condition::PlayerOwnsCardNamedInZones {
+            player,
+            name,
+            zones,
+        } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
             };
@@ -512,7 +516,11 @@ fn evaluate_condition(
                 .any(|obj| filter.matches(obj, &filter_ctx, game));
             Ok(has_matching)
         }
-        Condition::PlayerOwnsCardNamedInZones { player, name, zones } => {
+        Condition::PlayerOwnsCardNamedInZones {
+            player,
+            name,
+            zones,
+        } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             let mut filter_ctx = ctx.filter_context(game);
             filter_ctx.iterated_player = Some(player_id);

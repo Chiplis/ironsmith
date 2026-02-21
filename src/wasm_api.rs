@@ -682,6 +682,118 @@ impl DecisionView {
                     })
                     .collect(),
             },
+            DecisionContext::Order(order) => DecisionView::SelectOptions {
+                player: order.player.0,
+                description: format!("{} (web UI keeps current order)", order.description),
+                min: 1,
+                max: 1,
+                options: vec![OptionView {
+                    index: 0,
+                    description: "Keep current order".to_string(),
+                    legal: true,
+                }],
+            },
+            DecisionContext::Distribute(distribute) => DecisionView::SelectOptions {
+                player: distribute.player.0,
+                description: format!(
+                    "{} (select recipients; remaining amount goes to first selected target)",
+                    distribute.description
+                ),
+                min: 0,
+                max: distribute.targets.len(),
+                options: distribute
+                    .targets
+                    .iter()
+                    .enumerate()
+                    .map(|(index, target)| OptionView {
+                        index,
+                        description: target.name.clone(),
+                        legal: true,
+                    })
+                    .collect(),
+            },
+            DecisionContext::Colors(colors) => {
+                let choices = colors_for_context(colors);
+                DecisionView::SelectOptions {
+                    player: colors.player.0,
+                    description: colors.description.clone(),
+                    min: if colors.count == 0 { 0 } else { 1 },
+                    max: if colors.same_color {
+                        1
+                    } else {
+                        choices.len().max(1)
+                    },
+                    options: choices
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, color)| OptionView {
+                            index,
+                            description: color_name(color).to_string(),
+                            legal: true,
+                        })
+                        .collect(),
+                }
+            }
+            DecisionContext::Counters(counters) => DecisionView::SelectOptions {
+                player: counters.player.0,
+                description: format!(
+                    "Choose up to {} counters to remove from {}",
+                    counters.max_total, counters.target_name
+                ),
+                min: 0,
+                max: counters.available_counters.len(),
+                options: counters
+                    .available_counters
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (counter_type, available))| OptionView {
+                        index,
+                        description: format!(
+                            "{} ({available} available)",
+                            split_camel_case(&format!("{counter_type:?}"))
+                        ),
+                        legal: *available > 0,
+                    })
+                    .collect(),
+            },
+            DecisionContext::Partition(partition) => DecisionView::SelectObjects {
+                player: partition.player.0,
+                description: format!("{} ({})", partition.description, partition.secondary_label),
+                min: 0,
+                max: Some(partition.cards.len()),
+                candidates: partition
+                    .cards
+                    .iter()
+                    .map(|(id, name)| ObjectChoiceView {
+                        id: id.0,
+                        name: name.clone(),
+                        legal: true,
+                    })
+                    .collect(),
+            },
+            DecisionContext::Proliferate(proliferate) => DecisionView::SelectOptions {
+                player: proliferate.player.0,
+                description: "Choose permanents and/or players to proliferate".to_string(),
+                min: 0,
+                max: proliferate.eligible_permanents.len() + proliferate.eligible_players.len(),
+                options: proliferate
+                    .eligible_permanents
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (_, name))| OptionView {
+                        index,
+                        description: format!("Permanent: {name}"),
+                        legal: true,
+                    })
+                    .chain(proliferate.eligible_players.iter().enumerate().map(
+                        |(offset, (_, name))| OptionView {
+                            index: proliferate.eligible_permanents.len() + offset,
+                            description: format!("Player: {name}"),
+                            legal: true,
+                        },
+                    ))
+                    .collect(),
+            },
             DecisionContext::SelectObjects(objects) => DecisionView::SelectObjects {
                 player: objects.player.0,
                 description: objects.description.clone(),
@@ -850,6 +962,12 @@ enum ReplayDecisionAnswer {
     Number(u32),
     Options(Vec<usize>),
     Objects(Vec<ObjectId>),
+    Order(Vec<ObjectId>),
+    Distribute(Vec<(Target, u32)>),
+    Colors(Vec<crate::color::Color>),
+    Counters(Vec<(crate::object::CounterType, u32)>),
+    Partition(Vec<ObjectId>),
+    Proliferate(crate::decisions::specs::ProliferateResponse),
     Targets(Vec<Target>),
     Priority(LegalAction),
     Attackers(Vec<crate::decisions::spec::AttackerDeclaration>),
@@ -1082,8 +1200,17 @@ impl DecisionMaker for WasmReplayDecisionMaker {
         _game: &GameState,
         ctx: &crate::decisions::context::OrderContext,
     ) -> Vec<ObjectId> {
-        self.capture_once(DecisionContext::Order(ctx.clone()));
-        ctx.items.iter().map(|(id, _)| *id).collect()
+        match self.answers.front() {
+            Some(ReplayDecisionAnswer::Order(order)) => {
+                let order = order.clone();
+                self.answers.pop_front();
+                order
+            }
+            _ => {
+                self.capture_once(DecisionContext::Order(ctx.clone()));
+                ctx.items.iter().map(|(id, _)| *id).collect()
+            }
+        }
     }
 
     fn decide_distribute(
@@ -1091,8 +1218,17 @@ impl DecisionMaker for WasmReplayDecisionMaker {
         _game: &GameState,
         ctx: &crate::decisions::context::DistributeContext,
     ) -> Vec<(Target, u32)> {
-        self.capture_once(DecisionContext::Distribute(ctx.clone()));
-        Vec::new()
+        match self.answers.front() {
+            Some(ReplayDecisionAnswer::Distribute(distribution)) => {
+                let distribution = distribution.clone();
+                self.answers.pop_front();
+                distribution
+            }
+            _ => {
+                self.capture_once(DecisionContext::Distribute(ctx.clone()));
+                Vec::new()
+            }
+        }
     }
 
     fn decide_colors(
@@ -1100,8 +1236,17 @@ impl DecisionMaker for WasmReplayDecisionMaker {
         _game: &GameState,
         ctx: &crate::decisions::context::ColorsContext,
     ) -> Vec<crate::color::Color> {
-        self.capture_once(DecisionContext::Colors(ctx.clone()));
-        vec![crate::color::Color::Green; ctx.count as usize]
+        match self.answers.front() {
+            Some(ReplayDecisionAnswer::Colors(colors)) => {
+                let colors = colors.clone();
+                self.answers.pop_front();
+                colors
+            }
+            _ => {
+                self.capture_once(DecisionContext::Colors(ctx.clone()));
+                vec![crate::color::Color::Green; ctx.count as usize]
+            }
+        }
     }
 
     fn decide_counters(
@@ -1109,8 +1254,17 @@ impl DecisionMaker for WasmReplayDecisionMaker {
         _game: &GameState,
         ctx: &crate::decisions::context::CountersContext,
     ) -> Vec<(crate::object::CounterType, u32)> {
-        self.capture_once(DecisionContext::Counters(ctx.clone()));
-        Vec::new()
+        match self.answers.front() {
+            Some(ReplayDecisionAnswer::Counters(counters)) => {
+                let counters = counters.clone();
+                self.answers.pop_front();
+                counters
+            }
+            _ => {
+                self.capture_once(DecisionContext::Counters(ctx.clone()));
+                Vec::new()
+            }
+        }
     }
 
     fn decide_partition(
@@ -1118,8 +1272,17 @@ impl DecisionMaker for WasmReplayDecisionMaker {
         _game: &GameState,
         ctx: &crate::decisions::context::PartitionContext,
     ) -> Vec<ObjectId> {
-        self.capture_once(DecisionContext::Partition(ctx.clone()));
-        Vec::new()
+        match self.answers.front() {
+            Some(ReplayDecisionAnswer::Partition(partition)) => {
+                let partition = partition.clone();
+                self.answers.pop_front();
+                partition
+            }
+            _ => {
+                self.capture_once(DecisionContext::Partition(ctx.clone()));
+                Vec::new()
+            }
+        }
     }
 
     fn decide_proliferate(
@@ -1127,8 +1290,17 @@ impl DecisionMaker for WasmReplayDecisionMaker {
         _game: &GameState,
         ctx: &crate::decisions::context::ProliferateContext,
     ) -> crate::decisions::specs::ProliferateResponse {
-        self.capture_once(DecisionContext::Proliferate(ctx.clone()));
-        crate::decisions::specs::ProliferateResponse::default()
+        match self.answers.front() {
+            Some(ReplayDecisionAnswer::Proliferate(response)) => {
+                let response = response.clone();
+                self.answers.pop_front();
+                response
+            }
+            _ => {
+                self.capture_once(DecisionContext::Proliferate(ctx.clone()));
+                crate::decisions::specs::ProliferateResponse::default()
+            }
+        }
     }
 }
 
@@ -2044,6 +2216,197 @@ impl WasmGame {
                         .collect::<Vec<_>>(),
                 ))
             }
+            (DecisionContext::Order(order), UiCommand::SelectOptions { option_indices }) => {
+                validate_option_selection(0, Some(1), &option_indices, &[0usize])?;
+                Ok(ReplayDecisionAnswer::Order(
+                    order.items.iter().map(|(id, _)| *id).collect(),
+                ))
+            }
+            (
+                DecisionContext::Distribute(distribute),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let legal: Vec<usize> = (0..distribute.targets.len()).collect();
+                validate_option_selection(
+                    0,
+                    Some(distribute.targets.len()),
+                    &option_indices,
+                    &legal,
+                )?;
+
+                if distribute.targets.is_empty() || distribute.total == 0 {
+                    return Ok(ReplayDecisionAnswer::Distribute(Vec::new()));
+                }
+
+                let mut selected = unique_indices(&option_indices);
+                if selected.is_empty() {
+                    selected.push(0);
+                }
+                if distribute.min_per_target > 0 {
+                    let max_selectable = (distribute.total / distribute.min_per_target) as usize;
+                    if max_selectable == 0 {
+                        return Ok(ReplayDecisionAnswer::Distribute(Vec::new()));
+                    }
+                    if selected.len() > max_selectable {
+                        selected.truncate(max_selectable);
+                    }
+                    if selected.is_empty() {
+                        selected.push(0);
+                    }
+                }
+
+                let mut allocations: Vec<(Target, u32)> = selected
+                    .into_iter()
+                    .filter_map(|index| {
+                        distribute
+                            .targets
+                            .get(index)
+                            .map(|target| (target.target, 0))
+                    })
+                    .collect();
+                if allocations.is_empty() {
+                    return Ok(ReplayDecisionAnswer::Distribute(Vec::new()));
+                }
+
+                let mut remaining = distribute.total;
+                for (_, amount) in &mut allocations {
+                    let grant = distribute.min_per_target.min(remaining);
+                    *amount = grant;
+                    remaining = remaining.saturating_sub(grant);
+                }
+                if remaining > 0
+                    && let Some((_, amount)) = allocations.first_mut()
+                {
+                    *amount += remaining;
+                }
+                allocations.retain(|(_, amount)| *amount > 0);
+                Ok(ReplayDecisionAnswer::Distribute(allocations))
+            }
+            (DecisionContext::Colors(colors), UiCommand::SelectOptions { option_indices }) => {
+                if colors.count == 0 {
+                    validate_option_selection(0, Some(0), &option_indices, &[])?;
+                    return Ok(ReplayDecisionAnswer::Colors(Vec::new()));
+                }
+
+                let choices = colors_for_context(colors);
+                if choices.is_empty() {
+                    return Err(JsValue::from_str("no legal colors in colors decision"));
+                }
+                let legal: Vec<usize> = (0..choices.len()).collect();
+                let max = if colors.same_color { 1 } else { choices.len() };
+                validate_option_selection(1, Some(max), &option_indices, &legal)?;
+
+                if colors.same_color {
+                    let choice = option_indices.first().copied().ok_or_else(|| {
+                        JsValue::from_str("color choice requires selecting one option")
+                    })?;
+                    let color = choices.get(choice).copied().ok_or_else(|| {
+                        JsValue::from_str("selected color option is out of range")
+                    })?;
+                    return Ok(ReplayDecisionAnswer::Colors(vec![
+                        color;
+                        colors.count as usize
+                    ]));
+                }
+
+                let mut selected: Vec<crate::color::Color> = unique_indices(&option_indices)
+                    .into_iter()
+                    .filter_map(|index| choices.get(index).copied())
+                    .collect();
+                if selected.is_empty() {
+                    return Err(JsValue::from_str("choose at least one color"));
+                }
+                let desired = colors.count as usize;
+                if selected.len() > desired {
+                    selected.truncate(desired);
+                }
+                if selected.len() < desired {
+                    let pad = selected[0];
+                    selected.resize(desired, pad);
+                }
+                Ok(ReplayDecisionAnswer::Colors(selected))
+            }
+            (DecisionContext::Counters(counters), UiCommand::SelectOptions { option_indices }) => {
+                let legal: Vec<usize> = counters
+                    .available_counters
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (_, available))| *available > 0)
+                    .map(|(index, _)| index)
+                    .collect();
+                validate_option_selection(
+                    0,
+                    Some(counters.available_counters.len()),
+                    &option_indices,
+                    &legal,
+                )?;
+
+                let mut remaining = counters.max_total;
+                let mut selected: Vec<(crate::object::CounterType, u32, u32)> = Vec::new();
+                for index in unique_indices(&option_indices) {
+                    if remaining == 0 {
+                        break;
+                    }
+                    let Some((counter_type, available)) =
+                        counters.available_counters.get(index).copied()
+                    else {
+                        continue;
+                    };
+                    if available == 0 {
+                        continue;
+                    }
+                    selected.push((counter_type, 1, available));
+                    remaining -= 1;
+                }
+                for (_, chosen, available) in &mut selected {
+                    if remaining == 0 {
+                        break;
+                    }
+                    let extra_capacity = available.saturating_sub(*chosen);
+                    let extra = extra_capacity.min(remaining);
+                    *chosen += extra;
+                    remaining -= extra;
+                }
+                let selected: Vec<(crate::object::CounterType, u32)> = selected
+                    .into_iter()
+                    .map(|(counter_type, chosen, _)| (counter_type, chosen))
+                    .collect();
+                Ok(ReplayDecisionAnswer::Counters(selected))
+            }
+            (DecisionContext::Partition(partition), UiCommand::SelectObjects { object_ids }) => {
+                let legal_ids: Vec<u64> = partition.cards.iter().map(|(id, _)| id.0).collect();
+                validate_object_selection(0, Some(legal_ids.len()), &object_ids, &legal_ids)?;
+                Ok(ReplayDecisionAnswer::Partition(
+                    unique_object_ids(&object_ids)
+                        .into_iter()
+                        .map(ObjectId::from_raw)
+                        .collect(),
+                ))
+            }
+            (
+                DecisionContext::Proliferate(proliferate),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let permanent_count = proliferate.eligible_permanents.len();
+                let total_options = permanent_count + proliferate.eligible_players.len();
+                let legal: Vec<usize> = (0..total_options).collect();
+                validate_option_selection(0, Some(total_options), &option_indices, &legal)?;
+
+                let mut response = crate::decisions::specs::ProliferateResponse::default();
+                for index in unique_indices(&option_indices) {
+                    if index < permanent_count {
+                        if let Some((permanent, _)) = proliferate.eligible_permanents.get(index) {
+                            response.permanents.push(*permanent);
+                        }
+                        continue;
+                    }
+                    let player_index = index - permanent_count;
+                    if let Some((player, _)) = proliferate.eligible_players.get(player_index) {
+                        response.players.push(*player);
+                    }
+                }
+                Ok(ReplayDecisionAnswer::Proliferate(response))
+            }
             (DecisionContext::Targets(_), UiCommand::SelectTargets { targets }) => {
                 let converted: Vec<Target> = targets
                     .into_iter()
@@ -2105,9 +2468,9 @@ impl WasmGame {
                 validate_option_selection(1, Some(1), &option_indices, &legal)?;
                 Ok(ReplayDecisionAnswer::Options(option_indices))
             }
-            (unsupported_ctx, _) => Err(JsValue::from_str(&format!(
-                "pending replay decision is not yet interactive in WASM UI: {}",
-                decision_context_kind(unsupported_ctx)
+            (ctx, _) => Err(JsValue::from_str(&format!(
+                "command type does not match pending replay decision: {}",
+                decision_context_kind(ctx)
             ))),
         }
     }
@@ -5800,7 +6163,9 @@ fn describe_value(
         }
         crate::effect::Value::LifeTotal(_) => "that player's life total".to_string(),
         crate::effect::Value::CardsInHand(_) => "the number of cards in hand".to_string(),
-        crate::effect::Value::MaxCardsInHand(_) => "the greatest number of cards in hand".to_string(),
+        crate::effect::Value::MaxCardsInHand(_) => {
+            "the greatest number of cards in hand".to_string()
+        }
         crate::effect::Value::CardsInGraveyard(_) => "the number of cards in graveyard".to_string(),
         crate::effect::Value::SpellsCastThisTurn(_) => "spells cast this turn".to_string(),
         crate::effect::Value::SpellsCastBeforeThisTurn(_) => "spells cast before this".to_string(),
@@ -6174,6 +6539,47 @@ fn attack_target_from_input(input: &AttackTargetInput) -> AttackTarget {
             AttackTarget::Planeswalker(ObjectId::from_raw(*object))
         }
     }
+}
+
+fn colors_for_context(ctx: &crate::decisions::context::ColorsContext) -> Vec<crate::color::Color> {
+    if let Some(available) = &ctx.available_colors {
+        if !available.is_empty() {
+            return available.clone();
+        }
+    }
+    crate::color::Color::ALL.to_vec()
+}
+
+fn color_name(color: crate::color::Color) -> &'static str {
+    match color {
+        crate::color::Color::White => "White",
+        crate::color::Color::Blue => "Blue",
+        crate::color::Color::Black => "Black",
+        crate::color::Color::Red => "Red",
+        crate::color::Color::Green => "Green",
+    }
+}
+
+fn unique_indices(indices: &[usize]) -> Vec<usize> {
+    let mut unique = Vec::new();
+    let mut seen = HashSet::new();
+    for &index in indices {
+        if seen.insert(index) {
+            unique.push(index);
+        }
+    }
+    unique
+}
+
+fn unique_object_ids(ids: &[u64]) -> Vec<u64> {
+    let mut unique = Vec::new();
+    let mut seen = HashSet::new();
+    for &id in ids {
+        if seen.insert(id) {
+            unique.push(id);
+        }
+    }
+    unique
 }
 
 fn decision_context_player(ctx: &DecisionContext) -> PlayerId {

@@ -163,10 +163,7 @@ mod tests {
                 "Filter should include Plains subtype"
             );
             assert!(debug_str.contains("Land"), "Filter should be for lands");
-            assert!(
-                debug_str.contains("Library"),
-                "Should search the library"
-            );
+            assert!(debug_str.contains("Library"), "Should search the library");
             assert!(
                 debug_str.contains("PutOntoBattlefieldEffect") && debug_str.contains("Battlefield"),
                 "Destination should be battlefield"

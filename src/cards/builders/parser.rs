@@ -697,14 +697,15 @@ fn apply_line_ast(
                     .and_then(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())
                     .map(|damage| damage.target.clone())
                 && replacement.if_true.len() == 1
-                && let Some(replacement_damage) = replacement.if_true[0]
-                    .downcast_ref::<crate::effects::DealDamageEffect>()
+                && let Some(replacement_damage) =
+                    replacement.if_true[0].downcast_ref::<crate::effects::DealDamageEffect>()
             {
                 let mut replacement = replacement.clone();
                 // If the replacement clause omitted a target, the parser will default it to
                 // "target player or planeswalker". For spells that are modifying prior damage,
                 // we want to preserve the original target.
-                if replacement_damage.target == ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::Any) {
+                if replacement_damage.target == ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::Any)
+                {
                     replacement.if_true = vec![Effect::deal_damage(
                         replacement_damage.amount.clone(),
                         previous_target,
@@ -1531,8 +1532,12 @@ fn looks_like_delayed_next_end_step_intro(tokens: &[Token]) -> bool {
     if !tokens.get(idx).is_some_and(|token| token.is_word("next")) {
         return false;
     }
-    tokens.get(idx + 1).is_some_and(|token| token.is_word("end"))
-        && tokens.get(idx + 2).is_some_and(|token| token.is_word("step"))
+    tokens
+        .get(idx + 1)
+        .is_some_and(|token| token.is_word("end"))
+        && tokens
+            .get(idx + 2)
+            .is_some_and(|token| token.is_word("step"))
 }
 
 fn split_trigger_sentence_chunks(sentences: &[String], line_index: usize) -> Vec<String> {

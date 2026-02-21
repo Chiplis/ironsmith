@@ -406,8 +406,10 @@ fn split_common_clause_conjunctions(text: &str) -> String {
                 let from = format!("{verb} no permanents other than this {this_type}{punct}");
                 let to = format!("{verb} no other permanents{punct}");
                 normalized = normalized.replace(&from, &to);
-                normalized = normalized.replace(&from.to_ascii_lowercase(), &to.to_ascii_lowercase());
-                let from_singular = format!("{verb} no permanent other than this {this_type}{punct}");
+                normalized =
+                    normalized.replace(&from.to_ascii_lowercase(), &to.to_ascii_lowercase());
+                let from_singular =
+                    format!("{verb} no permanent other than this {this_type}{punct}");
                 normalized = normalized.replace(&from_singular, &to);
                 normalized = normalized.replace(
                     &from_singular.to_ascii_lowercase(),

@@ -3940,7 +3940,8 @@ fn parse_spell_line_instead_followup_merges_into_prior_spell_effect() {
     let rendered = compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("Deal 2 damage to any target")
-            && rendered.contains("It deals 4 damage instead if you control three or more artifacts"),
+            && rendered
+                .contains("It deals 4 damage instead if you control three or more artifacts"),
         "expected metalcraft line to replace prior damage amount and reuse target, got {rendered}"
     );
 }
