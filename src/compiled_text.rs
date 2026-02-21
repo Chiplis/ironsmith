@@ -4905,7 +4905,12 @@ fn ensure_trailing_period(text: &str) -> String {
     if trimmed.is_empty() {
         return String::new();
     }
-    if trimmed.ends_with('.') {
+    if trimmed.ends_with('.')
+        || trimmed.ends_with('!')
+        || trimmed.ends_with('?')
+        || trimmed.ends_with('"')
+        || trimmed.ends_with(')')
+    {
         trimmed.to_string()
     } else {
         format!("{trimmed}.")
@@ -18090,6 +18095,7 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         && !normalized.ends_with('!')
         && !normalized.ends_with('?')
         && !normalized.ends_with('"')
+        && !normalized.ends_with(')')
     {
         normalized.push('.');
     }
@@ -20782,6 +20788,17 @@ mod normalize_sentence_surface_style_tests {
         assert_eq!(
             normalized,
             "Choose four. You may choose the same mode more than once.\n• You gain 4 life.\n• Draw a card."
+        );
+    }
+
+    #[test]
+    fn does_not_append_terminal_period_after_reminder_parenthetical() {
+        let normalized = normalize_sentence_surface_style(
+            "Target creature gets +1/+1 until end of turn. (It can't be blocked.)",
+        );
+        assert_eq!(
+            normalized,
+            "Target creature gets +1/+1 until end of turn. (It can't be blocked.)"
         );
     }
 }
