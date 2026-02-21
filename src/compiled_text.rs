@@ -80,6 +80,52 @@ fn lowercase_first(text: &str) -> String {
     }
 }
 
+fn lowercase_may_clause(text: &str) -> String {
+    // Oracle uses lowercase imperatives after "may" ("you may put...", "that player may search...").
+    // Avoid lowercasing leading proper nouns/plurals (e.g. creature types like "Allies").
+    let Some(first) = text.split_whitespace().next() else {
+        return String::new();
+    };
+    let should_lowercase = matches!(
+        first,
+        "A" | "An"
+            | "The"
+            | "Target"
+            | "Add"
+            | "Attach"
+            | "Cast"
+            | "Choose"
+            | "Copy"
+            | "Counter"
+            | "Create"
+            | "Destroy"
+            | "Discard"
+            | "Draw"
+            | "Exile"
+            | "Fight"
+            | "Gain"
+            | "Lose"
+            | "Mill"
+            | "Pay"
+            | "Play"
+            | "Put"
+            | "Regenerate"
+            | "Reveal"
+            | "Return"
+            | "Sacrifice"
+            | "Scry"
+            | "Search"
+            | "Shuffle"
+            | "Tap"
+            | "Transform"
+            | "Untap"
+    );
+    if should_lowercase {
+        return lowercase_first(text);
+    }
+    text.to_string()
+}
+
 fn describe_mana_pool_owner(filter: &PlayerFilter) -> String {
     let player = describe_player_filter(filter);
     if player == "you" || player == "target you" {
@@ -6323,36 +6369,114 @@ fn describe_condition(condition: &Condition) -> String {
                 format!("at least {amount} mana was spent to cast this spell")
             }
         }
-        Condition::YouControlCommander => "you control your commander".to_string(),
-        Condition::TaggedObjectMatches(tag, filter) => {
-            let desc = filter.description();
-            if is_implicit_reference_tag(tag.as_str()) {
-                // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
-                let subject = if matches!(tag.as_str(), "triggering" | "damaged") {
-                    "that object"
-                } else {
-                    "it"
-                };
-                let stripped = strip_leading_article(&desc).to_ascii_lowercase();
-                let card_context = is_generated_internal_tag(tag.as_str())
-                    || tag.as_str().starts_with("exiled_")
-                    || tag.as_str().starts_with("revealed_");
-                if stripped == "land" {
-                    let noun = if card_context { "land card" } else { "land" };
-                    return format!("{subject} is a {noun}");
-                }
-                if stripped == "creature" {
-                    let noun = if card_context {
-                        "creature card"
-                    } else {
-                        "creature"
-                    };
-                    return format!("{subject} is a {noun}");
-                }
-                return format!("{subject} matches {desc}");
-            }
-            format!("the tagged object '{}' matches {desc}", tag.as_str())
-        }
+	        Condition::YouControlCommander => "you control your commander".to_string(),
+	        Condition::TaggedObjectMatches(tag, filter) => {
+	            let desc = filter.description();
+	            if is_implicit_reference_tag(tag.as_str()) {
+	                // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
+	                let subject = if matches!(tag.as_str(), "triggering" | "damaged") {
+	                    "that object"
+	                } else {
+	                    "it"
+	                };
+	                let card_context = is_generated_internal_tag(tag.as_str())
+	                    || tag.as_str().starts_with("exiled_")
+	                    || tag.as_str().starts_with("revealed_");
+	                let is_clause = |noun_phrase: &str| {
+	                    let phrase = with_indefinite_article(noun_phrase);
+	                    if subject == "it" {
+	                        format!("it's {phrase}")
+	                    } else {
+	                        format!("{subject} is {phrase}")
+	                    }
+	                };
+
+	                if card_context
+	                    && !filter.card_types.is_empty()
+	                    && filter.zone.is_none()
+	                    && filter.controller.is_none()
+	                    && filter.owner.is_none()
+	                    && !filter.single_graveyard
+	                    && filter.targets_player.is_none()
+	                    && filter.targets_object.is_none()
+	                    && !filter.targets_any_of
+	                    && filter.all_card_types.is_empty()
+	                    && filter.excluded_card_types.is_empty()
+	                    && filter.subtypes.is_empty()
+	                    && !filter.type_or_subtype_union
+	                    && filter.excluded_subtypes.is_empty()
+	                    && filter.supertypes.is_empty()
+	                    && filter.excluded_supertypes.is_empty()
+	                    && filter.colors.is_none()
+	                    && filter.excluded_colors.is_empty()
+	                    && !filter.colorless
+	                    && !filter.multicolored
+	                    && !filter.monocolored
+	                    && filter.all_colors.is_none()
+	                    && filter.exactly_two_colors.is_none()
+	                    && !filter.historic
+	                    && !filter.nonhistoric
+	                    && !filter.token
+	                    && !filter.nontoken
+	                    && filter.face_down.is_none()
+	                    && !filter.other
+	                    && !filter.tapped
+	                    && !filter.untapped
+	                    && !filter.attacking
+	                    && !filter.nonattacking
+	                    && !filter.blocking
+	                    && !filter.nonblocking
+	                    && !filter.entered_since_your_last_turn_ended
+	                    && filter.power.is_none()
+	                    && filter.toughness.is_none()
+	                    && filter.mana_value.is_none()
+	                    && filter.mana_value_eq_counters_on_source.is_none()
+	                    && !filter.has_mana_cost
+	                    && !filter.has_tap_activated_ability
+	                    && !filter.no_abilities
+	                    && !filter.no_x_in_cost
+	                    && filter.with_counter.is_none()
+	                    && filter.without_counter.is_none()
+	                    && filter.name.is_none()
+	                    && filter.excluded_name.is_none()
+	                    && filter.alternative_cast.is_none()
+	                    && filter.static_abilities.is_empty()
+	                    && filter.excluded_static_abilities.is_empty()
+	                    && filter.custom_static_markers.is_empty()
+	                    && filter.excluded_custom_static_markers.is_empty()
+	                    && !filter.is_commander
+	                    && !filter.noncommander
+	                    && filter.tagged_constraints.is_empty()
+	                    && filter.specific.is_none()
+	                    && filter.any_of.is_empty()
+	                    && !filter.source
+	                {
+	                    let words = filter
+	                        .card_types
+	                        .iter()
+	                        .map(|card_type| describe_card_type_word_local(*card_type).to_string())
+	                        .collect::<Vec<_>>();
+	                    let noun_phrase = format!("{} card", join_with_or(&words));
+	                    return is_clause(&noun_phrase);
+	                }
+
+	                let stripped = strip_leading_article(&desc).to_ascii_lowercase();
+	                if stripped == "land" {
+	                    let noun = if card_context { "land card" } else { "land" };
+	                    return is_clause(noun);
+	                }
+	                if stripped == "creature" {
+	                    let noun = if card_context {
+	                        "creature card"
+	                    } else {
+	                        "creature"
+	                    };
+	                    return is_clause(noun);
+	                }
+	                return format!("{subject} matches {desc}");
+	            }
+	            format!("the tagged object '{}' matches {desc}", tag.as_str())
+	        }
         Condition::PlayerTaggedObjectMatches { player, tag, filter } => {
             if let Some(action) = tag_action_from_name(tag.as_str()) {
                 let object_text = with_indefinite_article(&filter.description());
@@ -6520,32 +6644,33 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
-	        if idx + 1 < filtered.len()
-	            && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
-	            && let Some(move_back) =
-	                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
-	            && let Some(compact) = describe_exile_then_return(tagged, move_back)
-	        {
-	            parts.push(compact);
-	            idx += 2;
-	            continue;
-	        }
-	        if idx + 1 < filtered.len()
-	            && let Some(reveal_top) =
-	                filtered[idx].downcast_ref::<crate::effects::RevealTopEffect>()
-	            && let Some(conditional) =
-	                filtered[idx + 1].downcast_ref::<crate::effects::ConditionalEffect>()
-	            && let Some(compact) = describe_reveal_top_then_if_put_into_hand(reveal_top, conditional)
-	        {
-	            parts.push(compact);
-	            idx += 2;
-	            continue;
-	        }
-	        if idx + 1 < filtered.len()
-	            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
-	            && let Some(choose_new) =
-	                filtered[idx + 1].downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
-	            && let Some(compact) = describe_with_id_then_choose_new_targets(with_id, choose_new)
+        if idx + 1 < filtered.len()
+            && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(move_back) =
+                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) = describe_exile_then_return(tagged, move_back)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(reveal_top) =
+                filtered[idx].downcast_ref::<crate::effects::RevealTopEffect>()
+            && let Some(conditional) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(compact) =
+                describe_reveal_top_then_if_put_into_hand(reveal_top, conditional)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(choose_new) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
+            && let Some(compact) = describe_with_id_then_choose_new_targets(with_id, choose_new)
         {
             parts.push(compact);
             idx += 2;
@@ -8068,7 +8193,8 @@ fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand(
     }
     let reveal = for_players.effects[0].downcast_ref::<crate::effects::RevealTopEffect>()?;
     let reveal_tag = reveal.tag.as_ref()?;
-    if reveal.player != PlayerFilter::IteratedPlayer || !reveal_tag.as_str().starts_with("revealed_")
+    if reveal.player != PlayerFilter::IteratedPlayer
+        || !reveal_tag.as_str().starts_with("revealed_")
     {
         return None;
     }
@@ -9206,17 +9332,17 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_effect_list(&for_each_tagged.effects)
         );
     }
-	    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
-	        if let Some(compact) =
-	            describe_for_players_reveal_top_mana_value_life_then_put_into_hand(for_players)
-	        {
-	            return compact;
-	        }
-	        if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players) {
-	            return compact;
-	        }
-	        if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
-	            return compact;
+    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if let Some(compact) =
+            describe_for_players_reveal_top_mana_value_life_then_put_into_hand(for_players)
+        {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_choose_then_sacrifice(for_players) {
+            return compact;
         }
         if let Some(compact) = describe_for_players_damage_and_controlled_damage(for_players) {
             return compact;
@@ -9328,34 +9454,34 @@ fn describe_effect_impl(effect: &Effect) -> String {
             choose.tag.as_str()
         );
     }
-	    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
-	        let target = describe_choose_spec(&move_to_zone.target);
-	        return match move_to_zone.zone {
-	            Zone::Exile => format!("Exile {target}"),
-	            Zone::Graveyard => format!("Put {target} into its owner's graveyard"),
-	            Zone::Hand => {
-	                if let ChooseSpec::Tagged(tag) = move_to_zone.target.base()
-	                    && (tag.as_str().starts_with("revealed_")
-	                        || tag.as_str().starts_with("searched_")
-	                        || tag.as_str().starts_with("milled_")
-	                        || tag.as_str().starts_with("discarded_"))
-	                {
-	                    format!(
-	                        "Put {target} into {}",
-	                        owner_hand_phrase_for_spec(&move_to_zone.target)
-	                    )
-	                } else {
-	                    format!(
-	                        "Return {target} to {}",
-	                        owner_hand_phrase_for_spec(&move_to_zone.target)
-	                    )
-	                }
-	            }
-	            Zone::Library => {
-	                if let Some(owner) = hand_owner_from_spec(&move_to_zone.target) {
-	                    let cards = describe_card_choice_count(move_to_zone.target.count());
-	                    let from_zone = match &owner {
-	                        Some(owner) => {
+    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        let target = describe_choose_spec(&move_to_zone.target);
+        return match move_to_zone.zone {
+            Zone::Exile => format!("Exile {target}"),
+            Zone::Graveyard => format!("Put {target} into its owner's graveyard"),
+            Zone::Hand => {
+                if let ChooseSpec::Tagged(tag) = move_to_zone.target.base()
+                    && (tag.as_str().starts_with("revealed_")
+                        || tag.as_str().starts_with("searched_")
+                        || tag.as_str().starts_with("milled_")
+                        || tag.as_str().starts_with("discarded_"))
+                {
+                    format!(
+                        "Put {target} into {}",
+                        owner_hand_phrase_for_spec(&move_to_zone.target)
+                    )
+                } else {
+                    format!(
+                        "Return {target} to {}",
+                        owner_hand_phrase_for_spec(&move_to_zone.target)
+                    )
+                }
+            }
+            Zone::Library => {
+                if let Some(owner) = hand_owner_from_spec(&move_to_zone.target) {
+                    let cards = describe_card_choice_count(move_to_zone.target.count());
+                    let from_zone = match &owner {
+                        Some(owner) => {
                             format!("{} hand", describe_possessive_player_filter(owner))
                         }
                         None => "a hand".to_string(),
@@ -10400,29 +10526,29 @@ fn describe_effect_impl(effect: &Effect) -> String {
             destination
         );
     }
-	    if let Some(reveal_top) = effect.downcast_ref::<crate::effects::RevealTopEffect>() {
-	        // Revealing the top card is the semantic action; internal tag keys are
-	        // scaffolding for later "it/that card" references and should not leak
-	        // into compiled text.
-	        //
-	        // For "you", oracle text is typically imperative ("Reveal ..."). For other players,
-	        // oracle text typically uses a subject ("defending player reveals ...").
-	        if reveal_top.player == PlayerFilter::You {
-	            return "Reveal the top card of your library".to_string();
-	        }
-	        let mut subject = describe_player_filter(&reveal_top.player);
-	        if matches!(
-	            reveal_top.player,
-	            PlayerFilter::Defending | PlayerFilter::Attacking | PlayerFilter::DamagedPlayer
-	        ) {
-	            if let Some(rest) = subject.strip_prefix("the ") {
-	                subject = rest.to_string();
-	            }
-	        }
-	        let verb = player_verb(&subject, "reveal", "reveals");
-	        let pronoun = if subject == "you" { "your" } else { "their" };
-	        return format!("{subject} {verb} the top card of {pronoun} library");
-	    }
+    if let Some(reveal_top) = effect.downcast_ref::<crate::effects::RevealTopEffect>() {
+        // Revealing the top card is the semantic action; internal tag keys are
+        // scaffolding for later "it/that card" references and should not leak
+        // into compiled text.
+        //
+        // For "you", oracle text is typically imperative ("Reveal ..."). For other players,
+        // oracle text typically uses a subject ("defending player reveals ...").
+        if reveal_top.player == PlayerFilter::You {
+            return "Reveal the top card of your library".to_string();
+        }
+        let mut subject = describe_player_filter(&reveal_top.player);
+        if matches!(
+            reveal_top.player,
+            PlayerFilter::Defending | PlayerFilter::Attacking | PlayerFilter::DamagedPlayer
+        ) {
+            if let Some(rest) = subject.strip_prefix("the ") {
+                subject = rest.to_string();
+            }
+        }
+        let verb = player_verb(&subject, "reveal", "reveals");
+        let pronoun = if subject == "you" { "your" } else { "their" };
+        return format!("{subject} {verb} the top card of {pronoun} library");
+    }
     if let Some(look_at_top) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
         let owner = describe_possessive_player_filter(&look_at_top.player);
         let count_text = small_number_word(look_at_top.count as u32)
@@ -10723,6 +10849,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
                 }
                 inner = normalize_you_verb_phrase(&inner);
             }
+            inner = lowercase_may_clause(&inner);
             return format!("{who} may {inner}");
         }
         let mut inner = describe_effect_list(&may.effects);
@@ -10730,6 +10857,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
             inner = inner["you ".len()..].to_string();
         }
         inner = normalize_you_verb_phrase(&inner);
+        inner = lowercase_may_clause(&inner);
         return format!("You may {inner}");
     }
     if let Some(target_only) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
@@ -11192,7 +11320,11 @@ fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(win_game) = effect.downcast_ref::<crate::effects::WinTheGameEffect>() {
         let player = describe_player_filter(&win_game.player);
-        return format!("{} {} the game", player, player_verb(&player, "win", "wins"));
+        return format!(
+            "{} {} the game",
+            player,
+            player_verb(&player, "win", "wins")
+        );
     }
     if let Some(lose_game) = effect.downcast_ref::<crate::effects::LoseTheGameEffect>() {
         let player = describe_player_filter(&lose_game.player);
@@ -15655,6 +15787,14 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
             "you may untap target creature and gain control of it until end of turn. That creature gains haste until end of turn",
         )
         .replace(
+            "you may untap target creature. Gain control of it until end of turn. it gains Haste until end of turn.",
+            "you may untap target creature and gain control of it until end of turn. That creature gains haste until end of turn.",
+        )
+        .replace(
+            "you may untap target creature. Gain control of it until end of turn. it gains Haste until end of turn",
+            "you may untap target creature and gain control of it until end of turn. That creature gains haste until end of turn",
+        )
+        .replace(
             "I, II — Put a +1/+1 counter on each of up to one target creature.",
             "I, II — Put a +1/+1 counter on up to one target creature.",
         )
@@ -15849,6 +15989,8 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
         .replace(" and you, gain ", " and you gain ")
         .replace(". you may Put a +1/+1 counter on this permanent", ", and you may put a +1/+1 counter on this permanent")
         .replace(". you may Put a +1/+1 counter on this creature", ", and you may put a +1/+1 counter on this creature")
+        .replace(". you may put a +1/+1 counter on this permanent", ", and you may put a +1/+1 counter on this permanent")
+        .replace(". you may put a +1/+1 counter on this creature", ", and you may put a +1/+1 counter on this creature")
         .replace(" gain Lifelink until end of turn", " gain lifelink until end of turn")
         .replace("protection from zombie", "protection from Zombies")
         .replace("creaturess", "creatures")
