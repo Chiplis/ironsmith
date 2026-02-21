@@ -5446,6 +5446,20 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of cards in {} hand",
             describe_possessive_player_filter(filter)
         ),
+        Value::MaxCardsInHand(filter) => {
+            // Prefer the oracle-style phrasing used on Adamaro, First to Desire.
+            // (We keep this structured so that other filters still render coherently.)
+            match filter {
+                PlayerFilter::You => "the number of cards in your hand".to_string(),
+                PlayerFilter::Opponent => "the number of cards in the hand of the opponent with the most cards in hand".to_string(),
+                PlayerFilter::Any => "the number of cards in the hand of the player with the most cards in hand".to_string(),
+                PlayerFilter::NotYou => "the number of cards in the hand of the player other than you with the most cards in hand".to_string(),
+                _ => format!(
+                    "the number of cards in the hand of the {} with the most cards in hand",
+                    strip_leading_article(&describe_player_filter(filter))
+                ),
+            }
+        }
         Value::CardsInGraveyard(filter) => format!(
             "the number of cards in {} graveyard",
             describe_possessive_player_filter(filter)

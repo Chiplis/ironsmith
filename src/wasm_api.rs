@@ -5748,6 +5748,7 @@ fn describe_value(
         }
         crate::effect::Value::LifeTotal(_) => "that player's life total".to_string(),
         crate::effect::Value::CardsInHand(_) => "the number of cards in hand".to_string(),
+        crate::effect::Value::MaxCardsInHand(_) => "the greatest number of cards in hand".to_string(),
         crate::effect::Value::CardsInGraveyard(_) => "the number of cards in graveyard".to_string(),
         crate::effect::Value::SpellsCastThisTurn(_) => "spells cast this turn".to_string(),
         crate::effect::Value::SpellsCastBeforeThisTurn(_) => "spells cast before this".to_string(),

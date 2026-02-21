@@ -2935,6 +2935,31 @@ fn parse_characteristic_defining_pt_term(tokens: &[Token]) -> Option<Value> {
         return None;
     }
 
+    // "the number of cards in the hand of the opponent with the most cards in hand"
+    // (Adamaro, First to Desire)
+    let start_words = words(start);
+    if start_words.as_slice()
+        == [
+            "cards", "in", "the", "hand", "of", "the", "opponent", "with", "the", "most", "cards",
+            "in", "hand",
+        ]
+        || start_words.as_slice()
+            == [
+                "cards", "in", "the", "hand", "of", "an", "opponent", "with", "the", "most",
+                "cards", "in", "hand",
+            ]
+    {
+        return Some(Value::MaxCardsInHand(PlayerFilter::Opponent));
+    }
+    if start_words.as_slice()
+        == [
+            "cards", "in", "the", "hand", "of", "the", "player", "with", "the", "most", "cards",
+            "in", "hand",
+        ]
+    {
+        return Some(Value::MaxCardsInHand(PlayerFilter::Any));
+    }
+
     let filter = parse_object_filter(start, false).ok()?;
     Some(Value::Count(filter))
 }

@@ -984,6 +984,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
         | Value::CardsInHand(_)
+        | Value::MaxCardsInHand(_)
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)

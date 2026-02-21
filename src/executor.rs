@@ -875,6 +875,22 @@ pub fn resolve_value(
             Ok(player.hand.len() as i32)
         }
 
+        Value::MaxCardsInHand(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let mut max_count: Option<i32> = None;
+            for pid in player_ids {
+                let player = game
+                    .player(pid)
+                    .ok_or(ExecutionError::PlayerNotFound(pid))?;
+                let count = player.hand.len() as i32;
+                max_count = Some(max_count.map_or(count, |prev| prev.max(count)));
+            }
+            Ok(max_count.ok_or_else(|| {
+                ExecutionError::UnresolvableValue("MaxCardsInHand requires a matching player".to_string())
+            })?)
+        }
+
         Value::CardsInGraveyard(player_spec) => {
             let player_id = resolve_player_filter(game, player_spec, ctx)?;
             let player = game

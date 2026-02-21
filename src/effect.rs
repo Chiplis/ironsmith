@@ -567,6 +567,11 @@ pub enum Value {
     /// Number of cards in a player's hand
     CardsInHand(PlayerFilter),
 
+    /// The greatest number of cards in hand among players matching a filter.
+    ///
+    /// Used for phrases like "the opponent with the most cards in hand".
+    MaxCardsInHand(PlayerFilter),
+
     /// Number of cards in a player's graveyard
     CardsInGraveyard(PlayerFilter),
 

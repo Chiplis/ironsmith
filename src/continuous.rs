@@ -2672,6 +2672,42 @@ fn resolve_value_with_context(
             .map(|o| o.counters.get(counter_type).copied().unwrap_or(0) as i32)
             .unwrap_or(0),
 
+        Value::MaxCardsInHand(player_filter) => {
+            let controller = ctx
+                .objects
+                .get(&source)
+                .map(|o| o.controller)
+                .unwrap_or(crate::ids::PlayerId::from_index(0));
+
+            let players: Vec<crate::ids::PlayerId> = match player_filter {
+                crate::target::PlayerFilter::You => vec![controller],
+                crate::target::PlayerFilter::Any => ctx
+                    .game
+                    .players
+                    .iter()
+                    .filter(|p| p.is_in_game())
+                    .map(|p| p.id)
+                    .collect(),
+                crate::target::PlayerFilter::NotYou | crate::target::PlayerFilter::Opponent => ctx
+                    .game
+                    .players
+                    .iter()
+                    .filter(|p| p.id != controller && p.is_in_game())
+                    .map(|p| p.id)
+                    .collect(),
+                crate::target::PlayerFilter::Specific(id) => vec![*id],
+                crate::target::PlayerFilter::Active => vec![ctx.game.turn.active_player],
+                _ => Vec::new(),
+            };
+
+            players
+                .into_iter()
+                .filter_map(|pid| ctx.game.player(pid))
+                .map(|p| p.hand.len() as i32)
+                .max()
+                .unwrap_or(0)
+        }
+
         // For these, we'd need more complex resolution (game state, execution context)
         // Return 0 as fallback (these are rare in continuous effects anyway)
         Value::XTimes(_)
