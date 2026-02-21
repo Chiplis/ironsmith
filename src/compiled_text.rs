@@ -12459,7 +12459,7 @@ fn choices_are_simple_targets(choices: &[ChooseSpec]) -> bool {
     choices.iter().all(is_simple_target)
 }
 
-fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
+fn describe_ability(index: usize, ability: &Ability, source_is_creature: bool) -> Vec<String> {
     if let Some(keyword) = describe_keyword_ability(ability) {
         return vec![format!("Keyword ability {index}: {keyword}")];
     }
@@ -12514,7 +12514,11 @@ fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
                 clauses.push(format!("choose {choices}"));
             }
             if !triggered.effects.is_empty() {
-                clauses.push(describe_effect_list(&triggered.effects));
+                let effects = describe_effect_list(&triggered.effects);
+                clauses.push(rewrite_damage_phrases_for_permanent_abilities(
+                    &effects,
+                    source_is_creature,
+                ));
             }
             if !clauses.is_empty() {
                 // Oracle-style: "Whenever ..., if ..., ..." rather than "Whenever ...: If ..."
@@ -12588,7 +12592,11 @@ fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
             }
             if !activated.effects.is_empty() {
                 line.push_str(": ");
-                line.push_str(&describe_effect_list(&activated.effects));
+                let effects = describe_effect_list(&activated.effects);
+                line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
+                    &effects,
+                    source_is_creature,
+                ));
             }
             if let Some(x_clause) = extract_activated_x_is_clause(ability.text.as_deref()) {
                 let line_lower = line.to_ascii_lowercase();
@@ -12653,7 +12661,11 @@ fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
                 && !extra_effects.is_empty()
             {
                 line.push_str(": ");
-                line.push_str(&describe_effect_list(extra_effects));
+                let effects = describe_effect_list(extra_effects);
+                line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
+                    &effects,
+                    source_is_creature,
+                ));
             }
             if let Some(condition) = &mana_ability.activation_condition {
                 let clause = describe_mana_activation_condition(condition);
@@ -12665,6 +12677,29 @@ fn describe_ability(index: usize, ability: &Ability) -> Vec<String> {
             vec![line]
         }
     }
+}
+
+fn rewrite_damage_phrases_for_permanent_abilities(effect_text: &str, source_is_creature: bool) -> String {
+    let subject = if source_is_creature {
+        "this creature"
+    } else {
+        "this permanent"
+    };
+
+    if let Some(rest) = effect_text.strip_prefix("Deal ") {
+        return format!("{subject} deals {rest}");
+    }
+    if let Some(rest) = effect_text.strip_prefix("deal ") {
+        return format!("{subject} deals {rest}");
+    }
+
+    let mut out = effect_text.to_string();
+    // Common oracle phrasing: "you may have this creature deal ..."
+    out = out.replace("You may Deal ", &format!("You may have {subject} deal "));
+    out = out.replace("you may Deal ", &format!("you may have {subject} deal "));
+    out = out.replace("You may deal ", &format!("You may have {subject} deal "));
+    out = out.replace("you may deal ", &format!("you may have {subject} deal "));
+    out
 }
 
 fn extract_activated_x_is_clause(text: Option<&str>) -> Option<String> {
@@ -13045,6 +13080,7 @@ fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> String {
 
 pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
     let mut out = Vec::new();
+    let source_is_creature = def.card.card_types.contains(&CardType::Creature);
     let has_attach_only_spell_effect = def.spell_effect.as_ref().is_some_and(|effects| {
         effects.len() == 1
             && effects[0]
@@ -13203,7 +13239,7 @@ pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
                     continue;
                 }
             }
-            output.extend(describe_ability(ability_idx + 1, ability));
+            output.extend(describe_ability(ability_idx + 1, ability, source_is_creature));
             ability_idx += 1;
         }
     };
