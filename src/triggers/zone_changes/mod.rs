@@ -5,14 +5,14 @@
 //!
 //! `ZoneChangeTrigger` is the composable primitive for these patterns.
 
+mod dies_damaged_by_this_turn;
 mod enters_tapped;
 mod enters_untapped;
-mod dies_damaged_by_this_turn;
 mod zone_change_trigger;
 
+pub use dies_damaged_by_this_turn::DiesDamagedByThisTurnTrigger;
 pub use enters_tapped::EntersBattlefieldTappedTrigger;
 pub use enters_untapped::EntersBattlefieldUntappedTrigger;
-pub use dies_damaged_by_this_turn::DiesDamagedByThisTurnTrigger;
 
 // Composable zone change trigger and supporting types
 pub use zone_change_trigger::{CountMode, PlayerRelation, ZoneChangeTrigger, ZonePattern};

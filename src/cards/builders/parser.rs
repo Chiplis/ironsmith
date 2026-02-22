@@ -448,7 +448,10 @@ fn normalize_channel_spell_effect(mut builder: CardDefinitionBuilder) -> CardDef
     let Some(with_id) = effects[0].downcast_ref::<crate::effects::WithIdEffect>() else {
         return builder;
     };
-    let Some(lose) = with_id.effect.downcast_ref::<crate::effects::LoseLifeEffect>() else {
+    let Some(lose) = with_id
+        .effect
+        .downcast_ref::<crate::effects::LoseLifeEffect>()
+    else {
         return builder;
     };
     if !matches!(lose.amount, Value::Fixed(1)) {
@@ -488,10 +491,14 @@ fn normalize_channel_spell_effect(mut builder: CardDefinitionBuilder) -> CardDef
     builder
 }
 
-fn normalize_chaotic_transformation_spell_effect(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
+fn normalize_chaotic_transformation_spell_effect(
+    mut builder: CardDefinitionBuilder,
+) -> CardDefinitionBuilder {
     use crate::effect::{ChoiceCount, Effect};
     use crate::tag::TagKey;
-    use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+    use crate::target::{
+        ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+    };
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -507,7 +514,8 @@ fn normalize_chaotic_transformation_spell_effect(mut builder: CardDefinitionBuil
     }
 
     fn exile_up_to_one_target(filter: ObjectFilter) -> Effect {
-        let target = ChooseSpec::target(ChooseSpec::Object(filter)).with_count(ChoiceCount::up_to(1));
+        let target =
+            ChooseSpec::target(ChooseSpec::Object(filter)).with_count(ChoiceCount::up_to(1));
         Effect::new(crate::effects::MoveToZoneEffect {
             target,
             zone: Zone::Exile,
@@ -519,11 +527,21 @@ fn normalize_chaotic_transformation_spell_effect(mut builder: CardDefinitionBuil
     }
 
     let mut effects = Vec::new();
-    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Artifact)));
-    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Creature)));
-    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Enchantment)));
-    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Planeswalker)));
-    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Land)));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(
+        CardType::Artifact,
+    )));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(
+        CardType::Creature,
+    )));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(
+        CardType::Enchantment,
+    )));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(
+        CardType::Planeswalker,
+    )));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(
+        CardType::Land,
+    )));
 
     let mut library_filter = ObjectFilter::default();
     library_filter.zone = Some(Zone::Library);
@@ -536,10 +554,12 @@ fn normalize_chaotic_transformation_spell_effect(mut builder: CardDefinitionBuil
         CardType::Planeswalker,
         CardType::Battle,
     ];
-    library_filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from("__it__"),
-        relation: TaggedOpbjectRelation::SharesCardType,
-    });
+    library_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from("__it__"),
+            relation: TaggedOpbjectRelation::SharesCardType,
+        });
 
     let reveal_top_match = Effect::new(
         crate::effects::ChooseObjectsEffect::new(
@@ -579,7 +599,9 @@ fn normalize_chaotic_transformation_spell_effect(mut builder: CardDefinitionBuil
     builder
 }
 
-fn normalize_glimpse_of_nature_spell_effect(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
+fn normalize_glimpse_of_nature_spell_effect(
+    mut builder: CardDefinitionBuilder,
+) -> CardDefinitionBuilder {
     use crate::ability::AbilityKind;
     use crate::target::PlayerFilter;
 
@@ -623,7 +645,9 @@ fn normalize_glimpse_of_nature_spell_effect(mut builder: CardDefinitionBuilder) 
     builder
 }
 
-fn normalize_take_to_the_streets_spell_effect(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
+fn normalize_take_to_the_streets_spell_effect(
+    mut builder: CardDefinitionBuilder,
+) -> CardDefinitionBuilder {
     use crate::continuous::Modification;
     use crate::effect::{Effect, Value};
     use crate::effects::continuous::RuntimeModification;
@@ -671,10 +695,12 @@ fn normalize_take_to_the_streets_spell_effect(mut builder: CardDefinitionBuilder
     }
 
     let mut updated = apply.clone();
-    updated.runtime_modifications.push(RuntimeModification::ModifyPowerToughness {
-        power: Value::Fixed(1),
-        toughness: Value::Fixed(1),
-    });
+    updated
+        .runtime_modifications
+        .push(RuntimeModification::ModifyPowerToughness {
+            power: Value::Fixed(1),
+            toughness: Value::Fixed(1),
+        });
 
     let mut new_effects = effects.clone();
     new_effects[1] = Effect::new(updated);

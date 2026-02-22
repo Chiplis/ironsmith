@@ -6163,10 +6163,8 @@ fn describe_value(
             filter,
             exclude_source,
         } => {
-            let base = pluralize_noun_phrase_ui(&describe_for_each_filter_ui(
-                filter,
-                tagged_subjects,
-            ));
+            let base =
+                pluralize_noun_phrase_ui(&describe_for_each_filter_ui(filter, tagged_subjects));
             let mut text = format!(
                 "the number of {base} cast this turn by {}",
                 describe_player_filter(player, tagged_subjects)

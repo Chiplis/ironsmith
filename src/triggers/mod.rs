@@ -182,9 +182,7 @@ impl Trigger {
     }
 
     /// Create a "whenever a creature dealt damage by equipped creature this turn dies" trigger.
-    pub fn creature_dealt_damage_by_equipped_creature_this_turn_dies(
-        victim: ObjectFilter,
-    ) -> Self {
+    pub fn creature_dealt_damage_by_equipped_creature_this_turn_dies(victim: ObjectFilter) -> Self {
         Self::new(DiesDamagedByThisTurnTrigger::by_equipped_creature(victim))
     }
 

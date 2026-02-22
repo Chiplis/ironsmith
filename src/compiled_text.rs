@@ -6873,9 +6873,13 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             effect
         }
 
-        fn is_exile_up_to_one_target_type(effect: &Effect, card_type: crate::types::CardType) -> bool {
+        fn is_exile_up_to_one_target_type(
+            effect: &Effect,
+            card_type: crate::types::CardType,
+        ) -> bool {
             let effect = unwrap_implicit_tag_all(effect);
-            let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() else {
+            let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            else {
                 return false;
             };
             if move_to_zone.zone != Zone::Exile {
@@ -6893,8 +6897,7 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             let ChooseSpec::Object(filter) = target_inner.as_ref() else {
                 return false;
             };
-            filter.zone == Some(Zone::Battlefield)
-                && filter.card_types == vec![card_type]
+            filter.zone == Some(Zone::Battlefield) && filter.card_types == vec![card_type]
         }
 
         // Compact Chaotic Transformation-style prefix:
@@ -6902,13 +6905,22 @@ fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 5 < filtered.len()
             && is_exile_up_to_one_target_type(filtered[idx], crate::types::CardType::Artifact)
             && is_exile_up_to_one_target_type(filtered[idx + 1], crate::types::CardType::Creature)
-            && is_exile_up_to_one_target_type(filtered[idx + 2], crate::types::CardType::Enchantment)
-            && is_exile_up_to_one_target_type(filtered[idx + 3], crate::types::CardType::Planeswalker)
+            && is_exile_up_to_one_target_type(
+                filtered[idx + 2],
+                crate::types::CardType::Enchantment,
+            )
+            && is_exile_up_to_one_target_type(
+                filtered[idx + 3],
+                crate::types::CardType::Planeswalker,
+            )
             && is_exile_up_to_one_target_type(filtered[idx + 4], crate::types::CardType::Land)
-            && let Some(for_each) = filtered[idx + 5].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(for_each) =
+                filtered[idx + 5].downcast_ref::<crate::effects::ForEachTaggedEffect>()
             && for_each.tag.as_str() == "exiled_0"
             && for_each.effects.len() == 1
-            && for_each.effects[0].downcast_ref::<crate::effects::SequenceEffect>().is_some()
+            && for_each.effects[0]
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .is_some()
         {
             parts.push("Exile up to one target artifact, up to one target creature, up to one target enchantment, up to one target planeswalker, and/or up to one target land. For each permanent exiled this way, its controller reveals cards from the top of their library until they reveal a card that shares a card type with it, puts that card onto the battlefield, then shuffles".to_string());
             idx += 6;
@@ -8644,7 +8656,9 @@ fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<Stri
                     describe_possessive_player_filter(other)
                 ),
             };
-            Some(format!("{player} {verb} a card for each creature that died {suffix}"))
+            Some(format!(
+                "{player} {verb} a card for each creature that died {suffix}"
+            ))
         }
         Value::SpellsCastThisTurn(spell_caster) => Some(format!(
             "{player} {verb} a card for each {}",
@@ -8666,7 +8680,9 @@ fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<Stri
                     strip_leading_article(&describe_player_filter(other))
                 ),
             };
-            Some(format!("{player} {verb} a card for each {prefix}{base} {tail}"))
+            Some(format!(
+                "{player} {verb} a card for each {prefix}{base} {tail}"
+            ))
         }
         Value::CountersOnSource(counter_type) => Some(format!(
             "{player} {verb} a card for each {} counter on this permanent",
@@ -9884,7 +9900,8 @@ fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if for_each.effects.len() == 1
-            && let Some(put) = for_each.effects[0].downcast_ref::<crate::effects::PutCountersEffect>()
+            && let Some(put) =
+                for_each.effects[0].downcast_ref::<crate::effects::PutCountersEffect>()
             && matches!(put.target, ChooseSpec::Iterated)
             && put.target_count.is_none()
             && !put.distributed
@@ -10708,7 +10725,11 @@ fn describe_effect_impl(effect: &Effect) -> String {
             .map(describe_mana_symbol)
             .collect::<Vec<_>>()
             .join("");
-        let mana = if mana.is_empty() { "{0}".to_string() } else { mana };
+        let mana = if mana.is_empty() {
+            "{0}".to_string()
+        } else {
+            mana
+        };
         return format!(
             "Until end of turn, any time you could activate a mana ability, you may {cost}. If you do, add {mana}."
         );
@@ -13375,10 +13396,11 @@ fn describe_alternative_cost_effects(cost_effects: &[Effect]) -> String {
         }
     }
 
-    if cost_effects
-        .iter()
-        .any(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>().is_some())
-    {
+    if cost_effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some()
+    }) {
         return describe_effect_list(cost_effects);
     }
 
@@ -13396,7 +13418,10 @@ fn describe_alternative_cost_effects(cost_effects: &[Effect]) -> String {
             continue;
         }
 
-        let mut clause = describe_effect(effect).trim().trim_end_matches('.').to_string();
+        let mut clause = describe_effect(effect)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
         if let Some(rest) = clause.strip_prefix("you ") {
             clause = normalize_you_verb_phrase(rest);
         } else if let Some(rest) = clause.strip_prefix("You ") {
@@ -13911,12 +13936,18 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                     "Exile 1 card(s) from your hand",
                     "Exile this card from your hand",
                 )
-                .replace("Exile a card from your hand", "Exile this card from your hand")
+                .replace(
+                    "Exile a card from your hand",
+                    "Exile this card from your hand",
+                )
                 .replace(
                     "exile 1 card(s) from your hand",
                     "exile this card from your hand",
                 )
-                .replace("exile a card from your hand", "exile this card from your hand");
+                .replace(
+                    "exile a card from your hand",
+                    "exile this card from your hand",
+                );
         }
         if has_basic_landcycling {
             phrased = phrased
@@ -17879,7 +17910,10 @@ fn merge_static_legendary_gets_then_has_block(
         }
         for part in parts {
             let kw = part.to_ascii_lowercase();
-            if !keywords.iter().any(|existing| existing.eq_ignore_ascii_case(&kw)) {
+            if !keywords
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(&kw))
+            {
                 keywords.push(kw);
             }
         }
@@ -17898,9 +17932,7 @@ fn merge_static_legendary_gets_then_has_block(
     };
 
     let verb = have_verb_for_subject(subject);
-    let merged = format!(
-        "{subject} is legendary, gets {gets_tail}, and {verb} {keyword_list}."
-    );
+    let merged = format!("{subject} is legendary, gets {gets_tail}, and {verb} {keyword_list}.");
     Some((merged, idx - start_idx))
 }
 

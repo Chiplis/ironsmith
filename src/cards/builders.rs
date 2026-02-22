@@ -5059,7 +5059,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[test]
     fn parse_named_source_damaged_by_trigger_as_this_creature() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Rot Wolf Trigger Probe")
-            .parse_text("Whenever a creature dealt damage by Rot Wolf this turn dies, you may draw a card.")
+            .parse_text(
+                "Whenever a creature dealt damage by Rot Wolf this turn dies, you may draw a card.",
+            )
             .expect("parse named-source damaged-by trigger");
 
         let lines = compiled_lines(&def);

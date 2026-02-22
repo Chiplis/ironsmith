@@ -55,9 +55,10 @@ impl DiesDamagedByThisTurnTrigger {
     fn resolve_damager(&self, ctx: &TriggerContext) -> Option<ObjectId> {
         match self.damager_source {
             DamagerSource::ThisCreature => Some(ctx.source_id),
-            DamagerSource::EquippedCreature | DamagerSource::EnchantedCreature => {
-                ctx.game.object(ctx.source_id).and_then(|obj| obj.attached_to)
-            }
+            DamagerSource::EquippedCreature | DamagerSource::EnchantedCreature => ctx
+                .game
+                .object(ctx.source_id)
+                .and_then(|obj| obj.attached_to),
         }
     }
 
@@ -70,7 +71,9 @@ impl DiesDamagedByThisTurnTrigger {
         if let Some(snapshot) = zc.snapshot.as_ref()
             && snapshot.object_id == victim_id
         {
-            return self.victim.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
+            return self
+                .victim
+                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
         }
 
         ctx.game
@@ -230,8 +233,7 @@ mod tests {
             Zone::Graveyard,
             Some(snapshot),
         ));
-        let trigger =
-            DiesDamagedByThisTurnTrigger::by_equipped_creature(ObjectFilter::creature());
+        let trigger = DiesDamagedByThisTurnTrigger::by_equipped_creature(ObjectFilter::creature());
         let ctx = TriggerContext::for_source(equipment, alice, &game);
         assert!(trigger.matches(&event, &ctx));
     }

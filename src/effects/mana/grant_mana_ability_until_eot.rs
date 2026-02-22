@@ -40,4 +40,3 @@ impl EffectExecutor for GrantManaAbilityUntilEotEffect {
         Box::new(self.clone())
     }
 }
-

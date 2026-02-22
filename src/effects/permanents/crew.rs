@@ -142,7 +142,10 @@ impl EffectExecutor for CrewCostEffect {
             return Ok(());
         }
         let candidates = Self::crew_candidates(game, controller);
-        let total: i32 = candidates.iter().map(|id| Self::object_power(game, *id)).sum();
+        let total: i32 = candidates
+            .iter()
+            .map(|id| Self::object_power(game, *id))
+            .sum();
         if total >= self.required_power as i32 {
             Ok(())
         } else {
