@@ -1736,6 +1736,72 @@ pub struct RemoveSupertypesForFilter {
     pub supertypes: Vec<Supertype>,
 }
 
+/// Add supertypes: "Enchanted creature is legendary."
+#[derive(Debug, Clone)]
+pub struct AddSupertypesForFilter {
+    pub filter: ObjectFilter,
+    pub supertypes: Vec<Supertype>,
+}
+
+impl AddSupertypesForFilter {
+    pub fn new(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
+        Self { filter, supertypes }
+    }
+}
+
+impl PartialEq for AddSupertypesForFilter {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter && self.supertypes == other.supertypes
+    }
+}
+
+impl StaticAbilityKind for AddSupertypesForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddSupertypes
+    }
+
+    fn display(&self) -> String {
+        let mut subject = pluralized_subject_text(&self.filter);
+        if subject == "lands" {
+            subject = "land".to_string();
+        }
+        let singular = subject.starts_with("enchanted ")
+            || subject.starts_with("equipped ")
+            || subject.starts_with("this ")
+            || subject.starts_with("that ")
+            || subject == "land";
+        let verb = if singular { "is" } else { "are" };
+        let supertypes = self
+            .supertypes
+            .iter()
+            .map(|supertype| format!("{supertype:?}").to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join(" and ");
+        format!("{subject} {verb} {supertypes}")
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Filter(self.filter.clone()),
+                Modification::AddSupertypes(self.supertypes.clone()),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 impl RemoveSupertypesForFilter {
     pub fn new(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
         Self { filter, supertypes }

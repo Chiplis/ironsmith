@@ -17645,6 +17645,15 @@ fn merge_adjacent_static_heading_lines(lines: Vec<String>) -> Vec<String> {
         let mut merged = Vec::with_capacity(current.len());
         let mut idx = 0usize;
         while idx < current.len() {
+            if let Some((left_prefix, _left_body)) = static_heading_body(&current[idx])
+                && let Some((body, consumed)) =
+                    merge_static_legendary_gets_then_has_block(&current, idx)
+            {
+                merged.push(format!("{left_prefix}: {}", body.trim()));
+                idx += consumed;
+                changed = true;
+                continue;
+            }
             if idx + 1 < current.len()
                 && let (Some((left_prefix, left_body)), Some((_right_prefix, right_body))) = (
                     static_heading_body(&current[idx]),
@@ -17654,6 +17663,7 @@ fn merge_adjacent_static_heading_lines(lines: Vec<String>) -> Vec<String> {
                 let pair = vec![left_body.to_string(), right_body.to_string()];
                 let pair = merge_adjacent_subject_predicate_lines(pair);
                 let pair = merge_subject_has_keyword_lines(pair);
+                let pair = merge_subject_is_legendary_gets_then_has_lines(pair);
                 if pair.len() == 1 {
                     merged.push(format!("{left_prefix}: {}", pair[0].trim()));
                     idx += 2;
@@ -17669,6 +17679,101 @@ fn merge_adjacent_static_heading_lines(lines: Vec<String>) -> Vec<String> {
         }
         current = merged;
     }
+}
+
+fn merge_static_legendary_gets_then_has_block(
+    lines: &[String],
+    start_idx: usize,
+) -> Option<(String, usize)> {
+    let (_left_prefix, left_body) = static_heading_body(lines.get(start_idx)?.as_str())?;
+    let left_body = left_body.trim().trim_end_matches('.');
+    let (subject, rest) = left_body.split_once(" is ")?;
+    let subject = subject.trim();
+    if subject.is_empty() {
+        return None;
+    }
+    let rest = rest.trim();
+    let (state, gets_tail) = rest.split_once(" and gets ")?;
+    if !state.trim().eq_ignore_ascii_case("legendary") {
+        return None;
+    }
+    let gets_tail = gets_tail.trim();
+    if gets_tail.is_empty() {
+        return None;
+    }
+
+    let mut keyword_lines = Vec::new();
+    let mut idx = start_idx + 1;
+    while idx < lines.len() {
+        let Some((_prefix, body)) = static_heading_body(lines[idx].as_str()) else {
+            break;
+        };
+        let body = body.trim().trim_end_matches('.');
+        let (rhs_subject, rhs_tail) = if let Some((s, t)) = body.split_once(" has ") {
+            (s.trim(), t.trim())
+        } else if let Some((s, t)) = body.split_once(" have ") {
+            (s.trim(), t.trim())
+        } else {
+            break;
+        };
+        if !rhs_subject.eq_ignore_ascii_case(subject) {
+            break;
+        }
+        if rhs_tail.is_empty() {
+            break;
+        }
+        keyword_lines.push(rhs_tail.to_string());
+        idx += 1;
+    }
+    if keyword_lines.is_empty() {
+        return None;
+    }
+
+    let mut keywords = Vec::<String>::new();
+    for tail in keyword_lines {
+        let normalized = normalize_repeated_has_keyword_list(&tail);
+        let parts: Vec<&str> = if normalized.contains(',') {
+            normalized
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(|part| part.trim_start_matches("and ").trim())
+                .collect()
+        } else {
+            normalized
+                .split(" and ")
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .collect()
+        };
+        if parts.is_empty() || !parts.iter().all(|part| is_keyword_phrase(part)) {
+            return None;
+        }
+        for part in parts {
+            let kw = part.to_ascii_lowercase();
+            if !keywords.iter().any(|existing| existing.eq_ignore_ascii_case(&kw)) {
+                keywords.push(kw);
+            }
+        }
+    }
+    if keywords.is_empty() {
+        return None;
+    }
+
+    let keyword_list = if keywords.len() == 1 {
+        keywords[0].clone()
+    } else if keywords.len() == 2 {
+        format!("{} and {}", keywords[0], keywords[1])
+    } else {
+        let last = keywords.pop().unwrap_or_default();
+        format!("{}, and {}", keywords.join(", "), last)
+    };
+
+    let verb = have_verb_for_subject(subject);
+    let merged = format!(
+        "{subject} is legendary, gets {gets_tail}, and {verb} {keyword_list}."
+    );
+    Some((merged, idx - start_idx))
 }
 
 fn strip_render_heading(line: &str) -> String {
@@ -18381,6 +18486,91 @@ fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String> {
         idx += 1;
     }
     merged
+}
+
+fn normalize_repeated_has_keyword_list(tail: &str) -> String {
+    let mut normalized = tail.trim().trim_end_matches('.').to_string();
+    if normalized.is_empty() {
+        return normalized;
+    }
+    normalized = normalized.replace(" and has ", " and ");
+    normalized = normalized.replace(", has ", ", ");
+
+    let mut parts: Vec<String> = if normalized.contains(',') {
+        normalized
+            .split(',')
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .map(|part| part.trim_start_matches("and ").trim())
+            .map(|part| part.to_string())
+            .collect()
+    } else {
+        normalized
+            .split(" and ")
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .map(|part| part.to_string())
+            .collect()
+    };
+
+    if parts.len() < 2 {
+        return normalized;
+    }
+    if !parts.iter().all(|part| is_keyword_phrase(part)) {
+        return normalized;
+    }
+    for part in &mut parts {
+        *part = part.to_ascii_lowercase();
+    }
+
+    if parts.len() == 2 {
+        return format!("{} and {}", parts[0], parts[1]);
+    }
+    let last = parts.pop().unwrap_or_default();
+    format!("{}, and {}", parts.join(", "), last)
+}
+
+fn merge_subject_is_legendary_gets_then_has_lines(lines: Vec<String>) -> Vec<String> {
+    if lines.len() != 2 {
+        return lines;
+    }
+    let left = lines[0].trim().trim_end_matches('.');
+    let right = lines[1].trim().trim_end_matches('.');
+
+    let (right_subject, right_tail) = if let Some((subject, tail)) = right.split_once(" has ") {
+        (subject.trim().to_string(), tail.trim().to_string())
+    } else if let Some((subject, tail)) = right.split_once(" have ") {
+        (subject.trim().to_string(), tail.trim().to_string())
+    } else {
+        return lines;
+    };
+
+    let (left_subject, left_rest) = if let Some((subject, rest)) = left.split_once(" is ") {
+        (subject.trim(), rest.trim())
+    } else {
+        return lines;
+    };
+    if !left_subject.eq_ignore_ascii_case(&right_subject) {
+        return lines;
+    }
+
+    let Some((state, gets_tail)) = left_rest.split_once(" and gets ") else {
+        return lines;
+    };
+    if !state.trim().eq_ignore_ascii_case("legendary") {
+        return lines;
+    }
+    let gets_tail = gets_tail.trim();
+    if gets_tail.is_empty() {
+        return lines;
+    }
+
+    let right_tail = normalize_repeated_has_keyword_list(&right_tail);
+    let subject = right_subject;
+    let verb = have_verb_for_subject(&subject);
+    vec![format!(
+        "{subject} is legendary, gets {gets_tail}, and {verb} {right_tail}."
+    )]
 }
 
 fn drop_redundant_spell_cost_lines(lines: Vec<String>) -> Vec<String> {

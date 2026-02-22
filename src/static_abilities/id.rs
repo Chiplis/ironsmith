@@ -86,6 +86,7 @@ pub enum StaticAbilityId {
     SetColors,
     SetName,
     MakeColorless,
+    AddSupertypes,
     RemoveSupertypes,
 
     // === Cost modifiers ===

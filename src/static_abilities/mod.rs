@@ -985,6 +985,13 @@ impl StaticAbility {
         Self::new(MakeColorlessForFilter::new(filter))
     }
 
+    pub fn add_supertypes(
+        filter: crate::target::ObjectFilter,
+        supertypes: Vec<crate::types::Supertype>,
+    ) -> Self {
+        Self::new(AddSupertypesForFilter::new(filter, supertypes))
+    }
+
     pub fn remove_supertypes(
         filter: crate::target::ObjectFilter,
         supertypes: Vec<crate::types::Supertype>,

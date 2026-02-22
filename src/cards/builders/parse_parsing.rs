@@ -2233,6 +2233,9 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_remove_snow_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(abilities) = parse_attached_is_legendary_gets_and_has_keywords_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(abilities) = parse_granted_keyword_static_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -6116,6 +6119,91 @@ fn parse_attached_has_keywords_and_triggered_ability_line(
     static_abilities.push(StaticAbility::attached_ability_grant(triggered, display));
 
     Ok(Some(static_abilities))
+}
+
+fn parse_attached_is_legendary_gets_and_has_keywords_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 10 {
+        return Ok(None);
+    }
+
+    let is_enchanted = line_words.starts_with(&["enchanted", "creature"]);
+    let is_equipped = line_words.starts_with(&["equipped", "creature"]);
+    if !is_enchanted && !is_equipped {
+        return Ok(None);
+    }
+
+    let Some(is_idx) = tokens.iter().position(|token| token.is_word("is")) else {
+        return Ok(None);
+    };
+    if is_idx < 2 || !tokens.get(is_idx + 1).is_some_and(|token| token.is_word("legendary")) {
+        return Ok(None);
+    }
+
+    let Some(get_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("get") || token.is_word("gets"))
+    else {
+        return Ok(None);
+    };
+    let Some(has_idx) = tokens.iter().position(|token| token.is_word("has")) else {
+        return Ok(None);
+    };
+    if !(is_idx < get_idx && get_idx + 1 < tokens.len() && get_idx < has_idx) {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[..is_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(&subject_tokens, false)?;
+
+    let modifier_token = tokens.get(get_idx + 1).and_then(Token::as_word);
+    let Some(modifier_token) = modifier_token else {
+        return Ok(None);
+    };
+    let (power, toughness) = match parse_pt_modifier(modifier_token) {
+        Ok(value) => value,
+        Err(_) => return Ok(None),
+    };
+
+    let keyword_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
+    if keyword_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Some(actions) = parse_ability_line(&keyword_tokens) else {
+        return Ok(None);
+    };
+
+    let clause_text = line_words.join(" ");
+    let mut out = Vec::new();
+    out.push(StaticAbility::add_supertypes(
+        filter.clone(),
+        vec![Supertype::Legendary],
+    ));
+
+    let anthem_clause = ParsedAnthemClause {
+        subject: AnthemSubjectAst::Filter(filter.clone()),
+        power: AnthemValue::Fixed(power),
+        toughness: AnthemValue::Fixed(toughness),
+        condition: None,
+    };
+    out.push(build_anthem_static_ability(&anthem_clause));
+
+    for action in actions {
+        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
+        if let Some(static_ability) = keyword_action_to_static_ability(action) {
+            out.push(StaticAbility::grant_ability(filter.clone(), static_ability));
+        }
+    }
+
+    if out.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(out))
 }
 
 fn parse_attached_gets_and_has_ability_line(
