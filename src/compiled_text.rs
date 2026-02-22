@@ -3851,7 +3851,19 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace("casts creature spell", "casts a creature spell")
         .replace("casts colorless spell", "casts a colorless spell")
         .replace("unless that player pays ", "unless they pay ")
+        .replace(
+            "permanent with the same name as that object cards",
+            "cards with the same name as that object",
+        )
+        .replace(
+            "permanent with the same name as that object card",
+            "card with the same name as that object",
+        )
         .replace("Counter target instant", "Counter target instant spell")
+        .replace(
+            "Counter target instant spell spell and sorcery spell",
+            "Counter target instant or sorcery spell",
+        )
         .replace("Counter target sorcery", "Counter target sorcery spell")
         .replace(
             "Counter target enchantment or instant or sorcery",
@@ -12438,7 +12450,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(exile_hand) = effect.downcast_ref::<crate::effects::ExileFromHandAsCostEffect>() {
-        return format!("Exile {} card(s) from your hand", exile_hand.count);
+        return capitalize_first(&describe_exile_from_hand_as_cost_phrase(exile_hand));
     }
     if let Some(for_each_ctrl) =
         effect.downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect>()
@@ -13363,7 +13375,65 @@ fn describe_alternative_cost_effects(cost_effects: &[Effect]) -> String {
         }
     }
 
-    describe_effect_list(cost_effects)
+    if cost_effects
+        .iter()
+        .any(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>().is_some())
+    {
+        return describe_effect_list(cost_effects);
+    }
+
+    let mut clauses = Vec::new();
+    for effect in cost_effects {
+        if let Some(lose_life) = effect.downcast_ref::<crate::effects::LoseLifeEffect>()
+            && lose_life.player == ChooseSpec::Player(PlayerFilter::You)
+        {
+            clauses.push(format!("pay {} life", describe_value(&lose_life.amount)));
+            continue;
+        }
+        if let Some(exile_hand) = effect.downcast_ref::<crate::effects::ExileFromHandAsCostEffect>()
+        {
+            clauses.push(describe_exile_from_hand_as_cost_phrase(exile_hand));
+            continue;
+        }
+
+        let mut clause = describe_effect(effect).trim().trim_end_matches('.').to_string();
+        if let Some(rest) = clause.strip_prefix("you ") {
+            clause = normalize_you_verb_phrase(rest);
+        } else if let Some(rest) = clause.strip_prefix("You ") {
+            clause = normalize_you_verb_phrase(rest);
+        }
+        if clause.is_empty() {
+            continue;
+        }
+        clauses.push(clause);
+    }
+
+    if clauses.is_empty() {
+        describe_effect_list(cost_effects)
+    } else {
+        join_with_and(&clauses)
+    }
+}
+
+fn describe_exile_from_hand_as_cost_phrase(
+    exile_hand: &crate::effects::ExileFromHandAsCostEffect,
+) -> String {
+    let count = exile_hand.count.max(1);
+    let card_word = if count == 1 { "card" } else { "cards" };
+    let amount = if count == 1 {
+        "a".to_string()
+    } else {
+        small_number_word(count)
+            .map(str::to_string)
+            .unwrap_or_else(|| count.to_string())
+    };
+    let color_prefix = exile_hand
+        .color_filter
+        .map(|colors| describe_token_color_words(colors, false))
+        .filter(|text| !text.is_empty())
+        .map(|text| format!("{text} "))
+        .unwrap_or_default();
+    format!("exile {amount} {color_prefix}{card_word} from your hand")
 }
 
 fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> String {
@@ -13841,10 +13911,12 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                     "Exile 1 card(s) from your hand",
                     "Exile this card from your hand",
                 )
+                .replace("Exile a card from your hand", "Exile this card from your hand")
                 .replace(
                     "exile 1 card(s) from your hand",
                     "exile this card from your hand",
-                );
+                )
+                .replace("exile a card from your hand", "exile this card from your hand");
         }
         if has_basic_landcycling {
             phrased = phrased
@@ -15969,6 +16041,9 @@ fn normalize_compiled_post_pass_effect(text: &str) -> String {
     if let Some(rewritten) = normalize_choose_exact_exile_cost_clause(&normalized) {
         normalized = rewritten;
     }
+    if let Some(rewritten) = normalize_choose_exact_tap_cost_clause(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_choose_exact_tagged_it_clause(&normalized) {
         normalized = rewritten;
     }
@@ -17581,6 +17656,27 @@ fn normalize_choose_exact_exile_cost_clause(text: &str) -> Option<String> {
     Some(format!("{prefix}Exile {subject}{tail}"))
 }
 
+fn normalize_choose_exact_tap_cost_clause(text: &str) -> Option<String> {
+    let marker = " and tags it as 'tap_cost_0'. Tap it ";
+    let (head, tail) = split_once_ascii_ci(text, marker)?;
+    let choose_idx = head.to_ascii_lowercase().rfind("choose exactly ")?;
+    let mut prefix = head[..choose_idx].to_string();
+    if prefix.to_ascii_lowercase().ends_with(" and you ") {
+        prefix.truncate(prefix.len().saturating_sub("you ".len()));
+    }
+    let choose_tail = &head[choose_idx + "choose exactly ".len()..];
+    let (count_token, rest) = choose_tail.split_once(' ')?;
+    let count = count_token.parse::<usize>().ok()?;
+    let descriptor = rest
+        .strip_suffix(" in the battlefield")
+        .or_else(|| rest.strip_suffix(" in a graveyard"))
+        .or_else(|| rest.strip_suffix(" in a hand"))
+        .or_else(|| rest.strip_suffix(" in hand"))
+        .unwrap_or(rest);
+    let subject = render_choose_exact_subject(descriptor, count);
+    Some(format!("{prefix}tap {subject} {tail}"))
+}
+
 fn parse_choose_exact_tail(head: &str) -> Option<(&str, usize, &str)> {
     let needle = " chooses exactly ";
     let lower = head.to_ascii_lowercase();
@@ -18689,6 +18785,9 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_choose_exact_exile_cost_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_choose_exact_tap_cost_clause(&normalized) {
         normalized = rewritten;
     }
     normalized = normalized.replace("controlss", "controls");

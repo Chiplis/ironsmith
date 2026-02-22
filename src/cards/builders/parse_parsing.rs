@@ -5792,6 +5792,12 @@ fn parse_enters_tapped_for_filter_line(
     if clause_words.first().copied() == Some("this") {
         return Ok(None);
     }
+    if clause_words.contains(&"copy") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported enters-as-copy replacement clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     let before_enter = &tokens[..enter_token_idx];
     let before_words = words(before_enter);
     let mut controller_override: Option<PlayerFilter> = None;
