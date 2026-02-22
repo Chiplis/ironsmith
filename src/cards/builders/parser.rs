@@ -346,6 +346,7 @@ pub(super) fn parse_text_with_annotations(
     }
 
     builder = normalize_channel_spell_effect(builder);
+    builder = normalize_chaotic_transformation_spell_effect(builder);
 
     Ok((builder.build(), annotations))
 }
@@ -482,6 +483,97 @@ fn normalize_channel_spell_effect(mut builder: CardDefinitionBuilder) -> CardDef
     builder.spell_effect = Some(vec![crate::effect::Effect::new(
         crate::effects::GrantManaAbilityUntilEotEffect::new(ability),
     )]);
+    builder
+}
+
+fn normalize_chaotic_transformation_spell_effect(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
+    use crate::effect::{ChoiceCount, Effect};
+    use crate::tag::TagKey;
+    use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    if builder.card_builder.name_ref() != "Chaotic Transformation" {
+        return builder;
+    }
+
+    fn battlefield_type_filter(card_type: CardType) -> ObjectFilter {
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(Zone::Battlefield);
+        filter.card_types = vec![card_type];
+        filter
+    }
+
+    fn exile_up_to_one_target(filter: ObjectFilter) -> Effect {
+        let target = ChooseSpec::target(ChooseSpec::Object(filter)).with_count(ChoiceCount::up_to(1));
+        Effect::new(crate::effects::MoveToZoneEffect {
+            target,
+            zone: Zone::Exile,
+            to_top: true,
+            battlefield_controller: crate::effects::BattlefieldController::Preserve,
+            enters_tapped: false,
+        })
+        .tag_all(TagKey::from("exiled_0"))
+    }
+
+    let mut effects = Vec::new();
+    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Artifact)));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Creature)));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Enchantment)));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Planeswalker)));
+    effects.push(exile_up_to_one_target(battlefield_type_filter(CardType::Land)));
+
+    let mut library_filter = ObjectFilter::default();
+    library_filter.zone = Some(Zone::Library);
+    library_filter.owner = Some(PlayerFilter::IteratedPlayer);
+    library_filter.card_types = vec![
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    library_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("__it__"),
+        relation: TaggedOpbjectRelation::SharesCardType,
+    });
+
+    let reveal_top_match = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            library_filter,
+            ChoiceCount::up_to(1),
+            PlayerFilter::IteratedPlayer,
+            TagKey::from("revealed_0"),
+        )
+        .in_zone(Zone::Library)
+        .with_description("cards")
+        .reveal()
+        .top_only(),
+    );
+    let put_onto_battlefield = Effect::new(crate::effects::PutOntoBattlefieldEffect::new(
+        ChooseSpec::Iterated,
+        false,
+        PlayerFilter::IteratedPlayer,
+    ));
+    let put_each_revealed = Effect::new(crate::effects::ForEachTaggedEffect::new(
+        TagKey::from("revealed_0"),
+        vec![put_onto_battlefield],
+    ));
+    let shuffle = Effect::new(crate::effects::ShuffleLibraryEffect {
+        player: PlayerFilter::IteratedPlayer,
+    });
+
+    let per_exiled = Effect::new(crate::effects::ForEachTaggedEffect::new(
+        TagKey::from("exiled_0"),
+        vec![Effect::new(crate::effects::SequenceEffect {
+            effects: vec![reveal_top_match, put_each_revealed, shuffle],
+        })],
+    ));
+
+    effects.push(per_exiled);
+
+    builder.spell_effect = Some(effects);
     builder
 }
 

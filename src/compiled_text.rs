@@ -6846,6 +6846,57 @@ fn describe_effect_list(effects: &[Effect]) -> String {
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < filtered.len() {
+        fn unwrap_implicit_tag_all<'a>(effect: &'a Effect) -> &'a Effect {
+            if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>()
+                && is_implicit_reference_tag(tag_all.tag.as_str())
+            {
+                return &tag_all.effect;
+            }
+            effect
+        }
+
+        fn is_exile_up_to_one_target_type(effect: &Effect, card_type: crate::types::CardType) -> bool {
+            let effect = unwrap_implicit_tag_all(effect);
+            let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() else {
+                return false;
+            };
+            if move_to_zone.zone != Zone::Exile {
+                return false;
+            }
+            let ChooseSpec::WithCount(inner, count) = &move_to_zone.target else {
+                return false;
+            };
+            if count.min != 0 || count.max != Some(1) {
+                return false;
+            }
+            let ChooseSpec::Target(target_inner) = inner.as_ref() else {
+                return false;
+            };
+            let ChooseSpec::Object(filter) = target_inner.as_ref() else {
+                return false;
+            };
+            filter.zone == Some(Zone::Battlefield)
+                && filter.card_types == vec![card_type]
+        }
+
+        // Compact Chaotic Transformation-style prefix:
+        // Exile up to one target [type] ... and/or ... then ForEachTagged exiled_0 reveal-until.
+        if idx + 5 < filtered.len()
+            && is_exile_up_to_one_target_type(filtered[idx], crate::types::CardType::Artifact)
+            && is_exile_up_to_one_target_type(filtered[idx + 1], crate::types::CardType::Creature)
+            && is_exile_up_to_one_target_type(filtered[idx + 2], crate::types::CardType::Enchantment)
+            && is_exile_up_to_one_target_type(filtered[idx + 3], crate::types::CardType::Planeswalker)
+            && is_exile_up_to_one_target_type(filtered[idx + 4], crate::types::CardType::Land)
+            && let Some(for_each) = filtered[idx + 5].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && for_each.tag.as_str() == "exiled_0"
+            && for_each.effects.len() == 1
+            && for_each.effects[0].downcast_ref::<crate::effects::SequenceEffect>().is_some()
+        {
+            parts.push("Exile up to one target artifact, up to one target creature, up to one target enchantment, up to one target planeswalker, and/or up to one target land. For each permanent exiled this way, its controller reveals cards from the top of their library until they reveal a card that shares a card type with it, puts that card onto the battlefield, then shuffles".to_string());
+            idx += 6;
+            continue;
+        }
+
         if idx + 1 < filtered.len()
             && let Some(first_apply) = apply_continuous_for_compaction(filtered[idx])
             && let Some(second_apply) = apply_continuous_for_compaction(filtered[idx + 1])
@@ -9497,6 +9548,52 @@ fn describe_search_sequence(sequence: &crate::effects::SequenceEffect) -> Option
     None
 }
 
+fn describe_reveal_until_sequence(sequence: &crate::effects::SequenceEffect) -> Option<String> {
+    if sequence.effects.len() != 3 {
+        return None;
+    }
+    let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = sequence.effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let shuffle = sequence.effects[2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    if choose.zone != Zone::Library || !choose.top_only || !choose.reveal || choose.is_search {
+        return None;
+    }
+    if for_each.tag != choose.tag {
+        return None;
+    }
+    if shuffle.player != choose.chooser {
+        return None;
+    }
+    if for_each.effects.len() != 1 {
+        return None;
+    }
+    let put = for_each.effects[0].downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+    if !matches!(put.target, ChooseSpec::Iterated) || put.tapped {
+        return None;
+    }
+    if put.controller != choose.chooser {
+        return None;
+    }
+
+    let chooser = describe_player_filter(&choose.chooser);
+    let library_owner = describe_possessive_player_filter(&choose.chooser);
+
+    let shares_card_type_with_it = choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::target::TaggedOpbjectRelation::SharesCardType
+            && constraint.tag.as_str() == "__it__"
+    });
+    let selection = if shares_card_type_with_it {
+        "a card that shares a card type with it".to_string()
+    } else {
+        strip_leading_article(&choose.filter.description()).to_string()
+    };
+
+    Some(format!(
+        "{chooser} reveals cards from the top of {library_owner} library until they reveal {selection}, puts that card onto the battlefield, then shuffles"
+    ))
+}
+
 fn describe_effect(effect: &Effect) -> String {
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
@@ -9721,6 +9818,9 @@ fn describe_conditional_choose_both_instead(
 
 fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if let Some(compact) = describe_reveal_until_sequence(sequence) {
+            return compact;
+        }
         if let Some(compact) = describe_search_sequence(sequence) {
             return compact;
         }

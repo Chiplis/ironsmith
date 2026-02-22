@@ -66,7 +66,13 @@ impl EffectExecutor for ForEachTaggedEffect {
 
         let mut outcomes = Vec::new();
 
+        let it_tag = TagKey::from("__it__");
         for snapshot in &snapshots {
+            // Expose the current iterated object as "__it__" for tagged constraints like
+            // "shares a card type with it" inside the loop body.
+            let original_it = ctx.tagged_objects.remove(&it_tag);
+            ctx.tag_object(it_tag.clone(), snapshot.clone());
+
             ctx.with_temp_iterated_object(Some(snapshot.object_id), |ctx| {
                 // Also expose this object's controller as the iterated player.
                 // This lets inner effects naturally say "its controller" via IteratedPlayer.
@@ -78,6 +84,15 @@ impl EffectExecutor for ForEachTaggedEffect {
                     Ok::<(), ExecutionError>(())
                 })
             })?;
+
+            match original_it {
+                Some(value) => {
+                    ctx.tagged_objects.insert(it_tag.clone(), value);
+                }
+                None => {
+                    ctx.tagged_objects.remove(&it_tag);
+                }
+            }
         }
 
         Ok(EffectOutcome::aggregate(outcomes))
