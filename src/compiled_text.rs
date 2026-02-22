@@ -10543,6 +10543,23 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_value(&gain.amount)
         );
     }
+    if let Some(grant) = effect.downcast_ref::<crate::effects::GrantManaAbilityUntilEotEffect>() {
+        let mut cost = describe_cost_list(grant.ability.mana_cost.costs());
+        cost = lowercase_first(cost.trim());
+        let cost = cost.trim_end_matches('.');
+        let mana = grant
+            .ability
+            .mana
+            .iter()
+            .copied()
+            .map(describe_mana_symbol)
+            .collect::<Vec<_>>()
+            .join("");
+        let mana = if mana.is_empty() { "{0}".to_string() } else { mana };
+        return format!(
+            "Until end of turn, any time you could activate a mana ability, you may {cost}. If you do, add {mana}."
+        );
+    }
     if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
         let player = describe_choose_spec(&lose.player);
         if let Value::CountersOnSource(counter_type) = &lose.amount {

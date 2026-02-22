@@ -96,7 +96,8 @@ pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, SetLife
 pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
-    AddManaOfLandProducedTypesEffect, AddScaledManaEffect, PayManaEffect,
+    AddManaOfLandProducedTypesEffect, AddScaledManaEffect, GrantManaAbilityUntilEotEffect,
+    PayManaEffect,
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, CrewCostEffect, EarthbendEffect, GrantObjectAbilityEffect,

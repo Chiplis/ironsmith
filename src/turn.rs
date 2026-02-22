@@ -438,6 +438,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
         .cleanup_expired(turn_number, &battlefield);
 
     game.cleanup_restrictions_end_of_turn();
+    game.cleanup_granted_mana_abilities_end_of_turn();
 
     // End "until end of turn" effects would happen here
     // (Handled by continuous effect manager)

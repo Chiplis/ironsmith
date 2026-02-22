@@ -12,6 +12,7 @@ mod add_mana_of_imprinted_colors;
 mod add_mana_of_land_produced_types;
 mod add_scaled_mana;
 mod choice_helpers;
+mod grant_mana_ability_until_eot;
 mod pay_mana;
 
 pub use add_colorless_mana::AddColorlessManaEffect;
@@ -23,4 +24,5 @@ pub use add_mana_of_chosen_color::AddManaOfChosenColorEffect;
 pub use add_mana_of_imprinted_colors::AddManaOfImprintedColorsEffect;
 pub use add_mana_of_land_produced_types::AddManaOfLandProducedTypesEffect;
 pub use add_scaled_mana::AddScaledManaEffect;
+pub use grant_mana_ability_until_eot::GrantManaAbilityUntilEotEffect;
 pub use pay_mana::PayManaEffect;

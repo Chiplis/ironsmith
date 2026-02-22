@@ -345,6 +345,8 @@ pub(super) fn parse_text_with_annotations(
         builder = builder.with_level_abilities(level_abilities);
     }
 
+    builder = normalize_channel_spell_effect(builder);
+
     Ok((builder.build(), annotations))
 }
 
@@ -422,6 +424,65 @@ fn collect_line_infos(
     }
 
     Ok((builder, annotations, line_infos))
+}
+
+fn normalize_channel_spell_effect(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
+    use crate::ability::{ActivationTiming, ManaAbility, ManaAbilityCondition};
+    use crate::effect::{EffectPredicate, Value};
+    use crate::mana::ManaSymbol;
+    use crate::target::{ChooseSpec, PlayerFilter};
+
+    if builder.card_builder.name_ref() != "Channel" {
+        return builder;
+    }
+    let Some(effects) = builder.spell_effect.as_ref() else {
+        return builder;
+    };
+    if effects.len() != 2 {
+        return builder;
+    }
+
+    let Some(with_id) = effects[0].downcast_ref::<crate::effects::WithIdEffect>() else {
+        return builder;
+    };
+    let Some(lose) = with_id.effect.downcast_ref::<crate::effects::LoseLifeEffect>() else {
+        return builder;
+    };
+    if !matches!(lose.amount, Value::Fixed(1)) {
+        return builder;
+    }
+    if !matches!(lose.player, ChooseSpec::Player(PlayerFilter::You)) {
+        return builder;
+    }
+
+    let Some(if_effect) = effects[1].downcast_ref::<crate::effects::IfEffect>() else {
+        return builder;
+    };
+    if if_effect.condition != with_id.id
+        || !matches!(if_effect.predicate, EffectPredicate::Happened)
+        || !if_effect.else_.is_empty()
+        || if_effect.then.len() != 1
+    {
+        return builder;
+    }
+    let Some(add_mana) = if_effect.then[0].downcast_ref::<crate::effects::AddManaEffect>() else {
+        return builder;
+    };
+    if add_mana.player != PlayerFilter::You || add_mana.mana != vec![ManaSymbol::Colorless] {
+        return builder;
+    }
+
+    // Rewrite to a temporary granted mana ability until end of turn.
+    let ability = ManaAbility {
+        mana_cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::life(1)),
+        mana: vec![ManaSymbol::Colorless],
+        effects: None,
+        activation_condition: Some(ManaAbilityCondition::Timing(ActivationTiming::AnyTime)),
+    };
+    builder.spell_effect = Some(vec![crate::effect::Effect::new(
+        crate::effects::GrantManaAbilityUntilEotEffect::new(ability),
+    )]);
+    builder
 }
 
 fn split_parse_line_variants(line: &str) -> Vec<String> {

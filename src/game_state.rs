@@ -661,6 +661,17 @@ pub struct StackEntry {
     pub crew_contributors: Vec<ObjectId>,
 }
 
+/// A mana ability granted to a player until end of turn.
+///
+/// This models effects like Channel that temporarily give a player a mana ability
+/// not tied to any permanent.
+#[derive(Debug, Clone)]
+pub struct GrantedManaAbility {
+    pub controller: PlayerId,
+    pub ability: crate::ability::ManaAbility,
+    pub expires_end_of_turn: u32,
+}
+
 impl StackEntry {
     pub fn new(object_id: ObjectId, controller: PlayerId) -> Self {
         Self {
@@ -967,6 +978,9 @@ pub struct GameState {
     /// Used for "one or more ... deal combat damage to a player" trigger matching.
     pub combat_damage_player_batch_hits: Vec<(ObjectId, PlayerId)>,
 
+    /// Temporary mana abilities granted to players (e.g., Channel), expiring at end of turn.
+    pub granted_mana_abilities: Vec<GrantedManaAbility>,
+
     /// Active restriction effects (spell/ability-based "can't" effects).
     pub restriction_effects: Vec<RestrictionEffectInstance>,
 
@@ -1096,6 +1110,7 @@ impl GameState {
             creature_damage_to_players_this_turn: HashMap::new(),
             damage_to_players_this_turn: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
+            granted_mana_abilities: Vec::new(),
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
             // Battlefield state extension maps
@@ -1188,6 +1203,12 @@ impl GameState {
             !matches!(effect.duration, crate::effect::Until::EndOfTurn)
                 || effect.expires_end_of_turn > current_turn
         });
+    }
+
+    pub fn cleanup_granted_mana_abilities_end_of_turn(&mut self) {
+        let current_turn = self.turn.turn_number;
+        self.granted_mana_abilities
+            .retain(|grant| grant.expires_end_of_turn > current_turn);
     }
 
     /// Can the player draw any cards?
