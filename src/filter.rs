@@ -523,6 +523,12 @@ pub struct ObjectFilter {
     /// If true, must not be blocking
     pub nonblocking: bool,
 
+    /// If true, must be an attacking creature that is blocked.
+    pub blocked: bool,
+
+    /// If true, must be an attacking creature that is unblocked.
+    pub unblocked: bool,
+
     /// If true, must have entered since your last turn ended.
     /// This is currently approximated via summoning-sick state.
     pub entered_since_your_last_turn_ended: bool,
@@ -1563,6 +1569,22 @@ impl ObjectFilter {
                 .combat
                 .as_ref()
                 .is_some_and(|combat| crate::combat_state::is_blocking(combat, object.id))
+        {
+            return false;
+        }
+        if self.blocked
+            && !game
+                .combat
+                .as_ref()
+                .is_some_and(|combat| crate::combat_state::is_blocked(combat, object.id))
+        {
+            return false;
+        }
+        if self.unblocked
+            && !game
+                .combat
+                .as_ref()
+                .is_some_and(|combat| crate::combat_state::is_unblocked(combat, object.id))
         {
             return false;
         }
@@ -2817,6 +2839,16 @@ impl ObjectFilter {
         }
         if self.noncommander {
             parts.push("noncommander".to_string());
+        }
+        if self.blocked && self.unblocked {
+            parts.push("blocked/unblocked".to_string());
+        } else {
+            if self.blocked {
+                parts.push("blocked".to_string());
+            }
+            if self.unblocked {
+                parts.push("unblocked".to_string());
+            }
         }
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());

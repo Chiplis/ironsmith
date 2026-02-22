@@ -2476,6 +2476,38 @@ fn test_parse_shares_permanent_type_with_it_adds_tagged_constraint() {
 }
 
 #[test]
+fn test_parse_unblocked_attacking_filter_sets_unblocked() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Throatseeker Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Unblocked attacking Ninjas you control have lifelink.")
+        .expect("parse unblocked-attacking static filter");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("attacking: true"),
+        "expected attacking filter flag, got {debug}"
+    );
+    assert!(
+        debug.contains("unblocked: true"),
+        "expected unblocked to map to unblocked filter flag, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_blocked_filter_sets_blocked() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blocked Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target blocked creature gains lifelink until end of turn.")
+        .expect("parse blocked target filter");
+
+    let debug = format!("{:#?}", def.effects);
+    assert!(
+        debug.contains("blocked: true"),
+        "expected blocked filter flag, got {debug}"
+    );
+}
+
+#[test]
 fn test_render_multiple_cycling_variants_preserves_variant_names() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Variant")
         .card_types(vec![CardType::Creature])

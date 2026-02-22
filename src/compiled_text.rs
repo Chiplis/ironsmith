@@ -4356,6 +4356,8 @@ fn is_generic_owned_card_search_filter(filter: &ObjectFilter) -> bool {
         && !filter.nonattacking
         && !filter.blocking
         && !filter.nonblocking
+        && !filter.blocked
+        && !filter.unblocked
         && filter.power.is_none()
         && filter.toughness.is_none()
         && filter.mana_value.is_none()
@@ -4410,8 +4412,12 @@ fn describe_count_filter_value_subject(filter: &ObjectFilter) -> String {
         || filter.owner.is_some()
         || subject.contains(" controls")
         || subject.contains(" owns");
-    let is_combat_restricted =
-        filter.attacking || filter.nonattacking || filter.blocking || filter.nonblocking;
+    let is_combat_restricted = filter.attacking
+        || filter.nonattacking
+        || filter.blocking
+        || filter.nonblocking
+        || filter.blocked
+        || filter.unblocked;
     if filter.zone == Some(Zone::Battlefield)
         && !mentions_location
         && !mentions_controller_or_owner
@@ -6656,6 +6662,8 @@ fn describe_condition(condition: &Condition) -> String {
 	                    && !filter.nonattacking
 	                    && !filter.blocking
 	                    && !filter.nonblocking
+	                    && !filter.blocked
+	                    && !filter.unblocked
 	                    && !filter.entered_since_your_last_turn_ended
 	                    && filter.power.is_none()
 	                    && filter.toughness.is_none()
@@ -8521,6 +8529,8 @@ fn describe_each_controlled_by_iterated(filter: &ObjectFilter) -> Option<String>
         && !filter.nonattacking
         && !filter.blocking
         && !filter.nonblocking
+        && !filter.blocked
+        && !filter.unblocked
         && filter.zone.is_none()
         && filter.tagged_constraints.is_empty()
         && filter.targets_object.is_none()

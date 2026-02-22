@@ -4429,7 +4429,12 @@ fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score += usize::from(filter.token || filter.nontoken) * 3;
     score += usize::from(filter.tapped || filter.untapped) * 2;
     score += usize::from(
-        filter.attacking || filter.nonattacking || filter.blocking || filter.nonblocking,
+        filter.attacking
+            || filter.nonattacking
+            || filter.blocking
+            || filter.nonblocking
+            || filter.blocked
+            || filter.unblocked,
     ) * 2;
     score += usize::from(filter.is_commander || filter.noncommander) * 2;
     score += usize::from(filter.colorless || filter.multicolored || filter.monocolored) * 2;
@@ -18944,6 +18949,8 @@ fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> ObjectFilter {
     merged.nonattacking |= specific.nonattacking;
     merged.blocking |= specific.blocking;
     merged.nonblocking |= specific.nonblocking;
+    merged.blocked |= specific.blocked;
+    merged.unblocked |= specific.unblocked;
     merged.is_commander |= specific.is_commander;
     merged.noncommander |= specific.noncommander;
     merged.colorless |= specific.colorless;
@@ -33410,6 +33417,8 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
                         | "untapped"
                         | "attacking"
                         | "nonattacking"
+                        | "blocked"
+                        | "unblocked"
                         | "blocking"
                         | "nonblocking"
                         | "non"
@@ -33476,6 +33485,8 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
                         | "untapped"
                         | "attacking"
                         | "nonattacking"
+                        | "blocked"
+                        | "unblocked"
                         | "blocking"
                         | "nonblocking"
                         | "non"
@@ -35586,6 +35597,10 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             filter.nonblocking = true;
             negated_word_indices.insert(idx + 1);
         }
+        if next == "blocked" {
+            filter.unblocked = true;
+            negated_word_indices.insert(idx + 1);
+        }
         if next == "commander" || next == "commanders" {
             filter.noncommander = true;
             negated_word_indices.insert(idx + 1);
@@ -35618,6 +35633,18 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         }
 
         let negated_word = all_words[target_idx];
+        if negated_word == "attacking" {
+            filter.nonattacking = true;
+            negated_word_indices.insert(target_idx);
+        }
+        if negated_word == "blocking" {
+            filter.nonblocking = true;
+            negated_word_indices.insert(target_idx);
+        }
+        if negated_word == "blocked" {
+            filter.unblocked = true;
+            negated_word_indices.insert(target_idx);
+        }
         if negated_word == "historic" {
             filter.nonhistoric = true;
             negated_historic_indices.insert(target_idx);
@@ -35675,6 +35702,8 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             "nonattacking" => filter.nonattacking = true,
             "blocking" if !is_negated_word => filter.blocking = true,
             "nonblocking" => filter.nonblocking = true,
+            "blocked" if !is_negated_word => filter.blocked = true,
+            "unblocked" if !is_negated_word => filter.unblocked = true,
             "commander" | "commanders" => {
                 let prev = idx.checked_sub(1).and_then(|i| all_words.get(i)).copied();
                 let prev2 = idx.checked_sub(2).and_then(|i| all_words.get(i)).copied();
@@ -35954,6 +35983,8 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         || filter.nonattacking
         || filter.blocking
         || filter.nonblocking
+        || filter.blocked
+        || filter.unblocked
         || filter.is_commander
         || filter.noncommander
         || !filter.excluded_colors.is_empty()
@@ -36004,6 +36035,8 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         || filter.nonattacking
         || filter.blocking
         || filter.nonblocking
+        || filter.blocked
+        || filter.unblocked
         || filter.is_commander
         || filter.noncommander
         || !filter.excluded_colors.is_empty()
