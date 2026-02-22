@@ -27717,6 +27717,21 @@ fn parse_deal_damage_with_amount(
         });
     }
 
+    if let Some(at_idx) = target_tokens.iter().position(|token| token.is_word("at")) {
+        let timing_words = words(&target_tokens[at_idx..]);
+        let matches_end_of_combat = timing_words.as_slice() == ["at", "end", "of", "combat"]
+            || timing_words.as_slice() == ["at", "the", "end", "of", "combat"];
+        if matches_end_of_combat && at_idx >= 1 {
+            let pre_target_tokens = trim_commas(&target_tokens[..at_idx]);
+            if !pre_target_tokens.is_empty() {
+                let target = parse_target_phrase(&pre_target_tokens)?;
+                return Ok(EffectAst::DelayedUntilEndOfCombat {
+                    effects: vec![EffectAst::DealDamage { amount, target }],
+                });
+            }
+        }
+    }
+
     let target = parse_target_phrase(&target_tokens)?;
     Ok(EffectAst::DealDamage { amount, target })
 }
