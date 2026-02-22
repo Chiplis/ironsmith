@@ -3404,6 +3404,13 @@ fn parse_dynamic_cost_modifier_value(tokens: &[Token]) -> Result<Option<Value>, 
     {
         return Ok(Some(Value::CreaturesDiedThisTurn));
     }
+    if filter_words.starts_with(&["creature", "that", "died", "under", "your", "control"])
+        || filter_words.starts_with(&["creatures", "that", "died", "under", "your", "control"])
+    {
+        if filter_words.contains(&"this") && filter_words.contains(&"turn") {
+            return Ok(Some(Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You)));
+        }
+    }
     // "for each spell you've cast this turn" (and limited variants like "instant and sorcery spell")
     let has_spell_cast_turn = (filter_words.contains(&"spell") || filter_words.contains(&"spells"))
         && (filter_words.contains(&"cast") || filter_words.contains(&"casts"))

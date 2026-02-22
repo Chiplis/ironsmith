@@ -453,6 +453,33 @@ fn evaluate_value(
             ValueEval::Scalar(count * *multiplier)
         }
         Value::CreaturesDiedThisTurn => ValueEval::Scalar(game.creatures_died_this_turn as i32),
+        Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
+            let filter_ctx = crate::filter::FilterContext {
+                you: Some(effect_controller),
+                source: Some(source),
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                target_players: Vec::new(),
+                tagged_objects: std::collections::HashMap::new(),
+            };
+            let mut total = 0i32;
+            for player in game.players.iter().filter(|p| p.is_in_game()) {
+                if !player_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                total += game
+                    .creatures_died_under_controller_this_turn
+                    .get(&player.id)
+                    .copied()
+                    .unwrap_or(0) as i32;
+            }
+            ValueEval::Scalar(total)
+        }
         Value::PowerOf(target) | Value::ToughnessOf(target) => {
             use crate::target::ChooseSpec;
             let mut values = Vec::new();
@@ -977,6 +1004,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::BasicLandTypesAmong(_)
         | Value::ColorsAmong(_)
         | Value::CreaturesDiedThisTurn
+        | Value::CreaturesDiedThisTurnControlledBy(_)
         | Value::CountPlayers(_)
         | Value::PartySize(_)
         | Value::Devotion { .. }

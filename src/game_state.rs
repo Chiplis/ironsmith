@@ -904,6 +904,10 @@ pub struct GameState {
     /// Reset at the start of each turn.
     pub creatures_died_this_turn: u32,
 
+    /// Number of creatures that died this turn per controller (at the time they died).
+    /// Reset at the start of each turn.
+    pub creatures_died_under_controller_this_turn: HashMap<PlayerId, u32>,
+
     /// Cards/tokens that were put into a graveyard from anywhere this turn.
     ///
     /// Tracked by stable ID so zone changes (Rule 400.7) don't lose identity.
@@ -1093,6 +1097,7 @@ impl GameState {
             player_control_effects: Vec::new(),
             player_control_timestamp: 0,
             creatures_died_this_turn: 0,
+            creatures_died_under_controller_this_turn: HashMap::new(),
             objects_put_into_graveyard_this_turn: HashSet::new(),
             triggers_fired_this_turn: HashMap::new(),
             turn_counters: TurnCounterTracker::default(),
@@ -1424,6 +1429,7 @@ impl GameState {
         let old_object = self.objects.remove(&old_id)?;
         let old_zone = old_object.zone;
         let owner = old_object.owner;
+        let controller = old_object.controller;
 
         // Track creature deaths (battlefield to graveyard) and record pending death event
         let is_creature_dying = old_zone == Zone::Battlefield
@@ -1431,6 +1437,10 @@ impl GameState {
             && old_object.is_creature();
         if is_creature_dying {
             self.creatures_died_this_turn += 1;
+            *self
+                .creatures_died_under_controller_this_turn
+                .entry(controller)
+                .or_insert(0) += 1;
         }
         if new_zone == Zone::Graveyard {
             self.objects_put_into_graveyard_this_turn
@@ -2470,6 +2480,7 @@ impl GameState {
         self.chosen_modes_by_ability_this_turn.clear();
         self.cards_drawn_this_turn.clear();
         self.creatures_died_this_turn = 0;
+        self.creatures_died_under_controller_this_turn.clear();
         self.objects_put_into_graveyard_this_turn.clear();
         self.triggers_fired_this_turn.clear();
         self.turn_counters.clear();

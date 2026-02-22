@@ -5485,6 +5485,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             format!("the number of {}", describe_colors_among(filter))
         }
         Value::CreaturesDiedThisTurn => "the number of creatures that died this turn".to_string(),
+        Value::CreaturesDiedThisTurnControlledBy(filter) => format!(
+            "the number of creatures that died under {} control this turn",
+            describe_possessive_player_filter(filter)
+        ),
         Value::CountPlayers(filter) => format!("the number of {}", describe_player_filter(filter)),
         Value::PartySize(filter) => {
             format!(
@@ -8618,6 +8622,18 @@ fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<Stri
             "{player} {verb} a card for each {}",
             describe_for_each_filter(filter)
         )),
+        Value::CreaturesDiedThisTurnControlledBy(controller) => {
+            let suffix = match controller {
+                PlayerFilter::You => "under your control this turn".to_string(),
+                PlayerFilter::Opponent => "under an opponent's control this turn".to_string(),
+                PlayerFilter::Any => "this turn".to_string(),
+                other => format!(
+                    "under {} control this turn",
+                    describe_possessive_player_filter(other)
+                ),
+            };
+            Some(format!("{player} {verb} a card for each creature that died {suffix}"))
+        }
         Value::SpellsCastThisTurn(spell_caster) => Some(format!(
             "{player} {verb} a card for each {}",
             describe_spells_cast_this_turn_each(spell_caster)
@@ -8730,6 +8746,18 @@ fn describe_compact_token_count(value: &Value, token_name: &str) -> String {
         }
         Value::CreaturesDiedThisTurn => {
             format!("a {token_name} token for each creature that died this turn")
+        }
+        Value::CreaturesDiedThisTurnControlledBy(filter) => {
+            let suffix = match filter {
+                PlayerFilter::You => "under your control this turn".to_string(),
+                PlayerFilter::Opponent => "under an opponent's control this turn".to_string(),
+                PlayerFilter::Any => "this turn".to_string(),
+                other => format!(
+                    "under {} control this turn",
+                    describe_possessive_player_filter(other)
+                ),
+            };
+            format!("a {token_name} token for each creature that died {suffix}")
         }
         Value::ColorsOfManaSpentToCastThisSpell => {
             format!("a {token_name} token for each color of mana spent to cast this spell")

@@ -540,6 +540,9 @@ pub enum Value {
     /// Number of creatures that have died this turn.
     CreaturesDiedThisTurn,
 
+    /// Number of creatures that died this turn while controlled by players matching the filter.
+    CreaturesDiedThisTurnControlledBy(PlayerFilter),
+
     /// The number of players matching a filter
     CountPlayers(PlayerFilter),
 

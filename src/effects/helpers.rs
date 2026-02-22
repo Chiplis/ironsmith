@@ -227,6 +227,21 @@ pub fn resolve_value(
                 + (has_green as i32))
         }
         Value::CreaturesDiedThisTurn => Ok(game.creatures_died_this_turn as i32),
+        Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let mut total = 0i32;
+            for player in game.players.iter().filter(|p| p.is_in_game()) {
+                if !player_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                total += game
+                    .creatures_died_under_controller_this_turn
+                    .get(&player.id)
+                    .copied()
+                    .unwrap_or(0) as i32;
+            }
+            Ok(total)
+        }
 
         Value::CountPlayers(player_filter) => {
             let filter_ctx = ctx.filter_context(game);

@@ -1658,6 +1658,33 @@ fn resolve_value_direct(
             count * *multiplier
         }
         Value::CreaturesDiedThisTurn => game.creatures_died_this_turn as i32,
+        Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
+            let filter_ctx = FilterContext {
+                you: Some(controller),
+                source: Some(source),
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                target_players: Vec::new(),
+                tagged_objects: HashMap::new(),
+            };
+            let mut total = 0i32;
+            for player in game.players.iter().filter(|p| p.is_in_game()) {
+                if !player_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                total += game
+                    .creatures_died_under_controller_this_turn
+                    .get(&player.id)
+                    .copied()
+                    .unwrap_or(0) as i32;
+            }
+            total
+        }
 
         Value::SourcePower => objects
             .get(&source)
@@ -2653,6 +2680,39 @@ fn resolve_value_with_context(
                 + (has_green as i32)
         }
         Value::CreaturesDiedThisTurn => ctx.game.creatures_died_this_turn as i32,
+        Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
+            let controller = ctx
+                .objects
+                .get(&source)
+                .map(|o| o.controller)
+                .unwrap_or(crate::ids::PlayerId::from_index(0));
+            let filter_ctx = FilterContext {
+                you: Some(controller),
+                source: Some(source),
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                target_players: Vec::new(),
+                tagged_objects: std::collections::HashMap::new(),
+            };
+            let mut total = 0i32;
+            for player in ctx.game.players.iter().filter(|p| p.is_in_game()) {
+                if !player_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                total += ctx
+                    .game
+                    .creatures_died_under_controller_this_turn
+                    .get(&player.id)
+                    .copied()
+                    .unwrap_or(0) as i32;
+            }
+            total
+        }
 
         Value::SourcePower => ctx
             .objects
