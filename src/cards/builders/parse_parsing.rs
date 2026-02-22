@@ -34955,8 +34955,8 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         return Ok(filter);
     }
 
-    let has_share_card_type = all_words.contains(&"shares")
-        && all_words.contains(&"card")
+    let has_share_card_type = (all_words.contains(&"share") || all_words.contains(&"shares"))
+        && (all_words.contains(&"card") || all_words.contains(&"permanent"))
         && all_words.contains(&"type")
         && all_words.contains(&"it");
     let has_share_color =

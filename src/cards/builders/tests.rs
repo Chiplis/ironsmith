@@ -2454,6 +2454,28 @@ fn test_parse_exile_then_return_with_counter_keeps_counter_followup() {
 }
 
 #[test]
+fn test_parse_shares_permanent_type_with_it_adds_tagged_constraint() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cloudstone Curio Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a nonartifact permanent you control enters, you may return another permanent you control that shares a permanent type with it to its owner's hand.",
+        )
+        .expect("parse shares-permanent-type clause");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("SharesCardType"),
+        "expected tagged shares-card-type constraint for 'shares a permanent type with it', got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("shares a permanent type"),
+        "expected rendered share-type restriction, got {rendered}"
+    );
+}
+
+#[test]
 fn test_render_multiple_cycling_variants_preserves_variant_names() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Variant")
         .card_types(vec![CardType::Creature])
