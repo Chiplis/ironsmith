@@ -655,6 +655,10 @@ pub struct StackEntry {
     pub chosen_modes: Option<Vec<usize>>,
     /// Permanents that contributed keyword-ability alternative payments to this spell cast.
     pub keyword_payment_contributions: Vec<KeywordPaymentContribution>,
+    /// Creatures that crewed this object this turn, captured when the entry was created.
+    ///
+    /// Used to populate runtime tags for filters like "each creature that crewed it this turn".
+    pub crew_contributors: Vec<ObjectId>,
 }
 
 impl StackEntry {
@@ -677,6 +681,7 @@ impl StackEntry {
             intervening_if: None,
             chosen_modes: None,
             keyword_payment_contributions: Vec::new(),
+            crew_contributors: Vec::new(),
         }
     }
 
@@ -704,6 +709,7 @@ impl StackEntry {
             intervening_if: None,
             chosen_modes: None,
             keyword_payment_contributions: Vec::new(),
+            crew_contributors: Vec::new(),
         }
     }
 
@@ -943,6 +949,12 @@ pub struct GameState {
     /// Used for trap conditions like Balustrade Spy.
     pub creatures_entered_this_turn: HashMap<PlayerId, u32>,
 
+    /// Creatures that crewed a Vehicle this turn, keyed by Vehicle object id.
+    ///
+    /// Used for references like "each creature that crewed it this turn".
+    /// Cleared at the start of each turn.
+    pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
+
     /// Damage dealt to each player by creatures this turn.
     /// Used for trap conditions like Summoning Trap.
     pub creature_damage_to_players_this_turn: HashMap<PlayerId, u32>,
@@ -1080,6 +1092,7 @@ impl GameState {
             spells_cast_last_turn_total: 0,
             library_searches_this_turn: HashSet::new(),
             creatures_entered_this_turn: HashMap::new(),
+            crewed_this_turn: HashMap::new(),
             creature_damage_to_players_this_turn: HashMap::new(),
             damage_to_players_this_turn: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
@@ -2449,6 +2462,7 @@ impl GameState {
         self.creatures_attacked_this_turn.clear();
         self.library_searches_this_turn.clear();
         self.creatures_entered_this_turn.clear();
+        self.crewed_this_turn.clear();
         self.creature_damage_to_players_this_turn.clear();
         self.damage_to_players_this_turn.clear();
         self.combat_damage_player_batch_hits.clear();

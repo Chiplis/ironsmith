@@ -260,6 +260,7 @@ mod tests {
             intervening_if: None,
             triggering_event: None,
             keyword_payment_contributions: vec![],
+            crew_contributors: vec![],
             chosen_modes: None,
         });
 
@@ -326,6 +327,7 @@ mod tests {
             intervening_if: None,
             triggering_event: None,
             keyword_payment_contributions: vec![],
+            crew_contributors: vec![],
             chosen_modes: None,
         });
 
@@ -391,6 +393,7 @@ mod tests {
             intervening_if: None,
             triggering_event: None,
             keyword_payment_contributions: vec![],
+            crew_contributors: vec![],
             chosen_modes: None,
         });
 
@@ -449,6 +452,7 @@ mod tests {
             intervening_if: None,
             triggering_event: None,
             keyword_payment_contributions: vec![],
+            crew_contributors: vec![],
             chosen_modes: None,
         });
 

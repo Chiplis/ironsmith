@@ -99,7 +99,7 @@ pub use mana::{
     AddManaOfLandProducedTypesEffect, AddScaledManaEffect, PayManaEffect,
 };
 pub use permanents::{
-    AttachObjectsEffect, AttachToEffect, EarthbendEffect, GrantObjectAbilityEffect,
+    AttachObjectsEffect, AttachToEffect, CrewCostEffect, EarthbendEffect, GrantObjectAbilityEffect,
     MonstrosityEffect, RegenerateEffect, TapEffect, TransformEffect, UntapEffect,
 };
 pub use player::{

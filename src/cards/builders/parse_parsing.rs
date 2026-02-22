@@ -2110,6 +2110,7 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
             "annihilator",
             format!("annihilator {amount}"),
         )),
+        KeywordAction::Crew { .. } => None,
         KeywordAction::Marker(name) => Some(StaticAbility::custom(name, name.to_string())),
         KeywordAction::MarkerText(text) => {
             Some(StaticAbility::custom("keyword_marker", text))
@@ -10324,7 +10325,6 @@ fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "banding" => Some("banding"),
         "fabricate" => Some("fabricate"),
         "bestow" => Some("bestow"),
-        "crew" => Some("crew"),
         "dash" => Some("dash"),
         "soulshift" => Some("soulshift"),
         "adapt" => Some("adapt"),
@@ -10370,7 +10370,7 @@ fn marker_keyword_display(words: &[&str]) -> Option<String> {
     let title = keyword_title(keyword);
 
     match keyword {
-        "fabricate" | "crew" | "soulshift" | "adapt" | "afterlife" | "bolster" | "devour"
+        "fabricate" | "soulshift" | "adapt" | "afterlife" | "bolster" | "devour"
         | "modular" | "vanishing" | "backup" | "casualty" | "saddle" | "fading" | "graft"
         | "tribute" | "renown" => {
             let amount = words.get(1)?.parse::<u32>().ok()?;
@@ -10500,6 +10500,47 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         return Some(KeywordAction::Marker("annihilator"));
     }
 
+    // Crew appears as "Crew N" and is often followed by inline restrictions/reminder text.
+    if words.first().copied() == Some("crew") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            let has_sorcery_speed = words
+                .windows(5)
+                .any(|window| window == ["activate", "only", "as", "a", "sorcery"]);
+
+            let has_once_per_turn = words
+                .windows(5)
+                .any(|window| window == ["activate", "only", "once", "each", "turn"])
+                || words
+                    .windows(5)
+                    .any(|window| window == ["activate", "only", "once", "per", "turn"]);
+
+            let mut additional_restrictions = Vec::new();
+            let timing = if has_sorcery_speed {
+                if has_once_per_turn {
+                    additional_restrictions.push("Activate only once each turn.".to_string());
+                }
+                ActivationTiming::SorcerySpeed
+            } else if has_once_per_turn {
+                ActivationTiming::OncePerTurn
+            } else {
+                ActivationTiming::AnyTime
+            };
+
+            return Some(KeywordAction::Crew {
+                amount,
+                timing,
+                additional_restrictions,
+            });
+        }
+        // Fallback: preserve unsupported crew variants as marker text.
+        if let Some(display) = marker_keyword_display(&words) {
+            return Some(KeywordAction::MarkerText(display));
+        }
+        return Some(KeywordAction::Marker("crew"));
+    }
+
     if words.as_slice().starts_with(&["battle", "cry"]) {
         return Some(KeywordAction::Marker("battle cry"));
     }
@@ -10534,7 +10575,6 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
             "banding"
                 | "fabricate"
                 | "bestow"
-                | "crew"
                 | "dash"
                 | "soulshift"
                 | "adapt"
@@ -33745,6 +33785,15 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("convoked_this_spell"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    }
+    if all_words
+        .windows(5)
+        .any(|window| window == ["that", "crewed", "it", "this", "turn"])
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("crewed_it_this_turn"),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }

@@ -558,6 +558,7 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Unblockable => "This creature can't be blocked".to_string(),
         KeywordAction::Devoid => "Devoid".to_string(),
         KeywordAction::Annihilator(amount) => format!("Annihilator {amount}"),
+        KeywordAction::Crew { amount, .. } => format!("Crew {amount}"),
         KeywordAction::Marker(name) => title_case_words(name),
         KeywordAction::MarkerText(text) => text.clone(),
     }
@@ -593,7 +594,16 @@ fn apply_line_ast(
             } else {
                 ", "
             };
-            let line_text = keyword_actions_line_text(&actions, separator);
+            let line_text = if actions
+                .iter()
+                .any(|action| matches!(action, KeywordAction::Crew { .. }))
+            {
+                // Preserve "Activate only ..." restrictions that are often written inline
+                // on the Crew line, while still stripping reminder text in parentheses.
+                Some(keyword_segment.trim().to_string())
+            } else {
+                keyword_actions_line_text(&actions, separator)
+            };
             for action in actions {
                 let ability_count_before = builder.abilities.len();
                 builder = builder.apply_keyword_action(action);

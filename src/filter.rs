@@ -2429,6 +2429,9 @@ impl ObjectFilter {
                     "improvised_this_spell" => {
                         post_noun_qualifiers.push("that improvised this spell".to_string());
                     }
+                    "crewed_it_this_turn" => {
+                        post_noun_qualifiers.push("that crewed it this turn".to_string());
+                    }
                     crate::tag::SOURCE_EXILED_TAG => {
                         post_noun_qualifiers.push("exiled with this permanent".to_string());
                     }

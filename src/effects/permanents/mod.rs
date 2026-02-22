@@ -5,6 +5,7 @@
 
 mod attach_objects;
 mod attach_to;
+mod crew;
 mod earthbend;
 mod grant_object_ability;
 mod monstrosity;
@@ -15,6 +16,7 @@ mod untap;
 
 pub use attach_objects::AttachObjectsEffect;
 pub use attach_to::AttachToEffect;
+pub use crew::CrewCostEffect;
 pub use earthbend::EarthbendEffect;
 pub use grant_object_ability::GrantObjectAbilityEffect;
 pub use monstrosity::MonstrosityEffect;

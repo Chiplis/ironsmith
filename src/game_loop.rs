@@ -379,6 +379,13 @@ fn apply_keyword_payment_tags_for_resolution(
             ctx.tag_object(payment_contribution_tag(contribution.effect), snapshot);
         }
     }
+
+    for crew_id in &entry.crew_contributors {
+        if let Some(obj) = game.object(*crew_id) {
+            let snapshot = ObjectSnapshot::from_object(obj, game);
+            ctx.tag_object("crewed_it_this_turn", snapshot);
+        }
+    }
 }
 
 /// Drain pending death and custom trigger events and enqueue all matches.
@@ -7680,6 +7687,12 @@ fn triggered_to_stack_entry(game: &GameState, trigger: &TriggeredAbilityEntry) -
         && !obj.keyword_payment_contributions_to_cast.is_empty()
     {
         entry.keyword_payment_contributions = obj.keyword_payment_contributions_to_cast.clone();
+    }
+
+    if let Some(crewers) = game.crewed_this_turn.get(&trigger.source)
+        && !crewers.is_empty()
+    {
+        entry.crew_contributors = crewers.clone();
     }
 
     // Copy intervening-if condition if present (must be rechecked at resolution time)

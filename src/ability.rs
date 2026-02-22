@@ -532,7 +532,7 @@ fn parse_named_count_word(word: &str) -> Option<u32> {
 }
 
 /// When an activated ability can be activated.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ActivationTiming {
     /// Can be activated any time you have priority
     #[default]

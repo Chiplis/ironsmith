@@ -12675,6 +12675,12 @@ fn describe_ability(
             vec![line]
         }
         AbilityKind::Activated(activated) => {
+            if let Some(text) = ability.text.as_deref() {
+                let normalized = normalize_sentence_surface_style(text.trim());
+                if normalized.to_ascii_lowercase().starts_with("crew ") {
+                    return vec![format!("Keyword ability {index}: {normalized}")];
+                }
+            }
             let mut line = format!("Activated ability {index}");
             let mut pre = Vec::new();
             let has_boast_label = ability

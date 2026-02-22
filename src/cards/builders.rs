@@ -92,6 +92,11 @@ enum KeywordAction {
     Unblockable,
     Devoid,
     Annihilator(u32),
+    Crew {
+        amount: u32,
+        timing: ActivationTiming,
+        additional_restrictions: Vec<String>,
+    },
     Marker(&'static str),
     MarkerText(String),
 }
@@ -1332,6 +1337,31 @@ impl CardDefinitionBuilder {
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(format!("Annihilator {amount}")),
             }),
+            KeywordAction::Crew {
+                amount,
+                timing,
+                additional_restrictions,
+            } => {
+                let cost = TotalCost::from_cost(crate::costs::Cost::effect(Effect::new(
+                    crate::effects::CrewCostEffect::new(amount),
+                )));
+                let animate = Effect::new(crate::effects::ApplyContinuousEffect::new(
+                    crate::continuous::EffectTarget::Source,
+                    crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+                    Until::EndOfTurn,
+                ));
+                self.with_ability(Ability {
+                    kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                        mana_cost: cost,
+                        effects: vec![animate],
+                        choices: Vec::new(),
+                        timing,
+                        additional_restrictions,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                    text: Some(format!("Crew {amount}")),
+                })
+            }
             KeywordAction::Marker(name) => self.with_ability(Ability::static_ability(
                 StaticAbility::custom(name, name.to_string()),
             )),
