@@ -4310,14 +4310,16 @@ fn describe_compact_create_token_ui(
     }
 
     let amount = describe_compact_token_count_ui(&create_token.count, token_name, tagged_subjects);
-    if matches!(create_token.controller, crate::target::PlayerFilter::You) {
-        Some(format!("Create {amount}."))
+    let mut text = if matches!(create_token.controller, crate::target::PlayerFilter::You) {
+        format!("Create {amount}.")
     } else {
-        Some(format!(
+        format!(
             "Create {amount} under {} control.",
             describe_player_filter_possessive(&create_token.controller, tagged_subjects)
-        ))
-    }
+        )
+    };
+    append_token_ability_clause(&mut text, &create_token.token);
+    Some(text)
 }
 
 fn describe_exile_then_return(
@@ -5502,6 +5504,7 @@ fn describe_effect_core_expanded(
             text.push_str(", and exile it at the beginning of the next end step");
         }
         text.push('.');
+        append_token_ability_clause(&mut text, &create_token.token);
         return Some(text);
     }
     if let Some(create_copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() {
@@ -5989,6 +5992,60 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
     }
 
     text
+}
+
+fn describe_token_ability_texts(token: &CardDefinition) -> Vec<String> {
+    let mut texts = Vec::new();
+    for ability in &token.abilities {
+        if let AbilityKind::Static(static_ability) = &ability.kind
+            && static_ability.is_keyword()
+        {
+            continue;
+        }
+        if let Some(text) = ability.text.as_deref().map(str::trim) {
+            if !text.is_empty() {
+                texts.push(text.to_string());
+                continue;
+            }
+        }
+        let fallback = describe_compiled_ability(1, ability);
+        for line in fallback {
+            if let Some(stripped) = line
+                .strip_prefix("Static ability 1: ")
+                .or_else(|| line.strip_prefix("Triggered ability 1: "))
+                .or_else(|| line.strip_prefix("Activated ability 1: "))
+                .or_else(|| line.strip_prefix("Mana ability 1: "))
+                .or_else(|| line.strip_prefix("Keyword ability 1: "))
+            {
+                let stripped = stripped.trim();
+                if !stripped.is_empty() {
+                    texts.push(stripped.to_string());
+                }
+            }
+        }
+    }
+    texts
+}
+
+fn append_token_ability_clause(text: &mut String, token: &CardDefinition) {
+    let ability_texts = describe_token_ability_texts(token);
+    if ability_texts.is_empty() {
+        return;
+    }
+    let quoted = ability_texts
+        .iter()
+        .map(|ability| format!("\"{}\"", ability.trim()))
+        .collect::<Vec<_>>();
+    let joined = join_words_with_and(&quoted);
+    let ends_with_punct = ability_texts
+        .last()
+        .and_then(|ability| ability.trim_end().chars().last())
+        .is_some_and(|ch| matches!(ch, '.' | '!' | '?'));
+    text.push_str(" It has ");
+    text.push_str(&joined);
+    if !ends_with_punct {
+        text.push('.');
+    }
 }
 
 fn describe_choose_spec(
