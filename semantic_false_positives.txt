@@ -16,23 +16,22 @@ Agent of Erebos
 Agrus Kos, Wojek Veteran
 Aku Djinn
 Akul the Unrepentant
+Aladdin
 Allied Teamwork
 Ambling Stormshell
 Anara, Wolvid Familiar
 Ancestral Katana
-Ancestral Vision
 Angelic Renewal
 Angelic Shield
 Angelic Voices
 Angler Turtle
+Angry Rabble
 Ankh of Mishra
 Anthem of Champions
 Arahbo, the First Fang
-Arc Blade
 Asceticism
 Ashling, Rekindled // Ashling, Rimebound
 Asmodeus the Archfiend
-Atraxi Warden
 Atrocious Experiment
 Attuma, Atlantean Warlord
 Authority of the Consuls
@@ -49,10 +48,11 @@ Beregond of the Guard
 Bifurcate
 Birchlore Rangers
 Blex, Vexing Pest // Search for Blex
+Blind with Anger
 Bloodcrusher of Khorne
 Bloodthorn Flail
-Body of Knowledge
 Body Snatcher
+Body of Knowledge
 Boggart Trawler // Boggart Bog
 Bond of Discipline
 Bootleggers' Stash
@@ -67,6 +67,7 @@ Bruenor Battlehammer
 Burn Away
 Burn Bright
 Burst of Speed
+Cabal Slaver
 Cadaverous Bloom
 Campus Guide
 Cankerbloom
@@ -74,6 +75,7 @@ Cankerous Thirst
 Careening Mine Cart
 Carnival // Carnage
 Cavalcade of Calamity
+Cease // Desist
 Celestial Regulator
 Chain of Acid
 Champion of Dusan
@@ -82,21 +84,21 @@ Change of Heart
 Chaos Shrine's Black Crystal
 Char
 Charge
-Charnel Serenade
 Charnel Troll
 Cheering Crowd
 Chittering Skitterling
 Chorus of Woe
 Chosen of Markov // Markov's Servant
+Citanul Hierophants
 Cling to Dust
+Cloudblazer
+Cloudseeder
 Collective Blessing
 Compass Gnome
 Compulsive Research
 Copperhorn Scout
-Corpulent Corpse
 Cosi's Ravager
 Counterbore
-Crashing Footfalls
 Creeping Trailblazer
 Croaking Counterpart
 Crossbow Ambush
@@ -105,11 +107,11 @@ Crumble to Dust
 Cryptothrall
 Culling Sun
 Cult of the Waxing Moon
-Cyclical Evolution
 Cyclops of Eternal Fury
 Dakkon Blackblade
 Dandân
 Dark Temper
+Darkest Hour
 Dauntless Dourbark
 Dawnstrike Vanguard
 Day of the Dragons
@@ -117,6 +119,7 @@ Deadly Brew
 Deadly Embrace
 Deadly Wanderings
 Death Pit Offering
+Deathrender
 Decaying Soil
 Decimator Web
 Deepchannel Mentor
@@ -127,26 +130,28 @@ Dictate of Heliod
 Dimensional Infiltrator
 Dingus Staff
 Dionus, Elvish Archdruid
+Dollmaker's Shop // Porcelain Gallery
 Drafna's Restoration
 Drafna, Founder of Lat-Nam
 Dragon-Scarred Bear
 Dragonlord Silumgar
 Dreamcatcher
-Durkwood Baloth
-Duskrider Peregrine
+Drillworks Mole
 Eaten Alive
 Edgewall Innkeeper
 Egon, God of Death // Throne of Death
 Elder Arthur Maxson
+Electric Eel
 Emblem of the Warmind
 Emperor Crocodile
 Emrakul, the Promised End
 End the Festivities
+Enraged Flamecaster
 Eradicate
 Erdwal Illuminator
 Erkenbrand, Lord of Westfold
-Errant Ephemeron
 Essence Feed
+Essence Sliver
 Ethereal Guidance
 Evaporate
 Evin, Waterdeep Opportunist
@@ -159,9 +164,9 @@ Family Reunion
 Feast of Flesh
 Feline Sovereign
 Fervor
-Festering March
 Filigree Vector
 Fire Nation's Conquest
+Firedrinker Satyr
 Fires of Yavimaya
 First Volley
 Flame Fusillade
@@ -177,14 +182,13 @@ Gaea's Anthem
 Gaea's Touch
 Galadriel, Light of Valinor
 Galvanic Giant // Storm Reading
-Gargadon
 Gate to Phyrexia
 Gates of Istfell
 General Kudro of Drannith
 Generous Patron
-Giant Dustwasp
 Gideon's Defeat
 Gilded Cerodon
+Glassworks // Shattered Yard
 Glorious Anthem
 Glorious Charge
 Glory of Warfare
@@ -198,7 +202,9 @@ Goldmeadow Lookout
 Goreclaw, Terror of Qal Sisma
 Graf Harvest
 Grand Coliseum
+Gravity Sphere
 Greenbelt Rampager
+Grip of Phyresis
 Guardian Augmenter
 Guild Summit
 Hail Storm
@@ -206,13 +212,12 @@ Hammer of Purphoros
 Hard Cover
 Haru, Hidden Talent
 Heartless Summoning
-Heat of Battle
 Heat Shimmer
+Heat of Battle
 Heliod, the Radiant Dawn // Heliod, the Warped Eclipse
 Helm of the Host
 Herald of Slaanesh
 Heritage Druid
-Heroes Remembered
 Hibernation Sliver
 Hideous Visage
 Hold the Gates
@@ -220,6 +225,7 @@ Homeward Path
 Honorable Scout
 Hullbreaker Horror
 Hum of the Radix
+Humility
 Hungry Flames
 Hunters' Feast
 Hylda of the Icy Crown
@@ -228,12 +234,9 @@ Ignorant Bliss
 Immerwolf
 Imposing Sovereign
 In Garruk's Wake
-Inevitable Betrayal
 Infected Vermin
 Infernal Pet
-Infiltrator il-Kor
 Inspired Charge
-Inspiring Refrain
 Intangible Virtue
 Intimidation Bolt
 Invert the Skies
@@ -249,14 +252,11 @@ Kaervek's Spite
 Kamahl, Pit Fighter
 Katara's Reversal
 Kathari Bomber
-Keldon Halberdier
 Killing Wave
 Kindly Stranger // Demon-Possessed Witch
 Kiss of the Amesha
 Kithkin Zealot
 Kjeldoran War Cry
-Knight of Old Benalia
-Knight of Sursi
 Knucklebone Witch
 Kuja, Genome Sorcerer // Trance Kuja, Fate Defied
 Kwain, Itinerant Meddler
@@ -271,12 +271,12 @@ Lethal Scheme
 Liege of the Pit
 Life's Finale
 Liliana's Mastery
+Liliana's Reaver
 Liliana's Triumph
 Lita, Mechanical Engineer
 Llanowar Mentor
 Llanowar Sentinel
 Loam Larva
-Lotus Bloom
 Loyal Drake
 Lullmage Mentor
 Lumithread Field
@@ -291,25 +291,26 @@ Marvin, Murderous Mimic
 Mask of the Mimic
 Mass Manipulation
 Master Splicer
+Master Thief
 Maw of the Obzedat
 Melting
+Memory Worm
 Merrow Bonegnawer
 Merrow Commerce
 Mesmeric Sliver
 Mikaeus, the Lunarch
 Mindlash Sliver
-Mindstab
 Minion Reflector
 Minwu, White Mage
 Miriam, Herd Whisperer
 Mirrex
 Mirror Mockery
+Mirror Room // Fractured Realm
 Misfortune Teller
 Misthios's Fury
 Momo, Playful Pet
 Morkrut Behemoth
 Mox Opal
-Mox Tantalite
 Muscle Burst
 Mutilate
 Myr Battlesphere
@@ -317,17 +318,22 @@ Mysterious Egg
 Narcolepsy
 Nature's Will
 Necromaster Dragon
+Necron Deathmark
 Necrotic Sliver
 Nightshade Dryad
+Nimbleclaw Adept
+Nivix Cyclops
 No Witnesses
 Not Dead After All
 Nova Cleric
 Nullify
 Nullstone Gargoyle
 Nurgle's Rot
+Oath of the Grey Host
 Ogre Slumlord
 Opaline Sliver
 Overmaster
+Overtaker
 Ozai's Cruelty
 Ozox, the Clattering King
 Pack Hunt
@@ -338,19 +344,19 @@ Path to the World Tree
 Pattern Matcher
 Pavel Maliki
 Perilous Predicament
-Petrified Plating
 Phantom General
 Piety Charm
 Plague Rats
 Plague Sliver
 Planar Despair
 Planewide Celebration
+Plaza of Harmony
 Pledge of Unity
-Plunder
 Pollen-Shield Hare // Hare Raising
 Pollenbright Druid
+Pore Over the Pages
+Pre-War Formalwear
 Primeval Light
-Profane Tutor
 Provisions Merchant
 Prowler, Clawed Thief
 Psionic Blast
@@ -362,29 +368,27 @@ Quicksilver Dagger
 Quicksmith Rebel
 Quicksmith Spy
 Quintorius, Field Historian
+RMS Titanic
+Radagast, Wizard of Wilds
 Radha, Coalition Warlord
 Radiating Lightning
 Ragnarok, Divine Deliverance
 Raid Bombardment
 Rashel, Fist of Torm
 Ravager Wurm
-Reality Strobe
 Realm Razer
 Reborn Hero
 Reckless Detective
+Reduce to Dreams
 Relic of Progenitus
 Renewing Dawn
 Repel Intruders
 Reprocess
-Resurgent Belief
 Resurrected Cultist
-Rift Bolt
-Rift Sower
-Riftwing Cloudskate
 Righteous Charge
 Rising of the Day
+Rite of Belzenlok
 River Heralds' Boon
-RMS Titanic
 Robber Fly
 Roiling Terrain
 Rookie Mistake
@@ -413,7 +417,6 @@ Scouring Sands
 Scout for Survivors
 Sea God's Scorn
 Sea Serpent
-Search for Tomorrow
 Second Guess
 Secret Rendezvous
 Sedge Sliver
@@ -422,14 +425,12 @@ Seizan, Perverter of Truth
 Selfless Cathar
 Serpent Generator
 Serrated Biskelion
-Shade of Trokair
 Shadow of Doubt
 Shattered Perception
 Shield Wall
 Shiko, Paragon of the Way
 Shimmercreep
 Shivan Gorge
-Shivan Meteor
 Shower of Sparks
 Sigil Blessing
 Sigil of the New Dawn
@@ -444,10 +445,10 @@ Snort
 Sokenzan Smelter
 Sokka and Suki
 Sokka, Tenacious Tactician
-Sol Talisman
 Solidarity
 Solitary Study // Endless Corridor
 Somberwald Beastmaster
+Song of Eärendil
 Soulcoil Viper
 Sound the Call
 Sowing Salt
@@ -461,20 +462,23 @@ Spidersilk Armor
 Splinter
 Staff of Nin
 Stangg
-Star Whale
 Starlight
 Static Prison
 Steadfastness
 Sticky Fingers
 Stoneshaker Shaman
+Stormcloud Djinn
 Stormfist Crusader
 Strategic Betrayal
 Suki, Kyoshi Captain
 Sumala Sentry
+Summon: Anima
+Summon: Brynhildr
+Summon: Primal Garuda
+Summon: Primal Odin
 Summoner's Pact
 Sunspear Shikari
 Surge of Righteousness
-Suspended Sentence
 Swallow Whole
 Sword of Light and Shadow
 Sygg, Wanderwine Wisdom // Sygg, Wanderbrine Shield
@@ -487,16 +491,19 @@ Tale of Tinúviel
 Tectonic Reformation
 Temur Ascendancy
 Temur Battlecrier
+Terra Eternal
 Territorial Witchstalker
 Thancred Waters
 The Most Dangerous Gamer
 Thirsting Bloodlord
 Thirsting Roots
 This Town Ain't Big Enough
+Thran Lens
 Thrull Champion
 Thunderhead Gunner
 Thwart the Grave
 Time of Heroes
+Time of Ice
 Timothar, Baron of Bats
 Tinybones Joins Up
 Titanic Ultimatum
@@ -512,33 +519,34 @@ Triumph of the Hordes
 Trostani Discordant
 Trostani's Summoner
 Tuktuk Rubblefort
+Tymaret Calls the Dead
 Tymora's Invoker
 Uchbenbak, the Great Mistake
 Unexpected Fangs
 Unlicensed Hearse
+Unlikely Alliance
 Unnerving Assault
 Unstable Amulet
 Uphill Battle
 Urza's Ruinous Blast
+Urza's Saga
 Urza's Workshop
 Valiant Knight
 Valiant Veteran
 Vampire's Zeal
 Vedalken Certarch
-Veiling Oddity
 Veteran Beastrider
 Vibrating Sphere
 Vicious Rumors
 Virtue of Loyalty // Ardenvale Fealty
 Virtuous Charge
-Viscerid Deepwalker
 Vitalizing Wind
+Wall of Wonder
 Warrior's Charge
 Warrior's Honor
+Wartime Protestors
 Wash Out
-Watcher of Hours
 Well Rested
-Wheel of Fate
 Where Ancients Tread
 Wight
 Wildfire Elemental
@@ -551,17 +559,3 @@ Zealous Persecution
 Zo-Zu the Punisher
 Zombie Master
 Zuko, Conflicted
-Dollmaker's Shop // Porcelain Gallery
-Glassworks // Shattered Yard
-Mirror Room // Fractured Realm
-Oath of the Grey Host
-Song of Eärendil
-Summon: Anima
-Summon: Brynhildr
-Summon: Primal Garuda
-Summon: Primal Odin
-Tymaret Calls the Dead
-Time of Ice
-Triumph of Gerrard
-Urza's Saga
-Rite of Belzenlok
