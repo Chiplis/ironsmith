@@ -5840,7 +5840,7 @@ fn owner_library_phrase_for_spec(spec: &ChooseSpec) -> &'static str {
 fn describe_put_counter_phrase(count: &Value, counter_type: CounterType) -> String {
     let counter_name = describe_counter_type(counter_type);
     match count {
-        Value::Fixed(1) => format!("a {counter_name} counter"),
+        Value::Fixed(1) => with_indefinite_article(&format!("{counter_name} counter")),
         Value::Fixed(n) if *n > 1 => {
             let n = *n as usize;
             let amount = number_word(n as i32)
@@ -18986,6 +18986,12 @@ fn normalize_sentence_surface_style(line: &str) -> String {
         normalized = rewritten;
     }
     normalized = normalized.replace("controlss", "controls");
+    if normalized.contains("you may Remove ") {
+        normalized = normalized.replace("you may Remove ", "you may remove ");
+    }
+    if let Some((prefix, tail)) = normalized.split_once("If you do, Untap it. it gets ") {
+        return format!("{prefix}If you do, untap it and it gets {tail}");
+    }
     let lower_normalized = normalized.to_ascii_lowercase();
     if let Some(rest) = lower_normalized.strip_prefix("spell effects: ")
         && rest.starts_with(
@@ -21621,27 +21627,41 @@ fn normalize_oracle_line_segment(segment: &str) -> String {
         || trimmed.starts_with("This creature enters with ")
         || trimmed.starts_with("This permanent enters with "))
         && trimmed.contains("counter")
-        && !trimmed.contains(" on it")
     {
-        if let Some(prefix) = trimmed.strip_suffix('.') {
-            return format!("{prefix} on it.");
+        if let Some(after_this) = trimmed
+            .strip_prefix("This ")
+            .or_else(|| trimmed.strip_prefix("this "))
+            && let Some((subject, tail)) = after_this.split_once(" enters with ")
+            && let Some((count_raw, rest)) = tail.split_once(' ')
+            && let Ok(count) = count_raw.parse::<u32>()
+        {
+            let counter_text = rest
+                .strip_suffix(" counter(s)")
+                .or_else(|| rest.strip_suffix(" counter(s)."))
+                .or_else(|| rest.strip_suffix(" counters"))
+                .or_else(|| rest.strip_suffix(" counters."))
+                .or_else(|| rest.strip_suffix(" counter(s) on it"))
+                .or_else(|| rest.strip_suffix(" counter(s) on it."))
+                .or_else(|| rest.strip_suffix(" counters on it"))
+                .or_else(|| rest.strip_suffix(" counters on it."));
+            if let Some(counter_text) = counter_text {
+                if count == 1 {
+                    let phrase = with_indefinite_article(&format!("{counter_text} counter"));
+                    return format!("This {subject} enters with {phrase} on it");
+                }
+                let count_text = small_number_word(count)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| count_raw.to_string());
+                return format!(
+                    "This {subject} enters with {count_text} {counter_text} counters on it"
+                );
+            }
         }
-        return format!("{trimmed} on it");
-    }
-    if let Some(after_this) = trimmed
-        .strip_prefix("This ")
-        .or_else(|| trimmed.strip_prefix("this "))
-        && let Some((subject, tail)) = after_this.split_once(" enters with 1 ")
-    {
-        let counter_text = tail
-            .strip_suffix(" counters")
-            .or_else(|| tail.strip_suffix(" counters."))
-            .or_else(|| tail.strip_suffix(" counter(s)"))
-            .or_else(|| tail.strip_suffix(" counter(s)."))
-            .or_else(|| tail.strip_suffix(" counters on it"))
-            .or_else(|| tail.strip_suffix(" counters on it."));
-        if let Some(counter_text) = counter_text {
-            return format!("This {subject} enters with a {counter_text} counter on it");
+        if !trimmed.contains(" on it") {
+            if let Some(prefix) = trimmed.strip_suffix('.') {
+                return format!("{prefix} on it.");
+            }
+            return format!("{trimmed} on it");
         }
     }
     if trimmed.starts_with("Exile ") && trimmed.contains("target cards in graveyard") {

@@ -52,6 +52,23 @@ fn pluralize(word: &str) -> String {
     }
 }
 
+fn number_word(n: u32) -> Option<&'static str> {
+    match n {
+        0 => Some("zero"),
+        1 => Some("one"),
+        2 => Some("two"),
+        3 => Some("three"),
+        4 => Some("four"),
+        5 => Some("five"),
+        6 => Some("six"),
+        7 => Some("seven"),
+        8 => Some("eight"),
+        9 => Some("nine"),
+        10 => Some("ten"),
+        _ => None,
+    }
+}
+
 fn join_with_and(items: &[String]) -> String {
     match items.len() {
         0 => String::new(),
@@ -700,33 +717,46 @@ impl StaticAbilityKind for EntersWithCounters {
         let counter = describe_counter_type(self.counter_type);
         match &self.count {
             Value::Fixed(v) => {
-                format!("Enters the battlefield with {v} {counter} counter(s)")
+                if *v == 1 {
+                    let article = match counter.chars().next().map(|ch| ch.to_ascii_lowercase()) {
+                        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+                        _ => "a",
+                    };
+                    format!("Enters the battlefield with {article} {counter} counter on it")
+                } else {
+                    let rendered = u32::try_from(*v)
+                        .ok()
+                        .and_then(number_word)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| v.to_string());
+                    format!("Enters the battlefield with {rendered} {counter} counters on it")
+                }
             }
             Value::X => {
-                format!("Enters the battlefield with X {counter} counter(s)")
+                format!("Enters the battlefield with X {counter} counters on it")
             }
             Value::Count(filter) => {
                 format!(
-                    "Enters the battlefield with X {counter} counter(s), where X is the number of {}",
+                    "Enters the battlefield with X {counter} counters on it, where X is the number of {}",
                     filter.description()
                 )
             }
             Value::CountScaled(filter, scale) => {
                 if *scale == 1 {
                     format!(
-                        "Enters the battlefield with X {counter} counter(s), where X is the number of {}",
+                        "Enters the battlefield with X {counter} counters on it, where X is the number of {}",
                         filter.description()
                     )
                 } else {
                     format!(
-                        "Enters the battlefield with X {counter} counter(s), where X is {} times the number of {}",
+                        "Enters the battlefield with X {counter} counters on it, where X is {} times the number of {}",
                         scale,
                         filter.description()
                     )
                 }
             }
             _ => format!(
-                "Enters the battlefield with {:?} {} counter(s)",
+                "Enters the battlefield with {:?} {} counters on it",
                 self.count, counter
             ),
         }

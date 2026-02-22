@@ -6032,6 +6032,39 @@ fn parse_mercenary_token_with_tap_pump_ability() {
 }
 
 #[test]
+fn parse_token_becomes_tapped_damage_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tapped Trigger Token Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("When this creature enters, create a 1/1 red Elemental creature token with \"Whenever this token becomes tapped, it deals 1 damage to target player.\"")
+        .expect("token with becomes-tapped damage trigger should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    let create = triggered
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+        .expect("expected token creation effect");
+    assert!(
+        !create.enters_tapped,
+        "expected token to enter untapped, got {create:#?}"
+    );
+
+    let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        compiled.contains("becomes tapped")
+            && compiled.contains("deals 1 damage to target player"),
+        "expected becomes-tapped damage trigger in compiled text, got {compiled}"
+    );
+}
+
+#[test]
 fn parse_deathpact_style_token_activation_is_preserved() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Deathpact Angel")
         .card_types(vec![CardType::Creature])

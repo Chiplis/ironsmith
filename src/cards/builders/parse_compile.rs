@@ -5227,6 +5227,22 @@ fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
     }
 }
 
+fn token_becomes_tapped_deals_damage_target_player_ability(amount: i32) -> Ability {
+    let target = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any));
+    Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::becomes_tapped(),
+            effects: vec![Effect::deal_damage(Value::Fixed(amount), target.clone())],
+            choices: vec![target],
+            intervening_if: None,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(format!(
+            "Whenever this token becomes tapped, it deals {amount} damage to target player."
+        )),
+    }
+}
+
 fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
     Ability {
@@ -6503,6 +6519,19 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
         {
             builder =
                 builder.with_ability(token_noncreature_spell_each_opponent_damage_ability(amount));
+        }
+        if words.contains(&"whenever")
+            && words.contains(&"token")
+            && words.contains(&"becomes")
+            && words.contains(&"tapped")
+            && words.contains(&"deals")
+            && words.contains(&"damage")
+            && words.contains(&"target")
+            && words.contains(&"player")
+            && let Some(amount) = parse_deals_damage_amount(&words)
+        {
+            builder = builder
+                .with_ability(token_becomes_tapped_deals_damage_target_player_ability(amount));
         }
         if words.contains(&"whenever")
             && words.contains(&"token")

@@ -29378,6 +29378,7 @@ fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "brain" => Some(CounterType::Brain),
         "level" => Some(CounterType::Level),
         "lore" => Some(CounterType::Lore),
+        "oil" => Some(CounterType::Oil),
         _ => None,
     }
 }
@@ -31690,6 +31691,8 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
     };
     let mut tapped = false;
     let mut attacking = false;
+    let mut modifier_tail_words = tail_words.clone();
+    let mut rules_text_range: Option<(usize, usize)> = None;
     if let Some(named_idx) = tail_words.iter().position(|word| *word == "named") {
         let range_end = for_each_idx.unwrap_or(tail_words.len());
         if named_idx + 1 < range_end {
@@ -31868,6 +31871,12 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
                             | "block"
                     )
                 });
+            if preserve_rules_tail {
+                let start = with_idx + 1 + include_end;
+                if start < with_tail_end {
+                    rules_text_range = Some((start, with_tail_end));
+                }
+            }
             if include_end > 0 {
                 name_words.extend(with_words[..include_end].iter().copied());
                 if preserve_rules_tail {
@@ -31897,10 +31906,20 @@ fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
     }
     let name = normalize_token_name(&name_words);
 
-    tapped |= tail_words.contains(&"tapped");
-    attacking |= tail_words.contains(&"attacking");
+    if let Some((start, end)) = rules_text_range {
+        if start < end && end <= modifier_tail_words.len() {
+            modifier_tail_words = modifier_tail_words[..start]
+                .iter()
+                .chain(modifier_tail_words[end..].iter())
+                .copied()
+                .collect();
+        }
+    }
+
+    tapped |= modifier_tail_words.contains(&"tapped");
+    attacking |= modifier_tail_words.contains(&"attacking");
     let (sacrifice_at_next_end_step, exile_at_next_end_step) =
-        parse_next_end_step_token_delay_flags(&tail_words);
+        parse_next_end_step_token_delay_flags(&modifier_tail_words);
     let references_iterated_object = attached_to_target
         .as_ref()
         .is_some_and(target_references_it);
@@ -35006,6 +35025,23 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
         }
 
         with_idx += 1;
+    }
+
+    let mut has_idx = 0usize;
+    while has_idx + 1 < all_words.len() {
+        if !matches!(all_words[has_idx], "has" | "have") {
+            has_idx += 1;
+            continue;
+        }
+        if filter.with_counter.is_none()
+            && let Some((counter_constraint, consumed)) =
+                parse_filter_counter_constraint_words(&all_words[has_idx + 1..])
+        {
+            filter.with_counter = Some(counter_constraint);
+            has_idx += 1 + consumed;
+            continue;
+        }
+        has_idx += 1;
     }
 
     let mut without_idx = 0usize;

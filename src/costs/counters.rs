@@ -100,7 +100,11 @@ impl CostPayer for RemoveCountersCost {
     fn display(&self) -> String {
         let counter_name = format_counter_type(&self.counter_type);
         if self.count == 1 {
-            format!("Remove a {} counter from ~", counter_name)
+            format!(
+                "Remove {} {} counter from ~",
+                counter_article(counter_name),
+                counter_name
+            )
         } else {
             format!("Remove {} {} counters from ~", self.count, counter_name)
         }
@@ -597,8 +601,10 @@ impl CostPayer for RemoveAnyCountersAmongCost {
             (1, Some(counter_type)) => {
                 let counter_name = format_counter_type(&counter_type);
                 format!(
-                    "Remove a {} counter from {}",
-                    counter_name, target_phrase_single
+                    "Remove {} {} counter from {}",
+                    counter_article(counter_name),
+                    counter_name,
+                    target_phrase_single
                 )
             }
             (count, Some(counter_type)) => {
@@ -661,8 +667,16 @@ fn format_counter_type(counter_type: &CounterType) -> &'static str {
         CounterType::Ice => "ice",
         CounterType::Wind => "wind",
         CounterType::Luck => "luck",
+        CounterType::Oil => "oil",
         // Match any other counter types with a generic name
         _ => "counter",
+    }
+}
+
+fn counter_article(counter_name: &str) -> &'static str {
+    match counter_name.chars().next().map(|ch| ch.to_ascii_lowercase()) {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+        _ => "a",
     }
 }
 
