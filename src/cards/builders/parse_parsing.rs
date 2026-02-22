@@ -17895,6 +17895,15 @@ fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextErr
             sentence_words.join(" ")
         )));
     }
+    let has_face_down_clause = sentence_words
+        .windows(2)
+        .any(|window| window == ["face", "down"]);
+    if has_face_down_clause {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported face-down clause (clause: '{}')",
+            sentence_words.join(" ")
+        )));
+    }
     let has_copy_spell_legendary_exception = sentence_words.contains(&"copy")
         && sentence_words.contains(&"spell")
         && sentence_words.contains(&"legendary")
