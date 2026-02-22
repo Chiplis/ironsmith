@@ -369,9 +369,15 @@ fn collect_line_infos(
 
     let card_name = builder.card_builder.name_ref().to_string();
     let short_name = card_name
-        .split(',')
+        .split("//")
         .next()
         .unwrap_or(card_name.as_str())
+        .trim()
+        .to_string();
+    let short_name = short_name
+        .split(',')
+        .next()
+        .unwrap_or(short_name.as_str())
         .trim()
         .to_string();
     let full_lower = normalize_card_name_for_self_reference(card_name.as_str());
@@ -1794,6 +1800,11 @@ fn sentence_starts_with_trigger_intro(sentence: &str, line_index: usize) -> bool
     if looks_like_when_one_or_more_this_way_followup(&tokens) {
         return false;
     }
+    // "When you do, ..." is usually a follow-up to the immediately previous optional/conditional
+    // action in the same ability sentence, not a standalone trigger.
+    if looks_like_when_you_do_followup(&tokens) {
+        return false;
+    }
     tokens
         .first()
         .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
@@ -1847,6 +1858,12 @@ fn looks_like_when_one_or_more_this_way_followup(tokens: &[Token]) -> bool {
         && clause_words
             .windows(2)
             .any(|window| window == ["this", "way"])
+}
+
+fn looks_like_when_you_do_followup(tokens: &[Token]) -> bool {
+    let clause_words = words(tokens);
+    clause_words.starts_with(&["when", "you", "do"])
+        || clause_words.starts_with(&["whenever", "you", "do"])
 }
 
 fn split_trigger_sentence_chunks(sentences: &[String], line_index: usize) -> Vec<String> {

@@ -455,6 +455,11 @@ impl Trigger {
         Self::new(BecomesTargetedTrigger)
     }
 
+    /// Create a "when this permanent becomes the target of [spell filter]" trigger.
+    pub fn becomes_targeted_by_spell(filter: ObjectFilter) -> Self {
+        Self::new(BecomesTargetedBySpellTrigger::new(filter))
+    }
+
     // === Card Triggers ===
 
     /// Create a "whenever you draw a card" trigger (fires once per card drawn).

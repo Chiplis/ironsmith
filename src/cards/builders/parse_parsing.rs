@@ -11799,6 +11799,26 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         });
     }
 
+    if let Some(put_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("put") || token.is_word("puts"))
+    {
+        let subject = &words[..put_idx];
+        if let Some(player) = parse_trigger_subject_player_filter(subject) {
+            let tail = &words[put_idx + 1..];
+            let has_name_sticker = tail
+                .windows(2)
+                .any(|window| window == ["name", "sticker"]);
+            let has_on = tail.contains(&"on");
+            if has_name_sticker && has_on {
+                return Ok(TriggerSpec::KeywordAction {
+                    action: crate::events::KeywordActionKind::NameSticker,
+                    player,
+                });
+            }
+        }
+    }
+
     if let Some(last_word) = words.last().copied()
         && let Some(action) = crate::events::KeywordActionKind::from_trigger_word(last_word)
     {
@@ -11930,16 +11950,37 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         });
     }
 
-    if words.as_slice()
-        == [
-            "this", "creature", "becomes", "the", "target", "of", "a", "spell", "or", "ability",
-        ]
-        || words.as_slice()
-            == [
-                "this", "becomes", "the", "target", "of", "a", "spell", "or", "ability",
-            ]
+    if let Some(becomes_idx) = words.iter().position(|word| *word == "becomes")
+        && words.get(becomes_idx + 1).copied() == Some("the")
+        && words.get(becomes_idx + 2).copied() == Some("target")
+        && words.get(becomes_idx + 3).copied() == Some("of")
     {
-        return Ok(TriggerSpec::ThisBecomesTargeted);
+        let subject_words = &words[..becomes_idx];
+        let subject_is_source =
+            subject_words.is_empty() || is_source_reference_words(subject_words);
+        if subject_is_source {
+            let tail_word_start = becomes_idx + 4;
+            let tail_words = &words[tail_word_start..];
+            if tail_words == ["a", "spell", "or", "ability"]
+                || tail_words == ["spell", "or", "ability"]
+            {
+                return Ok(TriggerSpec::ThisBecomesTargeted);
+            }
+            if tail_words
+                .last()
+                .is_some_and(|word| *word == "spell" || *word == "spells")
+                && let Some(tail_token_start) = token_index_for_word_index(tokens, tail_word_start)
+            {
+                let spell_filter_tokens = trim_commas(&tokens[tail_token_start..]);
+                let spell_filter = parse_object_filter(&spell_filter_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported spell filter in becomes-targeted trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+                return Ok(TriggerSpec::ThisBecomesTargetedBySpell(spell_filter));
+            }
+        }
     }
 
     if words.starts_with(&["this", "creature", "is", "dealt", "damage"])
@@ -12133,6 +12174,21 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
     let last = words
         .last()
         .ok_or_else(|| CardTextError::ParseError("empty trigger clause".to_string()))?;
+
+    if words.len() >= 2
+        && words.last().copied() == Some("alone")
+        && matches!(words.get(words.len() - 2).copied(), Some("attack" | "attacks"))
+    {
+        let subject_tokens = if tokens.len() > 2 {
+            &tokens[..tokens.len() - 2]
+        } else {
+            &[]
+        };
+        return Ok(match parse_trigger_subject_filter(subject_tokens)? {
+            Some(filter) => TriggerSpec::AttacksAlone(filter),
+            None => TriggerSpec::AttacksAlone(ObjectFilter::source()),
+        });
+    }
 
     match *last {
         "attack" | "attacks" => {

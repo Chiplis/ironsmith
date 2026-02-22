@@ -17,6 +17,7 @@ pub enum KeywordActionKind {
     Earthbend,
     Improvise,
     Investigate,
+    NameSticker,
     Connive,
     Proliferate,
     Scry,
@@ -32,6 +33,7 @@ impl KeywordActionKind {
             "earthbend" | "earthbends" => Some(Self::Earthbend),
             "improvise" | "improvises" | "improvised" => Some(Self::Improvise),
             "investigate" | "investigates" => Some(Self::Investigate),
+            "sticker" | "stickers" | "stickered" => Some(Self::NameSticker),
             "connive" | "connives" | "connived" => Some(Self::Connive),
             "proliferate" | "proliferates" => Some(Self::Proliferate),
             "scry" | "scries" => Some(Self::Scry),
@@ -47,6 +49,7 @@ impl KeywordActionKind {
             Self::Earthbend => "earthbend",
             Self::Improvise => "improvise",
             Self::Investigate => "investigate",
+            Self::NameSticker => "put a name sticker",
             Self::Connive => "connive",
             Self::Proliferate => "proliferate",
             Self::Scry => "scry",
@@ -61,6 +64,7 @@ impl KeywordActionKind {
             Self::Earthbend => "earthbends",
             Self::Improvise => "improvises",
             Self::Investigate => "investigates",
+            Self::NameSticker => "puts a name sticker",
             Self::Connive => "connives",
             Self::Proliferate => "proliferates",
             Self::Scry => "scries",
@@ -177,6 +181,10 @@ mod tests {
         assert_eq!(
             KeywordActionKind::from_trigger_word("voting"),
             Some(KeywordActionKind::Vote)
+        );
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("sticker"),
+            Some(KeywordActionKind::NameSticker)
         );
         assert_eq!(KeywordActionKind::from_trigger_word("unknown"), None);
     }

@@ -43,6 +43,15 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.action == KeywordActionKind::Vote && self.player == PlayerFilter::Any {
             return "Whenever players finish voting".to_string();
         }
+        if self.action == KeywordActionKind::NameSticker {
+            return match &self.player {
+                PlayerFilter::You => "Whenever you put a name sticker on a creature".to_string(),
+                PlayerFilter::Opponent => {
+                    "Whenever an opponent puts a name sticker on a creature".to_string()
+                }
+                _ => "Whenever a player puts a name sticker on a creature".to_string(),
+            };
+        }
 
         match &self.player {
             PlayerFilter::You => format!("Whenever you {}", self.action.infinitive()),
@@ -112,5 +121,14 @@ mod tests {
     fn keyword_action_vote_display_uses_finished_voting_phrase() {
         let trigger = KeywordActionTrigger::new(KeywordActionKind::Vote, PlayerFilter::Any);
         assert_eq!(trigger.display(), "Whenever players finish voting");
+    }
+
+    #[test]
+    fn keyword_action_name_sticker_display_phrase() {
+        let trigger = KeywordActionTrigger::new(KeywordActionKind::NameSticker, PlayerFilter::You);
+        assert_eq!(
+            trigger.display(),
+            "Whenever you put a name sticker on a creature"
+        );
     }
 }

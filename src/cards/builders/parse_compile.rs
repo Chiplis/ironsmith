@@ -6,6 +6,7 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::Attacks(filter) => Trigger::attacks(filter),
         TriggerSpec::AttacksOneOrMore(filter) => Trigger::attacks_one_or_more(filter),
+        TriggerSpec::AttacksAlone(filter) => Trigger::attacks_alone(filter),
         TriggerSpec::ThisBlocks => Trigger::this_blocks(),
         TriggerSpec::ThisBlocksObject(filter) => Trigger::this_blocks_object(filter),
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
@@ -18,6 +19,9 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisTurnedFaceUp => Trigger::this_is_turned_face_up(),
         TriggerSpec::TurnedFaceUp(filter) => Trigger::turned_face_up(filter),
         TriggerSpec::ThisBecomesTargeted => Trigger::becomes_targeted(),
+        TriggerSpec::ThisBecomesTargetedBySpell(filter) => {
+            Trigger::becomes_targeted_by_spell(filter)
+        }
         TriggerSpec::ThisDealsDamage => Trigger::this_deals_damage(),
         TriggerSpec::ThisDealsDamageToPlayer { player, amount } => {
             Trigger::this_deals_damage_to_player(player, amount)

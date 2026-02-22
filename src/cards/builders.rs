@@ -192,6 +192,7 @@ enum TriggerSpec {
     ThisAttacksWithNOthers(u32),
     Attacks(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
+    AttacksAlone(ObjectFilter),
     ThisBlocks,
     ThisBlocksObject(ObjectFilter),
     ThisBecomesBlocked,
@@ -204,6 +205,7 @@ enum TriggerSpec {
     ThisTurnedFaceUp,
     TurnedFaceUp(ObjectFilter),
     ThisBecomesTargeted,
+    ThisBecomesTargetedBySpell(ObjectFilter),
     ThisDealsDamage,
     ThisDealsDamageToPlayer {
         player: PlayerFilter,
