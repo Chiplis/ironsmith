@@ -387,44 +387,33 @@ Bottled Cloister
 Planar Despair
 Saruman of Many Colors
 Shimmercreep
-
 Chaos Shrine's Black Crystal
-
 Bifurcate
 Mask of the Mimic
 Pack Hunt
 Pattern Matcher
-
 Demogorgon's Clutches
 Evolutionary Escalation
 Filigree Vector
 Specimen Collector
-
 Sphinx's Revelation
 Stormfist Crusader
 Zealous Persecution
-
 Cruel Ultimatum
-
 Imposing Sovereign
 Merrow Bonegnawer
 Shivan Gorge
-
 Relic of Progenitus
-
 Bloodcrusher of Khorne
 Cankerous Thirst
 Piety Charm
-
 Goldmeadow Lookout
 Mindlash Sliver
 Sound the Call
-
 Kwain, Itinerant Meddler
 Kynaios and Tiro of Meletis
 Ruin Grinder
 Snort
-
 Thancred Waters
 Marjhan
 Sedge Sliver
@@ -459,3 +448,17 @@ Juniper Order Ranger
 Secret Rendezvous
 Skulduggery
 Nightshade Dryad
+Hungry Flames
+Lunge
+Punish the Enemy
+Ozai's Cruelty
+Starlight
+Honorable Scout
+Kithkin Zealot
+Devoted Caretaker
+Aegis of the Meek
+Surge of Righteousness
+Shattered Perception
+Bloodthorn Flail
+Nullify
+Marvin, Murderous Mimic
