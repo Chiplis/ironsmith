@@ -348,6 +348,7 @@ pub(super) fn parse_text_with_annotations(
     builder = normalize_channel_spell_effect(builder);
     builder = normalize_chaotic_transformation_spell_effect(builder);
     builder = normalize_glimpse_of_nature_spell_effect(builder);
+    builder = normalize_take_to_the_streets_spell_effect(builder);
 
     Ok((builder.build(), annotations))
 }
@@ -619,6 +620,65 @@ fn normalize_glimpse_of_nature_spell_effect(mut builder: CardDefinitionBuilder) 
         .until_end_of_turn(),
     );
     builder.spell_effect = Some(vec![schedule]);
+    builder
+}
+
+fn normalize_take_to_the_streets_spell_effect(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
+    use crate::continuous::Modification;
+    use crate::effect::{Effect, Value};
+    use crate::effects::continuous::RuntimeModification;
+    use crate::static_abilities::StaticAbilityId;
+    use crate::types::Subtype;
+
+    if builder.card_builder.name_ref() != "Take to the Streets" {
+        return builder;
+    }
+    let Some(effects) = builder.spell_effect.as_ref() else {
+        return builder;
+    };
+    if effects.len() != 2 {
+        return builder;
+    }
+
+    let Some(apply) = effects[1].downcast_ref::<crate::effects::ApplyContinuousEffect>() else {
+        return builder;
+    };
+    if apply.until != crate::effect::Until::EndOfTurn {
+        return builder;
+    }
+    let filter = match &apply.target {
+        crate::continuous::EffectTarget::Filter(filter) => filter,
+        _ => return builder,
+    };
+    if filter.controller != Some(crate::target::PlayerFilter::You)
+        || !filter.subtypes.contains(&Subtype::Citizen)
+    {
+        return builder;
+    }
+    let is_vigilance = apply.modification.as_ref().is_some_and(|m| match m {
+        Modification::AddAbility(ability) => ability.id() == StaticAbilityId::Vigilance,
+        _ => false,
+    });
+    if !is_vigilance {
+        return builder;
+    }
+    if apply
+        .runtime_modifications
+        .iter()
+        .any(|m| matches!(m, RuntimeModification::ModifyPowerToughness { .. }))
+    {
+        return builder;
+    }
+
+    let mut updated = apply.clone();
+    updated.runtime_modifications.push(RuntimeModification::ModifyPowerToughness {
+        power: Value::Fixed(1),
+        toughness: Value::Fixed(1),
+    });
+
+    let mut new_effects = effects.clone();
+    new_effects[1] = Effect::new(updated);
+    builder.spell_effect = Some(new_effects);
     builder
 }
 
