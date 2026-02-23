@@ -54,12 +54,10 @@ pub fn evaluate_condition_external(
     match condition {
         Condition::Not(inner) => !evaluate_condition_external(game, inner, ctx),
         Condition::And(a, b) => {
-            evaluate_condition_external(game, a, ctx)
-                && evaluate_condition_external(game, b, ctx)
+            evaluate_condition_external(game, a, ctx) && evaluate_condition_external(game, b, ctx)
         }
         Condition::Or(a, b) => {
-            evaluate_condition_external(game, a, ctx)
-                || evaluate_condition_external(game, b, ctx)
+            evaluate_condition_external(game, a, ctx) || evaluate_condition_external(game, b, ctx)
         }
 
         Condition::Unmodeled(_) => true,
@@ -135,15 +133,21 @@ pub fn evaluate_condition_external(
         } => ctx
             .triggering_event
             .and_then(|event| event.snapshot())
-            .is_some_and(|snapshot| snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count),
+            .is_some_and(|snapshot| {
+                snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
+            }),
 
-        Condition::ControlLandWithSubtype(required_subtypes) => game.battlefield.iter().any(|&id| {
-            game.object(id).is_some_and(|obj| {
-                obj.controller == ctx.controller
-                    && obj.is_land()
-                    && required_subtypes.iter().any(|subtype| obj.has_subtype(*subtype))
+        Condition::ControlLandWithSubtype(required_subtypes) => {
+            game.battlefield.iter().any(|&id| {
+                game.object(id).is_some_and(|obj| {
+                    obj.controller == ctx.controller
+                        && obj.is_land()
+                        && required_subtypes
+                            .iter()
+                            .any(|subtype| obj.has_subtype(*subtype))
+                })
             })
-        }),
+        }
         Condition::ControlAtLeastArtifacts(required_count) => {
             let controlled_artifacts = game
                 .battlefield
@@ -164,8 +168,8 @@ pub fn evaluate_condition_external(
                 .count() as u32;
             controlled_lands >= *required_count
         }
-        Condition::ControlCreatureWithPowerAtLeast(required_power) => game.battlefield.iter().any(
-            |&id| {
+        Condition::ControlCreatureWithPowerAtLeast(required_power) => {
+            game.battlefield.iter().any(|&id| {
                 game.object(id).is_some_and(|obj| {
                     obj.controller == ctx.controller
                         && obj.is_creature()
@@ -173,8 +177,8 @@ pub fn evaluate_condition_external(
                             .power()
                             .is_some_and(|power| power >= *required_power as i32)
                 })
-            },
-        ),
+            })
+        }
         Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
             let total_power = game
                 .battlefield
@@ -197,8 +201,8 @@ pub fn evaluate_condition_external(
                     || card_types
                         .iter()
                         .any(|card_type| card.card_types.contains(card_type));
-                let subtype_match =
-                    subtypes.is_empty() || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
+                let subtype_match = subtypes.is_empty()
+                    || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
                 card_type_match && subtype_match
             })
         }),
@@ -208,10 +212,16 @@ pub fn evaluate_condition_external(
             }
             match timing {
                 crate::ability::ActivationTiming::AnyTime => true,
-                crate::ability::ActivationTiming::DuringCombat => matches!(game.turn.phase, crate::game_state::Phase::Combat),
+                crate::ability::ActivationTiming::DuringCombat => {
+                    matches!(game.turn.phase, crate::game_state::Phase::Combat)
+                }
                 crate::ability::ActivationTiming::SorcerySpeed => {
                     game.turn.active_player == ctx.controller
-                        && matches!(game.turn.phase, crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain)
+                        && matches!(
+                            game.turn.phase,
+                            crate::game_state::Phase::FirstMain
+                                | crate::game_state::Phase::NextMain
+                        )
                         && game.stack_is_empty()
                 }
                 crate::ability::ActivationTiming::OncePerTurn => {
@@ -220,8 +230,12 @@ pub fn evaluate_condition_external(
                     };
                     game.ability_activation_count_this_turn(ctx.source, ability_index) == 0
                 }
-                crate::ability::ActivationTiming::DuringYourTurn => game.turn.active_player == ctx.controller,
-                crate::ability::ActivationTiming::DuringOpponentsTurn => game.turn.active_player != ctx.controller,
+                crate::ability::ActivationTiming::DuringYourTurn => {
+                    game.turn.active_player == ctx.controller
+                }
+                crate::ability::ActivationTiming::DuringOpponentsTurn => {
+                    game.turn.active_player != ctx.controller
+                }
             }
         }
         Condition::MaxActivationsPerTurn(limit) => {
@@ -254,14 +268,14 @@ pub fn evaluate_condition_external(
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to)
             .is_some_and(|attached| !game.is_tapped(attached)),
-        Condition::CountComparison { count, comparison, .. } => comparison.evaluate(
-            crate::static_abilities::resolve_anthem_count_expression(
-                count,
-                game,
-                ctx.source,
-                ctx.controller,
-            ),
-        ),
+        Condition::CountComparison {
+            count, comparison, ..
+        } => comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
+            count,
+            game,
+            ctx.source,
+            ctx.controller,
+        )),
         Condition::OwnsCardExiledWithCounter(counter) => game.exile.iter().any(|&id| {
             game.object(id).is_some_and(|obj| {
                 obj.owner == ctx.controller && obj.counters.get(counter).copied().unwrap_or(0) > 0
@@ -1252,15 +1266,17 @@ fn evaluate_condition(
             .is_some_and(|snapshot| {
                 snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
             })),
-        Condition::ControlLandWithSubtype(required_subtypes) => Ok(game.battlefield.iter().any(
-            |&id| {
+        Condition::ControlLandWithSubtype(required_subtypes) => {
+            Ok(game.battlefield.iter().any(|&id| {
                 game.object(id).is_some_and(|obj| {
                     obj.controller == ctx.controller
                         && obj.is_land()
-                        && required_subtypes.iter().any(|subtype| obj.has_subtype(*subtype))
+                        && required_subtypes
+                            .iter()
+                            .any(|subtype| obj.has_subtype(*subtype))
                 })
-            },
-        )),
+            }))
+        }
         Condition::ControlAtLeastArtifacts(required_count) => Ok(game
             .battlefield
             .iter()
@@ -1278,8 +1294,8 @@ fn evaluate_condition(
             .filter(|obj| obj.controller == ctx.controller && obj.is_land())
             .count() as u32
             >= *required_count),
-        Condition::ControlCreatureWithPowerAtLeast(required_power) => Ok(game.battlefield.iter().any(
-            |&id| {
+        Condition::ControlCreatureWithPowerAtLeast(required_power) => {
+            Ok(game.battlefield.iter().any(|&id| {
                 game.object(id).is_some_and(|obj| {
                     obj.controller == ctx.controller
                         && obj.is_creature()
@@ -1287,8 +1303,8 @@ fn evaluate_condition(
                             .power()
                             .is_some_and(|power| power >= *required_power as i32)
                 })
-            },
-        )),
+            }))
+        }
         Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
             let total_power = game
                 .battlefield
@@ -1311,8 +1327,8 @@ fn evaluate_condition(
                     || card_types
                         .iter()
                         .any(|card_type| card.card_types.contains(card_type));
-                let subtype_match =
-                    subtypes.is_empty() || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
+                let subtype_match = subtypes.is_empty()
+                    || subtypes.iter().any(|subtype| card.has_subtype(*subtype));
                 card_type_match && subtype_match
             })
         })),
@@ -1338,15 +1354,15 @@ fn evaluate_condition(
             .and_then(|source_obj| source_obj.attached_to)
             .is_some_and(|attached| !game.is_tapped(attached))),
         Condition::CountComparison {
-            count,
-            comparison,
-            ..
-        } => Ok(comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
-            count,
-            game,
-            ctx.source,
-            ctx.controller,
-        ))),
+            count, comparison, ..
+        } => Ok(
+            comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
+                count,
+                game,
+                ctx.source,
+                ctx.controller,
+            )),
+        ),
         Condition::OwnsCardExiledWithCounter(counter) => Ok(game.exile.iter().any(|&id| {
             game.object(id).is_some_and(|obj| {
                 obj.owner == ctx.controller && obj.counters.get(counter).copied().unwrap_or(0) > 0
@@ -1362,9 +1378,9 @@ fn evaluate_condition(
             .combat
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source))),
-        Condition::PlayerGraveyardHasCardsAtLeast { player, count } => {
-            Ok(game.player(*player).is_some_and(|p| p.graveyard.len() >= *count))
-        }
+        Condition::PlayerGraveyardHasCardsAtLeast { player, count } => Ok(game
+            .player(*player)
+            .is_some_and(|p| p.graveyard.len() >= *count)),
         Condition::Custom(_) => Ok(false),
         Condition::Unmodeled(_) => Ok(true),
         Condition::Not(inner) => {

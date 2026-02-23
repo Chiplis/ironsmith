@@ -62,7 +62,7 @@ pub fn has_evasion(object: &Object, evasion: EvasionType) -> bool {
         EvasionType::Horsemanship => has_ability_id(object, StaticAbilityId::Horsemanship),
         EvasionType::Fear => has_ability_id(object, StaticAbilityId::Fear),
         EvasionType::Intimidate => has_ability_id(object, StaticAbilityId::Intimidate),
-        EvasionType::Skulk => false, // Skulk checks power, not a simple ability
+        EvasionType::Skulk => has_ability_id(object, StaticAbilityId::Skulk),
         EvasionType::Menace => has_ability_id(object, StaticAbilityId::Menace),
         EvasionType::Unblockable => has_ability_id(object, StaticAbilityId::Unblockable),
     }
@@ -184,6 +184,21 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
         let shares_color = !attacker_colors.intersection(blocker_colors).is_empty();
 
         if !blocker_is_artifact && !shares_color {
+            return false;
+        }
+    }
+
+    // Skulk: can't be blocked by creatures with greater power.
+    if attacker_has(StaticAbilityId::Skulk) {
+        let attacker_power = game
+            .calculated_power(attacker.id)
+            .or_else(|| attacker.power());
+        let blocker_power = game
+            .calculated_power(blocker.id)
+            .or_else(|| blocker.power());
+        if let (Some(attacker_power), Some(blocker_power)) = (attacker_power, blocker_power)
+            && blocker_power > attacker_power
+        {
             return false;
         }
     }
@@ -666,6 +681,21 @@ mod tests {
         let mut artifact_blocker = make_creature("Artifact", 2, 2);
         artifact_blocker.card_types.push(CardType::Artifact);
         assert!(can_block(&intimidate_attacker, &artifact_blocker, &game));
+    }
+
+    #[test]
+    fn test_skulk_cant_be_blocked_by_greater_power() {
+        let game = test_game_state();
+        let mut skulk_attacker = make_creature("Skulker", 2, 2);
+        add_ability(&mut skulk_attacker, StaticAbility::skulk());
+
+        let equal_power_blocker = make_creature("Equal", 2, 2);
+        let smaller_blocker = make_creature("Small", 1, 1);
+        let larger_blocker = make_creature("Large", 3, 3);
+
+        assert!(can_block(&skulk_attacker, &equal_power_blocker, &game));
+        assert!(can_block(&skulk_attacker, &smaller_blocker, &game));
+        assert!(!can_block(&skulk_attacker, &larger_blocker, &game));
     }
 
     #[test]

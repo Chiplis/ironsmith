@@ -65,6 +65,8 @@ enum KeywordAction {
     Shroud,
     Ward(u32),
     Wither,
+    Afterlife(u32),
+    Fabricate(u32),
     Infect,
     Undying,
     Persist,
@@ -72,6 +74,14 @@ enum KeywordAction {
     Exalted,
     Storm,
     Toxic(u32),
+    BattleCry,
+    Dethrone,
+    Evolve,
+    Ingest,
+    Mentor,
+    Skulk,
+    Training,
+    Renown(u32),
     Fear,
     Intimidate,
     Shadow,
@@ -219,6 +229,10 @@ enum TriggerSpec {
     ThisBecomesTargeted,
     BecomesTargeted(ObjectFilter),
     ThisBecomesTargetedBySpell(ObjectFilter),
+    BecomesTargetedBySourceController {
+        target: ObjectFilter,
+        source_controller: PlayerFilter,
+    },
     ThisDealsDamage,
     ThisDealsDamageToPlayer {
         player: PlayerFilter,
@@ -1347,6 +1361,8 @@ impl CardDefinitionBuilder {
             KeywordAction::Shroud => self.shroud(),
             KeywordAction::Ward(amount) => self.ward_generic(amount),
             KeywordAction::Wither => self.wither(),
+            KeywordAction::Afterlife(amount) => self.afterlife(amount),
+            KeywordAction::Fabricate(amount) => self.fabricate(amount),
             KeywordAction::Infect => self.infect(),
             KeywordAction::Undying => self.undying(),
             KeywordAction::Persist => self.persist(),
@@ -1354,6 +1370,14 @@ impl CardDefinitionBuilder {
             KeywordAction::Exalted => self.exalted(),
             KeywordAction::Storm => self.storm(),
             KeywordAction::Toxic(amount) => self.toxic(amount),
+            KeywordAction::BattleCry => self.battle_cry(),
+            KeywordAction::Dethrone => self.dethrone(),
+            KeywordAction::Evolve => self.evolve(),
+            KeywordAction::Ingest => self.ingest(),
+            KeywordAction::Mentor => self.mentor(),
+            KeywordAction::Skulk => self.skulk(),
+            KeywordAction::Training => self.training(),
+            KeywordAction::Renown(amount) => self.renown(amount),
             KeywordAction::Fear => self.fear(),
             KeywordAction::Intimidate => self.intimidate(),
             KeywordAction::Shadow => self.shadow(),
@@ -1941,6 +1965,117 @@ impl CardDefinitionBuilder {
         )
     }
 
+    /// Add battle cry.
+    ///
+    /// Battle cry means "Whenever this creature attacks, each other attacking creature
+    /// gets +1/+0 until end of turn."
+    pub fn battle_cry(self) -> Self {
+        let mut filter = ObjectFilter::creature().you_control().other();
+        filter.attacking = true;
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_attacks(),
+                vec![Effect::pump_all(filter, 1, 0, Until::EndOfTurn)],
+            )
+            .with_text("Battle cry"),
+        )
+    }
+
+    /// Add dethrone.
+    ///
+    /// Dethrone means "Whenever this creature attacks the player with the most life
+    /// or tied for most life, put a +1/+1 counter on it."
+    pub fn dethrone(self) -> Self {
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_attacks_player_with_most_life(),
+                vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
+            )
+            .with_text("Dethrone"),
+        )
+    }
+
+    /// Add evolve.
+    ///
+    /// Evolve means "Whenever a creature enters under your control, if that creature has
+    /// greater power or toughness than this creature, put a +1/+1 counter on this creature."
+    pub fn evolve(self) -> Self {
+        self.with_ability(
+            Ability::triggered(
+                Trigger::enters_battlefield(ObjectFilter::creature().you_control()),
+                vec![Effect::evolve_source()],
+            )
+            .with_text("Evolve"),
+        )
+    }
+
+    /// Add mentor.
+    ///
+    /// Mentor means "Whenever this creature attacks, put a +1/+1 counter on target attacking
+    /// creature with lesser power."
+    pub fn mentor(self) -> Self {
+        let mut target_filter = ObjectFilter::creature().with_power_less_than_source();
+        target_filter.attacking = true;
+        let target = ChooseSpec::target(ChooseSpec::Object(target_filter));
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_attacks(),
+                effects: vec![Effect::plus_one_counters(1, target.clone())],
+                choices: vec![target],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: Some("Mentor".to_string()),
+        })
+    }
+
+    /// Add training.
+    ///
+    /// Training means "Whenever this creature attacks with another creature with greater power,
+    /// put a +1/+1 counter on this creature."
+    pub fn training(self) -> Self {
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_attacks_with_greater_power(),
+                vec![Effect::training_source()],
+            )
+            .with_text("Training"),
+        )
+    }
+
+    /// Add renown N.
+    ///
+    /// Renown N means "When this creature deals combat damage to a player, if it isn't renowned,
+    /// put N +1/+1 counters on it and it becomes renowned."
+    pub fn renown(self, amount: u32) -> Self {
+        let text = format!("Renown {amount}");
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_deals_combat_damage_to_player(),
+                vec![Effect::renown_source(amount)],
+            )
+            .with_text(&text),
+        )
+    }
+
+    /// Add ingest.
+    ///
+    /// Ingest means "Whenever this creature deals combat damage to a player,
+    /// that player exiles the top card of their library."
+    pub fn ingest(self) -> Self {
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_deals_combat_damage_to_player(),
+                vec![Effect::exile_top_of_library_player(
+                    1,
+                    PlayerFilter::DamagedPlayer,
+                )],
+            )
+            .with_text("Ingest"),
+        )
+    }
+
     /// Add storm.
     ///
     /// Storm means "When you cast this spell, copy it for each spell cast before it this turn."
@@ -1975,6 +2110,60 @@ impl CardDefinitionBuilder {
     pub fn intimidate(self) -> Self {
         self.with_ability(
             Ability::static_ability(StaticAbility::intimidate()).with_text("Intimidate"),
+        )
+    }
+
+    /// Add skulk.
+    ///
+    /// Skulk means "This creature can't be blocked by creatures with greater power."
+    pub fn skulk(self) -> Self {
+        self.with_ability(Ability::static_ability(StaticAbility::skulk()).with_text("Skulk"))
+    }
+
+    /// Add afterlife N.
+    ///
+    /// Afterlife means "When this creature dies, create N 1/1 white and black Spirit creature
+    /// tokens with flying."
+    pub fn afterlife(self, amount: u32) -> Self {
+        let text = format!("Afterlife {amount}");
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_dies(),
+                vec![Effect::create_tokens(
+                    Self::afterlife_spirit_token(),
+                    amount,
+                )],
+            )
+            .with_text(&text),
+        )
+    }
+
+    /// Add fabricate N.
+    ///
+    /// Fabricate means "When this creature enters, choose one —
+    /// • Put N +1/+1 counters on it.
+    /// • Create N 1/1 colorless Servo artifact creature tokens."
+    pub fn fabricate(self, amount: u32) -> Self {
+        let text = format!("Fabricate {amount}");
+        let modes = vec![
+            EffectMode {
+                description: format!("Put {amount} +1/+1 counters on this creature"),
+                effects: vec![Effect::plus_one_counters(amount as i32, ChooseSpec::Source)],
+            },
+            EffectMode {
+                description: format!(
+                    "Create {amount} 1/1 colorless Servo artifact creature tokens"
+                ),
+                effects: vec![Effect::create_tokens(Self::fabricate_servo_token(), amount)],
+            },
+        ];
+
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_enters_battlefield(),
+                vec![Effect::choose_one(modes)],
+            )
+            .with_text(&text),
         )
     }
 
@@ -2454,6 +2643,26 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability::static_ability(
             StaticAbility::with_level_abilities(levels),
         ))
+    }
+
+    fn fabricate_servo_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Servo")
+            .token()
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .subtypes(vec![Subtype::Servo])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build()
+    }
+
+    fn afterlife_spirit_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Spirit")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Spirit])
+            .color_indicator(ColorSet::WHITE.union(ColorSet::BLACK))
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .flying()
+            .build()
     }
 
     // === Build ===
@@ -5330,6 +5539,219 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             joined.to_ascii_lowercase().contains("cumulative upkeep"),
             "expected cumulative upkeep text in compiled abilities, got {joined}"
+        );
+    }
+
+    #[test]
+    fn parse_skulk_keyword_line_builds_skulk_static_ability() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Skulk Probe")
+            .parse_text("Skulk")
+            .expect("parse skulk keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("Skulk"),
+            "expected skulk ability in debug output, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "skulk should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_ingest_keyword_line_builds_triggered_ability() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ingest Probe")
+            .parse_text("Ingest")
+            .expect("parse ingest keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("this creature deals combat damage to a player"),
+            "expected ingest combat-damage trigger, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "ingest should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_battle_cry_keyword_line_builds_triggered_ability() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Battle Cry Probe")
+            .parse_text("Battle cry")
+            .expect("parse battle cry keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("this creature attacks"),
+            "expected battle cry attack trigger, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "battle cry should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_dethrone_keyword_line_builds_most_life_attack_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Dethrone Probe")
+            .parse_text("Dethrone")
+            .expect("parse dethrone keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("most life"),
+            "expected dethrone most-life attack trigger, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "dethrone should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_evolve_keyword_line_builds_etb_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Evolve Probe")
+            .parse_text("Evolve")
+            .expect("parse evolve keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("ZoneChangeTrigger") && debug.contains("Specific(Battlefield)"),
+            "expected evolve ETB zone-change trigger, got {debug}"
+        );
+        assert!(
+            debug.contains("EvolveEffect"),
+            "expected evolve resolution effect, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "evolve should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_mentor_keyword_line_builds_attack_target_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Mentor Probe")
+            .parse_text("Mentor")
+            .expect("parse mentor keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("ThisAttacksTrigger"),
+            "expected mentor attack trigger matcher, got {debug}"
+        );
+        assert!(
+            debug.contains("power_relative_to_source: Some(LessThanSource)"),
+            "expected mentor lesser-power target constraint, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "mentor should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_training_keyword_line_builds_greater_power_attack_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Training Probe")
+            .parse_text("Training")
+            .expect("parse training keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("ThisAttacksWithGreaterPowerTrigger"),
+            "expected training trigger matcher, got {debug}"
+        );
+        assert!(
+            debug.contains("TrainingEffect"),
+            "expected training resolution effect, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "training should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_renown_keyword_line_builds_combat_damage_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Renown Probe")
+            .parse_text("Renown 1")
+            .expect("parse renown keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("ThisDealsCombatDamageToPlayerTrigger"),
+            "expected renown combat-damage trigger matcher, got {debug}"
+        );
+        assert!(
+            debug.contains("RenownEffect"),
+            "expected renown resolution effect, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "renown should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_afterlife_keyword_line_builds_dies_token_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Afterlife Probe")
+            .parse_text("Afterlife 2")
+            .expect("parse afterlife keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("ZoneChangeTrigger")
+                && debug.contains("from: Specific(Battlefield)")
+                && debug.contains("to: Specific(Graveyard)"),
+            "expected afterlife dies zone-change trigger, got {debug}"
+        );
+        assert!(
+            debug.contains("CreateTokenEffect"),
+            "expected afterlife token creation effect, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "afterlife should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_fabricate_keyword_line_builds_etb_modal_choice() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Fabricate Probe")
+            .parse_text("Fabricate 1")
+            .expect("parse fabricate keyword line");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("ZoneChangeTrigger") && debug.contains("Specific(Battlefield)"),
+            "expected fabricate ETB zone-change trigger, got {debug}"
+        );
+        assert!(
+            debug.contains("ChooseModeEffect"),
+            "expected fabricate modal choice effect, got {debug}"
+        );
+        assert!(
+            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
+            "fabricate should not compile as custom marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_this_creature_becomes_renowned_trigger_clause() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Renowned Trigger Probe")
+            .parse_text("Whenever this creature becomes renowned, draw a card.")
+            .expect("parse source renowned trigger");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("become renowned"),
+            "expected keyword-action trigger for becoming renowned, got {debug}"
+        );
+        assert!(
+            debug.contains("DrawCardsEffect"),
+            "expected draw effect on renowned trigger, got {debug}"
         );
     }
 

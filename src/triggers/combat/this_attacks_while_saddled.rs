@@ -61,4 +61,3 @@ mod tests {
         assert!(trigger.matches(&event, &ctx));
     }
 }
-

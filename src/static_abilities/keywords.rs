@@ -67,6 +67,10 @@ define_keyword!(Intimidate, Intimidate, "Intimidate",
     grants_evasion => true
 );
 
+define_keyword!(Skulk, Skulk, "Skulk",
+    grants_evasion => true
+);
+
 // === Combat keywords ===
 
 define_keyword!(FirstStrike, FirstStrike, "First strike",

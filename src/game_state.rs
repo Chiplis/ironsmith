@@ -1122,6 +1122,9 @@ pub struct GameState {
     /// Creatures that are monstrous (from monstrosity ability).
     pub monstrous: HashSet<ObjectId>,
 
+    /// Creatures that are renowned.
+    pub renowned: HashSet<ObjectId>,
+
     /// Flipped permanents (for flip cards like Budoka Gardener).
     pub flipped: HashSet<ObjectId>,
 
@@ -1236,6 +1239,7 @@ impl GameState {
             chosen_colors: HashMap::new(),
             regeneration_shields: HashMap::new(),
             monstrous: HashSet::new(),
+            renowned: HashSet::new(),
             flipped: HashSet::new(),
             face_down: HashSet::new(),
             phased_out: HashSet::new(),
@@ -3320,6 +3324,16 @@ impl GameState {
         self.monstrous.insert(id);
     }
 
+    /// Check if a creature is renowned.
+    pub fn is_renowned(&self, id: ObjectId) -> bool {
+        self.renowned.contains(&id)
+    }
+
+    /// Mark a creature as renowned.
+    pub fn set_renowned(&mut self, id: ObjectId) {
+        self.renowned.insert(id);
+    }
+
     /// Check if a permanent is saddled (until end of turn).
     pub fn is_saddled(&self, id: ObjectId) -> bool {
         self.saddled_until_end_of_turn.contains(&id)
@@ -3422,6 +3436,7 @@ impl GameState {
         self.damage_marked.remove(&id);
         self.regeneration_shields.remove(&id);
         self.monstrous.remove(&id);
+        self.renowned.remove(&id);
         self.flipped.remove(&id);
         self.face_down.remove(&id);
         self.phased_out.remove(&id);

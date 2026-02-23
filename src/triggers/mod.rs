@@ -297,6 +297,11 @@ impl Trigger {
         Self::new(ThisAttacksTrigger)
     }
 
+    /// Create a "when this creature attacks the player with the most life or tied for most life" trigger.
+    pub fn this_attacks_player_with_most_life() -> Self {
+        Self::new(ThisAttacksPlayerWithMostLifeTrigger)
+    }
+
     /// Create a "when this creature attacks and isn't blocked" trigger.
     pub fn this_attacks_and_isnt_blocked() -> Self {
         Self::new(ThisAttacksAndIsntBlockedTrigger)
@@ -305,6 +310,11 @@ impl Trigger {
     /// Create a "when this creature attacks while saddled" trigger.
     pub fn this_attacks_while_saddled() -> Self {
         Self::new(ThisAttacksWhileSaddledTrigger)
+    }
+
+    /// Create a "when this creature attacks with another creature with greater power" trigger.
+    pub fn this_attacks_with_greater_power() -> Self {
+        Self::new(ThisAttacksWithGreaterPowerTrigger)
     }
 
     /// Create a "when this creature and at least N other creatures attack" trigger.
@@ -510,6 +520,17 @@ impl Trigger {
     /// Create a "when this permanent becomes the target of [spell filter]" trigger.
     pub fn becomes_targeted_by_spell(filter: ObjectFilter) -> Self {
         Self::new(BecomesTargetedBySpellTrigger::new(filter))
+    }
+
+    /// Create a "when [target] becomes the target of a spell or ability [player] controls" trigger.
+    pub fn becomes_targeted_by_source_controller(
+        target_filter: ObjectFilter,
+        source_controller: PlayerFilter,
+    ) -> Self {
+        Self::new(BecomesTargetedBySourceControllerTrigger::new(
+            target_filter,
+            source_controller,
+        ))
     }
 
     // === Card Triggers ===

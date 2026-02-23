@@ -2338,6 +2338,24 @@ impl Effect {
         Self::new(MonstrosityEffect::new(n))
     }
 
+    /// Create an evolve resolution effect for this source creature.
+    pub fn evolve_source() -> Self {
+        use crate::effects::EvolveEffect;
+        Self::new(EvolveEffect::new())
+    }
+
+    /// Create a training resolution effect for this source creature.
+    pub fn training_source() -> Self {
+        use crate::effects::TrainingEffect;
+        Self::new(TrainingEffect::new())
+    }
+
+    /// Create a renown resolution effect for this source creature.
+    pub fn renown_source(amount: u32) -> Self {
+        use crate::effects::RenownEffect;
+        Self::new(RenownEffect::new(amount))
+    }
+
     /// Create a "regenerate" effect with explicit duration.
     pub fn regenerate(target: ChooseSpec, duration: Until) -> Self {
         use crate::effects::RegenerateEffect;
@@ -2431,6 +2449,12 @@ impl Effect {
     pub fn mill_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
         use crate::effects::MillEffect;
         Self::new(MillEffect::new(count, player))
+    }
+
+    /// Create an "exile top N cards of library" effect for a specific player.
+    pub fn exile_top_of_library_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::ExileTopOfLibraryEffect;
+        Self::new(ExileTopOfLibraryEffect::new(count, player))
     }
 
     /// Create a "shuffle library" effect.

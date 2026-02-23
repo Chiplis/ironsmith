@@ -32,6 +32,10 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBecomesTargetedBySpell(filter) => {
             Trigger::becomes_targeted_by_spell(filter)
         }
+        TriggerSpec::BecomesTargetedBySourceController {
+            target,
+            source_controller,
+        } => Trigger::becomes_targeted_by_source_controller(target, source_controller),
         TriggerSpec::ThisDealsDamage => Trigger::this_deals_damage(),
         TriggerSpec::ThisDealsDamageToPlayer { player, amount } => {
             Trigger::this_deals_damage_to_player(player, amount)
@@ -190,6 +194,16 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
         | TriggerSpec::KeywordAction { player, .. }
         | TriggerSpec::KeywordActionFromSource { player, .. } => {
             if *player == PlayerFilter::Any {
+                Some(PlayerFilter::Active)
+            } else {
+                Some(PlayerFilter::IteratedPlayer)
+            }
+        }
+        TriggerSpec::BecomesTargetedBySourceController {
+            source_controller,
+            ..
+        } => {
+            if *source_controller == PlayerFilter::Any {
                 Some(PlayerFilter::Active)
             } else {
                 Some(PlayerFilter::IteratedPlayer)

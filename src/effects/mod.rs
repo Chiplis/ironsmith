@@ -62,9 +62,9 @@ pub use executor_trait::{CostValidationError, EffectExecutor, ModalSpec};
 
 // Re-export effect implementations
 pub use cards::{
-    ConniveEffect, DiscardEffect, DiscardHandEffect, DrawCardsEffect, LookAtHandEffect,
-    LookAtTopCardsEffect, MillEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect,
-    ShuffleGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
+    ConniveEffect, DiscardEffect, DiscardHandEffect, DrawCardsEffect, ExileTopOfLibraryEffect,
+    LookAtHandEffect, LookAtTopCardsEffect, MillEffect, RevealTopEffect, ScryEffect,
+    SearchLibraryEffect, ShuffleGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
     EnterAttackingEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
@@ -101,8 +101,8 @@ pub use mana::{
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeSaddledUntilEotEffect, CrewCostEffect,
-    EarthbendEffect, GrantObjectAbilityEffect, MonstrosityEffect, RegenerateEffect,
-    SaddleCostEffect, TapEffect, TransformEffect, UntapEffect,
+    EarthbendEffect, EvolveEffect, GrantObjectAbilityEffect, MonstrosityEffect, RegenerateEffect,
+    RenownEffect, SaddleCostEffect, TapEffect, TrainingEffect, TransformEffect, UntapEffect,
 };
 pub use player::{
     CastTaggedEffect, ControlPlayerEffect, CreateEmblemEffect, EnergyCountersEffect,

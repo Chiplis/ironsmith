@@ -812,6 +812,8 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Shroud => "Shroud".to_string(),
         KeywordAction::Ward(amount) => format!("Ward {{{amount}}}"),
         KeywordAction::Wither => "Wither".to_string(),
+        KeywordAction::Afterlife(amount) => format!("Afterlife {amount}"),
+        KeywordAction::Fabricate(amount) => format!("Fabricate {amount}"),
         KeywordAction::Infect => "Infect".to_string(),
         KeywordAction::Undying => "Undying".to_string(),
         KeywordAction::Persist => "Persist".to_string(),
@@ -819,6 +821,14 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Exalted => "Exalted".to_string(),
         KeywordAction::Storm => "Storm".to_string(),
         KeywordAction::Toxic(amount) => format!("Toxic {amount}"),
+        KeywordAction::BattleCry => "Battle cry".to_string(),
+        KeywordAction::Dethrone => "Dethrone".to_string(),
+        KeywordAction::Evolve => "Evolve".to_string(),
+        KeywordAction::Ingest => "Ingest".to_string(),
+        KeywordAction::Mentor => "Mentor".to_string(),
+        KeywordAction::Skulk => "Skulk".to_string(),
+        KeywordAction::Training => "Training".to_string(),
+        KeywordAction::Renown(amount) => format!("Renown {amount}"),
         KeywordAction::Fear => "Fear".to_string(),
         KeywordAction::Intimidate => "Intimidate".to_string(),
         KeywordAction::Shadow => "Shadow".to_string(),
@@ -2143,7 +2153,9 @@ fn apply_pending_mana_restriction(ability: &mut crate::ability::ManaAbility, res
     let parsed_timing = parse_activate_only_timing(&tokens).unwrap_or_default();
     let parsed_condition = parse_activation_condition(&tokens).or_else(|| {
         if parsed_timing == ActivationTiming::AnyTime {
-            Some(crate::ConditionExpr::Unmodeled(normalized_restriction.clone()))
+            Some(crate::ConditionExpr::Unmodeled(
+                normalized_restriction.clone(),
+            ))
         } else {
             None
         }
@@ -2214,9 +2226,8 @@ fn merge_mana_activation_conditions(
         (None, None) => None,
         (Some(condition), None) => Some(condition),
         (None, Some(condition)) => Some(condition),
-        (Some(left), Some(right)) => Some(crate::ConditionExpr::And(
-            Box::new(left),
-            Box::new(right),
-        )),
+        (Some(left), Some(right)) => {
+            Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)))
+        }
     }
 }

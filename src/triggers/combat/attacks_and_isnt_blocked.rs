@@ -33,11 +33,13 @@ impl TriggerMatcher for AttacksAndIsntBlockedTrigger {
     }
 
     fn display(&self) -> String {
-        format!("Whenever {} attacks and isn't blocked", self.filter.description())
+        format!(
+            "Whenever {} attacks and isn't blocked",
+            self.filter.description()
+        )
     }
 
     fn clone_box(&self) -> Box<dyn TriggerMatcher> {
         Box::new(self.clone())
     }
 }
-

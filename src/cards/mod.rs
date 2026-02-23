@@ -549,9 +549,10 @@ mod tests {
     #[test]
     fn generated_definition_support_accepts_a_brine_comber() {
         let text = "Mana cost: {1}{W}{U}\nType: Creature — Spirit // Enchantment — Aura\nPower/Toughness: 2/2\nWhenever this creature enters or becomes the target of an Aura spell, create a 1/1 white Spirit creature token with flying.\nDisturb {W}{U} (You may cast this card from your graveyard transformed for its disturb cost.)";
-        let definition = CardDefinitionBuilder::new(CardId::new(), "A-Brine Comber // A-Brinebound Gift")
-            .parse_text(text)
-            .expect("a-brine comber parse should succeed");
+        let definition =
+            CardDefinitionBuilder::new(CardId::new(), "A-Brine Comber // A-Brinebound Gift")
+                .parse_text(text)
+                .expect("a-brine comber parse should succeed");
 
         let debug = format!("{definition:#?}").to_ascii_lowercase();
         assert!(!debug.contains("unimplemented"));
@@ -560,10 +561,12 @@ mod tests {
     #[test]
     fn generated_definition_support_accepts_a_devoted_grafkeeper() {
         let text = "Mana cost: {W}{U}\nType: Creature — Human Peasant // Creature — Spirit\nPower/Toughness: 2/2\nWhen Devoted Grafkeeper enters, mill four cards.\nWhenever you cast a spell from your graveyard, tap target creature you don't control.\nDisturb {1}{W}{U} (You may cast this card from your graveyard transformed for its disturb cost.)";
-        let definition =
-            CardDefinitionBuilder::new(CardId::new(), "A-Devoted Grafkeeper // A-Departed Soulkeeper")
-                .parse_text(text)
-                .expect("a-devoted grafkeeper parse should succeed");
+        let definition = CardDefinitionBuilder::new(
+            CardId::new(),
+            "A-Devoted Grafkeeper // A-Departed Soulkeeper",
+        )
+        .parse_text(text)
+        .expect("a-devoted grafkeeper parse should succeed");
 
         let debug = format!("{definition:#?}").to_ascii_lowercase();
         assert!(!debug.contains("unimplemented"));

@@ -6274,4 +6274,37 @@ mod tests {
         let max_x = potential.max_x_for_cost(&fireball_cost);
         assert_eq!(max_x, 1, "max_x should be 1 (2 total - 1 for R = 1 for X)");
     }
+
+    #[test]
+    fn test_counter_unless_pays_spell_not_castable_without_stack_target() {
+        use crate::cards::definitions::{basic_island, mana_tithe};
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        // Give Alice the mana to cast Mana Tithe.
+        let island = basic_island();
+        game.create_object_from_definition(&island, alice, Zone::Battlefield);
+
+        // Put Mana Tithe in hand and leave stack empty.
+        let mana_tithe_def = mana_tithe();
+        let mana_tithe_id = game.create_object_from_definition(&mana_tithe_def, alice, Zone::Hand);
+
+        let actions = compute_legal_actions(&game, alice);
+        let can_cast = actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == mana_tithe_id
+            )
+        });
+
+        assert!(
+            !can_cast,
+            "counter-unless-pays spells must not be castable without a legal spell target on stack"
+        );
+    }
 }

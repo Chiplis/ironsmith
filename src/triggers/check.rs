@@ -597,8 +597,8 @@ mod tests {
     use crate::ability::{Ability, TriggeredAbility};
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::Effect;
-    use crate::events::other::CounterPlacedEvent;
     use crate::events::EventKind;
+    use crate::events::other::CounterPlacedEvent;
     use crate::events::phase::BeginningOfUpkeepEvent;
     use crate::events::zones::ZoneChangeEvent;
     use crate::ids::CardId;

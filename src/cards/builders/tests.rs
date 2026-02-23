@@ -127,6 +127,76 @@ fn test_complex_creature() {
 }
 
 #[test]
+fn test_builder_mentor_creates_targeted_attack_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mentor Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .mentor()
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    match &ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            assert!(triggered.trigger.display().contains("attacks"));
+            assert_eq!(triggered.choices.len(), 1);
+            let choices_debug = format!("{:?}", triggered.choices);
+            assert!(
+                choices_debug.contains("with power less than this creature's power"),
+                "expected mentor target restriction, got {choices_debug}"
+            );
+        }
+        _ => panic!("expected triggered ability"),
+    }
+}
+
+#[test]
+fn test_builder_afterlife_creates_dies_trigger_with_tokens() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Afterlife Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .afterlife(2)
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    match &ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            assert!(triggered.trigger.display().contains("dies"));
+            let effects_debug = format!("{:?}", triggered.effects);
+            assert!(
+                effects_debug.contains("CreateTokenEffect"),
+                "expected token creation effect, got {effects_debug}"
+            );
+        }
+        _ => panic!("expected triggered ability"),
+    }
+}
+
+#[test]
+fn test_builder_fabricate_creates_etb_modal_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fabricate Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .fabricate(1)
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    match &ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            assert!(triggered.trigger.display().contains("enters"));
+            let effects_debug = format!("{:?}", triggered.effects);
+            assert!(
+                effects_debug.contains("ChooseModeEffect"),
+                "expected modal fabricate effect, got {effects_debug}"
+            );
+        }
+        _ => panic!("expected triggered ability"),
+    }
+}
+
+#[test]
 fn test_parse_cant_gain_life_from_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "No Life")
         .parse_text("Players can't gain life.")
@@ -2601,7 +2671,7 @@ fn test_parse_blocked_filter_sets_blocked() {
         .parse_text("Target blocked creature gains lifelink until end of turn.")
         .expect("parse blocked target filter");
 
-    let debug = format!("{:#?}", def.effects);
+    let debug = format!("{:#?}", def.spell_effect);
     assert!(
         debug.contains("blocked: true"),
         "expected blocked filter flag, got {debug}"
@@ -2633,7 +2703,7 @@ fn test_parse_equal_or_lesser_mana_value_adds_tagged_lte_constraint() {
         )
         .expect("parse equal-or-lesser mana value tagged comparison");
 
-    let debug = format!("{:#?}", def.effects);
+    let debug = format!("{:#?}", def.spell_effect);
     assert!(
         debug.contains("ManaValueLteTagged"),
         "expected equal-or-lesser mana value relation against tagged object, got {debug}"

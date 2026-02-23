@@ -85,4 +85,3 @@ mod tests {
         assert_eq!(event.event_kind(), EventKind::CreatureAttackedAndUnblocked);
     }
 }
-

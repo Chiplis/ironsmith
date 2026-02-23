@@ -66,7 +66,11 @@ mod tests {
         game.create_object_from_card(&card, controller, Zone::Battlefield)
     }
 
-    fn create_aura_spell_on_stack(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+    fn create_aura_spell_on_stack(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+    ) -> ObjectId {
         let card = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Enchantment])
             .subtypes(vec![Subtype::Aura])

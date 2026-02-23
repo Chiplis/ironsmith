@@ -102,4 +102,3 @@ mod tests {
         assert_eq!(trigger.display(), "Whenever you expend 4");
     }
 }
-

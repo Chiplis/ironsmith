@@ -133,7 +133,10 @@ impl TriggerMatcher for SpellCastTrigger {
             if object_filter.zone == Some(Zone::Stack) {
                 object_filter.zone = None;
             }
-            if matches!(object_filter.stack_kind, Some(crate::filter::StackObjectKind::Spell)) {
+            if matches!(
+                object_filter.stack_kind,
+                Some(crate::filter::StackObjectKind::Spell)
+            ) {
                 object_filter.stack_kind = None;
             }
             // Real spells can have no mana cost (e.g. suspend cards).

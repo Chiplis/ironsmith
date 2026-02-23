@@ -46,4 +46,3 @@ impl TriggerMatcher for AttacksWhileSaddledTrigger {
         Box::new(self.clone())
     }
 }
-

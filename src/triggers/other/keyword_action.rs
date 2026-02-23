@@ -155,7 +155,10 @@ mod tests {
             .object(source_id)
             .map(|obj| obj.stable_id.object_id())
             .unwrap_or(source_id);
-        assert_ne!(stable, source_id, "expected stable id to differ after zone change");
+        assert_ne!(
+            stable, source_id,
+            "expected stable id to differ after zone change"
+        );
         let event = TriggerEvent::new(KeywordActionEvent::new(
             KeywordActionKind::Cycle,
             alice,
@@ -163,7 +166,8 @@ mod tests {
             1,
         ));
 
-        let trigger = KeywordActionTrigger::from_source(KeywordActionKind::Cycle, PlayerFilter::You);
+        let trigger =
+            KeywordActionTrigger::from_source(KeywordActionKind::Cycle, PlayerFilter::You);
         let ctx = TriggerContext::for_source(source_id, alice, &game);
         assert!(trigger.matches(&event, &ctx));
     }

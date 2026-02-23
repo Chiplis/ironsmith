@@ -30,6 +30,7 @@ pub enum StaticAbilityId {
     Vigilance,
     Ward,
     Fear,
+    Skulk,
     Flanking,
     Landwalk,
     Bloodthirst,
@@ -186,6 +187,7 @@ impl StaticAbilityId {
                 | Vigilance
                 | Ward
                 | Fear
+                | Skulk
                 | Flanking
                 | Landwalk
                 | Bloodthirst
@@ -210,6 +212,7 @@ impl StaticAbilityId {
                 | Horsemanship
                 | Fear
                 | Intimidate
+                | Skulk
                 | FlyingRestriction
                 | FlyingOnlyRestriction
                 | CantBeBlockedByPowerOrLess
@@ -234,6 +237,7 @@ impl StaticAbilityId {
                 | Trample
                 | Vigilance
                 | Fear
+                | Skulk
                 | Flanking
                 | Landwalk
                 | Shadow

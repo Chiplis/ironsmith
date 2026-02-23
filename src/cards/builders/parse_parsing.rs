@@ -2118,6 +2118,12 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
             ])))
         }),
         KeywordAction::Wither => Some(StaticAbility::wither()),
+        KeywordAction::Afterlife(amount) => {
+            Some(StaticAbility::custom("afterlife", format!("afterlife {amount}")))
+        }
+        KeywordAction::Fabricate(amount) => {
+            Some(StaticAbility::custom("fabricate", format!("fabricate {amount}")))
+        }
         KeywordAction::Infect => Some(StaticAbility::infect()),
         KeywordAction::Undying => Some(StaticAbility::custom("undying", "undying".to_string())),
         KeywordAction::Persist => Some(StaticAbility::custom("persist", "persist".to_string())),
@@ -2126,6 +2132,19 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
         KeywordAction::Storm => Some(StaticAbility::custom("storm", "storm".to_string())),
         KeywordAction::Toxic(amount) => {
             Some(StaticAbility::custom("toxic", format!("toxic {amount}")))
+        }
+        KeywordAction::BattleCry => Some(StaticAbility::custom(
+            "battle_cry",
+            "battle cry".to_string(),
+        )),
+        KeywordAction::Dethrone => Some(StaticAbility::custom("dethrone", "dethrone".to_string())),
+        KeywordAction::Evolve => Some(StaticAbility::custom("evolve", "evolve".to_string())),
+        KeywordAction::Ingest => Some(StaticAbility::custom("ingest", "ingest".to_string())),
+        KeywordAction::Mentor => Some(StaticAbility::custom("mentor", "mentor".to_string())),
+        KeywordAction::Skulk => Some(StaticAbility::skulk()),
+        KeywordAction::Training => Some(StaticAbility::custom("training", "training".to_string())),
+        KeywordAction::Renown(amount) => {
+            Some(StaticAbility::custom("renown", format!("renown {amount}")))
         }
         KeywordAction::Fear => Some(StaticAbility::fear()),
         KeywordAction::Intimidate => Some(StaticAbility::intimidate()),
@@ -10800,7 +10819,6 @@ fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "dash" => Some("dash"),
         "soulshift" => Some("soulshift"),
         "adapt" => Some("adapt"),
-        "afterlife" => Some("afterlife"),
         "bolster" => Some("bolster"),
         "devour" => Some("devour"),
         "disturb" => Some("disturb"),
@@ -10810,7 +10828,6 @@ fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "outlast" => Some("outlast"),
         "scavenge" => Some("scavenge"),
         "suspend" => Some("suspend"),
-        "training" => Some("training"),
         "vanishing" => Some("vanishing"),
         "offering" => Some("offering"),
         "soulbond" => Some("soulbond"),
@@ -10832,7 +10849,6 @@ fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "buyback" => Some("buyback"),
         "flashback" => Some("flashback"),
         "rebound" => Some("rebound"),
-        "renown" => Some("renown"),
         _ => None,
     }
 }
@@ -10842,9 +10858,8 @@ fn marker_keyword_display(words: &[&str]) -> Option<String> {
     let title = keyword_title(keyword);
 
     match keyword {
-        "fabricate" | "soulshift" | "adapt" | "afterlife" | "bolster" | "devour" | "modular"
-        | "vanishing" | "backup" | "casualty" | "saddle" | "fading" | "graft" | "tribute"
-        | "renown" => {
+        "soulshift" | "adapt" | "bolster" | "devour" | "modular"
+        | "vanishing" | "backup" | "casualty" | "saddle" | "fading" | "graft" | "tribute" => {
             let amount = words.get(1)?.parse::<u32>().ok()?;
             Some(format!("{title} {amount}"))
         }
@@ -11045,8 +11060,50 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         return Some(KeywordAction::Marker("saddle"));
     }
 
+    // Afterlife appears as "Afterlife N" and is often followed by reminder text.
+    if words.first().copied() == Some("afterlife") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Afterlife(amount));
+        }
+        return Some(KeywordAction::Marker("afterlife"));
+    }
+
+    // Fabricate appears as "Fabricate N" and is often followed by reminder text.
+    if words.first().copied() == Some("fabricate") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Fabricate(amount));
+        }
+        return Some(KeywordAction::Marker("fabricate"));
+    }
+
+    if words.first().copied() == Some("evolve") {
+        return Some(KeywordAction::Evolve);
+    }
+
+    if words.first().copied() == Some("mentor") {
+        return Some(KeywordAction::Mentor);
+    }
+
+    if words.first().copied() == Some("training") {
+        return Some(KeywordAction::Training);
+    }
+
+    // Renown appears as "Renown N" and is often followed by reminder text.
+    if words.first().copied() == Some("renown") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Renown(amount));
+        }
+        return Some(KeywordAction::Marker("renown"));
+    }
+
     if words.as_slice().starts_with(&["battle", "cry"]) {
-        return Some(KeywordAction::Marker("battle cry"));
+        return Some(KeywordAction::BattleCry);
     }
     if words.as_slice().starts_with(&["split", "second"]) {
         return Some(KeywordAction::Marker("split second"));
@@ -11084,7 +11141,6 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 | "dash"
                 | "soulshift"
                 | "adapt"
-                | "afterlife"
                 | "bolster"
                 | "devour"
                 | "disturb"
@@ -11094,7 +11150,6 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 | "outlast"
                 | "scavenge"
                 | "suspend"
-                | "training"
                 | "vanishing"
                 | "offering"
                 | "soulbond"
@@ -11115,7 +11170,6 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 | "buyback"
                 | "flashback"
                 | "rebound"
-                | "renown"
         )
     {
         if let Some(display) = marker_keyword_display(&words) {
@@ -11153,25 +11207,38 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         ["assist"] => KeywordAction::Marker("assist"),
         ["cipher"] => KeywordAction::Marker("cipher"),
         ["devoid"] => KeywordAction::Devoid,
-        ["dethrone"] => KeywordAction::Marker("dethrone"),
+        ["dethrone"] => KeywordAction::Dethrone,
         ["enlist"] => KeywordAction::Marker("enlist"),
-        ["evolve"] => KeywordAction::Marker("evolve"),
+        ["evolve"] => KeywordAction::Evolve,
         ["extort"] => KeywordAction::Marker("extort"),
-        ["ingest"] => KeywordAction::Marker("ingest"),
-        ["mentor"] => KeywordAction::Marker("mentor"),
+        ["ingest"] => KeywordAction::Ingest,
+        ["mentor"] => KeywordAction::Mentor,
+        ["training"] => KeywordAction::Training,
         ["myriad"] => KeywordAction::Marker("myriad"),
         ["partner"] => KeywordAction::Marker("partner"),
         ["populate"] => KeywordAction::Marker("populate"),
         ["provoke"] => KeywordAction::Marker("provoke"),
         ["ravenous"] => KeywordAction::Marker("ravenous"),
         ["riot"] => KeywordAction::Marker("riot"),
-        ["skulk"] => KeywordAction::Marker("skulk"),
+        ["skulk"] => KeywordAction::Skulk,
         ["sunburst"] => KeywordAction::Marker("sunburst"),
         ["undaunted"] => KeywordAction::Marker("undaunted"),
         ["unleash"] => KeywordAction::Marker("unleash"),
         ["ward", amount] => {
             let value = amount.parse::<u32>().ok()?;
             KeywordAction::Ward(value)
+        }
+        ["afterlife", amount] => {
+            let value = amount.parse::<u32>().ok()?;
+            KeywordAction::Afterlife(value)
+        }
+        ["fabricate", amount] => {
+            let value = amount.parse::<u32>().ok()?;
+            KeywordAction::Fabricate(value)
+        }
+        ["renown", amount] => {
+            let value = amount.parse::<u32>().ok()?;
+            KeywordAction::Renown(value)
         }
         ["wither"] => KeywordAction::Wither,
         ["infect"] => KeywordAction::Infect,
@@ -11246,19 +11313,20 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                     "assist" => return Some(KeywordAction::Marker("assist")),
                     "cipher" => return Some(KeywordAction::Marker("cipher")),
                     "devoid" => return Some(KeywordAction::Devoid),
-                    "dethrone" => return Some(KeywordAction::Marker("dethrone")),
+                    "dethrone" => return Some(KeywordAction::Dethrone),
                     "enlist" => return Some(KeywordAction::Marker("enlist")),
-                    "evolve" => return Some(KeywordAction::Marker("evolve")),
+                    "evolve" => return Some(KeywordAction::Evolve),
                     "extort" => return Some(KeywordAction::Marker("extort")),
-                    "ingest" => return Some(KeywordAction::Marker("ingest")),
-                    "mentor" => return Some(KeywordAction::Marker("mentor")),
+                    "ingest" => return Some(KeywordAction::Ingest),
+                    "mentor" => return Some(KeywordAction::Mentor),
+                    "training" => return Some(KeywordAction::Training),
                     "myriad" => return Some(KeywordAction::Marker("myriad")),
                     "partner" => return Some(KeywordAction::Marker("partner")),
                     "populate" => return Some(KeywordAction::Marker("populate")),
                     "provoke" => return Some(KeywordAction::Marker("provoke")),
                     "ravenous" => return Some(KeywordAction::Marker("ravenous")),
                     "riot" => return Some(KeywordAction::Marker("riot")),
-                    "skulk" => return Some(KeywordAction::Marker("skulk")),
+                    "skulk" => return Some(KeywordAction::Skulk),
                     "sunburst" => return Some(KeywordAction::Marker("sunburst")),
                     "undaunted" => return Some(KeywordAction::Marker("undaunted")),
                     "unleash" => return Some(KeywordAction::Marker("unleash")),
@@ -12284,6 +12352,26 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         && let Some(action) = crate::events::KeywordActionKind::from_trigger_word(last_word)
     {
         let subject = &words[..words.len().saturating_sub(1)];
+        if is_source_reference_words(subject) {
+            return Ok(TriggerSpec::KeywordActionFromSource {
+                action,
+                player: PlayerFilter::You,
+            });
+        }
+        if subject.len() > 2 && is_source_reference_words(&subject[..2]) {
+            let trailing_ok = subject[2..].iter().all(|word| {
+                matches!(
+                    *word,
+                    "become" | "becomes" | "became" | "becoming" | "has" | "had"
+                )
+            });
+            if trailing_ok {
+                return Ok(TriggerSpec::KeywordActionFromSource {
+                    action,
+                    player: PlayerFilter::You,
+                });
+            }
+        }
         let player = parse_trigger_subject_player_filter(subject);
         if let Some(player) = player {
             return Ok(TriggerSpec::KeywordAction { action, player });
@@ -12493,6 +12581,12 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         if subject_is_source {
             let tail_word_start = becomes_idx + 4;
             let tail_words = &words[tail_word_start..];
+            if let Some(source_controller) = parse_spell_or_ability_controller_tail(tail_words) {
+                return Ok(TriggerSpec::BecomesTargetedBySourceController {
+                    target: ObjectFilter::source(),
+                    source_controller,
+                });
+            }
             if tail_words == ["a", "spell", "or", "ability"]
                 || tail_words == ["spell", "or", "ability"]
             {
@@ -12515,6 +12609,14 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         } else {
             let tail_word_start = becomes_idx + 4;
             let tail_words = &words[tail_word_start..];
+            if let Some(source_controller) = parse_spell_or_ability_controller_tail(tail_words)
+                && let Some(filter) = subject_filter.clone()
+            {
+                return Ok(TriggerSpec::BecomesTargetedBySourceController {
+                    target: filter,
+                    source_controller,
+                });
+            }
             if (tail_words == ["a", "spell", "or", "ability"]
                 || tail_words == ["spell", "or", "ability"])
                 && let Some(filter) = subject_filter
@@ -13349,6 +13451,26 @@ fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter>
         return Some(PlayerFilter::You);
     }
     None
+}
+
+fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
+    let (prefix_len, controller_end) = if words.starts_with(&["a", "spell", "or", "ability"]) {
+        (4usize, words.len())
+    } else if words.starts_with(&["spell", "or", "ability"]) {
+        (3usize, words.len())
+    } else {
+        return None;
+    };
+
+    if controller_end <= prefix_len + 1 {
+        return None;
+    }
+    if !matches!(words.last().copied(), Some("control") | Some("controls")) {
+        return None;
+    }
+
+    let controller_words = &words[prefix_len..controller_end - 1];
+    parse_trigger_subject_player_filter(controller_words)
 }
 
 fn parse_trigger_subject_filter(

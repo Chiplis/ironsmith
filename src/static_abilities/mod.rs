@@ -739,6 +739,10 @@ impl StaticAbility {
         Self::new(Fear)
     }
 
+    pub fn skulk() -> Self {
+        Self::new(Skulk)
+    }
+
     pub fn intimidate() -> Self {
         Self::new(Intimidate)
     }

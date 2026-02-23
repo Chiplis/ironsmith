@@ -391,6 +391,13 @@ pub enum CounterConstraint {
     Typed(CounterType),
 }
 
+/// Power relationship against the source object in filter context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourcePowerRelation {
+    /// Candidate object's power must be less than the source object's power.
+    LessThanSource,
+}
+
 /// Stack object kind constraint for stack-targeting filters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StackObjectKind {
@@ -572,6 +579,8 @@ pub struct ObjectFilter {
     pub power: Option<Comparison>,
     /// Whether `power` is checked against effective or base power.
     pub power_reference: PtReference,
+    /// Relative power comparison against the source object in filter context.
+    pub power_relative_to_source: Option<SourcePowerRelation>,
 
     /// Toughness comparison (creature must satisfy)
     pub toughness: Option<Comparison>,
@@ -983,6 +992,12 @@ impl ObjectFilter {
     pub fn with_base_power(mut self, cmp: Comparison) -> Self {
         self.power = Some(cmp);
         self.power_reference = PtReference::Base;
+        self
+    }
+
+    /// Require candidate power to be less than the source object's power.
+    pub fn with_power_less_than_source(mut self) -> Self {
+        self.power_relative_to_source = Some(SourcePowerRelation::LessThanSource);
         self
     }
 
@@ -1626,6 +1641,38 @@ impl ObjectFilter {
             }
         }
 
+        if let Some(relation) = self.power_relative_to_source {
+            let Some(candidate_power) = resolve_object_power_for_filter(
+                object,
+                game,
+                PtReference::Effective,
+                allow_calculated_pt,
+            ) else {
+                return false;
+            };
+            let Some(source_id) = ctx.source else {
+                return false;
+            };
+            let Some(source_obj) = game.object(source_id) else {
+                return false;
+            };
+            let Some(source_power) = resolve_object_power_for_filter(
+                source_obj,
+                game,
+                PtReference::Effective,
+                allow_calculated_pt,
+            ) else {
+                return false;
+            };
+            match relation {
+                SourcePowerRelation::LessThanSource => {
+                    if candidate_power >= source_power {
+                        return false;
+                    }
+                }
+            }
+        }
+
         // Toughness check
         if let Some(toughness_cmp) = &self.toughness {
             if let Some(toughness) = resolve_object_toughness_for_filter(
@@ -2237,6 +2284,33 @@ impl ObjectFilter {
                 }
             } else {
                 return false; // No power means not a creature
+            }
+        }
+
+        if let Some(relation) = self.power_relative_to_source {
+            let Some(candidate_power) =
+                resolve_snapshot_power_for_filter(snapshot, PtReference::Effective)
+            else {
+                return false;
+            };
+            let Some(source_id) = ctx.source else {
+                return false;
+            };
+            let Some(source_obj) = game.object(source_id) else {
+                return false;
+            };
+            let Some(source_power) = game
+                .calculated_power(source_id)
+                .or_else(|| source_obj.power())
+            else {
+                return false;
+            };
+            match relation {
+                SourcePowerRelation::LessThanSource => {
+                    if candidate_power >= source_power {
+                        return false;
+                    }
+                }
             }
         }
 
@@ -3137,6 +3211,13 @@ impl ObjectFilter {
                     PtReference::Base => "base power",
                 };
                 parts.push(format!("with {label} {}", describe_comparison(power)));
+            }
+            if let Some(relation) = self.power_relative_to_source {
+                match relation {
+                    SourcePowerRelation::LessThanSource => {
+                        parts.push("with power less than this creature's power".to_string());
+                    }
+                }
             }
             if let Some(ref toughness) = self.toughness {
                 let label = match self.toughness_reference {

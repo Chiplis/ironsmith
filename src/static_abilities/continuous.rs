@@ -439,8 +439,12 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
         {
             "during turns other than yours".to_string()
         }
-        crate::ConditionExpr::SourceIsEquipped => "as long as this creature is equipped".to_string(),
-        crate::ConditionExpr::SourceIsEnchanted => "as long as this creature is enchanted".to_string(),
+        crate::ConditionExpr::SourceIsEquipped => {
+            "as long as this creature is equipped".to_string()
+        }
+        crate::ConditionExpr::SourceIsEnchanted => {
+            "as long as this creature is enchanted".to_string()
+        }
         crate::ConditionExpr::EquippedCreatureTapped => {
             "as long as equipped creature is tapped".to_string()
         }
@@ -2191,11 +2195,14 @@ mod tests {
         game.create_object_from_card(&artifact_card, alice, Zone::Battlefield);
         game.create_object_from_card(&artifact_card, alice, Zone::Battlefield);
 
-        let anthem = Anthem::for_source(2, 2).with_condition(crate::ConditionExpr::CountComparison {
-            count: AnthemCountExpression::MatchingFilter(ObjectFilter::artifact().you_control()),
-            comparison: Comparison::GreaterThanOrEqual(3),
-            display: Some("you control three or more artifacts".to_string()),
-        });
+        let anthem =
+            Anthem::for_source(2, 2).with_condition(crate::ConditionExpr::CountComparison {
+                count: AnthemCountExpression::MatchingFilter(
+                    ObjectFilter::artifact().you_control(),
+                ),
+                comparison: Comparison::GreaterThanOrEqual(3),
+                display: Some("you control three or more artifacts".to_string()),
+            });
 
         assert!(
             !anthem.is_active(&game, source),

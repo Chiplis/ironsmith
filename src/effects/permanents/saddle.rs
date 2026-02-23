@@ -33,7 +33,11 @@ impl SaddleCostEffect {
         Self { required_power }
     }
 
-    fn saddle_candidates(game: &GameState, controller: PlayerId, source: ObjectId) -> Vec<ObjectId> {
+    fn saddle_candidates(
+        game: &GameState,
+        controller: PlayerId,
+        source: ObjectId,
+    ) -> Vec<ObjectId> {
         game.battlefield
             .iter()
             .copied()
@@ -198,4 +202,3 @@ impl EffectExecutor for BecomeSaddledUntilEotEffect {
         Box::new(self.clone())
     }
 }
-

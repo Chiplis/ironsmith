@@ -8347,10 +8347,9 @@ pub fn apply_blocker_declarations(
     }
 
     if declarations.len() == 1 && !game.can_block_alone(declarations[0].blocker) {
-        return Err(ResponseError::InvalidBlockers(
-            "This creature can't block alone".to_string(),
-        )
-        .into());
+        return Err(
+            ResponseError::InvalidBlockers("This creature can't block alone".to_string()).into(),
+        );
     }
 
     // Generate "becomes blocked" triggers for blocked attackers

@@ -2,6 +2,7 @@
 
 mod ability_activated;
 mod becomes_targeted;
+mod becomes_targeted_by_source_controller;
 mod becomes_targeted_by_spell;
 mod becomes_targeted_object;
 mod spell_cast;
@@ -11,6 +12,7 @@ mod you_cast_this_spell;
 
 pub use ability_activated::AbilityActivatedTrigger;
 pub use becomes_targeted::BecomesTargetedTrigger;
+pub use becomes_targeted_by_source_controller::BecomesTargetedBySourceControllerTrigger;
 pub use becomes_targeted_by_spell::BecomesTargetedBySpellTrigger;
 pub use becomes_targeted_object::BecomesTargetedObjectTrigger;
 pub use spell_cast::SpellCastTrigger;

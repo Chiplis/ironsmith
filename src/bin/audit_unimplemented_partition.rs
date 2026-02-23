@@ -243,10 +243,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let Ok(def) = parse_result else {
             parse_failed += 1;
             if parse_failure_examples.len() < 5 {
-                parse_failure_examples.push((
-                    card_input.name.clone(),
-                    format!("{:?}", parse_result.err()),
-                ));
+                parse_failure_examples
+                    .push((card_input.name.clone(), format!("{:?}", parse_result.err())));
             }
             continue;
         };

@@ -41,7 +41,12 @@ impl BeholdEffect {
     }
 }
 
-fn candidates(game: &GameState, chooser: PlayerId, source: ObjectId, subtype: Subtype) -> Vec<ObjectId> {
+fn candidates(
+    game: &GameState,
+    chooser: PlayerId,
+    source: ObjectId,
+    subtype: Subtype,
+) -> Vec<ObjectId> {
     let mut out = Vec::new();
 
     out.extend(
@@ -162,7 +167,13 @@ mod tests {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
     }
 
-    fn simple_creature(game: &mut GameState, name: &str, controller: PlayerId, subtype: Subtype, zone: Zone) -> ObjectId {
+    fn simple_creature(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        subtype: Subtype,
+        zone: Zone,
+    ) -> ObjectId {
         let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
             .card_types(vec![CardType::Creature])
             .subtypes(vec![subtype])
@@ -177,8 +188,20 @@ mod tests {
         let source = game.new_object_id();
 
         // One Elemental on battlefield and one in hand.
-        let _bf = simple_creature(&mut game, "BF Elemental", alice, Subtype::Elemental, Zone::Battlefield);
-        let _hand = simple_creature(&mut game, "Hand Elemental", alice, Subtype::Elemental, Zone::Hand);
+        let _bf = simple_creature(
+            &mut game,
+            "BF Elemental",
+            alice,
+            Subtype::Elemental,
+            Zone::Battlefield,
+        );
+        let _hand = simple_creature(
+            &mut game,
+            "Hand Elemental",
+            alice,
+            Subtype::Elemental,
+            Zone::Hand,
+        );
 
         let effect = BeholdEffect::you(Subtype::Elemental, 2);
         assert!(effect.can_execute_as_cost(&game, source, alice).is_ok());
@@ -189,10 +212,15 @@ mod tests {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
-        let _hand = simple_creature(&mut game, "Hand Elemental", alice, Subtype::Elemental, Zone::Hand);
+        let _hand = simple_creature(
+            &mut game,
+            "Hand Elemental",
+            alice,
+            Subtype::Elemental,
+            Zone::Hand,
+        );
 
         let effect = BeholdEffect::you(Subtype::Elemental, 2);
         assert!(effect.can_execute_as_cost(&game, source, alice).is_err());
     }
 }
-

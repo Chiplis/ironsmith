@@ -392,8 +392,8 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
     use crate::snapshot::ObjectSnapshot;
-    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
     use crate::tag::TagKey;
+    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
     use crate::types::CardType;
     use crate::zone::Zone;
 

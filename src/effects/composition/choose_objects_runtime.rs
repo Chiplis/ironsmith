@@ -471,9 +471,13 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice);
 
         let filter = ObjectFilter::default().in_zone(Zone::Graveyard);
-        let effect =
-            ChooseObjectsEffect::new(filter, ChoiceCount::dynamic_x(), PlayerFilter::You, "chosen")
-                .in_zone(Zone::Graveyard);
+        let effect = ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::dynamic_x(),
+            PlayerFilter::You,
+            "chosen",
+        )
+        .in_zone(Zone::Graveyard);
 
         let err = run_choose_objects(&effect, &mut game, &mut ctx).expect_err("missing X errors");
         assert!(
@@ -493,9 +497,13 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice).with_x(2);
 
         let filter = ObjectFilter::default().in_zone(Zone::Graveyard);
-        let effect =
-            ChooseObjectsEffect::new(filter, ChoiceCount::dynamic_x(), PlayerFilter::You, "chosen")
-                .in_zone(Zone::Graveyard);
+        let effect = ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::dynamic_x(),
+            PlayerFilter::You,
+            "chosen",
+        )
+        .in_zone(Zone::Graveyard);
         let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("choose resolves");
 
         let EffectResult::Objects(chosen) = outcome.result else {

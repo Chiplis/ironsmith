@@ -191,4 +191,47 @@ impl EffectExecutor for UnlessPaysEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
+
+    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
+        self.effects
+            .iter()
+            .find_map(|effect| effect.0.get_target_spec())
+    }
+
+    fn target_description(&self) -> &'static str {
+        for effect in &self.effects {
+            if effect.0.get_target_spec().is_some() {
+                return effect.0.target_description();
+            }
+        }
+        "target"
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        for effect in &self.effects {
+            if effect.0.get_target_spec().is_some() {
+                return effect.0.get_target_count();
+            }
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::effect::Effect;
+    use crate::target::ChooseSpec;
+
+    #[test]
+    fn unless_pays_forwards_inner_target_spec() {
+        let effect = UnlessPaysEffect::new(
+            vec![Effect::counter(ChooseSpec::target_spell())],
+            PlayerFilter::You,
+            vec![ManaSymbol::Generic(1)],
+        );
+
+        assert!(effect.get_target_spec().is_some());
+        assert_eq!(effect.target_description(), "spell to counter");
+    }
 }
