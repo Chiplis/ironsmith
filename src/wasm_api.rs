@@ -3923,6 +3923,109 @@ fn describe_condition(
                 )
             }
         }
+        crate::effect::Condition::FirstTimeThisTurn => {
+            "this is the first time this ability triggered this turn".to_string()
+        }
+        crate::effect::Condition::MaxTimesEachTurn(limit) => {
+            format!("this ability has triggered fewer than {limit} times this turn")
+        }
+        crate::effect::Condition::TriggeringObjectWasEnchanted => {
+            "the triggering object was enchanted".to_string()
+        }
+        crate::effect::Condition::TriggeringObjectHadCounters {
+            counter_type,
+            min_count,
+        } => format!(
+            "the triggering object had {min_count} or more {} counters",
+            describe_counter_type(*counter_type)
+        ),
+        crate::effect::Condition::ControlLandWithSubtype(subtypes) => {
+            if subtypes.is_empty() {
+                "you control a land with the required subtype".to_string()
+            } else {
+                let subtype_words = subtypes
+                    .iter()
+                    .map(|subtype| split_camel_case(&format!("{subtype:?}")).to_ascii_lowercase())
+                    .collect::<Vec<_>>();
+                format!(
+                    "you control a land with subtype {}",
+                    join_words_with_or(&subtype_words)
+                )
+            }
+        }
+        crate::effect::Condition::ControlAtLeastArtifacts(count) => {
+            format!("you control {count} or more artifacts")
+        }
+        crate::effect::Condition::ControlAtLeastLands(count) => {
+            format!("you control {count} or more lands")
+        }
+        crate::effect::Condition::ControlCreatureWithPowerAtLeast(power) => {
+            format!("you control a creature with power {power} or greater")
+        }
+        crate::effect::Condition::ControlCreaturesTotalPowerAtLeast(power) => {
+            format!("creatures you control have total power {power} or greater")
+        }
+        crate::effect::Condition::CardInYourGraveyard {
+            card_types,
+            subtypes,
+        } => {
+            let mut descriptors = Vec::new();
+            descriptors.extend(
+                subtypes
+                    .iter()
+                    .map(|subtype| split_camel_case(&format!("{subtype:?}")).to_ascii_lowercase()),
+            );
+            descriptors.extend(
+                card_types
+                    .iter()
+                    .map(|card_type| split_camel_case(&format!("{card_type:?}")).to_ascii_lowercase()),
+            );
+            descriptors.retain(|descriptor| !descriptor.is_empty());
+            descriptors.sort();
+            descriptors.dedup();
+
+            if descriptors.is_empty() {
+                "there is a card in your graveyard".to_string()
+            } else {
+                let descriptor = descriptors.join(" ");
+                format!(
+                    "there is {} card in your graveyard",
+                    with_indefinite_article(&descriptor)
+                )
+            }
+        }
+        crate::effect::Condition::ActivationTiming(timing) => {
+            format!("activation timing is {}", describe_activation_timing(timing))
+        }
+        crate::effect::Condition::MaxActivationsPerTurn(limit) => {
+            format!("this ability has been activated fewer than {limit} times this turn")
+        }
+        crate::effect::Condition::SourceIsEquipped => "this permanent is equipped".to_string(),
+        crate::effect::Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
+        crate::effect::Condition::EquippedCreatureTapped => {
+            "equipped creature is tapped".to_string()
+        }
+        crate::effect::Condition::EquippedCreatureUntapped => {
+            "equipped creature is untapped".to_string()
+        }
+        crate::effect::Condition::CountComparison { display, .. } => display
+            .clone()
+            .unwrap_or_else(|| "count comparison".to_string()),
+        crate::effect::Condition::OwnsCardExiledWithCounter(counter) => format!(
+            "you own a card in exile with a {} counter on it",
+            describe_counter_type(*counter)
+        ),
+        crate::effect::Condition::SourceAttackedThisTurn => {
+            "this creature attacked this turn".to_string()
+        }
+        crate::effect::Condition::SourceIsUntapped => "this source is untapped".to_string(),
+        crate::effect::Condition::SourceIsAttacking => "this source is attacking".to_string(),
+        crate::effect::Condition::SourceIsBlocking => "this source is blocking".to_string(),
+        crate::effect::Condition::PlayerGraveyardHasCardsAtLeast { player, count } => {
+            format!("player {}'s graveyard has {count} or more cards", player.index() + 1)
+        }
+        crate::effect::Condition::Custom(id) => format!("custom condition {id}"),
+        crate::effect::Condition::Unmodeled(text) => text.clone(),
         crate::effect::Condition::PlayerTappedLandForManaThisTurn { player } => {
             format!(
                 "{} tapped a land for mana this turn",
@@ -6193,6 +6296,20 @@ fn join_words_with_and(parts: &[String]) -> String {
         _ => {
             let mut text = parts[..parts.len() - 1].join(", ");
             text.push_str(", and ");
+            text.push_str(parts.last().map(String::as_str).unwrap_or_default());
+            text
+        }
+    }
+}
+
+fn join_words_with_or(parts: &[String]) -> String {
+    match parts.len() {
+        0 => String::new(),
+        1 => parts[0].clone(),
+        2 => format!("{} or {}", parts[0], parts[1]),
+        _ => {
+            let mut text = parts[..parts.len() - 1].join(", ");
+            text.push_str(", or ");
             text.push_str(parts.last().map(String::as_str).unwrap_or_default());
             text
         }

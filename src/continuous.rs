@@ -1085,6 +1085,12 @@ fn filter_matches_direct(
     _battlefield: &[ObjectId],
     commanders: &HashSet<ObjectId>,
 ) -> bool {
+    // This matcher runs without tagged-object context. Fail closed for tag-aware
+    // filters so they never broaden into "all objects" accidentally.
+    if !filter.tagged_constraints.is_empty() {
+        return false;
+    }
+
     // Check zone
     if let Some(zone) = filter.zone
         && object.zone != zone
@@ -2200,6 +2206,12 @@ fn filter_matches(
     chars: &CalculatedCharacteristics,
     _ctx: &CalculationContext,
 ) -> bool {
+    // This matcher runs without tagged-object context. Fail closed for tag-aware
+    // filters so they never broaden into "all objects" accidentally.
+    if !filter.tagged_constraints.is_empty() {
+        return false;
+    }
+
     // Check zone
     if let Some(zone) = filter.zone
         && object.zone != zone
@@ -2280,6 +2292,12 @@ fn filter_matches_with_controller(
     game: &crate::game_state::GameState,
     effect_controller: PlayerId,
 ) -> bool {
+    // This matcher runs without tagged-object context. Fail closed for tag-aware
+    // filters so they never broaden into "all objects" accidentally.
+    if !filter.tagged_constraints.is_empty() {
+        return false;
+    }
+
     if let Some(zone) = filter.zone
         && object.zone != zone
     {

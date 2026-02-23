@@ -205,7 +205,7 @@ impl ApplyContinuousEffect {
         game: &GameState,
         ctx: &ExecutionContext,
     ) -> Vec<ObjectId> {
-        let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+        let filter_ctx = ctx.filter_context(game);
         game.battlefield
             .iter()
             .filter_map(|&id| game.object(id))
@@ -300,8 +300,11 @@ impl EffectExecutor for ApplyContinuousEffect {
         }
         let mut source_type = self.source_type.clone();
 
-        let filter_locked_targets = if self.lock_filter_at_resolution {
-            if let EffectTarget::Filter(filter) = &target {
+        let filter_locked_targets = if let EffectTarget::Filter(filter) = &target {
+            // Tagged filters depend on spell-resolution context and cannot be evaluated
+            // dynamically once the one-shot effect has finished.
+            let must_lock_tagged_filter = !filter.tagged_constraints.is_empty();
+            if self.lock_filter_at_resolution || must_lock_tagged_filter {
                 Some(Self::lock_targets_for_filter(filter, game, ctx))
             } else {
                 None
@@ -376,5 +379,85 @@ impl EffectExecutor for ApplyContinuousEffect {
 
     fn target_description(&self) -> &'static str {
         "target"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::Effect;
+    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::Object;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+    use crate::tag::TagKey;
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    fn setup_game() -> GameState {
+        GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
+    }
+
+    fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn tagged_same_name_filter_locks_targets_using_execution_context_tags() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+
+        let target = create_creature(&mut game, "Bear", alice);
+        let same_name_other = create_creature(&mut game, "Bear", alice);
+        let different_name = create_creature(&mut game, "Wolf", alice);
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(target)]);
+        let target_snapshot = ObjectSnapshot::from_object(game.object(target).unwrap(), &game);
+        ctx.set_tagged_objects(TagKey::from("marked"), vec![target_snapshot]);
+
+        let mut filter = ObjectFilter::creature();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("marked"),
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("marked"),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+
+        let apply = ApplyContinuousEffect::new_runtime(
+            EffectTarget::Filter(filter),
+            RuntimeModification::ModifyPowerToughness {
+                power: Value::Fixed(-2),
+                toughness: Value::Fixed(-2),
+            },
+            Until::EndOfTurn,
+        );
+
+        execute_effect(&mut game, &Effect::new(apply), &mut ctx).unwrap();
+
+        let effects = game.continuous_effects.effects_sorted();
+        assert_eq!(effects.len(), 1);
+        match &effects[0].source_type {
+            EffectSourceType::Resolution { locked_targets } => {
+                assert!(locked_targets.contains(&same_name_other));
+                assert!(!locked_targets.contains(&target));
+                assert!(!locked_targets.contains(&different_name));
+            }
+            _ => panic!("expected resolution-locked effect for tagged filter"),
+        }
     }
 }

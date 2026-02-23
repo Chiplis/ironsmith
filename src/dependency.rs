@@ -578,6 +578,12 @@ fn object_matches_filter_with_chars(
     game: &GameState,
     effect_controller: PlayerId,
 ) -> bool {
+    // Dependency-layer matching has no tagged-object context. Fail closed for
+    // tag-aware filters so they never broaden into "all objects" accidentally.
+    if !filter.tagged_constraints.is_empty() {
+        return false;
+    }
+
     if let Some(zone) = filter.zone
         && object.zone != zone
     {
