@@ -15,11 +15,13 @@
 //! - `ChooseObjects` - Interactive object selection with tagging
 //! - `Vote` - Council's dilemma and voting mechanics
 
+mod behold;
 mod choose_mode;
 mod choose_mode_runtime;
 mod choose_objects;
 mod choose_objects_runtime;
 mod conditional;
+mod emit_keyword_action;
 mod for_each_object;
 mod for_each_tagged;
 mod for_players;
@@ -39,9 +41,11 @@ mod vote;
 mod vote_runtime;
 mod with_id;
 
+pub use behold::BeholdEffect;
 pub use choose_mode::ChooseModeEffect;
 pub use choose_objects::ChooseObjectsEffect;
 pub use conditional::ConditionalEffect;
+pub use emit_keyword_action::EmitKeywordActionEffect;
 pub use for_each_object::ForEachObject;
 pub use for_each_tagged::{
     ForEachControllerOfTaggedEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,

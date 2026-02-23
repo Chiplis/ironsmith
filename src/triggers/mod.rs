@@ -122,6 +122,10 @@ impl Trigger {
         self.0.uses_snapshot()
     }
 
+    pub fn trigger_count(&self, event: &TriggerEvent) -> u32 {
+        self.0.trigger_count(event)
+    }
+
     /// Saga chapter numbers for saga chapter triggers.
     pub fn saga_chapters(&self) -> Option<&[u32]> {
         self.0.saga_chapters()
@@ -208,6 +212,19 @@ impl Trigger {
         Self::new(ZoneChangeTrigger::new().to(Zone::Graveyard).filter(filter))
     }
 
+    /// Create a "whenever one or more [filter] cards leave your graveyard" trigger.
+    pub fn cards_leave_your_graveyard(
+        filter: ObjectFilter,
+        one_or_more: bool,
+        during_your_turn: bool,
+    ) -> Self {
+        Self::new(CardsLeaveYourGraveyardTrigger::new(
+            filter,
+            one_or_more,
+            during_your_turn,
+        ))
+    }
+
     /// Create a "when [filter] is exiled" trigger.
     pub fn exiled(filter: ObjectFilter) -> Self {
         Self::new(ZoneChangeTrigger::new().to(Zone::Exile).filter(filter))
@@ -280,6 +297,16 @@ impl Trigger {
         Self::new(ThisAttacksTrigger)
     }
 
+    /// Create a "when this creature attacks and isn't blocked" trigger.
+    pub fn this_attacks_and_isnt_blocked() -> Self {
+        Self::new(ThisAttacksAndIsntBlockedTrigger)
+    }
+
+    /// Create a "when this creature attacks while saddled" trigger.
+    pub fn this_attacks_while_saddled() -> Self {
+        Self::new(ThisAttacksWhileSaddledTrigger)
+    }
+
     /// Create a "when this creature and at least N other creatures attack" trigger.
     pub fn this_attacks_with_n_others(other_count: usize) -> Self {
         Self::new(ThisAttacksWithNOthersTrigger::new(other_count))
@@ -288,6 +315,16 @@ impl Trigger {
     /// Create a "when [filter] attacks" trigger.
     pub fn attacks(filter: ObjectFilter) -> Self {
         Self::new(AttacksTrigger::new(filter))
+    }
+
+    /// Create a "when [filter] attacks and isn't blocked" trigger.
+    pub fn attacks_and_isnt_blocked(filter: ObjectFilter) -> Self {
+        Self::new(AttacksAndIsntBlockedTrigger::new(filter))
+    }
+
+    /// Create a "when [filter] attacks while saddled" trigger.
+    pub fn attacks_while_saddled(filter: ObjectFilter) -> Self {
+        Self::new(AttacksWhileSaddledTrigger::new(filter))
     }
 
     /// Create a "when one or more [filter] attack" trigger.
@@ -597,6 +634,19 @@ impl Trigger {
     /// Create a "whenever [player] [keyword action]" trigger.
     pub fn keyword_action(action: crate::events::KeywordActionKind, player: PlayerFilter) -> Self {
         Self::new(KeywordActionTrigger::new(action, player))
+    }
+
+    /// Create a "whenever [player] [keyword action] this card" trigger.
+    pub fn keyword_action_from_source(
+        action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+    ) -> Self {
+        Self::new(KeywordActionTrigger::from_source(action, player))
+    }
+
+    /// Create a "whenever [player] expend N" trigger.
+    pub fn expend(amount: u32, player: PlayerFilter) -> Self {
+        Self::new(ExpendTrigger::new(player, amount))
     }
 
     // === Special Triggers ===

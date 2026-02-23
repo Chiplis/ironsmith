@@ -271,11 +271,17 @@ mod tests {
                 "Should have 2 costs: mana (BB) and discard"
             );
 
-            // Check that one of the costs contains discard effect
-            let debug_str = format!("{:?}", &act.mana_cost.costs());
+            // Check that one of the costs is a discard cost (or an effect-backed discard).
             assert!(
-                debug_str.contains("DiscardEffect"),
-                "Costs should contain discard effect"
+                act.mana_cost.costs().iter().any(|cost| {
+                    cost.is_discard()
+                        || cost.effect_ref().is_some_and(|effect| {
+                            effect
+                                .downcast_ref::<crate::effects::DiscardEffect>()
+                                .is_some()
+                        })
+                }),
+                "Costs should contain discard cost"
             );
         }
     }

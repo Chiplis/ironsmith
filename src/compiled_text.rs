@@ -12038,6 +12038,16 @@ fn describe_effect_impl(effect: &Effect) -> String {
         let subject = capitalize_first(&describe_choose_spec(&explore.target));
         return format!("{subject} explores");
     }
+    if let Some(behold) = effect.downcast_ref::<crate::effects::BeholdEffect>() {
+        let subtype_name = format!("{:?}", behold.subtype);
+        if behold.count == 1 {
+            return format!("Behold {}", with_indefinite_article(&subtype_name));
+        }
+        let count_text = small_number_word(behold.count)
+            .map(str::to_string)
+            .unwrap_or_else(|| behold.count.to_string());
+        return format!("Behold {count_text} {subtype_name}s");
+    }
     if effect
         .downcast_ref::<crate::effects::OpenAttractionEffect>()
         .is_some()
@@ -13692,8 +13702,13 @@ pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
             AlternativeCastingMethod::Miracle { cost } => {
                 out.push(format!("Miracle {}", cost.to_oracle()));
             }
-            AlternativeCastingMethod::Flashback { cost } => {
-                out.push(format!("Flashback {}", cost.to_oracle()));
+            AlternativeCastingMethod::Flashback { cost, cost_effects } => {
+                if cost_effects.is_empty() {
+                    out.push(format!("Flashback—{}", cost.to_oracle()));
+                } else {
+                    let extra = capitalize_first(&describe_alternative_cost_effects(cost_effects));
+                    out.push(format!("Flashback—{}, {}", cost.to_oracle(), extra));
+                }
             }
             AlternativeCastingMethod::JumpStart => {
                 out.push("Jump-start".to_string());

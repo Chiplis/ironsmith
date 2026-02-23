@@ -95,6 +95,11 @@ enum KeywordAction {
         timing: ActivationTiming,
         additional_restrictions: Vec<String>,
     },
+    Saddle {
+        amount: u32,
+        timing: ActivationTiming,
+        additional_restrictions: Vec<String>,
+    },
     Marker(&'static str),
     MarkerText(String),
 }
@@ -187,18 +192,27 @@ struct ParsedAbility {
 #[derive(Debug, Clone)]
 enum TriggerSpec {
     ThisAttacks,
+    ThisAttacksAndIsntBlocked,
+    ThisAttacksWhileSaddled,
     ThisAttacksWithNOthers(u32),
     Attacks(ObjectFilter),
+    AttacksAndIsntBlocked(ObjectFilter),
+    AttacksWhileSaddled(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
     AttacksAlone(ObjectFilter),
+    AttacksYouOrPlaneswalkerYouControl(ObjectFilter),
     ThisBlocks,
     ThisBlocksObject(ObjectFilter),
+    Blocks(ObjectFilter),
     ThisBecomesBlocked,
+    BecomesBlocked(ObjectFilter),
+    BlocksOrBecomesBlocked(ObjectFilter),
     ThisBlocksOrBecomesBlocked,
     ThisDies,
     ThisLeavesBattlefield,
     ThisBecomesMonstrous,
     ThisBecomesTapped,
+    PermanentBecomesTapped(ObjectFilter),
     ThisBecomesUntapped,
     ThisTurnedFaceUp,
     TurnedFaceUp(ObjectFilter),
@@ -217,6 +231,7 @@ enum TriggerSpec {
         filter: ObjectFilter,
     },
     ThisIsDealtDamage,
+    IsDealtDamage(ObjectFilter),
     YouGainLife,
     YouGainLifeDuringTurn(PlayerFilter),
     PlayerLosesLife(PlayerFilter),
@@ -240,6 +255,16 @@ enum TriggerSpec {
     },
     Dies(ObjectFilter),
     PutIntoGraveyard(ObjectFilter),
+    CardsLeaveYourGraveyard {
+        filter: ObjectFilter,
+        one_or_more: bool,
+        during_your_turn: bool,
+    },
+    CounterPutOn {
+        filter: ObjectFilter,
+        counter_type: Option<CounterType>,
+        one_or_more: bool,
+    },
     DiesCreatureDealtDamageByThisTurn {
         victim: ObjectFilter,
         damager: DamageBySpec,
@@ -263,6 +288,7 @@ enum TriggerSpec {
     BeginningOfUpkeep(PlayerFilter),
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfCombat(PlayerFilter),
+    EndOfCombat,
     BeginningOfEndStep(PlayerFilter),
     BeginningOfPrecombatMain(PlayerFilter),
     ThisEntersBattlefield,
@@ -273,6 +299,14 @@ enum TriggerSpec {
     KeywordAction {
         action: crate::events::KeywordActionKind,
         player: PlayerFilter,
+    },
+    KeywordActionFromSource {
+        action: crate::events::KeywordActionKind,
+        player: PlayerFilter,
+    },
+    Expend {
+        player: PlayerFilter,
+        amount: u32,
     },
     Custom(String),
     SagaChapter(Vec<u32>),
@@ -1399,6 +1433,27 @@ impl CardDefinitionBuilder {
                     text: Some(format!("Crew {amount}")),
                 })
             }
+            KeywordAction::Saddle {
+                amount,
+                timing,
+                additional_restrictions,
+            } => {
+                let cost = TotalCost::from_cost(crate::costs::Cost::effect(Effect::new(
+                    crate::effects::SaddleCostEffect::new(amount),
+                )));
+                let saddle = Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new());
+                self.with_ability(Ability {
+                    kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                        mana_cost: cost,
+                        effects: vec![saddle],
+                        choices: Vec::new(),
+                        timing,
+                        additional_restrictions,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                    text: Some(format!("Saddle {amount}")),
+                })
+            }
             KeywordAction::Marker(name) => self.with_ability(Ability::static_ability(
                 StaticAbility::custom(name, name.to_string()),
             )),
@@ -2190,7 +2245,10 @@ impl CardDefinitionBuilder {
     /// Add flashback with the given cost.
     pub fn flashback(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
-            .push(AlternativeCastingMethod::Flashback { cost });
+            .push(AlternativeCastingMethod::Flashback {
+                cost,
+                cost_effects: Vec::new(),
+            });
         self
     }
 

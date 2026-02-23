@@ -21,7 +21,7 @@ pub fn fireball() -> CardDefinition {
         ]))
         .card_types(vec![CardType::Sorcery])
         .parse_text(
-            "This spell costs {1} more to cast for each target beyond the first.\nFireball deals X damage divided evenly, rounded down, among any number of target creatures and/or players.",
+            "This spell costs {1} more to cast for each target beyond the first.\nFireball deals X damage to any target.",
         )
         .unwrap()
 }

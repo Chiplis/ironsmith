@@ -1,20 +1,29 @@
 fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
+        TriggerSpec::ThisAttacksAndIsntBlocked => Trigger::this_attacks_and_isnt_blocked(),
+        TriggerSpec::ThisAttacksWhileSaddled => Trigger::this_attacks_while_saddled(),
         TriggerSpec::ThisAttacksWithNOthers(other_count) => {
             Trigger::this_attacks_with_n_others(other_count as usize)
         }
         TriggerSpec::Attacks(filter) => Trigger::attacks(filter),
+        TriggerSpec::AttacksAndIsntBlocked(filter) => Trigger::attacks_and_isnt_blocked(filter),
+        TriggerSpec::AttacksWhileSaddled(filter) => Trigger::attacks_while_saddled(filter),
         TriggerSpec::AttacksOneOrMore(filter) => Trigger::attacks_one_or_more(filter),
         TriggerSpec::AttacksAlone(filter) => Trigger::attacks_alone(filter),
+        TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => Trigger::attacks_you(filter),
         TriggerSpec::ThisBlocks => Trigger::this_blocks(),
         TriggerSpec::ThisBlocksObject(filter) => Trigger::this_blocks_object(filter),
+        TriggerSpec::Blocks(filter) => Trigger::blocks(filter),
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
+        TriggerSpec::BecomesBlocked(filter) => Trigger::becomes_blocked(filter),
+        TriggerSpec::BlocksOrBecomesBlocked(filter) => Trigger::blocks_or_becomes_blocked(filter),
         TriggerSpec::ThisBlocksOrBecomesBlocked => Trigger::this_blocks_or_becomes_blocked(),
         TriggerSpec::ThisDies => Trigger::this_dies(),
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
+        TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),
         TriggerSpec::ThisBecomesUntapped => Trigger::becomes_untapped(),
         TriggerSpec::ThisTurnedFaceUp => Trigger::this_is_turned_face_up(),
         TriggerSpec::TurnedFaceUp(filter) => Trigger::turned_face_up(filter),
@@ -33,6 +42,9 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::player_taps_for_mana(player, filter)
         }
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
+        TriggerSpec::IsDealtDamage(filter) => {
+            Trigger::is_dealt_damage(ChooseSpec::Object(filter))
+        }
         TriggerSpec::YouGainLife => Trigger::you_gain_life(),
         TriggerSpec::YouGainLifeDuringTurn(during_turn) => {
             Trigger::you_gain_life_during_turn(during_turn)
@@ -55,6 +67,25 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
         TriggerSpec::PutIntoGraveyard(filter) => Trigger::put_into_graveyard(filter),
+        TriggerSpec::CardsLeaveYourGraveyard {
+            filter,
+            one_or_more,
+            during_your_turn,
+        } => Trigger::cards_leave_your_graveyard(filter, one_or_more, during_your_turn),
+        TriggerSpec::CounterPutOn {
+            filter,
+            counter_type,
+            one_or_more,
+        } => {
+            let mut trigger = crate::triggers::CounterPutOnTrigger::new(filter);
+            if let Some(counter_type) = counter_type {
+                trigger = trigger.counter_type(counter_type);
+            }
+            if one_or_more {
+                trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
+            }
+            Trigger::new(trigger)
+        }
         TriggerSpec::DiesCreatureDealtDamageByThisTurn { victim, damager } => match damager {
             DamageBySpec::ThisCreature => Trigger::creature_dealt_damage_by_this_creature_this_turn_dies(victim),
             DamageBySpec::EquippedCreature => {
@@ -91,6 +122,7 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BeginningOfUpkeep(player) => Trigger::beginning_of_upkeep(player),
         TriggerSpec::BeginningOfDrawStep(player) => Trigger::beginning_of_draw_step(player),
         TriggerSpec::BeginningOfCombat(player) => Trigger::beginning_of_combat(player),
+        TriggerSpec::EndOfCombat => Trigger::end_of_combat(),
         TriggerSpec::BeginningOfEndStep(player) => Trigger::beginning_of_end_step(player),
         TriggerSpec::BeginningOfPrecombatMain(player) => {
             Trigger::beginning_of_precombat_main_phase(player)
@@ -105,6 +137,10 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::YouCastThisSpell => Trigger::you_cast_this_spell(),
         TriggerSpec::KeywordAction { action, player } => Trigger::keyword_action(action, player),
+        TriggerSpec::KeywordActionFromSource { action, player } => {
+            Trigger::keyword_action_from_source(action, player)
+        }
+        TriggerSpec::Expend { player, amount } => Trigger::expend(amount, player),
         TriggerSpec::Custom(description) => Trigger::custom("unimplemented_trigger", description),
         TriggerSpec::SagaChapter(chapters) => Trigger::saga_chapter(chapters),
         TriggerSpec::Either(left, right) => {
@@ -151,7 +187,8 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
         | TriggerSpec::BeginningOfCombat(player)
         | TriggerSpec::BeginningOfEndStep(player)
         | TriggerSpec::BeginningOfPrecombatMain(player)
-        | TriggerSpec::KeywordAction { player, .. } => {
+        | TriggerSpec::KeywordAction { player, .. }
+        | TriggerSpec::KeywordActionFromSource { player, .. } => {
             if *player == PlayerFilter::Any {
                 Some(PlayerFilter::Active)
             } else {
@@ -4099,13 +4136,9 @@ fn compile_effect(
             let needs_created_tag = ctx.auto_tag_object_targets || attached_to.is_some();
             let mut created_tag: Option<String> = None;
             if needs_created_tag {
-                let preserve_trigger_reference =
-                    matches!(ctx.last_object_tag.as_deref(), Some("triggering" | "damaged"));
                 let tag = ctx.next_tag("created");
                 effect = effect.tag(tag.clone());
-                if !preserve_trigger_reference {
-                    ctx.last_object_tag = Some(tag.clone());
-                }
+                ctx.last_object_tag = Some(tag.clone());
                 created_tag = Some(tag);
             }
 
@@ -4138,12 +4171,8 @@ fn compile_effect(
             };
             let mut effect = effect;
             if ctx.auto_tag_object_targets {
-                let preserve_trigger_reference =
-                    matches!(ctx.last_object_tag.as_deref(), Some("triggering" | "damaged"));
                 let tag = ctx.next_tag("created");
-                if !preserve_trigger_reference {
-                    ctx.last_object_tag = Some(tag.clone());
-                }
+                ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
             }
             Ok((vec![effect], Vec::new()))

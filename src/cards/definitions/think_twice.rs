@@ -50,7 +50,7 @@ mod tests {
         assert_eq!(card.alternative_casts.len(), 1);
 
         // Check flashback cost is {2}{U}
-        if let crate::alternative_cast::AlternativeCastingMethod::Flashback { cost } =
+        if let crate::alternative_cast::AlternativeCastingMethod::Flashback { cost, .. } =
             &card.alternative_casts[0]
         {
             assert_eq!(cost.mana_value(), 3);

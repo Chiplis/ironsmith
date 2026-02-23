@@ -14,7 +14,11 @@ use crate::zone::Zone;
 #[derive(Debug, Clone, PartialEq)]
 pub enum AlternativeCastingMethod {
     /// Flashback - cast from graveyard for alternative cost, exile after
-    Flashback { cost: ManaCost },
+    Flashback {
+        cost: ManaCost,
+        /// Non-mana additional costs paid as part of casting with flashback.
+        cost_effects: Vec<Effect>,
+    },
 
     /// Jump-start - cast from graveyard, discard a card as additional cost, exile after
     JumpStart,
@@ -103,7 +107,7 @@ impl AlternativeCastingMethod {
     /// Returns None for methods that use the card's normal mana cost (Jump-start, granted Escape).
     pub fn mana_cost(&self) -> Option<&ManaCost> {
         match self {
-            Self::Flashback { cost } => Some(cost),
+            Self::Flashback { cost, .. } => Some(cost),
             Self::JumpStart => None, // Uses normal mana cost
             Self::Escape { cost, .. } => cost.as_ref(), // None means use normal mana cost
             Self::Madness { cost } => Some(cost),
@@ -117,6 +121,7 @@ impl AlternativeCastingMethod {
     /// These are non-mana costs that execute through the effect system.
     pub fn cost_effects(&self) -> &[Effect] {
         match self {
+            Self::Flashback { cost_effects, .. } => cost_effects,
             Self::Composed { cost_effects, .. } => cost_effects,
             _ => &[],
         }
@@ -208,7 +213,7 @@ impl AlternativeCastingMethod {
 
     /// Returns true if this method is paid through composed non-mana cost effects.
     pub fn uses_composed_cost_effects(&self) -> bool {
-        !self.cost_effects().is_empty()
+        matches!(self, Self::Composed { .. })
     }
 
     /// Returns true if this is the Miracle alternative casting method.
@@ -291,6 +296,7 @@ mod tests {
     fn test_flashback_properties() {
         let flashback = AlternativeCastingMethod::Flashback {
             cost: ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Blue]]),
+            cost_effects: Vec::new(),
         };
 
         assert_eq!(flashback.cast_from_zone(), Zone::Graveyard);

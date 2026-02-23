@@ -168,6 +168,10 @@ pub fn check_triggers(
 
             let ctx = TriggerContext::for_source(obj_id, obj.controller, game);
             if trigger_ability.trigger.matches(trigger_event, &ctx) {
+                let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
+                if trigger_count == 0 {
+                    continue;
+                }
                 let trigger_identity = compute_trigger_identity(trigger_ability);
                 if let Some(ref condition) = trigger_ability.intervening_if
                     && !verify_intervening_if(
@@ -182,7 +186,7 @@ pub fn check_triggers(
                     continue;
                 }
 
-                triggered.push(TriggeredAbilityEntry {
+                let entry = TriggeredAbilityEntry {
                     source: obj_id,
                     controller: obj.controller,
                     x_value: obj.x_value,
@@ -196,17 +200,21 @@ pub fn check_triggers(
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
                     trigger_identity,
-                });
+                };
+                for _ in 0..trigger_count {
+                    triggered.push(entry.clone());
+                }
             }
         }
     }
 
-    // Special-case: for "dies" zone changes, also allow triggers from the object
-    // that died using its last-known information (LKI). This enables "dies"
-    // triggers on sources that are no longer on the battlefield when checked.
+    // Special-case: for leave-the-battlefield zone changes, also allow triggers from
+    // the object that left using its last-known information (LKI). This enables
+    // triggers like "When this leaves the battlefield" on sources that are no
+    // longer on the battlefield when checked.
     if trigger_event.kind() == crate::events::traits::EventKind::ZoneChange
         && let Some(zc) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>()
-        && zc.is_dies()
+        && zc.is_ltb()
         && let Some(snapshot) = zc.snapshot.as_ref()
     {
         if !game.battlefield.contains(&snapshot.object_id) {
@@ -222,6 +230,10 @@ pub fn check_triggers(
 
                 let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game);
                 if trigger_ability.trigger.matches(trigger_event, &ctx) {
+                    let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
+                    if trigger_count == 0 {
+                        continue;
+                    }
                     let trigger_identity = compute_trigger_identity(trigger_ability);
                     if let Some(ref condition) = trigger_ability.intervening_if
                         && !verify_intervening_if(
@@ -236,7 +248,7 @@ pub fn check_triggers(
                         continue;
                     }
 
-                    triggered.push(TriggeredAbilityEntry {
+                    let entry = TriggeredAbilityEntry {
                         source: snapshot.object_id,
                         controller: snapshot.controller,
                         x_value: snapshot.x_value,
@@ -250,7 +262,10 @@ pub fn check_triggers(
                         source_stable_id: snapshot.stable_id,
                         source_name: snapshot.name.clone(),
                         trigger_identity,
-                    });
+                    };
+                    for _ in 0..trigger_count {
+                        triggered.push(entry.clone());
+                    }
                 }
             }
         }
@@ -444,6 +459,10 @@ fn check_triggers_in_zone(
 
         let ctx = TriggerContext::for_source(obj_id, obj.controller, game);
         if trigger_ability.trigger.matches(trigger_event, &ctx) {
+            let trigger_count = trigger_ability.trigger.trigger_count(trigger_event);
+            if trigger_count == 0 {
+                continue;
+            }
             let trigger_identity = compute_trigger_identity(trigger_ability);
             if let Some(ref condition) = trigger_ability.intervening_if
                 && !verify_intervening_if(
@@ -458,7 +477,7 @@ fn check_triggers_in_zone(
                 continue;
             }
 
-            triggered.push(TriggeredAbilityEntry {
+            let entry = TriggeredAbilityEntry {
                 source: obj_id,
                 controller: obj.controller,
                 x_value: obj.x_value,
@@ -472,7 +491,10 @@ fn check_triggers_in_zone(
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
                 trigger_identity,
-            });
+            };
+            for _ in 0..trigger_count {
+                triggered.push(entry.clone());
+            }
         }
     }
 }
@@ -575,10 +597,13 @@ mod tests {
     use crate::ability::{Ability, TriggeredAbility};
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::Effect;
+    use crate::events::other::CounterPlacedEvent;
     use crate::events::EventKind;
     use crate::events::phase::BeginningOfUpkeepEvent;
     use crate::events::zones::ZoneChangeEvent;
     use crate::ids::CardId;
+    use crate::object::CounterType;
+    use crate::target::ObjectFilter;
     use crate::target::PlayerFilter;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -698,5 +723,52 @@ mod tests {
         let event = generate_step_trigger_events(&game);
         assert!(event.is_some());
         assert_eq!(event.unwrap().kind(), EventKind::BeginningOfUpkeep);
+    }
+
+    #[test]
+    fn test_check_triggers_uses_trigger_count_for_counter_placement() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let card = CardBuilder::new(CardId::from_raw(1), "Counter Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+
+        if let Some(obj) = game.object_mut(creature_id) {
+            obj.abilities.push(Ability::triggered(
+                Trigger::new(
+                    crate::triggers::CounterPutOnTrigger::new(ObjectFilter::source())
+                        .counter_type(CounterType::PlusOnePlusOne),
+                ),
+                vec![Effect::draw(1)],
+            ));
+            obj.abilities.push(Ability::triggered(
+                Trigger::new(
+                    crate::triggers::CounterPutOnTrigger::new(ObjectFilter::source())
+                        .counter_type(CounterType::PlusOnePlusOne)
+                        .count(crate::triggers::CountMode::OneOrMore),
+                ),
+                vec![Effect::draw(1)],
+            ));
+        }
+
+        let event = TriggerEvent::new(CounterPlacedEvent::new(
+            creature_id,
+            CounterType::PlusOnePlusOne,
+            3,
+        ));
+        let triggered = check_triggers(&game, &event);
+        assert_eq!(
+            triggered.len(),
+            4,
+            "expected 3 per-counter triggers + 1 one-or-more trigger, got {:?}",
+            triggered
+                .iter()
+                .map(|entry| entry.ability.trigger.display())
+                .collect::<Vec<_>>()
+        );
     }
 }

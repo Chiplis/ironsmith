@@ -790,6 +790,49 @@ fn test_parse_trigger_tap_creature_for_mana() {
 }
 
 #[test]
+fn test_parse_trigger_one_or_more_plus_one_counters_put_on_this_creature() {
+    let def =
+        CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Trigger One-Or-More Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Whenever one or more +1/+1 counters are put on this creature, draw a card.",
+            )
+            .expect("parse one-or-more counter placement trigger");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        !debug.contains("unimplemented_trigger"),
+        "counter placement trigger should not fall back to custom trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("CounterPutOnTrigger")
+            && debug.contains("counter_type: Some(PlusOnePlusOne)")
+            && debug.contains("count_mode: OneOrMore"),
+        "expected typed one-or-more counter placement trigger, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_trigger_a_plus_one_counter_put_on_this_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Trigger Each Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever a +1/+1 counter is put on this creature, draw a card.")
+        .expect("parse per-counter placement trigger");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        !debug.contains("unimplemented_trigger"),
+        "counter placement trigger should not fall back to custom trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("CounterPutOnTrigger")
+            && debug.contains("counter_type: Some(PlusOnePlusOne)")
+            && debug.contains("count_mode: Each"),
+        "expected typed per-counter placement trigger, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_unknown_non_source_subject_fails() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unknown Subject Probe")
         .card_types(vec![CardType::Enchantment])
@@ -1084,8 +1127,12 @@ fn test_parse_flashback_keyword_line() {
 
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
-        AlternativeCastingMethod::Flashback { cost } => {
+        AlternativeCastingMethod::Flashback { cost, cost_effects } => {
             assert_eq!(cost.to_oracle(), "{1}{U}");
+            assert!(
+                cost_effects.is_empty(),
+                "expected flashback test probe to have no extra cost effects, got {cost_effects:?}"
+            );
         }
         other => panic!("expected flashback alternative cast, got {other:?}"),
     }
@@ -2639,8 +2686,30 @@ fn test_parse_cycling_pay_life_keeps_keyword_ability() {
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("DiscardEffect") && debug.contains("DrawCardsEffect"),
+        debug.contains("MoveToZoneEffect") && debug.contains("DrawCardsEffect"),
         "expected life-cycling to remain a discard+draw activated ability, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_cycle_this_card_trigger_compiles() {
+    use crate::zone::Zone;
+
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cycling Trigger Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Cycling {2}.\nWhenever you cycle this card, draw a card.")
+        .expect("parse cycling trigger variant");
+
+    let has_trigger = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Triggered(t) if t.trigger.display() == "Whenever you cycle this card"
+        ) && ability.functional_zones.contains(&Zone::Graveyard)
+    });
+    assert!(
+        has_trigger,
+        "expected source-specific cycling trigger that functions in graveyard, got {:?}",
+        def.abilities
     );
 }
 

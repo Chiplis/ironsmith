@@ -1115,7 +1115,18 @@ fn can_cast_with_alternative(
 ) -> bool {
     let requirements = build_requirements_for_method(method);
     let mana_cost = get_mana_cost_for_method(method, spell);
-    can_cast_with_cost(game, player, spell, spell.id, mana_cost, &requirements)
+    if !can_cast_with_cost(game, player, spell, spell.id, mana_cost, &requirements) {
+        return false;
+    }
+
+    // Validate any non-mana additional costs expressed as cost effects.
+    for effect in method.cost_effects() {
+        if effect.0.can_execute_as_cost(game, spell.id, player).is_err() {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Check if a spell can be cast with an alternative cost from hand (e.g., Force of Will).

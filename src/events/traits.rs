@@ -61,6 +61,8 @@ pub enum EventKind {
     BecomesTargeted,
     /// A creature attacked
     CreatureAttacked,
+    /// A creature attacked and wasn't blocked
+    CreatureAttackedAndUnblocked,
     /// A creature blocked
     CreatureBlocked,
     /// A creature became blocked

@@ -1515,6 +1515,12 @@ impl Effect {
         Self::new(ManifestDreadEffect::new())
     }
 
+    /// Create a "behold" effect (custom mechanic).
+    pub fn behold(subtype: crate::types::Subtype, count: u32) -> Self {
+        use crate::effects::BeholdEffect;
+        Self::new(BeholdEffect::you(subtype, count))
+    }
+
     /// Create a "bolster N" effect.
     pub fn bolster(amount: u32) -> Self {
         use crate::effects::BolsterEffect;
@@ -1531,6 +1537,12 @@ impl Effect {
     pub fn adapt(amount: u32) -> Self {
         use crate::effects::AdaptEffect;
         Self::new(AdaptEffect::new(amount))
+    }
+
+    /// Emit a keyword-action event (for "when you <keyword action>" triggers).
+    pub fn emit_keyword_action(action: crate::events::KeywordActionKind, amount: u32) -> Self {
+        use crate::effects::EmitKeywordActionEffect;
+        Self::new(EmitKeywordActionEffect::new(action, amount))
     }
 
     /// Create a "counter target activated or triggered ability" effect.

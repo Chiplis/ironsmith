@@ -297,7 +297,24 @@ pub(crate) fn run_choose_objects(
         return Ok(EffectOutcome::count(0));
     }
 
-    let (min, max) = compute_choice_bounds(effect.count, candidates.len());
+    let (min, max) = if effect.count.dynamic_x {
+        let x = ctx
+            .x_value
+            .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string()))?
+            as usize;
+
+        if x > candidates.len() {
+            return Err(ExecutionError::Impossible(format!(
+                "Not enough candidates to choose X objects (X={}, {} available)",
+                x,
+                candidates.len()
+            )));
+        }
+
+        (x, x)
+    } else {
+        compute_choice_bounds(effect.count, candidates.len())
+    };
     if max == 0 {
         return Ok(EffectOutcome::count(0));
     }
@@ -443,5 +460,49 @@ mod tests {
             panic!("expected object selection result");
         };
         assert_eq!(chosen, vec![top], "expected top library card to be chosen");
+    }
+
+    #[test]
+    fn test_dynamic_x_choice_count_requires_x_value() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let _card = create_graveyard_card(&mut game, "Card", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        let effect =
+            ChooseObjectsEffect::new(filter, ChoiceCount::dynamic_x(), PlayerFilter::You, "chosen")
+                .in_zone(Zone::Graveyard);
+
+        let err = run_choose_objects(&effect, &mut game, &mut ctx).expect_err("missing X errors");
+        assert!(
+            matches!(err, ExecutionError::UnresolvableValue(_)),
+            "expected X resolution error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_dynamic_x_choice_count_picks_exactly_x() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card_a = create_graveyard_card(&mut game, "A", alice);
+        let card_b = create_graveyard_card(&mut game, "B", alice);
+        let _card_c = create_graveyard_card(&mut game, "C", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice).with_x(2);
+
+        let filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        let effect =
+            ChooseObjectsEffect::new(filter, ChoiceCount::dynamic_x(), PlayerFilter::You, "chosen")
+                .in_zone(Zone::Graveyard);
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("choose resolves");
+
+        let EffectResult::Objects(chosen) = outcome.result else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(chosen.len(), 2);
+        assert!(chosen.contains(&card_a));
+        assert!(chosen.contains(&card_b));
     }
 }

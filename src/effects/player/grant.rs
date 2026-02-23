@@ -152,6 +152,7 @@ impl EffectExecutor for GrantEffect {
                     owner,
                     AlternativeCastingMethod::Flashback {
                         cost: flashback_cost,
+                        cost_effects: Vec::new(),
                     },
                     grant_source,
                 );

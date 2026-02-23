@@ -269,6 +269,7 @@ mod tests {
             triggering_event: None,
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],
+            saddle_contributors: vec![],
             chosen_modes: None,
         });
 
@@ -352,6 +353,7 @@ mod tests {
             triggering_event: None,
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],
+            saddle_contributors: vec![],
             chosen_modes: None,
         });
 
@@ -476,6 +478,7 @@ mod tests {
             triggering_event: None,
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],
+            saddle_contributors: vec![],
             chosen_modes: None,
         });
 

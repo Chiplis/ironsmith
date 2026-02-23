@@ -25,7 +25,8 @@ use crate::decision::{
 use crate::effect::Effect;
 use crate::events::cause::EventCause;
 use crate::events::combat::{
-    CreatureAttackedEvent, CreatureBecameBlockedEvent, CreatureBlockedEvent,
+    CreatureAttackedAndUnblockedEvent, CreatureAttackedEvent, CreatureBecameBlockedEvent,
+    CreatureBlockedEvent,
 };
 use crate::events::damage::DamageEvent;
 use crate::events::life::LifeLossEvent;
@@ -52,7 +53,9 @@ use crate::rules::damage::{
 };
 use crate::rules::state_based::{apply_state_based_actions_with, check_state_based_actions};
 use crate::snapshot::ObjectSnapshot;
-use crate::target::{ChooseSpec, ObjectFilter};
+use crate::target::ChooseSpec;
+#[cfg(test)]
+use crate::target::ObjectFilter;
 use crate::triggers::{
     DamageEventTarget, TriggerEvent, TriggerQueue, TriggeredAbilityEntry, check_triggers,
     generate_step_trigger_events, verify_intervening_if,
@@ -259,6 +262,28 @@ fn target_events_from_targets(
         .collect()
 }
 
+fn is_crime_target(game: &GameState, committer: PlayerId, target: &Target) -> bool {
+    match target {
+        Target::Player(player) => *player != committer,
+        Target::Object(object_id) => {
+            let Some(obj) = game.object(*object_id) else {
+                return false;
+            };
+            if obj.zone == Zone::Graveyard {
+                obj.owner != committer
+            } else {
+                obj.controller != committer
+            }
+        }
+    }
+}
+
+fn targets_commit_crime(game: &GameState, committer: PlayerId, targets: &[Target]) -> bool {
+    targets
+        .iter()
+        .any(|target| is_crime_target(game, committer, target))
+}
+
 fn queue_becomes_targeted_events(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -269,6 +294,20 @@ fn queue_becomes_targeted_events(
 ) {
     for event in target_events_from_targets(targets, source, source_controller, by_ability) {
         queue_triggers_from_event(game, trigger_queue, event, true);
+    }
+
+    if !targets.is_empty() && targets_commit_crime(game, source_controller, targets) {
+        queue_triggers_from_event(
+            game,
+            trigger_queue,
+            TriggerEvent::new(KeywordActionEvent::new(
+                KeywordActionKind::CommitCrime,
+                source_controller,
+                source,
+                1,
+            )),
+            true,
+        );
     }
 }
 
@@ -386,6 +425,13 @@ fn apply_keyword_payment_tags_for_resolution(
             ctx.tag_object("crewed_it_this_turn", snapshot);
         }
     }
+
+    for saddle_id in &entry.saddle_contributors {
+        if let Some(obj) = game.object(*saddle_id) {
+            let snapshot = ObjectSnapshot::from_object(obj, game);
+            ctx.tag_object("saddled_it_this_turn", snapshot);
+        }
+    }
 }
 
 /// Drain pending death and custom trigger events and enqueue all matches.
@@ -495,6 +541,27 @@ pub fn compute_legal_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> Vec<Target> {
+    compute_legal_targets_with_tagged_objects(game, spec, caster, source_id, None)
+}
+
+/// Compute legal targets for a given ChooseSpec with additional tagged-object context.
+///
+/// This is used for cases where a target filter references tagged constraints like
+/// "that crewed it this turn" or "that saddled it this turn" during target selection.
+pub fn compute_legal_targets_with_tagged_objects(
+    game: &GameState,
+    spec: &ChooseSpec,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    tagged_objects: Option<
+        &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    >,
+) -> Vec<Target> {
+    let mut filter_ctx = game.filter_context_for(caster, source_id);
+    if let Some(tagged_objects) = tagged_objects {
+        filter_ctx = filter_ctx.with_tagged_objects(tagged_objects);
+    }
+
     match spec {
         ChooseSpec::AnyTarget => {
             let mut targets = Vec::new();
@@ -559,7 +626,7 @@ pub fn compute_legal_targets(
             // Check battlefield objects
             for &obj_id in &game.battlefield {
                 if let Some(obj) = game.object(obj_id)
-                    && object_matches_filter(obj, filter, game, caster, source_id)
+                    && filter.matches(obj, &filter_ctx, game)
                 {
                     // Check if the object can be targeted (hexproof/shroud)
                     // Hexproof only prevents opponents from targeting
@@ -590,7 +657,7 @@ pub fn compute_legal_targets(
             if filter.zone == Some(Zone::Stack) || filter.zone.is_none() {
                 for entry in &game.stack {
                     if let Some(obj) = game.object(entry.object_id)
-                        && object_matches_filter(obj, filter, game, caster, source_id)
+                        && filter.matches(obj, &filter_ctx, game)
                     {
                         // Stack objects (spells) can have "can't be targeted" too
                         // but it's less common
@@ -603,7 +670,7 @@ pub fn compute_legal_targets(
                 for player in &game.players {
                     for &obj_id in &player.graveyard {
                         if let Some(obj) = game.object(obj_id)
-                            && object_matches_filter(obj, filter, game, caster, source_id)
+                            && filter.matches(obj, &filter_ctx, game)
                         {
                             targets.push(Target::Object(obj_id));
                         }
@@ -613,9 +680,13 @@ pub fn compute_legal_targets(
             targets
         }
         // Target wrapper - recursively compute targets from inner spec
-        ChooseSpec::Target(inner) => compute_legal_targets(game, inner, caster, source_id),
+        ChooseSpec::Target(inner) => {
+            compute_legal_targets_with_tagged_objects(game, inner, caster, source_id, tagged_objects)
+        }
         // WithCount wrapper - recursively compute targets from inner spec
-        ChooseSpec::WithCount(inner, _) => compute_legal_targets(game, inner, caster, source_id),
+        ChooseSpec::WithCount(inner, _) => {
+            compute_legal_targets_with_tagged_objects(game, inner, caster, source_id, tagged_objects)
+        }
         // These don't require selection - they're resolved at execution time
         ChooseSpec::Source
         | ChooseSpec::SourceController
@@ -678,44 +749,6 @@ pub fn player_matches_filter_with_combat(
             false
         }
     }
-}
-
-/// Check if an object matches an ObjectFilter using full filter logic.
-fn object_matches_filter(
-    obj: &crate::object::Object,
-    filter: &ObjectFilter,
-    game: &GameState,
-    controller: PlayerId,
-    source_id: Option<ObjectId>,
-) -> bool {
-    object_matches_filter_with_combat(obj, filter, game, controller, source_id, None)
-}
-
-/// Check if an object matches an ObjectFilter using full filter logic, with combat context.
-fn object_matches_filter_with_combat(
-    obj: &crate::object::Object,
-    filter: &ObjectFilter,
-    game: &GameState,
-    controller: PlayerId,
-    source_id: Option<ObjectId>,
-    combat: Option<&CombatState>,
-) -> bool {
-    use crate::combat_state::{defending_players, get_attacking_player};
-
-    // Get combat context if in combat
-    let (defending_player, attacking_player) = if let Some(combat) = combat {
-        let defenders = defending_players(combat);
-        let attacker = get_attacking_player(combat, game);
-        // For 2-player games, there's typically one defending player
-        (defenders.into_iter().next(), attacker)
-    } else {
-        (None, None)
-    };
-
-    let ctx =
-        game.filter_context_for_combat(controller, source_id, defending_player, attacking_player);
-
-    filter.matches(obj, &ctx, game)
 }
 
 /// Check if an object has protection from a source that would prevent targeting.
@@ -2579,11 +2612,11 @@ pub fn apply_priority_response_with_dm(
 
             // Get the spell's mana cost and effects, considering casting method
             // Note: We use stack_id now since the spell has been moved to stack
-            let (mana_cost, effects) = if let Some(obj) = game.object(stack_id) {
-                let cost = match casting_method {
-                    CastingMethod::Normal => obj.mana_cost.clone(),
-                    CastingMethod::Alternative(idx) => {
-                        if let Some(method) = obj.alternative_casts.get(*idx) {
+        let (mana_cost, effects) = if let Some(obj) = game.object(stack_id) {
+            let cost = match casting_method {
+                CastingMethod::Normal => obj.mana_cost.clone(),
+                CastingMethod::Alternative(idx) => {
+                    if let Some(method) = obj.alternative_casts.get(*idx) {
                             // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
                             // For other methods (flashback, etc.), fall back to spell's cost.
                             if !method.cost_effects().is_empty() {
@@ -2626,24 +2659,21 @@ pub fn apply_priority_response_with_dm(
                             obj.mana_cost.clone()
                         }
                     }
-                };
-                (cost, obj.spell_effect.clone().unwrap_or_default())
-            } else {
-                (None, Vec::new())
             };
+            (cost, obj.spell_effect.clone().unwrap_or_default())
+        } else {
+            (None, Vec::new())
+        };
 
-            // Check if spell has X in cost
-            let has_x = mana_cost.as_ref().map(|cost| cost.has_x()).unwrap_or(false);
+            let (needs_x, max_x) = compute_spell_cast_x_bounds(
+                game,
+                player,
+                stack_id,
+                casting_method,
+                mana_cost.as_ref(),
+            );
 
-            if has_x {
-                // Need to choose X value first - use potential mana (pool + untapped sources)
-                let max_x = if let Some(ref cost) = mana_cost {
-                    let allow_any_color = game.can_spend_mana_as_any_color(player, Some(stack_id));
-                    compute_potential_mana(game, player)
-                        .max_x_for_cost_with_any_color(cost, allow_any_color)
-                } else {
-                    0
-                };
+            if needs_x {
 
                 // Extract target requirements for later (use stack_id since spell is on stack)
                 let requirements =
@@ -3490,6 +3520,188 @@ fn format_mana_cost_simple(cost: &crate::mana::ManaCost) -> String {
     }
 }
 
+fn cost_effects_for_casting_method(
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> Vec<Effect> {
+    match casting_method {
+        CastingMethod::Alternative(idx) | CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            ..
+        } => spell
+            .alternative_casts
+            .get(*idx)
+            .map(|method| method.cost_effects().to_vec())
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn effect_references_x_for_cost(effect: &Effect) -> bool {
+    use crate::effect::Value;
+
+    if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
+        return sacrifice.count == Value::X;
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        return choose.count.dynamic_x;
+    }
+
+    false
+}
+
+fn max_x_from_cost_effects(
+    game: &GameState,
+    caster: PlayerId,
+    source: ObjectId,
+    effects: &[Effect],
+) -> Option<u32> {
+    use crate::effect::Value;
+    use crate::effects::helpers::resolve_player_filter;
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source, caster, &mut dm);
+    let filter_ctx = ctx.filter_context(game);
+
+    let mut max_x: Option<u32> = None;
+
+    for effect in effects {
+        if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
+            if sacrifice.count != Value::X {
+                continue;
+            }
+
+            let player_id = match resolve_player_filter(game, &sacrifice.player, &ctx) {
+                Ok(id) => id,
+                Err(_) => caster,
+            };
+
+            let matching = game
+                .battlefield
+                .iter()
+                .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(id, obj)| {
+                    obj.controller == player_id
+                        && sacrifice.filter.matches(obj, &filter_ctx, game)
+                        && game.can_be_sacrificed(*id)
+                })
+                .count() as u32;
+
+            max_x = Some(max_x.map_or(matching, |prev| prev.min(matching)));
+            continue;
+        }
+
+        if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+            if !choose.count.dynamic_x {
+                continue;
+            }
+
+            let chooser_id = match resolve_player_filter(game, &choose.chooser, &ctx) {
+                Ok(id) => id,
+                Err(_) => caster,
+            };
+            let zone = choose.filter.zone.unwrap_or(choose.zone);
+
+            let mut matches = |id: &ObjectId| -> bool {
+                let Some(obj) = game.object(*id) else {
+                    return false;
+                };
+                if choose.filter.other && obj.id == source {
+                    return false;
+                }
+                choose.filter.matches(obj, &filter_ctx, game)
+            };
+
+            let matching = match zone {
+                Zone::Battlefield => game.battlefield.iter().copied().filter(&mut matches).count(),
+                Zone::Hand => game
+                    .player(chooser_id)
+                    .map(|player| player.hand.iter().copied().filter(&mut matches).count())
+                    .unwrap_or(0),
+                Zone::Graveyard => game
+                    .player(chooser_id)
+                    .map(|player| {
+                        if choose.top_only {
+                            player
+                                .graveyard
+                                .iter()
+                                .copied()
+                                .rev()
+                                .find(|id| matches(id))
+                                .map(|_| 1usize)
+                                .unwrap_or(0)
+                        } else {
+                            player.graveyard.iter().copied().filter(&mut matches).count()
+                        }
+                    })
+                    .unwrap_or(0),
+                Zone::Library => game
+                    .player(chooser_id)
+                    .map(|player| {
+                        if choose.top_only {
+                            player
+                                .library
+                                .last()
+                                .copied()
+                                .filter(|id| matches(id))
+                                .map(|_| 1usize)
+                                .unwrap_or(0)
+                        } else {
+                            player.library.iter().copied().filter(&mut matches).count()
+                        }
+                    })
+                    .unwrap_or(0),
+                _ => 0,
+            } as u32;
+
+            max_x = Some(max_x.map_or(matching, |prev| prev.min(matching)));
+        }
+    }
+
+    max_x
+}
+
+fn compute_spell_cast_x_bounds(
+    game: &GameState,
+    caster: PlayerId,
+    stack_id: ObjectId,
+    casting_method: &CastingMethod,
+    mana_cost_to_pay: Option<&crate::mana::ManaCost>,
+) -> (bool, u32) {
+    let Some(spell) = game.object(stack_id) else {
+        return (false, 0);
+    };
+
+    let printed_has_x = spell.mana_cost.as_ref().is_some_and(|cost| cost.has_x());
+    let pay_has_x = mana_cost_to_pay.is_some_and(|cost| cost.has_x());
+
+    let mut cost_effects = cost_effects_for_casting_method(spell, casting_method);
+    cost_effects.extend(spell.cost_effects.iter().cloned());
+
+    let effects_need_x = cost_effects.iter().any(effect_references_x_for_cost);
+    let needs_x = printed_has_x || pay_has_x || effects_need_x;
+    if !needs_x {
+        return (false, 0);
+    }
+
+    let mut max_x = None;
+
+    if pay_has_x
+        && let Some(cost) = mana_cost_to_pay
+    {
+        let allow_any_color = game.can_spend_mana_as_any_color(caster, Some(stack_id));
+        max_x = Some(
+            compute_potential_mana(game, caster).max_x_for_cost_with_any_color(cost, allow_any_color),
+        );
+    }
+
+    if let Some(max_cost) = max_x_from_cost_effects(game, caster, stack_id, &cost_effects) {
+        max_x = Some(max_x.map_or(max_cost, |prev| prev.min(max_cost)));
+    }
+
+    (true, max_x.unwrap_or(0))
+}
+
 /// Format an alternative casting method's name and cost description.
 fn format_alternative_method(
     method: &crate::alternative_cast::AlternativeCastingMethod,
@@ -3498,7 +3710,7 @@ fn format_alternative_method(
     use crate::alternative_cast::AlternativeCastingMethod;
 
     match method {
-        AlternativeCastingMethod::Flashback { cost } => {
+        AlternativeCastingMethod::Flashback { cost, .. } => {
             let cost_desc = format_mana_cost_simple(cost);
             ("Flashback".to_string(), cost_desc)
         }
@@ -6566,18 +6778,10 @@ fn apply_casting_method_choice_response(
         (None, Vec::new())
     };
 
-    // Check if spell has X in cost
-    let has_x = mana_cost.as_ref().map(|cost| cost.has_x()).unwrap_or(false);
+    let (needs_x, max_x) =
+        compute_spell_cast_x_bounds(game, player, stack_id, &casting_method, mana_cost.as_ref());
 
-    if has_x {
-        // Need to choose X value first - use potential mana (pool + untapped sources)
-        let max_x = if let Some(ref cost) = mana_cost {
-            let allow_any_color = game.can_spend_mana_as_any_color(player, Some(stack_id));
-            compute_potential_mana(game, player)
-                .max_x_for_cost_with_any_color(cost, allow_any_color)
-        } else {
-            0
-        };
+    if needs_x {
 
         // Extract target requirements for later (use stack_id since spell is on stack)
         let requirements = extract_target_requirements(game, &effects, player, Some(stack_id));
@@ -6887,9 +7091,18 @@ fn finalize_spell_cast(
 
         let mut emitted_events = Vec::new();
         for effect in &alternative_cost_effects {
-            if let Ok(outcome) = execute_effect(game, effect, &mut ctx) {
-                emitted_events.extend(outcome.events);
+            let outcome = execute_effect(game, effect, &mut ctx).map_err(|err| {
+                GameLoopError::InvalidState(format!(
+                    "Failed to execute alternative cost effect: {err:?}"
+                ))
+            })?;
+            if outcome.result.is_failure() {
+                return Err(GameLoopError::InvalidState(format!(
+                    "Alternative cost effect failed: {:?}",
+                    outcome.result
+                )));
             }
+            emitted_events.extend(outcome.events);
         }
         queue_triggers_for_events(game, trigger_queue, emitted_events);
         drain_pending_trigger_events(game, trigger_queue);
@@ -7058,15 +7271,23 @@ fn finalize_spell_cast(
         }
         let mut emitted_events = Vec::new();
         for effect in &cost_effects {
-            if let Ok(outcome) = execute_effect(game, effect, &mut ctx) {
-                emitted_events.extend(outcome.events);
+            let outcome = execute_effect(game, effect, &mut ctx).map_err(|err| {
+                GameLoopError::InvalidState(format!("Failed to execute cost effect: {err:?}"))
+            })?;
+            if outcome.result.is_failure() {
+                return Err(GameLoopError::InvalidState(format!(
+                    "Cost effect failed: {:?}",
+                    outcome.result
+                )));
             }
+            emitted_events.extend(outcome.events);
         }
         queue_triggers_for_events(game, trigger_queue, emitted_events);
         drain_pending_trigger_events(game, trigger_queue);
     }
 
     // Spell was already moved to stack during proposal (601.2a compliant).
+    let mana_spent_total = mana_spent_to_cast.total();
     let new_id = stack_id;
     if let Some(spell_obj) = game.object_mut(new_id) {
         spell_obj.mana_spent_to_cast = mana_spent_to_cast;
@@ -7094,6 +7315,32 @@ fn finalize_spell_cast(
     if let Some(obj) = game.object(new_id) {
         game.spells_cast_this_turn_snapshots
             .push(ObjectSnapshot::from_object(obj, game));
+    }
+
+    // Expend: "You expend N as you spend your Nth total mana to cast spells during a turn."
+    let prev_mana_spent = game
+        .mana_spent_to_cast_spells_this_turn
+        .get(&caster)
+        .copied()
+        .unwrap_or(0);
+    if mana_spent_total > 0 {
+        let new_mana_spent_total = prev_mana_spent.saturating_add(mana_spent_total);
+        game.mana_spent_to_cast_spells_this_turn
+            .insert(caster, new_mana_spent_total);
+
+        for threshold in (prev_mana_spent.saturating_add(1))..=new_mana_spent_total {
+            queue_triggers_from_event(
+                game,
+                trigger_queue,
+                TriggerEvent::new(KeywordActionEvent::new(
+                    KeywordActionKind::Expend,
+                    caster,
+                    new_id,
+                    threshold,
+                )),
+                true,
+            );
+        }
     }
 
     Ok(SpellCastResult {
@@ -7601,12 +7848,49 @@ fn create_triggered_stack_entry_with_targets(
         return Some(entry);
     }
 
+    // Build tagged-object context for target selection when filters reference
+    // saddle/crew contributors (e.g., "target creature that saddled it this turn").
+    let mut tagged_objects: std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    > = std::collections::HashMap::new();
+    if !entry.crew_contributors.is_empty() {
+        let snapshots = entry
+            .crew_contributors
+            .iter()
+            .filter_map(|id| game.object(*id).map(|obj| ObjectSnapshot::from_object(obj, game)))
+            .collect::<Vec<_>>();
+        if !snapshots.is_empty() {
+            tagged_objects.insert(crate::tag::TagKey::from("crewed_it_this_turn"), snapshots);
+        }
+    }
+    if !entry.saddle_contributors.is_empty() {
+        let snapshots = entry
+            .saddle_contributors
+            .iter()
+            .filter_map(|id| game.object(*id).map(|obj| ObjectSnapshot::from_object(obj, game)))
+            .collect::<Vec<_>>();
+        if !snapshots.is_empty() {
+            tagged_objects.insert(crate::tag::TagKey::from("saddled_it_this_turn"), snapshots);
+        }
+    }
+    let tagged_objects_ref = if tagged_objects.is_empty() {
+        None
+    } else {
+        Some(&tagged_objects)
+    };
+
     // Select targets for each target spec
     let mut chosen_targets = Vec::new();
     for target_spec in &trigger.ability.choices {
         // Compute legal targets for this spec
-        let legal_targets =
-            compute_legal_targets(game, target_spec, trigger.controller, Some(trigger.source));
+        let legal_targets = compute_legal_targets_with_tagged_objects(
+            game,
+            target_spec,
+            trigger.controller,
+            Some(trigger.source),
+            tagged_objects_ref,
+        );
 
         if legal_targets.is_empty() {
             // No legal targets - trigger can't go on stack
@@ -7709,6 +7993,12 @@ fn triggered_to_stack_entry(game: &GameState, trigger: &TriggeredAbilityEntry) -
         entry.crew_contributors = crewers.clone();
     }
 
+    if let Some(saddlers) = game.saddled_this_turn.get(&trigger.source)
+        && !saddlers.is_empty()
+    {
+        entry.saddle_contributors = saddlers.clone();
+    }
+
     // Copy intervening-if condition if present (must be rechecked at resolution time)
     if let Some(ref condition) = trigger.ability.intervening_if {
         entry = entry.with_intervening_if(condition.clone());
@@ -7717,6 +8007,22 @@ fn triggered_to_stack_entry(game: &GameState, trigger: &TriggeredAbilityEntry) -
     // Extract defending player from combat triggers
     if trigger.triggering_event.kind() == EventKind::CreatureAttacked
         && let Some(attacked) = trigger.triggering_event.downcast::<CreatureAttackedEvent>()
+    {
+        match attacked.target {
+            AttackEventTarget::Player(player_id) => {
+                entry = entry.with_defending_player(player_id);
+            }
+            AttackEventTarget::Planeswalker(planeswalker_id) => {
+                if let Some(planeswalker) = game.object(planeswalker_id) {
+                    entry = entry.with_defending_player(planeswalker.controller);
+                }
+            }
+        }
+    }
+    if trigger.triggering_event.kind() == EventKind::CreatureAttackedAndUnblocked
+        && let Some(attacked) = trigger
+            .triggering_event
+            .downcast::<CreatureAttackedAndUnblockedEvent>()
     {
         match attacked.target {
             AttackEventTarget::Player(player_id) => {
@@ -8029,6 +8335,29 @@ pub fn apply_blocker_declarations(
             for trigger in triggers {
                 trigger_queue.add(trigger);
             }
+        }
+    }
+
+    // Generate "attacks and isn't blocked" triggers for unblocked attackers
+    for info in &combat.attackers {
+        if !is_unblocked(combat, info.creature) {
+            continue;
+        }
+
+        let attack_target = match info.target {
+            AttackTarget::Player(player_id) => crate::triggers::AttackEventTarget::Player(player_id),
+            AttackTarget::Planeswalker(planeswalker_id) => {
+                crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id)
+            }
+        };
+
+        let event = TriggerEvent::new(CreatureAttackedAndUnblockedEvent::new(
+            info.creature,
+            attack_target,
+        ));
+        let triggers = check_triggers(game, &event);
+        for trigger in triggers {
+            trigger_queue.add(trigger);
         }
     }
 
@@ -8529,8 +8858,11 @@ mod tests {
     fn test_stangg_linked_twin_sacrifice_survives_legend_rule_for_other_twin() {
         use crate::ability::AbilityKind;
         use crate::cards::CardDefinitionBuilder;
+        use crate::events::zones::EnterBattlefieldEvent;
         use crate::executor::{ExecutionContext, execute_effect};
         use crate::ids::CardId;
+        use crate::triggers::TriggerEvent;
+        use crate::zone::Zone;
 
         let mut game = setup_game();
         let mut trigger_queue = TriggerQueue::new();
@@ -8558,7 +8890,8 @@ mod tests {
 
         for source in [stangg_a, stangg_b] {
             let mut dm = crate::decision::AutoPassDecisionMaker;
-            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            let event = TriggerEvent::new(EnterBattlefieldEvent::new(source, Zone::Hand));
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_triggering_event(event);
             for effect in &etb.effects {
                 execute_effect(&mut game, effect, &mut ctx)
                     .expect("stangg ETB effect should resolve");

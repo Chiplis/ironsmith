@@ -114,24 +114,33 @@ impl TriggerMatcher for SpellCastTrigger {
 
         // Check spell filter if present
         if let Some(ref filter) = self.filter {
-            let mut stack_filter = filter.clone();
+            let mut object_filter = filter.clone();
+
+            // "Cast from <zone>" filters refer to the source zone, not the spell's
+            // current zone (which is always the stack).
             if let Some(zone) = filter.zone
                 && zone != Zone::Stack
             {
                 if e.from_zone != zone {
                     return false;
                 }
-                stack_filter.zone = Some(Zone::Stack);
+                object_filter.zone = None;
             }
-            // `ObjectFilter::spell()` historically used `has_mana_cost` as a rough
-            // spell-vs-ability proxy on stack filters. SpellCastEvent already
-            // guarantees this is a spell, and real spells can have no mana cost
-            // (e.g. suspend cards), so drop that extra gate here.
-            if stack_filter.zone == Some(Zone::Stack) {
-                stack_filter.has_mana_cost = false;
+
+            // SpellCastEvent already guarantees this is a spell being cast, so
+            // avoid requiring a stack entry just because `ObjectFilter::spell()`
+            // sets `zone=Stack` / `stack_kind=Spell`.
+            if object_filter.zone == Some(Zone::Stack) {
+                object_filter.zone = None;
             }
+            if matches!(object_filter.stack_kind, Some(crate::filter::StackObjectKind::Spell)) {
+                object_filter.stack_kind = None;
+            }
+            // Real spells can have no mana cost (e.g. suspend cards).
+            object_filter.has_mana_cost = false;
+
             if let Some(obj) = ctx.game.object(e.spell) {
-                stack_filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                object_filter.matches(obj, &ctx.filter_ctx, ctx.game)
             } else {
                 false
             }
@@ -179,18 +188,6 @@ impl TriggerMatcher for SpellCastTrigger {
                 };
                 suffix.push_str(&exact_suffix);
             }
-        } else if self.min_spells_this_turn == Some(2)
-            && matches!(self.caster, PlayerFilter::You)
-            && matches!(self.during_turn, Some(PlayerFilter::You))
-        {
-            if spell_text == "a spell" || spell_text == "spell" {
-                spell_text =
-                    "a spell during your turn other than your first spell that turn".to_string();
-            } else {
-                spell_text =
-                    format!("{spell_text} during your turn other than your first spell that turn");
-            }
-            suppress_turn_suffix = true;
         } else if self.min_spells_this_turn == Some(2)
             && matches!(self.caster, PlayerFilter::Any)
             && (spell_text == "a spell" || spell_text == "spell")

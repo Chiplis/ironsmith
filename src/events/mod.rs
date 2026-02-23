@@ -96,7 +96,8 @@ pub use zones::{EnterBattlefieldEvent, ZoneChangeEvent};
 
 // Re-export new event types
 pub use combat::{
-    AttackEventTarget, CreatureAttackedEvent, CreatureBecameBlockedEvent, CreatureBlockedEvent,
+    AttackEventTarget, CreatureAttackedAndUnblockedEvent, CreatureAttackedEvent,
+    CreatureBecameBlockedEvent, CreatureBlockedEvent,
 };
 pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardsDrawnEvent, CounterPlacedEvent,

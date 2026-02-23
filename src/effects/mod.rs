@@ -73,13 +73,13 @@ pub use combat::{
     PreventAllDamageToTargetEffect, PreventDamageEffect, SetBasePowerToughnessEffect,
 };
 pub use composition::{
-    AdaptEffect, BolsterEffect, ChooseModeEffect, ChooseObjectsEffect, ConditionalEffect,
-    CounterAbilityEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
-    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect,
-    ManifestDreadEffect, MayEffect, OpenAttractionEffect, SequenceEffect, SupportEffect,
-    TagAllEffect, TagAttachedToSourceEffect, TagTriggeringDamageTargetEffect,
-    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
-    UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
+    AdaptEffect, BeholdEffect, BolsterEffect, ChooseModeEffect, ChooseObjectsEffect,
+    ConditionalEffect, CounterAbilityEffect, EmitKeywordActionEffect, ExploreEffect,
+    ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
+    ForPlayersEffect, IfEffect, ManifestDreadEffect, MayEffect, OpenAttractionEffect,
+    SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
+    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
+    UnlessActionEffect, UnlessPaysEffect, VoteEffect, VoteOption, WithIdEffect,
 };
 pub use continuous::ApplyContinuousEffect;
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
@@ -100,8 +100,9 @@ pub use mana::{
     PayManaEffect,
 };
 pub use permanents::{
-    AttachObjectsEffect, AttachToEffect, CrewCostEffect, EarthbendEffect, GrantObjectAbilityEffect,
-    MonstrosityEffect, RegenerateEffect, TapEffect, TransformEffect, UntapEffect,
+    AttachObjectsEffect, AttachToEffect, BecomeSaddledUntilEotEffect, CrewCostEffect,
+    EarthbendEffect, GrantObjectAbilityEffect, MonstrosityEffect, RegenerateEffect,
+    SaddleCostEffect, TapEffect, TransformEffect, UntapEffect,
 };
 pub use player::{
     CastTaggedEffect, ControlPlayerEffect, CreateEmblemEffect, EnergyCountersEffect,

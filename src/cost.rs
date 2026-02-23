@@ -139,11 +139,16 @@ impl TotalCost {
         if self.costs.is_empty() {
             return "Free".to_string();
         }
-        self.costs
+        let parts: Vec<String> = self
+            .costs
             .iter()
             .map(|c| c.display())
-            .collect::<Vec<_>>()
-            .join(", ")
+            .filter(|part| !part.trim().is_empty())
+            .collect();
+        if parts.is_empty() {
+            return "Free".to_string();
+        }
+        parts.join(", ")
     }
 
     /// Check if this is a free cost (no components).

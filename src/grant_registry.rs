@@ -561,6 +561,7 @@ mod tests {
             player,
             AlternativeCastingMethod::Flashback {
                 cost: ManaCost::new(),
+                cost_effects: Vec::new(),
             },
             GrantSource::Effect {
                 source_id,

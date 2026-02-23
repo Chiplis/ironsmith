@@ -1,10 +1,12 @@
 //! Combat-related events.
 
 mod creature_attacked;
+mod creature_attacked_and_unblocked;
 mod creature_became_blocked;
 mod creature_blocked;
 
 pub use creature_attacked::CreatureAttackedEvent;
+pub use creature_attacked_and_unblocked::CreatureAttackedAndUnblockedEvent;
 pub use creature_became_blocked::CreatureBecameBlockedEvent;
 pub use creature_blocked::CreatureBlockedEvent;
 

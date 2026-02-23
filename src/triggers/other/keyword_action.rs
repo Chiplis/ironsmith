@@ -10,11 +10,24 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 pub struct KeywordActionTrigger {
     pub action: KeywordActionKind,
     pub player: PlayerFilter,
+    pub source_must_match: bool,
 }
 
 impl KeywordActionTrigger {
     pub fn new(action: KeywordActionKind, player: PlayerFilter) -> Self {
-        Self { action, player }
+        Self {
+            action,
+            player,
+            source_must_match: false,
+        }
+    }
+
+    pub fn from_source(action: KeywordActionKind, player: PlayerFilter) -> Self {
+        Self {
+            action,
+            player,
+            source_must_match: true,
+        }
     }
 }
 
@@ -30,6 +43,19 @@ impl TriggerMatcher for KeywordActionTrigger {
             return false;
         }
 
+        if self.source_must_match {
+            // Zone changes create a new ObjectId (rule 400.7), so match on the
+            // source's stable identity when possible.
+            let ctx_stable_source = ctx
+                .game
+                .object(ctx.source_id)
+                .map(|obj| obj.stable_id.object_id())
+                .unwrap_or(ctx.source_id);
+            if e.source != ctx.source_id && e.source != ctx_stable_source {
+                return false;
+            }
+        }
+
         match &self.player {
             PlayerFilter::You => e.player == ctx.controller,
             PlayerFilter::Opponent => e.player != ctx.controller,
@@ -40,6 +66,14 @@ impl TriggerMatcher for KeywordActionTrigger {
     }
 
     fn display(&self) -> String {
+        if self.source_must_match && self.action == KeywordActionKind::Cycle {
+            return match &self.player {
+                PlayerFilter::You => "Whenever you cycle this card".to_string(),
+                PlayerFilter::Opponent => "Whenever an opponent cycles this card".to_string(),
+                PlayerFilter::Any => "Whenever a player cycles this card".to_string(),
+                _ => "Whenever a player cycles this card".to_string(),
+            };
+        }
         if self.action == KeywordActionKind::Vote && self.player == PlayerFilter::Any {
             return "Whenever players finish voting".to_string();
         }
@@ -99,6 +133,39 @@ mod tests {
             2,
         ));
         assert!(!trigger.matches(&opp_event, &ctx));
+    }
+
+    #[test]
+    fn keyword_action_trigger_matches_source_stable_id() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let hand_id = game.create_object_from_card(
+            &crate::card::CardBuilder::new(crate::ids::CardId::from_raw(1), "Cycler")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build(),
+            alice,
+            crate::zone::Zone::Hand,
+        );
+        let source_id = game
+            .move_object(hand_id, crate::zone::Zone::Graveyard)
+            .expect("move to graveyard should create new id");
+
+        // Simulate an event emitted using the old/stable ID.
+        let stable = game
+            .object(source_id)
+            .map(|obj| obj.stable_id.object_id())
+            .unwrap_or(source_id);
+        assert_ne!(stable, source_id, "expected stable id to differ after zone change");
+        let event = TriggerEvent::new(KeywordActionEvent::new(
+            KeywordActionKind::Cycle,
+            alice,
+            stable,
+            1,
+        ));
+
+        let trigger = KeywordActionTrigger::from_source(KeywordActionKind::Cycle, PlayerFilter::You);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(trigger.matches(&event, &ctx));
     }
 
     #[test]

@@ -168,7 +168,7 @@ impl FilterContext {
         mut self,
         tagged: &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     ) -> Self {
-        self.tagged_objects = tagged.clone();
+        self.tagged_objects.extend(tagged.clone());
         self
     }
 }
@@ -320,6 +320,25 @@ impl PlayerFilter {
             }
             PlayerFilter::ControllerOf(_) => false, // Resolved via object lookup
             PlayerFilter::OwnerOf(_) => false,      // Resolved via object lookup
+        }
+    }
+
+    pub fn description(&self) -> String {
+        match self {
+            PlayerFilter::Any => "a player".to_string(),
+            PlayerFilter::You => "you".to_string(),
+            PlayerFilter::NotYou => "a player other than you".to_string(),
+            PlayerFilter::Opponent => "an opponent".to_string(),
+            PlayerFilter::Teammate => "a teammate".to_string(),
+            PlayerFilter::Active => "the active player".to_string(),
+            PlayerFilter::Defending => "the defending player".to_string(),
+            PlayerFilter::Attacking => "the attacking player".to_string(),
+            PlayerFilter::DamagedPlayer => "that player".to_string(),
+            PlayerFilter::Specific(_) => "that player".to_string(),
+            PlayerFilter::IteratedPlayer => "that player".to_string(),
+            PlayerFilter::Target(inner) => format!("target {}", inner.description()),
+            PlayerFilter::ControllerOf(_) => "that object's controller".to_string(),
+            PlayerFilter::OwnerOf(_) => "that object's owner".to_string(),
         }
     }
 }
@@ -2712,6 +2731,9 @@ impl ObjectFilter {
                     }
                     "crewed_it_this_turn" => {
                         post_noun_qualifiers.push("that crewed it this turn".to_string());
+                    }
+                    "saddled_it_this_turn" => {
+                        post_noun_qualifiers.push("that saddled it this turn".to_string());
                     }
                     crate::tag::SOURCE_EXILED_TAG => {
                         post_noun_qualifiers.push("exiled with this permanent".to_string());

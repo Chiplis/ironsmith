@@ -13,8 +13,11 @@ use crate::tag::TagKey;
 /// Keyword actions that can be observed by triggers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeywordActionKind {
+    CommitCrime,
+    Cycle,
     Convoke,
     Earthbend,
+    Expend,
     Improvise,
     Investigate,
     NameSticker,
@@ -22,6 +25,7 @@ pub enum KeywordActionKind {
     Proliferate,
     Scry,
     Surveil,
+    UnlockDoor,
     Vote,
 }
 
@@ -29,8 +33,11 @@ impl KeywordActionKind {
     /// Parse the inflected trigger verb form.
     pub fn from_trigger_word(word: &str) -> Option<Self> {
         match word {
+            "crime" | "crimes" => Some(Self::CommitCrime),
+            "cycle" | "cycles" | "cycled" | "cycling" => Some(Self::Cycle),
             "convoke" | "convokes" | "convoked" => Some(Self::Convoke),
             "earthbend" | "earthbends" => Some(Self::Earthbend),
+            "expend" | "expends" | "expended" => Some(Self::Expend),
             "improvise" | "improvises" | "improvised" => Some(Self::Improvise),
             "investigate" | "investigates" => Some(Self::Investigate),
             "sticker" | "stickers" | "stickered" => Some(Self::NameSticker),
@@ -38,6 +45,7 @@ impl KeywordActionKind {
             "proliferate" | "proliferates" => Some(Self::Proliferate),
             "scry" | "scries" => Some(Self::Scry),
             "surveil" | "surveils" => Some(Self::Surveil),
+            "unlock" | "unlocks" | "unlocked" | "unlocking" => Some(Self::UnlockDoor),
             "vote" | "votes" | "voting" => Some(Self::Vote),
             _ => None,
         }
@@ -45,8 +53,11 @@ impl KeywordActionKind {
 
     pub fn infinitive(self) -> &'static str {
         match self {
+            Self::CommitCrime => "commit a crime",
+            Self::Cycle => "cycle",
             Self::Convoke => "convoke",
             Self::Earthbend => "earthbend",
+            Self::Expend => "expend",
             Self::Improvise => "improvise",
             Self::Investigate => "investigate",
             Self::NameSticker => "put a name sticker",
@@ -54,14 +65,18 @@ impl KeywordActionKind {
             Self::Proliferate => "proliferate",
             Self::Scry => "scry",
             Self::Surveil => "surveil",
+            Self::UnlockDoor => "unlock this door",
             Self::Vote => "vote",
         }
     }
 
     pub fn third_person(self) -> &'static str {
         match self {
+            Self::CommitCrime => "commits a crime",
+            Self::Cycle => "cycles",
             Self::Convoke => "convokes",
             Self::Earthbend => "earthbends",
+            Self::Expend => "expends",
             Self::Improvise => "improvises",
             Self::Investigate => "investigates",
             Self::NameSticker => "puts a name sticker",
@@ -69,6 +84,7 @@ impl KeywordActionKind {
             Self::Proliferate => "proliferates",
             Self::Scry => "scries",
             Self::Surveil => "surveils",
+            Self::UnlockDoor => "unlocks this door",
             Self::Vote => "votes",
         }
     }

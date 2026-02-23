@@ -65,8 +65,11 @@ impl CostPayer for EffectCost {
             .with_cause(EventCause::from_cost(ctx.source, ctx.payer))
             .with_tagged_objects(existing_tags);
 
-        execute_effect(game, &self.effect, &mut exec_ctx)
+        let outcome = execute_effect(game, &self.effect, &mut exec_ctx)
             .map_err(|e| CostPaymentError::Other(format!("{e:?}")))?;
+        for event in outcome.events {
+            game.queue_trigger_event(event);
+        }
 
         // Copy any new tags back to CostContext for subsequent costs
         ctx.tagged_objects = exec_ctx.tagged_objects;

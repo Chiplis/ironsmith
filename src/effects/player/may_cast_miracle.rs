@@ -148,6 +148,7 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
                 intervening_if: None,
                 keyword_payment_contributions: vec![],
                 crew_contributors: vec![],
+                saddle_contributors: vec![],
                 chosen_modes: None,
             };
 

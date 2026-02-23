@@ -851,6 +851,7 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Devoid => "Devoid".to_string(),
         KeywordAction::Annihilator(amount) => format!("Annihilator {amount}"),
         KeywordAction::Crew { amount, .. } => format!("Crew {amount}"),
+        KeywordAction::Saddle { amount, .. } => format!("Saddle {amount}"),
         KeywordAction::Marker(name) => title_case_words(name),
         KeywordAction::MarkerText(text) => text.clone(),
     }
@@ -1129,6 +1130,18 @@ fn apply_line_ast(
                     Err(err) => return Err(err),
                 };
 
+            let functional_zones = match &trigger {
+                // "When you cast this spell" only functions while this object is on the stack.
+                TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
+                // "When you cycle this card" triggers after the card has been discarded,
+                // so it needs to function from the graveyard.
+                TriggerSpec::KeywordActionFromSource {
+                    action: crate::events::KeywordActionKind::Cycle,
+                    ..
+                } => vec![Zone::Graveyard],
+                _ => vec![Zone::Battlefield],
+            };
+
             let compiled_trigger = compile_trigger_spec(trigger);
             builder = builder.with_ability(Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
@@ -1138,7 +1151,7 @@ fn apply_line_ast(
                     intervening_if: max_triggers_per_turn
                         .map(crate::ConditionExpr::MaxTimesEachTurn),
                 }),
-                functional_zones: vec![Zone::Battlefield],
+                functional_zones,
                 text: Some(info.raw_line.clone()),
             });
         }

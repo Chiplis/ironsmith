@@ -659,6 +659,11 @@ pub struct StackEntry {
     ///
     /// Used to populate runtime tags for filters like "each creature that crewed it this turn".
     pub crew_contributors: Vec<ObjectId>,
+
+    /// Creatures that saddled this object this turn, captured when the entry was created.
+    ///
+    /// Used to populate runtime tags for filters like "each creature that saddled it this turn".
+    pub saddle_contributors: Vec<ObjectId>,
 }
 
 /// A mana ability granted to a player until end of turn.
@@ -693,6 +698,7 @@ impl StackEntry {
             chosen_modes: None,
             keyword_payment_contributions: Vec::new(),
             crew_contributors: Vec::new(),
+            saddle_contributors: Vec::new(),
         }
     }
 
@@ -721,6 +727,7 @@ impl StackEntry {
             chosen_modes: None,
             keyword_payment_contributions: Vec::new(),
             crew_contributors: Vec::new(),
+            saddle_contributors: Vec::new(),
         }
     }
 
@@ -930,6 +937,13 @@ pub struct GameState {
     /// Reset at the start of each turn.
     pub spells_cast_this_turn: HashMap<PlayerId, u32>,
 
+    /// Total mana spent to cast spells this turn per player.
+    ///
+    /// Used by the Expend mechanic: "You expend N as you spend your Nth total mana to cast spells during a turn."
+    ///
+    /// Reset at the start of each turn.
+    pub mana_spent_to_cast_spells_this_turn: HashMap<PlayerId, u32>,
+
     /// Total number of spells cast this turn.
     /// Reset at the start of each turn.
     pub spells_cast_this_turn_total: u32,
@@ -979,6 +993,17 @@ pub struct GameState {
     /// Used for references like "each creature that crewed it this turn".
     /// Cleared at the start of each turn.
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
+
+    /// Mounts that are saddled until end of turn.
+    ///
+    /// Cleared at the start of each turn.
+    pub saddled_until_end_of_turn: HashSet<ObjectId>,
+
+    /// Creatures that saddled a Mount this turn, keyed by Mount object id.
+    ///
+    /// Used for references like "each creature that saddled it this turn".
+    /// Cleared at the start of each turn.
+    pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
 
     /// Damage dealt to each player by creatures this turn.
     /// Used for trap conditions like Summoning Trap.
@@ -1119,6 +1144,7 @@ impl GameState {
             triggers_fired_this_turn: HashMap::new(),
             turn_counters: TurnCounterTracker::default(),
             spells_cast_this_turn: HashMap::new(),
+            mana_spent_to_cast_spells_this_turn: HashMap::new(),
             spells_cast_this_turn_total: 0,
             spells_cast_this_turn_snapshots: Vec::new(),
             spell_cast_order_this_turn: HashMap::new(),
@@ -1130,6 +1156,8 @@ impl GameState {
             creatures_entered_this_turn: HashMap::new(),
             objects_entered_battlefield_this_turn: HashMap::new(),
             crewed_this_turn: HashMap::new(),
+            saddled_until_end_of_turn: HashSet::new(),
+            saddled_this_turn: HashMap::new(),
             creature_damage_to_players_this_turn: HashMap::new(),
             damage_to_players_this_turn: HashMap::new(),
             creatures_damaged_by_this_turn: HashMap::new(),
@@ -2517,6 +2545,7 @@ impl GameState {
         self.turn_counters.clear();
         self.spells_cast_last_turn_total = self.spells_cast_this_turn_total;
         self.spells_cast_this_turn.clear();
+        self.mana_spent_to_cast_spells_this_turn.clear();
         self.spells_cast_this_turn_total = 0;
         self.spells_cast_this_turn_snapshots.clear();
         self.spell_cast_order_this_turn.clear();
@@ -2526,6 +2555,8 @@ impl GameState {
         self.library_searches_this_turn.clear();
         self.creatures_entered_this_turn.clear();
         self.crewed_this_turn.clear();
+        self.saddled_until_end_of_turn.clear();
+        self.saddled_this_turn.clear();
         self.creature_damage_to_players_this_turn.clear();
         self.damage_to_players_this_turn.clear();
         self.creatures_damaged_by_this_turn.clear();
@@ -2997,6 +3028,33 @@ impl GameState {
             .map(|p| p.commanders.clone())
             .unwrap_or_default();
 
+        let mut tagged_objects = std::collections::HashMap::new();
+        if let Some(source_id) = source
+            && let Some(source_obj) = self.object(source_id)
+            && let Some(attached_id) = source_obj.attached_to
+            && let Some(attached_obj) = self.object(attached_id)
+        {
+            let attached_snapshot = crate::snapshot::ObjectSnapshot::from_object(attached_obj, self);
+            if source_obj
+                .subtypes
+                .contains(&crate::types::Subtype::Aura)
+            {
+                tagged_objects.insert(
+                    crate::tag::TagKey::from("enchanted"),
+                    vec![attached_snapshot.clone()],
+                );
+            }
+            if source_obj
+                .subtypes
+                .contains(&crate::types::Subtype::Equipment)
+            {
+                tagged_objects.insert(
+                    crate::tag::TagKey::from("equipped"),
+                    vec![attached_snapshot],
+                );
+            }
+        }
+
         crate::target::FilterContext {
             you: Some(controller),
             source,
@@ -3008,7 +3066,7 @@ impl GameState {
             your_commanders,
             iterated_player: None,
             target_players: Vec::new(),
-            tagged_objects: std::collections::HashMap::new(),
+            tagged_objects,
         }
     }
 
@@ -3173,6 +3231,16 @@ impl GameState {
     /// Mark a creature as monstrous.
     pub fn set_monstrous(&mut self, id: ObjectId) {
         self.monstrous.insert(id);
+    }
+
+    /// Check if a permanent is saddled (until end of turn).
+    pub fn is_saddled(&self, id: ObjectId) -> bool {
+        self.saddled_until_end_of_turn.contains(&id)
+    }
+
+    /// Mark a permanent as saddled until end of turn.
+    pub fn set_saddled_until_end_of_turn(&mut self, id: ObjectId) {
+        self.saddled_until_end_of_turn.insert(id);
     }
 
     /// Check if a permanent is flipped.

@@ -33,7 +33,28 @@ impl TriggerMatcher for IsDealtDamageTrigger {
     }
 
     fn display(&self) -> String {
-        "Whenever this creature is dealt damage".to_string()
+        fn base_spec(spec: &ChooseSpec) -> &ChooseSpec {
+            match spec {
+                ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => base_spec(inner),
+                other => other,
+            }
+        }
+
+        match base_spec(&self.target) {
+            ChooseSpec::Source => "Whenever this creature is dealt damage".to_string(),
+            ChooseSpec::SpecificObject(_) => "Whenever that permanent is dealt damage".to_string(),
+            ChooseSpec::Object(filter) => {
+                format!("Whenever {} is dealt damage", filter.description())
+            }
+            ChooseSpec::AnyTarget => "Whenever a target is dealt damage".to_string(),
+            ChooseSpec::SourceController => "Whenever you are dealt damage".to_string(),
+            ChooseSpec::SourceOwner => "Whenever you are dealt damage".to_string(),
+            ChooseSpec::SpecificPlayer(_) => "Whenever that player is dealt damage".to_string(),
+            ChooseSpec::Player(filter) => {
+                format!("Whenever {} is dealt damage", filter.description())
+            }
+            _ => "Whenever a target is dealt damage".to_string(),
+        }
     }
 
     fn clone_box(&self) -> Box<dyn TriggerMatcher> {
