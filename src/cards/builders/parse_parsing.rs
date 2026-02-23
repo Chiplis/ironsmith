@@ -33506,8 +33506,84 @@ fn normalize_token_name(words: &[&str]) -> String {
     words.join(" ")
 }
 
-fn parse_investigate(_tokens: &[Token]) -> Result<EffectAst, CardTextError> {
-    Ok(EffectAst::Investigate)
+fn parse_investigate(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+    if tokens.is_empty() {
+        return Ok(EffectAst::Investigate {
+            count: Value::Fixed(1),
+        });
+    }
+
+    let (count, used) = if let Some(first) = tokens.first().and_then(Token::as_word) {
+        match first {
+            "once" => (Value::Fixed(1), 1),
+            "twice" => (Value::Fixed(2), 1),
+            _ => parse_value(tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing investigate count (clause: '{}')",
+                    words(tokens).join(" ")
+                ))
+            })?,
+        }
+    } else {
+        return Err(CardTextError::ParseError(format!(
+            "missing investigate count (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    };
+
+    let trailing = trim_commas(&tokens[used..]);
+    let trailing_words = words(&trailing);
+    let trailing_ok = trailing_words.is_empty()
+        || trailing_words.as_slice() == ["time"]
+        || trailing_words.as_slice() == ["times"];
+    if !trailing_ok {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing investigate clause (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    Ok(EffectAst::Investigate { count })
+}
+
+#[cfg(test)]
+mod parse_parsing_tests {
+    use super::*;
+
+    #[test]
+    fn parse_investigate_defaults_to_one() {
+        let ast = parse_investigate(&[]).expect("parse investigate");
+        assert!(matches!(
+            ast,
+            EffectAst::Investigate {
+                count: Value::Fixed(1)
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_investigate_twice() {
+        let tokens = tokenize_line("twice", 0);
+        let ast = parse_investigate(&tokens).expect("parse investigate twice");
+        assert!(matches!(
+            ast,
+            EffectAst::Investigate {
+                count: Value::Fixed(2)
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_investigate_n_times() {
+        let tokens = tokenize_line("three times", 0);
+        let ast = parse_investigate(&tokens).expect("parse investigate three times");
+        assert!(matches!(
+            ast,
+            EffectAst::Investigate {
+                count: Value::Fixed(3)
+            }
+        ));
+    }
 }
 
 fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError> {

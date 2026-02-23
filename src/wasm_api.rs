@@ -322,6 +322,11 @@ struct ZoneCardSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct StackObjectSnapshot {
+    id: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct CounterSnapshot {
     kind: String,
     amount: u32,
@@ -357,6 +362,7 @@ struct GameSnapshot {
     step: Option<String>,
     stack_size: usize,
     stack_preview: Vec<String>,
+    stack_objects: Vec<StackObjectSnapshot>,
     battlefield_size: usize,
     exile_size: usize,
     players: Vec<PlayerSnapshot>,
@@ -448,6 +454,14 @@ impl GameSnapshot {
                     .unwrap_or_else(|| format!("Object#{}", entry.object_id.0))
             })
             .collect();
+        let mut stack_objects: Vec<StackObjectSnapshot> = game
+            .stack
+            .iter()
+            .rev()
+            .map(|entry| StackObjectSnapshot {
+                id: entry.object_id.0,
+            })
+            .collect();
         let mut stack_size = game.stack.len();
 
         // During casting (rule 601.2), the card can be moved to stack before finalization.
@@ -457,9 +471,11 @@ impl GameSnapshot {
             && let Some(obj) = game.object(stack_id)
         {
             stack_preview.insert(0, obj.name.clone());
+            stack_objects.insert(0, StackObjectSnapshot { id: stack_id.0 });
             stack_size += 1;
         }
         stack_preview.truncate(4);
+        stack_objects.truncate(4);
 
         Self {
             perspective: perspective.0,
@@ -470,6 +486,7 @@ impl GameSnapshot {
             step: game.turn.step.map(|step| format!("{:?}", step)),
             stack_size,
             stack_preview,
+            stack_objects,
             battlefield_size: game.battlefield.len(),
             exile_size: game.exile.len(),
             players,

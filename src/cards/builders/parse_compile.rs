@@ -4116,7 +4116,10 @@ fn compile_effect(
             }
             Ok((vec![Effect::attach_objects(objects, target)], choices))
         }
-        EffectAst::Investigate => Ok((vec![Effect::investigate(1)], Vec::new())),
+        EffectAst::Investigate { count } => {
+            let count = resolve_value_it_tag(count, ctx)?;
+            Ok((vec![Effect::investigate(count)], Vec::new()))
+        }
         EffectAst::CreateTokenWithMods {
             name,
             count,
@@ -7091,5 +7094,48 @@ where
 fn push_choice(choices: &mut Vec<ChooseSpec>, choice: ChooseSpec) {
     if !choices.iter().any(|existing| existing == &choice) {
         choices.push(choice);
+    }
+}
+
+#[cfg(test)]
+mod parse_compile_tests {
+    use super::*;
+    use crate::effect::Value;
+    use crate::effects::InvestigateEffect;
+    use crate::ids::CardId;
+    use crate::types::CardType;
+
+    #[test]
+    fn compile_investigate_uses_ast_count() {
+        let mut ctx = CompileContext::new();
+        let (effects, choices) = compile_effect(
+            &EffectAst::Investigate {
+                count: Value::Fixed(2),
+            },
+            &mut ctx,
+        )
+        .expect("compile investigate");
+
+        assert!(choices.is_empty());
+        assert_eq!(effects.len(), 1);
+        let investigate = effects[0]
+            .downcast_ref::<InvestigateEffect>()
+            .expect("investigate effect");
+        assert_eq!(investigate.count, Value::Fixed(2));
+    }
+
+    #[test]
+    fn parse_text_investigate_twice_compiles_to_count_two() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Investigate Probe")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text("Investigate twice.")
+            .expect("parse investigate twice");
+
+        let effects = def.spell_effect.as_ref().expect("spell effects");
+        assert_eq!(effects.len(), 1);
+        let investigate = effects[0]
+            .downcast_ref::<InvestigateEffect>()
+            .expect("investigate effect");
+        assert_eq!(investigate.count, Value::Fixed(2));
     }
 }

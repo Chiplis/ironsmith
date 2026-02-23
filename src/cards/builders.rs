@@ -926,7 +926,9 @@ enum EffectAst {
         object: TargetAst,
         target: TargetAst,
     },
-    Investigate,
+    Investigate {
+        count: Value,
+    },
     Destroy {
         target: TargetAst,
     },
