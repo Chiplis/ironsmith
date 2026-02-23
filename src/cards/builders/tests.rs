@@ -1632,6 +1632,66 @@ Unearth {U} ({U}: Return this card from your graveyard to the battlefield. It ga
 }
 
 #[test]
+fn test_parse_echo_keyword_line_with_mana_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Echo Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Echo {2}{R} (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)",
+        )
+        .expect("echo keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.to_ascii_lowercase().contains("echo counter"),
+        "expected echo runtime text in render output, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        !debug.contains("staticabilityid::custom") && !debug.contains("keyword_marker"),
+        "expected echo to compile without custom marker static abilities, got {debug}"
+    );
+    assert!(
+        debug.contains("counter_type: echo"),
+        "expected echo to track an internal echo counter, got {debug}"
+    );
+    assert!(
+        debug.contains("paymanaeffect"),
+        "expected echo mana variant to include a mana payment effect, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_echo_keyword_line_with_non_mana_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Echo Discard Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying, haste\nEcho—Discard a card. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)",
+        )
+        .expect("echo keyword line with non-mana cost should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.to_ascii_lowercase().contains("discard a card"),
+        "expected non-mana echo payment text in render output, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        !debug.contains("staticabilityid::custom") && !debug.contains("keyword_marker"),
+        "expected echo to compile without custom marker static abilities, got {debug}"
+    );
+    assert!(
+        debug.contains("counter_type: echo"),
+        "expected echo to track an internal echo counter, got {debug}"
+    );
+    assert!(
+        debug.contains("unlessactioneffect"),
+        "expected echo non-mana variant to use unless-action payment flow, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_escape_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Escape Probe")
         .card_types(vec![CardType::Creature])
@@ -4571,6 +4631,44 @@ fn parse_rejects_marker_keyword_with_non_keyword_tail() {
             || message.contains("unsupported")
             || message.contains("parse"),
         "expected parse failure for non-keyword tail, got {message}"
+    );
+}
+
+#[test]
+fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ninjutsu Probe")
+        .parse_text("Ninjutsu {1}{B}")
+        .expect("ninjutsu keyword line should parse");
+
+    let ability = def
+        .abilities
+        .iter()
+        .find(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("expected activated ninjutsu ability");
+    assert!(
+        ability.functional_zones.contains(&Zone::Hand),
+        "ninjutsu should function from hand"
+    );
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        panic!("expected activated ability");
+    };
+    assert_eq!(
+        activated.timing,
+        crate::ability::ActivationTiming::DuringCombat,
+        "ninjutsu should use during-combat timing"
+    );
+
+    let cost_debug = format!("{:?}", activated.mana_cost);
+    assert!(
+        cost_debug.contains("NinjutsuCostEffect"),
+        "expected ninjutsu return-attacker cost effect, got {cost_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("effect(ninjutsucosteffect)")
+            && rendered.contains("effect(ninjutsueffect)"),
+        "expected compiled output to include ninjutsu effect pipeline, got {rendered}"
     );
 }
 

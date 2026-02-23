@@ -663,6 +663,88 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
         }
     }
 
+    // Check for activated abilities that function outside the battlefield
+    // (e.g., Unearth from graveyard, Cycling/Ninjutsu from hand).
+    if let Some(player_obj) = game.player(player) {
+        let mut non_battlefield_ids = Vec::new();
+        non_battlefield_ids.extend(player_obj.hand.iter().copied());
+        non_battlefield_ids.extend(player_obj.graveyard.iter().copied());
+        non_battlefield_ids.extend(
+            game.exile
+                .iter()
+                .copied()
+                .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)),
+        );
+        non_battlefield_ids.extend(
+            game.command_zone
+                .iter()
+                .copied()
+                .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)),
+        );
+        non_battlefield_ids.sort_by_key(|id| id.0);
+        non_battlefield_ids.dedup();
+
+        for source_id in non_battlefield_ids {
+            let Some(obj) = game.object(source_id) else {
+                continue;
+            };
+            if obj.zone == Zone::Battlefield || obj.controller != player {
+                continue;
+            }
+
+            for (i, ability) in obj.abilities.iter().enumerate() {
+                if !ability.functions_in(&obj.zone) {
+                    continue;
+                }
+
+                if let crate::ability::AbilityKind::Activated(activated) = &ability.kind {
+                    if !game.can_activate_non_mana_abilities(player) {
+                        continue;
+                    }
+                    if !can_pay_ability_cost(game, source_id, player, &activated.mana_cost) {
+                        continue;
+                    }
+
+                    let max_activations_per_turn = activated.max_activations_per_turn();
+                    let restrictions_ok =
+                        can_activate_ability_with_restrictions(game, source_id, i, activated);
+
+                    let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+                        controller: player,
+                        source: source_id,
+                        filter_source: Some(source_id),
+                        triggering_event: None,
+                        trigger_identity: None,
+                        ability_index: Some(i),
+                        options: Default::default(),
+                    };
+
+                    let timing_ok = crate::condition_eval::evaluate_condition_external(
+                        game,
+                        &crate::effect::Condition::ActivationTiming(activated.timing.clone()),
+                        &eval_ctx,
+                    );
+
+                    let under_turn_limit = match max_activations_per_turn {
+                        Some(max) => crate::condition_eval::evaluate_condition_external(
+                            game,
+                            &crate::effect::Condition::MaxActivationsPerTurn(max),
+                            &eval_ctx,
+                        ),
+                        None => true,
+                    };
+
+                    if timing_ok && under_turn_limit && restrictions_ok {
+                        actions.push(LegalAction::ActivateAbility {
+                            source: source_id,
+                            ability_index: i,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     actions
 }
 
@@ -6157,6 +6239,46 @@ mod tests {
                 .iter()
                 .any(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == creature_id)),
             "Should NOT be able to activate sorcery-speed ability during combat"
+        );
+    }
+
+    #[test]
+    fn test_compute_legal_actions_includes_hand_activated_ability() {
+        use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
+        use crate::cost::TotalCost;
+        use crate::effect::Effect;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+
+        let card = CardBuilder::new(CardId::from_raw(777), "Hand Ability Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let source_id = game.create_object_from_card(&card, alice, Zone::Hand);
+        game.object_mut(source_id)
+            .expect("source card should exist")
+            .abilities
+            .push(Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: TotalCost::free(),
+                    effects: vec![Effect::gain_life(1)],
+                    choices: vec![],
+                    timing: ActivationTiming::AnyTime,
+                    additional_restrictions: vec![],
+                }),
+                functional_zones: vec![Zone::Hand],
+                text: Some("Hand ability".to_string()),
+            });
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            actions.iter().any(
+                |a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == source_id)
+            ),
+            "hand-zone activated ability should be discoverable as a legal action"
         );
     }
 

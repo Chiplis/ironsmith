@@ -546,7 +546,9 @@ mod tests {
     #[test]
     fn generated_definition_support_accepts_parsed_unearth() {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Unearth Probe")
-            .parse_text("Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 2/1\nUnearth {2}{B}")
+            .parse_text(
+                "Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 2/1\nUnearth {2}{B}",
+            )
             .expect("unearth parse should succeed");
 
         assert!(generated_definition_is_supported(&definition));
@@ -632,6 +634,21 @@ mod tests {
         let definition = CardDefinitionBuilder::new(CardId::new(), "A-Dokuchi Silencer")
             .parse_text(text)
             .expect("a-dokuchi silencer parse should succeed");
+
+        assert!(generated_definition_is_supported(&definition));
+
+        let debug = format!("{definition:#?}").to_ascii_lowercase();
+        assert!(!debug.contains("unimplemented"));
+    }
+
+    #[test]
+    fn generated_definition_support_accepts_deepcavern_imp() {
+        let text = "Mana cost: {2}{B}\nType: Creature — Imp Rebel\nPower/Toughness: 2/2\nFlying, haste\nEcho—Discard a card. (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)";
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Deepcavern Imp")
+            .parse_text(text)
+            .expect("deepcavern imp parse should succeed");
+
+        assert!(generated_definition_is_supported(&definition));
 
         let debug = format!("{definition:#?}").to_ascii_lowercase();
         assert!(!debug.contains("unimplemented"));

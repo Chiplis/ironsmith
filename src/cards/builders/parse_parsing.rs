@@ -1289,7 +1289,10 @@ fn alternative_cast_parts_from_total_cost(
         }
     }
 
-    (mana_cost, normalize_alternative_cast_cost_effects(cost_effects))
+    (
+        mana_cost,
+        normalize_alternative_cast_cost_effects(cost_effects),
+    )
 }
 
 fn normalize_alternative_cast_cost_effects(cost_effects: Vec<Effect>) -> Vec<Effect> {
@@ -1299,10 +1302,10 @@ fn normalize_alternative_cast_cost_effects(cost_effects: Vec<Effect>) -> Vec<Eff
     let mut idx = 0usize;
     while idx < cost_effects.len() {
         if idx + 1 < cost_effects.len()
-            && let Some(choose) = cost_effects[idx]
-                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(sacrifice) = cost_effects[idx + 1]
-                .downcast_ref::<crate::effects::SacrificeEffect>()
+            && let Some(choose) =
+                cost_effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(sacrifice) =
+                cost_effects[idx + 1].downcast_ref::<crate::effects::SacrificeEffect>()
             && sacrifice.player == PlayerFilter::You
         {
             let references_chosen = sacrifice.filter.tagged_constraints.len() == 1
@@ -1310,7 +1313,10 @@ fn normalize_alternative_cast_cost_effects(cost_effects: Vec<Effect>) -> Vec<Eff
                 && sacrifice.filter.tagged_constraints[0].relation
                     == TaggedOpbjectRelation::IsTaggedObject;
             if references_chosen {
-                out.push(Effect::sacrifice(choose.filter.clone(), sacrifice.count.clone()));
+                out.push(Effect::sacrifice(
+                    choose.filter.clone(),
+                    sacrifice.count.clone(),
+                ));
                 idx += 2;
                 continue;
             }
@@ -1956,7 +1962,8 @@ fn parse_flashback_line(
     }
 
     let (total_cost, mut cost_effects) = parse_activation_cost(&tokens[cost_start..])?;
-    let (mana_cost, mut extracted_cost_effects) = alternative_cast_parts_from_total_cost(&total_cost);
+    let (mana_cost, mut extracted_cost_effects) =
+        alternative_cast_parts_from_total_cost(&total_cost);
     cost_effects.append(&mut extracted_cost_effects);
     // Keep cost effects stable for deterministic snapshots.
     if !cost_effects.is_empty() {
@@ -2118,12 +2125,14 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
             ])))
         }),
         KeywordAction::Wither => Some(StaticAbility::wither()),
-        KeywordAction::Afterlife(amount) => {
-            Some(StaticAbility::custom("afterlife", format!("afterlife {amount}")))
-        }
-        KeywordAction::Fabricate(amount) => {
-            Some(StaticAbility::custom("fabricate", format!("fabricate {amount}")))
-        }
+        KeywordAction::Afterlife(amount) => Some(StaticAbility::custom(
+            "afterlife",
+            format!("afterlife {amount}"),
+        )),
+        KeywordAction::Fabricate(amount) => Some(StaticAbility::custom(
+            "fabricate",
+            format!("fabricate {amount}"),
+        )),
         KeywordAction::Infect => Some(StaticAbility::infect()),
         KeywordAction::Undying => Some(StaticAbility::custom("undying", "undying".to_string())),
         KeywordAction::Persist => Some(StaticAbility::custom("persist", "persist".to_string())),
@@ -2149,15 +2158,17 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
         KeywordAction::Renown(amount) => {
             Some(StaticAbility::custom("renown", format!("renown {amount}")))
         }
-        KeywordAction::Modular(amount) => {
-            Some(StaticAbility::custom("modular", format!("modular {amount}")))
-        }
+        KeywordAction::Modular(amount) => Some(StaticAbility::custom(
+            "modular",
+            format!("modular {amount}"),
+        )),
         KeywordAction::Graft(amount) => {
             Some(StaticAbility::custom("graft", format!("graft {amount}")))
         }
-        KeywordAction::Soulshift(amount) => {
-            Some(StaticAbility::custom("soulshift", format!("soulshift {amount}")))
-        }
+        KeywordAction::Soulshift(amount) => Some(StaticAbility::custom(
+            "soulshift",
+            format!("soulshift {amount}"),
+        )),
         KeywordAction::Outlast(cost) => Some(StaticAbility::custom(
             "outlast",
             format!("outlast {}", cost.to_oracle()),
@@ -2166,6 +2177,11 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
             "unearth",
             format!("unearth {}", cost.to_oracle()),
         )),
+        KeywordAction::Ninjutsu(cost) => Some(StaticAbility::custom(
+            "ninjutsu",
+            format!("ninjutsu {}", cost.to_oracle()),
+        )),
+        KeywordAction::Echo { .. } => None,
         KeywordAction::Extort => Some(StaticAbility::custom("extort", "extort".to_string())),
         KeywordAction::Partner => Some(StaticAbility::partner()),
         KeywordAction::Assist => Some(StaticAbility::assist()),
@@ -2175,9 +2191,10 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
         KeywordAction::Fading(amount) => {
             Some(StaticAbility::custom("fading", format!("fading {amount}")))
         }
-        KeywordAction::Vanishing(amount) => {
-            Some(StaticAbility::custom("vanishing", format!("vanishing {amount}")))
-        }
+        KeywordAction::Vanishing(amount) => Some(StaticAbility::custom(
+            "vanishing",
+            format!("vanishing {amount}"),
+        )),
         KeywordAction::Fear => Some(StaticAbility::fear()),
         KeywordAction::Intimidate => Some(StaticAbility::intimidate()),
         KeywordAction::Shadow => Some(StaticAbility::shadow()),
@@ -4931,7 +4948,9 @@ fn parse_anthem_prefix_condition(
             .or_else(|| find_source_reference_start(&tokens[..get_idx]))
             .unwrap_or(5);
         return Ok((
-            Some(crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::YourTurn))),
+            Some(crate::ConditionExpr::Not(Box::new(
+                crate::ConditionExpr::YourTurn,
+            ))),
             subject_start,
         ));
     }
@@ -6318,7 +6337,8 @@ fn parse_attached_has_keywords_and_triggered_ability_line(
                     trigger: compile_trigger_spec(trigger),
                     effects: compiled_effects,
                     choices,
-                    intervening_if: max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+                    intervening_if: max_triggers_per_turn
+                        .map(crate::ConditionExpr::MaxTimesEachTurn),
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(words(&trigger_tokens).join(" ")),
@@ -7305,7 +7325,9 @@ fn parse_copy_activated_abilities_line(
             })
             .and_then(parse_counter_type_word)
         {
-            condition = Some(crate::ConditionExpr::OwnsCardExiledWithCounter(counter_word));
+            condition = Some(crate::ConditionExpr::OwnsCardExiledWithCounter(
+                counter_word,
+            ));
         }
     }
 
@@ -8412,7 +8434,11 @@ fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTex
     let mut full_cost_effects = cost_effects;
     // Cycling is an activated ability from hand whose cost includes discarding this card.
     // Model this as a source-zone-change cost so the correct zone-change events fire.
-    full_cost_effects.push(Effect::move_to_zone(ChooseSpec::Source, Zone::Graveyard, false));
+    full_cost_effects.push(Effect::move_to_zone(
+        ChooseSpec::Source,
+        Zone::Graveyard,
+        false,
+    ));
     // Emit a keyword-action event so "When you cycle this card" triggers can observe it.
     full_cost_effects.push(Effect::emit_keyword_action(
         crate::events::KeywordActionKind::Cycle,
@@ -9176,15 +9202,12 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
                 idx += 1;
             }
 
-            let subtype_word = segment
-                .get(idx)
-                .and_then(Token::as_word)
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "missing subtype in behold cost segment (clause: '{}')",
-                        segment_words.join(" ")
-                    ))
-                })?;
+            let subtype_word = segment.get(idx).and_then(Token::as_word).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing subtype in behold cost segment (clause: '{}')",
+                    segment_words.join(" ")
+                ))
+            })?;
             let subtype = parse_subtype_word(subtype_word)
                 .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word))
                 .ok_or_else(|| {
@@ -9342,7 +9365,8 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
                 other = true;
                 idx += 1;
             }
-            if matches!(count_value, Value::Fixed(1)) && segment.get(idx).is_some_and(|token| token.is_word("x"))
+            if matches!(count_value, Value::Fixed(1))
+                && segment.get(idx).is_some_and(|token| token.is_word("x"))
             {
                 count_value = Value::X;
                 choose_count = ChoiceCount::dynamic_x();
@@ -10447,12 +10471,10 @@ fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility>, CardText
                 "this creature can't attack or block alone".to_string(),
             )
         }
-        ["this", "token", "cant", "attack", "or", "block", "alone"] => {
-            StaticAbility::restriction(
-                crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
-                "this token can't attack or block alone".to_string(),
-            )
-        }
+        ["this", "token", "cant", "attack", "or", "block", "alone"] => StaticAbility::restriction(
+            crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
+            "this token can't attack or block alone".to_string(),
+        ),
         ["this", "cant", "attack", "or", "block", "alone"] => StaticAbility::restriction(
             crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
             "this can't attack or block alone".to_string(),
@@ -10890,8 +10912,8 @@ fn marker_keyword_display(words: &[&str]) -> Option<String> {
     let title = keyword_title(keyword);
 
     match keyword {
-        "soulshift" | "adapt" | "bolster" | "devour" | "modular"
-        | "vanishing" | "backup" | "casualty" | "saddle" | "fading" | "graft" | "tribute" => {
+        "soulshift" | "adapt" | "bolster" | "devour" | "modular" | "vanishing" | "backup"
+        | "casualty" | "saddle" | "fading" | "graft" | "tribute" => {
             let amount = words.get(1)?.parse::<u32>().ok()?;
             Some(format!("{title} {amount}"))
         }
@@ -11159,6 +11181,85 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
             return Some(KeywordAction::Unearth(cost));
         }
         return Some(KeywordAction::Marker("unearth"));
+    }
+
+    if words.first().copied() == Some("ninjutsu") {
+        if let Some((cost_text, consumed)) = leading_mana_symbols_to_oracle(&words[1..])
+            && consumed == words.len().saturating_sub(1)
+            && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
+        {
+            return Some(KeywordAction::Ninjutsu(cost));
+        }
+        if words.len() == 1 {
+            return Some(KeywordAction::Marker("ninjutsu"));
+        }
+        return None;
+    }
+
+    if words.first().copied() == Some("echo") {
+        if let Some((cost_text, consumed)) = leading_mana_symbols_to_oracle(&words[1..])
+            && consumed > 0
+            && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
+        {
+            return Some(KeywordAction::Echo {
+                mana_cost: Some(cost),
+                cost_effects: Vec::new(),
+                text: format!("Echo {cost_text}"),
+            });
+        }
+
+        let reminder_start = tokens
+            .iter()
+            .position(|token| matches!(token, Token::Period(_)))
+            .or_else(|| {
+                tokens
+                    .iter()
+                    .enumerate()
+                    .skip(1)
+                    .find_map(|(idx, token)| token.is_word("at").then_some(idx))
+            })
+            .unwrap_or(tokens.len());
+        let cost_tokens = trim_commas(&tokens[1..reminder_start]).to_vec();
+
+        if !cost_tokens.is_empty()
+            && let Ok((total_cost, _)) = parse_activation_cost(&cost_tokens)
+        {
+            let (mana_cost, cost_effects) = alternative_cast_parts_from_total_cost(&total_cost);
+            let text = if let Some(cost) = mana_cost.as_ref()
+                && cost_effects.is_empty()
+            {
+                format!("Echo {}", cost.to_oracle())
+            } else {
+                let payload = cost_tokens
+                    .iter()
+                    .filter_map(Token::as_word)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if payload.is_empty() {
+                    "Echo".to_string()
+                } else {
+                    let mut chars = payload.chars();
+                    let first = chars.next().expect("payload is not empty");
+                    let mut normalized = String::new();
+                    normalized.push(first.to_ascii_uppercase());
+                    normalized.push_str(chars.as_str());
+                    format!("Echo—{normalized}")
+                }
+            };
+            return Some(KeywordAction::Echo {
+                mana_cost,
+                cost_effects,
+                text,
+            });
+        }
+
+        if words.len() == 1 {
+            return Some(KeywordAction::Marker("echo"));
+        }
+        if let Some(display) = marker_keyword_display(&words) {
+            return Some(KeywordAction::MarkerText(display));
+        }
+        return Some(KeywordAction::Marker("echo"));
     }
 
     if words.first().copied() == Some("modular") {
@@ -11643,8 +11744,9 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
         ] {
             if trigger_words.ends_with(suffix) {
                 let trimmed_word_len = trigger_words.len().saturating_sub(suffix.len());
-                let trimmed_token_len = token_index_for_word_index(trigger_tokens, trimmed_word_len)
-                    .unwrap_or(trigger_tokens.len());
+                let trimmed_token_len =
+                    token_index_for_word_index(trigger_tokens, trimmed_word_len)
+                        .unwrap_or(trigger_tokens.len());
                 trigger_tokens = &trigger_tokens[..trimmed_token_len];
                 max_triggers_from_trigger_clause = Some(1u32);
                 break;
@@ -11660,7 +11762,8 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
         let mut max_triggers_per_turn =
             parse_triggered_times_each_turn_sentence(&split_on_period(&effects_tokens));
         if let Some(max) = max_triggers_from_trigger_clause {
-            max_triggers_per_turn = Some(max_triggers_per_turn.map_or(max, |existing| existing.min(max)));
+            max_triggers_per_turn =
+                Some(max_triggers_per_turn.map_or(max, |existing| existing.min(max)));
         }
         return Ok(LineAst::Triggered {
             trigger,
@@ -11684,8 +11787,9 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
         ] {
             if trigger_words.ends_with(suffix) {
                 let trimmed_word_len = trigger_words.len().saturating_sub(suffix.len());
-                let trimmed_token_len = token_index_for_word_index(trigger_tokens, trimmed_word_len)
-                    .unwrap_or(trigger_tokens.len());
+                let trimmed_token_len =
+                    token_index_for_word_index(trigger_tokens, trimmed_word_len)
+                        .unwrap_or(trigger_tokens.len());
                 trigger_tokens = &trigger_tokens[..trimmed_token_len];
                 max_triggers_from_trigger_clause = Some(1u32);
                 break;
@@ -12054,7 +12158,16 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
 
     for tail in [
         ["is", "put", "into", "your", "graveyard", "from", "anywhere"].as_slice(),
-        ["are", "put", "into", "your", "graveyard", "from", "anywhere"].as_slice(),
+        [
+            "are",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "from",
+            "anywhere",
+        ]
+        .as_slice(),
         ["is", "put", "into", "your", "graveyard"].as_slice(),
         ["are", "put", "into", "your", "graveyard"].as_slice(),
     ] {
@@ -12075,8 +12188,28 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
     }
 
     for tail in [
-        ["is", "put", "into", "a", "graveyard", "from", "the", "battlefield"].as_slice(),
-        ["are", "put", "into", "a", "graveyard", "from", "the", "battlefield"].as_slice(),
+        [
+            "is",
+            "put",
+            "into",
+            "a",
+            "graveyard",
+            "from",
+            "the",
+            "battlefield",
+        ]
+        .as_slice(),
+        [
+            "are",
+            "put",
+            "into",
+            "a",
+            "graveyard",
+            "from",
+            "the",
+            "battlefield",
+        ]
+        .as_slice(),
     ] {
         if words.ends_with(tail) {
             let subject_word_len = words.len().saturating_sub(tail.len());
@@ -12101,7 +12234,10 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
     for (tail, during_your_turn) in [
         (["leave", "your", "graveyard"].as_slice(), false),
         (["leaves", "your", "graveyard"].as_slice(), false),
-        (["leave", "your", "graveyard", "during", "your", "turn"].as_slice(), true),
+        (
+            ["leave", "your", "graveyard", "during", "your", "turn"].as_slice(),
+            true,
+        ),
         (
             ["leaves", "your", "graveyard", "during", "your", "turn"].as_slice(),
             true,
@@ -12141,8 +12277,10 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         let right_tokens = &tokens[or_idx + 1..];
         if !left_tokens.is_empty()
             && !right_tokens.is_empty()
-            && let (Ok(left), Ok(right)) =
-                (parse_trigger_clause(left_tokens), parse_trigger_clause(right_tokens))
+            && let (Ok(left), Ok(right)) = (
+                parse_trigger_clause(left_tokens),
+                parse_trigger_clause(right_tokens),
+            )
             && !matches!(left, TriggerSpec::Custom(_))
             && !matches!(right, TriggerSpec::Custom(_))
         {
@@ -12158,8 +12296,10 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         let right_tokens = strip_leading_trigger_intro(&tokens[and_idx + 1..]);
         if !left_tokens.is_empty()
             && !right_tokens.is_empty()
-            && let (Ok(left), Ok(right)) =
-                (parse_trigger_clause(left_tokens), parse_trigger_clause(right_tokens))
+            && let (Ok(left), Ok(right)) = (
+                parse_trigger_clause(left_tokens),
+                parse_trigger_clause(right_tokens),
+            )
             && !matches!(left, TriggerSpec::Custom(_))
             && !matches!(right, TriggerSpec::Custom(_))
         {
@@ -12461,9 +12601,7 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         let subject = &words[..put_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {
             let tail = &words[put_idx + 1..];
-            let has_name_sticker = tail
-                .windows(2)
-                .any(|window| window == ["name", "sticker"]);
+            let has_name_sticker = tail.windows(2).any(|window| window == ["name", "sticker"]);
             let has_on = tail.contains(&"on");
             if has_name_sticker && has_on {
                 return Ok(TriggerSpec::KeywordAction {
@@ -12977,7 +13115,10 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
     if let Some(counter_word_idx) = words
         .iter()
         .position(|word| *word == "counter" || *word == "counters")
-        && matches!(words.get(counter_word_idx + 1).copied(), Some("is") | Some("are"))
+        && matches!(
+            words.get(counter_word_idx + 1).copied(),
+            Some("is") | Some("are")
+        )
         && words.get(counter_word_idx + 2).copied() == Some("put")
         && matches!(
             words.get(counter_word_idx + 3).copied(),
@@ -12985,20 +13126,20 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         )
     {
         let one_or_more = words.starts_with(&["one", "or", "more"]);
-        let descriptor_token_end = token_index_for_word_index(tokens, counter_word_idx)
-            .unwrap_or(tokens.len());
-        let descriptor_tokens = strip_leading_articles(strip_leading_one_or_more(
-            &tokens[..descriptor_token_end],
-        ));
+        let descriptor_token_end =
+            token_index_for_word_index(tokens, counter_word_idx).unwrap_or(tokens.len());
+        let descriptor_tokens =
+            strip_leading_articles(strip_leading_one_or_more(&tokens[..descriptor_token_end]));
         let counter_type = parse_counter_type_from_tokens(&descriptor_tokens);
 
         let object_word_start = counter_word_idx + 4;
-        let object_token_start = token_index_for_word_index(tokens, object_word_start).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing counter recipient in trigger clause (clause: '{}')",
-                words.join(" ")
-            ))
-        })?;
+        let object_token_start =
+            token_index_for_word_index(tokens, object_word_start).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing counter recipient in trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
         let object_tokens = trim_commas(&tokens[object_token_start..]);
         let object_tokens = strip_leading_articles(&object_tokens);
         if object_tokens.is_empty() {
@@ -13048,8 +13189,8 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         let subject_words = &words[..attack_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
             let with_object_word_start = attack_idx + 2;
-            let with_object_token_start = token_index_for_word_index(tokens, with_object_word_start)
-                .ok_or_else(|| {
+            let with_object_token_start =
+                token_index_for_word_index(tokens, with_object_word_start).ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "missing attacking-object filter in trigger clause (clause: '{}')",
                         words.join(" ")
@@ -13091,7 +13232,10 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
 
     if words.len() >= 2
         && words.last().copied() == Some("alone")
-        && matches!(words.get(words.len() - 2).copied(), Some("attack" | "attacks"))
+        && matches!(
+            words.get(words.len() - 2).copied(),
+            Some("attack" | "attacks")
+        )
     {
         let subject_tokens = if tokens.len() > 2 {
             &tokens[..tokens.len() - 2]
@@ -13115,9 +13259,11 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
             let attacks_token_idx =
                 token_index_for_word_index(tokens, attacks_word_idx).unwrap_or(tokens.len());
             let subject_tokens = &tokens[..attacks_token_idx];
-            let subject_filter = parse_trigger_subject_filter(subject_tokens)?
-                .unwrap_or_else(ObjectFilter::source);
-            return Ok(TriggerSpec::AttacksYouOrPlaneswalkerYouControl(subject_filter));
+            let subject_filter =
+                parse_trigger_subject_filter(subject_tokens)?.unwrap_or_else(ObjectFilter::source);
+            return Ok(TriggerSpec::AttacksYouOrPlaneswalkerYouControl(
+                subject_filter,
+            ));
         }
     }
 
@@ -15400,7 +15546,9 @@ fn rewrite_when_you_do_clause_prefix(tokens: &[Token]) -> Vec<Token> {
         || clause_words.starts_with(&["whenever", "one", "or", "more"]))
         && has_this_way
     {
-        let Some(comma_idx) = tokens.iter().position(|token| matches!(token, Token::Comma(_)))
+        let Some(comma_idx) = tokens
+            .iter()
+            .position(|token| matches!(token, Token::Comma(_)))
         else {
             return tokens.to_vec();
         };
@@ -21883,10 +22031,13 @@ fn parse_simple_ability_modifier_clause(
 
 fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let word_list = words(tokens);
-    let looks_like_can_attack_no_defender =
-        word_list.windows(2).any(|window| window == ["can", "attack"])
-            && word_list.windows(2).any(|window| window == ["as", "though"])
-            && word_list.contains(&"defender");
+    let looks_like_can_attack_no_defender = word_list
+        .windows(2)
+        .any(|window| window == ["can", "attack"])
+        && word_list
+            .windows(2)
+            .any(|window| window == ["as", "though"])
+        && word_list.contains(&"defender");
     if looks_like_can_attack_no_defender {
         return Ok(None);
     }
@@ -26429,14 +26580,14 @@ fn parse_choose_new_targets_clause(tokens: &[Token]) -> Result<Option<EffectAst>
         }));
     }
 
-    let (count, base_tokens, explicit_target) =
-        if tail_words.starts_with(&["any", "number", "of"]) {
-            (Some(ChoiceCount::any_number()), &tail_tokens[3..], false)
-        } else if tail_words.starts_with(&["target"]) {
-            (None, &tail_tokens[1..], true)
-        } else {
-            (None, tail_tokens, false)
-        };
+    let (count, base_tokens, explicit_target) = if tail_words.starts_with(&["any", "number", "of"])
+    {
+        (Some(ChoiceCount::any_number()), &tail_tokens[3..], false)
+    } else if tail_words.starts_with(&["target"]) {
+        (None, &tail_tokens[1..], true)
+    } else {
+        (None, tail_tokens, false)
+    };
 
     let mut filter = parse_stack_retarget_filter(base_tokens)?;
     if base_tokens.iter().any(|token| token.is_word("other")) {
@@ -26488,9 +26639,7 @@ fn parse_change_target_clause(tokens: &[Token]) -> Result<Option<EffectAst>, Car
     parse_change_target_clause_inner(tokens)
 }
 
-fn parse_change_target_clause_inner(
-    tokens: &[Token],
-) -> Result<Option<EffectAst>, CardTextError> {
+fn parse_change_target_clause_inner(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     let (mode, after_of_idx) = if clause_words.starts_with(&["change", "the", "target", "of"]) {
         (RetargetModeAst::All, 4)
@@ -26522,15 +26671,23 @@ fn parse_change_target_clause_inner(
     let mut filter = parse_stack_retarget_filter(&tail_tokens)?;
     let tail_words = words(&tail_tokens);
 
-    if tail_words.windows(4).any(|w| w == ["with", "a", "single", "target"]) {
+    if tail_words
+        .windows(4)
+        .any(|w| w == ["with", "a", "single", "target"])
+    {
         filter = filter.target_count_exact(1);
     }
-    if tail_words.windows(5).any(|w| w == ["targets", "only", "a", "single", "creature"]) {
+    if tail_words
+        .windows(5)
+        .any(|w| w == ["targets", "only", "a", "single", "creature"])
+    {
         filter = filter
             .targeting_only_object(ObjectFilter::creature())
             .target_count_exact(1);
     }
-    if tail_words.windows(4).any(|w| w == ["targets", "only", "this", "creature"])
+    if tail_words
+        .windows(4)
+        .any(|w| w == ["targets", "only", "this", "creature"])
         || tail_words
             .windows(4)
             .any(|w| w == ["targets", "only", "this", "permanent"])
@@ -26539,14 +26696,29 @@ fn parse_change_target_clause_inner(
             .targeting_only_object(ObjectFilter::source())
             .target_count_exact(1);
     }
-    if tail_words.windows(3).any(|w| w == ["targets", "only", "you"]) {
-        filter = filter.targeting_only_player(PlayerFilter::You).target_count_exact(1);
+    if tail_words
+        .windows(3)
+        .any(|w| w == ["targets", "only", "you"])
+    {
+        filter = filter
+            .targeting_only_player(PlayerFilter::You)
+            .target_count_exact(1);
     }
-    if tail_words.windows(4).any(|w| w == ["targets", "only", "a", "player"]) {
-        filter = filter.targeting_only_player(PlayerFilter::Any).target_count_exact(1);
+    if tail_words
+        .windows(4)
+        .any(|w| w == ["targets", "only", "a", "player"])
+    {
+        filter = filter
+            .targeting_only_player(PlayerFilter::Any)
+            .target_count_exact(1);
     }
-    if tail_words.windows(5).any(|w| w == ["if", "that", "target", "is", "you"]) {
-        filter = filter.targeting_only_player(PlayerFilter::You).target_count_exact(1);
+    if tail_words
+        .windows(5)
+        .any(|w| w == ["if", "that", "target", "is", "you"])
+    {
+        filter = filter
+            .targeting_only_player(PlayerFilter::You)
+            .target_count_exact(1);
     }
 
     let target = TargetAst::Object(filter, span_from_tokens(tokens), None);
@@ -26566,7 +26738,9 @@ fn parse_change_target_clause_inner(
     }))
 }
 
-fn parse_unless_pays_clause(tokens: &[Token]) -> Result<(PlayerAst, Vec<ManaSymbol>), CardTextError> {
+fn parse_unless_pays_clause(
+    tokens: &[Token],
+) -> Result<(PlayerAst, Vec<ManaSymbol>), CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "missing unless clause".to_string(),
@@ -26611,8 +26785,12 @@ fn parse_unless_pays_clause(tokens: &[Token]) -> Result<(PlayerAst, Vec<ManaSymb
 
 fn parse_stack_retarget_filter(tokens: &[Token]) -> Result<ObjectFilter, CardTextError> {
     let words = words(tokens);
-    let has_ability = words.iter().any(|word| *word == "ability" || *word == "abilities");
-    let has_spell = words.iter().any(|word| *word == "spell" || *word == "spells");
+    let has_ability = words
+        .iter()
+        .any(|word| *word == "ability" || *word == "abilities");
+    let has_spell = words
+        .iter()
+        .any(|word| *word == "spell" || *word == "spells");
     let has_activated = words.iter().any(|word| *word == "activated");
     let has_instant = words.iter().any(|word| *word == "instant");
     let has_sorcery = words.iter().any(|word| *word == "sorcery");
@@ -35532,15 +35710,23 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             let segment_words = words(&segment_tokens);
             let mut segment_match: Option<(usize, usize)> = None;
             for (len, phrase) in [
-                (6, &["graveyard", "from", "the", "battlefield", "this", "turn"][..]),
+                (
+                    6,
+                    &["graveyard", "from", "the", "battlefield", "this", "turn"][..],
+                ),
                 (5, &["graveyard", "from", "battlefield", "this", "turn"][..]),
                 (
                     6,
                     &["graveyards", "from", "the", "battlefield", "this", "turn"][..],
                 ),
-                (5, &["graveyards", "from", "battlefield", "this", "turn"][..]),
+                (
+                    5,
+                    &["graveyards", "from", "battlefield", "this", "turn"][..],
+                ),
             ] {
-                if let Some(seg_start) = segment_words.windows(len).position(|window| window == phrase)
+                if let Some(seg_start) = segment_words
+                    .windows(len)
+                    .position(|window| window == phrase)
                 {
                     segment_match = Some((seg_start, len));
                     break;
@@ -35670,13 +35856,12 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
                     "turn",
                 ][..],
             ),
-            (
-                5,
-                &["entered", "the", "battlefield", "this", "turn"][..],
-            ),
+            (5, &["entered", "the", "battlefield", "this", "turn"][..]),
             (4, &["entered", "battlefield", "this", "turn"][..]),
         ] {
-            if let Some(seg_start) = segment_words.windows(len).position(|window| window == phrase)
+            if let Some(seg_start) = segment_words
+                .windows(len)
+                .position(|window| window == phrase)
             {
                 segment_match = Some((seg_start, len));
                 break;
@@ -36320,7 +36505,8 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             relation: TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     }
-    if has_lte_mana_value_as_tagged && (references_it_for_mana_value || has_equal_or_lesser_mana_value)
+    if has_lte_mana_value_as_tagged
+        && (references_it_for_mana_value || has_equal_or_lesser_mana_value)
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),

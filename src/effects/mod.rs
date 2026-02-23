@@ -101,15 +101,15 @@ pub use mana::{
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeSaddledUntilEotEffect, CrewCostEffect,
-    EarthbendEffect, EvolveEffect, GrantObjectAbilityEffect, MonstrosityEffect, RegenerateEffect,
-    RenownEffect, SaddleCostEffect, TapEffect, TrainingEffect, TransformEffect, UnearthEffect,
-    UntapEffect,
+    EarthbendEffect, EvolveEffect, GrantObjectAbilityEffect, MonstrosityEffect, NinjutsuCostEffect,
+    NinjutsuEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, TapEffect, TrainingEffect,
+    TransformEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
     CascadeEffect, CastSourceEffect, CastTaggedEffect, ControlPlayerEffect, CreateEmblemEffect,
-    EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExperienceCountersEffect,
-    ExtraTurnEffect, GrantEffect, GrantPlayFromGraveyardEffect, LoseTheGameEffect,
-    PayEnergyEffect, PoisonCountersEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
+    EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExperienceCountersEffect, ExtraTurnEffect,
+    GrantEffect, GrantPlayFromGraveyardEffect, LoseTheGameEffect, PayEnergyEffect,
+    PoisonCountersEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, WinTheGameEffect,
 };
 pub use replacement::{ApplyReplacementEffect, ReplacementApplyMode};

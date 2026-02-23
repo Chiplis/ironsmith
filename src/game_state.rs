@@ -1080,6 +1080,13 @@ pub struct GameState {
     /// Cleared at the start of each turn.
     pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
 
+    /// Attack targets captured while paying Ninjutsu costs, keyed by the
+    /// source card object ID in hand.
+    ///
+    /// Multiple entries per source are stored in activation order so nested
+    /// activations can resolve LIFO.
+    pub ninjutsu_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
+
     /// Damage dealt to each player by creatures this turn.
     /// Used for trap conditions like Summoning Trap.
     pub creature_damage_to_players_this_turn: HashMap<PlayerId, u32>,
@@ -1236,6 +1243,7 @@ impl GameState {
             crewed_this_turn: HashMap::new(),
             saddled_until_end_of_turn: HashSet::new(),
             saddled_this_turn: HashMap::new(),
+            ninjutsu_attack_targets: HashMap::new(),
             creature_damage_to_players_this_turn: HashMap::new(),
             damage_to_players_this_turn: HashMap::new(),
             creatures_damaged_by_this_turn: HashMap::new(),
@@ -2676,6 +2684,7 @@ impl GameState {
         self.crewed_this_turn.clear();
         self.saddled_until_end_of_turn.clear();
         self.saddled_this_turn.clear();
+        self.ninjutsu_attack_targets.clear();
         self.creature_damage_to_players_this_turn.clear();
         self.damage_to_players_this_turn.clear();
         self.creatures_damaged_by_this_turn.clear();
@@ -4000,9 +4009,11 @@ mod tests {
             .expect("split-second spell should exist")
             .abilities
             .push(
-                crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::split_second())
-                    .in_zones(vec![Zone::Stack])
-                    .with_text("Split second"),
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::split_second(),
+                )
+                .in_zones(vec![Zone::Stack])
+                .with_text("Split second"),
             );
 
         game.update_cant_effects();
@@ -4039,8 +4050,10 @@ mod tests {
             .expect("unleash creature should exist")
             .abilities
             .push(
-                crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::unleash())
-                    .with_text("Unleash"),
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::unleash(),
+                )
+                .with_text("Unleash"),
             );
 
         game.update_cant_effects();

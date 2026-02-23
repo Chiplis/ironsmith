@@ -41,7 +41,7 @@ pub enum CardTextError {
     ParseError(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 enum KeywordAction {
     Flying,
     Menace,
@@ -90,6 +90,13 @@ enum KeywordAction {
     Soulshift(u32),
     Outlast(ManaCost),
     Unearth(ManaCost),
+    Ninjutsu(ManaCost),
+    Echo {
+        mana_cost: Option<ManaCost>,
+        cost_effects: Vec<Effect>,
+        text: String,
+    },
+    Haunt,
     Extort,
     Partner,
     Assist,
@@ -284,6 +291,7 @@ enum TriggerSpec {
         filter: ObjectFilter,
     },
     Dies(ObjectFilter),
+    HauntedCreatureDies,
     PutIntoGraveyard(ObjectFilter),
     CardsLeaveYourGraveyard {
         filter: ObjectFilter,
@@ -1404,6 +1412,13 @@ impl CardDefinitionBuilder {
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
             KeywordAction::Outlast(cost) => self.outlast(cost),
             KeywordAction::Unearth(cost) => self.unearth(cost),
+            KeywordAction::Ninjutsu(cost) => self.ninjutsu(cost),
+            KeywordAction::Echo {
+                mana_cost,
+                cost_effects,
+                text,
+            } => self.echo(mana_cost, cost_effects, text),
+            KeywordAction::Haunt => self.haunt(),
             KeywordAction::Extort => self.extort(),
             KeywordAction::Partner => self.partner(),
             KeywordAction::Assist => self.assist(),
@@ -2162,6 +2177,124 @@ impl CardDefinitionBuilder {
             }),
             functional_zones: vec![Zone::Graveyard],
             text: Some(text),
+        })
+    }
+
+    /// Add ninjutsu with a mana cost.
+    ///
+    /// Ninjutsu means "{cost}, Return an unblocked attacker you control to hand:
+    /// Put this card onto the battlefield from your hand tapped and attacking."
+    pub fn ninjutsu(self, cost: ManaCost) -> Self {
+        let text = format!("Ninjutsu {}", cost.to_oracle());
+        let total_cost = crate::ability::merge_cost_effects(
+            TotalCost::mana(cost),
+            vec![Effect::new(crate::effects::NinjutsuCostEffect::new())],
+        );
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: vec![Effect::new(crate::effects::NinjutsuEffect::new())],
+                choices: vec![],
+                timing: ActivationTiming::DuringCombat,
+                additional_restrictions: Vec::new(),
+            }),
+            functional_zones: vec![Zone::Hand],
+            text: Some(text),
+        })
+    }
+
+    /// Add echo with a parsed payment cost.
+    ///
+    /// Echo means "At the beginning of your upkeep, if this came under your control
+    /// since the beginning of your last upkeep, sacrifice it unless you pay its echo cost."
+    ///
+    /// Runtime model:
+    /// - This permanent enters with an internal Echo counter.
+    /// - At the beginning of each upkeep, remove one Echo counter from this permanent.
+    /// - If a counter was removed this way, pay the echo cost or sacrifice this permanent.
+    pub fn echo(
+        self,
+        mana_cost: Option<ManaCost>,
+        mut cost_effects: Vec<Effect>,
+        text: String,
+    ) -> Self {
+        let mut payment_effects = Vec::new();
+        if let Some(cost) = mana_cost {
+            payment_effects.push(Effect::new(crate::effects::PayManaEffect::new(
+                cost,
+                ChooseSpec::SourceController,
+            )));
+        }
+        payment_effects.append(&mut cost_effects);
+
+        self.with_ability(
+            Ability::static_ability(StaticAbility::enters_with_counters(CounterType::Echo, 1))
+                .with_text(&text),
+        )
+        .with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
+                effects: vec![
+                    Effect::remove_counters(CounterType::Echo, 1, ChooseSpec::Source),
+                    Effect::if_then(
+                        EffectId(0),
+                        EffectPredicate::Happened,
+                        vec![Effect::unless_action(
+                            vec![Effect::sacrifice_source()],
+                            payment_effects,
+                            PlayerFilter::You,
+                        )],
+                    ),
+                ],
+                choices: vec![],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        })
+    }
+
+    /// Add haunt.
+    ///
+    /// Creature haunt reminder: "When this creature dies, exile it haunting target creature."
+    /// Spell haunt reminder: "When this spell card is put into a graveyard after resolving,
+    /// exile it haunting target creature."
+    pub fn haunt(self) -> Self {
+        let trigger = if self
+            .card_builder
+            .card_types_ref()
+            .contains(&CardType::Creature)
+        {
+            Trigger::this_dies()
+        } else {
+            Trigger::new(
+                crate::triggers::ZoneChangeTrigger::new()
+                    .from(Zone::Stack)
+                    .to(Zone::Graveyard)
+                    .this(),
+            )
+        };
+
+        let functional_zones = if self
+            .card_builder
+            .card_types_ref()
+            .contains(&CardType::Creature)
+        {
+            vec![Zone::Battlefield]
+        } else {
+            vec![Zone::Graveyard]
+        };
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger,
+                effects: vec![Effect::new(crate::effects::HauntSourceEffect::new())],
+                choices: vec![ChooseSpec::target(ChooseSpec::creature())],
+                intervening_if: None,
+            }),
+            functional_zones,
+            text: Some("Haunt".to_string()),
         })
     }
 

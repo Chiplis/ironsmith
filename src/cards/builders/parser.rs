@@ -837,6 +837,8 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Soulshift(amount) => format!("Soulshift {amount}"),
         KeywordAction::Outlast(cost) => format!("Outlast {}", cost.to_oracle()),
         KeywordAction::Unearth(cost) => format!("Unearth {}", cost.to_oracle()),
+        KeywordAction::Ninjutsu(cost) => format!("Ninjutsu {}", cost.to_oracle()),
+        KeywordAction::Echo { text, .. } => text.clone(),
         KeywordAction::Extort => "Extort".to_string(),
         KeywordAction::Partner => "Partner".to_string(),
         KeywordAction::Assist => "Assist".to_string(),
