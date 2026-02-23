@@ -93,6 +93,30 @@ impl EffectExecutor for UnlessActionEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
+
+    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
+        self.effects
+            .iter()
+            .find_map(|effect| effect.0.get_target_spec())
+    }
+
+    fn target_description(&self) -> &'static str {
+        for effect in &self.effects {
+            if effect.0.get_target_spec().is_some() {
+                return effect.0.target_description();
+            }
+        }
+        "target"
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        for effect in &self.effects {
+            if effect.0.get_target_spec().is_some() {
+                return effect.0.get_target_count();
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]
@@ -104,6 +128,7 @@ mod tests {
     use crate::effects::{ChooseObjectsEffect, SacrificeEffect};
     use crate::filter::ObjectFilter;
     use crate::ids::{CardId, PlayerId};
+    use crate::target::ChooseSpec;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -217,5 +242,17 @@ mod tests {
 
         assert_eq!(result.result, EffectResult::Count(2));
         assert_eq!(game.player(alice).expect("alice").life, initial_life + 2);
+    }
+
+    #[test]
+    fn unless_action_forwards_main_target_spec() {
+        let effect = UnlessActionEffect::new(
+            vec![Effect::counter(ChooseSpec::target_spell())],
+            vec![Effect::gain_life(1)],
+            PlayerFilter::You,
+        );
+
+        assert!(effect.get_target_spec().is_some());
+        assert_eq!(effect.target_description(), "spell to counter");
     }
 }

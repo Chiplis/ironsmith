@@ -120,13 +120,37 @@ impl EffectExecutor for MayEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
+
+    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
+        self.effects
+            .iter()
+            .find_map(|effect| effect.0.get_target_spec())
+    }
+
+    fn target_description(&self) -> &'static str {
+        for effect in &self.effects {
+            if effect.0.get_target_spec().is_some() {
+                return effect.0.target_description();
+            }
+        }
+        "target"
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        for effect in &self.effects {
+            if effect.0.get_target_spec().is_some() {
+                return effect.0.get_target_count();
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ids::PlayerId;
-    use crate::target::PlayerFilter;
+    use crate::target::{ChooseSpec, PlayerFilter};
 
     fn setup_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
@@ -186,5 +210,13 @@ mod tests {
         let effect =
             MayEffect::new_for_player(vec![Effect::draw(1)], PlayerFilter::target_player());
         assert!(matches!(effect.decider, Some(PlayerFilter::Target(_))));
+    }
+
+    #[test]
+    fn may_forwards_inner_target_spec() {
+        let effect = MayEffect::new(vec![Effect::counter(ChooseSpec::target_spell())]);
+
+        assert!(effect.get_target_spec().is_some());
+        assert_eq!(effect.target_description(), "spell to counter");
     }
 }

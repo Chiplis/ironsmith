@@ -9155,6 +9155,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_spell_has_legal_targets_with_may_wrapper_needs_target() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let effects = vec![Effect::may(vec![Effect::counter(ChooseSpec::spell())])];
+
+        let has_targets = spell_has_legal_targets(&game, &effects, alice, None);
+        assert!(
+            !has_targets,
+            "may-wrapped targeted effects must still require legal targets"
+        );
+    }
+
+    #[test]
+    fn test_spell_has_legal_targets_with_unless_action_wrapper_needs_target() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let effects = vec![Effect::unless_action(
+            vec![Effect::counter(ChooseSpec::spell())],
+            vec![Effect::gain_life(1)],
+            crate::target::PlayerFilter::You,
+        )];
+
+        let has_targets = spell_has_legal_targets(&game, &effects, alice, None);
+        assert!(
+            !has_targets,
+            "unless-action wrapped targeted effects must still require legal targets"
+        );
+    }
+
+    #[test]
+    fn test_spell_has_legal_targets_with_sequence_wrapper_needs_target() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let effects = vec![Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::gain_life(1),
+            Effect::counter(ChooseSpec::spell()),
+        ]))];
+
+        let has_targets = spell_has_legal_targets(&game, &effects, alice, None);
+        assert!(
+            !has_targets,
+            "sequence-wrapped targeted effects must still require legal targets"
+        );
+    }
+
     fn create_creature(
         game: &mut GameState,
         name: &str,
