@@ -96,7 +96,15 @@ enum KeywordAction {
         cost_effects: Vec<Effect>,
         text: String,
     },
+    Casualty(u32),
+    Conspire,
+    Devour(u32),
+    Ravenous,
+    Ascend,
     Haunt,
+    Provoke,
+    Undaunted,
+    Enlist,
     Extort,
     Partner,
     Assist,
@@ -1418,7 +1426,15 @@ impl CardDefinitionBuilder {
                 cost_effects,
                 text,
             } => self.echo(mana_cost, cost_effects, text),
+            KeywordAction::Casualty(power) => self.casualty(power),
+            KeywordAction::Conspire => self.conspire(),
+            KeywordAction::Devour(multiplier) => self.devour(multiplier),
+            KeywordAction::Ravenous => self.ravenous(),
+            KeywordAction::Ascend => self.ascend(),
             KeywordAction::Haunt => self.haunt(),
+            KeywordAction::Provoke => self.provoke(),
+            KeywordAction::Undaunted => self.undaunted(),
+            KeywordAction::Enlist => self.enlist(),
             KeywordAction::Extort => self.extort(),
             KeywordAction::Partner => self.partner(),
             KeywordAction::Assist => self.assist(),
@@ -2289,13 +2305,206 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger,
-                effects: vec![Effect::new(crate::effects::HauntSourceEffect::new())],
+                effects: vec![Effect::exile(ChooseSpec::Source)],
                 choices: vec![ChooseSpec::target(ChooseSpec::creature())],
                 intervening_if: None,
             }),
             functional_zones,
             text: Some("Haunt".to_string()),
         })
+    }
+
+    /// Add provoke.
+    ///
+    /// Provoke means "Whenever this creature attacks, you may have target creature defending
+    /// player controls untap and block it if able."
+    pub fn provoke(self) -> Self {
+        let target_spec = ChooseSpec::Target(Box::new(ChooseSpec::Object(
+            ObjectFilter::creature().controlled_by(PlayerFilter::Defending),
+        )));
+        let untap = Effect::new(crate::effects::UntapEffect::with_spec(target_spec.clone()));
+        let must_block = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+            target_spec.clone(),
+            crate::continuous::Modification::AddAbility(StaticAbility::must_block()),
+            Until::EndOfCombat,
+        ));
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_attacks(),
+                effects: vec![untap, must_block],
+                choices: vec![target_spec],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: Some("Provoke".to_string()),
+        })
+    }
+
+    /// Add casualty N.
+    ///
+    /// Casualty means "As you cast this spell, you may sacrifice a creature with power N
+    /// or greater. When you do, copy this spell and you may choose new targets for the copy."
+    pub fn casualty(self, power: u32) -> Self {
+        use crate::effect::EffectId;
+        use crate::filter::Comparison;
+        let text = format!("Casualty {power}");
+        let mut creature_filter = ObjectFilter::creature().you_control();
+        creature_filter.power = Some(Comparison::GreaterThanOrEqual(power as i32));
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: vec![
+                    Effect::may(vec![
+                        Effect::sacrifice(creature_filter, 1),
+                        Effect::with_id(
+                            0,
+                            Effect::copy_spell(ChooseSpec::Source),
+                        ),
+                        Effect::may_choose_new_targets(EffectId(0)),
+                    ]),
+                ],
+                choices: vec![],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Stack],
+            text: Some(text),
+        })
+    }
+
+    /// Add conspire.
+    ///
+    /// Conspire means "As you cast this spell, you may tap two untapped creatures you control
+    /// that share a color with it. When you do, copy it and you may choose new targets for
+    /// the copy."
+    pub fn conspire(self) -> Self {
+        use crate::effect::EffectId;
+        // Conspire requires tapping two creatures sharing a color with the spell.
+        // We approximate this as tapping two creatures you control (color sharing
+        // requires runtime spell-color awareness which the static filter system
+        // cannot express yet).
+        let mut creature_filter = ObjectFilter::creature().you_control();
+        creature_filter.untapped = true;
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: vec![
+                    Effect::may(vec![
+                        Effect::tap(ChooseSpec::All(creature_filter)),
+                        Effect::with_id(
+                            0,
+                            Effect::copy_spell(ChooseSpec::Source),
+                        ),
+                        Effect::may_choose_new_targets(EffectId(0)),
+                    ]),
+                ],
+                choices: vec![],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Stack],
+            text: Some("Conspire".to_string()),
+        })
+    }
+
+    /// Add devour N.
+    ///
+    /// Devour means "As this creature enters, you may sacrifice any number of creatures.
+    /// This creature enters with N times that many +1/+1 counters on it."
+    pub fn devour(self, multiplier: u32) -> Self {
+        let text = format!("Devour {multiplier}");
+
+        // Devour is an ETB replacement effect. We approximate it as a triggered
+        // ability that lets you sacrifice creatures and then puts counters.
+        // The "any number" sacrifice + counter multiplication is complex;
+        // we model it as a marker with correct text for now, since the sacrifice-
+        // any-number + dynamic counter count needs dedicated effect support.
+        self.with_ability(Ability::static_ability(
+            StaticAbility::custom("devour", text),
+        ))
+    }
+
+    /// Add ravenous.
+    ///
+    /// Ravenous means "This creature enters with X +1/+1 counters on it. When it enters,
+    /// if X is 5 or more, draw a card."
+    pub fn ravenous(self) -> Self {
+        use crate::effect::Value;
+        use crate::object::CounterType;
+
+        self.with_ability(
+            Ability::static_ability(StaticAbility::enters_with_counters_value(
+                CounterType::PlusOnePlusOne,
+                Value::X,
+            ))
+            .with_text("Ravenous"),
+        )
+        .with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_enters_battlefield(),
+                effects: vec![Effect::draw(1)],
+                choices: vec![],
+                intervening_if: Some(Condition::XValueAtLeast(5)),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        })
+    }
+
+    /// Add ascend.
+    ///
+    /// Ascend means "If you control ten or more permanents, you get the city's blessing
+    /// for the rest of the game."
+    pub fn ascend(self) -> Self {
+        // The city's blessing is a designation, not an object. We model ascend
+        // as a static ability that checks permanent count. Full runtime support
+        // for the designation would require a player flag; for now this preserves
+        // the keyword text and structure.
+        self.with_ability(Ability::static_ability(
+            StaticAbility::custom("ascend", "Ascend".to_string()),
+        ))
+    }
+
+    /// Add enlist.
+    ///
+    /// Enlist means "As this creature attacks, you may tap a nonattacking creature you
+    /// control without summoning sickness. When you do, add its power to this creature's
+    /// until end of turn."
+    pub fn enlist(self) -> Self {
+        let tag = "enlisted_creature";
+        let mut filter = ObjectFilter::creature().you_control().other();
+        filter.nonattacking = true;
+        let effects = vec![
+            Effect::tag_triggering_object("enlist_attacker"),
+            Effect::choose_objects(filter, 1, PlayerFilter::You, tag),
+            Effect::tap(ChooseSpec::Tagged(tag.into())),
+            Effect::pump_for_each(
+                ChooseSpec::Tagged("enlist_attacker".into()),
+                1,
+                0,
+                Value::PowerOf(Box::new(ChooseSpec::Tagged(tag.into()))),
+                Until::EndOfTurn,
+            ),
+        ];
+        self.with_ability(
+            Ability::triggered(Trigger::this_attacks(), vec![Effect::may(effects)])
+                .with_text("Enlist"),
+        )
+    }
+
+    /// Add undaunted.
+    ///
+    /// Undaunted means "This spell costs {1} less to cast for each opponent."
+    pub fn undaunted(self) -> Self {
+        let reduction = crate::static_abilities::CostReduction::new(
+            crate::ability::SpellFilter::default(),
+            Value::CountPlayers(PlayerFilter::Opponent),
+        );
+        self.with_ability(
+            Ability::static_ability(StaticAbility::new(reduction))
+                .with_text("Undaunted")
+                .in_zones(vec![Zone::Stack, Zone::Hand]),
+        )
     }
 
     /// Add extort.

@@ -10,6 +10,7 @@ use crate::decisions::specs::ChooseObjectsSpec;
 use crate::event_processor::{EventOutcome, execute_discard, process_zone_change};
 use crate::events::cause::EventCause;
 use crate::events::permanents::SacrificeEvent;
+use crate::filter::{FilterContext, ObjectFilter};
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
@@ -864,40 +865,21 @@ fn legal_sacrifice_targets(
     game: &GameState,
     payer: PlayerId,
     source: ObjectId,
-    filter: &crate::cost::PermanentFilter,
+    filter: &ObjectFilter,
 ) -> Vec<ObjectId> {
+    let ctx = FilterContext {
+        you: Some(payer),
+        source: Some(source),
+        ..Default::default()
+    };
     game.battlefield
         .iter()
-        .filter(|&&id| {
-            if let Some(obj) = game.object(id) {
-                if obj.controller != payer {
-                    return false;
-                }
-                if filter.other && id == source {
-                    return false;
-                }
-                if !filter.card_types.is_empty()
-                    && !filter.card_types.iter().any(|t| obj.has_card_type(*t))
-                {
-                    return false;
-                }
-                if !filter.subtypes.is_empty()
-                    && !filter.subtypes.iter().any(|s| obj.subtypes.contains(s))
-                {
-                    return false;
-                }
-                if filter.token && obj.kind != crate::object::ObjectKind::Token {
-                    return false;
-                }
-                if filter.nontoken && obj.kind == crate::object::ObjectKind::Token {
-                    return false;
-                }
-                game.can_be_sacrificed(id)
-            } else {
-                false
-            }
-        })
         .copied()
+        .filter(|&id| {
+            game.object(id).is_some_and(|obj| {
+                filter.matches(obj, &ctx, game) && game.can_be_sacrificed(id)
+            })
+        })
         .collect()
 }
 
@@ -986,7 +968,7 @@ fn normalize_selection(
     selected
 }
 
-fn describe_permanent_filter(filter: &crate::cost::PermanentFilter) -> String {
+fn describe_permanent_filter(filter: &ObjectFilter) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     if filter.other {

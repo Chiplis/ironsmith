@@ -1,10 +1,10 @@
 //! Sacrifice cost implementations.
 
-use crate::cost::{CostPaymentError, PermanentFilter};
+use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::events::permanents::SacrificeEvent;
+use crate::filter::{FilterContext, ObjectFilter};
 use crate::game_state::GameState;
-use crate::object::ObjectKind;
 use crate::snapshot::ObjectSnapshot;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
@@ -93,33 +93,33 @@ impl CostPayer for SacrificeSelfCost {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SacrificeCost {
     /// Filter for which permanents can be sacrificed.
-    pub filter: PermanentFilter,
+    pub filter: ObjectFilter,
 }
 
 impl SacrificeCost {
     /// Create a new sacrifice cost with the given filter.
-    pub fn new(filter: PermanentFilter) -> Self {
+    pub fn new(filter: ObjectFilter) -> Self {
         Self { filter }
     }
 
     /// Create a cost to sacrifice any creature.
     pub fn creature() -> Self {
-        Self::new(PermanentFilter::creature())
+        Self::new(ObjectFilter::creature().you_control())
     }
 
     /// Create a cost to sacrifice another creature.
     pub fn another_creature() -> Self {
-        Self::new(PermanentFilter::creature().other())
+        Self::new(ObjectFilter::creature().you_control().other())
     }
 
     /// Create a cost to sacrifice any artifact.
     pub fn artifact() -> Self {
-        Self::new(PermanentFilter::artifact())
+        Self::new(ObjectFilter::artifact().you_control())
     }
 
     /// Create a cost to sacrifice any permanent.
     pub fn any() -> Self {
-        Self::new(PermanentFilter::any())
+        Self::new(ObjectFilter::permanent().you_control())
     }
 
     /// Get valid sacrifice targets for this cost.
@@ -129,47 +129,15 @@ impl SacrificeCost {
         player: crate::ids::PlayerId,
         source: crate::ids::ObjectId,
     ) -> Vec<crate::ids::ObjectId> {
+        let ctx = FilterContext {
+            you: Some(player),
+            source: Some(source),
+            ..Default::default()
+        };
         game.battlefield
             .iter()
-            .filter(|&&id| {
-                if let Some(obj) = game.object(id) {
-                    // Must be controlled by player
-                    if obj.controller != player {
-                        return false;
-                    }
-                    // Check "other" requirement
-                    if self.filter.other && id == source {
-                        return false;
-                    }
-                    // Check card type filter
-                    if !self.filter.card_types.is_empty()
-                        && !self.filter.card_types.iter().any(|t| obj.has_card_type(*t))
-                    {
-                        return false;
-                    }
-                    // Check subtype filter
-                    if !self.filter.subtypes.is_empty()
-                        && !self
-                            .filter
-                            .subtypes
-                            .iter()
-                            .any(|s| obj.subtypes.contains(s))
-                    {
-                        return false;
-                    }
-                    // Check token/nontoken
-                    if self.filter.token && obj.kind != ObjectKind::Token {
-                        return false;
-                    }
-                    if self.filter.nontoken && obj.kind == ObjectKind::Token {
-                        return false;
-                    }
-                    true
-                } else {
-                    false
-                }
-            })
             .copied()
+            .filter(|&id| game.object(id).is_some_and(|obj| self.filter.matches(obj, &ctx, game)))
             .collect()
     }
 }
@@ -248,7 +216,7 @@ impl CostPayer for SacrificeCost {
         true
     }
 
-    fn sacrifice_filter(&self) -> Option<&crate::cost::PermanentFilter> {
+    fn sacrifice_filter(&self) -> Option<&ObjectFilter> {
         Some(&self.filter)
     }
 

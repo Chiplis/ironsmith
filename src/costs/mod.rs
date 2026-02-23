@@ -85,7 +85,7 @@ pub use tap::TapCost;
 pub use untap::UntapCost;
 
 use crate::color::ColorSet;
-use crate::cost::PermanentFilter;
+use crate::filter::ObjectFilter;
 use crate::mana::ManaCost;
 use crate::object::CounterType;
 use crate::types::CardType;
@@ -152,7 +152,7 @@ impl Cost {
     }
 
     /// Create a sacrifice another permanent cost.
-    pub fn sacrifice(filter: PermanentFilter) -> Self {
+    pub fn sacrifice(filter: ObjectFilter) -> Self {
         Self::new(SacrificeCost::new(filter))
     }
 
@@ -217,7 +217,7 @@ impl Cost {
     }
 
     /// Create a return another permanent to hand cost.
-    pub fn return_to_hand(filter: PermanentFilter) -> Self {
+    pub fn return_to_hand(filter: ObjectFilter) -> Self {
         Self::new(ReturnToHandCost::new(filter))
     }
 
@@ -298,7 +298,7 @@ impl Cost {
     }
 
     /// Get the sacrifice filter if this is a sacrifice cost.
-    pub fn sacrifice_filter(&self) -> Option<&crate::cost::PermanentFilter> {
+    pub fn sacrifice_filter(&self) -> Option<&ObjectFilter> {
         self.0.sacrifice_filter()
     }
 

@@ -290,7 +290,7 @@ pub trait CostPayer: std::fmt::Debug + Send + Sync {
     }
 
     /// Returns the sacrifice filter if this is a sacrifice cost.
-    fn sacrifice_filter(&self) -> Option<&crate::cost::PermanentFilter> {
+    fn sacrifice_filter(&self) -> Option<&crate::filter::ObjectFilter> {
         None
     }
 

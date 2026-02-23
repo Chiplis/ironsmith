@@ -1545,6 +1545,9 @@ pub enum Condition {
     /// A specific player's graveyard has at least N cards.
     PlayerGraveyardHasCardsAtLeast { player: PlayerId, count: usize },
 
+    /// The X value used to cast/activate is at least N.
+    XValueAtLeast(u32),
+
     /// Custom condition by ID.
     Custom(&'static str),
 

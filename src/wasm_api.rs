@@ -4066,6 +4066,9 @@ fn describe_condition(
             describe_condition(left, tagged_subjects),
             describe_condition(right, tagged_subjects)
         ),
+        crate::effect::Condition::XValueAtLeast(n) => {
+            format!("X is {n} or more")
+        }
     }
 }
 

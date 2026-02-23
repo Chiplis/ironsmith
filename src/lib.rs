@@ -61,7 +61,7 @@ pub use continuous::{
     ContinuousEffect, ContinuousEffectId, ContinuousEffectManager, EffectSourceType, Layer,
     Modification, PtSublayer,
 };
-pub use cost::{OptionalCost, OptionalCostsPaid, PermanentFilter, TotalCost};
+pub use cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 pub use effect::Condition as ConditionExpr;
 pub use effect::{ChoiceCount, Effect, Until, Value};
 pub use effects::{DealDamageEffect, EffectExecutor};

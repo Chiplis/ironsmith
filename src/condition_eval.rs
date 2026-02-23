@@ -62,6 +62,7 @@ pub fn evaluate_condition_external(
 
         Condition::Unmodeled(_) => true,
         Condition::Custom(_) => false,
+        Condition::XValueAtLeast(_) => false, // X not available in static context
 
         Condition::YouControl(filter) => {
             let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
@@ -766,7 +767,8 @@ fn evaluate_condition_simple(
         | Condition::SourceIsAttacking
         | Condition::SourceIsBlocking
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
-        | Condition::Custom(_) => false,
+        | Condition::Custom(_)
+        | Condition::XValueAtLeast(_) => false,
         Condition::Unmodeled(_) => true,
         Condition::TaggedObjectMatches(_, _) => false,
         Condition::PlayerTaggedObjectMatches { .. } => false,
@@ -1382,6 +1384,9 @@ fn evaluate_condition(
             .player(*player)
             .is_some_and(|p| p.graveyard.len() >= *count)),
         Condition::Custom(_) => Ok(false),
+        Condition::XValueAtLeast(min) => {
+            Ok(ctx.x_value.unwrap_or(0) >= *min)
+        }
         Condition::Unmodeled(_) => Ok(true),
         Condition::Not(inner) => {
             let inner_result = evaluate_condition(game, inner, ctx)?;

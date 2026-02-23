@@ -6884,6 +6884,7 @@ fn describe_condition(condition: &Condition) -> String {
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => {
             format!("{player:?}'s graveyard has {count} or more cards")
         }
+        Condition::XValueAtLeast(min) => format!("X is {min} or more"),
         Condition::Custom(id) => format!("custom condition {id}"),
         Condition::Unmodeled(text) => text.clone(),
         Condition::Not(inner) => {

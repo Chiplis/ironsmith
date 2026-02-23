@@ -6,101 +6,11 @@
 //! The main types are:
 //! - `TotalCost`: A complete cost (conjunction of Cost components)
 //! - `Cost` (in the `costs` module): Individual cost components (trait objects)
-//! - `PermanentFilter`: Filter for selecting permanents in sacrifice costs
 
 use crate::costs::Cost;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaCost;
-use crate::types::{CardType, Subtype};
-
-/// Filter for selecting permanents (used in sacrifice costs, etc.)
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct PermanentFilter {
-    /// Required card types (permanent must have at least one)
-    pub card_types: Vec<CardType>,
-
-    /// Required subtypes (permanent must have at least one, if non-empty)
-    pub subtypes: Vec<Subtype>,
-
-    /// If true, must be a permanent you control other than the source
-    pub other: bool,
-
-    /// If true, must be a token
-    pub token: bool,
-
-    /// If true, must be a nontoken
-    pub nontoken: bool,
-}
-
-impl PermanentFilter {
-    /// Create a filter for any permanent.
-    pub fn any() -> Self {
-        Self::default()
-    }
-
-    /// Create a filter for creatures.
-    pub fn creature() -> Self {
-        Self {
-            card_types: vec![CardType::Creature],
-            ..Default::default()
-        }
-    }
-
-    /// Create a filter for artifacts.
-    pub fn artifact() -> Self {
-        Self {
-            card_types: vec![CardType::Artifact],
-            ..Default::default()
-        }
-    }
-
-    /// Create a filter for enchantments.
-    pub fn enchantment() -> Self {
-        Self {
-            card_types: vec![CardType::Enchantment],
-            ..Default::default()
-        }
-    }
-
-    /// Create a filter for lands.
-    pub fn land() -> Self {
-        Self {
-            card_types: vec![CardType::Land],
-            ..Default::default()
-        }
-    }
-
-    /// Require the permanent to be "another" (not the source).
-    pub fn other(mut self) -> Self {
-        self.other = true;
-        self
-    }
-
-    /// Require the permanent to be a token.
-    pub fn token(mut self) -> Self {
-        self.token = true;
-        self
-    }
-
-    /// Require the permanent to be a nontoken.
-    pub fn nontoken(mut self) -> Self {
-        self.nontoken = true;
-        self
-    }
-
-    /// Add a required card type.
-    pub fn with_type(mut self, card_type: CardType) -> Self {
-        self.card_types.push(card_type);
-        self
-    }
-
-    /// Add a required subtype.
-    pub fn with_subtype(mut self, subtype: Subtype) -> Self {
-        self.subtypes.push(subtype);
-        self
-    }
-}
 
 /// A complete cost that must be paid (conjunction of individual costs).
 #[derive(Debug, Clone, Default, PartialEq)]

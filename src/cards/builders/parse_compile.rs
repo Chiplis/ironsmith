@@ -148,6 +148,7 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::Expend { player, amount } => Trigger::expend(amount, player),
         TriggerSpec::Custom(description) => Trigger::custom("unimplemented_trigger", description),
         TriggerSpec::SagaChapter(chapters) => Trigger::saga_chapter(chapters),
+        TriggerSpec::HauntedCreatureDies => Trigger::custom("haunted_creature_dies", "When the haunted creature dies".to_string()),
         TriggerSpec::Either(left, right) => {
             Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right))
         }

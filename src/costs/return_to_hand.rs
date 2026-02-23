@@ -1,9 +1,9 @@
 //! Return to hand cost implementations.
 
-use crate::cost::{CostPaymentError, PermanentFilter};
+use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPayer, CostPaymentResult};
+use crate::filter::{FilterContext, ObjectFilter};
 use crate::game_state::GameState;
-use crate::object::ObjectKind;
 use crate::zone::Zone;
 
 /// A return self to hand cost.
@@ -68,28 +68,28 @@ impl CostPayer for ReturnSelfToHandCost {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnToHandCost {
     /// Filter for which permanents can be returned.
-    pub filter: PermanentFilter,
+    pub filter: ObjectFilter,
 }
 
 impl ReturnToHandCost {
     /// Create a new return to hand cost with the given filter.
-    pub fn new(filter: PermanentFilter) -> Self {
+    pub fn new(filter: ObjectFilter) -> Self {
         Self { filter }
     }
 
     /// Create a cost to return any creature.
     pub fn creature() -> Self {
-        Self::new(PermanentFilter::creature())
+        Self::new(ObjectFilter::creature().you_control())
     }
 
     /// Create a cost to return another creature.
     pub fn another_creature() -> Self {
-        Self::new(PermanentFilter::creature().other())
+        Self::new(ObjectFilter::creature().you_control().other())
     }
 
     /// Create a cost to return any land.
     pub fn land() -> Self {
-        Self::new(PermanentFilter::land())
+        Self::new(ObjectFilter::land().you_control())
     }
 
     /// Get valid return targets for this cost.
@@ -99,47 +99,15 @@ impl ReturnToHandCost {
         player: crate::ids::PlayerId,
         source: crate::ids::ObjectId,
     ) -> Vec<crate::ids::ObjectId> {
+        let ctx = FilterContext {
+            you: Some(player),
+            source: Some(source),
+            ..Default::default()
+        };
         game.battlefield
             .iter()
-            .filter(|&&id| {
-                if let Some(obj) = game.object(id) {
-                    // Must be controlled by player
-                    if obj.controller != player {
-                        return false;
-                    }
-                    // Check "other" requirement
-                    if self.filter.other && id == source {
-                        return false;
-                    }
-                    // Check card type filter
-                    if !self.filter.card_types.is_empty()
-                        && !self.filter.card_types.iter().any(|t| obj.has_card_type(*t))
-                    {
-                        return false;
-                    }
-                    // Check subtype filter
-                    if !self.filter.subtypes.is_empty()
-                        && !self
-                            .filter
-                            .subtypes
-                            .iter()
-                            .any(|s| obj.subtypes.contains(s))
-                    {
-                        return false;
-                    }
-                    // Check token/nontoken
-                    if self.filter.token && obj.kind != ObjectKind::Token {
-                        return false;
-                    }
-                    if self.filter.nontoken && obj.kind == ObjectKind::Token {
-                        return false;
-                    }
-                    true
-                } else {
-                    false
-                }
-            })
             .copied()
+            .filter(|&id| game.object(id).is_some_and(|obj| self.filter.matches(obj, &ctx, game)))
             .collect()
     }
 }

@@ -92,7 +92,7 @@ fn convert_ward_cost(cost: &TotalCost) -> WardCost {
             return WardCost::Discard(count);
         }
         if let Some(filter) = component.sacrifice_filter() {
-            return WardCost::Sacrifice(permanent_filter_to_object_filter(filter));
+            return WardCost::Sacrifice(filter.clone());
         }
     }
 
@@ -317,18 +317,6 @@ fn pay_ward_cost(
             }
         }
     }
-}
-
-fn permanent_filter_to_object_filter(
-    filter: &crate::cost::PermanentFilter,
-) -> crate::target::ObjectFilter {
-    let mut object_filter = crate::target::ObjectFilter::permanent();
-    object_filter.card_types = filter.card_types.clone();
-    object_filter.subtypes = filter.subtypes.clone();
-    object_filter.other = filter.other;
-    object_filter.token = filter.token;
-    object_filter.nontoken = filter.nontoken;
-    object_filter
 }
 
 fn normalize_selection(

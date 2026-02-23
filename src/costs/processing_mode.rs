@@ -4,7 +4,7 @@
 //! Each cost knows its own processing mode, eliminating if-else chains in the game loop.
 
 use crate::color::ColorSet;
-use crate::cost::PermanentFilter;
+use crate::filter::ObjectFilter;
 use crate::mana::ManaCost;
 use crate::types::CardType;
 
@@ -30,7 +30,7 @@ pub enum CostProcessingMode {
     /// Cost requires selecting a permanent to sacrifice.
     SacrificeTarget {
         /// Filter for which permanents can be sacrificed.
-        filter: PermanentFilter,
+        filter: ObjectFilter,
     },
 
     /// Cost requires selecting cards to discard.
@@ -123,7 +123,7 @@ impl CostProcessingMode {
     }
 
     /// Returns the sacrifice filter if this is a sacrifice target mode.
-    pub fn sacrifice_filter(&self) -> Option<&PermanentFilter> {
+    pub fn sacrifice_filter(&self) -> Option<&ObjectFilter> {
         match self {
             CostProcessingMode::SacrificeTarget { filter } => Some(filter),
             _ => None,
@@ -137,7 +137,7 @@ impl CostProcessingMode {
 }
 
 /// Describe a sacrifice filter for display to the player.
-fn describe_sacrifice_filter(filter: &PermanentFilter) -> String {
+fn describe_sacrifice_filter(filter: &ObjectFilter) -> String {
     let mut parts = Vec::new();
 
     if filter.other {
@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_sacrifice_target_mode() {
-        let filter = PermanentFilter::creature();
+        let filter = ObjectFilter::creature().you_control();
         let mode = CostProcessingMode::SacrificeTarget {
             filter: filter.clone(),
         };

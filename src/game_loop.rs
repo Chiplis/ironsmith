@@ -13,7 +13,8 @@ use crate::combat_state::{
     AttackTarget, CombatError, CombatState, get_attack_target, get_damage_assignment_order,
     is_blocked, is_unblocked,
 };
-use crate::cost::{OptionalCostsPaid, PermanentFilter};
+use crate::cost::OptionalCostsPaid;
+use crate::filter::{FilterContext, ObjectFilter};
 use crate::costs::CostContext;
 use crate::decision::{
     AlternativePaymentEffect, AttackerDeclaration, BlockerDeclaration, DecisionMaker, GameProgress,
@@ -54,8 +55,6 @@ use crate::rules::damage::{
 use crate::rules::state_based::{apply_state_based_actions_with, check_state_based_actions};
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
-#[cfg(test)]
-use crate::target::ObjectFilter;
 use crate::triggers::{
     DamageEventTarget, TriggerEvent, TriggerQueue, TriggeredAbilityEntry, check_triggers,
     generate_step_trigger_events, verify_intervening_if,
@@ -2107,7 +2106,7 @@ pub struct PendingActivation {
     /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
     pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
     /// Remaining sacrifice costs to pay: (filter, description).
-    pub remaining_sacrifice_costs: Vec<(crate::cost::PermanentFilter, String)>,
+    pub remaining_sacrifice_costs: Vec<(ObjectFilter, String)>,
     /// Whether this ability is once per turn (needs recording).
     pub is_once_per_turn: bool,
     /// Stable instance ID of the source (persists across zone changes).
@@ -2886,7 +2885,7 @@ pub fn apply_priority_response_with_dm(
 
             // Pay immediate costs and collect costs that need choices
             let mut mana_cost_to_pay: Option<crate::mana::ManaCost> = None;
-            let mut sacrifice_costs: Vec<(PermanentFilter, String)> = Vec::new();
+            let mut sacrifice_costs: Vec<(ObjectFilter, String)> = Vec::new();
             let mut payment_trace: Vec<CostStep> = Vec::new();
 
             let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker);
@@ -4879,50 +4878,17 @@ fn get_legal_sacrifice_targets(
     game: &GameState,
     player: PlayerId,
     source: ObjectId,
-    filter: &PermanentFilter,
+    filter: &ObjectFilter,
 ) -> Vec<ObjectId> {
+    let ctx = FilterContext {
+        you: Some(player),
+        source: Some(source),
+        ..Default::default()
+    };
     game.battlefield
         .iter()
-        .filter(|&&id| {
-            let Some(obj) = game.object(id) else {
-                return false;
-            };
-
-            // Must be controlled by player
-            if obj.controller != player {
-                return false;
-            }
-
-            // Check "other" requirement
-            if filter.other && id == source {
-                return false;
-            }
-
-            // Check card type filter
-            if !filter.card_types.is_empty()
-                && !filter.card_types.iter().any(|t| obj.has_card_type(*t))
-            {
-                return false;
-            }
-
-            // Check subtype filter
-            if !filter.subtypes.is_empty()
-                && !filter.subtypes.iter().any(|s| obj.subtypes.contains(s))
-            {
-                return false;
-            }
-
-            // Check token/nontoken
-            if filter.token && obj.kind != crate::object::ObjectKind::Token {
-                return false;
-            }
-            if filter.nontoken && obj.kind == crate::object::ObjectKind::Token {
-                return false;
-            }
-
-            true
-        })
         .copied()
+        .filter(|&id| game.object(id).is_some_and(|obj| filter.matches(obj, &ctx, game)))
         .collect()
 }
 

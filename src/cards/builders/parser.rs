@@ -882,6 +882,15 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Saddle { amount, .. } => format!("Saddle {amount}"),
         KeywordAction::Marker(name) => title_case_words(name),
         KeywordAction::MarkerText(text) => text.clone(),
+        KeywordAction::Casualty(power) => format!("Casualty {power}"),
+        KeywordAction::Conspire => "Conspire".to_string(),
+        KeywordAction::Devour(multiplier) => format!("Devour {multiplier}"),
+        KeywordAction::Ravenous => "Ravenous".to_string(),
+        KeywordAction::Ascend => "Ascend".to_string(),
+        KeywordAction::Haunt => "Haunt".to_string(),
+        KeywordAction::Provoke => "Provoke".to_string(),
+        KeywordAction::Undaunted => "Undaunted".to_string(),
+        KeywordAction::Enlist => "Enlist".to_string(),
     }
 }
 

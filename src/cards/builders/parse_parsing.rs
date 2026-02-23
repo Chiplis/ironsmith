@@ -2237,6 +2237,15 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
         KeywordAction::Saddle { .. } => None,
         KeywordAction::Marker(name) => Some(StaticAbility::custom(name, name.to_string())),
         KeywordAction::MarkerText(text) => Some(StaticAbility::custom("keyword_marker", text)),
+        KeywordAction::Casualty(_) => None,
+        KeywordAction::Conspire => None,
+        KeywordAction::Devour(_) => None,
+        KeywordAction::Ravenous => None,
+        KeywordAction::Ascend => None,
+        KeywordAction::Haunt => None,
+        KeywordAction::Provoke => None,
+        KeywordAction::Undaunted => None,
+        KeywordAction::Enlist => None,
     }
 }
 
@@ -10874,7 +10883,6 @@ fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "soulshift" => Some("soulshift"),
         "adapt" => Some("adapt"),
         "bolster" => Some("bolster"),
-        "devour" => Some("devour"),
         "disturb" => Some("disturb"),
         "echo" => Some("echo"),
         "modular" => Some("modular"),
@@ -10890,12 +10898,9 @@ fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
         "squad" => Some("squad"),
         "spectacle" => Some("spectacle"),
         "graft" => Some("graft"),
-        "haunt" => Some("haunt"),
         "backup" => Some("backup"),
-        "casualty" => Some("casualty"),
         "saddle" => Some("saddle"),
         "fading" => Some("fading"),
-        "conspire" => Some("conspire"),
         "fuse" => Some("fuse"),
         "plot" => Some("plot"),
         "disguise" => Some("disguise"),
@@ -10912,8 +10917,8 @@ fn marker_keyword_display(words: &[&str]) -> Option<String> {
     let title = keyword_title(keyword);
 
     match keyword {
-        "soulshift" | "adapt" | "bolster" | "devour" | "modular" | "vanishing" | "backup"
-        | "casualty" | "saddle" | "fading" | "graft" | "tribute" => {
+        "soulshift" | "adapt" | "bolster" | "modular" | "vanishing" | "backup"
+        | "saddle" | "fading" | "graft" | "tribute" => {
             let amount = words.get(1)?.parse::<u32>().ok()?;
             Some(format!("{title} {amount}"))
         }
@@ -11335,6 +11340,37 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         return Some(KeywordAction::Marker("splice onto arcane"));
     }
 
+    // Casualty N - "as you cast this spell, you may sacrifice a creature with power N or greater"
+    if words.first().copied() == Some("casualty") {
+        if words.len() == 2 {
+            if let Ok(power) = words[1].parse::<u32>() {
+                return Some(KeywordAction::Casualty(power));
+            }
+        }
+        if words.len() == 1 {
+            return Some(KeywordAction::Casualty(1));
+        }
+        return None;
+    }
+
+    // Conspire - "as you cast this spell, you may tap two untapped creatures..."
+    if words.first().copied() == Some("conspire") && words.len() == 1 {
+        return Some(KeywordAction::Conspire);
+    }
+
+    // Devour N - "as this enters, you may sacrifice any number of creatures..."
+    if words.first().copied() == Some("devour") {
+        if words.len() == 2 {
+            if let Ok(multiplier) = words[1].parse::<u32>() {
+                return Some(KeywordAction::Devour(multiplier));
+            }
+        }
+        if words.len() == 1 {
+            return Some(KeywordAction::Devour(1));
+        }
+        return None;
+    }
+
     if let Some(first) = words.first().copied()
         && matches!(
             first,
@@ -11345,7 +11381,6 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 | "soulshift"
                 | "adapt"
                 | "bolster"
-                | "devour"
                 | "disturb"
                 | "echo"
                 | "modular"
@@ -11360,11 +11395,8 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 | "squad"
                 | "spectacle"
                 | "graft"
-                | "haunt"
                 | "backup"
-                | "casualty"
                 | "fading"
-                | "conspire"
                 | "fuse"
                 | "plot"
                 | "disguise"
@@ -11409,21 +11441,22 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         ["cipher"] => KeywordAction::Marker("cipher"),
         ["devoid"] => KeywordAction::Devoid,
         ["dethrone"] => KeywordAction::Dethrone,
-        ["enlist"] => KeywordAction::Marker("enlist"),
+        ["enlist"] => KeywordAction::Enlist,
         ["evolve"] => KeywordAction::Evolve,
         ["extort"] => KeywordAction::Extort,
+        ["haunt"] => KeywordAction::Haunt,
         ["ingest"] => KeywordAction::Ingest,
         ["mentor"] => KeywordAction::Mentor,
         ["training"] => KeywordAction::Training,
         ["myriad"] => KeywordAction::Marker("myriad"),
         ["partner"] => KeywordAction::Partner,
         ["populate"] => KeywordAction::Marker("populate"),
-        ["provoke"] => KeywordAction::Marker("provoke"),
+        ["provoke"] => KeywordAction::Provoke,
         ["ravenous"] => KeywordAction::Marker("ravenous"),
         ["riot"] => KeywordAction::Riot,
         ["skulk"] => KeywordAction::Skulk,
         ["sunburst"] => KeywordAction::Sunburst,
-        ["undaunted"] => KeywordAction::Marker("undaunted"),
+        ["undaunted"] => KeywordAction::Undaunted,
         ["unleash"] => KeywordAction::Unleash,
         ["fading", amount] => {
             let value = amount.parse::<u32>().ok()?;
@@ -11474,7 +11507,7 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         ["cascade"] => KeywordAction::Cascade,
         ["storm"] => KeywordAction::Storm,
         ["rebound"] => KeywordAction::Rebound,
-        ["ascend"] => KeywordAction::Marker("ascend"),
+        ["ascend"] => KeywordAction::Ascend,
         ["daybound"] => KeywordAction::Marker("daybound"),
         ["nightbound"] => KeywordAction::Marker("nightbound"),
         ["islandwalk"] => KeywordAction::Landwalk(Subtype::Island),
@@ -11540,7 +11573,7 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                     "cipher" => return Some(KeywordAction::Marker("cipher")),
                     "devoid" => return Some(KeywordAction::Devoid),
                     "dethrone" => return Some(KeywordAction::Dethrone),
-                    "enlist" => return Some(KeywordAction::Marker("enlist")),
+                    "enlist" => return Some(KeywordAction::Enlist),
                     "evolve" => return Some(KeywordAction::Evolve),
                     "extort" => return Some(KeywordAction::Extort),
                     "ingest" => return Some(KeywordAction::Ingest),
@@ -11549,12 +11582,12 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                     "myriad" => return Some(KeywordAction::Marker("myriad")),
                     "partner" => return Some(KeywordAction::Partner),
                     "populate" => return Some(KeywordAction::Marker("populate")),
-                    "provoke" => return Some(KeywordAction::Marker("provoke")),
-                    "ravenous" => return Some(KeywordAction::Marker("ravenous")),
+                    "provoke" => return Some(KeywordAction::Provoke),
+                    "ravenous" => return Some(KeywordAction::Ravenous),
                     "riot" => return Some(KeywordAction::Riot),
                     "skulk" => return Some(KeywordAction::Skulk),
                     "sunburst" => return Some(KeywordAction::Sunburst),
-                    "undaunted" => return Some(KeywordAction::Marker("undaunted")),
+                    "undaunted" => return Some(KeywordAction::Undaunted),
                     "unleash" => return Some(KeywordAction::Unleash),
                     "wither" => return Some(KeywordAction::Wither),
                     "infect" => return Some(KeywordAction::Infect),
@@ -11565,7 +11598,7 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                     "cascade" => return Some(KeywordAction::Cascade),
                     "storm" => return Some(KeywordAction::Storm),
                     "rebound" => return Some(KeywordAction::Rebound),
-                    "ascend" => return Some(KeywordAction::Marker("ascend")),
+                    "ascend" => return Some(KeywordAction::Ascend),
                     "daybound" => return Some(KeywordAction::Marker("daybound")),
                     "nightbound" => return Some(KeywordAction::Marker("nightbound")),
                     "islandwalk" => return Some(KeywordAction::Landwalk(Subtype::Island)),
