@@ -6238,6 +6238,12 @@ fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
         crate::effect::Restriction::CastSpells(filter) => {
             format!("{} can't cast spells", describe_player_set_filter(filter))
         }
+        crate::effect::Restriction::ActivateNonManaAbilities(filter) => {
+            format!(
+                "{} can't activate non-mana abilities",
+                describe_player_set_filter(filter)
+            )
+        }
         crate::effect::Restriction::CastCreatureSpells(filter) => {
             format!(
                 "{} can't cast creature spells",

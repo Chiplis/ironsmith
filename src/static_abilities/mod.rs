@@ -783,6 +783,22 @@ impl StaticAbility {
         Self::new(Assist)
     }
 
+    pub fn split_second() -> Self {
+        Self::new(SplitSecond)
+    }
+
+    pub fn rebound() -> Self {
+        Self::new(Rebound)
+    }
+
+    pub fn cascade() -> Self {
+        Self::new(Cascade)
+    }
+
+    pub fn unleash() -> Self {
+        Self::new(Unleash)
+    }
+
     pub fn protection(from: crate::ability::ProtectionFrom) -> Self {
         Self::new(Protection::new(from))
     }

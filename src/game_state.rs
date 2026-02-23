@@ -170,6 +170,10 @@ pub struct CantEffectTracker {
     /// Example: Possibility Storm (can't cast from hand normally)
     pub cant_cast_spells: HashSet<PlayerId>,
 
+    /// Players who can't activate non-mana abilities.
+    /// Example: Split second while a split-second spell is on the stack.
+    pub cant_activate_non_mana_abilities: HashSet<PlayerId>,
+
     /// Players who can't cast creature spells.
     pub cant_cast_creature_spells: HashSet<PlayerId>,
 
@@ -331,6 +335,8 @@ impl CantEffectTracker {
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
         self.cant_cast_spells.extend(other.cant_cast_spells);
+        self.cant_activate_non_mana_abilities
+            .extend(other.cant_activate_non_mana_abilities);
         self.cant_cast_creature_spells
             .extend(other.cant_cast_creature_spells);
         self.cant_cast_more_than_one_spell_each_turn
@@ -365,6 +371,7 @@ impl CantEffectTracker {
         self.cant_be_destroyed.clear();
         self.cant_be_sacrificed.clear();
         self.cant_cast_spells.clear();
+        self.cant_activate_non_mana_abilities.clear();
         self.cant_cast_creature_spells.clear();
         self.cant_cast_more_than_one_spell_each_turn.clear();
         self.cant_draw.clear();
@@ -469,6 +476,11 @@ impl CantEffectTracker {
     /// Check if a player can cast spells.
     pub fn can_cast_spells(&self, player: PlayerId) -> bool {
         !self.cant_cast_spells.contains(&player)
+    }
+
+    /// Check if a player can activate non-mana abilities.
+    pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
+        !self.cant_activate_non_mana_abilities.contains(&player)
     }
 
     /// Check if a player can cast creature spells.
@@ -1420,6 +1432,11 @@ impl GameState {
         self.cant_effects.can_cast_spells(player)
     }
 
+    /// Can the player activate non-mana abilities?
+    pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
+        self.cant_effects.can_activate_non_mana_abilities(player)
+    }
+
     /// Can the player cast creature spells?
     pub fn can_cast_creature_spells(&self, player: PlayerId) -> bool {
         self.cant_effects.can_cast_creature_spells(player)
@@ -2292,27 +2309,36 @@ impl GameState {
         self.mana_spend_effects.clear();
         self.damage_persists.clear();
 
-        // First, collect all static abilities from permanents on the battlefield
-        // (We need to collect first to avoid borrow conflicts)
+        // First, collect static abilities from objects in zones where they function
+        // (currently battlefield and stack).
+        // We collect first to avoid borrow conflicts while applying restrictions.
         let abilities_to_apply: Vec<(StaticAbility, ObjectId, PlayerId)> = self
-            .battlefield
+            .objects
             .iter()
-            .filter_map(|&permanent_id| {
-                self.objects.get(&permanent_id).map(|permanent| {
-                    let controller = permanent.controller;
-                    permanent
+            .filter_map(|(&object_id, object)| {
+                let zone = object.zone;
+                if zone != Zone::Battlefield && zone != Zone::Stack {
+                    return None;
+                }
+
+                let controller = object.controller;
+                Some(
+                    object
                         .abilities
                         .iter()
                         .filter_map(|ability| {
                             if let AbilityKind::Static(static_ability) = &ability.kind {
-                                // Clone the new static ability type directly
-                                Some((static_ability.clone(), permanent_id, controller))
+                                if ability.functions_in(&zone) {
+                                    Some((static_ability.clone(), object_id, controller))
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
                             }
                         })
-                        .collect::<Vec<_>>()
-                })
+                        .collect::<Vec<_>>(),
+                )
             })
             .flatten()
             .collect();
@@ -3754,6 +3780,12 @@ mod tests {
         game.cant_effects.cant_cast_spells.insert(player);
         assert!(!game.can_cast_spells(player));
 
+        assert!(game.can_activate_non_mana_abilities(player));
+        game.cant_effects
+            .cant_activate_non_mana_abilities
+            .insert(player);
+        assert!(!game.can_activate_non_mana_abilities(player));
+
         assert!(game.can_gain_life(player));
         game.cant_effects.cant_gain_life.insert(player);
         assert!(!game.can_gain_life(player));
@@ -3834,6 +3866,7 @@ mod tests {
         tracker.cant_win_game.insert(player);
         tracker.life_total_cant_change.insert(player);
         tracker.cant_cast_spells.insert(player);
+        tracker.cant_activate_non_mana_abilities.insert(player);
         tracker.cant_draw.insert(player);
         tracker.cant_be_targeted.insert(object);
         tracker.cant_be_sacrificed.insert(object);
@@ -3855,6 +3888,7 @@ mod tests {
         assert!(!tracker.cant_win_game.is_empty());
         assert!(!tracker.life_total_cant_change.is_empty());
         assert!(!tracker.cant_cast_spells.is_empty());
+        assert!(!tracker.cant_activate_non_mana_abilities.is_empty());
         assert!(!tracker.cant_draw.is_empty());
         assert!(!tracker.cant_be_targeted.is_empty());
         assert!(!tracker.cant_be_sacrificed.is_empty());
@@ -3900,6 +3934,10 @@ mod tests {
             tracker.cant_cast_spells.is_empty(),
             "cant_cast_spells should be cleared"
         );
+        assert!(
+            tracker.cant_activate_non_mana_abilities.is_empty(),
+            "cant_activate_non_mana_abilities should be cleared"
+        );
         assert!(tracker.cant_draw.is_empty(), "cant_draw should be cleared");
         assert!(
             tracker.cant_be_targeted.is_empty(),
@@ -3944,6 +3982,80 @@ mod tests {
         assert!(
             !tracker.damage_cant_be_prevented,
             "damage_cant_be_prevented should be cleared"
+        );
+    }
+
+    #[test]
+    fn split_second_on_stack_updates_restrictions() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let split_card = CardBuilder::new(CardId::from_raw(999), "Split Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&split_card, bob, Zone::Stack);
+        game.object_mut(spell_id)
+            .expect("split-second spell should exist")
+            .abilities
+            .push(
+                crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::split_second())
+                    .in_zones(vec![Zone::Stack])
+                    .with_text("Split second"),
+            );
+
+        game.update_cant_effects();
+        assert!(
+            !game.can_cast_spells(alice),
+            "split second should prevent opponents from casting spells"
+        );
+        assert!(
+            !game.can_cast_spells(bob),
+            "split second should also prevent caster from casting spells"
+        );
+        assert!(
+            !game.can_activate_non_mana_abilities(alice),
+            "split second should prevent activating non-mana abilities"
+        );
+        assert!(
+            !game.can_activate_non_mana_abilities(bob),
+            "split second should prevent activating non-mana abilities for all players"
+        );
+    }
+
+    #[test]
+    fn unleash_restriction_depends_on_plus_one_counters() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let card = CardBuilder::new(CardId::from_raw(1001), "Unleashed Brute")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(creature_id)
+            .expect("unleash creature should exist")
+            .abilities
+            .push(
+                crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::unleash())
+                    .with_text("Unleash"),
+            );
+
+        game.update_cant_effects();
+        assert!(
+            game.can_block(creature_id),
+            "unleash creature without +1/+1 counters should be able to block"
+        );
+
+        game.object_mut(creature_id)
+            .expect("unleash creature should exist")
+            .add_counters(crate::object::CounterType::PlusOnePlusOne, 1);
+        game.update_cant_effects();
+        assert!(
+            !game.can_block(creature_id),
+            "unleash creature with +1/+1 counter should not be able to block"
         );
     }
 

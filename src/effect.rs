@@ -707,6 +707,7 @@ pub enum Restriction {
     GainLife(PlayerFilter),
     SearchLibraries(PlayerFilter),
     CastSpells(PlayerFilter),
+    ActivateNonManaAbilities(PlayerFilter),
     CastCreatureSpells(PlayerFilter),
     CastMoreThanOneSpellEachTurn(PlayerFilter),
     DrawCards(PlayerFilter),
@@ -743,6 +744,10 @@ impl Restriction {
 
     pub fn cast_spells(filter: PlayerFilter) -> Self {
         Self::CastSpells(filter)
+    }
+
+    pub fn activate_non_mana_abilities(filter: PlayerFilter) -> Self {
+        Self::ActivateNonManaAbilities(filter)
     }
 
     pub fn cast_creature_spells(filter: PlayerFilter) -> Self {
@@ -880,6 +885,17 @@ impl Restriction {
                         )
                     {
                         tracker.cant_cast_spells.insert(player.id);
+                    }
+                }
+            }
+            Restriction::ActivateNonManaAbilities(filter) => {
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_filter_with_combat(
+                            player.id, filter, game, controller, combat,
+                        )
+                    {
+                        tracker.cant_activate_non_mana_abilities.insert(player.id);
                     }
                 }
             }

@@ -617,6 +617,9 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
 
                 // Check activated abilities (non-mana)
                 if let crate::ability::AbilityKind::Activated(activated) = &ability.kind {
+                    if !game.can_activate_non_mana_abilities(player) {
+                        continue;
+                    }
                     // Validate the ability's cost can be paid
                     if can_pay_ability_cost(game, perm_id, player, &activated.mana_cost) {
                         let max_activations_per_turn = activated.max_activations_per_turn();
@@ -671,6 +674,12 @@ pub(crate) fn can_activate_ability_with_restrictions(
     ability_index: usize,
     activated: &crate::ability::ActivatedAbility,
 ) -> bool {
+    if let Some(obj) = game.object(source)
+        && !game.can_activate_non_mana_abilities(obj.controller)
+    {
+        return false;
+    }
+
     let max_activations_per_turn = activated.max_activations_per_turn();
     let activation_count = game.ability_activation_count_this_turn(source, ability_index);
     if let Some(max_activations) = max_activations_per_turn

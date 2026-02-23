@@ -4,7 +4,9 @@
 //! such as adding counters (poison, energy, experience),
 //! win/lose conditions, turn manipulation, and emblem creation.
 
+mod cast_source;
 mod cast_tagged;
+mod cascade;
 mod control_player;
 mod create_emblem;
 mod energy_counters;
@@ -23,7 +25,9 @@ mod skip_next_combat_phase_this_turn;
 mod skip_turn;
 mod win_the_game;
 
+pub use cast_source::CastSourceEffect;
 pub use cast_tagged::CastTaggedEffect;
+pub use cascade::CascadeEffect;
 pub use control_player::ControlPlayerEffect;
 pub use create_emblem::CreateEmblemEffect;
 pub use energy_counters::EnergyCountersEffect;

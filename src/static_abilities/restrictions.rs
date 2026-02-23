@@ -7,6 +7,7 @@ use super::{StaticAbilityId, StaticAbilityKind};
 use crate::effect::Restriction;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
+use crate::object::CounterType;
 use crate::target::{ObjectFilter, PlayerFilter};
 
 /// "Players can't gain life"
@@ -217,6 +218,124 @@ impl StaticAbilityKind for OpponentsCantCastSpells {
             controller,
             None,
         );
+        game.cant_effects.merge(tracker);
+    }
+}
+
+/// "Split second" (while this spell is on the stack).
+///
+/// As long as this spell is on the stack, players can't cast spells or activate abilities
+/// that aren't mana abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SplitSecond;
+
+impl StaticAbilityKind for SplitSecond {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SplitSecond
+    }
+
+    fn display(&self) -> String {
+        "Split second".to_string()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
+        let mut tracker = CantEffectTracker::default();
+        Restriction::cast_spells(PlayerFilter::Any).apply(game, &mut tracker, controller, None);
+        Restriction::activate_non_mana_abilities(PlayerFilter::Any).apply(
+            game,
+            &mut tracker,
+            controller,
+            None,
+        );
+        game.cant_effects.merge(tracker);
+    }
+}
+
+/// "Rebound" spell keyword.
+///
+/// Runtime handling is performed during spell resolution in `game_loop.rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Rebound;
+
+impl StaticAbilityKind for Rebound {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Rebound
+    }
+
+    fn display(&self) -> String {
+        "Rebound".to_string()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
+/// "Cascade" spell keyword.
+///
+/// Runtime handling is performed as a synthetic cast trigger in `triggers/check.rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Cascade;
+
+impl StaticAbilityKind for Cascade {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Cascade
+    }
+
+    fn display(&self) -> String {
+        "Cascade".to_string()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
+/// "Unleash" static restriction.
+///
+/// A creature with unleash can't block as long as it has a +1/+1 counter on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Unleash;
+
+impl StaticAbilityKind for Unleash {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Unleash
+    }
+
+    fn display(&self) -> String {
+        "This creature can't block as long as it has a +1/+1 counter on it".to_string()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        let mut tracker = CantEffectTracker::default();
+        Restriction::block(
+            ObjectFilter::specific(source).with_counter_type(CounterType::PlusOnePlusOne),
+        )
+        .apply(game, &mut tracker, controller, Some(source));
         game.cant_effects.merge(tracker);
     }
 }

@@ -5,8 +5,9 @@ use crate::decisions::make_boolean_decision;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::game_state::GameState;
+use crate::ids::PlayerId;
 use crate::target::PlayerFilter;
 
 fn execute_effect_sequence(
@@ -19,6 +20,27 @@ fn execute_effect_sequence(
         outcomes.push(execute_effect(game, effect, ctx)?);
     }
     Ok(EffectOutcome::aggregate(outcomes))
+}
+
+fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
+    if game.turn_order.is_empty() {
+        return Vec::new();
+    }
+
+    let start = game
+        .turn_order
+        .iter()
+        .position(|&player_id| player_id == game.turn.active_player)
+        .unwrap_or(0);
+
+    (0..game.turn_order.len())
+        .filter_map(|offset| {
+            let player_id = game.turn_order[(start + offset) % game.turn_order.len()];
+            game.player(player_id)
+                .filter(|player| player.is_in_game())
+                .map(|_| player_id)
+        })
+        .collect()
 }
 
 /// Effect that executes main effects unless a player performs an alternative action.
@@ -63,31 +85,49 @@ impl EffectExecutor for UnlessActionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let deciding_player = resolve_player_filter(game, &self.player, ctx)?;
+        let deciding_players = if matches!(self.player, PlayerFilter::Any) {
+            players_in_turn_order(game)
+        } else {
+            vec![resolve_player_filter(game, &self.player, ctx)?]
+        };
+        let mut attempted_alternative_events = Vec::new();
 
-        // Ask the player if they want to perform the alternative action
-        let wants_alternative = make_boolean_decision(
-            game,
-            &mut ctx.decision_maker,
-            deciding_player,
-            ctx.source,
-            "Perform alternative action to prevent effect?".to_string(),
-            FallbackStrategy::Accept,
-        );
+        for deciding_player in deciding_players {
+            // Ask the player if they want to perform the alternative action.
+            let wants_alternative = make_boolean_decision(
+                game,
+                &mut ctx.decision_maker,
+                deciding_player,
+                ctx.source,
+                "Perform alternative action to prevent effect?".to_string(),
+                FallbackStrategy::Accept,
+            );
 
-        if wants_alternative {
+            if !wants_alternative {
+                continue;
+            }
+
             // Only prevent the main effects if the alternative action actually happens.
-            let mut alternative_outcome = execute_effect_sequence(game, ctx, &self.alternative)?;
+            let mut alternative_outcome = if matches!(self.player, PlayerFilter::Any) {
+                ctx.with_temp_targets(vec![ResolvedTarget::Player(deciding_player)], |ctx| {
+                    execute_effect_sequence(game, ctx, &self.alternative)
+                })?
+            } else {
+                execute_effect_sequence(game, ctx, &self.alternative)?
+            };
+
             if alternative_outcome.something_happened() {
                 return Ok(alternative_outcome);
             }
 
-            let mut main_outcome = execute_effect_sequence(game, ctx, &self.effects)?;
-            main_outcome.events.append(&mut alternative_outcome.events);
-            Ok(main_outcome)
-        } else {
-            execute_effect_sequence(game, ctx, &self.effects)
+            attempted_alternative_events.append(&mut alternative_outcome.events);
         }
+
+        let mut main_outcome = execute_effect_sequence(game, ctx, &self.effects)?;
+        main_outcome
+            .events
+            .append(&mut attempted_alternative_events);
+        Ok(main_outcome)
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -125,12 +165,14 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
     use crate::effect::EffectResult;
-    use crate::effects::{ChooseObjectsEffect, SacrificeEffect};
-    use crate::filter::ObjectFilter;
-    use crate::ids::{CardId, PlayerId};
+    use crate::effects::{ChooseObjectsEffect, DestroyEffect, ForEachObject, SacrificeEffect};
+    use crate::filter::{ObjectFilter, TaggedOpbjectRelation};
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::tag::TagKey;
     use crate::target::ChooseSpec;
     use crate::types::CardType;
     use crate::zone::Zone;
+    use std::collections::HashMap;
 
     fn setup_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
@@ -139,6 +181,13 @@ mod tests {
     fn create_creature(game: &mut GameState, name: &str, owner: PlayerId) -> crate::ids::ObjectId {
         let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
             .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn create_land(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Land])
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
@@ -153,6 +202,28 @@ mod tests {
             _ctx: &crate::decisions::context::BooleanContext,
         ) -> bool {
             true
+        }
+    }
+
+    struct ByPlayerBooleanDecisionMaker {
+        responses: HashMap<PlayerId, bool>,
+    }
+
+    impl ByPlayerBooleanDecisionMaker {
+        fn new(responses: impl IntoIterator<Item = (PlayerId, bool)>) -> Self {
+            Self {
+                responses: responses.into_iter().collect(),
+            }
+        }
+    }
+
+    impl DecisionMaker for ByPlayerBooleanDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.responses.get(&ctx.player).copied().unwrap_or(false)
         }
     }
 
@@ -254,5 +325,71 @@ mod tests {
 
         assert!(effect.get_target_spec().is_some());
         assert_eq!(effect.target_description(), "spell to counter");
+    }
+
+    #[test]
+    fn test_unless_action_any_player_declines_then_main_effect_happens() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let land = create_land(&mut game, "Test Land", alice);
+        let source = game.new_object_id();
+        let mut dm = ByPlayerBooleanDecisionMaker::new([(alice, false), (bob, false)]);
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let effect = ForEachObject::new(
+            ObjectFilter::land(),
+            vec![Effect::unless_action(
+                vec![Effect::new(DestroyEffect::with_spec(ChooseSpec::Object(
+                    ObjectFilter::land().match_tagged(
+                        TagKey::from("__it__"),
+                        TaggedOpbjectRelation::IsTaggedObject,
+                    ),
+                )))],
+                vec![Effect::lose_life_player(1, PlayerFilter::Any)],
+                PlayerFilter::Any,
+            )],
+        );
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless action resolves");
+
+        assert!(!game.battlefield.contains(&land));
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert_eq!(game.player(bob).expect("bob").life, 20);
+    }
+
+    #[test]
+    fn test_unless_action_any_player_can_pay_to_prevent_main_effect() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let land = create_land(&mut game, "Test Land", alice);
+        let source = game.new_object_id();
+        let mut dm = ByPlayerBooleanDecisionMaker::new([(alice, false), (bob, true)]);
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let effect = ForEachObject::new(
+            ObjectFilter::land(),
+            vec![Effect::unless_action(
+                vec![Effect::new(DestroyEffect::with_spec(ChooseSpec::Object(
+                    ObjectFilter::land().match_tagged(
+                        TagKey::from("__it__"),
+                        TaggedOpbjectRelation::IsTaggedObject,
+                    ),
+                )))],
+                vec![Effect::lose_life_player(1, PlayerFilter::Any)],
+                PlayerFilter::Any,
+            )],
+        );
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless action resolves");
+
+        assert!(game.battlefield.contains(&land));
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert_eq!(game.player(bob).expect("bob").life, 19);
     }
 }

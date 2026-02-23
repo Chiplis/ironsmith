@@ -16,6 +16,7 @@ mod saddle;
 mod tap;
 mod training;
 mod transform;
+mod unearth;
 mod untap;
 
 pub use attach_objects::AttachObjectsEffect;
@@ -31,4 +32,5 @@ pub use saddle::{BecomeSaddledUntilEotEffect, SaddleCostEffect};
 pub use tap::TapEffect;
 pub use training::TrainingEffect;
 pub use transform::TransformEffect;
+pub use unearth::UnearthEffect;
 pub use untap::UntapEffect;

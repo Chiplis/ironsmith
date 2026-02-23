@@ -8,6 +8,7 @@ use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::events::LifeLossEvent;
 use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
+use crate::ids::PlayerId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
@@ -75,14 +76,38 @@ impl UnlessPaysEffect {
     }
 }
 
+fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
+    if game.turn_order.is_empty() {
+        return Vec::new();
+    }
+
+    let start = game
+        .turn_order
+        .iter()
+        .position(|&player_id| player_id == game.turn.active_player)
+        .unwrap_or(0);
+
+    (0..game.turn_order.len())
+        .filter_map(|offset| {
+            let player_id = game.turn_order[(start + offset) % game.turn_order.len()];
+            game.player(player_id)
+                .filter(|player| player.is_in_game())
+                .map(|_| player_id)
+        })
+        .collect()
+}
+
 impl EffectExecutor for UnlessPaysEffect {
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Resolve who pays
-        let paying_player = resolve_player_filter(game, &self.player, ctx)?;
+        let paying_players = if matches!(self.player, PlayerFilter::Any) {
+            players_in_turn_order(game)
+        } else {
+            vec![resolve_player_filter(game, &self.player, ctx)?]
+        };
         let life_to_pay = self
             .life
             .as_ref()
@@ -132,51 +157,53 @@ impl EffectExecutor for UnlessPaysEffect {
             format!("{mana_display}{additional_display}")
         };
 
-        // Check if player can afford to pay mana
-        let can_afford_mana = {
-            let cost = ManaCost::from_symbols(mana_symbols.clone());
-            game.can_pay_mana_cost(paying_player, None, &cost, 0)
-        };
-        let can_afford_life = if life_to_pay == 0 {
-            true
-        } else if !game.can_lose_life(paying_player) || !game.can_change_life_total(paying_player) {
-            false
-        } else {
-            game.player(paying_player)
-                .is_some_and(|player| player.life >= life_to_pay as i32)
-        };
-        let can_afford = can_afford_mana && can_afford_life;
+        for paying_player in paying_players {
+            // Check if this player can afford to pay mana/life.
+            let can_afford_mana = {
+                let cost = ManaCost::from_symbols(mana_symbols.clone());
+                game.can_pay_mana_cost(paying_player, None, &cost, 0)
+            };
+            let can_afford_life = if life_to_pay == 0 {
+                true
+            } else if !game.can_lose_life(paying_player)
+                || !game.can_change_life_total(paying_player)
+            {
+                false
+            } else {
+                game.player(paying_player)
+                    .is_some_and(|player| player.life >= life_to_pay as i32)
+            };
+            let can_afford = can_afford_mana && can_afford_life;
 
-        // Ask the player if they want to pay
-        let wants_to_pay = if can_afford {
-            make_boolean_decision(
-                game,
-                &mut ctx.decision_maker,
-                paying_player,
-                ctx.source,
-                format!("Pay {} to prevent effect?", payment_display),
-                FallbackStrategy::Accept,
-            )
-        } else {
-            false
-        };
+            // Ask this player if they want to pay.
+            let wants_to_pay = if can_afford {
+                make_boolean_decision(
+                    game,
+                    &mut ctx.decision_maker,
+                    paying_player,
+                    ctx.source,
+                    format!("Pay {} to prevent effect?", payment_display),
+                    FallbackStrategy::Accept,
+                )
+            } else {
+                false
+            };
 
-        if wants_to_pay {
-            // Pay the mana cost
-            let cost = ManaCost::from_symbols(mana_symbols);
-            if game.try_pay_mana_cost(paying_player, None, &cost, 0) {
-                let mut outcome = EffectOutcome::from_result(EffectResult::Declined);
-                if life_to_pay > 0 {
-                    if let Some(player) = game.player_mut(paying_player) {
-                        player.lose_life(life_to_pay);
+            if wants_to_pay {
+                // Pay the mana/life cost; if paid successfully, prevent effects.
+                let cost = ManaCost::from_symbols(mana_symbols.clone());
+                if game.try_pay_mana_cost(paying_player, None, &cost, 0) {
+                    let mut outcome = EffectOutcome::from_result(EffectResult::Declined);
+                    if life_to_pay > 0 {
+                        if let Some(player) = game.player_mut(paying_player) {
+                            player.lose_life(life_to_pay);
+                        }
+                        outcome = outcome.with_event(TriggerEvent::new(
+                            LifeLossEvent::from_effect(paying_player, life_to_pay),
+                        ));
                     }
-                    outcome = outcome.with_event(TriggerEvent::new(LifeLossEvent::from_effect(
-                        paying_player,
-                        life_to_pay,
-                    )));
+                    return Ok(outcome);
                 }
-                // Payment successful, effects are prevented
-                return Ok(outcome);
             }
         }
 
@@ -220,8 +247,37 @@ impl EffectExecutor for UnlessPaysEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::effect::Effect;
+    use crate::decision::DecisionMaker;
+    use crate::effect::{Effect, EffectResult};
+    use crate::ids::PlayerId;
     use crate::target::ChooseSpec;
+    use std::collections::HashMap;
+
+    fn setup_game() -> GameState {
+        GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
+    }
+
+    struct ByPlayerBooleanDecisionMaker {
+        responses: HashMap<PlayerId, bool>,
+    }
+
+    impl ByPlayerBooleanDecisionMaker {
+        fn new(responses: impl IntoIterator<Item = (PlayerId, bool)>) -> Self {
+            Self {
+                responses: responses.into_iter().collect(),
+            }
+        }
+    }
+
+    impl DecisionMaker for ByPlayerBooleanDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.responses.get(&ctx.player).copied().unwrap_or(false)
+        }
+    }
 
     #[test]
     fn unless_pays_forwards_inner_target_spec() {
@@ -233,5 +289,42 @@ mod tests {
 
         assert!(effect.get_target_spec().is_some());
         assert_eq!(effect.target_description(), "spell to counter");
+    }
+
+    #[test]
+    fn unless_pays_any_player_all_decline_executes_main_effect() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut dm = ByPlayerBooleanDecisionMaker::new([(alice, false), (bob, false)]);
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = UnlessPaysEffect::new(vec![Effect::gain_life(2)], PlayerFilter::Any, vec![]);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless pays resolves");
+
+        assert_eq!(game.player(alice).expect("alice").life, 22);
+        assert_eq!(game.player(bob).expect("bob").life, 20);
+    }
+
+    #[test]
+    fn unless_pays_any_player_can_prevent_main_effect() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut dm = ByPlayerBooleanDecisionMaker::new([(alice, false), (bob, true)]);
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let effect = UnlessPaysEffect::new(vec![Effect::gain_life(2)], PlayerFilter::Any, vec![]);
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("unless pays resolves");
+
+        assert_eq!(outcome.result, EffectResult::Declined);
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert_eq!(game.player(bob).expect("bob").life, 20);
     }
 }

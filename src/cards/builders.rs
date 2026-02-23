@@ -72,6 +72,7 @@ enum KeywordAction {
     Persist,
     Prowess,
     Exalted,
+    Cascade,
     Storm,
     Toxic(u32),
     BattleCry,
@@ -81,14 +82,19 @@ enum KeywordAction {
     Mentor,
     Skulk,
     Training,
+    Riot,
+    Unleash,
     Renown(u32),
     Modular(u32),
     Graft(u32),
     Soulshift(u32),
     Outlast(ManaCost),
+    Unearth(ManaCost),
     Extort,
     Partner,
     Assist,
+    SplitSecond,
+    Rebound,
     Sunburst,
     Fading(u32),
     Vanishing(u32),
@@ -1378,6 +1384,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Persist => self.persist(),
             KeywordAction::Prowess => self.prowess(),
             KeywordAction::Exalted => self.exalted(),
+            KeywordAction::Cascade => self.cascade(),
             KeywordAction::Storm => self.storm(),
             KeywordAction::Toxic(amount) => self.toxic(amount),
             KeywordAction::BattleCry => self.battle_cry(),
@@ -1387,14 +1394,19 @@ impl CardDefinitionBuilder {
             KeywordAction::Mentor => self.mentor(),
             KeywordAction::Skulk => self.skulk(),
             KeywordAction::Training => self.training(),
+            KeywordAction::Riot => self.riot(),
+            KeywordAction::Unleash => self.unleash(),
             KeywordAction::Renown(amount) => self.renown(amount),
             KeywordAction::Modular(amount) => self.modular(amount),
             KeywordAction::Graft(amount) => self.graft(amount),
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
             KeywordAction::Outlast(cost) => self.outlast(cost),
+            KeywordAction::Unearth(cost) => self.unearth(cost),
             KeywordAction::Extort => self.extort(),
             KeywordAction::Partner => self.partner(),
             KeywordAction::Assist => self.assist(),
+            KeywordAction::SplitSecond => self.split_second(),
+            KeywordAction::Rebound => self.rebound(),
             KeywordAction::Sunburst => self.sunburst(),
             KeywordAction::Fading(amount) => self.fading(amount),
             KeywordAction::Vanishing(amount) => self.vanishing(amount),
@@ -2129,6 +2141,28 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// Add unearth with a mana cost.
+    ///
+    /// Unearth means "{cost}: Return this card from your graveyard to the battlefield.
+    /// It gains haste. Exile it at the beginning of the next end step or if it would
+    /// leave the battlefield. Activate only as a sorcery."
+    pub fn unearth(self, cost: ManaCost) -> Self {
+        let text = format!("Unearth {}", cost.to_oracle());
+        let total_cost = TotalCost::from_cost(crate::costs::Cost::mana(cost));
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: vec![Effect::new(crate::effects::UnearthEffect::new())],
+                choices: vec![],
+                timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+            }),
+            functional_zones: vec![Zone::Graveyard],
+            text: Some(text),
+        })
+    }
+
     /// Add extort.
     ///
     /// Extort means "Whenever you cast a spell, you may pay {W/B}.
@@ -2169,6 +2203,52 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// Add riot.
+    ///
+    /// Riot means "This creature enters with your choice of a +1/+1 counter or haste."
+    pub fn riot(self) -> Self {
+        let modes = vec![
+            EffectMode {
+                description: "This creature enters with a +1/+1 counter on it".to_string(),
+                effects: vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
+            },
+            EffectMode {
+                description: "This creature gains haste until end of turn".to_string(),
+                effects: vec![Effect::grant_abilities_all(
+                    ObjectFilter::source(),
+                    vec![StaticAbility::haste()],
+                    Until::EndOfTurn,
+                )],
+            },
+        ];
+
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_enters_battlefield(),
+                vec![Effect::choose_one(modes)],
+            )
+            .with_text("Riot"),
+        )
+    }
+
+    /// Add unleash.
+    ///
+    /// Unleash means "You may have this creature enter with a +1/+1 counter on it.
+    /// It can't block as long as it has a +1/+1 counter on it."
+    pub fn unleash(self) -> Self {
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_enters_battlefield(),
+                vec![Effect::may_single(Effect::plus_one_counters(
+                    1,
+                    ChooseSpec::Source,
+                ))],
+            )
+            .with_text("Unleash"),
+        )
+        .with_ability(Ability::static_ability(StaticAbility::unleash()))
+    }
+
     /// Add partner.
     ///
     /// Partner is a deck-construction ability used in Commander variants.
@@ -2182,6 +2262,45 @@ impl CardDefinitionBuilder {
     /// Assist is relevant in multiplayer casting. In 1v1 it has no gameplay impact.
     pub fn assist(self) -> Self {
         self.with_ability(Ability::static_ability(StaticAbility::assist()).with_text("Assist"))
+    }
+
+    /// Add split second.
+    ///
+    /// Split second means "As long as this spell is on the stack, players can't cast spells
+    /// or activate abilities that aren't mana abilities."
+    pub fn split_second(self) -> Self {
+        self.with_ability(
+            Ability::static_ability(StaticAbility::split_second())
+                .in_zones(vec![Zone::Stack])
+                .with_text("Split second"),
+        )
+    }
+
+    /// Add cascade.
+    ///
+    /// Cascade means "When you cast this spell, exile cards from the top of your library
+    /// until you exile a nonland card with lesser mana value. You may cast it without
+    /// paying its mana cost. Put the exiled cards not cast this way on the bottom in a
+    /// random order."
+    pub fn cascade(self) -> Self {
+        self.with_ability(
+            Ability::static_ability(StaticAbility::cascade())
+                .in_zones(vec![Zone::Stack])
+                .with_text("Cascade"),
+        )
+    }
+
+    /// Add rebound.
+    ///
+    /// Rebound means "If this spell was cast from your hand, exile it as it resolves.
+    /// At the beginning of your next upkeep, you may cast it from exile without paying
+    /// its mana cost."
+    pub fn rebound(self) -> Self {
+        self.with_ability(
+            Ability::static_ability(StaticAbility::rebound())
+                .in_zones(vec![Zone::Stack])
+                .with_text("Rebound"),
+        )
     }
 
     /// Add sunburst.
@@ -3266,6 +3385,28 @@ mod target_parse_tests {
         assert!(
             filter.excluded_subtypes.contains(&Subtype::Army),
             "expected excluded Army subtype"
+        );
+    }
+
+    #[test]
+    fn parse_for_each_land_unless_any_player_pays_life_uses_non_target_destroy() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cleansing Variant")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text("For each land, destroy that land unless any player pays 1 life.")
+            .expect("for-each land unless-any-player-pay-life should parse");
+
+        let spell_debug = format!("{:?}", def.spell_effect);
+        assert!(
+            spell_debug.contains("ForEachObject"),
+            "expected for-each lowering, got {spell_debug}"
+        );
+        assert!(
+            spell_debug.contains("UnlessActionEffect") && spell_debug.contains("LoseLifeEffect"),
+            "expected unless-action life-payment lowering, got {spell_debug}"
+        );
+        assert!(
+            !spell_debug.contains("DestroyEffect { spec: Target("),
+            "expected non-target destroy for 'destroy that land', got {spell_debug}"
         );
     }
 }

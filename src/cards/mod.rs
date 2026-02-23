@@ -517,6 +517,60 @@ mod tests {
     }
 
     #[test]
+    fn generated_definition_support_accepts_parsed_split_second() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Split Second Probe")
+            .parse_text("Split second\nDraw a card.")
+            .expect("split second parse should succeed");
+
+        assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn generated_definition_support_accepts_parsed_riot() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Riot Probe")
+            .parse_text("Riot")
+            .expect("riot parse should succeed");
+
+        assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn generated_definition_support_accepts_parsed_unleash() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Unleash Probe")
+            .parse_text("Unleash")
+            .expect("unleash parse should succeed");
+
+        assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn generated_definition_support_accepts_parsed_unearth() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Unearth Probe")
+            .parse_text("Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 2/1\nUnearth {2}{B}")
+            .expect("unearth parse should succeed");
+
+        assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn generated_definition_support_accepts_parsed_rebound() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Rebound Probe")
+            .parse_text("Mana cost: {1}{U}\nType: Instant\nGain 1 life.\nRebound")
+            .expect("rebound parse should succeed");
+
+        assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn generated_definition_support_accepts_parsed_cascade() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Cascade Probe")
+            .parse_text("Mana cost: {2}{R}\nType: Sorcery\nDraw a card.\nCascade")
+            .expect("cascade parse should succeed");
+
+        assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
     fn generated_definition_support_accepts_saruman_of_many_colors() {
         let text = "Ward—Discard an enchantment, instant, or sorcery card.\nWhenever you cast your second spell each turn, each opponent mills two cards. When one or more cards are milled this way, exile target enchantment, instant, or sorcery card with equal or lesser mana value than that spell from an opponent's graveyard. Copy the exiled card. You may cast the copy without paying its mana cost.";
         let definition = CardDefinitionBuilder::new(CardId::new(), "Saruman of Many Colors")

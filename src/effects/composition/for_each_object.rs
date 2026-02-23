@@ -6,6 +6,7 @@ use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
+use crate::tag::TagKey;
 use crate::target::{ObjectFilter, TaggedOpbjectRelation};
 
 /// Effect that applies effects once for each object matching a filter.
@@ -85,13 +86,32 @@ impl EffectExecutor for ForEachObject {
 
         // Execute the effects once for each matching object and expose that object via
         // ctx.iterated_object for inner effects using ChooseSpec::Iterated.
+        let it_tag = TagKey::from("__it__");
         for object_id in &matching {
+            let Some(object) = game.object(*object_id) else {
+                continue;
+            };
+            let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
+            let original_it = ctx.tagged_objects.remove(&it_tag);
+            ctx.tag_object(it_tag.clone(), snapshot.clone());
+
             ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
-                for effect in &self.effects {
-                    outcomes.push(execute_effect(game, effect, ctx)?);
-                }
-                Ok::<(), ExecutionError>(())
+                ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                    for effect in &self.effects {
+                        outcomes.push(execute_effect(game, effect, ctx)?);
+                    }
+                    Ok::<(), ExecutionError>(())
+                })
             })?;
+
+            match original_it {
+                Some(value) => {
+                    ctx.tagged_objects.insert(it_tag.clone(), value);
+                }
+                None => {
+                    ctx.tagged_objects.remove(&it_tag);
+                }
+            }
         }
 
         Ok(EffectOutcome::aggregate(outcomes))

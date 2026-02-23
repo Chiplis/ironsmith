@@ -44,6 +44,10 @@ pub enum StaticAbilityId {
     Changeling,
     Partner,
     Assist,
+    SplitSecond,
+    Rebound,
+    Cascade,
+    Unleash,
 
     // === Combat modifiers ===
     Unblockable,
@@ -203,6 +207,10 @@ impl StaticAbilityId {
                 | Changeling
                 | Partner
                 | Assist
+                | SplitSecond
+                | Rebound
+                | Cascade
+                | Unleash
         )
     }
 

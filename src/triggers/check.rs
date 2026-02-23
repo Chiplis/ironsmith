@@ -290,6 +290,49 @@ pub fn check_triggers(
     // They function from the graveyard/hand (where the object is after the event) and use
     // the triggering_event to get stable_id and other context at execution time.
 
+    // Cascade: When a spell with cascade is cast, it triggers once for each cascade instance.
+    // We model this as a synthetic trigger on SpellCast so it goes on the stack normally.
+    if trigger_event.kind() == crate::events::traits::EventKind::SpellCast
+        && let Some(cast) = trigger_event.downcast::<crate::events::spells::SpellCastEvent>()
+        && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
+        && let Some(obj) = game.object(cast.spell)
+    {
+        let cascade_count = obj
+            .abilities
+            .iter()
+            .filter(|ability| {
+                ability.functions_in(&Zone::Stack)
+                    && matches!(
+                        &ability.kind,
+                        AbilityKind::Static(static_ability)
+                            if static_ability.id() == crate::static_abilities::StaticAbilityId::Cascade
+                    )
+            })
+            .count();
+        if cascade_count > 0 {
+            let ability = TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: vec![Effect::new(crate::effects::CascadeEffect::new())],
+                choices: vec![],
+                intervening_if: None,
+            };
+            let trigger_identity = compute_trigger_identity(&ability);
+
+            for _ in 0..cascade_count {
+                triggered.push(TriggeredAbilityEntry {
+                    source: cast.spell,
+                    controller: cast.caster,
+                    x_value: entry.x_value,
+                    ability: ability.clone(),
+                    triggering_event: trigger_event.clone(),
+                    source_stable_id: obj.stable_id,
+                    source_name: obj.name.clone(),
+                    trigger_identity,
+                });
+            }
+        }
+    }
+
     // Replicate: When a spell with Replicate is cast, it triggers to copy itself for each time
     // its Replicate cost was paid. (We model this as a synthetic triggered ability so it
     // stacks and can be responded to like the real mechanic.)
@@ -600,9 +643,12 @@ mod tests {
     use crate::events::EventKind;
     use crate::events::other::CounterPlacedEvent;
     use crate::events::phase::BeginningOfUpkeepEvent;
+    use crate::events::spells::SpellCastEvent;
     use crate::events::zones::ZoneChangeEvent;
+    use crate::game_state::StackEntry;
     use crate::ids::CardId;
     use crate::object::CounterType;
+    use crate::static_abilities::StaticAbility;
     use crate::target::ObjectFilter;
     use crate::target::PlayerFilter;
     use crate::types::CardType;
@@ -769,6 +815,36 @@ mod tests {
                 .iter()
                 .map(|entry| entry.ability.trigger.display())
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_check_triggers_adds_synthetic_cascade_trigger() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let card = CardBuilder::new(CardId::from_raw(99), "Cascade Probe")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
+        if let Some(obj) = game.object_mut(spell_id) {
+            obj.abilities.push(
+                Ability::static_ability(StaticAbility::cascade())
+                    .in_zones(vec![Zone::Stack])
+                    .with_text("Cascade"),
+            );
+        }
+        game.stack.push(StackEntry::new(spell_id, alice));
+
+        let event = TriggerEvent::new(SpellCastEvent::new(spell_id, alice, Zone::Hand));
+        let triggered = check_triggers(&game, &event);
+
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].source, spell_id);
+        let debug = format!("{:?}", triggered[0].ability.effects);
+        assert!(
+            debug.contains("CascadeEffect"),
+            "expected cascade synthetic trigger effect, got {debug}"
         );
     }
 }

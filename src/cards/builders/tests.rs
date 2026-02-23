@@ -1486,6 +1486,70 @@ fn test_parse_split_second_keyword_line() {
 }
 
 #[test]
+fn test_parse_cascade_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cascade Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Cascade\nDraw a card.")
+        .expect("cascade line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Cascade"),
+        "expected cascade keyword in render output, got {rendered}"
+    );
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("staticabilityid::cascade"),
+        "expected cascade static ability id, got {debug}"
+    );
+    assert!(
+        !debug.contains("custom_id: \"cascade\""),
+        "expected cascade to compile without custom marker static abilities, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_riot_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Riot Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Riot")
+        .expect("riot line should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ChooseModeEffect"),
+        "expected riot to compile into a modal ETB trigger, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("custom_id: \"riot\""),
+        "riot should not remain a custom marker ability, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn test_parse_unleash_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Unleash Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Unleash")
+        .expect("unleash line should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("TriggerSpec::ThisEntersBattlefield")
+            || abilities_debug.contains("ThisEntersBattlefield"),
+        "expected unleash ETB trigger, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("Unleash"),
+        "expected unleash restriction ability, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("custom_id: \"unleash\""),
+        "unleash should not remain a custom marker ability, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn test_parse_training_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Training Probe")
         .card_types(vec![CardType::Creature])
@@ -1553,12 +1617,17 @@ fn test_parse_unearth_keyword_line() {
             "{T}: You may tap or untap another target permanent.\n\
 Unearth {U} ({U}: Return this card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. Unearth only as a sorcery.)",
         )
-        .expect("unearth keyword line should parse as marker keyword");
+        .expect("unearth keyword line should parse");
 
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
         rendered.contains("Unearth {U}"),
-        "expected unearth marker in render output, got {rendered}"
+        "expected unearth keyword in render output, got {rendered}"
+    );
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        !debug.contains("staticabilityid::custom") && !debug.contains("keyword_marker"),
+        "expected unearth to compile without custom marker static abilities, got {debug}"
     );
 }
 

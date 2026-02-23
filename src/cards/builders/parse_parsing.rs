@@ -2129,6 +2129,7 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
         KeywordAction::Persist => Some(StaticAbility::custom("persist", "persist".to_string())),
         KeywordAction::Prowess => Some(StaticAbility::custom("prowess", "prowess".to_string())),
         KeywordAction::Exalted => Some(StaticAbility::custom("exalted", "exalted".to_string())),
+        KeywordAction::Cascade => Some(StaticAbility::cascade()),
         KeywordAction::Storm => Some(StaticAbility::custom("storm", "storm".to_string())),
         KeywordAction::Toxic(amount) => {
             Some(StaticAbility::custom("toxic", format!("toxic {amount}")))
@@ -2143,6 +2144,8 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
         KeywordAction::Mentor => Some(StaticAbility::custom("mentor", "mentor".to_string())),
         KeywordAction::Skulk => Some(StaticAbility::skulk()),
         KeywordAction::Training => Some(StaticAbility::custom("training", "training".to_string())),
+        KeywordAction::Riot => Some(StaticAbility::custom("riot", "riot".to_string())),
+        KeywordAction::Unleash => Some(StaticAbility::unleash()),
         KeywordAction::Renown(amount) => {
             Some(StaticAbility::custom("renown", format!("renown {amount}")))
         }
@@ -2159,9 +2162,15 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
             "outlast",
             format!("outlast {}", cost.to_oracle()),
         )),
+        KeywordAction::Unearth(cost) => Some(StaticAbility::custom(
+            "unearth",
+            format!("unearth {}", cost.to_oracle()),
+        )),
         KeywordAction::Extort => Some(StaticAbility::custom("extort", "extort".to_string())),
         KeywordAction::Partner => Some(StaticAbility::partner()),
         KeywordAction::Assist => Some(StaticAbility::assist()),
+        KeywordAction::SplitSecond => Some(StaticAbility::split_second()),
+        KeywordAction::Rebound => Some(StaticAbility::rebound()),
         KeywordAction::Sunburst => Some(StaticAbility::custom("sunburst", "sunburst".to_string())),
         KeywordAction::Fading(amount) => {
             Some(StaticAbility::custom("fading", format!("fading {amount}")))
@@ -11143,6 +11152,15 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         return Some(KeywordAction::Marker("outlast"));
     }
 
+    if words.first().copied() == Some("unearth") {
+        if let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[1..])
+            && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
+        {
+            return Some(KeywordAction::Unearth(cost));
+        }
+        return Some(KeywordAction::Marker("unearth"));
+    }
+
     if words.first().copied() == Some("modular") {
         if words.len() >= 2
             && let Ok(amount) = words[1].parse::<u32>()
@@ -11186,8 +11204,11 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
     if words.as_slice().starts_with(&["battle", "cry"]) {
         return Some(KeywordAction::BattleCry);
     }
+    if words.first().copied() == Some("cascade") {
+        return Some(KeywordAction::Cascade);
+    }
     if words.as_slice().starts_with(&["split", "second"]) {
-        return Some(KeywordAction::Marker("split second"));
+        return Some(KeywordAction::SplitSecond);
     }
     if words.as_slice().starts_with(&["doctor", "companion"]) {
         return Some(KeywordAction::Marker("doctor companion"));
@@ -11234,7 +11255,6 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 | "vanishing"
                 | "offering"
                 | "soulbond"
-                | "unearth"
                 | "specialize"
                 | "squad"
                 | "spectacle"
@@ -11250,7 +11270,6 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 | "tribute"
                 | "buyback"
                 | "flashback"
-                | "rebound"
         )
     {
         if let Some(display) = marker_keyword_display(&words) {
@@ -11300,11 +11319,11 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         ["populate"] => KeywordAction::Marker("populate"),
         ["provoke"] => KeywordAction::Marker("provoke"),
         ["ravenous"] => KeywordAction::Marker("ravenous"),
-        ["riot"] => KeywordAction::Marker("riot"),
+        ["riot"] => KeywordAction::Riot,
         ["skulk"] => KeywordAction::Skulk,
         ["sunburst"] => KeywordAction::Sunburst,
         ["undaunted"] => KeywordAction::Marker("undaunted"),
-        ["unleash"] => KeywordAction::Marker("unleash"),
+        ["unleash"] => KeywordAction::Unleash,
         ["fading", amount] => {
             let value = amount.parse::<u32>().ok()?;
             KeywordAction::Fading(value)
@@ -11351,8 +11370,9 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         ["persist"] => KeywordAction::Persist,
         ["prowess"] => KeywordAction::Prowess,
         ["exalted"] => KeywordAction::Exalted,
-        ["cascade"] => KeywordAction::Marker("cascade"),
+        ["cascade"] => KeywordAction::Cascade,
         ["storm"] => KeywordAction::Storm,
+        ["rebound"] => KeywordAction::Rebound,
         ["ascend"] => KeywordAction::Marker("ascend"),
         ["daybound"] => KeywordAction::Marker("daybound"),
         ["nightbound"] => KeywordAction::Marker("nightbound"),
@@ -11430,19 +11450,20 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                     "populate" => return Some(KeywordAction::Marker("populate")),
                     "provoke" => return Some(KeywordAction::Marker("provoke")),
                     "ravenous" => return Some(KeywordAction::Marker("ravenous")),
-                    "riot" => return Some(KeywordAction::Marker("riot")),
+                    "riot" => return Some(KeywordAction::Riot),
                     "skulk" => return Some(KeywordAction::Skulk),
                     "sunburst" => return Some(KeywordAction::Sunburst),
                     "undaunted" => return Some(KeywordAction::Marker("undaunted")),
-                    "unleash" => return Some(KeywordAction::Marker("unleash")),
+                    "unleash" => return Some(KeywordAction::Unleash),
                     "wither" => return Some(KeywordAction::Wither),
                     "infect" => return Some(KeywordAction::Infect),
                     "undying" => return Some(KeywordAction::Undying),
                     "persist" => return Some(KeywordAction::Persist),
                     "prowess" => return Some(KeywordAction::Prowess),
                     "exalted" => return Some(KeywordAction::Exalted),
-                    "cascade" => return Some(KeywordAction::Marker("cascade")),
+                    "cascade" => return Some(KeywordAction::Cascade),
                     "storm" => return Some(KeywordAction::Storm),
+                    "rebound" => return Some(KeywordAction::Rebound),
                     "ascend" => return Some(KeywordAction::Marker("ascend")),
                     "daybound" => return Some(KeywordAction::Marker("daybound")),
                     "nightbound" => return Some(KeywordAction::Marker("nightbound")),

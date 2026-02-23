@@ -1262,6 +1262,17 @@ fn resolve_stack_entry_full(
             }
         } else if obj.zone == Zone::Stack {
             // It's an instant/sorcery
+            let has_rebound = matches!(entry.casting_method, CastingMethod::Normal)
+                && obj.abilities.iter().any(|ability| {
+                    ability.functions_in(&Zone::Stack)
+                        && matches!(
+                            &ability.kind,
+                            AbilityKind::Static(static_ability)
+                                if static_ability.id()
+                                    == crate::static_abilities::StaticAbilityId::Rebound
+                        )
+                });
+
             // Check if cast with flashback/escape/jump-start/granted escape (exiles after resolution)
             let should_exile = match &entry.casting_method {
                 CastingMethod::Normal => false,
@@ -1291,7 +1302,27 @@ fn resolve_stack_entry_full(
                 }
             };
 
-            if should_exile {
+            if has_rebound {
+                if let Some(exiled_id) = game.move_object(entry.object_id, Zone::Exile) {
+                    game.delayed_triggers.push(crate::triggers::DelayedTrigger {
+                        trigger: crate::triggers::Trigger::beginning_of_upkeep(
+                            crate::target::PlayerFilter::Specific(entry.controller),
+                        ),
+                        effects: vec![Effect::may_single(Effect::new(
+                            crate::effects::CastSourceEffect::new()
+                                .without_paying_mana_cost()
+                                .require_exile(),
+                        ))],
+                        one_shot: true,
+                        x_value: entry.x_value,
+                        not_before_turn: None,
+                        expires_at_turn: None,
+                        target_objects: vec![exiled_id],
+                        ability_source: None,
+                        controller: entry.controller,
+                    });
+                }
+            } else if should_exile {
                 game.move_object(entry.object_id, Zone::Exile);
             } else {
                 // Process zone change through replacement effects
@@ -11759,6 +11790,78 @@ mod tests {
                 .unwrap_or(false)
         });
         assert!(in_exile, "Think Twice SHOULD be in exile after flashback");
+    }
+
+    #[test]
+    fn test_rebound_exiles_on_resolution_and_schedules_next_upkeep_cast() {
+        use crate::ability::Ability;
+        use crate::cards::CardDefinition;
+        use crate::effect::Effect;
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::static_abilities::StaticAbility;
+        use crate::triggers::TriggerQueue;
+        use crate::types::CardType;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.priority_player = Some(alice);
+        game.player_mut(alice)
+            .unwrap()
+            .mana_pool
+            .add(ManaSymbol::Blue, 2);
+
+        let card = crate::card::CardBuilder::new(CardId::new(), "Rebound Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Blue],
+            ]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let mut definition = CardDefinition::new(card);
+        definition.spell_effect = Some(vec![Effect::gain_life(1)]);
+        definition.abilities.push(
+            Ability::static_ability(StaticAbility::rebound())
+                .in_zones(vec![Zone::Stack])
+                .with_text("Rebound"),
+        );
+
+        let rebound_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+
+        let mut state = PriorityLoopState::new(2);
+        let mut trigger_queue = TriggerQueue::new();
+
+        let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: rebound_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        });
+        let result =
+            apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response);
+        assert!(result.is_ok(), "normal cast with rebound should succeed");
+
+        assert_eq!(game.stack.len(), 1, "spell should be on stack");
+        resolve_stack_entry(&mut game).expect("rebound spell should resolve");
+
+        let in_exile = game.exile.iter().any(|&id| {
+            game.object(id)
+                .map(|o| o.name == "Rebound Probe")
+                .unwrap_or(false)
+        });
+        assert!(in_exile, "rebound spell should be exiled on resolution");
+
+        assert_eq!(
+            game.delayed_triggers.len(),
+            1,
+            "rebound should schedule exactly one next-upkeep cast trigger"
+        );
+        let delayed_debug = format!("{:?}", game.delayed_triggers[0].effects);
+        assert!(
+            delayed_debug.contains("CastSourceEffect"),
+            "rebound delayed trigger should cast the exiled source, got {delayed_debug}"
+        );
     }
 
     #[test]
