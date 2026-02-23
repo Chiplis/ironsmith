@@ -775,6 +775,14 @@ impl StaticAbility {
         Self::new(Changeling)
     }
 
+    pub fn partner() -> Self {
+        Self::new(Partner)
+    }
+
+    pub fn assist() -> Self {
+        Self::new(Assist)
+    }
+
     pub fn protection(from: crate::ability::ProtectionFrom) -> Self {
         Self::new(Protection::new(from))
     }

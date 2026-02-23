@@ -42,6 +42,8 @@ pub enum StaticAbilityId {
     Wither,
     Infect,
     Changeling,
+    Partner,
+    Assist,
 
     // === Combat modifiers ===
     Unblockable,
@@ -199,6 +201,8 @@ impl StaticAbilityId {
                 | Wither
                 | Infect
                 | Changeling
+                | Partner
+                | Assist
         )
     }
 

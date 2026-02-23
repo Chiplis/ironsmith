@@ -12888,6 +12888,36 @@ fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if text.starts_with("rampage ") {
         return Some(raw_text.to_string());
     }
+    if text == "extort" {
+        return Some("Extort".to_string());
+    }
+    if text == "partner" {
+        return Some("Partner".to_string());
+    }
+    if text == "assist" {
+        return Some("Assist".to_string());
+    }
+    if text.starts_with("soulshift ") {
+        return Some(raw_text.to_string());
+    }
+    if text.starts_with("outlast ") {
+        return Some(raw_text.to_string());
+    }
+    if text.starts_with("modular ") {
+        return Some(raw_text.to_string());
+    }
+    if text.starts_with("graft ") {
+        return Some(raw_text.to_string());
+    }
+    if text == "sunburst" {
+        return Some("Sunburst".to_string());
+    }
+    if text.starts_with("fading ") {
+        return Some(raw_text.to_string());
+    }
+    if text.starts_with("vanishing ") {
+        return Some(raw_text.to_string());
+    }
     None
 }
 
@@ -18314,6 +18344,9 @@ fn is_keyword_phrase(phrase: &str) -> bool {
     if lower.starts_with("ward ") {
         return true;
     }
+    if lower == "sunburst" || lower.starts_with("fading ") || lower.starts_with("vanishing ") {
+        return true;
+    }
     matches!(
         lower.as_str(),
         "flying"
@@ -18341,6 +18374,8 @@ fn is_keyword_phrase(phrase: &str) -> bool {
             | "wither"
             | "infect"
             | "changeling"
+            | "partner"
+            | "assist"
     )
 }
 

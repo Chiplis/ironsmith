@@ -2146,6 +2146,29 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
         KeywordAction::Renown(amount) => {
             Some(StaticAbility::custom("renown", format!("renown {amount}")))
         }
+        KeywordAction::Modular(amount) => {
+            Some(StaticAbility::custom("modular", format!("modular {amount}")))
+        }
+        KeywordAction::Graft(amount) => {
+            Some(StaticAbility::custom("graft", format!("graft {amount}")))
+        }
+        KeywordAction::Soulshift(amount) => {
+            Some(StaticAbility::custom("soulshift", format!("soulshift {amount}")))
+        }
+        KeywordAction::Outlast(cost) => Some(StaticAbility::custom(
+            "outlast",
+            format!("outlast {}", cost.to_oracle()),
+        )),
+        KeywordAction::Extort => Some(StaticAbility::custom("extort", "extort".to_string())),
+        KeywordAction::Partner => Some(StaticAbility::partner()),
+        KeywordAction::Assist => Some(StaticAbility::assist()),
+        KeywordAction::Sunburst => Some(StaticAbility::custom("sunburst", "sunburst".to_string())),
+        KeywordAction::Fading(amount) => {
+            Some(StaticAbility::custom("fading", format!("fading {amount}")))
+        }
+        KeywordAction::Vanishing(amount) => {
+            Some(StaticAbility::custom("vanishing", format!("vanishing {amount}")))
+        }
         KeywordAction::Fear => Some(StaticAbility::fear()),
         KeywordAction::Intimidate => Some(StaticAbility::intimidate()),
         KeywordAction::Shadow => Some(StaticAbility::shadow()),
@@ -11102,6 +11125,64 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         return Some(KeywordAction::Marker("renown"));
     }
 
+    if words.first().copied() == Some("soulshift") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Soulshift(amount));
+        }
+        return Some(KeywordAction::Marker("soulshift"));
+    }
+
+    if words.first().copied() == Some("outlast") {
+        if let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[1..])
+            && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
+        {
+            return Some(KeywordAction::Outlast(cost));
+        }
+        return Some(KeywordAction::Marker("outlast"));
+    }
+
+    if words.first().copied() == Some("modular") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Modular(amount));
+        }
+        return Some(KeywordAction::Marker("modular"));
+    }
+
+    if words.first().copied() == Some("graft") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Graft(amount));
+        }
+        return Some(KeywordAction::Marker("graft"));
+    }
+
+    if words.first().copied() == Some("fading") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Fading(amount));
+        }
+        return Some(KeywordAction::Marker("fading"));
+    }
+
+    if words.first().copied() == Some("vanishing") {
+        if words.len() >= 2
+            && let Ok(amount) = words[1].parse::<u32>()
+        {
+            return Some(KeywordAction::Vanishing(amount));
+        }
+        return Some(KeywordAction::Marker("vanishing"));
+    }
+
+    if words.first().copied() == Some("sunburst") {
+        return Some(KeywordAction::Sunburst);
+    }
+
     if words.as_slice().starts_with(&["battle", "cry"]) {
         return Some(KeywordAction::BattleCry);
     }
@@ -11204,26 +11285,50 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         ["phasing"] => KeywordAction::Phasing,
         ["indestructible"] => KeywordAction::Indestructible,
         ["shroud"] => KeywordAction::Shroud,
-        ["assist"] => KeywordAction::Marker("assist"),
+        ["assist"] => KeywordAction::Assist,
         ["cipher"] => KeywordAction::Marker("cipher"),
         ["devoid"] => KeywordAction::Devoid,
         ["dethrone"] => KeywordAction::Dethrone,
         ["enlist"] => KeywordAction::Marker("enlist"),
         ["evolve"] => KeywordAction::Evolve,
-        ["extort"] => KeywordAction::Marker("extort"),
+        ["extort"] => KeywordAction::Extort,
         ["ingest"] => KeywordAction::Ingest,
         ["mentor"] => KeywordAction::Mentor,
         ["training"] => KeywordAction::Training,
         ["myriad"] => KeywordAction::Marker("myriad"),
-        ["partner"] => KeywordAction::Marker("partner"),
+        ["partner"] => KeywordAction::Partner,
         ["populate"] => KeywordAction::Marker("populate"),
         ["provoke"] => KeywordAction::Marker("provoke"),
         ["ravenous"] => KeywordAction::Marker("ravenous"),
         ["riot"] => KeywordAction::Marker("riot"),
         ["skulk"] => KeywordAction::Skulk,
-        ["sunburst"] => KeywordAction::Marker("sunburst"),
+        ["sunburst"] => KeywordAction::Sunburst,
         ["undaunted"] => KeywordAction::Marker("undaunted"),
         ["unleash"] => KeywordAction::Marker("unleash"),
+        ["fading", amount] => {
+            let value = amount.parse::<u32>().ok()?;
+            KeywordAction::Fading(value)
+        }
+        ["vanishing", amount] => {
+            let value = amount.parse::<u32>().ok()?;
+            KeywordAction::Vanishing(value)
+        }
+        ["modular", amount] => {
+            let value = amount.parse::<u32>().ok()?;
+            KeywordAction::Modular(value)
+        }
+        ["graft", amount] => {
+            let value = amount.parse::<u32>().ok()?;
+            KeywordAction::Graft(value)
+        }
+        ["soulshift", amount] => {
+            let value = amount.parse::<u32>().ok()?;
+            KeywordAction::Soulshift(value)
+        }
+        ["outlast", cost] => {
+            let parsed_cost = parse_scryfall_mana_cost(cost).ok()?;
+            KeywordAction::Outlast(parsed_cost)
+        }
         ["ward", amount] => {
             let value = amount.parse::<u32>().ok()?;
             KeywordAction::Ward(value)
@@ -11310,24 +11415,24 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                     "phasing" => return Some(KeywordAction::Phasing),
                     "indestructible" => return Some(KeywordAction::Indestructible),
                     "shroud" => return Some(KeywordAction::Shroud),
-                    "assist" => return Some(KeywordAction::Marker("assist")),
+                    "assist" => return Some(KeywordAction::Assist),
                     "cipher" => return Some(KeywordAction::Marker("cipher")),
                     "devoid" => return Some(KeywordAction::Devoid),
                     "dethrone" => return Some(KeywordAction::Dethrone),
                     "enlist" => return Some(KeywordAction::Marker("enlist")),
                     "evolve" => return Some(KeywordAction::Evolve),
-                    "extort" => return Some(KeywordAction::Marker("extort")),
+                    "extort" => return Some(KeywordAction::Extort),
                     "ingest" => return Some(KeywordAction::Ingest),
                     "mentor" => return Some(KeywordAction::Mentor),
                     "training" => return Some(KeywordAction::Training),
                     "myriad" => return Some(KeywordAction::Marker("myriad")),
-                    "partner" => return Some(KeywordAction::Marker("partner")),
+                    "partner" => return Some(KeywordAction::Partner),
                     "populate" => return Some(KeywordAction::Marker("populate")),
                     "provoke" => return Some(KeywordAction::Marker("provoke")),
                     "ravenous" => return Some(KeywordAction::Marker("ravenous")),
                     "riot" => return Some(KeywordAction::Marker("riot")),
                     "skulk" => return Some(KeywordAction::Skulk),
-                    "sunburst" => return Some(KeywordAction::Marker("sunburst")),
+                    "sunburst" => return Some(KeywordAction::Sunburst),
                     "undaunted" => return Some(KeywordAction::Marker("undaunted")),
                     "unleash" => return Some(KeywordAction::Marker("unleash")),
                     "wither" => return Some(KeywordAction::Wither),

@@ -107,6 +107,8 @@ define_keyword!(Reach, Reach, "Reach",
 );
 
 define_keyword!(Flanking, Flanking, "Flanking");
+define_keyword!(Partner, Partner, "Partner");
+define_keyword!(Assist, Assist, "Assist");
 
 // === Defensive keywords ===
 

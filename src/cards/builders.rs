@@ -82,6 +82,16 @@ enum KeywordAction {
     Skulk,
     Training,
     Renown(u32),
+    Modular(u32),
+    Graft(u32),
+    Soulshift(u32),
+    Outlast(ManaCost),
+    Extort,
+    Partner,
+    Assist,
+    Sunburst,
+    Fading(u32),
+    Vanishing(u32),
     Fear,
     Intimidate,
     Shadow,
@@ -1378,6 +1388,16 @@ impl CardDefinitionBuilder {
             KeywordAction::Skulk => self.skulk(),
             KeywordAction::Training => self.training(),
             KeywordAction::Renown(amount) => self.renown(amount),
+            KeywordAction::Modular(amount) => self.modular(amount),
+            KeywordAction::Graft(amount) => self.graft(amount),
+            KeywordAction::Soulshift(amount) => self.soulshift(amount),
+            KeywordAction::Outlast(cost) => self.outlast(cost),
+            KeywordAction::Extort => self.extort(),
+            KeywordAction::Partner => self.partner(),
+            KeywordAction::Assist => self.assist(),
+            KeywordAction::Sunburst => self.sunburst(),
+            KeywordAction::Fading(amount) => self.fading(amount),
+            KeywordAction::Vanishing(amount) => self.vanishing(amount),
             KeywordAction::Fear => self.fear(),
             KeywordAction::Intimidate => self.intimidate(),
             KeywordAction::Shadow => self.shadow(),
@@ -2057,6 +2077,283 @@ impl CardDefinitionBuilder {
             )
             .with_text(&text),
         )
+    }
+
+    /// Add soulshift N.
+    ///
+    /// Soulshift means "When this creature dies, you may return target Spirit card
+    /// with mana value N or less from your graveyard to your hand."
+    pub fn soulshift(self, amount: u32) -> Self {
+        let text = format!("Soulshift {amount}");
+        let filter = ObjectFilter::default()
+            .with_subtype(Subtype::Spirit)
+            .owned_by(PlayerFilter::You)
+            .in_zone(Zone::Graveyard)
+            .with_mana_value(crate::filter::Comparison::LessThanOrEqual(amount as i32));
+        let target =
+            ChooseSpec::target(ChooseSpec::Object(filter)).with_count(ChoiceCount::up_to(1));
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_dies(),
+                effects: vec![Effect::return_from_graveyard_to_hand(target.clone())],
+                choices: vec![target],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: Some(text),
+        })
+    }
+
+    /// Add outlast with a mana cost.
+    ///
+    /// Outlast means "{cost}, {T}: Put a +1/+1 counter on this creature.
+    /// Activate only as a sorcery."
+    pub fn outlast(self, cost: ManaCost) -> Self {
+        let text = format!("Outlast {}", cost.to_oracle());
+        let total_cost = TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(cost),
+            crate::costs::Cost::tap(),
+        ]);
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: total_cost,
+                effects: vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
+                choices: vec![],
+                timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: Some(text),
+        })
+    }
+
+    /// Add extort.
+    ///
+    /// Extort means "Whenever you cast a spell, you may pay {W/B}.
+    /// If you do, each opponent loses 1 life and you gain that much life."
+    pub fn extort(self) -> Self {
+        let pay_cost = ManaCost::from_pips(vec![vec![ManaSymbol::White, ManaSymbol::Black]]);
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::spell_cast(None, PlayerFilter::You),
+                effects: vec![
+                    Effect::with_id(
+                        0,
+                        Effect::may_single(Effect::new(crate::effects::PayManaEffect::new(
+                            pay_cost,
+                            ChooseSpec::SourceController,
+                        ))),
+                    ),
+                    Effect::if_then(
+                        EffectId(0),
+                        EffectPredicate::Happened,
+                        vec![
+                            Effect::with_id(
+                                1,
+                                Effect::for_each_opponent(vec![Effect::lose_life_player(
+                                    1,
+                                    PlayerFilter::IteratedPlayer,
+                                )]),
+                            ),
+                            Effect::gain_life(Value::EffectValue(EffectId(1))),
+                        ],
+                    ),
+                ],
+                choices: vec![],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: Some("Extort".to_string()),
+        })
+    }
+
+    /// Add partner.
+    ///
+    /// Partner is a deck-construction ability used in Commander variants.
+    /// It has no battlefield rules impact in this runtime.
+    pub fn partner(self) -> Self {
+        self.with_ability(Ability::static_ability(StaticAbility::partner()).with_text("Partner"))
+    }
+
+    /// Add assist.
+    ///
+    /// Assist is relevant in multiplayer casting. In 1v1 it has no gameplay impact.
+    pub fn assist(self) -> Self {
+        self.with_ability(Ability::static_ability(StaticAbility::assist()).with_text("Assist"))
+    }
+
+    /// Add sunburst.
+    ///
+    /// Sunburst means "This permanent enters with a +1/+1 counter on it for each color
+    /// of mana spent to cast it if it's a creature. Otherwise, it enters with that many
+    /// charge counters on it."
+    pub fn sunburst(self) -> Self {
+        let counter_type = if self
+            .card_builder
+            .card_types_ref()
+            .contains(&CardType::Creature)
+        {
+            CounterType::PlusOnePlusOne
+        } else {
+            CounterType::Charge
+        };
+
+        self.with_ability(
+            Ability::static_ability(StaticAbility::enters_with_counters_value(
+                counter_type,
+                Value::ColorsOfManaSpentToCastThisSpell,
+            ))
+            .with_text("Sunburst"),
+        )
+    }
+
+    /// Add fading N.
+    ///
+    /// Fading means "This permanent enters with N fade counters on it.
+    /// At the beginning of your upkeep, remove a fade counter from it.
+    /// If you can't, sacrifice it."
+    pub fn fading(self, amount: u32) -> Self {
+        let text = format!("Fading {amount}");
+        self.with_ability(
+            Ability::static_ability(StaticAbility::enters_with_counters(
+                CounterType::Fade,
+                amount,
+            ))
+            .with_text(&text),
+        )
+        .with_ability(Ability::triggered(
+            Trigger::beginning_of_upkeep(PlayerFilter::You),
+            vec![Effect::remove_counters(
+                CounterType::Fade,
+                1,
+                ChooseSpec::Source,
+            )],
+        ))
+        .with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::counter_removed_from(ObjectFilter::source()),
+                effects: vec![Effect::sacrifice_source()],
+                choices: vec![],
+                intervening_if: Some(Condition::SourceHasNoCounter(CounterType::Fade)),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        })
+    }
+
+    /// Add vanishing N.
+    ///
+    /// Vanishing means "This permanent enters with N time counters on it.
+    /// At the beginning of your upkeep, remove a time counter from it.
+    /// When the last is removed, sacrifice it."
+    pub fn vanishing(self, amount: u32) -> Self {
+        let text = format!("Vanishing {amount}");
+        self.with_ability(
+            Ability::static_ability(StaticAbility::enters_with_counters(
+                CounterType::Time,
+                amount,
+            ))
+            .with_text(&text),
+        )
+        .with_ability(Ability::triggered(
+            Trigger::beginning_of_upkeep(PlayerFilter::You),
+            vec![Effect::remove_counters(
+                CounterType::Time,
+                1,
+                ChooseSpec::Source,
+            )],
+        ))
+        .with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::counter_removed_from(ObjectFilter::source()),
+                effects: vec![Effect::sacrifice_source()],
+                choices: vec![],
+                intervening_if: Some(Condition::SourceHasNoCounter(CounterType::Time)),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        })
+    }
+
+    /// Add modular N.
+    ///
+    /// Modular means "This creature enters with N +1/+1 counters on it. When it dies,
+    /// you may put its +1/+1 counters on target artifact creature."
+    pub fn modular(self, amount: u32) -> Self {
+        let text = format!("Modular {amount}");
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::artifact().with_type(CardType::Creature),
+        ));
+        let trigger_tag = "modular_triggering_object";
+        let dead_source_filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .same_stable_id_as_tagged(trigger_tag);
+        let transfer_count = Value::CountersOn(
+            Box::new(ChooseSpec::All(dead_source_filter)),
+            Some(CounterType::PlusOnePlusOne),
+        );
+
+        self.with_ability(
+            Ability::static_ability(StaticAbility::enters_with_counters(
+                CounterType::PlusOnePlusOne,
+                amount,
+            ))
+            .with_text(&text),
+        )
+        .with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_dies(),
+                effects: vec![
+                    Effect::tag_triggering_object(trigger_tag),
+                    Effect::may_single(Effect::put_counters(
+                        CounterType::PlusOnePlusOne,
+                        transfer_count,
+                        target.clone(),
+                    )),
+                ],
+                choices: vec![target],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        })
+    }
+
+    /// Add graft N.
+    ///
+    /// Graft means "This creature enters with N +1/+1 counters on it. Whenever another
+    /// creature enters, you may move a +1/+1 counter from this creature onto it."
+    pub fn graft(self, amount: u32) -> Self {
+        let text = format!("Graft {amount}");
+        let entered_tag = "graft_entered_creature";
+
+        self.with_ability(
+            Ability::static_ability(StaticAbility::enters_with_counters(
+                CounterType::PlusOnePlusOne,
+                amount,
+            ))
+            .with_text(&text),
+        )
+        .with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::enters_battlefield(ObjectFilter::creature().other()),
+                effects: vec![
+                    Effect::tag_triggering_object(entered_tag),
+                    Effect::may_single(Effect::move_counters(
+                        CounterType::PlusOnePlusOne,
+                        1,
+                        ChooseSpec::Source,
+                        ChooseSpec::Tagged(entered_tag.into()),
+                    )),
+                ],
+                choices: vec![],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        })
     }
 
     /// Add ingest.

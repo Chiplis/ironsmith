@@ -197,6 +197,403 @@ fn test_builder_fabricate_creates_etb_modal_trigger() {
 }
 
 #[test]
+fn test_builder_soulshift_creates_dies_trigger_with_graveyard_target() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soulshift Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .soulshift(3)
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    assert_eq!(ability.text.as_deref(), Some("Soulshift 3"));
+    match &ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            assert!(triggered.trigger.display().contains("dies"));
+            assert_eq!(triggered.choices.len(), 1);
+            let debug = format!("{:?}", triggered.effects);
+            assert!(
+                debug.contains("ReturnFromGraveyardToHandEffect"),
+                "expected soulshift recursion effect, got {debug}"
+            );
+        }
+        _ => panic!("expected triggered soulshift ability"),
+    }
+}
+
+#[test]
+fn test_builder_outlast_creates_sorcery_speed_activated_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Outlast Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .outlast(ManaCost::from_symbols(vec![ManaSymbol::White]))
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    assert_eq!(ability.text.as_deref(), Some("Outlast {W}"));
+    match &ability.kind {
+        AbilityKind::Activated(activated) => {
+            assert_eq!(
+                activated.timing,
+                crate::ability::ActivationTiming::SorcerySpeed
+            );
+            let cost_text = activated.mana_cost.display().to_ascii_lowercase();
+            assert!(
+                cost_text.contains("{w}") && cost_text.contains("{t}"),
+                "expected outlast mana+tap cost, got {cost_text}"
+            );
+            let debug = format!("{:?}", activated.effects);
+            assert!(
+                debug.contains("PutCountersEffect"),
+                "expected +1/+1 counter effect, got {debug}"
+            );
+        }
+        _ => panic!("expected activated outlast ability"),
+    }
+}
+
+#[test]
+fn test_builder_extort_creates_spell_cast_trigger_with_optional_payment() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Extort Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .extort()
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    assert_eq!(ability.text.as_deref(), Some("Extort"));
+    match &ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            assert!(triggered.trigger.display().contains("you cast"));
+            let debug = format!("{:?}", triggered.effects);
+            assert!(
+                debug.contains("PayManaEffect"),
+                "expected extort payment effect, got {debug}"
+            );
+            assert!(
+                debug.contains("ForPlayersEffect"),
+                "expected extort opponent-drain loop, got {debug}"
+            );
+        }
+        _ => panic!("expected triggered extort ability"),
+    }
+}
+
+#[test]
+fn test_builder_partner_creates_keyword_static_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .partner()
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    assert_eq!(ability.text.as_deref(), Some("Partner"));
+    match &ability.kind {
+        AbilityKind::Static(static_ability) => {
+            assert_eq!(static_ability.id(), StaticAbilityId::Partner);
+        }
+        _ => panic!("expected static partner ability"),
+    }
+}
+
+#[test]
+fn test_builder_assist_creates_keyword_static_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Assist Test")
+        .card_types(vec![CardType::Sorcery])
+        .assist()
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let ability = &def.abilities[0];
+    assert_eq!(ability.text.as_deref(), Some("Assist"));
+    match &ability.kind {
+        AbilityKind::Static(static_ability) => {
+            assert_eq!(static_ability.id(), StaticAbilityId::Assist);
+        }
+        _ => panic!("expected static assist ability"),
+    }
+}
+
+#[test]
+fn test_builder_modular_creates_enters_counter_and_dies_transfer() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Modular Test")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .modular(2)
+        .build();
+
+    assert_eq!(def.abilities.len(), 2);
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("EntersWithCounters"),
+        "expected enters-with-counters ability, got {debug}"
+    );
+    assert!(
+        debug.contains("ZoneChangeTrigger") && debug.contains("PutCountersEffect"),
+        "expected dies transfer trigger for modular, got {debug}"
+    );
+}
+
+#[test]
+fn test_builder_graft_creates_enters_counter_and_etb_move_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Graft Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .graft(2)
+        .build();
+
+    assert_eq!(def.abilities.len(), 2);
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("EntersWithCounters"),
+        "expected enters-with-counters ability, got {debug}"
+    );
+    assert!(
+        debug.contains("ZoneChangeTrigger") && debug.contains("MoveCountersEffect"),
+        "expected graft move-counter trigger, got {debug}"
+    );
+}
+
+#[test]
+fn test_builder_sunburst_creature_uses_plus_one_counters() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sunburst Creature Test")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .sunburst()
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("EntersWithCounters"),
+        "expected enters-with-counters replacement, got {debug}"
+    );
+    assert!(
+        debug.contains("ColorsOfManaSpentToCastThisSpell"),
+        "expected sunburst to scale from colors spent to cast, got {debug}"
+    );
+    assert!(
+        debug.contains("PlusOnePlusOne"),
+        "expected creature sunburst to use +1/+1 counters, got {debug}"
+    );
+}
+
+#[test]
+fn test_builder_sunburst_noncreature_uses_charge_counters() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sunburst Artifact Test")
+        .card_types(vec![CardType::Artifact])
+        .sunburst()
+        .build();
+
+    assert_eq!(def.abilities.len(), 1);
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("EntersWithCounters"),
+        "expected enters-with-counters replacement, got {debug}"
+    );
+    assert!(
+        debug.contains("ColorsOfManaSpentToCastThisSpell"),
+        "expected sunburst to scale from colors spent to cast, got {debug}"
+    );
+    assert!(
+        debug.contains("Charge"),
+        "expected noncreature sunburst to use charge counters, got {debug}"
+    );
+}
+
+#[test]
+fn test_builder_fading_creates_counter_upkeep_and_sacrifice_triggers() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fading Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .fading(2)
+        .build();
+
+    assert_eq!(def.abilities.len(), 3);
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("EntersWithCounters") && debug.contains("Fade"),
+        "expected fading ETB fade counters, got {debug}"
+    );
+    assert!(
+        debug.contains("BeginningOfUpkeepTrigger") && debug.contains("RemoveCountersEffect"),
+        "expected fading upkeep counter removal trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("CounterRemovedFromTrigger")
+            && debug.contains("SourceHasNoCounter(Fade)")
+            && debug.contains("SacrificeTargetEffect"),
+        "expected fading last-counter sacrifice trigger, got {debug}"
+    );
+}
+
+#[test]
+fn test_builder_vanishing_creates_counter_upkeep_and_sacrifice_triggers() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanishing Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .vanishing(3)
+        .build();
+
+    assert_eq!(def.abilities.len(), 3);
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("EntersWithCounters") && debug.contains("Time"),
+        "expected vanishing ETB time counters, got {debug}"
+    );
+    assert!(
+        debug.contains("BeginningOfUpkeepTrigger") && debug.contains("RemoveCountersEffect"),
+        "expected vanishing upkeep counter removal trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("CounterRemovedFromTrigger")
+            && debug.contains("SourceHasNoCounter(Time)")
+            && debug.contains("SacrificeTargetEffect"),
+        "expected vanishing last-counter sacrifice trigger, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_soulshift_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soulshift Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Soulshift 2 (When this creature dies, you may return target Spirit card with mana value 2 or less from your graveyard to your hand.)",
+        )
+        .expect("soulshift keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Soulshift 2"),
+        "expected soulshift keyword render, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_outlast_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Outlast Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Outlast {W} ({W}, {T}: Put a +1/+1 counter on this creature. Activate only as a sorcery.)",
+        )
+        .expect("outlast keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Outlast {W}"),
+        "expected outlast keyword render, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_extort_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Extort Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Extort (Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain that much life.)",
+        )
+        .expect("extort keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Extort"),
+        "expected extort keyword render, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_partner_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Partner")
+        .expect("partner keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Partner"),
+        "expected partner keyword render, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_assist_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Assist Parse Test")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Assist")
+        .expect("assist keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Assist"),
+        "expected assist keyword render, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_modular_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Modular Parse Test")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text("Modular 1 (This creature enters with a +1/+1 counter on it.)")
+        .expect("modular keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Modular 1"),
+        "expected modular keyword render, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_graft_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Graft Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Graft 2 (This creature enters with two +1/+1 counters on it. Whenever another creature enters, you may move a +1/+1 counter from this creature onto it.)",
+        )
+        .expect("graft keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Graft 2"),
+        "expected graft keyword render, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_sunburst_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sunburst Parse Test")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("Sunburst")
+        .expect("sunburst keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Sunburst"),
+        "expected sunburst keyword render, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_fading_keyword_line_compiles_keyword_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fading Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Fading 2 (This creature enters with two fade counters on it. At the beginning of your upkeep, remove a fade counter from it. If you can't, sacrifice it.)",
+        )
+        .expect("fading keyword line should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Fading 2"),
+        "expected fading keyword render, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_cant_gain_life_from_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "No Life")
         .parse_text("Players can't gain life.")
