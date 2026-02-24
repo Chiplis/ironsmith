@@ -1,6 +1,6 @@
 //! Treasure token definition.
 
-use crate::ability::{Ability, AbilityKind, ManaAbility};
+use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::cost::TotalCost;
 use crate::effect::Effect;
@@ -12,13 +12,16 @@ use crate::zone::Zone;
 /// A Treasure is an artifact token with "{T}, Sacrifice this artifact: Add one mana of any color."
 pub fn treasure_token_definition() -> CardDefinition {
     let mana_ability = Ability {
-        kind: AbilityKind::Mana(ManaAbility {
+        kind: AbilityKind::Activated(ActivatedAbility {
             mana_cost: crate::ability::merge_cost_effects(
                 TotalCost::free(),
                 vec![Effect::tap_source(), Effect::sacrifice_source()],
             ),
-            mana: vec![],
-            effects: Some(vec![Effect::add_mana_of_any_color(1)]),
+            effects: vec![Effect::add_mana_of_any_color(1)],
+            choices: vec![],
+            timing: crate::ability::ActivationTiming::AnyTime,
+            additional_restrictions: vec![],
+            mana_output: Some(vec![]),
             activation_condition: None,
         }),
         functional_zones: vec![Zone::Battlefield],

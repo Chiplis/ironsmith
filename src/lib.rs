@@ -53,7 +53,7 @@ pub mod zone;
 #[cfg(test)]
 mod tests;
 
-pub use ability::{Ability, AbilityKind, ActivatedAbility, ManaAbility, TriggeredAbility};
+pub use ability::{Ability, AbilityKind, ActivatedAbility, TriggeredAbility};
 pub use alternative_cast::{AlternativeCastingMethod, CastingMethod, TrapCondition};
 pub use card::{Card, CardBuilder, PowerToughness, PtValue};
 pub use color::{Color, ColorSet};

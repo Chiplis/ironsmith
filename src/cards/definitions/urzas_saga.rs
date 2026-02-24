@@ -79,7 +79,7 @@ mod tests {
         assert!(
             !def.abilities
                 .iter()
-                .any(|a| matches!(&a.kind, AbilityKind::Mana(_)))
+                .any(|a| a.is_mana_ability())
         );
     }
 

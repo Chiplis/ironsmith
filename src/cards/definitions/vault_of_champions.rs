@@ -69,7 +69,7 @@ mod tests {
             .abilities
             .iter()
             .filter_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana_ability) => Some(mana_ability),
+                AbilityKind::Activated(mana_ability) if mana_ability.is_mana_ability() => Some(mana_ability),
                 _ => None,
             })
             .collect();
@@ -77,7 +77,7 @@ mod tests {
         assert!(
             mana_abilities
                 .iter()
-                .any(|ability| ability.mana == vec![ManaSymbol::White] && ability.has_tap_cost())
+                .any(|ability| ability.mana_symbols() == &[ManaSymbol::White] && ability.has_tap_cost())
         );
     }
 
@@ -88,7 +88,7 @@ mod tests {
             .abilities
             .iter()
             .filter_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana_ability) => Some(mana_ability),
+                AbilityKind::Activated(mana_ability) if mana_ability.is_mana_ability() => Some(mana_ability),
                 _ => None,
             })
             .collect();
@@ -96,7 +96,7 @@ mod tests {
         assert!(
             mana_abilities
                 .iter()
-                .any(|ability| ability.mana == vec![ManaSymbol::Black] && ability.has_tap_cost())
+                .any(|ability| ability.mana_symbols() == &[ManaSymbol::Black] && ability.has_tap_cost())
         );
     }
 
@@ -111,7 +111,7 @@ mod tests {
 
         assert_eq!(mana_abilities.len(), 2);
         for ability in mana_abilities {
-            if let AbilityKind::Mana(mana_ability) = &ability.kind {
+            if let AbilityKind::Activated(mana_ability) = &ability.kind && mana_ability.is_mana_ability() {
                 assert!(mana_ability.has_tap_cost());
             } else {
                 panic!("Expected mana ability");

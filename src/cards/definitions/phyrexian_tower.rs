@@ -75,8 +75,9 @@ mod tests {
     fn test_first_ability_produces_colorless_mana() {
         let def = phyrexian_tower();
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
-            assert_eq!(mana_ability.mana, vec![ManaSymbol::Colorless]);
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
+            assert_eq!(mana_ability.mana_symbols(), &[ManaSymbol::Colorless]);
         } else {
             panic!("Expected mana ability");
         }
@@ -86,7 +87,8 @@ mod tests {
     fn test_first_ability_requires_tap() {
         let def = phyrexian_tower();
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
             assert!(mana_ability.has_tap_cost());
         } else {
             panic!("Expected mana ability");
@@ -108,10 +110,11 @@ mod tests {
     fn test_second_ability_produces_two_black_mana() {
         let def = phyrexian_tower();
         let ability = &def.abilities[1];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
             assert_eq!(
-                mana_ability.mana,
-                vec![ManaSymbol::Black, ManaSymbol::Black]
+                mana_ability.mana_symbols(),
+                &[ManaSymbol::Black, ManaSymbol::Black]
             );
         } else {
             panic!("Expected mana ability");
@@ -122,7 +125,8 @@ mod tests {
     fn test_second_ability_requires_tap() {
         let def = phyrexian_tower();
         let ability = &def.abilities[1];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
             assert!(mana_ability.has_tap_cost());
         } else {
             panic!("Expected mana ability");
@@ -133,7 +137,8 @@ mod tests {
     fn test_second_ability_requires_creature_sacrifice() {
         let def = phyrexian_tower();
         let ability = &def.abilities[1];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
             // Sacrifice is now in cost_effects (not TotalCost) so "dies" triggers fire
             assert!(
                 !mana_ability.mana_cost.costs().is_empty(),

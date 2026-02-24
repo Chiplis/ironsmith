@@ -106,9 +106,10 @@ mod tests {
 
         // Check the mana ability produces colorless mana
         let mana_ability = def.abilities.iter().find(|a| a.is_mana_ability()).unwrap();
-        if let AbilityKind::Mana(ma) = &mana_ability.kind {
+        if let AbilityKind::Activated(ma) = &mana_ability.kind {
+            assert!(ma.is_mana_ability());
             assert!(
-                ma.mana.contains(&ManaSymbol::Colorless),
+                ma.mana_symbols().contains(&ManaSymbol::Colorless),
                 "Mana ability should produce colorless mana"
             );
         }

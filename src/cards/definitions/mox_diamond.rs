@@ -97,11 +97,12 @@ mod tests {
         // Second ability should be a mana ability
         assert!(def.abilities[1].is_mana_ability());
 
-        if let AbilityKind::Mana(mana_ability) = &def.abilities[1].kind {
+        if let AbilityKind::Activated(mana_ability) = &def.abilities[1].kind {
+            assert!(mana_ability.is_mana_ability());
             // Should have tap cost
             assert!(mana_ability.has_tap_cost());
             // Should have effects (add mana of any color)
-            assert!(mana_ability.effects.is_some());
+            assert!(!mana_ability.effects.is_empty());
         }
     }
 

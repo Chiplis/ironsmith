@@ -1,10 +1,9 @@
 //! Ability system for permanents and spells.
 //!
-//! MTG has four types of abilities:
+//! MTG has three kinds of abilities:
 //! - Static: Always active while the source is in the appropriate zone
 //! - Triggered: Go on the stack when a condition is met
-//! - Activated: Can be activated by paying a cost
-//! - Mana: Special activated abilities that produce mana (don't use the stack)
+//! - Activated: Can be activated by paying a cost (mana abilities are a subtype with `mana_output`)
 
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
@@ -94,6 +93,8 @@ impl Ability {
                 choices: vec![],
                 timing,
                 additional_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -113,6 +114,8 @@ impl Ability {
                 choices: vec![],
                 timing: ActivationTiming::AnyTime,
                 additional_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
@@ -127,10 +130,13 @@ impl Ability {
             costs.push(crate::costs::Cost::effect(Effect::tap_source()));
         }
         Self {
-            kind: AbilityKind::Mana(ManaAbility {
+            kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::from_costs(costs),
-                mana,
-                effects: None,
+                effects: vec![],
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                mana_output: Some(mana),
                 activation_condition: None,
             }),
             functional_zones: vec![Zone::Battlefield],
@@ -140,8 +146,18 @@ impl Ability {
 
     /// Create a mana ability with variable output (uses effects instead of fixed mana).
     pub fn mana_with_effects(cost: TotalCost, effects: Vec<Effect>) -> Self {
+        let mut costs = cost.costs().to_vec();
+        costs.push(crate::costs::Cost::effect(Effect::tap_source()));
         Self {
-            kind: AbilityKind::Mana(ManaAbility::with_effects(cost, effects)),
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: TotalCost::from_costs(costs),
+                effects,
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                mana_output: Some(vec![]),
+                activation_condition: None,
+            }),
             functional_zones: vec![Zone::Battlefield],
             text: None,
         }
@@ -161,7 +177,7 @@ impl Ability {
 
     /// Check if this ability is a mana ability.
     pub fn is_mana_ability(&self) -> bool {
-        matches!(self.kind, AbilityKind::Mana(_))
+        matches!(&self.kind, AbilityKind::Activated(a) if a.is_mana_ability())
     }
 
     /// Check if this ability functions in the given zone.
@@ -179,11 +195,9 @@ pub enum AbilityKind {
     /// Triggered ability (triggers on events)
     Triggered(TriggeredAbility),
 
-    /// Activated ability (pay cost to activate)
+    /// Activated ability (pay cost to activate).
+    /// When `ActivatedAbility::is_mana_ability()` is true, this is a mana ability.
     Activated(ActivatedAbility),
-
-    /// Mana ability (special activated ability that produces mana)
-    Mana(ManaAbility),
 }
 
 /// Protection from something.
@@ -361,6 +375,7 @@ impl TriggeredAbility {
 // === Activated Abilities ===
 
 /// An activated ability that can be activated by paying a cost.
+/// Also represents mana abilities when `mana_output` is `Some`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActivatedAbility {
     /// Cost to activate
@@ -377,9 +392,26 @@ pub struct ActivatedAbility {
 
     /// Additional textual activation restrictions not modeled by `timing`.
     pub additional_restrictions: Vec<String>,
+
+    /// When `Some`, this is a mana ability. The vec contains fixed mana symbols
+    /// to add to pool. An empty vec means variable mana produced via `effects`.
+    pub mana_output: Option<Vec<ManaSymbol>>,
+
+    /// Condition that must be true to activate (e.g. conditional lands like Bleachbone Verge).
+    pub activation_condition: Option<crate::ConditionExpr>,
 }
 
 impl ActivatedAbility {
+    /// Returns true if this is a mana ability.
+    pub fn is_mana_ability(&self) -> bool {
+        self.mana_output.is_some()
+    }
+
+    /// Returns the fixed mana symbols produced, or empty if variable.
+    pub fn mana_symbols(&self) -> &[ManaSymbol] {
+        self.mana_output.as_deref().unwrap_or(&[])
+    }
+
     /// Add targets to this ability.
     pub fn with_targets(mut self, targets: Vec<ChooseSpec>) -> Self {
         self.choices = targets;
@@ -404,32 +436,35 @@ impl ActivatedAbility {
         self
     }
 
+    /// Add an activation condition.
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.activation_condition = Some(condition);
+        self
+    }
+
+    /// Add cost effects to this ability (e.g., sacrifice).
+    pub fn with_cost_effects_builder(mut self, cost_effects: Vec<Effect>) -> Self {
+        self.mana_cost = merge_cost_effects(self.mana_cost, cost_effects);
+        self
+    }
+
     /// Returns true if this activated ability requires tapping the source.
-    ///
-    /// This checks if any cost component taps the source.
     pub fn has_tap_cost(&self) -> bool {
         self.mana_cost.costs().iter().any(|c| c.requires_tap())
     }
 
     /// Returns true if this activated ability requires sacrificing the source.
-    ///
-    /// This checks if any cost component sacrifices the source.
     pub fn has_sacrifice_self_cost(&self) -> bool {
         self.mana_cost.costs().iter().any(|c| c.is_sacrifice_self())
     }
 
     /// Returns the life cost amount if this ability requires paying life.
-    ///
-    /// This checks cost components for a life payment effect and returns the amount.
     pub fn life_cost_amount(&self) -> Option<u32> {
         self.mana_cost.costs().iter().find_map(|c| c.life_amount())
     }
 
     /// Returns a per-turn activation cap from `timing` and textual restrictions,
     /// if one is present.
-    ///
-    /// "Activate only once each turn" maps to `Some(1)` via `timing`.
-    /// "Activate only twice each turn" maps to `Some(2)` via restriction text.
     pub fn max_activations_per_turn(&self) -> Option<u32> {
         if self.timing == ActivationTiming::OncePerTurn {
             return Some(1);
@@ -516,107 +551,55 @@ pub enum ActivationTiming {
     DuringOpponentsTurn,
 }
 
-// === Mana Abilities ===
+// === Mana Ability Constructors on ActivatedAbility ===
 
-/// A mana ability (doesn't use the stack).
-#[derive(Debug, Clone, PartialEq)]
-pub struct ManaAbility {
-    /// Cost to activate (usually just tap)
-    pub mana_cost: TotalCost,
-
-    /// Fixed mana produced (use this for simple abilities like basic lands)
-    pub mana: Vec<ManaSymbol>,
-
-    /// Effects to execute for variable mana (e.g., add mana equal to counters)
-    /// If present, these are used instead of `mana`.
-    pub effects: Option<Vec<Effect>>,
-
-    /// Condition that must be true to activate this ability.
-    /// Used for lands like Bleachbone Verge with "Activate only if you control a Plains or a Swamp."
-    pub activation_condition: Option<crate::ConditionExpr>,
-}
-
-impl ManaAbility {
+impl ActivatedAbility {
     /// Create a basic land mana ability ({T}: Add [mana]).
-    pub fn basic(mana: ManaSymbol) -> Self {
+    pub fn basic_mana(mana: ManaSymbol) -> Self {
         Self {
             mana_cost: TotalCost::from_cost(crate::costs::Cost::effect(Effect::tap_source())),
-            mana: vec![mana],
-            effects: None,
-            activation_condition: None,
-        }
-    }
-
-    /// Create a mana ability with variable output (uses effects).
-    /// Includes tap as a cost effect by default.
-    pub fn with_effects(cost: TotalCost, effects: Vec<Effect>) -> Self {
-        let mut costs = cost.costs().to_vec();
-        costs.push(crate::costs::Cost::effect(Effect::tap_source()));
-        Self {
-            mana_cost: TotalCost::from_costs(costs),
-            mana: Vec::new(),
-            effects: Some(effects),
+            effects: vec![],
+            choices: vec![],
+            timing: ActivationTiming::AnyTime,
+            additional_restrictions: vec![],
+            mana_output: Some(vec![mana]),
             activation_condition: None,
         }
     }
 
     /// Create a mana ability with cost effects (e.g., sacrifice a creature: Add {C}{C}).
-    pub fn with_cost_effects(
+    pub fn mana_with_cost_effects(
         cost: TotalCost,
         cost_effects: Vec<Effect>,
         mana: Vec<ManaSymbol>,
     ) -> Self {
         Self {
             mana_cost: merge_cost_effects(cost, cost_effects),
-            mana,
-            effects: None,
+            effects: vec![],
+            choices: vec![],
+            timing: ActivationTiming::AnyTime,
+            additional_restrictions: vec![],
+            mana_output: Some(mana),
             activation_condition: None,
         }
     }
 
     /// Create a conditional mana ability that requires controlling a land with certain subtypes.
-    pub fn conditional(mana: ManaSymbol, required_subtypes: Vec<crate::types::Subtype>) -> Self {
+    pub fn conditional_mana(
+        mana: ManaSymbol,
+        required_subtypes: Vec<crate::types::Subtype>,
+    ) -> Self {
         Self {
             mana_cost: TotalCost::from_cost(crate::costs::Cost::effect(Effect::tap_source())),
-            mana: vec![mana],
-            effects: None,
+            effects: vec![],
+            choices: vec![],
+            timing: ActivationTiming::AnyTime,
+            additional_restrictions: vec![],
+            mana_output: Some(vec![mana]),
             activation_condition: Some(crate::ConditionExpr::ControlLandWithSubtype(
                 required_subtypes,
             )),
         }
-    }
-
-    /// Add an activation condition to this mana ability.
-    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.activation_condition = Some(condition);
-        self
-    }
-
-    /// Add cost effects to this mana ability (e.g., sacrifice).
-    pub fn with_cost_effects_builder(mut self, cost_effects: Vec<Effect>) -> Self {
-        self.mana_cost = merge_cost_effects(self.mana_cost, cost_effects);
-        self
-    }
-
-    /// Returns true if this mana ability requires tapping the source.
-    ///
-    /// This checks if any cost component taps the source.
-    pub fn has_tap_cost(&self) -> bool {
-        self.mana_cost.costs().iter().any(|c| c.requires_tap())
-    }
-
-    /// Returns the life cost amount if this ability requires paying life.
-    ///
-    /// This checks cost components for a pay life effect and returns the amount.
-    pub fn life_cost_amount(&self) -> Option<u32> {
-        self.mana_cost.costs().iter().find_map(|c| c.life_amount())
-    }
-
-    /// Returns true if this mana ability requires sacrificing the source.
-    ///
-    /// This checks if any cost component sacrifices the source.
-    pub fn has_sacrifice_self_cost(&self) -> bool {
-        self.mana_cost.costs().iter().any(|c| c.is_sacrifice_self())
     }
 }
 

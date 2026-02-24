@@ -80,11 +80,11 @@ mod tests {
 
         let ability = &def.abilities[0];
         match &ability.kind {
-            AbilityKind::Mana(mana_ability) => {
+            AbilityKind::Activated(mana_ability) if mana_ability.is_mana_ability() => {
                 // Should have effects (not fixed mana)
-                assert!(mana_ability.effects.is_some());
+                assert!(!mana_ability.effects.is_empty());
 
-                let effects = mana_ability.effects.as_ref().unwrap();
+                let effects = &mana_ability.effects;
                 assert_eq!(
                     effects.len(),
                     1,
@@ -106,7 +106,8 @@ mod tests {
         let def = arcane_signet();
 
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
             assert!(
                 mana_ability.has_tap_cost(),
                 "Should have tap as part of cost"
@@ -158,7 +159,8 @@ mod tests {
 
         // The ability's cost requires tapping, which can't be done if already tapped
         let obj = game.object(signet_id).unwrap();
-        if let AbilityKind::Mana(mana_ability) = &obj.abilities[0].kind {
+        if let AbilityKind::Activated(mana_ability) = &obj.abilities[0].kind {
+            assert!(mana_ability.is_mana_ability());
             assert!(
                 mana_ability.has_tap_cost(),
                 "Mana ability should require tapping"
@@ -194,8 +196,9 @@ mod tests {
         let def = arcane_signet();
 
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
-            let effects = mana_ability.effects.as_ref().unwrap();
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
+            let effects = &mana_ability.effects;
 
             // Verify the debug output shows the correct effect type
             let debug_str = format!("{:?}", effects[0]);

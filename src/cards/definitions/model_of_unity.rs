@@ -78,7 +78,7 @@ mod tests {
         let has_mana = def
             .abilities
             .iter()
-            .any(|a| matches!(a.kind, AbilityKind::Mana(_)));
+            .any(|a| a.is_mana_ability());
         assert!(has_mana, "Model of Unity should have a mana ability");
     }
 

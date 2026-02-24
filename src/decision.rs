@@ -602,7 +602,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
 
             for (i, ability) in perm.abilities.iter().enumerate() {
                 // Check mana abilities
-                if matches!(ability.kind, crate::ability::AbilityKind::Mana(_)) {
+                if ability.is_mana_ability() {
                     let action = SpecialAction::ActivateManaAbility {
                         permanent_id: perm_id,
                         ability_index: i,
@@ -616,7 +616,9 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                 }
 
                 // Check activated abilities (non-mana)
-                if let crate::ability::AbilityKind::Activated(activated) = &ability.kind {
+                if let crate::ability::AbilityKind::Activated(activated) = &ability.kind
+                    && !activated.is_mana_ability()
+                {
                     if !game.can_activate_non_mana_abilities(player) {
                         continue;
                     }
@@ -697,7 +699,23 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                     continue;
                 }
 
-                if let crate::ability::AbilityKind::Activated(activated) = &ability.kind {
+                // Mana abilities from non-battlefield zones (e.g. Simian Spirit Guide)
+                if ability.is_mana_ability() {
+                    let action = SpecialAction::ActivateManaAbility {
+                        permanent_id: source_id,
+                        ability_index: i,
+                    };
+                    if can_perform_check(&action, game, player).is_ok() {
+                        actions.push(LegalAction::ActivateManaAbility {
+                            source: source_id,
+                            ability_index: i,
+                        });
+                    }
+                }
+
+                if let crate::ability::AbilityKind::Activated(activated) = &ability.kind
+                    && !activated.is_mana_ability()
+                {
                     if !game.can_activate_non_mana_abilities(player) {
                         continue;
                     }
@@ -1743,7 +1761,9 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
         }
 
         for (ability_idx, ability) in perm.abilities.iter().enumerate() {
-            if let AbilityKind::Mana(mana_ability) = &ability.kind {
+            if let AbilityKind::Activated(mana_ability) = &ability.kind
+                && mana_ability.is_mana_ability()
+            {
                 // Do a simple non-recursive check for whether this mana ability
                 // could be activated. We intentionally skip mana cost checks here
                 // to avoid infinite recursion (mana ability with mana cost would
@@ -1778,7 +1798,7 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
 
                 if can_activate && condition_met {
                     // Add the mana this ability would produce
-                    for mana in &mana_ability.mana {
+                    for mana in mana_ability.mana_symbols() {
                         potential.add(*mana, 1);
                     }
                     // Only count one mana ability per permanent (can only tap once)
@@ -4662,7 +4682,9 @@ fn format_action_short(game: &GameState, action: &LegalAction) -> String {
             // Check if this ability requires tapping
             if let Some(obj) = game.object(*source) {
                 if let Some(ability) = obj.abilities.get(*ability_index) {
-                    if let crate::AbilityKind::Mana(mana_ability) = &ability.kind {
+                    if let crate::AbilityKind::Activated(mana_ability) = &ability.kind
+                        && mana_ability.is_mana_ability()
+                    {
                         if mana_ability.has_tap_cost() {
                             format!("Tap {}", name)
                         } else {
@@ -6035,6 +6057,8 @@ mod tests {
                 choices: vec![],
                 timing: ActivationTiming::AnyTime,
                 additional_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
             text: None,
@@ -6209,6 +6233,8 @@ mod tests {
                 choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
             text: None,
@@ -6268,6 +6294,8 @@ mod tests {
                     choices: vec![],
                     timing: ActivationTiming::AnyTime,
                     additional_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
                 }),
                 functional_zones: vec![Zone::Hand],
                 text: Some("Hand ability".to_string()),

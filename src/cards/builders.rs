@@ -4,7 +4,7 @@
 //! making it easy to define cards with their complete gameplay mechanics.
 
 use crate::ability::{
-    self, Ability, AbilityKind, ActivationTiming, LevelAbility, ManaAbility, TriggeredAbility,
+    self, Ability, AbilityKind, ActivatedAbility, ActivationTiming, LevelAbility, TriggeredAbility,
 };
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::card::{CardBuilder, PowerToughness, PtValue};
@@ -1522,6 +1522,8 @@ impl CardDefinitionBuilder {
                         choices: Vec::new(),
                         timing,
                         additional_restrictions,
+                        mana_output: None,
+                        activation_condition: None,
                     }),
                     functional_zones: vec![Zone::Battlefield],
                     text: Some(format!("Crew {amount}")),
@@ -1543,6 +1545,8 @@ impl CardDefinitionBuilder {
                         choices: Vec::new(),
                         timing,
                         additional_restrictions,
+                        mana_output: None,
+                        activation_condition: None,
                     }),
                     functional_zones: vec![Zone::Battlefield],
                     text: Some(format!("Saddle {amount}")),
@@ -2173,6 +2177,8 @@ impl CardDefinitionBuilder {
                 choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(text),
@@ -2195,6 +2201,8 @@ impl CardDefinitionBuilder {
                 choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Graveyard],
             text: Some(text),
@@ -2219,6 +2227,8 @@ impl CardDefinitionBuilder {
                 choices: vec![],
                 timing: ActivationTiming::DuringCombat,
                 additional_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Hand],
             text: Some(text),
@@ -3385,6 +3395,8 @@ impl CardDefinitionBuilder {
                 choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(level_up_text),
@@ -3874,7 +3886,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .filter_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .collect();
@@ -3882,16 +3894,14 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let slow_mana = abilities
             .iter()
-            .find(|mana| {
-                mana.effects.as_ref().is_some_and(|effects| {
-                    effects
-                        .iter()
-                        .any(|effect| effect.downcast_ref::<CantEffect>().is_some())
-                })
+            .find(|a| {
+                a.effects
+                    .iter()
+                    .any(|effect| effect.downcast_ref::<CantEffect>().is_some())
             })
             .expect("expected mana ability with untap restriction");
 
-        let effects = slow_mana.effects.as_ref().expect("mana effects");
+        let effects = &slow_mana.effects;
         let cant = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<CantEffect>())
@@ -4980,20 +4990,17 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
 
         assert!(
-            mana_ability.mana.is_empty(),
+            mana_ability.mana_symbols().is_empty(),
             "scaled mana should compile via effects, got direct mana {:?}",
-            mana_ability.mana
+            mana_ability.mana_symbols()
         );
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("scaled mana ability should have effects");
+        let effects = &mana_ability.effects;
         let add_scaled = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
@@ -5033,15 +5040,12 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
 
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("scaled mana ability should have effects");
+        let effects = &mana_ability.effects;
         let add_scaled = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
@@ -5070,19 +5074,16 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
 
         assert!(
-            mana_ability.mana.is_empty(),
+            mana_ability.mana_symbols().is_empty(),
             "devotion-scaled mana should compile via effects"
         );
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("expected devotion mana effects");
+        let effects = &mana_ability.effects;
         let add_scaled = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
@@ -5137,14 +5138,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("expected scaled mana effects");
+        let effects = &mana_ability.effects;
         let add_scaled = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
@@ -5168,14 +5166,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("expected scaled mana effects");
+        let effects = &mana_ability.effects;
         let add_scaled = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
@@ -5263,14 +5258,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("dynamic any-one-color mana should compile via effects");
+        let effects = &mana_ability.effects;
         let add_any_one = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddManaOfAnyOneColorEffect>())
@@ -5314,14 +5306,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("restricted any-combination mana should compile via effects");
+        let effects = &mana_ability.effects;
         let add_any = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
@@ -5361,14 +5350,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("restricted mana ability should compile via effects");
+        let effects = &mana_ability.effects;
         let restricted = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddManaOfLandProducedTypesEffect>())
@@ -5415,14 +5401,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
                 _ => None,
             })
             .expect("expected mana ability");
-        let effects = mana_ability
-            .effects
-            .as_ref()
-            .expect("restricted mana ability should compile via effects");
+        let effects = &mana_ability.effects;
         let restricted = effects
             .iter()
             .find_map(|effect| effect.downcast_ref::<AddManaOfLandProducedTypesEffect>())

@@ -109,8 +109,8 @@ mod tests {
 
         // Find the mana ability that produces white
         let white_ability = def.abilities.iter().find(|a| {
-            if let AbilityKind::Mana(mana_ability) = &a.kind {
-                mana_ability.mana.contains(&ManaSymbol::White)
+            if let AbilityKind::Activated(mana_ability) = &a.kind && mana_ability.is_mana_ability() {
+                mana_ability.mana_symbols().contains(&ManaSymbol::White)
             } else {
                 false
             }
@@ -128,8 +128,8 @@ mod tests {
 
         // Find the mana ability that produces black
         let black_ability = def.abilities.iter().find(|a| {
-            if let AbilityKind::Mana(mana_ability) = &a.kind {
-                mana_ability.mana.contains(&ManaSymbol::Black)
+            if let AbilityKind::Activated(mana_ability) = &a.kind && mana_ability.is_mana_ability() {
+                mana_ability.mana_symbols().contains(&ManaSymbol::Black)
             } else {
                 false
             }
@@ -147,7 +147,7 @@ mod tests {
 
         // Both mana abilities should have tap as cost
         for ability in &def.abilities {
-            if let AbilityKind::Mana(mana_ability) = &ability.kind {
+            if let AbilityKind::Activated(mana_ability) = &ability.kind && mana_ability.is_mana_ability() {
                 assert!(
                     mana_ability.has_tap_cost(),
                     "Each mana ability should have tap as cost"
@@ -196,7 +196,7 @@ mod tests {
         // Verify both abilities require tapping
         let obj = game.object(land_id).unwrap();
         for ability in &obj.abilities {
-            if let AbilityKind::Mana(mana_ability) = &ability.kind {
+            if let AbilityKind::Activated(mana_ability) = &ability.kind && mana_ability.is_mana_ability() {
                 assert!(
                     mana_ability.has_tap_cost(),
                     "Mana ability should require tapping"

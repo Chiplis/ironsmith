@@ -84,10 +84,10 @@ mod tests {
             .abilities
             .iter()
             .filter_map(|a| match &a.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(mana) if mana.is_mana_ability() => Some(mana),
                 _ => None,
             })
-            .find(|mana| mana.mana.contains(&ManaSymbol::White));
+            .find(|mana| mana.mana_symbols().contains(&ManaSymbol::White));
         assert!(ability.is_some(), "Should have white mana ability");
     }
 
@@ -98,10 +98,10 @@ mod tests {
             .abilities
             .iter()
             .filter_map(|a| match &a.kind {
-                AbilityKind::Mana(mana) => Some(mana),
+                AbilityKind::Activated(mana) if mana.is_mana_ability() => Some(mana),
                 _ => None,
             })
-            .find(|mana| mana.mana.contains(&ManaSymbol::Black));
+            .find(|mana| mana.mana_symbols().contains(&ManaSymbol::Black));
         assert!(ability.is_some(), "Should have black mana ability");
     }
 

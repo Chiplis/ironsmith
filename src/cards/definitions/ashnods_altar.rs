@@ -1,6 +1,6 @@
 //! Ashnod's Altar card definition.
 
-use crate::ability::{Ability, AbilityKind, ManaAbility};
+use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::cost::TotalCost;
 use crate::effect::Effect;
@@ -30,7 +30,7 @@ pub fn ashnods_altar() -> CardDefinition {
         .card_types(vec![CardType::Artifact])
         // Mana ability: sacrifice creature -> add CC
         .with_ability(Ability {
-            kind: AbilityKind::Mana(ManaAbility::with_cost_effects(
+            kind: AbilityKind::Activated(ActivatedAbility::mana_with_cost_effects(
                 TotalCost::free(),
                 cost_effects,
                 vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
@@ -74,13 +74,14 @@ mod tests {
             .find(|a| a.is_mana_ability())
             .expect("Should have mana ability");
 
-        if let AbilityKind::Mana(mana_ab) = &mana_ability.kind {
+        if let AbilityKind::Activated(act_ab) = &mana_ability.kind {
             // Should produce 2 colorless mana
-            assert_eq!(mana_ab.mana.len(), 2);
-            assert_eq!(mana_ab.mana[0], ManaSymbol::Colorless);
-            assert_eq!(mana_ab.mana[1], ManaSymbol::Colorless);
+            let mana = act_ab.mana_output.as_ref().expect("Should have mana_output");
+            assert_eq!(mana.len(), 2);
+            assert_eq!(mana[0], ManaSymbol::Colorless);
+            assert_eq!(mana[1], ManaSymbol::Colorless);
         } else {
-            panic!("Expected mana ability");
+            panic!("Expected activated mana ability");
         }
     }
 
@@ -94,23 +95,23 @@ mod tests {
             .find(|a| a.is_mana_ability())
             .expect("Should have mana ability");
 
-        if let AbilityKind::Mana(mana_ab) = &mana_ability.kind {
+        if let AbilityKind::Activated(act_ab) = &mana_ability.kind {
             // Should not require tap
-            assert!(!mana_ab.has_tap_cost(), "Should not require tapping");
+            assert!(!act_ab.has_tap_cost(), "Should not require tapping");
 
             // Sacrifice is now in cost_effects (not TotalCost) so "dies" triggers fire
             assert!(
-                !mana_ab.mana_cost.costs().is_empty(),
+                !act_ab.mana_cost.costs().is_empty(),
                 "Should have cost_effects for sacrifice"
             );
             // Should have 2 cost_effects: choose + sacrifice
             assert_eq!(
-                mana_ab.mana_cost.costs().len(),
+                act_ab.mana_cost.costs().len(),
                 2,
                 "Should have choose + sacrifice effects"
             );
 
-            let debug_str = format!("{:?}", &mana_ab.mana_cost.costs());
+            let debug_str = format!("{:?}", &act_ab.mana_cost.costs());
             assert!(
                 debug_str.contains("ChooseObjectsEffect"),
                 "cost_effects should contain choose objects"
@@ -120,7 +121,7 @@ mod tests {
                 "cost_effects should contain sacrifice"
             );
         } else {
-            panic!("Expected mana ability");
+            panic!("Expected activated mana ability");
         }
     }
 
@@ -141,11 +142,11 @@ mod tests {
             .find(|a| a.is_mana_ability())
             .expect("Should have mana ability");
 
-        if let AbilityKind::Mana(mana_ab) = &mana_ability.kind {
+        if let AbilityKind::Activated(act_ab) = &mana_ability.kind {
             // Ashnod's Altar doesn't need to tap - you can sacrifice multiple creatures
-            assert!(!mana_ab.has_tap_cost(), "Altar should not require tap");
+            assert!(!act_ab.has_tap_cost(), "Altar should not require tap");
         } else {
-            panic!("Expected mana ability");
+            panic!("Expected activated mana ability");
         }
     }
 
@@ -215,8 +216,8 @@ mod tests {
         // Mana abilities should function on the battlefield
         assert!(mana_ability.functions_in(&crate::zone::Zone::Battlefield));
 
-        // It's a mana ability, not a regular activated ability
-        assert!(matches!(mana_ability.kind, AbilityKind::Mana(_)));
+        // It's a mana ability (activated with mana_output)
+        assert!(mana_ability.is_mana_ability());
     }
 
     #[test]
@@ -230,9 +231,9 @@ mod tests {
             .find(|a| a.is_mana_ability())
             .expect("Should have mana ability");
 
-        if let AbilityKind::Mana(mana_ab) = &mana_ability.kind {
+        if let AbilityKind::Activated(act_ab) = &mana_ability.kind {
             // The sacrifice filter is now in cost_effects via ChooseObjectsEffect
-            let debug_str = format!("{:?}", &mana_ab.mana_cost.costs());
+            let debug_str = format!("{:?}", &act_ab.mana_cost.costs());
             // Should include creature filter
             assert!(
                 debug_str.contains("Creature"),
@@ -244,7 +245,7 @@ mod tests {
                 "Should require you control"
             );
         } else {
-            panic!("Expected mana ability");
+            panic!("Expected activated mana ability");
         }
     }
 

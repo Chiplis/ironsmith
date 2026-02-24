@@ -217,7 +217,7 @@ fn test_marvin_loses_copied_abilities_under_humility() {
     let has_activated = chars
         .abilities
         .iter()
-        .any(|a| matches!(a.kind, AbilityKind::Activated(_) | AbilityKind::Mana(_)));
+        .any(|a| matches!(a.kind, AbilityKind::Activated(_)));
     assert!(
         !has_activated,
         "Marvin should not copy abilities when Humility removes them"
@@ -248,7 +248,7 @@ fn test_marvin_copies_rex_brain_counter_abilities() {
     let has_activated = chars
         .abilities
         .iter()
-        .any(|a| matches!(a.kind, AbilityKind::Activated(_) | AbilityKind::Mana(_)));
+        .any(|a| matches!(a.kind, AbilityKind::Activated(_)));
     assert!(
         has_activated,
         "Marvin should copy activated abilities from Rex via brain-counter cards"

@@ -4,7 +4,7 @@
 //! "Until end of turn, any time you could activate a mana ability, you may pay 1 life.
 //! If you do, add {C}."
 
-use crate::ability::ManaAbility;
+use crate::ability::ActivatedAbility;
 use crate::effect::{EffectOutcome, EffectResult};
 use crate::effects::EffectExecutor;
 use crate::executor::{ExecutionContext, ExecutionError};
@@ -12,11 +12,11 @@ use crate::game_state::{GameState, GrantedManaAbility};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantManaAbilityUntilEotEffect {
-    pub ability: ManaAbility,
+    pub ability: ActivatedAbility,
 }
 
 impl GrantManaAbilityUntilEotEffect {
-    pub fn new(ability: ManaAbility) -> Self {
+    pub fn new(ability: ActivatedAbility) -> Self {
         Self { ability }
     }
 }

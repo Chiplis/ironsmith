@@ -2,7 +2,7 @@
 //!
 //! A simple artifact with mana value 4 for testing layer system interactions.
 
-use crate::ability::{Ability, AbilityKind, ManaAbility};
+use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::cost::TotalCost;
 use crate::effect::Effect;
@@ -18,14 +18,17 @@ pub fn ur_golems_eye() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Ur-Golem's Eye")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
         .card_types(vec![CardType::Artifact])
-        .from_text_with_metadata("{T}: Add {C}{C}.")
-            kind: AbilityKind::Mana(ManaAbility {
+        .with_ability(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: crate::ability::merge_cost_effects(
                     TotalCost::free(),
                     vec![Effect::tap_source()],
                 ),
-                mana: vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
-                effects: None,
+                effects: vec![],
+                choices: vec![],
+                timing: crate::ability::ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                mana_output: Some(vec![ManaSymbol::Colorless, ManaSymbol::Colorless]),
                 activation_condition: None,
             }),
             functional_zones: vec![Zone::Battlefield],

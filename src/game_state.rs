@@ -751,7 +751,7 @@ pub struct StackEntry {
 #[derive(Debug, Clone)]
 pub struct GrantedManaAbility {
     pub controller: PlayerId,
-    pub ability: crate::ability::ManaAbility,
+    pub ability: crate::ability::ActivatedAbility,
     pub expires_end_of_turn: u32,
 }
 

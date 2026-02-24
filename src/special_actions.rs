@@ -500,18 +500,11 @@ fn can_activate_mana_ability(
     ability_index: usize,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
-    // Check the permanent exists and is on the battlefield
     let object = game
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)?;
-    if object.zone != Zone::Battlefield {
-        return Err(ActionError::WrongZone {
-            expected: Zone::Battlefield,
-            actual: object.zone,
-        });
-    }
 
-    // Check the player controls the permanent
+    // Check the player controls the object
     if object.controller != player {
         return Err(ActionError::InvalidTarget);
     }
@@ -526,8 +519,18 @@ fn can_activate_mana_ability(
         return Err(ActionError::NoSuchAbility);
     }
 
+    // Check the ability functions in this zone
+    if !ability.functions_in(&object.zone) {
+        return Err(ActionError::WrongZone {
+            expected: Zone::Battlefield,
+            actual: object.zone,
+        });
+    }
+
     // Check if the cost can be paid
-    if let crate::ability::AbilityKind::Mana(mana_ability) = &ability.kind {
+    if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
+        && mana_ability.is_mana_ability()
+    {
         // Check mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let ctx = CostContext::new(permanent_id, player, decision_maker);
         for cost in mana_ability.mana_cost.costs() {
@@ -566,18 +569,11 @@ fn can_activate_mana_ability_check(
         CostCheckContext, can_pay_with_check_context, can_potentially_pay_with_check_context,
     };
 
-    // Check the permanent exists and is on the battlefield
     let object = game
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)?;
-    if object.zone != Zone::Battlefield {
-        return Err(ActionError::WrongZone {
-            expected: Zone::Battlefield,
-            actual: object.zone,
-        });
-    }
 
-    // Check the player controls the permanent
+    // Check the player controls the object
     if object.controller != player {
         return Err(ActionError::InvalidTarget);
     }
@@ -592,8 +588,18 @@ fn can_activate_mana_ability_check(
         return Err(ActionError::NoSuchAbility);
     }
 
+    // Check the ability functions in this zone
+    if !ability.functions_in(&object.zone) {
+        return Err(ActionError::WrongZone {
+            expected: Zone::Battlefield,
+            actual: object.zone,
+        });
+    }
+
     // Check if the cost can be paid
-    if let crate::ability::AbilityKind::Mana(mana_ability) = &ability.kind {
+    if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
+        && mana_ability.is_mana_ability()
+    {
         // Check mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let ctx = CostCheckContext::new(permanent_id, player);
         for cost in mana_ability.mana_cost.costs() {
@@ -657,10 +663,12 @@ pub fn perform_activate_mana_ability(
         .get(ability_index)
         .ok_or(ActionError::NoSuchAbility)?;
 
-    if let crate::ability::AbilityKind::Mana(mana_ability) = &ability.kind {
+    if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
+        && mana_ability.is_mana_ability()
+    {
         let total_cost = mana_ability.mana_cost.clone();
-        let additional_effects = mana_ability.effects.clone();
-        let mana = mana_ability.mana.clone();
+        let effects = mana_ability.effects.clone();
+        let mana = mana_ability.mana_output.clone().unwrap_or_default();
 
         // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
         let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker);
@@ -679,7 +687,7 @@ pub fn perform_activate_mana_ability(
         }
 
         // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
-        if let Some(effects) = additional_effects {
+        if !effects.is_empty() {
             let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker);
             if let Some(x) = x_value_from_costs {
                 effect_ctx = effect_ctx.with_x(x);
@@ -1537,11 +1545,10 @@ mod tests {
         let obj = game.object(obj_id).unwrap();
         assert_eq!(obj.abilities.len(), 1, "Should have 1 ability");
 
-        if let AbilityKind::Mana(mana_ability) = &obj.abilities[0].kind {
-            assert!(mana_ability.effects.is_some(), "Should have effects");
-            let effects = mana_ability.effects.as_ref().unwrap();
+        if let AbilityKind::Activated(mana_ability) = &obj.abilities[0].kind && mana_ability.is_mana_ability() {
+            assert!(!mana_ability.effects.is_empty(), "Should have effects");
             assert_eq!(
-                effects.len(),
+                mana_ability.effects.len(),
                 2,
                 "Should have 2 effects: add mana and deal damage"
             );

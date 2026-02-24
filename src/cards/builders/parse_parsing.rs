@@ -7897,21 +7897,19 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
                 }
                 effects.extend(extra_effects);
                 let mut ability = Ability {
-                    kind: AbilityKind::Mana(ManaAbility {
+                    kind: AbilityKind::Activated(ActivatedAbility {
                         mana_cost,
-                        mana: Vec::new(),
-                        effects: Some(effects),
-                        activation_condition: None,
+                        effects,
+                        choices: vec![],
+                        timing: ActivationTiming::AnyTime,
+                        additional_restrictions: vec![],
+                        mana_output: Some(vec![]),
+                        activation_condition: mana_activation_condition.clone(),
                     }),
                     functional_zones: functional_zones.clone(),
                     text: None,
                 };
                 apply_ability_label(&mut ability);
-                if let Some(condition) = mana_activation_condition.clone()
-                    && let AbilityKind::Mana(ref mut mana_ability) = ability.kind
-                {
-                    mana_ability.activation_condition = Some(condition);
-                }
                 let mut effects_ast = vec![mana_ast];
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
@@ -7931,21 +7929,19 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
                 }
                 effects.extend(extra_effects);
                 let mut ability = Ability {
-                    kind: AbilityKind::Mana(ManaAbility {
+                    kind: AbilityKind::Activated(ActivatedAbility {
                         mana_cost,
-                        mana: Vec::new(),
-                        effects: Some(effects),
-                        activation_condition: None,
+                        effects,
+                        choices: vec![],
+                        timing: ActivationTiming::AnyTime,
+                        additional_restrictions: vec![],
+                        mana_output: Some(vec![]),
+                        activation_condition: mana_activation_condition.clone(),
                     }),
                     functional_zones: functional_zones.clone(),
                     text: None,
                 };
                 apply_ability_label(&mut ability);
-                if let Some(condition) = mana_activation_condition.clone()
-                    && let AbilityKind::Mana(ref mut mana_ability) = ability.kind
-                {
-                    mana_ability.activation_condition = Some(condition);
-                }
                 let mut effects_ast = vec![mana_ast];
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
@@ -7978,21 +7974,19 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
                         ))];
                     effects.extend(extra_effects);
                     let mut ability = Ability {
-                        kind: AbilityKind::Mana(ManaAbility {
+                        kind: AbilityKind::Activated(ActivatedAbility {
                             mana_cost,
-                            mana: Vec::new(),
-                            effects: Some(effects),
-                            activation_condition: None,
+                            effects,
+                            choices: vec![],
+                            timing: ActivationTiming::AnyTime,
+                            additional_restrictions: vec![],
+                            mana_output: Some(vec![]),
+                            activation_condition: mana_activation_condition.clone(),
                         }),
                         functional_zones: functional_zones.clone(),
                         text: None,
                     };
                     apply_ability_label(&mut ability);
-                    if let Some(condition) = mana_activation_condition.clone()
-                        && let AbilityKind::Mana(ref mut mana_ability) = ability.kind
-                    {
-                        mana_ability.activation_condition = Some(condition);
-                    }
                     let effects_ast = if extra_effects_ast.is_empty() {
                         None
                     } else {
@@ -8005,21 +7999,19 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
                 }
                 if extra_effects.is_empty() {
                     let mut ability = Ability {
-                        kind: AbilityKind::Mana(ManaAbility {
+                        kind: AbilityKind::Activated(ActivatedAbility {
                             mana_cost,
-                            mana,
-                            effects: None,
-                            activation_condition: None,
+                            effects: vec![],
+                            choices: vec![],
+                            timing: ActivationTiming::AnyTime,
+                            additional_restrictions: vec![],
+                            mana_output: Some(mana),
+                            activation_condition: mana_activation_condition.clone(),
                         }),
                         functional_zones: functional_zones.clone(),
                         text: None,
                     };
                     apply_ability_label(&mut ability);
-                    if let Some(condition) = mana_activation_condition.clone()
-                        && let AbilityKind::Mana(ref mut mana_ability) = ability.kind
-                    {
-                        mana_ability.activation_condition = Some(condition);
-                    }
                     let effects_ast = if extra_effects_ast.is_empty() {
                         None
                     } else {
@@ -8033,21 +8025,19 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
                 let mut effects = vec![Effect::add_mana(mana)];
                 effects.extend(extra_effects);
                 let mut ability = Ability {
-                    kind: AbilityKind::Mana(ManaAbility {
+                    kind: AbilityKind::Activated(ActivatedAbility {
                         mana_cost,
-                        mana: Vec::new(),
-                        effects: Some(effects),
-                        activation_condition: None,
+                        effects,
+                        choices: vec![],
+                        timing: ActivationTiming::AnyTime,
+                        additional_restrictions: vec![],
+                        mana_output: Some(vec![]),
+                        activation_condition: mana_activation_condition,
                     }),
                     functional_zones: functional_zones.clone(),
                     text: None,
                 };
                 apply_ability_label(&mut ability);
-                if let Some(condition) = mana_activation_condition
-                    && let AbilityKind::Mana(ref mut mana_ability) = ability.kind
-                {
-                    mana_ability.activation_condition = Some(condition);
-                }
                 let effects_ast = if extra_effects_ast.is_empty() {
                     None
                 } else {
@@ -8081,6 +8071,8 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
                     choices,
                     timing,
                     additional_restrictions: additional_activation_restrictions,
+                    mana_output: None,
+                    activation_condition: None,
                 }),
                 functional_zones,
                 text: None,
@@ -8150,16 +8142,23 @@ fn infer_activated_functional_zones(
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    if contains_source_from_your_graveyard_phrase(&cost_words)
-        || effect_sentences.iter().any(|sentence| {
+    let effect_words_match = |f: fn(&[&str]) -> bool| {
+        effect_sentences.iter().any(|sentence| {
             let clause_words: Vec<&str> = words(sentence)
                 .into_iter()
                 .filter(|word| !is_article(word))
                 .collect();
-            contains_source_from_your_graveyard_phrase(&clause_words)
+            f(&clause_words)
         })
+    };
+    if contains_source_from_your_graveyard_phrase(&cost_words)
+        || effect_words_match(contains_source_from_your_graveyard_phrase)
     {
         vec![Zone::Graveyard]
+    } else if contains_source_from_your_hand_phrase(&cost_words)
+        || effect_words_match(contains_source_from_your_hand_phrase)
+    {
+        vec![Zone::Hand]
     } else {
         vec![Zone::Battlefield]
     }
@@ -8391,6 +8390,8 @@ fn parse_level_up_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTe
                 choices: vec![],
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(level_up_text),
@@ -8495,6 +8496,8 @@ fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTex
                 choices: Vec::new(),
                 timing: ActivationTiming::AnyTime,
                 additional_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Hand],
             text: Some(render_text),
@@ -9010,6 +9013,8 @@ fn parse_equip_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextE
                     choices: vec![target.clone()],
                     timing: ActivationTiming::SorcerySpeed,
                     additional_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(equip_text),
@@ -9052,6 +9057,8 @@ fn parse_equip_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextE
                 choices: vec![target.clone()],
                 timing: ActivationTiming::SorcerySpeed,
                 additional_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: vec![Zone::Battlefield],
             text: Some(equip_text),
@@ -9432,10 +9439,17 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
             let has_card = tail_words.contains(&"card") || tail_words.contains(&"cards");
             let has_hand = tail_words.contains(&"hand");
             if has_card && has_hand {
-                explicit_costs.push(crate::costs::Cost::effect(Effect::exile_from_hand_as_cost(
-                    count,
-                    color_filter,
-                )));
+                // "Exile this card from your hand" = exile source (Simian Spirit Guide)
+                // "Exile a [color] card from your hand" = choose and exile another card (Force of Will)
+                if contains_source_from_your_hand_phrase(&segment_words) {
+                    explicit_costs.push(crate::costs::Cost::effect(Effect::exile(
+                        ChooseSpec::Source,
+                    )));
+                } else {
+                    explicit_costs.push(crate::costs::Cost::effect(
+                        Effect::exile_from_hand_as_cost(count, color_filter),
+                    ));
+                }
                 continue;
             }
 
@@ -35496,6 +35510,16 @@ fn contains_source_from_your_graveyard_phrase(words: &[&str]) -> bool {
             && window[2] == "from"
             && window[3] == "your"
             && window[4] == "graveyard"
+    })
+}
+
+fn contains_source_from_your_hand_phrase(words: &[&str]) -> bool {
+    words.windows(5).any(|window| {
+        (window[0] == "this" || window[0] == "thiss")
+            && matches!(window[1], "card" | "creature" | "permanent")
+            && window[2] == "from"
+            && window[3] == "your"
+            && window[4] == "hand"
     })
 }
 

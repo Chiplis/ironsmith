@@ -72,8 +72,9 @@ mod tests {
         let def = high_market();
 
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
-            assert_eq!(mana_ability.mana, vec![ManaSymbol::Colorless]);
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
+            assert_eq!(mana_ability.mana_symbols(), &[ManaSymbol::Colorless]);
         } else {
             panic!("Expected mana ability");
         }
@@ -84,7 +85,8 @@ mod tests {
         let def = high_market();
 
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
             assert!(mana_ability.has_tap_cost());
         } else {
             panic!("Expected mana ability");

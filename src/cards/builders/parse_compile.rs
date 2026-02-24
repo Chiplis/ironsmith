@@ -5187,7 +5187,7 @@ fn tag_object_target_effect(
 
 fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
     Ability {
-        kind: AbilityKind::Mana(ManaAbility::with_cost_effects(
+        kind: AbilityKind::Activated(ActivatedAbility::mana_with_cost_effects(
             TotalCost::free(),
             vec![Effect::sacrifice_source()],
             vec![ManaSymbol::Colorless],
@@ -5440,6 +5440,8 @@ fn token_red_pump_ability() -> Ability {
             choices: Vec::new(),
             timing: ActivationTiming::AnyTime,
             additional_restrictions: Vec::new(),
+            mana_output: None,
+            activation_condition: None,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some("{R}: This creature gets +1/+0 until end of turn.".to_string()),
@@ -5458,6 +5460,8 @@ fn token_white_tap_target_creature_ability() -> Ability {
             choices: vec![target],
             timing: ActivationTiming::AnyTime,
             additional_restrictions: Vec::new(),
+            mana_output: None,
+            activation_condition: None,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some("{W}, {T}: Tap target creature.".to_string()),
@@ -5476,6 +5480,8 @@ fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
             choices: Vec::new(),
             timing: crate::ability::ActivationTiming::AnyTime,
             additional_restrictions: Vec::new(),
+            mana_output: None,
+            activation_condition: None,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(format!("{{T}}: Add {mana_text}.")),
@@ -5981,6 +5987,8 @@ fn token_sacrifice_return_named_from_graveyard_ability(
             choices: Vec::new(),
             timing: ActivationTiming::AnyTime,
             additional_restrictions: Vec::new(),
+            mana_output: None,
+            activation_condition: None,
         }),
         functional_zones: vec![Zone::Battlefield],
         text: Some(format!(
@@ -6779,6 +6787,8 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     choices: vec![target],
                     timing: crate::ability::ActivationTiming::SorcerySpeed,
                     additional_restrictions: vec!["activate only as a sorcery".to_string()],
+                    mana_output: None,
+                    activation_condition: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(
@@ -6841,6 +6851,8 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
                     choices: vec![target],
                     timing: crate::ability::ActivationTiming::AnyTime,
                     additional_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: Some(

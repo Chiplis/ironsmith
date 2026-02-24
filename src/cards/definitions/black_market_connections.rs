@@ -149,7 +149,8 @@ mod tests {
 
         // Verify the mana ability has tap + sacrifice cost
         let mana_ability = mana_abilities[0];
-        if let AbilityKind::Mana(ma) = &mana_ability.kind {
+        if let AbilityKind::Activated(ma) = &mana_ability.kind {
+            assert!(ma.is_mana_ability());
             assert!(
                 ma.has_tap_cost(),
                 "Treasure mana ability should require tap"
@@ -187,8 +188,10 @@ mod tests {
             .expect("Should have mana ability");
 
         // Verify the effect is add mana of any color
-        if let AbilityKind::Mana(ma) = &mana_ability.kind {
-            let effects = ma.effects.as_ref().expect("Should have effects");
+        if let AbilityKind::Activated(ma) = &mana_ability.kind {
+            assert!(ma.is_mana_ability());
+            let effects = &ma.effects;
+            assert!(!effects.is_empty(), "Should have effects");
             assert_eq!(effects.len(), 1, "Should have 1 effect");
 
             // Check the effect is AddManaOfAnyColorEffect

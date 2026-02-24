@@ -841,8 +841,8 @@ fn ability_kind_tag(kind: &AbilityKind) -> u8 {
     match kind {
         AbilityKind::Static(_) => 0,
         AbilityKind::Triggered(_) => 1,
+        AbilityKind::Activated(a) if a.is_mana_ability() => 3,
         AbilityKind::Activated(_) => 2,
-        AbilityKind::Mana(_) => 3,
     }
 }
 

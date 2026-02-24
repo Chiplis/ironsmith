@@ -92,14 +92,15 @@ mod tests {
         let ability = def
             .abilities
             .iter()
-            .find(|a| matches!(a.kind, AbilityKind::Mana(_)))
+            .find(|a| a.is_mana_ability())
             .expect("Expected mana ability");
 
         assert!(ability.is_mana_ability());
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
             assert_eq!(
-                mana_ability.mana,
-                vec![
+                mana_ability.mana_symbols(),
+                &[
                     ManaSymbol::Colorless,
                     ManaSymbol::Colorless,
                     ManaSymbol::Colorless

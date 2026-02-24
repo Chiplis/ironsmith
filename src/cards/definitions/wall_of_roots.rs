@@ -26,7 +26,6 @@ pub fn wall_of_roots() -> CardDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::AbilityKind;
 
     #[test]
     fn test_wall_of_roots_basic_properties() {
@@ -49,7 +48,7 @@ mod tests {
         assert!(
             def.abilities
                 .iter()
-                .any(|ability| matches!(ability.kind, AbilityKind::Mana(_)))
+                .any(|ability| ability.is_mana_ability())
         );
     }
 }

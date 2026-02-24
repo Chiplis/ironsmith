@@ -72,6 +72,6 @@ mod tests {
         ));
 
         // Second ability should be a mana ability
-        assert!(matches!(&card.abilities[1].kind, AbilityKind::Mana(_)));
+        assert!(card.abilities[1].is_mana_ability());
     }
 }

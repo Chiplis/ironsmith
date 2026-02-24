@@ -3773,26 +3773,13 @@ fn object_has_custom_static_marker(object: &Object, marker: &str) -> bool {
 }
 
 fn object_has_mana_ability(object: &Object) -> bool {
-    use crate::ability::AbilityKind;
-    object
-        .abilities
-        .iter()
-        .any(|ability| matches!(&ability.kind, AbilityKind::Mana(_)))
+    object.abilities.iter().any(|ability| ability.is_mana_ability())
 }
 
 fn object_has_tap_activated_ability(object: &Object) -> bool {
     use crate::ability::AbilityKind;
     object.abilities.iter().any(|ability| match &ability.kind {
-        AbilityKind::Activated(activated) => activated
-            .mana_cost
-            .costs()
-            .iter()
-            .any(|cost| cost.requires_tap()),
-        AbilityKind::Mana(mana) => mana
-            .mana_cost
-            .costs()
-            .iter()
-            .any(|cost| cost.requires_tap()),
+        AbilityKind::Activated(activated) => activated.has_tap_cost(),
         _ => false,
     })
 }
@@ -3830,11 +3817,7 @@ fn snapshot_has_custom_static_marker(
 }
 
 fn snapshot_has_mana_ability(snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
-    use crate::ability::AbilityKind;
-    snapshot
-        .abilities
-        .iter()
-        .any(|ability| matches!(&ability.kind, AbilityKind::Mana(_)))
+    snapshot.abilities.iter().any(|ability| ability.is_mana_ability())
 }
 
 fn ability_text_has_custom_marker(ability: &crate::ability::Ability, marker: &str) -> bool {
@@ -3892,16 +3875,7 @@ fn snapshot_has_tap_activated_ability(snapshot: &crate::snapshot::ObjectSnapshot
         .abilities
         .iter()
         .any(|ability| match &ability.kind {
-            AbilityKind::Activated(activated) => activated
-                .mana_cost
-                .costs()
-                .iter()
-                .any(|cost| cost.requires_tap()),
-            AbilityKind::Mana(mana) => mana
-                .mana_cost
-                .costs()
-                .iter()
-                .any(|cost| cost.requires_tap()),
+            AbilityKind::Activated(activated) => activated.has_tap_cost(),
             _ => false,
         })
 }

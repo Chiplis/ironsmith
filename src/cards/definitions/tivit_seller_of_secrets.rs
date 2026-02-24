@@ -69,7 +69,7 @@ mod tests {
     fn test_treasure_token_has_mana_ability() {
         let token = treasure_token_definition();
         assert_eq!(token.abilities.len(), 1);
-        assert!(matches!(token.abilities[0].kind, AbilityKind::Mana(_)));
+        assert!(token.abilities[0].is_mana_ability());
     }
 
     // ========================================

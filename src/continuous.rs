@@ -1387,9 +1387,10 @@ fn apply_modification_to_chars(
                 }
 
                 for ability in &candidate_chars.abilities {
-                    let is_activated = matches!(ability.kind, AbilityKind::Activated(_));
-                    let is_mana = matches!(ability.kind, AbilityKind::Mana(_));
-                    if !is_activated && !(*include_mana && is_mana) {
+                    if !matches!(ability.kind, AbilityKind::Activated(_)) {
+                        continue;
+                    }
+                    if ability.is_mana_ability() && !*include_mana {
                         continue;
                     }
                     chars.abilities.push(ability.clone());
@@ -1421,7 +1422,7 @@ fn apply_modification_to_chars(
         Modification::RemoveAllAbilitiesExceptMana => {
             chars
                 .abilities
-                .retain(|ability| matches!(ability.kind, AbilityKind::Mana(_)));
+                .retain(|ability| ability.is_mana_ability());
             chars.static_abilities.clear();
             *abilities_removed = true;
         }
@@ -1943,7 +1944,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 Modification::RemoveAllAbilitiesExceptMana => {
                     chars
                         .abilities
-                        .retain(|ability| matches!(ability.kind, AbilityKind::Mana(_)));
+                        .retain(|ability| ability.is_mana_ability());
                     chars.static_abilities.clear();
                     abilities_removed = true;
                 }

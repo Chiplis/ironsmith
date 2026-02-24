@@ -83,9 +83,9 @@ mod tests {
     fn test_brightclimb_pathway_taps_for_white() {
         let def = brightclimb_pathway();
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
-            assert!(mana_ability.mana.contains(&ManaSymbol::White));
-            assert!(!mana_ability.mana.contains(&ManaSymbol::Black));
+        if let AbilityKind::Activated(mana_ability) = &ability.kind && mana_ability.is_mana_ability() {
+            assert!(mana_ability.mana_symbols().contains(&ManaSymbol::White));
+            assert!(!mana_ability.mana_symbols().contains(&ManaSymbol::Black));
         } else {
             panic!("Expected mana ability");
         }
@@ -95,7 +95,7 @@ mod tests {
     fn test_brightclimb_pathway_requires_tap() {
         let def = brightclimb_pathway();
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind && mana_ability.is_mana_ability() {
             assert!(mana_ability.has_tap_cost());
         } else {
             panic!("Expected mana ability");
@@ -183,9 +183,9 @@ mod tests {
     fn test_grimclimb_pathway_taps_for_black() {
         let def = grimclimb_pathway();
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
-            assert!(mana_ability.mana.contains(&ManaSymbol::Black));
-            assert!(!mana_ability.mana.contains(&ManaSymbol::White));
+        if let AbilityKind::Activated(mana_ability) = &ability.kind && mana_ability.is_mana_ability() {
+            assert!(mana_ability.mana_symbols().contains(&ManaSymbol::Black));
+            assert!(!mana_ability.mana_symbols().contains(&ManaSymbol::White));
         } else {
             panic!("Expected mana ability");
         }
@@ -195,7 +195,7 @@ mod tests {
     fn test_grimclimb_pathway_requires_tap() {
         let def = grimclimb_pathway();
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind && mana_ability.is_mana_ability() {
             assert!(mana_ability.has_tap_cost());
         } else {
             panic!("Expected mana ability");
@@ -254,14 +254,16 @@ mod tests {
         assert_ne!(front.name(), back.name());
 
         // Front taps for white, back taps for black
-        if let (AbilityKind::Mana(front_mana), AbilityKind::Mana(back_mana)) =
+        if let (AbilityKind::Activated(front_mana), AbilityKind::Activated(back_mana)) =
             (&front.abilities[0].kind, &back.abilities[0].kind)
         {
-            assert!(front_mana.mana.contains(&ManaSymbol::White));
-            assert!(!front_mana.mana.contains(&ManaSymbol::Black));
+            assert!(front_mana.is_mana_ability());
+            assert!(back_mana.is_mana_ability());
+            assert!(front_mana.mana_symbols().contains(&ManaSymbol::White));
+            assert!(!front_mana.mana_symbols().contains(&ManaSymbol::Black));
 
-            assert!(back_mana.mana.contains(&ManaSymbol::Black));
-            assert!(!back_mana.mana.contains(&ManaSymbol::White));
+            assert!(back_mana.mana_symbols().contains(&ManaSymbol::Black));
+            assert!(!back_mana.mana_symbols().contains(&ManaSymbol::White));
         }
     }
 

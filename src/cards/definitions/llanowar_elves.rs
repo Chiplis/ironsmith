@@ -61,10 +61,11 @@ mod tests {
             .find(|a| a.is_mana_ability())
             .expect("Should have mana ability");
 
-        if let AbilityKind::Mana(mana_ab) = &mana_ability.kind {
+        if let AbilityKind::Activated(mana_ab) = &mana_ability.kind {
+            assert!(mana_ab.is_mana_ability());
             // Should produce green mana
-            assert_eq!(mana_ab.mana.len(), 1);
-            assert_eq!(mana_ab.mana[0], ManaSymbol::Green);
+            assert_eq!(mana_ab.mana_symbols().len(), 1);
+            assert_eq!(mana_ab.mana_symbols()[0], ManaSymbol::Green);
         } else {
             panic!("Expected mana ability");
         }
@@ -80,7 +81,8 @@ mod tests {
             .find(|a| a.is_mana_ability())
             .expect("Should have mana ability");
 
-        if let AbilityKind::Mana(mana_ab) = &mana_ability.kind {
+        if let AbilityKind::Activated(mana_ab) = &mana_ability.kind {
+            assert!(mana_ab.is_mana_ability());
             assert!(
                 mana_ab.has_tap_cost(),
                 "Mana ability should require tapping"
@@ -129,7 +131,8 @@ mod tests {
             .find(|a| a.is_mana_ability())
             .expect("Should have mana ability");
 
-        if let AbilityKind::Mana(mana_ab) = &mana_ability.kind {
+        if let AbilityKind::Activated(mana_ab) = &mana_ability.kind {
+            assert!(mana_ab.is_mana_ability());
             // Should not require mana payment, just tap
             assert!(
                 mana_ab.mana_cost.mana_cost().is_none(),

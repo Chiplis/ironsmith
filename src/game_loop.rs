@@ -2145,7 +2145,7 @@ pub struct PendingManaAbility {
     /// The mana symbols to add (for simple mana abilities).
     pub mana_to_add: Vec<crate::mana::ManaSymbol>,
     /// The effects to execute (for complex mana abilities like Blood Celebrant).
-    pub effects: Option<Vec<crate::effect::Effect>>,
+    pub effects: Vec<crate::effect::Effect>,
 }
 
 /// State for tracking the priority loop between decisions.
@@ -3046,9 +3046,10 @@ pub fn apply_priority_response_with_dm(
 
             if let Some(obj) = game.object(*source)
                 && let Some(ability) = obj.abilities.get(*ability_index)
-                && let AbilityKind::Mana(mana_ability) = &ability.kind
+                && let AbilityKind::Activated(mana_ability) = &ability.kind
+                && mana_ability.is_mana_ability()
             {
-                let mana_to_add = mana_ability.mana.clone();
+                let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
                 let effects_to_run = mana_ability.effects.clone();
                 let cost = mana_ability.mana_cost.clone();
 
@@ -3097,25 +3098,27 @@ pub fn apply_priority_response_with_dm(
                     }
                     drain_pending_trigger_events(game, trigger_queue);
 
-                    // Execute the mana ability effects
-                    if let Some(effects) = effects_to_run {
+                    // Add fixed mana to player's pool
+                    if !mana_to_add.is_empty() {
+                        if let Some(player_obj) = game.player_mut(player) {
+                            for symbol in &mana_to_add {
+                                player_obj.mana_pool.add(*symbol, 1);
+                            }
+                        }
+                    }
+
+                    // Execute additional effects (for complex mana abilities)
+                    if !effects_to_run.is_empty() {
                         let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker);
                         let mut emitted_events = Vec::new();
 
-                        for effect in &effects {
+                        for effect in &effects_to_run {
                             if let Ok(outcome) = execute_effect(game, effect, &mut ctx) {
                                 emitted_events.extend(outcome.events);
                             }
                         }
                         queue_triggers_for_events(game, trigger_queue, emitted_events);
                         drain_pending_trigger_events(game, trigger_queue);
-                    } else {
-                        // Add fixed mana to player's pool
-                        if let Some(player_obj) = game.player_mut(player) {
-                            for symbol in &mana_to_add {
-                                player_obj.mana_pool.add(*symbol, 1);
-                            }
-                        }
                     }
 
                     queue_ability_activated_event(game, trigger_queue, *source, player, true, None);
@@ -4691,10 +4694,11 @@ fn compute_mana_ability_payment_options(
         let allow_any_color = game.can_spend_mana_as_any_color(player, Some(pending.source));
         let can_help = if let Some(perm) = game.object(*perm_id)
             && let Some(ability) = perm.abilities.get(*ability_index)
-            && let AbilityKind::Mana(mana_ability) = &ability.kind
+            && let AbilityKind::Activated(mana_ability) = &ability.kind
+            && mana_ability.is_mana_ability()
         {
             mana_can_help_pay_cost(
-                &mana_ability.mana,
+                mana_ability.mana_symbols(),
                 &pending.mana_cost,
                 game,
                 player,
@@ -4825,7 +4829,7 @@ fn get_available_mana_abilities(
         }
 
         for (i, ability) in perm.abilities.iter().enumerate() {
-            if matches!(ability.kind, AbilityKind::Mana(_)) {
+            if ability.is_mana_ability() {
                 let action = SpecialAction::ActivateManaAbility {
                     permanent_id: perm_id,
                     ability_index: i,
@@ -4847,9 +4851,11 @@ fn describe_mana_ability(kind: &crate::ability::AbilityKind) -> String {
     use crate::ability::AbilityKind;
     use crate::mana::ManaSymbol;
 
-    if let AbilityKind::Mana(mana_ability) = kind {
+    if let AbilityKind::Activated(mana_ability) = kind
+        && mana_ability.is_mana_ability()
+    {
         let mana_strs: Vec<&str> = mana_ability
-            .mana
+            .mana_symbols()
             .iter()
             .map(|m| match m {
                 ManaSymbol::White => "{W}",
@@ -5686,11 +5692,14 @@ fn mana_ability_can_pay_pip(
         return false;
     };
 
-    let AbilityKind::Mana(mana_ability) = &ability.kind else {
+    let AbilityKind::Activated(mana_ability) = &ability.kind else {
         return false;
     };
+    if !mana_ability.is_mana_ability() {
+        return false;
+    }
 
-    // Check what mana this ability produces (field is called `mana`)
+    // Check what mana this ability produces
     let pip_has_colored = pip.iter().any(|s| {
         matches!(
             s,
@@ -5702,7 +5711,7 @@ fn mana_ability_can_pay_pip(
         )
     });
 
-    for produced in &mana_ability.mana {
+    for produced in mana_ability.mana_symbols() {
         for pip_symbol in pip {
             match (produced, pip_symbol) {
                 // Any mana can pay generic
@@ -6187,10 +6196,11 @@ fn apply_mana_payment_response_mana_ability(
                 // Check if this ability can help pay the cost
                 if let Some(perm) = game.object(*perm_id)
                     && let Some(ability) = perm.abilities.get(*ability_index)
-                    && let AbilityKind::Mana(mana_ability) = &ability.kind
+                    && let AbilityKind::Activated(mana_ability) = &ability.kind
+                    && mana_ability.is_mana_ability()
                 {
                     mana_can_help_pay_cost(
-                        &mana_ability.mana,
+                        mana_ability.mana_symbols(),
                         &pending.mana_cost,
                         game,
                         pending.activator,
@@ -6320,25 +6330,27 @@ fn execute_pending_mana_ability(
     }
     drain_pending_trigger_events(game, trigger_queue);
 
-    // Execute the mana ability effects
-    if let Some(ref effects) = pending.effects {
+    // Add fixed mana to player's pool
+    if !pending.mana_to_add.is_empty() {
+        if let Some(player_obj) = game.player_mut(pending.activator) {
+            for symbol in &pending.mana_to_add {
+                player_obj.mana_pool.add(*symbol, 1);
+            }
+        }
+    }
+
+    // Execute additional effects (for complex mana abilities)
+    if !pending.effects.is_empty() {
         let mut ctx = ExecutionContext::new(pending.source, pending.activator, decision_maker);
         let mut emitted_events = Vec::new();
 
-        for effect in effects {
+        for effect in &pending.effects {
             if let Ok(outcome) = execute_effect(game, effect, &mut ctx) {
                 emitted_events.extend(outcome.events);
             }
         }
         queue_triggers_for_events(game, trigger_queue, emitted_events);
         drain_pending_trigger_events(game, trigger_queue);
-    } else {
-        // Add fixed mana to player's pool
-        if let Some(player_obj) = game.player_mut(pending.activator) {
-            for symbol in &pending.mana_to_add {
-                player_obj.mana_pool.add(*symbol, 1);
-            }
-        }
     }
 
     game.record_ability_activation(pending.source, pending.ability_index);
@@ -10551,6 +10563,8 @@ mod tests {
                     choices: vec![],
                     timing: ActivationTiming::OncePerTurn,
                     additional_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: None,
@@ -11046,6 +11060,8 @@ mod tests {
                     choices: vec![],
                     timing: ActivationTiming::OncePerTurn,
                     additional_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
                 }),
                 functional_zones: vec![Zone::Battlefield],
                 text: None,

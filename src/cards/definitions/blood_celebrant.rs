@@ -1,6 +1,6 @@
 //! Blood Celebrant card definition.
 
-use crate::ability::{Ability, AbilityKind, ManaAbility};
+use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::card::PowerToughness;
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::cost::TotalCost;
@@ -31,13 +31,16 @@ pub fn blood_celebrant() -> CardDefinition {
         .expect("Card text should be supported");
 
     def.abilities.push(Ability {
-        kind: AbilityKind::Mana(ManaAbility {
+        kind: AbilityKind::Activated(ActivatedAbility {
             mana_cost: crate::ability::merge_cost_effects(
                 TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Black]])),
                 vec![Effect::pay_life(1)],
             ),
-            mana: vec![],
-            effects: Some(vec![add_mana_effect]),
+            effects: vec![add_mana_effect],
+            choices: vec![],
+            timing: crate::ability::ActivationTiming::AnyTime,
+            additional_restrictions: vec![],
+            mana_output: Some(vec![]),
             activation_condition: None,
         }),
         functional_zones: vec![Zone::Battlefield],
@@ -85,7 +88,7 @@ mod tests {
         let has_mana_ability = def
             .abilities
             .iter()
-            .any(|a| matches!(a.kind, AbilityKind::Mana(_)));
+            .any(|a| a.is_mana_ability());
         assert!(
             has_mana_ability,
             "Blood Celebrant should have a mana ability"
@@ -98,18 +101,18 @@ mod tests {
         let mana_ability = def
             .abilities
             .iter()
-            .find(|a| matches!(a.kind, AbilityKind::Mana(_)))
+            .find(|a| a.is_mana_ability())
             .expect("Should have mana ability");
 
-        if let AbilityKind::Mana(ma) = &mana_ability.kind {
+        if let AbilityKind::Activated(act_ab) = &mana_ability.kind {
             // Should not require tap
             assert!(
-                !ma.has_tap_cost(),
+                !act_ab.has_tap_cost(),
                 "Blood Celebrant's ability should not require tap"
             );
 
             // Should have mana cost (in TotalCost)
-            let has_mana_cost = ma.mana_cost.mana_cost().is_some();
+            let has_mana_cost = act_ab.mana_cost.mana_cost().is_some();
             assert!(
                 has_mana_cost,
                 "Blood Celebrant's ability should have a mana cost"
@@ -117,7 +120,7 @@ mod tests {
 
             // Should have life cost (in cost_effects)
             assert_eq!(
-                ma.life_cost_amount(),
+                act_ab.life_cost_amount(),
                 Some(1),
                 "Blood Celebrant's ability should have a life cost of 1"
             );

@@ -87,18 +87,12 @@ mod tests {
 
         let ability = &def.abilities[0];
         match &ability.kind {
-            AbilityKind::Mana(mana_ability) => {
-                // Sol Ring uses fixed mana (mana field, not effects)
-                assert!(
-                    mana_ability.effects.is_none(),
-                    "Should use mana field, not effects"
-                );
-
+            AbilityKind::Activated(mana_ability) if mana_ability.is_mana_ability() => {
                 // Should produce 2 colorless mana
-                assert_eq!(mana_ability.mana.len(), 2, "Should produce 2 mana");
+                assert_eq!(mana_ability.mana_symbols().len(), 2, "Should produce 2 mana");
                 assert!(
                     mana_ability
-                        .mana
+                        .mana_symbols()
                         .iter()
                         .all(|m| *m == ManaSymbol::Colorless),
                     "Should produce colorless mana"
@@ -113,7 +107,8 @@ mod tests {
         let def = sol_ring();
 
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
             assert!(
                 mana_ability.has_tap_cost(),
                 "Should have tap as part of cost"
@@ -135,12 +130,13 @@ mod tests {
         let def = sol_ring();
 
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
-            // Sol Ring uses fixed mana production (mana field)
-            assert_eq!(mana_ability.mana.len(), 2, "Should produce 2 mana");
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
+            // Sol Ring uses fixed mana production (mana_output field)
+            assert_eq!(mana_ability.mana_symbols().len(), 2, "Should produce 2 mana");
             assert!(
                 mana_ability
-                    .mana
+                    .mana_symbols()
                     .iter()
                     .all(|m| *m == ManaSymbol::Colorless),
                 "Should produce colorless mana"
@@ -189,7 +185,8 @@ mod tests {
 
         // The ability's cost requires tapping, which can't be done if already tapped
         let obj = game.object(ring_id).unwrap();
-        if let AbilityKind::Mana(mana_ability) = &obj.abilities[0].kind {
+        if let AbilityKind::Activated(mana_ability) = &obj.abilities[0].kind {
+            assert!(mana_ability.is_mana_ability());
             assert!(
                 mana_ability.has_tap_cost(),
                 "Mana ability should require tapping"
@@ -239,12 +236,13 @@ mod tests {
 
         // The mana field produces 2 mana (two {C})
         let ability = &def.abilities[0];
-        if let AbilityKind::Mana(mana_ability) = &ability.kind {
-            // Sol Ring uses fixed mana production (mana field)
-            assert_eq!(mana_ability.mana.len(), 2, "Should produce 2 mana");
+        if let AbilityKind::Activated(mana_ability) = &ability.kind {
+            assert!(mana_ability.is_mana_ability());
+            // Sol Ring uses fixed mana production (mana_output field)
+            assert_eq!(mana_ability.mana_symbols().len(), 2, "Should produce 2 mana");
             assert!(
                 mana_ability
-                    .mana
+                    .mana_symbols()
                     .iter()
                     .all(|m| *m == ManaSymbol::Colorless),
                 "Should produce colorless mana"

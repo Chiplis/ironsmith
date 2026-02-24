@@ -1,7 +1,7 @@
 //! Add mana of any color/type that lands matching a filter could produce.
 
 use super::choice_helpers::{choose_mana_symbols, credit_mana_symbols};
-use crate::ability::{AbilityKind, ManaAbility};
+use crate::ability::{AbilityKind, ActivatedAbility};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
@@ -105,26 +105,27 @@ fn collect_available_mana_symbols(
         }
 
         for ability in &perm.abilities {
-            let AbilityKind::Mana(mana_ability) = &ability.kind else {
+            let AbilityKind::Activated(mana_ability) = &ability.kind else {
                 continue;
             };
+            if !mana_ability.is_mana_ability() {
+                continue;
+            }
             if !mana_ability_condition_met(game, perm, mana_ability) {
                 continue;
             }
 
-            for symbol in &mana_ability.mana {
+            for symbol in mana_ability.mana_symbols() {
                 push_symbol_if_addable(&mut symbols, *symbol);
             }
-            if let Some(effects) = &mana_ability.effects {
-                for effect in effects {
-                    infer_symbols_from_mana_effect(
-                        game,
-                        perm.id,
-                        perm.controller,
-                        effect,
-                        &mut symbols,
-                    );
-                }
+            for effect in &mana_ability.effects {
+                infer_symbols_from_mana_effect(
+                    game,
+                    perm.id,
+                    perm.controller,
+                    effect,
+                    &mut symbols,
+                );
             }
         }
     }
@@ -137,7 +138,7 @@ fn collect_available_mana_symbols(
 fn mana_ability_condition_met(
     game: &GameState,
     source: &Object,
-    mana_ability: &ManaAbility,
+    mana_ability: &ActivatedAbility,
 ) -> bool {
     mana_ability
         .activation_condition

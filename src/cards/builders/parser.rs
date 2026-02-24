@@ -437,7 +437,7 @@ fn collect_line_infos(
 }
 
 fn normalize_channel_spell_effect(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
-    use crate::ability::{ActivationTiming, ManaAbility};
+    use crate::ability::{ActivatedAbility, ActivationTiming};
     use crate::effect::{EffectPredicate, Value};
     use crate::mana::ManaSymbol;
     use crate::target::{ChooseSpec, PlayerFilter};
@@ -486,10 +486,13 @@ fn normalize_channel_spell_effect(mut builder: CardDefinitionBuilder) -> CardDef
     }
 
     // Rewrite to a temporary granted mana ability until end of turn.
-    let ability = ManaAbility {
+    let ability = ActivatedAbility {
         mana_cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::life(1)),
-        mana: vec![ManaSymbol::Colorless],
-        effects: None,
+        effects: vec![],
+        choices: vec![],
+        timing: ActivationTiming::AnyTime,
+        additional_restrictions: vec![],
+        mana_output: Some(vec![ManaSymbol::Colorless]),
         activation_condition: Some(crate::effect::Condition::ActivationTiming(
             ActivationTiming::AnyTime,
         )),
@@ -966,8 +969,9 @@ fn apply_line_ast(
             }
 
             let mut ability = parsed_ability.ability;
-            if let AbilityKind::Mana(mana_ability) = &ability.kind
-                && mana_ability.effects.is_none()
+            if let AbilityKind::Activated(ref a) = ability.kind
+                && a.is_mana_ability()
+                && a.effects.is_empty()
             {
                 if let Some(options) =
                     parse_mana_output_options_for_line(&info.raw_line, info.line_index)?
@@ -975,8 +979,8 @@ fn apply_line_ast(
                 {
                     for option in options {
                         let mut split = ability.clone();
-                        if let AbilityKind::Mana(ref mut inner) = split.kind {
-                            inner.mana = option;
+                        if let AbilityKind::Activated(ref mut inner) = split.kind {
+                            inner.mana_output = Some(option);
                         }
                         builder = builder.with_ability(split.with_text(info.raw_line.as_str()));
                     }
@@ -1813,6 +1817,8 @@ fn finalize_pending_modal(
                 choices: prefix_choices,
                 timing: activated.timing,
                 additional_restrictions: activated.additional_restrictions,
+                mana_output: None,
+                activation_condition: None,
             }),
             functional_zones: activated.functional_zones,
             text: Some(line_text),
@@ -2044,16 +2050,14 @@ fn apply_pending_restrictions_to_ability(ability: &mut Ability, pending: &mut Pe
             if activation_restrictions.is_empty() {
                 return;
             }
-            for restriction in activation_restrictions.iter() {
-                apply_pending_activation_restriction(ability, &restriction);
-            }
-        }
-        AbilityKind::Mana(mana_ability) => {
-            if activation_restrictions.is_empty() {
-                return;
-            }
-            for restriction in activation_restrictions.iter() {
-                apply_pending_mana_restriction(mana_ability, &restriction);
+            if ability.is_mana_ability() {
+                for restriction in activation_restrictions.iter() {
+                    apply_pending_mana_restriction(ability, &restriction);
+                }
+            } else {
+                for restriction in activation_restrictions.iter() {
+                    apply_pending_activation_restriction(ability, &restriction);
+                }
             }
         }
         AbilityKind::Triggered(ability) => {
@@ -2141,21 +2145,6 @@ fn apply_instead_followup_statement_to_last_ability(
                 original,
             ))];
         }
-        AbilityKind::Mana(ability) => {
-            let Some(effects) = ability.effects.as_mut() else {
-                return Ok(false);
-            };
-
-            let original = std::mem::take(effects);
-            if original.is_empty() {
-                return Ok(false);
-            }
-            *effects = vec![Effect::new(crate::effects::ConditionalEffect::new(
-                conditional.condition,
-                conditional.if_true,
-                original,
-            ))];
-        }
         _ => return Ok(false),
     }
 
@@ -2165,7 +2154,7 @@ fn apply_instead_followup_statement_to_last_ability(
 fn is_restrictable_ability(ability: &Ability) -> bool {
     matches!(
         ability.kind,
-        AbilityKind::Activated(_) | AbilityKind::Triggered(_) | AbilityKind::Mana(_)
+        AbilityKind::Activated(_) | AbilityKind::Triggered(_)
     )
 }
 
@@ -2206,7 +2195,7 @@ fn apply_pending_trigger_restriction(ability: &mut TriggeredAbility, restriction
     }
 }
 
-fn apply_pending_mana_restriction(ability: &mut crate::ability::ManaAbility, restriction: &str) {
+fn apply_pending_mana_restriction(ability: &mut crate::ability::ActivatedAbility, restriction: &str) {
     let normalized_restriction = normalize_restriction_text(restriction);
     if normalized_restriction.is_empty() {
         return;

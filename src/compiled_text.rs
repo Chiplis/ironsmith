@@ -438,7 +438,7 @@ fn describe_token_blueprint(token: &CardDefinition) -> String {
                     ));
                 }
             }
-            AbilityKind::Triggered(_) | AbilityKind::Activated(_) | AbilityKind::Mana(_) => {
+            AbilityKind::Triggered(_) | AbilityKind::Activated(_) => {
                 if let Some(text) = ability.text.as_ref() {
                     extra_ability_texts.push(quote_token_granted_ability_text(text));
                 }
@@ -7551,6 +7551,47 @@ fn describe_inline_ability(ability: &Ability) -> String {
         AbilityKind::Triggered(triggered) => {
             format!("a triggered ability ({})", triggered.trigger.display())
         }
+        AbilityKind::Activated(activated) if activated.is_mana_ability() => {
+            let mut line = String::new();
+            if !activated.mana_cost.costs().is_empty() {
+                line.push_str(&describe_cost_list(activated.mana_cost.costs()));
+            }
+            let mut payload = String::new();
+            let mana_symbols = activated.mana_symbols();
+            if !mana_symbols.is_empty() {
+                payload.push_str("Add ");
+                payload.push_str(
+                    &mana_symbols
+                        .iter()
+                        .copied()
+                        .map(describe_mana_symbol)
+                        .collect::<Vec<_>>()
+                        .join(""),
+                );
+            } else if !activated.effects.is_empty() {
+                payload.push_str(&describe_effect_list(&activated.effects));
+            }
+            if !payload.is_empty() {
+                if !line.is_empty() {
+                    line.push_str(": ");
+                }
+                line.push_str(&payload);
+            }
+            if let Some(condition) = &activated.activation_condition {
+                let clause = describe_mana_activation_condition(condition);
+                if !clause.is_empty() {
+                    if !line.is_empty() {
+                        line.push_str(". ");
+                    }
+                    line.push_str(&clause);
+                }
+            }
+            if line.is_empty() {
+                "a mana ability".to_string()
+            } else {
+                line
+            }
+        }
         AbilityKind::Activated(activated) => {
             let mut line = String::new();
             let mut pre = Vec::new();
@@ -7593,49 +7634,6 @@ fn describe_inline_ability(ability: &Ability) -> String {
                 line
             }
         }
-        AbilityKind::Mana(mana_ability) => {
-            let mut line = String::new();
-            if !mana_ability.mana_cost.costs().is_empty() {
-                line.push_str(&describe_cost_list(mana_ability.mana_cost.costs()));
-            }
-            let mut payload = String::new();
-            if !mana_ability.mana.is_empty() {
-                payload.push_str("Add ");
-                payload.push_str(
-                    &mana_ability
-                        .mana
-                        .iter()
-                        .copied()
-                        .map(describe_mana_symbol)
-                        .collect::<Vec<_>>()
-                        .join(""),
-                );
-            } else if let Some(effects) = &mana_ability.effects
-                && !effects.is_empty()
-            {
-                payload.push_str(&describe_effect_list(effects));
-            }
-            if !payload.is_empty() {
-                if !line.is_empty() {
-                    line.push_str(": ");
-                }
-                line.push_str(&payload);
-            }
-            if let Some(condition) = &mana_ability.activation_condition {
-                let clause = describe_mana_activation_condition(condition);
-                if !clause.is_empty() {
-                    if !line.is_empty() {
-                        line.push_str(". ");
-                    }
-                    line.push_str(&clause);
-                }
-            }
-            if line.is_empty() {
-                "a mana ability".to_string()
-            } else {
-                line
-            }
-        }
     }
 }
 
@@ -7661,28 +7659,6 @@ fn activated_ability_has_source_untap_cost(activated: &crate::ability::Activated
     })
 }
 
-fn mana_ability_has_source_tap_cost(mana: &crate::ability::ManaAbility) -> bool {
-    mana.mana_cost.costs().iter().any(|cost| {
-        cost.requires_tap()
-            || cost.effect_ref().is_some_and(|effect| {
-                effect
-                    .downcast_ref::<crate::effects::TapEffect>()
-                    .is_some_and(|tap| matches!(tap.spec, ChooseSpec::Source))
-            })
-    })
-}
-
-fn mana_ability_has_source_untap_cost(mana: &crate::ability::ManaAbility) -> bool {
-    mana.mana_cost.costs().iter().any(|cost| {
-        cost.requires_untap()
-            || cost.effect_ref().is_some_and(|effect| {
-                effect
-                    .downcast_ref::<crate::effects::UntapEffect>()
-                    .is_some_and(|untap| matches!(untap.spec, ChooseSpec::Source))
-            })
-    })
-}
-
 fn normalize_inline_ability_text(ability: &Ability, text: &str) -> String {
     let trimmed = text.trim();
     let lower = trimmed.to_ascii_lowercase();
@@ -7693,6 +7669,13 @@ fn normalize_inline_ability_text(ability: &Ability, text: &str) -> String {
                 && let Some((_, rest)) = trimmed.split_once(' ')
                 && !rest.trim().is_empty()
             {
+                if activated.is_mana_ability() {
+                    let mut body = capitalize_first(rest.trim());
+                    if !body.ends_with('.') {
+                        body.push('.');
+                    }
+                    return format!("{{T}}: {body}");
+                }
                 return format!("{{T}}: {}", rest.trim());
             }
             if activated_ability_has_source_untap_cost(activated)
@@ -7700,32 +7683,14 @@ fn normalize_inline_ability_text(ability: &Ability, text: &str) -> String {
                 && let Some((_, rest)) = trimmed.split_once(' ')
                 && !rest.trim().is_empty()
             {
+                if activated.is_mana_ability() {
+                    let mut body = capitalize_first(rest.trim());
+                    if !body.ends_with('.') {
+                        body.push('.');
+                    }
+                    return format!("{{Q}}: {body}");
+                }
                 return format!("{{Q}}: {}", rest.trim());
-            }
-            trimmed.to_string()
-        }
-        AbilityKind::Mana(mana) => {
-            if mana_ability_has_source_tap_cost(mana)
-                && lower.starts_with("t ")
-                && let Some((_, rest)) = trimmed.split_once(' ')
-                && !rest.trim().is_empty()
-            {
-                let mut body = capitalize_first(rest.trim());
-                if !body.ends_with('.') {
-                    body.push('.');
-                }
-                return format!("{{T}}: {body}");
-            }
-            if mana_ability_has_source_untap_cost(mana)
-                && lower.starts_with("q ")
-                && let Some((_, rest)) = trimmed.split_once(' ')
-                && !rest.trim().is_empty()
-            {
-                let mut body = capitalize_first(rest.trim());
-                if !body.ends_with('.') {
-                    body.push('.');
-                }
-                return format!("{{Q}}: {body}");
             }
             trimmed.to_string()
         }
@@ -10853,7 +10818,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
         let cost = cost.trim_end_matches('.');
         let mana = grant
             .ability
-            .mana
+            .mana_symbols()
             .iter()
             .copied()
             .map(describe_mana_symbol)
@@ -13078,6 +13043,57 @@ fn describe_ability(
             }
             vec![line]
         }
+        AbilityKind::Activated(activated) if activated.is_mana_ability() => {
+            let mut line = format!("Mana ability {index}");
+            let cost_text = if !activated.mana_cost.costs().is_empty() {
+                Some(describe_cost_list(activated.mana_cost.costs()))
+            } else {
+                None
+            };
+            let mana_symbols = activated.mana_symbols();
+            let add_text = if !mana_symbols.is_empty() {
+                Some(format!(
+                    "Add {}",
+                    mana_symbols
+                        .iter()
+                        .copied()
+                        .map(describe_mana_symbol)
+                        .collect::<Vec<_>>()
+                        .join("")
+                ))
+            } else {
+                None
+            };
+            if let (Some(cost), Some(add)) = (&cost_text, &add_text) {
+                line.push_str(": ");
+                line.push_str(cost);
+                line.push_str(": ");
+                line.push_str(add);
+            } else if let Some(cost) = &cost_text {
+                line.push_str(": ");
+                line.push_str(cost);
+            } else if let Some(add) = &add_text {
+                line.push_str(": ");
+                line.push_str(add);
+            }
+            if !activated.effects.is_empty() {
+                line.push_str(": ");
+                let effects = describe_effect_list(&activated.effects);
+                line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
+                    &effects,
+                    subject,
+                    rewrite_it_deals,
+                ));
+            }
+            if let Some(condition) = &activated.activation_condition {
+                let clause = describe_mana_activation_condition(condition);
+                if !clause.is_empty() {
+                    line.push_str(". ");
+                    line.push_str(&clause);
+                }
+            }
+            vec![line]
+        }
         AbilityKind::Activated(activated) => {
             if let Some(text) = ability.text.as_deref() {
                 let normalized = normalize_sentence_surface_style(text.trim());
@@ -13162,59 +13178,6 @@ fn describe_ability(
             if !restriction_clauses.is_empty() {
                 line.push_str(". ");
                 line.push_str(&join_activation_restriction_clauses(&restriction_clauses));
-            }
-            vec![line]
-        }
-        AbilityKind::Mana(mana_ability) => {
-            let mut line = format!("Mana ability {index}");
-            let cost_text = if !mana_ability.mana_cost.costs().is_empty() {
-                Some(describe_cost_list(mana_ability.mana_cost.costs()))
-            } else {
-                None
-            };
-            let add_text = if !mana_ability.mana.is_empty() {
-                Some(format!(
-                    "Add {}",
-                    mana_ability
-                        .mana
-                        .iter()
-                        .copied()
-                        .map(describe_mana_symbol)
-                        .collect::<Vec<_>>()
-                        .join("")
-                ))
-            } else {
-                None
-            };
-            if let (Some(cost), Some(add)) = (&cost_text, &add_text) {
-                line.push_str(": ");
-                line.push_str(cost);
-                line.push_str(": ");
-                line.push_str(add);
-            } else if let Some(cost) = &cost_text {
-                line.push_str(": ");
-                line.push_str(cost);
-            } else if let Some(add) = &add_text {
-                line.push_str(": ");
-                line.push_str(add);
-            }
-            if let Some(extra_effects) = &mana_ability.effects
-                && !extra_effects.is_empty()
-            {
-                line.push_str(": ");
-                let effects = describe_effect_list(extra_effects);
-                line.push_str(&rewrite_damage_phrases_for_permanent_abilities(
-                    &effects,
-                    subject,
-                    rewrite_it_deals,
-                ));
-            }
-            if let Some(condition) = &mana_ability.activation_condition {
-                let clause = describe_mana_activation_condition(condition);
-                if !clause.is_empty() {
-                    line.push_str(". ");
-                    line.push_str(&clause);
-                }
             }
             vec![line]
         }
@@ -13879,28 +13842,30 @@ pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
                     continue;
                 }
             }
-            if let AbilityKind::Mana(first) = &ability.kind
-                && first.effects.is_none()
+            if let AbilityKind::Activated(first) = &ability.kind
+                && first.is_mana_ability()
+                && first.effects.is_empty()
                 && first.activation_condition.is_none()
-                && first.mana.len() == 1
+                && first.mana_symbols().len() == 1
                 && ability.text.is_none()
             {
-                let mut symbols = vec![first.mana[0]];
+                let mut symbols = vec![first.mana_symbols()[0]];
                 let mut consumed = 1usize;
                 while ability_idx + consumed < def.abilities.len() {
                     let next = &def.abilities[ability_idx + consumed];
-                    let AbilityKind::Mana(next_mana) = &next.kind else {
+                    let AbilityKind::Activated(next_mana) = &next.kind else {
                         break;
                     };
-                    if next_mana.effects.is_some()
+                    if !next_mana.is_mana_ability()
+                        || !next_mana.effects.is_empty()
                         || next_mana.activation_condition.is_some()
-                        || next_mana.mana.len() != 1
+                        || next_mana.mana_symbols().len() != 1
                         || next_mana.mana_cost != first.mana_cost
                         || next.text.is_some()
                     {
                         break;
                     }
-                    symbols.push(next_mana.mana[0]);
+                    symbols.push(next_mana.mana_symbols()[0]);
                     consumed += 1;
                 }
                 if consumed > 1 {
@@ -20498,10 +20463,7 @@ fn card_self_subject_for_oracle_lines(def: &CardDefinition) -> &'static str {
 
 fn card_has_graveyard_activated_ability(def: &CardDefinition) -> bool {
     def.abilities.iter().any(|ability| {
-        let is_activated = matches!(
-            ability.kind,
-            AbilityKind::Activated(_) | AbilityKind::Mana(_)
-        );
+        let is_activated = matches!(ability.kind, AbilityKind::Activated(_));
         let zone_marked = ability.functional_zones.contains(&Zone::Graveyard);
         let text_marked = ability.text.as_ref().is_some_and(|text| {
             let lower = text.to_ascii_lowercase();
