@@ -14038,7 +14038,18 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
         let lowered = display_name.to_ascii_lowercase();
         !lowered.is_empty() && oracle_lower.contains(&format!("{lowered}'s "))
     };
-    let has_self_exile_from_hand = oracle_lower.contains("exile this card from your hand");
+    // Normalize card name self-references to "this" for pattern matching,
+    // mirroring the parser's replace_names_with_map normalization.
+    let oracle_normalized = {
+        let name_lower = def.card.name.trim().to_ascii_lowercase();
+        if !name_lower.is_empty() {
+            oracle_lower.replace(&name_lower, "this")
+        } else {
+            oracle_lower.clone()
+        }
+    };
+    let has_self_exile_from_hand = oracle_normalized.contains("exile this card from your hand")
+        || oracle_normalized.contains("exile this from your hand");
     let has_basic_landcycling = oracle_lower.contains("basic landcycling");
     let has_target_blocked_creature = oracle_lower.contains("target blocked creature");
     let has_hornbeetle_counter_phrase = oracle_lower
@@ -14224,6 +14235,22 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                 )
                 .replace(
                     "exile a card from your hand",
+                    "exile this card from your hand",
+                )
+                .replace(
+                    "Exile this permanent",
+                    "Exile this card from your hand",
+                )
+                .replace(
+                    "exile this permanent",
+                    "exile this card from your hand",
+                )
+                .replace(
+                    "Exile this source",
+                    "Exile this card from your hand",
+                )
+                .replace(
+                    "exile this source",
                     "exile this card from your hand",
                 );
         }

@@ -9438,7 +9438,7 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
             let tail_words = words(&segment[idx..]);
             let has_card = tail_words.contains(&"card") || tail_words.contains(&"cards");
             let has_hand = tail_words.contains(&"hand");
-            if has_card && has_hand {
+            if has_hand && (has_card || contains_source_from_your_hand_phrase(&segment_words)) {
                 // "Exile this card from your hand" = exile source (Simian Spirit Guide)
                 // "Exile a [color] card from your hand" = choose and exile another card (Force of Will)
                 if contains_source_from_your_hand_phrase(&segment_words) {
@@ -35514,12 +35514,20 @@ fn contains_source_from_your_graveyard_phrase(words: &[&str]) -> bool {
 }
 
 fn contains_source_from_your_hand_phrase(words: &[&str]) -> bool {
+    // Match "this card/creature/permanent from your hand" (5 words)
     words.windows(5).any(|window| {
         (window[0] == "this" || window[0] == "thiss")
             && matches!(window[1], "card" | "creature" | "permanent")
             && window[2] == "from"
             && window[3] == "your"
             && window[4] == "hand"
+    })
+    // Match "this from your hand" (4 words) — when card name was normalized to bare "this"
+    || words.windows(4).any(|window| {
+        (window[0] == "this" || window[0] == "thiss")
+            && window[1] == "from"
+            && window[2] == "your"
+            && window[3] == "hand"
     })
 }
 
