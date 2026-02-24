@@ -14049,6 +14049,7 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
         }
     };
     let has_self_exile_from_hand = oracle_normalized.contains("exile this card from your hand")
+        || oracle_normalized.contains("exile this creature from your hand")
         || oracle_normalized.contains("exile this from your hand");
     let has_basic_landcycling = oracle_lower.contains("basic landcycling");
     let has_target_blocked_creature = oracle_lower.contains("target blocked creature");
@@ -14220,6 +14221,10 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                 );
         }
         if has_self_exile_from_hand {
+            // By this point, normalize_body already replaced "this source"/"this permanent"
+            // with self_ref (e.g. "this creature"), so match the actual self_ref value.
+            let exile_self = format!("Exile {self_ref}");
+            let exile_self_lower = format!("exile {self_ref}");
             phrased = phrased
                 .replace(
                     "Exile 1 card(s) from your hand",
@@ -14237,22 +14242,8 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                     "exile a card from your hand",
                     "exile this card from your hand",
                 )
-                .replace(
-                    "Exile this permanent",
-                    "Exile this card from your hand",
-                )
-                .replace(
-                    "exile this permanent",
-                    "exile this card from your hand",
-                )
-                .replace(
-                    "Exile this source",
-                    "Exile this card from your hand",
-                )
-                .replace(
-                    "exile this source",
-                    "exile this card from your hand",
-                );
+                .replace(&exile_self, "Exile this card from your hand")
+                .replace(&exile_self_lower, "exile this card from your hand");
         }
         if has_basic_landcycling {
             phrased = phrased
