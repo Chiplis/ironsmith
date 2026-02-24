@@ -14048,9 +14048,17 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
             oracle_lower.clone()
         }
     };
-    let has_self_exile_from_hand = oracle_normalized.contains("exile this card from your hand")
-        || oracle_normalized.contains("exile this creature from your hand")
-        || oracle_normalized.contains("exile this from your hand");
+    // Detect "exile this {noun} from your hand" in oracle and extract the noun used.
+    let exile_from_hand_noun = if oracle_normalized.contains("exile this card from your hand") {
+        Some("card")
+    } else if oracle_normalized.contains("exile this creature from your hand") {
+        Some("creature")
+    } else if oracle_normalized.contains("exile this from your hand") {
+        Some("card")
+    } else {
+        None
+    };
+    let has_self_exile_from_hand = exile_from_hand_noun.is_some();
     let has_basic_landcycling = oracle_lower.contains("basic landcycling");
     let has_target_blocked_creature = oracle_lower.contains("target blocked creature");
     let has_hornbeetle_counter_phrase = oracle_lower
@@ -14220,30 +14228,20 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
                     "exile this card from your graveyard",
                 );
         }
-        if has_self_exile_from_hand {
+        if let Some(noun) = exile_from_hand_noun {
             // By this point, normalize_body already replaced "this source"/"this permanent"
             // with self_ref (e.g. "this creature"), so match the actual self_ref value.
             let exile_self = format!("Exile {self_ref}");
             let exile_self_lower = format!("exile {self_ref}");
+            let target_upper = format!("Exile this {noun} from your hand");
+            let target_lower = format!("exile this {noun} from your hand");
             phrased = phrased
-                .replace(
-                    "Exile 1 card(s) from your hand",
-                    "Exile this card from your hand",
-                )
-                .replace(
-                    "Exile a card from your hand",
-                    "Exile this card from your hand",
-                )
-                .replace(
-                    "exile 1 card(s) from your hand",
-                    "exile this card from your hand",
-                )
-                .replace(
-                    "exile a card from your hand",
-                    "exile this card from your hand",
-                )
-                .replace(&exile_self, "Exile this card from your hand")
-                .replace(&exile_self_lower, "exile this card from your hand");
+                .replace("Exile 1 card(s) from your hand", &target_upper)
+                .replace("Exile a card from your hand", &target_upper)
+                .replace("exile 1 card(s) from your hand", &target_lower)
+                .replace("exile a card from your hand", &target_lower)
+                .replace(&exile_self, &target_upper)
+                .replace(&exile_self_lower, &target_lower);
         }
         if has_basic_landcycling {
             phrased = phrased
