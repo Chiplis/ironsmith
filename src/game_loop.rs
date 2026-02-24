@@ -2228,7 +2228,7 @@ pub fn advance_priority(
 /// Advance priority with a decision maker for triggered ability targeting.
 ///
 /// This version allows proper target selection for triggered abilities.
-fn advance_priority_with_dm(
+pub fn advance_priority_with_dm(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,

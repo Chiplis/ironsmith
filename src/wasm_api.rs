@@ -23,8 +23,9 @@ use crate::decisions::context::DecisionContext;
 use crate::effect_text_shared;
 use crate::game_loop::{
     ActivationStage, CastStage, PriorityLoopState, PriorityResponse, add_saga_lore_counters,
-    advance_priority, apply_priority_response_with_dm, generate_and_queue_step_triggers,
-    get_declare_attackers_decision, get_declare_blockers_decision,
+    advance_priority, advance_priority_with_dm, apply_priority_response_with_dm,
+    generate_and_queue_step_triggers, get_declare_attackers_decision,
+    get_declare_blockers_decision,
 };
 use crate::game_state::{GameState, Phase, Step, Target};
 use crate::ids::{ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
@@ -993,10 +994,19 @@ struct ReplayCheckpoint {
     id_counters: crate::ids::IdCountersSnapshot,
 }
 
+/// Distinguishes user-action replays from auto-advance replays.
+#[derive(Debug, Clone)]
+enum ReplayRoot {
+    /// User chose a priority response (cast spell, activate ability, etc.)
+    Response(PriorityResponse),
+    /// The game loop is auto-advancing and hit a decision (e.g. triggered ability targeting).
+    Advance,
+}
+
 #[derive(Debug, Clone)]
 struct PendingReplayAction {
     checkpoint: ReplayCheckpoint,
-    root_response: PriorityResponse,
+    root: ReplayRoot,
     nested_answers: Vec<ReplayDecisionAnswer>,
 }
 
@@ -1626,7 +1636,7 @@ impl WasmGame {
 
             let outcome = match self.execute_with_replay(
                 &replay.checkpoint,
-                &replay.root_response,
+                &replay.root,
                 &replay.nested_answers,
             ) {
                 Ok(outcome) => outcome,
@@ -1659,7 +1669,8 @@ impl WasmGame {
             };
 
             let checkpoint = self.capture_replay_checkpoint();
-            let outcome = match self.execute_with_replay(&checkpoint, &response, &[]) {
+            let root = ReplayRoot::Response(response);
+            let outcome = match self.execute_with_replay(&checkpoint, &root, &[]) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     self.pending_decision = Some(pending_ctx);
@@ -1672,7 +1683,7 @@ impl WasmGame {
                     self.pending_decision = Some(next_ctx);
                     self.pending_replay_action = Some(PendingReplayAction {
                         checkpoint,
-                        root_response: response,
+                        root,
                         nested_answers: Vec::new(),
                     });
                     self.snapshot()
@@ -1937,26 +1948,39 @@ impl WasmGame {
                 return Ok(());
             }
 
-            let progress = advance_priority(&mut self.game, &mut self.trigger_queue)
-                .map_err(|e| JsValue::from_str(&format!("advance_priority failed: {e}")))?;
-            match progress {
-                GameProgress::NeedsDecisionCtx(ctx) => {
+            let checkpoint = self.capture_replay_checkpoint();
+            let outcome =
+                self.execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])?;
+
+            match outcome {
+                ReplayOutcome::NeedsDecision(ctx) => {
                     self.pending_decision = Some(ctx);
+                    self.pending_replay_action = Some(PendingReplayAction {
+                        checkpoint,
+                        root: ReplayRoot::Advance,
+                        nested_answers: Vec::new(),
+                    });
                     return Ok(());
                 }
-                GameProgress::Continue => {
-                    self.advance_step_with_actions()?;
-                    self.pending_decision = None;
-                    continue;
-                }
-                GameProgress::StackResolved => {
-                    continue;
-                }
-                GameProgress::GameOver(result) => {
-                    self.pending_decision = None;
-                    self.game_over = Some(result);
-                    return Ok(());
-                }
+                ReplayOutcome::Complete(progress) => match progress {
+                    GameProgress::NeedsDecisionCtx(ctx) => {
+                        self.pending_decision = Some(ctx);
+                        return Ok(());
+                    }
+                    GameProgress::Continue => {
+                        self.advance_step_with_actions()?;
+                        self.pending_decision = None;
+                        continue;
+                    }
+                    GameProgress::StackResolved => {
+                        continue;
+                    }
+                    GameProgress::GameOver(result) => {
+                        self.pending_decision = None;
+                        self.game_over = Some(result);
+                        return Ok(());
+                    }
+                },
             }
         }
 
@@ -2133,20 +2157,32 @@ impl WasmGame {
     fn execute_with_replay(
         &mut self,
         checkpoint: &ReplayCheckpoint,
-        response: &PriorityResponse,
+        root: &ReplayRoot,
         nested_answers: &[ReplayDecisionAnswer],
     ) -> Result<ReplayOutcome, JsValue> {
         self.restore_replay_checkpoint(checkpoint);
-        self.apply_response_combat_flags(response);
 
         let mut replay_dm = WasmReplayDecisionMaker::new(nested_answers);
-        let result = apply_priority_response_with_dm(
-            &mut self.game,
-            &mut self.trigger_queue,
-            &mut self.priority_state,
-            response,
-            &mut replay_dm,
-        );
+
+        let result = match root {
+            ReplayRoot::Response(response) => {
+                self.apply_response_combat_flags(response);
+                apply_priority_response_with_dm(
+                    &mut self.game,
+                    &mut self.trigger_queue,
+                    &mut self.priority_state,
+                    response,
+                    &mut replay_dm,
+                )
+                .map_err(|e| format!("{e}"))
+            }
+            ReplayRoot::Advance => advance_priority_with_dm(
+                &mut self.game,
+                &mut self.trigger_queue,
+                &mut replay_dm,
+            )
+            .map_err(|e| format!("{e}")),
+        };
 
         if let Some(next_ctx) = replay_dm.take_pending_context() {
             self.restore_replay_checkpoint(checkpoint);
