@@ -7,7 +7,7 @@ use crate::ability::LevelAbility;
 use crate::color::Color;
 use crate::effect::{Condition, Effect, Value};
 use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
-use crate::events::damage::matchers::DamageToPlayerOrObjectMatcher;
+use crate::events::damage::matchers::{DamageFromSelfMatcher, DamageToPlayerOrObjectMatcher};
 use crate::events::traits::{EventKind, ReplacementMatcher, ReplacementPriority, downcast_event};
 use crate::events::zones::matchers::{
     ThisWouldEnterBattlefieldMatcher, ThisWouldGoToGraveyardMatcher, WouldEnterBattlefieldMatcher,
@@ -1108,6 +1108,37 @@ impl StaticAbilityKind for RedirectDamageToSource {
     }
 }
 
+/// "Prevent all damage that would be dealt by this permanent."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PreventAllDamageDealtByThisPermanent;
+
+impl StaticAbilityKind for PreventAllDamageDealtByThisPermanent {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllDamageDealtByThisPermanent
+    }
+
+    fn display(&self) -> String {
+        "Prevent all damage that would be dealt by this permanent.".to_string()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageFromSelfMatcher::new(),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
 /// Permanents matching a filter enter the battlefield tapped.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterTappedForFilter {
@@ -1777,7 +1808,9 @@ impl StaticAbilityKind for Custom {
 mod tests {
     use super::*;
     use crate::events::EventContext;
+    use crate::events::DamageEvent;
     use crate::events::zones::ZoneChangeEvent;
+    use crate::game_event::DamageTarget;
     use crate::zone::Zone;
 
     #[test]
@@ -1897,5 +1930,32 @@ mod tests {
             !matcher.matches_event(&event, &ctx),
             "bloodthirst should not match when no opponent was dealt damage"
         );
+    }
+
+    #[test]
+    fn test_prevent_all_damage_dealt_by_this_permanent_generates_replacement() {
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let src = ObjectId::from_raw(42);
+        let alice = PlayerId::from_index(0);
+
+        let ability = PreventAllDamageDealtByThisPermanent;
+        let replacement = ability
+            .generate_replacement_effect(src, alice)
+            .expect("should generate replacement effect");
+        assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("replacement must have a matcher");
+        let ctx = EventContext::for_replacement_effect(alice, src, &game);
+
+        // Preventable damage from this permanent matches.
+        let dmg = DamageEvent::new(src, DamageTarget::Player(alice), 3, false);
+        assert!(matcher.matches_event(&dmg, &ctx));
+
+        // Unpreventable damage from this permanent does not match.
+        let unpreventable = DamageEvent::unpreventable(src, DamageTarget::Player(alice), 3, false);
+        assert!(!matcher.matches_event(&unpreventable, &ctx));
     }
 }

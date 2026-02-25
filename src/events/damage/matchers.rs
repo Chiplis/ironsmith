@@ -265,6 +265,64 @@ impl ReplacementMatcher for DamageFromSourceMatcher {
     }
 }
 
+/// Matches preventable damage events dealt by the source of the replacement effect (self-replacement).
+///
+/// Used for abilities like "Prevent all damage that would be dealt by this creature."
+#[derive(Debug, Clone)]
+pub struct DamageFromSelfMatcher {
+    /// Whether to treat this as a self-replacement effect for priority ordering.
+    pub self_replacement: bool,
+}
+
+impl DamageFromSelfMatcher {
+    pub fn new() -> Self {
+        Self {
+            self_replacement: true,
+        }
+    }
+}
+
+impl Default for DamageFromSelfMatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ReplacementMatcher for DamageFromSelfMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        // "Damage can't be prevented" bypasses prevention effects.
+        if damage.is_unpreventable {
+            return false;
+        }
+
+        ctx.source == Some(damage.source)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        if self.self_replacement {
+            ReplacementPriority::SelfReplacement
+        } else {
+            ReplacementPriority::Other
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn ReplacementMatcher> {
+        Box::new(self.clone())
+    }
+
+    fn display(&self) -> String {
+        "When damage would be dealt by this permanent".to_string()
+    }
+}
+
 /// Matches damage events to the source of the replacement effect (self-replacement).
 #[derive(Debug, Clone)]
 pub struct DamageToSelfMatcher {
@@ -387,5 +445,27 @@ mod tests {
     fn test_damage_to_self_matcher_priority() {
         let matcher = DamageToSelfMatcher::new();
         assert_eq!(matcher.priority(), ReplacementPriority::SelfReplacement);
+    }
+
+    #[test]
+    fn test_damage_from_self_matcher() {
+        let game = setup_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let src = ObjectId::from_raw(42);
+
+        let ctx = EventContext::for_replacement_effect(alice, src, &game);
+        let matcher = DamageFromSelfMatcher::new();
+
+        // Damage from the replacement effect's source should match.
+        let from_src = DamageEvent::new(src, DamageTarget::Player(alice), 3, false);
+        assert!(matcher.matches_event(&from_src, &ctx));
+
+        // Damage from a different source should not match.
+        let other = DamageEvent::new(ObjectId::from_raw(7), DamageTarget::Player(alice), 3, false);
+        assert!(!matcher.matches_event(&other, &ctx));
+
+        // Unpreventable damage should not match (prevention can't apply).
+        let unpreventable = DamageEvent::unpreventable(src, DamageTarget::Player(alice), 3, false);
+        assert!(!matcher.matches_event(&unpreventable, &ctx));
     }
 }

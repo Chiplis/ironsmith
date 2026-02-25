@@ -125,6 +125,7 @@ pub enum StaticAbilityId {
     // === Other abilities ===
     ChooseColorAsEnters,
     RedirectDamageToSource,
+    PreventAllDamageDealtByThisPermanent,
     DoesntUntap,
     EntersTapped,
     EntersTappedUnlessControlTwoOrMoreOtherLands,

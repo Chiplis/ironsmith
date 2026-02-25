@@ -2407,6 +2407,9 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_attached_cant_attack_or_block_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_attached_prevent_all_damage_dealt_by_attached_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(abilities) = parse_attached_has_keywords_and_triggered_ability_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -6382,6 +6385,37 @@ fn parse_attached_cant_attack_or_block_line(
     Ok(Some(StaticAbility::attached_ability_grant(
         granted,
         normalized.join(" "),
+    )))
+}
+
+fn parse_attached_prevent_all_damage_dealt_by_attached_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 6 {
+        return Ok(None);
+    }
+
+    // "Prevent all damage that would be dealt by enchanted creature."
+    if !line_words.starts_with(&["prevent", "all", "damage"]) {
+        return Ok(None);
+    }
+    if !line_words.ends_with(&["by", "enchanted", "creature"]) {
+        return Ok(None);
+    }
+
+    let display = "prevent all damage that would be dealt by enchanted creature".to_string();
+    let granted = Ability {
+        kind: AbilityKind::Static(StaticAbility::new(
+            crate::static_abilities::PreventAllDamageDealtByThisPermanent,
+        )),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(display.clone()),
+    };
+
+    Ok(Some(StaticAbility::attached_ability_grant(
+        granted,
+        display,
     )))
 }
 
@@ -34343,6 +34377,16 @@ mod parse_parsing_tests {
                 count: Value::Fixed(3)
             }
         ));
+    }
+
+    #[test]
+    fn parse_attached_prevent_all_damage_dealt_by_enchanted_creature() {
+        let tokens = tokenize_line("Prevent all damage that would be dealt by enchanted creature.", 0);
+        let abilities = parse_static_ability_line(&tokens)
+            .expect("parse static ability line")
+            .expect("expected static ability");
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(abilities[0].id(), StaticAbilityId::AttachedAbilityGrant);
     }
 }
 
