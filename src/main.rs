@@ -21,11 +21,8 @@ use ironsmith::decision::{CliDecisionMaker, DecisionRouter, init_input_manager, 
 use ironsmith::ids::CardId;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    AttackerDeclaration, BlockerDeclaration, CardDefinition, CardRegistry, CombatState,
-    DecisionMaker, GameState, ManaSymbol, Phase, PlayerId, Step, Zone, apply_attacker_declarations,
-    apply_blocker_declarations, check_and_apply_sbas, execute_cleanup_step, execute_draw_step,
-    execute_untap_step, generate_and_queue_step_triggers, get_declare_attackers_decision,
-    get_declare_blockers_decision, put_triggers_on_stack, run_priority_loop_with,
+    CardDefinition, CardRegistry, CombatState, GameState, ManaSymbol, PlayerId, Zone,
+    execute_turn_with,
 };
 use rand::seq::SliceRandom;
 use serde::Deserialize;
@@ -190,7 +187,7 @@ fn run_game_with_custom_hands(
         }
 
         // Run a turn
-        if let Err(e) = run_turn(game, &mut combat, &mut trigger_queue, &mut decision_maker) {
+        if let Err(e) = execute_turn_with(game, &mut combat, &mut trigger_queue, &mut decision_maker) {
             match e {
                 ironsmith::GameLoopError::GameOver => {
                     // Check who won
@@ -225,141 +222,6 @@ fn run_game_with_custom_hands(
     }
 
     println!("Game ended due to turn limit.");
-}
-
-/// Run a single turn.
-fn run_turn(
-    game: &mut GameState,
-    combat: &mut CombatState,
-    trigger_queue: &mut TriggerQueue,
-    dm: &mut impl DecisionMaker,
-) -> Result<(), ironsmith::GameLoopError> {
-    // === Beginning Phase ===
-    game.activate_pending_player_control(game.turn.active_player);
-    game.turn.phase = Phase::Beginning;
-    game.turn.step = Some(Step::Untap);
-    execute_untap_step(game);
-    game.empty_mana_pools();
-
-    game.turn.step = Some(Step::Upkeep);
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, dm)?;
-    game.empty_mana_pools();
-
-    game.turn.step = Some(Step::Draw);
-    execute_draw_step(game);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, dm)?;
-    game.empty_mana_pools();
-
-    // === Precombat Main Phase ===
-    game.turn.phase = Phase::FirstMain;
-    game.turn.step = None;
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, dm)?;
-    game.empty_mana_pools();
-
-    // === Combat Phase ===
-    game.turn.phase = Phase::Combat;
-    game.turn.step = Some(Step::BeginCombat);
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, dm)?;
-    game.empty_mana_pools();
-
-    // Declare attackers
-    game.turn.step = Some(Step::DeclareAttackers);
-    let attacker_ctx = get_declare_attackers_decision(game, combat);
-    if let ironsmith::decisions::context::DecisionContext::Attackers(ctx) = attacker_ctx {
-        let declarations: Vec<_> = dm
-            .decide_attackers(game, &ctx)
-            .into_iter()
-            .map(|d| AttackerDeclaration {
-                creature: d.creature,
-                target: d.target,
-            })
-            .collect();
-        apply_attacker_declarations(game, combat, trigger_queue, &declarations)?;
-    }
-
-    put_triggers_on_stack(game, trigger_queue)?;
-    run_priority_loop_with(game, trigger_queue, dm)?;
-    game.empty_mana_pools();
-
-    // Declare blockers (if there are attackers)
-    if !combat.attackers.is_empty() {
-        game.turn.step = Some(Step::DeclareBlockers);
-
-        let defending_player = game
-            .players
-            .iter()
-            .find(|p| p.id != game.turn.active_player && p.is_in_game())
-            .map(|p| p.id)
-            .unwrap_or(game.turn.active_player);
-
-        game.turn.priority_player = Some(defending_player);
-
-        let blocker_ctx = get_declare_blockers_decision(game, combat, defending_player);
-        if let ironsmith::decisions::context::DecisionContext::Blockers(ctx) = blocker_ctx {
-            let declarations: Vec<_> = dm
-                .decide_blockers(game, &ctx)
-                .into_iter()
-                .map(|d| BlockerDeclaration {
-                    blocker: d.blocker,
-                    blocking: d.blocking,
-                })
-                .collect();
-            apply_blocker_declarations(
-                game,
-                combat,
-                trigger_queue,
-                &declarations,
-                defending_player,
-            )?;
-        }
-
-        put_triggers_on_stack(game, trigger_queue)?;
-        run_priority_loop_with(game, trigger_queue, dm)?;
-        game.empty_mana_pools();
-
-        // Combat damage
-        game.turn.step = Some(Step::CombatDamage);
-        ironsmith::execute_combat_damage_step(game, combat, false);
-        check_and_apply_sbas(game, trigger_queue)?;
-        run_priority_loop_with(game, trigger_queue, dm)?;
-        game.empty_mana_pools();
-    }
-
-    // End combat
-    game.turn.step = Some(Step::EndCombat);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    ironsmith::end_combat(combat);
-    run_priority_loop_with(game, trigger_queue, dm)?;
-    game.empty_mana_pools();
-
-    // === Postcombat Main Phase ===
-    game.turn.phase = Phase::NextMain;
-    game.turn.step = None;
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, dm)?;
-    game.empty_mana_pools();
-
-    // === Ending Phase ===
-    game.turn.phase = Phase::Ending;
-    game.turn.step = Some(Step::End);
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, dm)?;
-    game.empty_mana_pools();
-
-    game.turn.step = Some(Step::Cleanup);
-    execute_cleanup_step(game);
-    game.empty_mana_pools();
-
-    Ok(())
 }
 
 /// Command-line arguments for custom hands/decks.

@@ -60,8 +60,7 @@ use crate::triggers::{
     generate_step_trigger_events, verify_intervening_if,
 };
 use crate::turn::{
-    PriorityResult, PriorityTracker, TurnError, execute_cleanup_step, execute_draw_step,
-    execute_untap_step, pass_priority, reset_priority,
+    PriorityResult, PriorityTracker, TurnError, pass_priority, reset_priority,
 };
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -8476,205 +8475,68 @@ pub fn execute_turn_with(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
-    // === Beginning Phase ===
-    game.activate_pending_player_control(game.turn.active_player);
+    use crate::turn_runner::{TurnAction, TurnRunner};
 
-    // Untap step - no priority
-    game.turn.phase = Phase::Beginning;
-    game.turn.step = Some(Step::Untap);
-    execute_untap_step(game);
+    let mut runner = TurnRunner::new();
 
-    // Upkeep step
-    game.turn.step = Some(Step::Upkeep);
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, decision_maker)?;
+    loop {
+        match runner.advance(game, trigger_queue)? {
+            TurnAction::Continue => continue,
 
-    // Draw step
-    game.turn.step = Some(Step::Draw);
-    let draw_events = execute_draw_step(game);
-    generate_and_queue_step_triggers(game, trigger_queue);
+            TurnAction::RunPriority => {
+                run_priority_loop_with(game, trigger_queue, decision_maker)?;
+                runner.priority_done();
+            }
 
-    // Check triggers for each drawn card (handles Miracle and other card-draw triggers)
-    for draw_event in draw_events {
-        let triggered = crate::triggers::check::check_triggers(game, &draw_event);
-        for entry in triggered {
-            trigger_queue.add(entry);
-        }
-    }
+            TurnAction::Decision(ctx) => {
+                match ctx {
+                    crate::decisions::context::DecisionContext::Attackers(ref actx) => {
+                        let declarations: Vec<crate::decision::AttackerDeclaration> =
+                            decision_maker
+                                .decide_attackers(game, actx)
+                                .into_iter()
+                                .map(|d| crate::decision::AttackerDeclaration {
+                                    creature: d.creature,
+                                    target: d.target,
+                                })
+                                .collect();
+                        runner.respond_attackers(declarations);
+                    }
+                    crate::decisions::context::DecisionContext::Blockers(ref bctx) => {
+                        let defending_player = bctx.player;
+                        let declarations: Vec<crate::decision::BlockerDeclaration> =
+                            decision_maker
+                                .decide_blockers(game, bctx)
+                                .into_iter()
+                                .map(|d| crate::decision::BlockerDeclaration {
+                                    blocker: d.blocker,
+                                    blocking: d.blocking,
+                                })
+                                .collect();
+                        runner.respond_blockers(declarations, defending_player);
+                    }
+                    crate::decisions::context::DecisionContext::SelectObjects(ref obj_ctx) => {
+                        let cards = decision_maker.decide_objects(game, obj_ctx);
+                        runner.respond_discard(cards);
+                    }
+                    _ => {
+                        // Other decision types shouldn't appear during turn execution
+                    }
+                }
+            }
 
-    run_priority_loop_with(game, trigger_queue, decision_maker)?;
+            TurnAction::TurnComplete => {
+                // Sync the runner's combat state back to the caller's combat ref
+                *combat = runner.combat().clone();
+                return Ok(());
+            }
 
-    // === Precombat Main Phase ===
-    game.turn.phase = Phase::FirstMain;
-    game.turn.step = None;
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-
-    // Add lore counters to sagas (triggers chapter abilities)
-    add_saga_lore_counters(game, trigger_queue);
-
-    run_priority_loop_with(game, trigger_queue, decision_maker)?;
-
-    // === Combat Phase ===
-    game.turn.phase = Phase::Combat;
-
-    // Begin combat step
-    game.turn.step = Some(Step::BeginCombat);
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, decision_maker)?;
-
-    // Declare attackers step
-    game.turn.step = Some(Step::DeclareAttackers);
-    game.turn.priority_player = Some(game.turn.active_player);
-
-    // Get attacker decision from decision maker
-    let attacker_ctx = get_declare_attackers_decision(game, combat);
-    let declarations: Vec<crate::decision::AttackerDeclaration> =
-        if let crate::decisions::context::DecisionContext::Attackers(ctx) = &attacker_ctx {
-            decision_maker
-                .decide_attackers(game, ctx)
-                .into_iter()
-                .map(|d| crate::decision::AttackerDeclaration {
-                    creature: d.creature,
-                    target: d.target,
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-    apply_attacker_declarations(game, combat, trigger_queue, &declarations)?;
-
-    // Triggers from attacks, then priority
-    put_triggers_on_stack(game, trigger_queue)?;
-    run_priority_loop_with(game, trigger_queue, decision_maker)?;
-
-    // Declare blockers step (only if there are attackers)
-    if !combat.attackers.is_empty() {
-        game.turn.step = Some(Step::DeclareBlockers);
-
-        // Determine defending player(s) - for now, assume one opponent
-        let defending_player = game
-            .players
-            .iter()
-            .find(|p| p.id != game.turn.active_player && p.is_in_game())
-            .map(|p| p.id)
-            .unwrap_or(game.turn.active_player);
-
-        game.turn.priority_player = Some(defending_player);
-
-        // Get blocker decision
-        let blocker_ctx = get_declare_blockers_decision(game, combat, defending_player);
-        let declarations: Vec<crate::decision::BlockerDeclaration> =
-            if let crate::decisions::context::DecisionContext::Blockers(ctx) = &blocker_ctx {
-                decision_maker
-                    .decide_blockers(game, ctx)
-                    .into_iter()
-                    .map(|d| crate::decision::BlockerDeclaration {
-                        blocker: d.blocker,
-                        blocking: d.blocking,
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-        apply_blocker_declarations(game, combat, trigger_queue, &declarations, defending_player)?;
-
-        // Triggers from blocks, then priority
-        put_triggers_on_stack(game, trigger_queue)?;
-        run_priority_loop_with(game, trigger_queue, decision_maker)?;
-
-        // Combat damage step
-        game.turn.step = Some(Step::CombatDamage);
-
-        // Check for first strike (use game-aware function to detect abilities from continuous effects)
-        let has_first_strike = combat.attackers.iter().any(|info| {
-            game.object(info.creature)
-                .is_some_and(|obj| deals_first_strike_damage_with_game(obj, game))
-        }) || combat.blockers.values().any(|blockers| {
-            blockers.iter().any(|&id| {
-                game.object(id)
-                    .is_some_and(|obj| deals_first_strike_damage_with_game(obj, game))
-            })
-        });
-
-        if has_first_strike {
-            // First strike damage
-            let events = execute_combat_damage_step(game, combat, true);
-            generate_damage_triggers(game, &events, trigger_queue);
-            check_and_apply_sbas(game, trigger_queue)?;
-            run_priority_loop_with(game, trigger_queue, decision_maker)?;
-        }
-
-        // Regular damage
-        let events = execute_combat_damage_step(game, combat, false);
-        generate_damage_triggers(game, &events, trigger_queue);
-        check_and_apply_sbas(game, trigger_queue)?;
-        run_priority_loop_with(game, trigger_queue, decision_maker)?;
-    }
-
-    // End combat step
-    game.turn.step = Some(Step::EndCombat);
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    crate::combat_state::end_combat(combat);
-    run_priority_loop_with(game, trigger_queue, decision_maker)?;
-
-    // === Postcombat Main Phase ===
-    game.turn.phase = Phase::NextMain;
-    game.turn.step = None;
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, decision_maker)?;
-
-    // === Ending Phase ===
-    game.turn.phase = Phase::Ending;
-
-    // End step
-    game.turn.step = Some(Step::End);
-    game.turn.priority_player = Some(game.turn.active_player);
-    generate_and_queue_step_triggers(game, trigger_queue);
-    run_priority_loop_with(game, trigger_queue, decision_maker)?;
-
-    // Cleanup step
-    game.turn.step = Some(Step::Cleanup);
-
-    // Check if discard is needed
-    if let Some((player, spec)) = crate::turn::get_cleanup_discard_spec(game) {
-        use crate::decisions::DecisionSpec;
-        let ctx = spec.build_context(player, None, game);
-        if let crate::decisions::context::DecisionContext::SelectObjects(obj_ctx) = ctx {
-            let cards = decision_maker.decide_objects(game, &obj_ctx);
-            crate::turn::apply_cleanup_discard(game, &cards, decision_maker);
-        }
-    }
-
-    execute_cleanup_step(game);
-
-    // If triggers fire or SBAs happen during cleanup, there's another cleanup step
-    let triggers_fired = !trigger_queue.is_empty();
-    let sbas_happened = !check_state_based_actions(game).is_empty();
-
-    if triggers_fired || sbas_happened {
-        check_and_apply_sbas(game, trigger_queue)?;
-        put_triggers_on_stack(game, trigger_queue)?;
-        if !game.stack_is_empty() {
-            run_priority_loop_with(game, trigger_queue, decision_maker)?;
-        }
-        // Recursive cleanup - also check for discard
-        if let Some((player, spec)) = crate::turn::get_cleanup_discard_spec(game) {
-            use crate::decisions::DecisionSpec;
-            let ctx = spec.build_context(player, None, game);
-            if let crate::decisions::context::DecisionContext::SelectObjects(obj_ctx) = ctx {
-                let cards = decision_maker.decide_objects(game, &obj_ctx);
-                crate::turn::apply_cleanup_discard(game, &cards, decision_maker);
+            TurnAction::GameOver(_) => {
+                *combat = runner.combat().clone();
+                return Err(GameLoopError::GameOver);
             }
         }
-        execute_cleanup_step(game);
     }
-
-    Ok(())
 }
 
 /// Generate step trigger events and add them to the queue.
@@ -8725,8 +8587,7 @@ fn generate_damage_triggers(
 ///
 /// This is shared by different runtime frontends (CLI/WASM) so they can execute
 /// combat damage in step actions while keeping trigger emission consistent.
-#[allow(dead_code)]
-pub(crate) fn queue_combat_damage_triggers(
+pub fn queue_combat_damage_triggers(
     game: &mut GameState,
     events: &[CombatDamageEvent],
     trigger_queue: &mut TriggerQueue,

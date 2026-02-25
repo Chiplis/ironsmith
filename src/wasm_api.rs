@@ -19,15 +19,13 @@ use crate::decision::{
 };
 use crate::decisions::context::DecisionContext;
 use crate::game_loop::{
-    ActivationStage, CastStage, PriorityLoopState, PriorityResponse, add_saga_lore_counters,
-    advance_priority, advance_priority_with_dm, apply_priority_response_with_dm,
-    generate_and_queue_step_triggers, get_declare_attackers_decision,
-    get_declare_blockers_decision,
+    ActivationStage, CastStage, PriorityLoopState, PriorityResponse,
+    advance_priority_with_dm, apply_priority_response_with_dm,
 };
-use crate::game_state::{GameState, Phase, Step, Target};
+use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
 use crate::mana::ManaSymbol;
-use crate::triggers::{TriggerQueue, check_triggers};
+use crate::triggers::TriggerQueue;
 use crate::types::CardType;
 use crate::zone::Zone;
 
@@ -1043,8 +1041,6 @@ struct ReplayCheckpoint {
     trigger_queue: TriggerQueue,
     priority_state: PriorityLoopState,
     game_over: Option<GameResult>,
-    attackers_declared_this_step: bool,
-    blockers_declared_this_step: bool,
     id_counters: crate::ids::IdCountersSnapshot,
 }
 
@@ -1387,10 +1383,15 @@ pub struct WasmGame {
     pending_replay_action: Option<PendingReplayAction>,
     game_over: Option<GameResult>,
     perspective: PlayerId,
-    attackers_declared_this_step: bool,
-    blockers_declared_this_step: bool,
     deck_generation_nonce: u64,
-    last_step_actions_applied: Option<(u32, Phase, Option<Step>)>,
+    /// The unified turn state machine. Created lazily on first advance.
+    runner: Option<crate::turn_runner::TurnRunner>,
+    /// True when the TurnRunner has yielded RunPriority and we're inside
+    /// the priority loop waiting for it to complete.
+    runner_awaiting_priority: bool,
+    /// True when the pending_decision came from TurnRunner (attacker/blocker/discard
+    /// decisions) rather than from the priority loop.
+    runner_pending_decision: bool,
 }
 
 #[wasm_bindgen(start)]
@@ -1414,10 +1415,10 @@ impl WasmGame {
             pending_replay_action: None,
             game_over: None,
             perspective: PlayerId::from_index(0),
-            attackers_declared_this_step: false,
-            blockers_declared_this_step: false,
             deck_generation_nonce: 0,
-            last_step_actions_applied: None,
+            runner: None,
+            runner_awaiting_priority: false,
+            runner_pending_decision: false,
         }
     }
 
@@ -1635,9 +1636,14 @@ impl WasmGame {
     }
 
     /// Advance to next phase (or next turn if ending phase).
+    /// Resets the TurnRunner so it picks up from the new game state.
     #[wasm_bindgen(js_name = advancePhase)]
     pub fn advance_phase(&mut self) -> Result<(), JsValue> {
-        self.advance_step_with_actions()?;
+        crate::turn::advance_step(&mut self.game)
+            .map_err(|e| JsValue::from_str(&format!("advance_step failed: {e:?}")))?;
+        self.runner = None;
+        self.runner_awaiting_priority = false;
+        self.runner_pending_decision = false;
         self.recompute_ui_decision()?;
         Ok(())
     }
@@ -1677,6 +1683,13 @@ impl WasmGame {
             .pending_decision
             .take()
             .ok_or_else(|| JsValue::from_str("no pending decision to dispatch"))?;
+
+        // If this decision came from the TurnRunner, route through runner.respond_*()
+        if self.runner_pending_decision {
+            self.runner_pending_decision = false;
+            return self.dispatch_runner_decision(pending_ctx, command);
+        }
+
         if let Some(mut replay) = self.pending_replay_action.take() {
             let answer = match self.command_to_replay_answer(&pending_ctx, command) {
                 Ok(answer) => answer,
@@ -1973,9 +1986,9 @@ impl WasmGame {
         self.pending_decision = None;
         self.pending_replay_action = None;
         self.game_over = None;
-        self.attackers_declared_this_step = false;
-        self.blockers_declared_this_step = false;
-        self.last_step_actions_applied = None;
+        self.runner = None;
+        self.runner_awaiting_priority = false;
+        self.runner_pending_decision = false;
         if self.game.player(self.perspective).is_none()
             && let Some(first) = self.game.players.first()
         {
@@ -1993,15 +2006,67 @@ impl WasmGame {
     }
 
     fn advance_until_decision(&mut self) -> Result<(), JsValue> {
-        for _ in 0..192 {
-            self.apply_current_step_actions_once();
-            self.sync_combat_step_flags();
+        use crate::turn_runner::TurnAction;
 
-            if let Some(combat_ctx) = self.pending_combat_declare_decision()? {
-                self.pending_decision = Some(combat_ctx);
-                return Ok(());
+        // Lazily create the TurnRunner on first call.
+        if self.runner.is_none() {
+            self.runner = Some(crate::turn_runner::TurnRunner::new());
+            self.runner_awaiting_priority = false;
+        }
+
+        for _ in 0..192 {
+            // If we're NOT currently inside a priority loop, advance the TurnRunner
+            if !self.runner_awaiting_priority {
+                let action = {
+                    let runner = self.runner.as_mut().unwrap();
+                    runner
+                        .advance(&mut self.game, &mut self.trigger_queue)
+                        .map_err(|e| JsValue::from_str(&format!("{e}")))?
+                };
+
+                match action {
+                    TurnAction::Continue => continue,
+
+                    TurnAction::Decision(ctx) => {
+                        self.pending_decision = Some(ctx);
+                        self.runner_pending_decision = true;
+                        return Ok(());
+                    }
+
+                    TurnAction::RunPriority => {
+                        self.runner_awaiting_priority = true;
+                        // Fall through to the priority loop below
+                    }
+
+                    TurnAction::TurnComplete => {
+                        // Check for game over before starting next turn
+                        let remaining: Vec<_> =
+                            self.game.players.iter().filter(|p| p.is_in_game()).collect();
+                        if remaining.len() <= 1 {
+                            let result = if let Some(winner) = remaining.first() {
+                                GameResult::Winner(winner.id)
+                            } else {
+                                GameResult::Draw
+                            };
+                            self.game_over = Some(result);
+                            return Ok(());
+                        }
+
+                        // Advance to next turn
+                        self.game.next_turn();
+                        self.runner = Some(crate::turn_runner::TurnRunner::new());
+                        self.runner_awaiting_priority = false;
+                        continue;
+                    }
+
+                    TurnAction::GameOver(result) => {
+                        self.game_over = Some(result);
+                        return Ok(());
+                    }
+                }
             }
 
+            // We're inside a priority loop - use existing priority mechanism
             let checkpoint = self.capture_replay_checkpoint();
             let outcome =
                 self.execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])?;
@@ -2009,6 +2074,7 @@ impl WasmGame {
             match outcome {
                 ReplayOutcome::NeedsDecision(ctx) => {
                     self.pending_decision = Some(ctx);
+                    self.runner_pending_decision = false;
                     self.pending_replay_action = Some(PendingReplayAction {
                         checkpoint,
                         root: ReplayRoot::Advance,
@@ -2019,10 +2085,13 @@ impl WasmGame {
                 ReplayOutcome::Complete(progress) => match progress {
                     GameProgress::NeedsDecisionCtx(ctx) => {
                         self.pending_decision = Some(ctx);
+                        self.runner_pending_decision = false;
                         return Ok(());
                     }
                     GameProgress::Continue => {
-                        self.advance_step_with_actions()?;
+                        // Priority loop ended - notify runner
+                        self.runner.as_mut().unwrap().priority_done();
+                        self.runner_awaiting_priority = false;
                         self.pending_decision = None;
                         continue;
                     }
@@ -2050,7 +2119,11 @@ impl WasmGame {
                 Ok(())
             }
             GameProgress::Continue => {
-                self.advance_step_with_actions()?;
+                // Priority loop ended - notify runner and continue
+                if self.runner.is_some() {
+                    self.runner.as_mut().unwrap().priority_done();
+                    self.runner_awaiting_priority = false;
+                }
                 self.pending_decision = None;
                 self.advance_until_decision()
             }
@@ -2066,112 +2139,42 @@ impl WasmGame {
         }
     }
 
-    fn sync_combat_step_flags(&mut self) {
-        if self.game.turn.step != Some(Step::DeclareAttackers) {
-            self.attackers_declared_this_step = false;
-        }
-        if self.game.turn.step != Some(Step::DeclareBlockers) {
-            self.blockers_declared_this_step = false;
-        }
-    }
+    /// Handle a response to a TurnRunner-sourced decision (attackers/blockers/discard).
+    fn dispatch_runner_decision(
+        &mut self,
+        pending_ctx: DecisionContext,
+        command: UiCommand,
+    ) -> Result<JsValue, JsValue> {
+        let runner = self.runner.as_mut().ok_or_else(|| {
+            JsValue::from_str("runner_pending_decision set but no runner present")
+        })?;
 
-    fn pending_combat_declare_decision(&mut self) -> Result<Option<DecisionContext>, JsValue> {
-        if self.game.turn.step == Some(Step::DeclareAttackers) && !self.attackers_declared_this_step
-        {
-            if self.game.combat.is_none() {
-                self.game.combat = Some(Default::default());
+        match (&pending_ctx, command) {
+            (DecisionContext::Attackers(actx), UiCommand::DeclareAttackers { declarations }) => {
+                let converted = validate_attacker_declarations(actx, &declarations)?;
+                runner.respond_attackers(converted);
             }
-            let combat = self.game.combat.clone().unwrap_or_default();
-            return Ok(Some(get_declare_attackers_decision(&self.game, &combat)));
-        }
-
-        if self.game.turn.step == Some(Step::DeclareBlockers) && !self.blockers_declared_this_step {
-            let combat = self.game.combat.clone().unwrap_or_default();
-            if combat.attackers.is_empty() {
-                self.blockers_declared_this_step = true;
-                self.advance_step_with_actions()?;
-                return Ok(None);
+            (DecisionContext::Blockers(bctx), UiCommand::DeclareBlockers { declarations }) => {
+                let converted = validate_blocker_declarations(bctx, &declarations)?;
+                runner.respond_blockers(converted, bctx.player);
             }
-            let defending_player = self.blocking_player_for_step(&combat);
-            return Ok(Some(get_declare_blockers_decision(
-                &self.game,
-                &combat,
-                defending_player,
-            )));
+            (DecisionContext::SelectObjects(_), UiCommand::SelectObjects { object_ids }) => {
+                let cards: Vec<ObjectId> =
+                    object_ids.iter().map(|&id| ObjectId::from_raw(id)).collect();
+                runner.respond_discard(cards);
+            }
+            _ => {
+                self.pending_decision = Some(pending_ctx);
+                self.runner_pending_decision = true;
+                return Err(JsValue::from_str("unexpected command for runner decision"));
+            }
         }
 
-        Ok(None)
-    }
-
-    fn advance_step_with_actions(&mut self) -> Result<(), JsValue> {
-        crate::turn::advance_step(&mut self.game)
-            .map_err(|e| JsValue::from_str(&format!("advance_step failed: {e:?}")))?;
-        self.apply_current_step_actions_once();
-        Ok(())
-    }
-
-    fn apply_current_step_actions_once(&mut self) {
-        let marker = (
-            self.game.turn.turn_number,
-            self.game.turn.phase,
-            self.game.turn.step,
-        );
-        if self.last_step_actions_applied == Some(marker) {
-            return;
-        }
-
-        match (self.game.turn.phase, self.game.turn.step) {
-            (Phase::Beginning, Some(Step::Untap)) => {
-                crate::turn::execute_untap_step(&mut self.game);
-            }
-            (Phase::Beginning, Some(Step::Upkeep)) => {
-                generate_and_queue_step_triggers(&mut self.game, &mut self.trigger_queue);
-            }
-            (Phase::Beginning, Some(Step::Draw)) => {
-                let draw_events = crate::turn::execute_draw_step(&mut self.game);
-                generate_and_queue_step_triggers(&mut self.game, &mut self.trigger_queue);
-                for draw_event in draw_events {
-                    for entry in check_triggers(&self.game, &draw_event) {
-                        self.trigger_queue.add(entry);
-                    }
-                }
-            }
-            (Phase::FirstMain, None) => {
-                generate_and_queue_step_triggers(&mut self.game, &mut self.trigger_queue);
-                add_saga_lore_counters(&mut self.game, &mut self.trigger_queue);
-            }
-            (Phase::Combat, Some(Step::BeginCombat))
-            | (Phase::Combat, Some(Step::EndCombat))
-            | (Phase::NextMain, None)
-            | (Phase::Ending, Some(Step::End)) => {
-                generate_and_queue_step_triggers(&mut self.game, &mut self.trigger_queue);
-            }
-            (Phase::Ending, Some(Step::Cleanup)) => {
-                crate::turn::execute_cleanup_step(&mut self.game);
-            }
-            _ => {}
-        }
-
-        self.last_step_actions_applied = Some(marker);
-    }
-
-    fn blocking_player_for_step(&self, combat: &crate::combat_state::CombatState) -> PlayerId {
-        if let Some(priority_player) = self.game.turn.priority_player
-            && priority_player != self.game.turn.active_player
-        {
-            return priority_player;
-        }
-        if let Some(attacker) = combat.attackers.first()
-            && let AttackTarget::Player(player) = attacker.target
-        {
-            return player;
-        }
-        self.game
-            .players
-            .iter()
-            .find(|p| p.id != self.game.turn.active_player && p.is_in_game())
-            .map(|p| p.id)
-            .unwrap_or(self.game.turn.active_player)
+        // The runner is now in a state where advance() will apply the response.
+        // We're no longer awaiting priority (runner will handle the next steps).
+        self.runner_awaiting_priority = false;
+        self.advance_until_decision()?;
+        self.snapshot()
     }
 
     fn capture_replay_checkpoint(&self) -> ReplayCheckpoint {
@@ -2180,8 +2183,6 @@ impl WasmGame {
             trigger_queue: self.trigger_queue.clone(),
             priority_state: self.priority_state.clone(),
             game_over: self.game_over.clone(),
-            attackers_declared_this_step: self.attackers_declared_this_step,
-            blockers_declared_this_step: self.blockers_declared_this_step,
             id_counters: snapshot_id_counters(),
         }
     }
@@ -2192,20 +2193,6 @@ impl WasmGame {
         self.trigger_queue = checkpoint.trigger_queue.clone();
         self.priority_state = checkpoint.priority_state.clone();
         self.game_over = checkpoint.game_over.clone();
-        self.attackers_declared_this_step = checkpoint.attackers_declared_this_step;
-        self.blockers_declared_this_step = checkpoint.blockers_declared_this_step;
-    }
-
-    fn apply_response_combat_flags(&mut self, response: &PriorityResponse) {
-        match response {
-            PriorityResponse::Attackers(_) => {
-                self.attackers_declared_this_step = true;
-            }
-            PriorityResponse::Blockers { .. } => {
-                self.blockers_declared_this_step = true;
-            }
-            _ => {}
-        }
     }
 
     fn execute_with_replay(
@@ -2220,7 +2207,6 @@ impl WasmGame {
 
         let result = match root {
             ReplayRoot::Response(response) => {
-                self.apply_response_combat_flags(response);
                 apply_priority_response_with_dm(
                     &mut self.game,
                     &mut self.trigger_queue,

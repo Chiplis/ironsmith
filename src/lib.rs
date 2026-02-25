@@ -45,6 +45,7 @@ pub mod target;
 pub mod targeting;
 pub mod triggers;
 pub mod turn;
+pub mod turn_runner;
 pub mod types;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub mod wasm_api;
@@ -138,6 +139,7 @@ pub use game_loop::{
     CombatDamageEvent, GameLoopError, PriorityLoopState, PriorityResponse, advance_priority,
     apply_attacker_declarations, apply_blocker_declarations, apply_priority_response,
     check_and_apply_sbas, compute_legal_targets, execute_combat_damage_step, execute_turn_with,
+    queue_combat_damage_triggers,
     extract_target_spec, generate_and_queue_step_triggers, get_declare_attackers_decision,
     get_declare_blockers_decision, put_triggers_on_stack, requires_target_selection,
     resolve_stack_entry, run_priority_loop_with, spell_has_legal_targets,
@@ -158,6 +160,7 @@ pub use triggers::{
     AttackEventTarget, DamageEventTarget, TriggerEvent, TriggerQueue, TriggeredAbilityEntry,
     check_triggers, generate_step_trigger_events, player_filter_matches_with_context,
 };
+pub use turn_runner::{TurnAction, TurnRunner, TurnState as TurnRunnerState};
 pub use turn::{
     PriorityResult, PriorityTracker, TurnError, advance_phase, advance_step,
     current_phase_description, execute_cleanup_step, execute_draw_step, execute_untap_step,
