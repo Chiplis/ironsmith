@@ -1750,6 +1750,71 @@ fn test_parse_buyback_keyword_line_compiles_to_optional_cost() {
 }
 
 #[test]
+fn test_parse_kicker_keyword_line_compiles_to_optional_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kicker Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Kicker {1}{U}\nDraw a card.")
+        .expect("kicker keyword line should parse");
+
+    assert_eq!(def.optional_costs.len(), 1);
+    let kicker = &def.optional_costs[0];
+    assert_eq!(kicker.label, "Kicker");
+    assert!(!kicker.repeatable, "kicker should not be repeatable");
+    let mana = kicker
+        .cost
+        .mana_cost()
+        .expect("kicker should preserve mana cost");
+    assert_eq!(mana.to_oracle(), "{1}{U}");
+}
+
+#[test]
+fn test_parse_kicker_keyword_line_with_reminder_text_strips_reminder_tail() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kicker Reminder Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Kicker {2}{R} (You may pay an additional {2}{R} as you cast this spell.)\nDraw a card.",
+        )
+        .expect("kicker keyword with reminder text should parse");
+
+    assert_eq!(def.optional_costs.len(), 1);
+    let kicker = &def.optional_costs[0];
+    assert_eq!(kicker.label, "Kicker");
+    let mana = kicker
+        .cost
+        .mana_cost()
+        .expect("kicker should preserve mana cost");
+    assert_eq!(mana.to_oracle(), "{2}{R}");
+}
+
+#[test]
+fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Multi Optional Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Multikicker {1}{G}\nEntwine {2}\nDraw a card.")
+        .expect("multikicker/entwine keyword lines should parse");
+
+    assert_eq!(def.optional_costs.len(), 2);
+
+    let multikicker = &def.optional_costs[0];
+    assert_eq!(multikicker.label, "Multikicker");
+    assert!(multikicker.repeatable, "multikicker should be repeatable");
+    let mana = multikicker
+        .cost
+        .mana_cost()
+        .expect("multikicker should preserve mana cost");
+    assert_eq!(mana.to_oracle(), "{1}{G}");
+
+    let entwine = &def.optional_costs[1];
+    assert_eq!(entwine.label, "Entwine");
+    assert!(!entwine.repeatable, "entwine should not be repeatable");
+    let mana = entwine
+        .cost
+        .mana_cost()
+        .expect("entwine should preserve mana cost");
+    assert_eq!(mana.to_oracle(), "{2}");
+}
+
+#[test]
 fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Suspend Probe")
         .card_types(vec![CardType::Artifact])

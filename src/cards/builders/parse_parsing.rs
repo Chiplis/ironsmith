@@ -1713,6 +1713,21 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
         return Ok(LineAst::OptionalCost(cost));
     }
 
+    if let Some(cost) = parse_kicker_line(&tokens)? {
+        parser_trace("parse_line:branch=kicker", &tokens);
+        return Ok(LineAst::OptionalCost(cost));
+    }
+
+    if let Some(cost) = parse_multikicker_line(&tokens)? {
+        parser_trace("parse_line:branch=multikicker", &tokens);
+        return Ok(LineAst::OptionalCost(cost));
+    }
+
+    if let Some(cost) = parse_entwine_line(&tokens)? {
+        parser_trace("parse_line:branch=entwine", &tokens);
+        return Ok(LineAst::OptionalCost(cost));
+    }
+
     if let Some(method) = parse_escape_line(&tokens)? {
         parser_trace("parse_line:branch=escape", &tokens);
         return Ok(LineAst::AlternativeCastingMethod(method));
@@ -8895,6 +8910,58 @@ fn parse_buyback_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardText
     let (total_cost, cost_effects) = parse_activation_cost(&cost_tokens)?;
     let total_cost = crate::ability::merge_cost_effects(total_cost, cost_effects);
     Ok(Some(OptionalCost::buyback(total_cost)))
+}
+
+fn parse_optional_cost_keyword_line(
+    tokens: &[Token],
+    keyword: &str,
+    constructor: fn(TotalCost) -> OptionalCost,
+) -> Result<Option<OptionalCost>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word(keyword)) {
+        return Ok(None);
+    }
+
+    if tokens.len() <= 1 {
+        return Err(CardTextError::ParseError(format!(
+            "{keyword} keyword missing cost"
+        )));
+    }
+
+    let tail = &tokens[1..];
+    let reminder_start = tail
+        .windows(3)
+        .position(|window| window[0].is_word("you") && window[1].is_word("may") && window[2].is_word("pay"))
+        .or_else(|| tail.windows(2).position(|window| window[0].is_word("you") && window[1].is_word("may")))
+        .unwrap_or(tail.len());
+
+    let sentence_end = tail
+        .iter()
+        .position(|token| matches!(token, Token::Period(_)))
+        .unwrap_or(tail.len());
+
+    let end = reminder_start.min(sentence_end);
+    let cost_tokens = trim_commas(&tail[..end]);
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "{keyword} keyword missing cost"
+        )));
+    }
+
+    let (total_cost, cost_effects) = parse_activation_cost(&cost_tokens)?;
+    let total_cost = crate::ability::merge_cost_effects(total_cost, cost_effects);
+    Ok(Some(constructor(total_cost)))
+}
+
+fn parse_kicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
+    parse_optional_cost_keyword_line(tokens, "kicker", OptionalCost::kicker)
+}
+
+fn parse_multikicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
+    parse_optional_cost_keyword_line(tokens, "multikicker", OptionalCost::multikicker)
+}
+
+fn parse_entwine_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
+    parse_optional_cost_keyword_line(tokens, "entwine", OptionalCost::entwine)
 }
 
 fn parse_morph_keyword_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
