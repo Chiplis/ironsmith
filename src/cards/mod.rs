@@ -404,6 +404,7 @@ mod tests {
     use crate::ids::CardId;
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
+    use crate::zone::Zone;
 
     #[test]
     fn test_card_definition_creation() {
@@ -465,6 +466,40 @@ mod tests {
             .push(Ability::static_ability(StaticAbility::flying()));
 
         assert!(generated_definition_is_supported(&definition));
+    }
+
+    #[test]
+    fn parse_discard_this_card_activated_ability_as_hand_zone_ability() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Bloodrush Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "{R}, Discard this card: Target attacking creature gets +3/+3 until end of turn",
+            )
+            .expect("discard-this-card activated ability should parse");
+
+        let (ability, activated) = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some((ability, activated)),
+                _ => None,
+            })
+            .expect("expected an activated ability");
+
+        assert!(
+            ability.functions_in(&Zone::Hand),
+            "expected discard-this-card ability to function in hand"
+        );
+        assert!(
+            !ability.functions_in(&Zone::Battlefield),
+            "expected discard-this-card ability to not function on battlefield"
+        );
+
+        let costs = activated.mana_cost.display().to_ascii_lowercase();
+        assert!(
+            costs.contains("discard this card"),
+            "expected activated cost to include discard-this-card, got: {costs}"
+        );
     }
 
     #[test]

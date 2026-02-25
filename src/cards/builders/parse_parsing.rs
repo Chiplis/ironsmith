@@ -8156,6 +8156,7 @@ fn infer_activated_functional_zones(
     {
         vec![Zone::Graveyard]
     } else if contains_source_from_your_hand_phrase(&cost_words)
+        || contains_discard_source_phrase(&cost_words)
         || effect_words_match(contains_source_from_your_hand_phrase)
     {
         vec![Zone::Hand]
@@ -9258,6 +9259,16 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
                     )));
                 }
                 explicit_costs.push(crate::costs::Cost::effect(Effect::discard_hand()));
+                continue;
+            }
+            if after_discard_words.starts_with(&["this", "card"]) {
+                if after_discard_words.len() != 2 {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing discard-source cost clause (clause: '{}')",
+                        segment_words.join(" ")
+                    )));
+                }
+                explicit_costs.push(crate::costs::Cost::discard_source());
                 continue;
             }
 
@@ -35557,6 +35568,10 @@ fn contains_source_from_your_hand_phrase(words: &[&str]) -> bool {
             && window[2] == "your"
             && window[3] == "hand"
     })
+}
+
+fn contains_discard_source_phrase(words: &[&str]) -> bool {
+    words.windows(3).any(|window| window == ["discard", "this", "card"])
 }
 
 fn is_demonstrative_object_head(word: &str) -> bool {
