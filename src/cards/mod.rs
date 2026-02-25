@@ -541,6 +541,35 @@ mod tests {
     }
 
     #[test]
+    fn parse_add_mana_for_each_counter_removed_this_way_uses_x_value() {
+        use crate::ability::AbilityKind;
+        use crate::effects::mana::AddScaledManaEffect;
+        use crate::effect::Value;
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Storage Land Probe")
+            .card_types(vec![CardType::Land])
+            .parse_text("{1}, Remove any number of storage counters from this land: Add {W} for each storage counter removed this way.")
+            .expect("storage land mana scaling should parse");
+
+        let activated = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .expect("expected an activated ability");
+
+        let scaled = activated
+            .effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
+            .expect("expected scaled mana effect");
+
+        assert_eq!(scaled.amount, Value::X);
+    }
+
+    #[test]
     fn generated_definition_support_rejects_parser_fallback_markers() {
         let card = CardBuilder::new(CardId::new(), "Fallback Probe")
             .card_types(vec![CardType::Creature])

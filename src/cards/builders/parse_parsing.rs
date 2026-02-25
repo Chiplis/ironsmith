@@ -3720,6 +3720,17 @@ fn parse_dynamic_cost_modifier_value(tokens: &[Token]) -> Result<Option<Value>, 
             return Ok(Some(Value::BasicLandTypesAmong(filter)));
         }
     }
+
+    // "for each <counter> counter removed this way" (storage lands, mana batteries, etc.)
+    // The remove-counters cost plumbs the removed total through `CostContext.x_value`,
+    // so model the dynamic amount as `X`.
+    if (filter_words.contains(&"counter") || filter_words.contains(&"counters"))
+        && filter_words.contains(&"removed")
+        && filter_words.windows(2).any(|pair| pair == ["this", "way"])
+    {
+        return Ok(Some(Value::X));
+    }
+
     let mut source_counter_words = filter_words.as_slice();
     if source_counter_words
         .first()
