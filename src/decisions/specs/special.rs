@@ -202,6 +202,67 @@ impl DecisionSpec for OrderGraveyardSpec {
 }
 
 // ============================================================================
+// OrderLibraryTopSpec - Reorder the top of a library
+// ============================================================================
+
+/// Specification for ordering a tagged set of cards on top of a library.
+#[derive(Debug, Clone)]
+pub struct OrderLibraryTopSpec {
+    /// The source of the effect.
+    pub source: ObjectId,
+    /// The cards being reordered (in current top-to-bottom order).
+    pub cards: Vec<ObjectId>,
+}
+
+impl OrderLibraryTopSpec {
+    pub fn new(source: ObjectId, cards: Vec<ObjectId>) -> Self {
+        Self { source, cards }
+    }
+}
+
+impl DecisionSpec for OrderLibraryTopSpec {
+    type Response = Vec<ObjectId>;
+
+    fn description(&self) -> String {
+        "Reorder top of library".to_string()
+    }
+
+    fn primitive(&self) -> DecisionPrimitive {
+        DecisionPrimitive::Order
+    }
+
+    fn default_response(&self, _strategy: FallbackStrategy) -> Vec<ObjectId> {
+        self.cards.clone()
+    }
+
+    fn build_context(
+        &self,
+        player: PlayerId,
+        _source: Option<ObjectId>,
+        game: &GameState,
+    ) -> DecisionContext {
+        let items: Vec<(ObjectId, String)> = self
+            .cards
+            .iter()
+            .map(|&id| {
+                let name = game
+                    .object(id)
+                    .map(|o| o.name.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
+                (id, name)
+            })
+            .collect();
+
+        DecisionContext::Order(OrderContext::new(
+            player,
+            Some(self.source),
+            "Reorder top of library",
+            items,
+        ))
+    }
+}
+
+// ============================================================================
 // DistributeSpec - Distribute amount among targets
 // ============================================================================
 

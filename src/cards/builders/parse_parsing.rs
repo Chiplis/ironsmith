@@ -26678,6 +26678,7 @@ enum Verb {
     Mill,
     Get,
     Reveal,
+    Look,
     Lose,
     Gain,
     Put,
@@ -27427,6 +27428,7 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             "mill",
             "get",
             "reveal",
+            "look",
             "lose",
             "gain",
             "put",
@@ -29192,6 +29194,7 @@ fn parse_verb_first_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTe
         "shuffle" => Verb::Shuffle,
         "pay" => Verb::Pay,
         "goad" => Verb::Goad,
+        "look" => Verb::Look,
         _ => return Ok(None),
     };
 
@@ -29427,6 +29430,7 @@ fn find_verb(tokens: &[Token]) -> Option<(Verb, usize)> {
             "destroys" | "destroy" => Verb::Destroy,
             "exiles" | "exile" => Verb::Exile,
             "reveals" | "reveal" => Verb::Reveal,
+            "looks" | "look" => Verb::Look,
             "loses" | "lose" => Verb::Lose,
             "gains" | "gain" => Verb::Gain,
             "puts" | "put" => Verb::Put,
@@ -29495,7 +29499,7 @@ fn parse_subject(tokens: &[Token]) -> SubjectAst {
         }
     }
 
-    if slice.starts_with(&["you"]) {
+    if slice.starts_with(&["you"]) || slice.starts_with(&["your"]) {
         return SubjectAst::Player(PlayerAst::You);
     }
 
@@ -29530,6 +29534,10 @@ fn parse_subject(tokens: &[Token]) -> SubjectAst {
     }
 
     if slice.starts_with(&["that", "player"]) {
+        return SubjectAst::Player(PlayerAst::That);
+    }
+
+    if slice.starts_with(&["that", "players"]) || slice.starts_with(&["their"]) {
         return SubjectAst::Player(PlayerAst::That);
     }
 
@@ -29588,6 +29596,7 @@ fn parse_effect_with_verb(
         Verb::Destroy => parse_destroy(tokens),
         Verb::Exile => parse_exile(tokens, subject),
         Verb::Reveal => parse_reveal(tokens, subject),
+        Verb::Look => parse_look(tokens, subject),
         Verb::Lose => parse_lose_life(tokens, subject),
         Verb::Gain => {
             if tokens.first().is_some_and(|token| token.is_word("control")) {
@@ -29644,6 +29653,137 @@ fn parse_effect_with_verb(
         Verb::Pay => parse_pay(tokens, subject),
         Verb::Goad => parse_goad(tokens),
     }
+}
+
+fn parse_look(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+    fn parse_library_owner(words: &[&str]) -> Option<(PlayerAst, usize)> {
+        if words.starts_with(&["your", "library"]) {
+            return Some((PlayerAst::You, 2));
+        }
+        if words.starts_with(&["their", "library"]) {
+            return Some((PlayerAst::That, 2));
+        }
+        if words.starts_with(&["that", "player", "library"])
+            || words.starts_with(&["that", "players", "library"])
+        {
+            return Some((PlayerAst::That, 3));
+        }
+        if words.starts_with(&["target", "player", "library"])
+            || words.starts_with(&["target", "players", "library"])
+        {
+            return Some((PlayerAst::Target, 3));
+        }
+        if words.starts_with(&["target", "opponent", "library"])
+            || words.starts_with(&["target", "opponents", "library"])
+        {
+            return Some((PlayerAst::TargetOpponent, 3));
+        }
+        if words.starts_with(&["its", "owner", "library"])
+            || words.starts_with(&["its", "owners", "library"])
+        {
+            return Some((PlayerAst::ItsOwner, 3));
+        }
+        if words.starts_with(&["his", "or", "her", "library"]) {
+            return Some((PlayerAst::That, 4));
+        }
+        None
+    }
+
+    // "Look at the top N cards of your library."
+    let mut clause_tokens = trim_commas(tokens);
+    if clause_tokens.first().is_some_and(|token| token.is_word("at")) {
+        clause_tokens = trim_commas(&clause_tokens[1..]);
+    }
+    let clause_words = words(&clause_tokens);
+
+    let Some(top_idx) = clause_tokens.iter().position(|t| t.is_word("top")) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported look clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    if top_idx + 1 >= clause_tokens.len() {
+        return Err(CardTextError::ParseError(format!(
+            "missing look top noun (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let mut idx = top_idx + 1;
+    let count = if clause_tokens
+        .get(idx)
+        .and_then(Token::as_word)
+        .is_some_and(|w| w == "card" || w == "cards")
+    {
+        1u32
+    } else {
+        let (n, used) = parse_number(&clause_tokens[idx..]).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing look count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        idx += used;
+        n as u32
+    };
+
+    // Consume "card(s)"
+    if clause_tokens
+        .get(idx)
+        .and_then(Token::as_word)
+        .is_some_and(|w| w == "card" || w == "cards")
+    {
+        idx += 1;
+    } else {
+        return Err(CardTextError::ParseError(format!(
+            "missing look card noun (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    // Consume "of <player> library"
+    if !clause_tokens.get(idx).is_some_and(|t| t.is_word("of")) {
+        return Err(CardTextError::ParseError(format!(
+            "missing 'of' in look clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    idx += 1;
+    let mut owner_tokens = &clause_tokens[idx..];
+    while owner_tokens
+        .first()
+        .is_some_and(|t| t.is_word("the") || t.is_word("a") || t.is_word("an"))
+    {
+        owner_tokens = &owner_tokens[1..];
+    }
+    let owner_words = words(owner_tokens);
+    let (player, used_words) = parse_library_owner(&owner_words)
+        .or_else(|| {
+            // If the clause uses a subject ("target player looks ..."), treat that as the default.
+            subject.and_then(|s| match s {
+                SubjectAst::Player(p) => Some((p, 0)),
+                _ => None,
+            })
+        })
+        .ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported look library owner (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    // No trailing words supported for now (based on word tokens).
+    if used_words < owner_words.len() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing look clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    Ok(EffectAst::LookAtTopCards {
+        player,
+        count,
+        tag: TagKey::from(IT_TAG),
+    })
 }
 
 fn parse_reorder(
@@ -31044,6 +31184,18 @@ fn parse_put_into_hand(
     };
 
     let clause_words = words(tokens);
+
+    // "Put them/it back in any order." (typically after looking at the top cards of a library).
+    if clause_words.contains(&"back")
+        && clause_words.contains(&"any")
+        && clause_words.contains(&"order")
+        && matches!(clause_words.first().copied(), Some("it" | "them"))
+    {
+        return Ok(EffectAst::ReorderTopOfLibrary {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+
     if clause_words.contains(&"from") && clause_words.contains(&"among") {
         return Err(CardTextError::ParseError(format!(
             "unsupported put-from-among clause (clause: '{}')",
@@ -31056,18 +31208,46 @@ fn parse_put_into_hand(
     let has_into = clause_words.contains(&"into");
 
     if has_hand && has_into && (has_it || has_them) {
-        if clause_words.contains(&"rest")
-            || clause_words.contains(&"graveyard")
-            || clause_words.contains(&"battlefield")
-            || clause_words.contains(&"library")
-            || clause_words
-                .windows(2)
-                .any(|window| window == ["and", "the"] || window == ["and", "rest"])
+        // "Put N of them into your hand and the rest into your graveyard."
+        if has_them
+            && clause_words.contains(&"rest")
+            && clause_words.contains(&"graveyard")
+            && clause_words.iter().any(|w| *w == "and" || *w == "then")
         {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported multi-destination put clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+            let (count, used) = parse_number(tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing put count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            // Accept optional "of" before "them".
+            let mut idx = used;
+            if tokens.get(idx).is_some_and(|t| t.is_word("of")) {
+                idx += 1;
+            }
+            if !tokens.get(idx).is_some_and(|t| t.is_word("them")) {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported multi-destination put clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+
+            // The chooser is typically the player whose hand is referenced.
+            let dest_player = if clause_words.contains(&"your") {
+                PlayerAst::You
+            } else if clause_words.contains(&"their")
+                || clause_words.starts_with(&["that", "player"])
+                || clause_words.starts_with(&["that", "players"])
+            {
+                PlayerAst::That
+            } else {
+                player
+            };
+
+            return Ok(EffectAst::PutSomeIntoHandRestIntoGraveyard {
+                player: dest_player,
+                count: count as u32,
+            });
         }
 
         return Ok(EffectAst::PutIntoHand {

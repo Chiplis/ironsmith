@@ -11313,6 +11313,12 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_possessive_player_filter(&reorder_gy.player)
         );
     }
+    if effect
+        .downcast_ref::<crate::effects::ReorderLibraryTopEffect>()
+        .is_some()
+    {
+        return "Put them back in any order".to_string();
+    }
     if let Some(search_library) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>() {
         let destination = match search_library.destination {
             Zone::Hand => "into hand",

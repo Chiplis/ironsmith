@@ -675,6 +675,50 @@ mod tests {
     }
 
     #[test]
+    fn parse_look_at_top_then_put_some_into_hand_rest_into_graveyard() {
+        use crate::effects::{ChooseObjectsEffect, LookAtTopCardsEffect};
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Ancestral Memories Probe")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(
+                "Look at the top seven cards of your library. Put two of them into your hand and the rest into your graveyard.",
+            )
+            .expect("look/put partition clause should parse");
+
+        let effects = def.spell_effect.as_ref().expect("expected spell effects");
+        assert!(
+            effects.iter().any(|e| e.downcast_ref::<LookAtTopCardsEffect>().is_some()),
+            "expected LookAtTopCardsEffect in compiled effects"
+        );
+        assert!(
+            effects.iter().any(|e| e.downcast_ref::<ChooseObjectsEffect>().is_some()),
+            "expected ChooseObjectsEffect in compiled effects"
+        );
+    }
+
+    #[test]
+    fn parse_look_at_top_then_put_them_back_in_any_order() {
+        use crate::effects::{LookAtTopCardsEffect, ReorderLibraryTopEffect};
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Look Reorder Probe")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text("Look at the top three cards of your library. Put them back in any order.")
+            .expect("look/reorder clause should parse");
+
+        let effects = def.spell_effect.as_ref().expect("expected spell effects");
+        assert!(
+            effects.iter().any(|e| e.downcast_ref::<LookAtTopCardsEffect>().is_some()),
+            "expected LookAtTopCardsEffect in compiled effects"
+        );
+        assert!(
+            effects
+                .iter()
+                .any(|e| e.downcast_ref::<ReorderLibraryTopEffect>().is_some()),
+            "expected ReorderLibraryTopEffect in compiled effects"
+        );
+    }
+
+    #[test]
     fn generated_definition_support_rejects_parser_fallback_markers() {
         let card = CardBuilder::new(CardId::new(), "Fallback Probe")
             .card_types(vec![CardType::Creature])

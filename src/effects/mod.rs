@@ -123,7 +123,7 @@ pub use zones::{
     BattlefieldController, DestroyEffect, ExileEffect, ExileFromHandAsCostEffect,
     ExileUntilDuration, ExileUntilEffect, HauntExileEffect, MoveToZoneEffect,
     PutOntoBattlefieldEffect,
-    ReorderGraveyardEffect, ReturnAllToBattlefieldEffect,
+    ReorderGraveyardEffect, ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect,
     ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
 };

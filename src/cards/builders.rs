@@ -769,6 +769,10 @@ enum EffectAst {
         player: PlayerAst,
         object: ObjectRefAst,
     },
+    PutSomeIntoHandRestIntoGraveyard {
+        player: PlayerAst,
+        count: u32,
+    },
     CopySpell {
         target: TargetAst,
         count: Value,
@@ -1149,6 +1153,9 @@ enum EffectAst {
     },
     ReorderGraveyard {
         player: PlayerAst,
+    },
+    ReorderTopOfLibrary {
+        tag: TagKey,
     },
     #[allow(dead_code)]
     ShuffleLibrary {

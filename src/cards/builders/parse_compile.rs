@@ -4000,6 +4000,65 @@ fn compile_effect(
             let effect = Effect::move_to_zone(ChooseSpec::tagged(tag), Zone::Hand, false);
             Ok((vec![effect], choices))
         }
+        EffectAst::PutSomeIntoHandRestIntoGraveyard { player, count } => {
+            use crate::effect::Condition;
+            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+
+            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "unable to resolve 'them' without prior reference".to_string(),
+                )
+            })?;
+
+            let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, false)?;
+
+            // Choose N from the looked-at cards (which are typically tagged by a prior LookAtTopCardsEffect).
+            let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
+            choose_filter.zone = Some(Zone::Library);
+            let chosen_tag = ctx.next_tag("chosen");
+            let chosen_tag_key: TagKey = chosen_tag.as_str().into();
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    choose_filter,
+                    ChoiceCount::exactly(*count as usize),
+                    chooser,
+                    chosen_tag_key.clone(),
+                )
+                .in_zone(Zone::Library),
+            );
+
+            // Move the chosen cards to hand.
+            let move_chosen = Effect::for_each_tagged(
+                chosen_tag.clone(),
+                vec![Effect::move_to_zone(ChooseSpec::Iterated, Zone::Hand, false)],
+            );
+
+            // Then move the rest to graveyard.
+            let mut membership_filter = ObjectFilter::default();
+            membership_filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from("__it__"),
+                relation: TaggedOpbjectRelation::SameStableId,
+            });
+            let in_chosen = Condition::PlayerTaggedObjectMatches {
+                player: PlayerFilter::IteratedPlayer,
+                tag: chosen_tag_key,
+                filter: membership_filter,
+            };
+            let move_rest = Effect::for_each_tagged(
+                looked_tag,
+                vec![Effect::conditional(
+                    in_chosen,
+                    Vec::new(),
+                    vec![Effect::move_to_zone(
+                        ChooseSpec::Iterated,
+                        Zone::Graveyard,
+                        false,
+                    )],
+                )],
+            );
+
+            Ok((vec![choose, move_chosen, move_rest], choices))
+        }
         EffectAst::CopySpell {
             target,
             count,
@@ -5055,6 +5114,23 @@ fn compile_effect(
         ),
         EffectAst::ReorderGraveyard { player } => {
             compile_player_effect_from_filter(*player, ctx, true, Effect::reorder_graveyard_player)
+        }
+        EffectAst::ReorderTopOfLibrary { tag } => {
+            let effective_tag = if tag.as_str() == IT_TAG {
+                ctx.last_object_tag.clone().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "cannot resolve 'them' without prior tagged object".to_string(),
+                    )
+                })?
+            } else {
+                tag.as_str().to_string()
+            };
+            Ok((
+                vec![Effect::new(crate::effects::ReorderLibraryTopEffect::new(
+                    effective_tag,
+                ))],
+                Vec::new(),
+            ))
         }
         EffectAst::ShuffleLibrary { player } => {
             compile_player_effect_from_filter(*player, ctx, true, Effect::shuffle_library_player)
