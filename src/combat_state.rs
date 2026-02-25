@@ -339,19 +339,47 @@ pub fn declare_blockers(
 ) -> Result<(), CombatError> {
     // Group blockers by attacker for menace validation
     let mut blockers_by_attacker: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
-    let mut seen_blockers = std::collections::HashSet::new();
+    let mut blocker_counts: HashMap<ObjectId, usize> = HashMap::new();
+
+    fn max_attackers_this_blocker_can_block(game: &GameState, blocker_id: ObjectId) -> usize {
+        let static_abilities = game
+            .calculated_characteristics(blocker_id)
+            .map(|c| c.static_abilities)
+            .unwrap_or_else(|| {
+                game.object(blocker_id)
+                    .map(|o| {
+                        o.abilities
+                            .iter()
+                            .filter_map(|a| match &a.kind {
+                                crate::ability::AbilityKind::Static(sa) => Some(sa.clone()),
+                                _ => None,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            });
+
+        let extra: usize = static_abilities
+            .iter()
+            .filter_map(|a| a.additional_blockable_attackers())
+            .sum();
+        1usize.saturating_add(extra)
+    }
 
     // First pass: validate all blockers
     for (blocker_id, attacker_id) in &declarations {
-        // Check for duplicate blockers (creature blocking multiple attackers)
-        if !seen_blockers.insert(*blocker_id) {
-            return Err(CombatError::DuplicateBlocker(*blocker_id));
-        }
-
         // Validate blocker exists and is on battlefield
         let blocker = game
             .object(*blocker_id)
             .ok_or(CombatError::NotOnBattlefield(*blocker_id))?;
+
+        // Check for blockers declared against too many attackers.
+        let max_attackers = max_attackers_this_blocker_can_block(game, *blocker_id);
+        let entry = blocker_counts.entry(*blocker_id).or_insert(0);
+        *entry += 1;
+        if *entry > max_attackers {
+            return Err(CombatError::DuplicateBlocker(*blocker_id));
+        }
 
         if blocker.zone != Zone::Battlefield {
             return Err(CombatError::NotOnBattlefield(*blocker_id));
@@ -1247,6 +1275,29 @@ mod tests {
         let blocker_declarations = vec![(blocker1, attacker1), (blocker1, attacker2)];
         let result = declare_blockers(&game, &mut combat, blocker_declarations);
         assert!(matches!(result, Err(CombatError::DuplicateBlocker(_))));
+    }
+
+    #[test]
+    fn test_declare_blockers_additional_blocking_allows_blocking_two_attackers() {
+        let (mut game, attacker1, attacker2, blocker1, _) = setup_game_with_creatures();
+        let mut combat = new_combat();
+
+        game.object_mut(blocker1)
+            .expect("blocker")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::can_block_additional_creature_each_combat(1),
+            ));
+
+        let attacker_declarations = vec![
+            (attacker1, AttackTarget::Player(PlayerId::from_index(1))),
+            (attacker2, AttackTarget::Player(PlayerId::from_index(1))),
+        ];
+        declare_attackers(&mut game, &mut combat, attacker_declarations).unwrap();
+
+        let blocker_declarations = vec![(blocker1, attacker1), (blocker1, attacker2)];
+        let result = declare_blockers(&game, &mut combat, blocker_declarations);
+        assert!(result.is_ok(), "expected blocker to be able to block two attackers");
     }
 
     #[test]

@@ -307,7 +307,7 @@ pub fn distribute_trample_damage(
     let mut distribution = Vec::with_capacity(blockers.len());
     let mut remaining_damage = total_damage;
 
-    for blocker in blockers {
+    for (idx, blocker) in blockers.iter().enumerate() {
         let existing_damage = game.damage_on(blocker.id);
         let lethal = if has_deathtouch {
             1
@@ -320,19 +320,70 @@ pub fn distribute_trample_damage(
             0
         };
 
-        let damage_to_blocker = remaining_damage.min(lethal);
+        let is_last = idx + 1 == blockers.len();
+        let damage_to_blocker = if !has_trample && is_last {
+            // Without trample, all damage must be assigned among the blockers.
+            remaining_damage
+        } else {
+            remaining_damage.min(lethal)
+        };
         let is_lethal = damage_to_blocker >= lethal && lethal > 0;
 
         distribution.push((damage_to_blocker, is_lethal));
         remaining_damage = remaining_damage.saturating_sub(damage_to_blocker);
-
-        // If no trample, all damage goes to blockers
-        if !has_trample {
-            remaining_damage = 0;
-        }
     }
 
-    (distribution, remaining_damage)
+    if has_trample {
+        (distribution, remaining_damage)
+    } else {
+        (distribution, 0)
+    }
+}
+
+/// Calculate damage distribution among multiple creature recipients when excess can't trample through.
+///
+/// This is used for cases like a creature blocking multiple attackers, where the creature assigns
+/// all of its combat damage among the creatures it's blocking.
+pub fn distribute_combat_damage_to_creatures(
+    source: &Object,
+    recipients: &[&Object],
+    total_damage: u32,
+    game: &crate::game_state::GameState,
+) -> Vec<(u32, bool)> {
+    if recipients.is_empty() {
+        return vec![];
+    }
+
+    let has_deathtouch = has_ability_id_with_game(source, game, StaticAbilityId::Deathtouch);
+    let mut distribution = Vec::with_capacity(recipients.len());
+    let mut remaining_damage = total_damage;
+
+    for (idx, creature) in recipients.iter().enumerate() {
+        let existing_damage = game.damage_on(creature.id);
+        let lethal = if has_deathtouch {
+            1
+        } else if let Some(toughness) = game
+            .calculated_toughness(creature.id)
+            .or_else(|| creature.toughness())
+        {
+            (toughness - existing_damage as i32).max(0) as u32
+        } else {
+            0
+        };
+
+        let is_last = idx + 1 == recipients.len();
+        let damage_to_creature = if is_last {
+            remaining_damage
+        } else {
+            remaining_damage.min(lethal)
+        };
+        let is_lethal = damage_to_creature >= lethal && lethal > 0;
+
+        distribution.push((damage_to_creature, is_lethal));
+        remaining_damage = remaining_damage.saturating_sub(damage_to_creature);
+    }
+
+    distribution
 }
 
 #[cfg(test)]

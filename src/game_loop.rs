@@ -1548,60 +1548,95 @@ pub fn execute_combat_damage_step(
         }
     }
 
-    // Process blockers dealing damage to attackers
-    // First, collect all blocker damage info
-    let mut blocker_damage_info: Vec<(ObjectId, ObjectId, PlayerId, DamageResult)> = Vec::new();
-
+    // Process blockers dealing damage to attackers.
+    //
+    // A creature can be declared as blocking multiple attackers (e.g., "can block an additional
+    // creature each combat"). In that case it assigns its combat damage among the attackers it
+    // blocks, rather than dealing its full power to each attacker.
+    let mut attackers_by_blocker: std::collections::HashMap<ObjectId, Vec<ObjectId>> =
+        std::collections::HashMap::new();
     for (attacker_id, blocker_ids) in &combat.blockers {
         for &blocker_id in blocker_ids {
-            let Some(blocker) = game.object(blocker_id) else {
-                continue;
-            };
-
-            // Check if this blocker deals damage in this step
-            // Use game-aware functions to check abilities from continuous effects
-            let participates = if first_strike {
-                deals_first_strike_damage_with_game(blocker, game)
-            } else {
-                deals_regular_combat_damage_with_game(blocker, game)
-            };
-
-            if !participates {
-                continue;
-            }
-
-            // Get blocker's effective power (includes continuous effects).
-            let Some(power) = game
-                .calculated_power(blocker_id)
-                .or_else(|| blocker.power())
-            else {
-                continue;
-            };
-            if power <= 0 {
-                continue;
-            }
-
-            let controller = blocker.controller;
-
-            // Check attacker still exists
-            if game.object(*attacker_id).is_none() {
-                continue;
-            }
-
-            let damage_result = calculate_damage_with_game(
-                game,
-                blocker,
-                DamageTarget::Permanent,
-                power as u32,
-                true,
-            );
-            blocker_damage_info.push((blocker_id, *attacker_id, controller, damage_result));
+            attackers_by_blocker
+                .entry(blocker_id)
+                .or_default()
+                .push(*attacker_id);
         }
     }
 
-    // Now apply all blocker damage
-    for (blocker_id, attacker_id, controller, damage_result) in blocker_damage_info {
-        // Apply damage (blocker is dealing damage to attacker)
+    // First, collect all blocker damage info (including per-recipient assigned damage).
+    let mut blocker_damage_info: Vec<(ObjectId, ObjectId, PlayerId, u32, DamageResult)> = Vec::new();
+    for (blocker_id, mut attacker_ids) in attackers_by_blocker {
+        let Some(blocker) = game.object(blocker_id) else {
+            continue;
+        };
+
+        let participates = if first_strike {
+            deals_first_strike_damage_with_game(blocker, game)
+        } else {
+            deals_regular_combat_damage_with_game(blocker, game)
+        };
+        if !participates {
+            continue;
+        }
+
+        let Some(power) = game
+            .calculated_power(blocker_id)
+            .or_else(|| blocker.power())
+        else {
+            continue;
+        };
+        if power <= 0 {
+            continue;
+        }
+
+        // Deterministic default order when multiple attackers are blocked.
+        attacker_ids.sort_by_key(|id| id.0);
+
+        let controller = blocker.controller;
+        if attacker_ids.len() == 1 {
+            let attacker_id = attacker_ids[0];
+            if game.object(attacker_id).is_none() {
+                continue;
+            }
+            let dmg = power as u32;
+            let damage_result =
+                calculate_damage_with_game(game, blocker, DamageTarget::Permanent, dmg, true);
+            blocker_damage_info.push((blocker_id, attacker_id, controller, dmg, damage_result));
+            continue;
+        }
+
+        let recipients: Vec<&crate::object::Object> = attacker_ids
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .collect();
+        if recipients.is_empty() {
+            continue;
+        }
+
+        let distribution =
+            crate::rules::damage::distribute_combat_damage_to_creatures(
+                blocker,
+                &recipients,
+                power as u32,
+                game,
+            );
+        for (idx, (dmg, _is_lethal)) in distribution.into_iter().enumerate() {
+            if dmg == 0 {
+                continue;
+            }
+            let attacker_id = attacker_ids[idx];
+            if game.object(attacker_id).is_none() {
+                continue;
+            }
+            let damage_result =
+                calculate_damage_with_game(game, blocker, DamageTarget::Permanent, dmg, true);
+            blocker_damage_info.push((blocker_id, attacker_id, controller, dmg, damage_result));
+        }
+    }
+
+    // Now apply all blocker damage.
+    for (blocker_id, attacker_id, controller, _assigned, damage_result) in blocker_damage_info {
         let dealt_damage = apply_damage_to_permanent(game, attacker_id, blocker_id, &damage_result);
 
         // Apply lifelink (through event processing)

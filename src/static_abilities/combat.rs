@@ -144,6 +144,40 @@ impl StaticAbilityKind for CanBlockOnlyFlying {
     }
 }
 
+/// "This creature can block an additional creature each combat."
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CanBlockAdditionalCreatureEachCombat {
+    pub additional: usize,
+}
+
+impl CanBlockAdditionalCreatureEachCombat {
+    pub const fn new(additional: usize) -> Self {
+        Self { additional }
+    }
+}
+
+impl StaticAbilityKind for CanBlockAdditionalCreatureEachCombat {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CanBlockAdditionalCreatureEachCombat
+    }
+
+    fn display(&self) -> String {
+        if self.additional == 1 {
+            "Can block an additional creature each combat".to_string()
+        } else {
+            format!("Can block {} additional creatures each combat", self.additional)
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn additional_blockable_attackers(&self) -> Option<usize> {
+        Some(self.additional)
+    }
+}
+
 /// Landwalk: can't be blocked as long as defending player controls a land of the given subtype.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Landwalk {

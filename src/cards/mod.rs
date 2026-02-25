@@ -762,6 +762,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_can_block_additional_creature_each_combat_static_ability() {
+        use crate::static_abilities::StaticAbilityId;
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Extra Block Probe")
+            .card_types(vec![CardType::Creature])
+            .parse_text("This creature can block an additional creature each combat.")
+            .expect("extra block static ability should parse");
+
+        let has = def.abilities.iter().any(|ability| match &ability.kind {
+            AbilityKind::Static(sa) => sa.id() == StaticAbilityId::CanBlockAdditionalCreatureEachCombat,
+            _ => false,
+        });
+        assert!(has, "expected CanBlockAdditionalCreatureEachCombat static ability");
+    }
+
+    #[test]
     fn generated_definition_support_rejects_parser_fallback_markers() {
         let card = CardBuilder::new(CardId::new(), "Fallback Probe")
             .card_types(vec![CardType::Creature])

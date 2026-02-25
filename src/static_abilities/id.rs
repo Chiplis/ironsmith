@@ -55,6 +55,7 @@ pub enum StaticAbilityId {
     FlyingOnlyRestriction,
     CanBlockFlying,
     CanBlockOnlyFlying,
+    CanBlockAdditionalCreatureEachCombat,
     CantBeBlockedByPowerOrLess,
     CantBeBlockedByMoreThan,
     CanAttackAsThoughNoDefender,

@@ -2467,11 +2467,48 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_cost_reduction_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_can_block_additional_creature_each_combat_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(ability) = parse_all_creatures_able_to_block_source_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
     if let Some(abilities) = parse_cant_clauses(tokens)? {
         return Ok(Some(abilities));
+    }
+    Ok(None)
+}
+
+fn parse_can_block_additional_creature_each_combat_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let normalized = words(tokens);
+    if normalized.as_slice()
+        == [
+            "this",
+            "creature",
+            "can",
+            "block",
+            "an",
+            "additional",
+            "creature",
+            "each",
+            "combat",
+        ]
+        || normalized.as_slice()
+            == [
+                "this",
+                "creature",
+                "can",
+                "block",
+                "an",
+                "additional",
+                "creature",
+            ]
+    {
+        return Ok(Some(
+            StaticAbility::can_block_additional_creature_each_combat(1),
+        ));
     }
     Ok(None)
 }

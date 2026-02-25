@@ -183,6 +183,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
         None
     }
 
+    /// Returns how many additional attackers this creature can block.
+    ///
+    /// Used for abilities like "This creature can block an additional creature each combat."
+    fn additional_blockable_attackers(&self) -> Option<usize> {
+        None
+    }
+
     /// Returns true if this is a first/double strike ability.
     fn has_first_strike(&self) -> bool {
         false
@@ -512,6 +519,10 @@ impl StaticAbility {
 
     pub fn maximum_blockers(&self) -> Option<usize> {
         self.0.maximum_blockers()
+    }
+
+    pub fn additional_blockable_attackers(&self) -> Option<usize> {
+        self.0.additional_blockable_attackers()
     }
 
     pub fn has_first_strike(&self) -> bool {
@@ -853,6 +864,10 @@ impl StaticAbility {
 
     pub fn can_block_only_flying() -> Self {
         Self::new(CanBlockOnlyFlying)
+    }
+
+    pub fn can_block_additional_creature_each_combat(additional: usize) -> Self {
+        Self::new(CanBlockAdditionalCreatureEachCombat::new(additional))
     }
 
     pub fn landwalk(land_subtype: crate::types::Subtype) -> Self {
