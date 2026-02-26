@@ -1105,6 +1105,10 @@ impl StaticAbility {
         Self::new(AttachedAbilityGrant::new(ability, display))
     }
 
+    pub fn control_attached_permanent(display: String) -> Self {
+        Self::new(ControlAttachedPermanent::new(display))
+    }
+
     pub fn grant_object_ability_for_filter(
         filter: crate::target::ObjectFilter,
         ability: crate::ability::Ability,

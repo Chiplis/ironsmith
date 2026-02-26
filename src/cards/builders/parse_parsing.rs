@@ -2450,11 +2450,17 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_equipped_creature_has_line(tokens)? {
         return Ok(Some(ability));
     }
+    if let Some(ability) = parse_you_control_attached_creature_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(ability) = parse_attached_cant_attack_or_block_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
     if let Some(ability) = parse_attached_prevent_all_damage_dealt_by_attached_line(tokens)? {
         return Ok(Some(vec![ability]));
+    }
+    if let Some(abilities) = parse_attached_gets_and_cant_block_line(tokens)? {
+        return Ok(Some(abilities));
     }
     if let Some(abilities) = parse_attached_has_keywords_and_triggered_ability_line(tokens)? {
         return Ok(Some(abilities));
@@ -6863,6 +6869,89 @@ fn parse_attached_cant_attack_or_block_line(
         granted,
         normalized.join(" "),
     )))
+}
+
+fn parse_you_control_attached_creature_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 4 || !line_words.starts_with(&["you", "control"]) {
+        return Ok(None);
+    }
+
+    let tail = &line_words[2..];
+    let is_attached_subject = matches!(
+        tail,
+        ["enchanted", "creature"]
+            | ["enchanted", "permanent"]
+            | ["equipped", "creature"]
+            | ["equipped", "permanent"]
+    );
+    if !is_attached_subject {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::control_attached_permanent(
+        line_words.join(" "),
+    )))
+}
+
+fn parse_attached_gets_and_cant_block_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 6 {
+        return Ok(None);
+    }
+
+    let is_enchanted = line_words.starts_with(&["enchanted", "creature"]);
+    let is_equipped = line_words.starts_with(&["equipped", "creature"]);
+    if !is_enchanted && !is_equipped {
+        return Ok(None);
+    }
+
+    let Some(get_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("get") || token.is_word("gets"))
+    else {
+        return Ok(None);
+    };
+    let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    if get_idx >= and_idx {
+        return Ok(None);
+    }
+
+    let tail_tokens = trim_edge_punctuation(&tokens[and_idx + 1..]);
+    let tail_words = normalize_cant_words(&tail_tokens);
+    let restriction = match tail_words.as_slice() {
+        ["cant", "block"] => crate::effect::Restriction::block(ObjectFilter::source()),
+        ["cant", "attack"] => crate::effect::Restriction::attack(ObjectFilter::source()),
+        ["cant", "attack", "or", "block"] => {
+            crate::effect::Restriction::attack_or_block(ObjectFilter::source())
+        }
+        _ => return Ok(None),
+    };
+
+    let subject = if is_enchanted {
+        "enchanted creature"
+    } else {
+        "equipped creature"
+    };
+    let display = match tail_words.as_slice() {
+        ["cant", "block"] => format!("{subject} can't block"),
+        ["cant", "attack"] => format!("{subject} can't attack"),
+        _ => format!("{subject} can't attack or block"),
+    };
+    let granted = Ability {
+        kind: AbilityKind::Static(StaticAbility::restriction(restriction, display.clone())),
+        functional_zones: vec![Zone::Battlefield],
+        text: Some(display.clone()),
+    };
+    let grant = StaticAbility::attached_ability_grant(granted, display);
+    let anthem = build_anthem_static_ability(&parse_anthem_clause(tokens, get_idx, and_idx)?);
+    Ok(Some(vec![anthem, grant]))
 }
 
 fn parse_attached_prevent_all_damage_dealt_by_attached_line(

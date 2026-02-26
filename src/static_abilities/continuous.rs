@@ -1926,6 +1926,49 @@ impl StaticAbilityKind for AttachedAbilityGrant {
     }
 }
 
+/// Controller of source controls the permanent attached to source.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ControlAttachedPermanent {
+    pub display: String,
+}
+
+impl ControlAttachedPermanent {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for ControlAttachedPermanent {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ControlAttachedPermanent
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::AttachedTo(source),
+                Modification::ChangeController(controller),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// Permanents matching a filter have an activated or triggered ability.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantObjectAbilityForFilter {
@@ -2311,6 +2354,27 @@ mod tests {
         assert!(matches!(
             effects[0].applies_to,
             EffectTarget::AttachedTo(id) if id == source
+        ));
+    }
+
+    #[test]
+    fn test_control_attached_permanent_changes_controller() {
+        let ability = ControlAttachedPermanent::new("You control enchanted creature.".to_string());
+        assert_eq!(ability.id(), StaticAbilityId::ControlAttachedPermanent);
+        assert_eq!(ability.display(), "You control enchanted creature.");
+
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source = ObjectId::from_raw(1);
+        let controller = PlayerId::from_index(0);
+        let effects = ability.generate_effects(source, controller, &game);
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(
+            effects[0].applies_to,
+            EffectTarget::AttachedTo(id) if id == source
+        ));
+        assert!(matches!(
+            effects[0].modification,
+            Modification::ChangeController(player) if player == controller
         ));
     }
 
