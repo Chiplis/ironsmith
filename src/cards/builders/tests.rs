@@ -5192,6 +5192,45 @@ fn parse_reveal_hand_clause_with_colon_tail_fails_strictly() {
 }
 
 #[test]
+fn parse_reveal_any_number_of_cards_in_your_hand_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Scent Variant")
+        .parse_text("Reveal any number of red cards in your hand.")
+        .expect("reveal-any-number-in-hand clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect") && debug.contains("zone: Some(Hand)"),
+        "expected choose-from-hand reveal setup, got {debug}"
+    );
+}
+
+#[test]
+fn parse_reveal_x_cards_in_your_hand_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Nightshade Assassin Variant")
+        .parse_text("Reveal X black cards in your hand.")
+        .expect("reveal-x-in-hand clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect") && debug.contains("zone: Some(Hand)"),
+        "expected x-count choose-from-hand reveal setup, got {debug}"
+    );
+}
+
+#[test]
+fn parse_reveal_single_card_in_your_hand_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Assembly Hall Variant")
+        .parse_text("Reveal a creature card in your hand.")
+        .expect("reveal-single-card-in-hand clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect") && debug.contains("zone: Some(Hand)"),
+        "expected single-card choose-from-hand reveal setup, got {debug}"
+    );
+}
+
+#[test]
 fn parse_reveal_top_plural_cards_clause() {
     CardDefinitionBuilder::new(CardId::new(), "Top Reveal Variant")
         .parse_text("Reveal the top five cards of your library.")

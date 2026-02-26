@@ -20649,6 +20649,113 @@ fn parse_sentence_destroy_multi_target(
     Ok(Some(effects))
 }
 
+fn parse_sentence_reveal_selected_cards_in_your_hand(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.first() != Some(&"reveal") {
+        return Ok(None);
+    }
+    if clause_words
+        .iter()
+        .any(|word| matches!(*word, "then" | "if" | "unless" | "where" | "when" | "whenever"))
+    {
+        return Ok(None);
+    }
+
+    let Some(in_idx) = tokens.iter().position(|token| token.is_word("in")) else {
+        return Ok(None);
+    };
+    if in_idx == 0 || in_idx + 2 >= tokens.len() {
+        return Ok(None);
+    }
+    if !tokens.get(in_idx + 1).is_some_and(|token| token.is_word("your"))
+        || !tokens
+            .get(in_idx + 2)
+            .is_some_and(|token| token.is_word("hand") || token.is_word("hands"))
+    {
+        return Ok(None);
+    }
+
+    let mut descriptor_tokens = trim_commas(&tokens[1..in_idx]);
+    if descriptor_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut count = ChoiceCount::exactly(1);
+    let descriptor_words = words(&descriptor_tokens);
+    if descriptor_words.starts_with(&["any", "number", "of"]) {
+        count = ChoiceCount::any_number();
+        descriptor_tokens = trim_commas(&descriptor_tokens[3..]);
+    } else if descriptor_words.starts_with(&["up", "to"]) {
+        if let Some((value, used)) = parse_number(&descriptor_tokens[2..]) {
+            count = ChoiceCount::up_to(value as usize);
+            descriptor_tokens = trim_commas(&descriptor_tokens[2 + used..]);
+            if descriptor_tokens
+                .first()
+                .is_some_and(|token| token.is_word("of"))
+            {
+                descriptor_tokens = trim_commas(&descriptor_tokens[1..]);
+            }
+        } else {
+            return Ok(None);
+        }
+    } else if descriptor_words.first() == Some(&"x") {
+        count = ChoiceCount::any_number();
+        descriptor_tokens = trim_commas(&descriptor_tokens[1..]);
+    } else if descriptor_words
+        .first()
+        .is_some_and(|word| matches!(*word, "a" | "an" | "one"))
+    {
+        descriptor_tokens = trim_commas(&descriptor_tokens[1..]);
+    } else if descriptor_words
+        .first()
+        .is_some_and(|word| matches!(*word, "all" | "each"))
+    {
+        return Ok(None);
+    }
+
+    if descriptor_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = match parse_object_filter(&descriptor_tokens, false) {
+        Ok(filter) => filter,
+        Err(_) => {
+            let descriptor_words = words(&descriptor_tokens);
+            let mut filter = ObjectFilter::default();
+            let mut idx = 0usize;
+            if let Some(color) = descriptor_words.get(idx).and_then(|word| parse_color(word)) {
+                filter.colors = Some(color.into());
+                idx += 1;
+            }
+            if !descriptor_words
+                .get(idx)
+                .is_some_and(|word| matches!(*word, "card" | "cards"))
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported reveal-hand clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            filter
+        }
+    };
+    filter.zone = Some(Zone::Hand);
+    filter.owner = Some(PlayerFilter::You);
+
+    let tag = TagKey::from("revealed_0");
+    Ok(Some(vec![
+        EffectAst::ChooseObjects {
+            filter,
+            count,
+            player: PlayerAst::You,
+            tag: tag.clone(),
+        },
+        EffectAst::RevealTagged { tag },
+    ]))
+}
+
 fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilter, ChoiceCount)> {
     match target {
         TargetAst::Object(filter, _, _) => Some((filter.clone(), ChoiceCount::exactly(1))),
@@ -21428,6 +21535,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "destroy-multi-target",
         parser: parse_sentence_destroy_multi_target,
+    },
+    SentencePrimitive {
+        name: "reveal-selected-cards-in-your-hand",
+        parser: parse_sentence_reveal_selected_cards_in_your_hand,
     },
     SentencePrimitive {
         name: "damage-unless-controller-has-source-deal-damage",
