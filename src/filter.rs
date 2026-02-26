@@ -575,6 +575,9 @@ pub struct ObjectFilter {
     /// the battlefield this turn.
     pub entered_graveyard_from_battlefield_this_turn: bool,
 
+    /// If true, the object must have been dealt damage this turn.
+    pub was_dealt_damage_this_turn: bool,
+
     /// Power comparison (creature must satisfy)
     pub power: Option<Comparison>,
     /// Whether `power` is checked against effective or base power.
@@ -1339,6 +1342,10 @@ impl ObjectFilter {
                     .objects_put_into_graveyard_this_turn
                     .contains(&object.stable_id))
         {
+            return false;
+        }
+
+        if self.was_dealt_damage_this_turn && !game.creature_was_damaged_this_turn(object.id) {
             return false;
         }
 
@@ -3344,6 +3351,10 @@ impl ObjectFilter {
             parts.push("that was put there from anywhere this turn".to_string());
         }
 
+        if self.was_dealt_damage_this_turn {
+            parts.push("that was dealt damage this turn".to_string());
+        }
+
         match (controller_suffix, owner_suffix) {
             (Some(controller), Some(owner))
                 if controller == "you control" && owner == "you own" =>
@@ -4676,5 +4687,32 @@ mod tests {
             !filter.matches_non_recursive(obj, &ctx, &game),
             "non-recursive matching should avoid layer-calculated power"
         );
+    }
+
+    #[test]
+    fn test_filter_matches_creature_dealt_damage_this_turn() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::game_state::GameState;
+        use crate::ids::CardId;
+
+        let you = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["You".to_string()], 20);
+
+        let card = CardBuilder::new(CardId::from_raw(40), "Damaged Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&card, you, Zone::Battlefield);
+        let ctx = FilterContext::new(you);
+
+        let mut filter = ObjectFilter::creature();
+        filter.was_dealt_damage_this_turn = true;
+
+        let creature = game.object(creature_id).expect("creature should exist");
+        assert!(!filter.matches(creature, &ctx, &game));
+
+        game.record_creature_damaged_by_this_turn(creature_id, ObjectId::from_raw(500));
+        let creature = game.object(creature_id).expect("creature should exist");
+        assert!(filter.matches(creature, &ctx, &game));
     }
 }

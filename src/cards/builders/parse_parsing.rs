@@ -5240,6 +5240,7 @@ fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score += usize::from(filter.with_counter.is_some() || filter.without_counter.is_some()) * 4;
     score += usize::from(filter.entered_battlefield_this_turn) * 2;
     score += usize::from(filter.entered_battlefield_controller.is_some()) * 2;
+    score += usize::from(filter.was_dealt_damage_this_turn) * 2;
     score += usize::from(!filter.excluded_card_types.is_empty()) * 2;
     score += usize::from(!filter.excluded_supertypes.is_empty()) * 2;
     score += usize::from(!filter.excluded_colors.is_empty()) * 2;
@@ -36762,6 +36763,9 @@ fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
 
 fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
+    if let Some(target) = parse_destroy_combat_history_target(tokens)? {
+        return Ok(EffectAst::Destroy { target });
+    }
     if clause_words
         .windows(3)
         .any(|window| window == ["end", "of", "combat"])
@@ -36910,6 +36914,26 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
 
     let target = parse_target_phrase(tokens)?;
     Ok(EffectAst::Destroy { target })
+}
+
+fn parse_destroy_combat_history_target(
+    tokens: &[Token],
+) -> Result<Option<TargetAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.as_slice()
+        != [
+            "target", "creature", "that", "was", "dealt", "damage", "this", "turn",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let target = parse_target_phrase(&tokens[..2])?;
+    let TargetAst::Object(mut filter, target_span, it_span) = target else {
+        return Ok(None);
+    };
+    filter.was_dealt_damage_this_turn = true;
+    Ok(Some(TargetAst::Object(filter, target_span, it_span)))
 }
 
 fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception: &ObjectFilter) {

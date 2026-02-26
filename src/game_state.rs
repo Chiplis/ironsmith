@@ -1473,10 +1473,7 @@ impl GameState {
     }
 
     /// Get required attackers for a blocker, if any.
-    pub fn required_attackers_for_blocker(
-        &self,
-        blocker: ObjectId,
-    ) -> Option<&HashSet<ObjectId>> {
+    pub fn required_attackers_for_blocker(&self, blocker: ObjectId) -> Option<&HashSet<ObjectId>> {
         self.cant_effects.required_attackers_for_blocker(blocker)
     }
 
@@ -3409,6 +3406,13 @@ impl GameState {
         self.creatures_damaged_by_this_turn
             .get(&creature)
             .is_some_and(|sources| sources.contains(&source))
+    }
+
+    /// Returns true if `creature` was dealt damage by any source this turn.
+    pub fn creature_was_damaged_this_turn(&self, creature: ObjectId) -> bool {
+        self.creatures_damaged_by_this_turn
+            .get(&creature)
+            .is_some_and(|sources| !sources.is_empty())
     }
 
     /// Clear damage from an object.

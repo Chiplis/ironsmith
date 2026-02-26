@@ -8056,6 +8056,20 @@ fn parse_destroy_cant_be_regenerated_followup_sentence() {
 }
 
 #[test]
+fn parse_destroy_target_creature_dealt_damage_this_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Siegebreaker Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy target creature that was dealt damage this turn.")
+        .expect("parse destroy target creature dealt-damage-this-turn clause");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("destroy target creature that was dealt damage this turn"),
+        "expected dealt-damage restriction in rendered destroy text, got {joined}"
+    );
+}
+
+#[test]
 fn parse_spells_cost_modifier_subtype_does_not_force_creature_word() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinosaur Cost Variant")
         .card_types(vec![CardType::Creature])
