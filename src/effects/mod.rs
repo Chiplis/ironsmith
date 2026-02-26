@@ -71,7 +71,8 @@ pub use combat::{
     EnterAttackingEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
     GrantAbilitiesTargetEffect, ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect,
     ModifyPowerToughnessForEachEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
-    PreventAllDamageToTargetEffect, PreventDamageEffect, SetBasePowerToughnessEffect,
+    PreventAllDamageToTargetEffect, PreventDamageEffect, RemoveFromCombatEffect,
+    SetBasePowerToughnessEffect,
 };
 pub use composition::{
     AdaptEffect, BeholdEffect, BolsterEffect, ChooseModeEffect, ChooseObjectsEffect,

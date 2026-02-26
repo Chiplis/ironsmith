@@ -36564,6 +36564,21 @@ mod parse_parsing_tests {
 }
 
 fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+    if let Some(from_idx) = tokens.iter().position(|token| token.is_word("from")) {
+        let tail_words = words(&tokens[from_idx + 1..]);
+        if tail_words == ["combat"] {
+            let target_tokens = trim_commas(&tokens[..from_idx]);
+            if target_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing remove-from-combat target (clause: '{}')",
+                    words(tokens).join(" ")
+                )));
+            }
+            let target = parse_target_phrase(&target_tokens)?;
+            return Ok(EffectAst::RemoveFromCombat { target });
+        }
+    }
+
     let mut idx = 0;
     let mut up_to = false;
     if tokens.get(idx).is_some_and(|token| token.is_word("up"))

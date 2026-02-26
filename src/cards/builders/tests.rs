@@ -10217,3 +10217,17 @@ fn parse_exile_top_x_until_end_of_your_next_turn_may_play_those_cards() {
         "expected tagged play grant effect in spell text, got {spell_debug}"
     );
 }
+
+#[test]
+fn parse_when_this_creature_becomes_blocked_may_untap_and_remove_from_combat() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gustcloak Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Flying\nWhenever this creature becomes blocked, you may untap it and remove it from combat.")
+        .expect("becomes-blocked untap-and-remove-from-combat trigger should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("removefromcombateffect"),
+        "expected remove-from-combat effect in triggered ability, got {abilities_debug}"
+    );
+}

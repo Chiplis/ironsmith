@@ -608,6 +608,9 @@ enum EffectAst {
     Untap {
         target: TargetAst,
     },
+    RemoveFromCombat {
+        target: TargetAst,
+    },
     TapOrUntap {
         target: TargetAst,
     },

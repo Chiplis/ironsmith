@@ -599,6 +599,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::PutOrRemoveCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
+        | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target, .. }
@@ -1037,6 +1038,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::PutOrRemoveCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
+        | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target, .. }
@@ -1536,6 +1538,7 @@ fn collect_tag_spans_from_effect(
         | EffectAst::PutOrRemoveCounters { target, .. }
         | EffectAst::Tap { target }
         | EffectAst::Untap { target }
+        | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Destroy { target }
         | EffectAst::Exile { target, .. }
@@ -2709,6 +2712,15 @@ fn compile_effect(
             };
             let effect = tag_object_target_effect(base_effect, &spec, ctx, "untapped");
             Ok((vec![effect], choices))
+        }
+        EffectAst::RemoveFromCombat { target } => {
+            let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            Ok((
+                vec![Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
+                    spec,
+                ))],
+                choices,
+            ))
         }
         EffectAst::TapOrUntap { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
