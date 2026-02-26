@@ -1184,6 +1184,10 @@ impl StaticAbility {
         Self::new(PreventAllDamageDealtToCreatures)
     }
 
+    pub fn prevent_all_damage_to_self_by_creatures() -> Self {
+        Self::new(PreventAllDamageToSelfByCreatures)
+    }
+
     pub fn prevent_damage_to_self_remove_counter(
         counter_type: crate::object::CounterType,
         amount: u32,

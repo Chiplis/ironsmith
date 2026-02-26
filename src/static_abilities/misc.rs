@@ -9,6 +9,7 @@ use crate::effect::{Condition, Effect, Value};
 use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
 use crate::events::damage::matchers::{
     DamageFromSelfMatcher, DamageToObjectMatcher, DamageToPlayerOrObjectMatcher,
+    DamageToSelfFromSourceFilterMatcher,
 };
 use crate::events::traits::{EventKind, ReplacementMatcher, ReplacementPriority, downcast_event};
 use crate::events::zones::matchers::{
@@ -1172,6 +1173,37 @@ impl StaticAbilityKind for PreventAllDamageDealtToCreatures {
     }
 }
 
+/// "Prevent all damage that would be dealt to this creature by creatures."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PreventAllDamageToSelfByCreatures;
+
+impl StaticAbilityKind for PreventAllDamageToSelfByCreatures {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllDamageToSelfByCreatures
+    }
+
+    fn display(&self) -> String {
+        "Prevent all damage that would be dealt to this creature by creatures.".to_string()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageToSelfFromSourceFilterMatcher::from_creature(),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
 /// "If damage would be dealt to this creature, prevent that damage.
 /// Remove N <counter> counter(s) from this creature."
 #[derive(Debug, Clone, PartialEq)]
@@ -2182,6 +2214,49 @@ mod tests {
 
         let player_damage = DamageEvent::new(src, DamageTarget::Player(alice), 3, false);
         assert!(!matcher.matches_event(&player_damage, &ctx));
+    }
+
+    #[test]
+    fn test_prevent_all_damage_to_self_by_creatures_generates_replacement() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let protected_card = CardBuilder::new(CardId::new(), "Protected Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let protected = game.create_object_from_card(&protected_card, alice, Zone::Battlefield);
+
+        let creature_source_card = CardBuilder::new(CardId::new(), "Creature Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_source =
+            game.create_object_from_card(&creature_source_card, alice, Zone::Battlefield);
+
+        let noncreature_source_card = CardBuilder::new(CardId::new(), "Artifact Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let noncreature_source =
+            game.create_object_from_card(&noncreature_source_card, alice, Zone::Battlefield);
+
+        let ability = PreventAllDamageToSelfByCreatures;
+        let replacement = ability
+            .generate_replacement_effect(protected, alice)
+            .expect("should generate replacement effect");
+        assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("replacement must have a matcher");
+        let ctx = EventContext::for_replacement_effect(alice, protected, &game);
+
+        let creature_damage =
+            DamageEvent::new(creature_source, DamageTarget::Object(protected), 3, false);
+        assert!(matcher.matches_event(&creature_damage, &ctx));
+
+        let noncreature_damage =
+            DamageEvent::new(noncreature_source, DamageTarget::Object(protected), 3, false);
+        assert!(!matcher.matches_event(&noncreature_damage, &ctx));
     }
 
     #[test]

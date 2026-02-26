@@ -1837,9 +1837,13 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
             .iter()
             .any(|word| *word == "counter" || *word == "counters")
         && line_words.iter().any(|word| *word == "remove");
+    let is_prevent_all_damage_to_source_by_creatures_static = line_words.starts_with(&[
+        "prevent", "all", "damage", "that", "would", "be", "dealt", "to", "this",
+    ]) && line_words.ends_with(&["by", "creatures"]);
     if starts_with_statement_effect_head
         && !is_each_other_player_untap_static
         && !is_damage_prevent_with_remove_static
+        && !is_prevent_all_damage_to_source_by_creatures_static
     {
         match parse_effect_sentences(&tokens) {
             Ok(effects) if !effects.is_empty() => {
@@ -2524,6 +2528,9 @@ fn parse_static_ability_line(
         return Ok(Some(vec![ability]));
     }
     if let Some(ability) = parse_grant_flash_to_noncreature_spells_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
+    if let Some(ability) = parse_prevent_all_damage_to_source_by_creatures_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
     if let Some(ability) = parse_prevent_all_damage_dealt_to_creatures_line(tokens)? {
@@ -6907,6 +6914,47 @@ fn parse_prevent_all_damage_dealt_to_creatures_line(
         ]
     {
         return Ok(Some(StaticAbility::prevent_all_damage_dealt_to_creatures()));
+    }
+    Ok(None)
+}
+
+fn parse_prevent_all_damage_to_source_by_creatures_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    let is_this_creature = words.as_slice()
+        == [
+            "prevent",
+            "all",
+            "damage",
+            "that",
+            "would",
+            "be",
+            "dealt",
+            "to",
+            "this",
+            "creature",
+            "by",
+            "creatures",
+        ];
+    let is_this_permanent = words.as_slice()
+        == [
+            "prevent",
+            "all",
+            "damage",
+            "that",
+            "would",
+            "be",
+            "dealt",
+            "to",
+            "this",
+            "permanent",
+            "by",
+            "creatures",
+        ];
+
+    if is_this_creature || is_this_permanent {
+        return Ok(Some(StaticAbility::prevent_all_damage_to_self_by_creatures()));
     }
     Ok(None)
 }
@@ -36974,6 +37022,37 @@ mod parse_parsing_tests {
         assert!(abilities
             .iter()
             .any(|ability| ability.id() == StaticAbilityId::PreventDamageToSelfRemoveCounter));
+    }
+
+    #[test]
+    fn parse_prevent_all_damage_to_source_by_creatures_static_line() {
+        let tokens = tokenize_line(
+            "Prevent all damage that would be dealt to this creature by creatures.",
+            0,
+        );
+        let abilities = parse_static_ability_line(&tokens)
+            .expect("parse static ability line")
+            .expect("expected static ability");
+        assert!(abilities
+            .iter()
+            .any(|ability| ability.id() == StaticAbilityId::PreventAllDamageToSelfByCreatures));
+    }
+
+    #[test]
+    fn parse_line_prevent_all_damage_to_source_by_creatures_prefers_static() {
+        let parsed = parse_line(
+            "Prevent all damage that would be dealt to this creature by creatures.",
+            0,
+        )
+        .expect("parse line");
+        let ability = match parsed {
+            LineAst::StaticAbility(ability) => ability,
+            LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => abilities
+                .pop()
+                .expect("single static ability"),
+            other => panic!("expected static ability parse, got {other:?}"),
+        };
+        assert_eq!(ability.id(), StaticAbilityId::PreventAllDamageToSelfByCreatures);
     }
 
     #[test]
