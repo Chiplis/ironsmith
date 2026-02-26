@@ -15713,6 +15713,62 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
     let mut sentence_idx = 0usize;
     let mut carried_context: Option<CarryContext> = None;
 
+    fn effect_contains_search_library(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SearchLibrary { .. } => true,
+            EffectAst::Conditional {
+                if_true, if_false, ..
+            } => if_true.iter().any(effect_contains_search_library)
+                || if_false.iter().any(effect_contains_search_library),
+            EffectAst::UnlessPays { effects, .. }
+            | EffectAst::May { effects }
+            | EffectAst::MayByPlayer { effects, .. }
+            | EffectAst::MayByTaggedController { effects, .. }
+            | EffectAst::IfResult { effects, .. }
+            | EffectAst::ForEachOpponent { effects }
+            | EffectAst::ForEachPlayer { effects }
+            | EffectAst::ForEachTargetPlayers { effects, .. }
+            | EffectAst::ForEachObject { effects, .. }
+            | EffectAst::ForEachTagged { effects, .. }
+            | EffectAst::ForEachOpponentDoesNot { effects }
+            | EffectAst::ForEachPlayerDoesNot { effects }
+            | EffectAst::ForEachOpponentDid { effects, .. }
+            | EffectAst::ForEachPlayerDid { effects, .. }
+            | EffectAst::ForEachTaggedPlayer { effects, .. }
+            | EffectAst::DelayedUntilNextEndStep { effects, .. }
+            | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+            | EffectAst::DelayedUntilEndOfCombat { effects }
+            | EffectAst::DelayedTriggerThisTurn { effects, .. }
+            | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+            | EffectAst::VoteOption { effects, .. } => effects.iter().any(effect_contains_search_library),
+            EffectAst::UnlessAction {
+                effects,
+                alternative,
+                ..
+            } => {
+                effects.iter().any(effect_contains_search_library)
+                    || alternative.iter().any(effect_contains_search_library)
+            }
+            _ => false,
+        }
+    }
+
+    fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[Token]) -> bool {
+        let words: Vec<&str> = words(tokens)
+            .into_iter()
+            .filter(|word| !is_article(word))
+            .collect();
+        // "If you search your library this way, shuffle."
+        words.as_slice()
+            == [
+                "if", "you", "search", "your", "library", "this", "way", "shuffle",
+            ]
+            || words.as_slice()
+                == [
+                    "if", "you", "search", "your", "library", "this", "way", "shuffles",
+                ]
+    }
+
     while sentence_idx < sentences.len() {
         let sentence = &sentences[sentence_idx];
         if sentence.is_empty() {
@@ -15740,6 +15796,21 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
             continue;
         }
         sentence_tokens = rewrite_when_you_do_clause_prefix(&sentence_tokens);
+
+        // Oracle frequently splits shuffle followups as a standalone sentence:
+        // "If you search your library this way, shuffle." This clause is redundant when the
+        // preceding sentence already compiles a library-search effect that shuffles.
+        if is_if_you_search_library_this_way_shuffle_sentence(&sentence_tokens)
+            && effects.iter().any(effect_contains_search_library)
+        {
+            parser_trace(
+                "parse_effect_sentences:skip:if-you-search-library-this-way-shuffle",
+                &sentence_tokens,
+            );
+            sentence_idx += 1;
+            continue;
+        }
+
         let mut wraps_as_if_did_not = false;
         if let Some(without_otherwise) = strip_otherwise_sentence_prefix(&sentence_tokens) {
             sentence_tokens = rewrite_otherwise_referential_subject(without_otherwise);
@@ -23518,6 +23589,7 @@ fn parse_search_library_sentence(
     let mut search_player_target: Option<TargetAst> = None;
     let mut forced_library_owner: Option<PlayerFilter> = None;
     let mut include_hand_and_graveyard_bundle = false;
+    let mut nonlibrary_choice_zones: Vec<Zone> = Vec::new();
     if search_body_words.starts_with(&["your", "library", "for"])
         || search_body_words.starts_with(&["their", "library", "for"])
     {
@@ -23585,7 +23657,38 @@ fn parse_search_library_sentence(
     {
         player = PlayerAst::ItsOwner;
     } else {
-        return Ok(None);
+        // Support "Search your graveyard, hand, and/or library ..." (and ordering variants)
+        // by modeling non-library zones as optional alternatives before a library search.
+        if search_body_words.first().copied() == Some("your")
+            && let Some(for_pos) = search_body_words.iter().position(|word| *word == "for")
+            && for_pos > 1
+        {
+            let zone_words = &search_body_words[1..for_pos];
+            let has_library = zone_words
+                .iter()
+                .any(|word| *word == "library" || *word == "libraries");
+            if !has_library {
+                return Ok(None);
+            }
+
+            let has_graveyard = zone_words
+                .iter()
+                .any(|word| *word == "graveyard" || *word == "graveyards");
+            let has_hand = zone_words
+                .iter()
+                .any(|word| *word == "hand" || *word == "hands");
+            if has_graveyard {
+                nonlibrary_choice_zones.push(Zone::Graveyard);
+            }
+            if has_hand {
+                nonlibrary_choice_zones.push(Zone::Hand);
+            }
+            if nonlibrary_choice_zones.is_empty() {
+                return Ok(None);
+            }
+        } else {
+            return Ok(None);
+        }
     }
     let mentions_nth_from_top = search_words
         .windows(4)
@@ -23879,7 +23982,8 @@ fn parse_search_library_sentence(
     } else {
         false
     };
-    let shuffle = words_all.contains(&"shuffle") && !trailing_discard_before_shuffle;
+    let shuffle = (words_all.contains(&"shuffle") && !trailing_discard_before_shuffle)
+        || !nonlibrary_choice_zones.is_empty();
     let split_battlefield_and_hand = put_idx.is_some()
         && words_all.contains(&"battlefield")
         && words_all.contains(&"hand")
@@ -23890,7 +23994,89 @@ fn parse_search_library_sentence(
     } else {
         None
     };
-    let mut effects = if split_battlefield_and_hand {
+    let mut effects = if !nonlibrary_choice_zones.is_empty() {
+        let chosen_tag: TagKey = "searched_nonlibrary".into();
+        let battlefield_tapped = destination == Zone::Battlefield && words_all.contains(&"tapped");
+
+        let mut move_effects = Vec::new();
+        if reveal {
+            move_effects.push(EffectAst::RevealTagged {
+                tag: chosen_tag.clone(),
+            });
+        }
+        move_effects.push(EffectAst::MoveToZone {
+            target: TargetAst::Tagged(chosen_tag.clone(), span_from_tokens(tokens)),
+            zone: destination,
+            to_top: matches!(destination, Zone::Library),
+            battlefield_controller: ReturnControllerAst::Preserve,
+        });
+
+        let mut first_filter = filter.clone();
+        first_filter.zone = Some(nonlibrary_choice_zones[0]);
+        if first_filter.owner.is_none() {
+            first_filter.owner = Some(PlayerFilter::You);
+        }
+
+        let did_not_effects = if nonlibrary_choice_zones.len() > 1 {
+            let mut second_filter = filter.clone();
+            second_filter.zone = Some(nonlibrary_choice_zones[1]);
+            if second_filter.owner.is_none() {
+                second_filter.owner = Some(PlayerFilter::You);
+            }
+
+            vec![
+                EffectAst::ChooseObjects {
+                    filter: second_filter,
+                    count: ChoiceCount::up_to(1),
+                    player,
+                    tag: chosen_tag.clone(),
+                },
+                EffectAst::IfResult {
+                    predicate: IfResultPredicate::Did,
+                    effects: move_effects.clone(),
+                },
+                EffectAst::IfResult {
+                    predicate: IfResultPredicate::DidNot,
+                    effects: vec![EffectAst::SearchLibrary {
+                        filter,
+                        destination,
+                        player,
+                        reveal,
+                        shuffle,
+                        count,
+                        tapped: battlefield_tapped,
+                    }],
+                },
+            ]
+        } else {
+            vec![EffectAst::SearchLibrary {
+                filter,
+                destination,
+                player,
+                reveal,
+                shuffle,
+                count,
+                tapped: battlefield_tapped,
+            }]
+        };
+
+        vec![
+            EffectAst::ChooseObjects {
+                filter: first_filter,
+                count: ChoiceCount::up_to(1),
+                player,
+                tag: chosen_tag.clone(),
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: move_effects,
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::DidNot,
+                effects: did_not_effects,
+            },
+        ]
+    } else if split_battlefield_and_hand {
         let battlefield_tapped = words_all.contains(&"tapped");
         vec![
             EffectAst::SearchLibrary {
