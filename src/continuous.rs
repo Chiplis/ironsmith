@@ -1207,17 +1207,8 @@ fn filter_matches_direct(
         let power = match filter.power_reference {
             crate::filter::PtReference::Effective => chars.power,
             crate::filter::PtReference::Base => {
-                let plus = object
-                    .counters
-                    .get(&crate::object::CounterType::PlusOnePlusOne)
-                    .copied()
-                    .unwrap_or(0) as i32;
-                let minus = object
-                    .counters
-                    .get(&crate::object::CounterType::MinusOneMinusOne)
-                    .copied()
-                    .unwrap_or(0) as i32;
-                object.power().map(|value| value - plus + minus)
+                let (power_delta, _) = object.pt_counter_deltas();
+                object.power().map(|value| value - power_delta)
             }
         };
         if let Some(power) = power {
@@ -1233,17 +1224,8 @@ fn filter_matches_direct(
         let toughness = match filter.toughness_reference {
             crate::filter::PtReference::Effective => chars.toughness,
             crate::filter::PtReference::Base => {
-                let plus = object
-                    .counters
-                    .get(&crate::object::CounterType::PlusOnePlusOne)
-                    .copied()
-                    .unwrap_or(0) as i32;
-                let minus = object
-                    .counters
-                    .get(&crate::object::CounterType::MinusOneMinusOne)
-                    .copied()
-                    .unwrap_or(0) as i32;
-                object.toughness().map(|value| value - plus + minus)
+                let (_, toughness_delta) = object.pt_counter_deltas();
+                object.toughness().map(|value| value - toughness_delta)
             }
         };
         if let Some(toughness) = toughness {
@@ -2175,29 +2157,19 @@ fn apply_layer_7_effects(
     chars.toughness = toughness;
 }
 
-/// Apply +1/+1 and -1/-1 counter modifications to power and toughness.
+/// Apply P/T counter modifications to power and toughness.
 /// Per Rule 613.4c, these are part of sublayer 7c.
 fn apply_counter_modifications(
     object: &Object,
     power: &mut Option<i32>,
     toughness: &mut Option<i32>,
 ) {
-    let plus_counters = object
-        .counters
-        .get(&CounterType::PlusOnePlusOne)
-        .copied()
-        .unwrap_or(0) as i32;
-    let minus_counters = object
-        .counters
-        .get(&CounterType::MinusOneMinusOne)
-        .copied()
-        .unwrap_or(0) as i32;
-
+    let (power_delta, toughness_delta) = object.pt_counter_deltas();
     if let Some(p) = power {
-        *p += plus_counters - minus_counters;
+        *p += power_delta;
     }
     if let Some(t) = toughness {
-        *t += plus_counters - minus_counters;
+        *t += toughness_delta;
     }
 }
 
@@ -2458,17 +2430,8 @@ fn filter_matches_with_controller(
         let power = match filter.power_reference {
             crate::filter::PtReference::Effective => chars.power,
             crate::filter::PtReference::Base => {
-                let plus = object
-                    .counters
-                    .get(&crate::object::CounterType::PlusOnePlusOne)
-                    .copied()
-                    .unwrap_or(0) as i32;
-                let minus = object
-                    .counters
-                    .get(&crate::object::CounterType::MinusOneMinusOne)
-                    .copied()
-                    .unwrap_or(0) as i32;
-                object.power().map(|value| value - plus + minus)
+                let (power_delta, _) = object.pt_counter_deltas();
+                object.power().map(|value| value - power_delta)
             }
         };
         if let Some(power) = power {
@@ -2484,17 +2447,8 @@ fn filter_matches_with_controller(
         let toughness = match filter.toughness_reference {
             crate::filter::PtReference::Effective => chars.toughness,
             crate::filter::PtReference::Base => {
-                let plus = object
-                    .counters
-                    .get(&crate::object::CounterType::PlusOnePlusOne)
-                    .copied()
-                    .unwrap_or(0) as i32;
-                let minus = object
-                    .counters
-                    .get(&crate::object::CounterType::MinusOneMinusOne)
-                    .copied()
-                    .unwrap_or(0) as i32;
-                object.toughness().map(|value| value - plus + minus)
+                let (_, toughness_delta) = object.pt_counter_deltas();
+                object.toughness().map(|value| value - toughness_delta)
             }
         };
         if let Some(toughness) = toughness {

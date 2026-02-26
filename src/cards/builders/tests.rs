@@ -1815,6 +1815,35 @@ fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() 
 }
 
 #[test]
+fn test_parse_named_counter_types_fall_back_to_named_counter() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Named Counter Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text("At the beginning of your upkeep, put a spore counter on this creature.")
+        .expect("named counter types should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("Named(\"spore\")"),
+        "expected CounterType::Named(\"spore\") in parsed ability, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_plus_zero_plus_one_counter_type() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "PT Counter Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Put a +0/+1 counter on target creature.")
+        .expect("+0/+1 counter type should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("PlusZeroPlusOne"),
+        "expected +0/+1 to map to CounterType::PlusZeroPlusOne, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Suspend Probe")
         .card_types(vec![CardType::Artifact])

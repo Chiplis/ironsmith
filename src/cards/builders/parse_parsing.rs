@@ -31803,6 +31803,12 @@ fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "+1/+1" => Some(CounterType::PlusOnePlusOne),
         "-1/-1" => Some(CounterType::MinusOneMinusOne),
         "-0/-1" => Some(CounterType::MinusOneMinusOne),
+        "+1/+0" => Some(CounterType::PlusOnePlusZero),
+        "+0/+1" => Some(CounterType::PlusZeroPlusOne),
+        "+1/+2" => Some(CounterType::PlusOnePlusTwo),
+        "+2/+2" => Some(CounterType::PlusTwoPlusTwo),
+        "-0/-2" => Some(CounterType::MinusZeroMinusTwo),
+        "-2/-2" => Some(CounterType::MinusTwoMinusTwo),
         "deathtouch" => Some(CounterType::Deathtouch),
         "flying" => Some(CounterType::Flying),
         "haste" => Some(CounterType::Haste),
@@ -31831,26 +31837,58 @@ fn parse_counter_type_word(word: &str) -> Option<CounterType> {
     }
 }
 
+fn intern_counter_name(word: &str) -> &'static str {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+
+    // Card parsing happens across many cards; deduplicate to avoid leaking one allocation per card.
+    static INTERNER: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
+
+    let map = INTERNER.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = map.lock().expect("counter name interner lock poisoned");
+    if let Some(existing) = map.get(word) {
+        return *existing;
+    }
+
+    let leaked: &'static str = Box::leak(word.to_string().into_boxed_str());
+    map.insert(word.to_string(), leaked);
+    leaked
+}
+
 fn parse_counter_type_from_tokens(tokens: &[Token]) -> Option<CounterType> {
-    for token in tokens {
-        if let Some(word) = token.as_word()
-            && let Some(parsed) = parse_counter_type_word(word)
-        {
-            return Some(parsed);
+    let token_words = words(tokens);
+
+    if let Some(counter_idx) = token_words
+        .iter()
+        .position(|word| *word == "counter" || *word == "counters")
+    {
+        if counter_idx == 0 {
+            return None;
+        }
+
+        let prev = token_words[counter_idx - 1];
+        if let Some(counter_type) = parse_counter_type_word(prev) {
+            return Some(counter_type);
+        }
+
+        if prev == "strike" && counter_idx >= 2 {
+            match token_words[counter_idx - 2] {
+                "double" => return Some(CounterType::DoubleStrike),
+                "first" => return Some(CounterType::FirstStrike),
+                _ => {}
+            }
+        }
+
+        // "a counter of that kind" doesn't name the counter type.
+        if matches!(prev, "a" | "an" | "one" | "two" | "three" | "four" | "five" | "six") {
+            return None;
+        }
+
+        if prev.chars().all(|c| c.is_ascii_alphabetic()) {
+            return Some(CounterType::Named(intern_counter_name(prev)));
         }
     }
 
-    let token_words = words(tokens);
-    for window in token_words.windows(2) {
-        match window {
-            ["-1", "-1"] => return Some(CounterType::MinusOneMinusOne),
-            ["-0", "-1"] => return Some(CounterType::MinusOneMinusOne),
-            ["+1", "+1"] => return Some(CounterType::PlusOnePlusOne),
-            ["double", "strike"] => return Some(CounterType::DoubleStrike),
-            ["first", "strike"] => return Some(CounterType::FirstStrike),
-            _ => {}
-        }
-    }
     None
 }
 
@@ -31858,6 +31896,13 @@ fn describe_counter_type_for_mode(counter_type: CounterType) -> String {
     match counter_type {
         CounterType::PlusOnePlusOne => "+1/+1".to_string(),
         CounterType::MinusOneMinusOne => "-1/-1".to_string(),
+        CounterType::PlusOnePlusZero => "+1/+0".to_string(),
+        CounterType::PlusZeroPlusOne => "+0/+1".to_string(),
+        CounterType::PlusOnePlusTwo => "+1/+2".to_string(),
+        CounterType::PlusTwoPlusTwo => "+2/+2".to_string(),
+        CounterType::MinusZeroMinusTwo => "-0/-2".to_string(),
+        CounterType::MinusTwoMinusTwo => "-2/-2".to_string(),
+        CounterType::Named(name) => name.to_string(),
         other => format!("{other:?}").to_ascii_lowercase(),
     }
 }

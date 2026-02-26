@@ -17,6 +17,12 @@ pub enum CounterType {
     // === P/T modifying counters ===
     PlusOnePlusOne,
     MinusOneMinusOne,
+    PlusOnePlusZero,
+    PlusZeroPlusOne,
+    PlusOnePlusTwo,
+    PlusTwoPlusTwo,
+    MinusZeroMinusTwo,
+    MinusTwoMinusTwo,
 
     // === Ability-granting counters (from Ikoria and other sets) ===
     Deathtouch,
@@ -155,6 +161,29 @@ pub enum CounterType {
     Winch,
     Wind,
     Wish,
+
+    /// Arbitrary named counter types not explicitly enumerated above.
+    ///
+    /// This lets the parser support the long tail of historical and supplemental
+    /// set counters without having to constantly extend the enum.
+    Named(&'static str),
+}
+
+impl CounterType {
+    /// Power/toughness delta for counters that directly modify P/T.
+    pub fn pt_delta(&self) -> Option<(i32, i32)> {
+        match self {
+            CounterType::PlusOnePlusOne => Some((1, 1)),
+            CounterType::MinusOneMinusOne => Some((-1, -1)),
+            CounterType::PlusOnePlusZero => Some((1, 0)),
+            CounterType::PlusZeroPlusOne => Some((0, 1)),
+            CounterType::PlusOnePlusTwo => Some((1, 2)),
+            CounterType::PlusTwoPlusTwo => Some((2, 2)),
+            CounterType::MinusZeroMinusTwo => Some((0, -2)),
+            CounterType::MinusTwoMinusTwo => Some((-2, -2)),
+            _ => None,
+        }
+    }
 }
 
 /// The kind of game object.
@@ -672,17 +701,8 @@ impl Object {
         } else {
             self.base_power?.base_value()
         };
-        let counter_bonus = self
-            .counters
-            .get(&CounterType::PlusOnePlusOne)
-            .copied()
-            .unwrap_or(0) as i32;
-        let counter_penalty = self
-            .counters
-            .get(&CounterType::MinusOneMinusOne)
-            .copied()
-            .unwrap_or(0) as i32;
-        Some(base + counter_bonus - counter_penalty)
+        let (power_delta, _) = self.pt_counter_deltas();
+        Some(base + power_delta)
     }
 
     /// Returns the current toughness of this creature.
@@ -694,17 +714,20 @@ impl Object {
         } else {
             self.base_toughness?.base_value()
         };
-        let counter_bonus = self
-            .counters
-            .get(&CounterType::PlusOnePlusOne)
-            .copied()
-            .unwrap_or(0) as i32;
-        let counter_penalty = self
-            .counters
-            .get(&CounterType::MinusOneMinusOne)
-            .copied()
-            .unwrap_or(0) as i32;
-        Some(base + counter_bonus - counter_penalty)
+        let (_, toughness_delta) = self.pt_counter_deltas();
+        Some(base + toughness_delta)
+    }
+
+    pub fn pt_counter_deltas(&self) -> (i32, i32) {
+        let mut power = 0i32;
+        let mut toughness = 0i32;
+        for (counter_type, count) in &self.counters {
+            if let Some((dp, dt)) = counter_type.pt_delta() {
+                power += dp * (*count as i32);
+                toughness += dt * (*count as i32);
+            }
+        }
+        (power, toughness)
     }
 
     /// Returns the P/T override from level abilities if applicable.
@@ -1134,6 +1157,42 @@ mod tests {
         obj.add_counters(CounterType::MinusOneMinusOne, 1);
         assert_eq!(obj.toughness(), Some(0));
         assert!(obj.has_lethal_damage(0)); // 0 toughness = lethal even with no damage
+    }
+
+    #[test]
+    fn test_non_standard_pt_counters() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Grizzly Bears")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(1),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+
+        obj.add_counters(CounterType::PlusOnePlusZero, 1);
+        assert_eq!(obj.power(), Some(3));
+        assert_eq!(obj.toughness(), Some(2));
+
+        obj.add_counters(CounterType::PlusZeroPlusOne, 2);
+        assert_eq!(obj.power(), Some(3));
+        assert_eq!(obj.toughness(), Some(4));
+
+        obj.add_counters(CounterType::MinusZeroMinusTwo, 1);
+        assert_eq!(obj.power(), Some(3));
+        assert_eq!(obj.toughness(), Some(2));
+
+        obj.add_counters(CounterType::PlusOnePlusTwo, 1);
+        assert_eq!(obj.power(), Some(4));
+        assert_eq!(obj.toughness(), Some(4));
     }
 
     #[test]
