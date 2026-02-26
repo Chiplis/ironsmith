@@ -33,6 +33,7 @@ pub enum StaticAbilityId {
     Skulk,
     Flanking,
     Landwalk,
+    CantBeBlockedAsLongAsDefendingPlayerControlsCardType,
     Bloodthirst,
     Morph,
     Megamorph,
@@ -240,6 +241,7 @@ impl StaticAbilityId {
                 | CantBeBlockedByPowerOrGreater
                 | CantBeBlockedByMoreThan
                 | Landwalk
+                | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
         )
     }
 
@@ -272,6 +274,7 @@ impl StaticAbilityId {
                 | CantBeBlockedByPowerOrLess
                 | CantBeBlockedByPowerOrGreater
                 | CantBeBlockedByMoreThan
+                | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
                 | CanAttackAsThoughNoDefender
                 | MustAttack
                 | MustBlock
