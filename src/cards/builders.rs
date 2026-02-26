@@ -983,10 +983,19 @@ enum EffectAst {
     Destroy {
         target: TargetAst,
     },
+    DestroyNoRegeneration {
+        target: TargetAst,
+    },
     DestroyAll {
         filter: ObjectFilter,
     },
+    DestroyAllNoRegeneration {
+        filter: ObjectFilter,
+    },
     DestroyAllOfChosenColor {
+        filter: ObjectFilter,
+    },
+    DestroyAllOfChosenColorNoRegeneration {
         filter: ObjectFilter,
     },
     DestroyAllAttachedTo {

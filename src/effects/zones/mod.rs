@@ -5,6 +5,7 @@
 
 mod battlefield_entry;
 mod destroy;
+mod destroy_no_regen;
 mod exile;
 mod haunt_exile;
 mod exile_from_hand_as_cost;
@@ -25,6 +26,7 @@ pub(crate) use battlefield_entry::{
 };
 
 pub use destroy::DestroyEffect;
+pub use destroy_no_regen::DestroyNoRegenerationEffect;
 pub use exile::ExileEffect;
 pub use haunt_exile::HauntExileEffect;
 pub use exile_from_hand_as_cost::ExileFromHandAsCostEffect;

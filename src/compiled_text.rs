@@ -10350,6 +10350,15 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&tagged)
         );
     }
+    if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>() {
+        let base = format!("Destroy {}", describe_choose_spec(&destroy.spec));
+        let tail = if choose_spec_allows_multiple(&destroy.spec) {
+            "They can't be regenerated"
+        } else {
+            "It can't be regenerated"
+        };
+        return format!("{base}. {tail}");
+    }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
         if let ChooseSpec::All(filter) = &destroy.spec
             && filter.card_types.as_slice() == [crate::types::CardType::Creature]

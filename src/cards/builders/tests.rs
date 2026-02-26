@@ -7883,6 +7883,21 @@ fn parse_spells_cost_modifier_supports_where_x_differently_named_lands() {
 }
 
 #[test]
+fn parse_destroy_cant_be_regenerated_followup_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wrath Tail Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy target creature. It can't be regenerated.")
+        .expect("parse destroy + can't be regenerated");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("destroy target creature. it can't be regenerated")
+            || joined.contains("destroy target creature. it cant be regenerated"),
+        "expected can't-be-regenerated tail to render, got {joined}"
+    );
+}
+
+#[test]
 fn parse_spells_cost_modifier_subtype_does_not_force_creature_word() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinosaur Cost Variant")
         .card_types(vec![CardType::Creature])

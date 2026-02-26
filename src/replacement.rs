@@ -284,6 +284,22 @@ impl ReplacementEffectManager {
         self.effects.retain(|e| e.source != source);
     }
 
+    /// Remove all one-shot effects from a specific source.
+    ///
+    /// Primarily used to ignore regeneration shields for "can't be regenerated"
+    /// destroy effects.
+    pub fn remove_one_shot_effects_from_source(&mut self, source: ObjectId) {
+        let ids: Vec<_> = self
+            .effects
+            .iter()
+            .filter(|e| e.source == source && self.one_shot_effects.contains(&e.id))
+            .map(|e| e.id)
+            .collect();
+        for id in ids {
+            self.remove_effect(id);
+        }
+    }
+
     /// Get all effects that might apply to a damage event.
     /// All effects are returned and filtered at runtime via matches_event().
     pub fn get_damage_replacements(&self) -> Vec<&ReplacementEffect> {

@@ -3787,6 +3787,11 @@ fn compile_effect(
                 Effect::new(crate::effects::DestroyEffect::with_spec(spec))
             })
         }
+        EffectAst::DestroyNoRegeneration { target } => {
+            compile_tagged_effect_for_target(target, ctx, "destroyed", |spec| {
+                Effect::new(crate::effects::DestroyNoRegenerationEffect::with_spec(spec))
+            })
+        }
         EffectAst::DestroyAllAttachedTo { filter, target } => {
             let (target_spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
             let mut prelude = Vec::new();
@@ -3845,6 +3850,20 @@ fn compile_effect(
             prelude.push(effect);
             Ok((prelude, choices))
         }
+        EffectAst::DestroyAllNoRegeneration { filter } => {
+            let resolved_filter = resolve_it_tag(filter, ctx)?;
+            let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
+            let mut effect = Effect::new(crate::effects::DestroyNoRegenerationEffect::all(
+                resolved_filter,
+            ));
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("destroyed");
+                effect = effect.tag(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
+            prelude.push(effect);
+            Ok((prelude, choices))
+        }
         EffectAst::DestroyAllOfChosenColor { filter } => {
             use crate::effect::EffectMode;
             let resolved_filter = resolve_it_tag(filter, ctx)?;
@@ -3874,6 +3893,46 @@ fn compile_effect(
                 );
                 let description = format!("Destroy all {}.", filter.description());
                 let mut effect = Effect::destroy_all(filter);
+                if let Some(tag) = &auto_tag {
+                    effect = effect.tag(tag.clone());
+                }
+                modes.push(EffectMode {
+                    description,
+                    effects: vec![effect],
+                });
+            }
+            prelude.push(Effect::choose_one(modes));
+            Ok((prelude, choices))
+        }
+        EffectAst::DestroyAllOfChosenColorNoRegeneration { filter } => {
+            use crate::effect::EffectMode;
+            let resolved_filter = resolve_it_tag(filter, ctx)?;
+            let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
+            let mut modes = Vec::new();
+            let colors = [
+                ("White", crate::color::Color::White),
+                ("Blue", crate::color::Color::Blue),
+                ("Black", crate::color::Color::Black),
+                ("Red", crate::color::Color::Red),
+                ("Green", crate::color::Color::Green),
+            ];
+            let auto_tag = if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("destroyed");
+                ctx.last_object_tag = Some(tag.clone());
+                Some(tag)
+            } else {
+                None
+            };
+            for (_name, color) in colors {
+                let chosen = ColorSet::from(color);
+                let mut filter = resolved_filter.clone();
+                filter.colors = Some(
+                    filter
+                        .colors
+                        .map_or(chosen, |existing| existing.intersection(chosen)),
+                );
+                let description = format!("Destroy all {}. They can't be regenerated.", filter.description());
+                let mut effect = Effect::new(crate::effects::DestroyNoRegenerationEffect::all(filter));
                 if let Some(tag) = &auto_tag {
                     effect = effect.tag(tag.clone());
                 }

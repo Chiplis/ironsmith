@@ -15512,6 +15512,19 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
         }
         parser_trace("parse_effect_sentences:sentence", &sentence_tokens);
 
+        // "Destroy ... . It/They can't be regenerated." followups.
+        if is_cant_be_regenerated_followup_sentence(&sentence_tokens) {
+            if apply_cant_be_regenerated_to_last_destroy_effect(&mut effects) {
+                parser_trace("parse_effect_sentences:cant-be-regenerated-followup", &sentence_tokens);
+                sentence_idx += 1;
+                continue;
+            }
+            return Err(CardTextError::ParseError(format!(
+                "unsupported standalone cant-be-regenerated clause (clause: '{}')",
+                words(&sentence_tokens).join(" ")
+            )));
+        }
+
         if sentence_idx + 1 < sentences.len() && is_simple_copy_reference_sentence(&sentence_tokens)
         {
             let next_tokens = strip_embedded_token_rules_text(&sentences[sentence_idx + 1]);
@@ -15737,6 +15750,42 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
 
     parser_trace("parse_effect_sentences:done", tokens);
     Ok(effects)
+}
+
+fn is_cant_be_regenerated_followup_sentence(tokens: &[Token]) -> bool {
+    let words = normalize_cant_words(tokens);
+    matches!(
+        words.as_slice(),
+        ["it", "cant", "be", "regenerated"]
+            | ["it", "cant", "be", "regenerated", "this", "turn"]
+            | ["they", "cant", "be", "regenerated"]
+            | ["they", "cant", "be", "regenerated", "this", "turn"]
+    )
+}
+
+fn apply_cant_be_regenerated_to_last_destroy_effect(effects: &mut Vec<EffectAst>) -> bool {
+    let Some(last) = effects.pop() else {
+        return false;
+    };
+
+    match last {
+        EffectAst::Destroy { target } => {
+            effects.push(EffectAst::DestroyNoRegeneration { target });
+            true
+        }
+        EffectAst::DestroyAll { filter } => {
+            effects.push(EffectAst::DestroyAllNoRegeneration { filter });
+            true
+        }
+        EffectAst::DestroyAllOfChosenColor { filter } => {
+            effects.push(EffectAst::DestroyAllOfChosenColorNoRegeneration { filter });
+            true
+        }
+        other => {
+            effects.push(other);
+            false
+        }
+    }
 }
 
 fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {

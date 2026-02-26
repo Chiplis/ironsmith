@@ -124,7 +124,8 @@ pub use stack::{
 };
 pub use tokens::{CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect};
 pub use zones::{
-    BattlefieldController, DestroyEffect, ExileEffect, ExileFromHandAsCostEffect,
+    BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, ExileEffect,
+    ExileFromHandAsCostEffect,
     ExileUntilDuration, ExileUntilEffect, HauntExileEffect, MoveToZoneEffect,
     PutOntoBattlefieldEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect,
