@@ -708,6 +708,10 @@ pub enum Restriction {
     SearchLibraries(PlayerFilter),
     CastSpells(PlayerFilter),
     ActivateNonManaAbilities(PlayerFilter),
+    /// Activated abilities of matching objects can't be activated (including mana abilities).
+    ActivateAbilitiesOf(ObjectFilter),
+    /// Non-mana activated abilities of matching objects can't be activated (mana abilities are still allowed).
+    ActivateNonManaAbilitiesOf(ObjectFilter),
     CastCreatureSpells(PlayerFilter),
     CastMoreThanOneSpellEachTurn(PlayerFilter),
     DrawCards(PlayerFilter),
@@ -748,6 +752,14 @@ impl Restriction {
 
     pub fn activate_non_mana_abilities(filter: PlayerFilter) -> Self {
         Self::ActivateNonManaAbilities(filter)
+    }
+
+    pub fn activate_abilities_of(filter: ObjectFilter) -> Self {
+        Self::ActivateAbilitiesOf(filter)
+    }
+
+    pub fn activate_non_mana_abilities_of(filter: ObjectFilter) -> Self {
+        Self::ActivateNonManaAbilitiesOf(filter)
     }
 
     pub fn cast_creature_spells(filter: PlayerFilter) -> Self {
@@ -896,6 +908,26 @@ impl Restriction {
                         )
                     {
                         tracker.cant_activate_non_mana_abilities.insert(player.id);
+                    }
+                }
+            }
+            Restriction::ActivateAbilitiesOf(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_activate_abilities_of.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::ActivateNonManaAbilitiesOf(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker
+                            .cant_activate_non_mana_abilities_of
+                            .insert(obj_id);
                     }
                 }
             }

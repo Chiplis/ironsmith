@@ -174,6 +174,14 @@ pub struct CantEffectTracker {
     /// Example: Split second while a split-second spell is on the stack.
     pub cant_activate_non_mana_abilities: HashSet<PlayerId>,
 
+    /// Permanents whose activated abilities can't be activated (including mana abilities).
+    /// Example: Collector Ouphe ("Activated abilities of artifacts can't be activated.")
+    pub cant_activate_abilities_of: HashSet<ObjectId>,
+
+    /// Permanents whose non-mana activated abilities can't be activated.
+    /// Example: Damping Matrix ("... can't be activated unless they're mana abilities.")
+    pub cant_activate_non_mana_abilities_of: HashSet<ObjectId>,
+
     /// Players who can't cast creature spells.
     pub cant_cast_creature_spells: HashSet<PlayerId>,
 
@@ -337,6 +345,10 @@ impl CantEffectTracker {
         self.cant_cast_spells.extend(other.cant_cast_spells);
         self.cant_activate_non_mana_abilities
             .extend(other.cant_activate_non_mana_abilities);
+        self.cant_activate_abilities_of
+            .extend(other.cant_activate_abilities_of);
+        self.cant_activate_non_mana_abilities_of
+            .extend(other.cant_activate_non_mana_abilities_of);
         self.cant_cast_creature_spells
             .extend(other.cant_cast_creature_spells);
         self.cant_cast_more_than_one_spell_each_turn
@@ -372,6 +384,8 @@ impl CantEffectTracker {
         self.cant_be_sacrificed.clear();
         self.cant_cast_spells.clear();
         self.cant_activate_non_mana_abilities.clear();
+        self.cant_activate_abilities_of.clear();
+        self.cant_activate_non_mana_abilities_of.clear();
         self.cant_cast_creature_spells.clear();
         self.cant_cast_more_than_one_spell_each_turn.clear();
         self.cant_draw.clear();
@@ -481,6 +495,16 @@ impl CantEffectTracker {
     /// Check if a player can activate non-mana abilities.
     pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
         !self.cant_activate_non_mana_abilities.contains(&player)
+    }
+
+    /// Check if activated abilities of a permanent can be activated (including mana abilities).
+    pub fn can_activate_abilities_of(&self, source: ObjectId) -> bool {
+        !self.cant_activate_abilities_of.contains(&source)
+    }
+
+    /// Check if non-mana activated abilities of a permanent can be activated.
+    pub fn can_activate_non_mana_abilities_of(&self, source: ObjectId) -> bool {
+        !self.cant_activate_non_mana_abilities_of.contains(&source)
     }
 
     /// Check if a player can cast creature spells.
@@ -1443,6 +1467,16 @@ impl GameState {
     /// Can the player activate non-mana abilities?
     pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
         self.cant_effects.can_activate_non_mana_abilities(player)
+    }
+
+    /// Can activated abilities of this permanent be activated (including mana abilities)?
+    pub fn can_activate_abilities_of(&self, source: ObjectId) -> bool {
+        self.cant_effects.can_activate_abilities_of(source)
+    }
+
+    /// Can non-mana activated abilities of this permanent be activated?
+    pub fn can_activate_non_mana_abilities_of(&self, source: ObjectId) -> bool {
+        self.cant_effects.can_activate_non_mana_abilities_of(source)
     }
 
     /// Can the player cast creature spells?
@@ -3795,6 +3829,16 @@ mod tests {
             .insert(player);
         assert!(!game.can_activate_non_mana_abilities(player));
 
+        assert!(game.can_activate_abilities_of(obj_id));
+        game.cant_effects.cant_activate_abilities_of.insert(obj_id);
+        assert!(!game.can_activate_abilities_of(obj_id));
+
+        assert!(game.can_activate_non_mana_abilities_of(obj_id));
+        game.cant_effects
+            .cant_activate_non_mana_abilities_of
+            .insert(obj_id);
+        assert!(!game.can_activate_non_mana_abilities_of(obj_id));
+
         assert!(game.can_gain_life(player));
         game.cant_effects.cant_gain_life.insert(player);
         assert!(!game.can_gain_life(player));
@@ -3876,6 +3920,8 @@ mod tests {
         tracker.life_total_cant_change.insert(player);
         tracker.cant_cast_spells.insert(player);
         tracker.cant_activate_non_mana_abilities.insert(player);
+        tracker.cant_activate_abilities_of.insert(object);
+        tracker.cant_activate_non_mana_abilities_of.insert(object);
         tracker.cant_draw.insert(player);
         tracker.cant_be_targeted.insert(object);
         tracker.cant_be_sacrificed.insert(object);
@@ -3946,6 +3992,14 @@ mod tests {
         assert!(
             tracker.cant_activate_non_mana_abilities.is_empty(),
             "cant_activate_non_mana_abilities should be cleared"
+        );
+        assert!(
+            tracker.cant_activate_abilities_of.is_empty(),
+            "cant_activate_abilities_of should be cleared"
+        );
+        assert!(
+            tracker.cant_activate_non_mana_abilities_of.is_empty(),
+            "cant_activate_non_mana_abilities_of should be cleared"
         );
         assert!(tracker.cant_draw.is_empty(), "cant_draw should be cleared");
         assert!(
@@ -4032,6 +4086,140 @@ mod tests {
         assert!(
             !game.can_activate_non_mana_abilities(bob),
             "split second should prevent activating non-mana abilities for all players"
+        );
+    }
+
+    #[test]
+    fn collector_ouphe_blocks_artifact_mana_abilities() {
+        use crate::ability::Ability;
+        use crate::card::CardBuilder;
+        use crate::effect::Restriction;
+        use crate::mana::ManaSymbol;
+        use crate::special_actions::{SpecialAction, can_perform_check};
+        use crate::static_abilities::StaticAbility;
+        use crate::target::ObjectFilter;
+        use crate::types::CardType;
+        use crate::{TotalCost, Zone};
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let artifact = CardBuilder::new(CardId::from_raw(2001), "Test Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_id = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        game.object_mut(artifact_id)
+            .expect("artifact should exist")
+            .abilities
+            .push(Ability::mana(TotalCost::free(), vec![ManaSymbol::Green]));
+
+        let ouphe = CardBuilder::new(CardId::from_raw(2002), "Ouphe Probe")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let ouphe_id = game.create_object_from_card(&ouphe, alice, Zone::Battlefield);
+
+        let mut artifact_filter = ObjectFilter::default();
+        artifact_filter.zone = Some(Zone::Battlefield);
+        artifact_filter.card_types = vec![CardType::Artifact];
+        game.object_mut(ouphe_id)
+            .expect("ouphe should exist")
+            .abilities
+            .push(
+                Ability::static_ability(StaticAbility::restriction(
+                    Restriction::activate_abilities_of(artifact_filter),
+                    "Activated abilities of artifacts can't be activated.".to_string(),
+                ))
+                .with_text("Activated abilities of artifacts can't be activated."),
+            );
+
+        game.update_cant_effects();
+
+        let action = SpecialAction::ActivateManaAbility {
+            permanent_id: artifact_id,
+            ability_index: 0,
+        };
+        assert!(
+            can_perform_check(&action, &game, alice).is_err(),
+            "Collector Ouphe style restriction should prevent artifact mana abilities"
+        );
+    }
+
+    #[test]
+    fn damping_matrix_allows_mana_but_blocks_non_mana_activations() {
+        use crate::ability::{Ability, AbilityKind};
+        use crate::card::CardBuilder;
+        use crate::decision::can_activate_ability_with_restrictions;
+        use crate::effect::{Effect, Restriction};
+        use crate::mana::ManaSymbol;
+        use crate::special_actions::{SpecialAction, can_perform_check};
+        use crate::static_abilities::StaticAbility;
+        use crate::target::ObjectFilter;
+        use crate::types::CardType;
+        use crate::{TotalCost, Zone};
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let artifact = CardBuilder::new(CardId::from_raw(2101), "Matrix Target")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_id = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        game.object_mut(artifact_id)
+            .expect("artifact should exist")
+            .abilities
+            .extend([
+                Ability::mana(TotalCost::free(), vec![ManaSymbol::Green]),
+                Ability::activated(TotalCost::free(), vec![Effect::draw(1)]),
+            ]);
+
+        let matrix = CardBuilder::new(CardId::from_raw(2102), "Matrix Probe")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let matrix_id = game.create_object_from_card(&matrix, alice, Zone::Battlefield);
+
+        let mut artifact_filter = ObjectFilter::default();
+        artifact_filter.zone = Some(Zone::Battlefield);
+        artifact_filter.card_types = vec![CardType::Artifact];
+        let mut creature_filter = ObjectFilter::default();
+        creature_filter.zone = Some(Zone::Battlefield);
+        creature_filter.card_types = vec![CardType::Creature];
+        let mut union = ObjectFilter::default();
+        union.any_of = vec![artifact_filter, creature_filter];
+
+        game.object_mut(matrix_id)
+            .expect("matrix should exist")
+            .abilities
+            .push(
+                Ability::static_ability(StaticAbility::restriction(
+                    Restriction::activate_non_mana_abilities_of(union),
+                    "Activated abilities of artifacts and creatures can't be activated unless they're mana abilities.".to_string(),
+                ))
+                .with_text(
+                    "Activated abilities of artifacts and creatures can't be activated unless they're mana abilities.",
+                ),
+            );
+
+        game.update_cant_effects();
+
+        let mana_action = SpecialAction::ActivateManaAbility {
+            permanent_id: artifact_id,
+            ability_index: 0,
+        };
+        assert!(
+            can_perform_check(&mana_action, &game, alice).is_ok(),
+            "Damping Matrix style restriction should still allow mana abilities"
+        );
+
+        let Some(obj) = game.object(artifact_id) else {
+            panic!("artifact should exist");
+        };
+        let activated = match &obj.abilities[1].kind {
+            AbilityKind::Activated(ab) => ab,
+            other => panic!("expected activated ability, got {other:?}"),
+        };
+        assert!(
+            !can_activate_ability_with_restrictions(&game, artifact_id, 1, activated),
+            "Damping Matrix style restriction should prevent non-mana activated abilities"
         );
     }
 

@@ -509,6 +509,11 @@ fn can_activate_mana_ability(
         return Err(ActionError::InvalidTarget);
     }
 
+    // Rule restriction: activated abilities of this permanent can't be activated.
+    if !game.can_activate_abilities_of(permanent_id) {
+        return Err(ActionError::CantPayCost);
+    }
+
     // Check the ability exists and is a mana ability
     let ability = object
         .abilities
@@ -576,6 +581,11 @@ fn can_activate_mana_ability_check(
     // Check the player controls the object
     if object.controller != player {
         return Err(ActionError::InvalidTarget);
+    }
+
+    // Rule restriction: activated abilities of this permanent can't be activated.
+    if !game.can_activate_abilities_of(permanent_id) {
+        return Err(ActionError::CantPayCost);
     }
 
     // Check the ability exists and is a mana ability

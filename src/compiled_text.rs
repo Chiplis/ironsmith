@@ -6251,6 +6251,18 @@ fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::ActivateAbilitiesOf(filter) => {
+            format!(
+                "activated abilities of {} can't be activated",
+                filter.description()
+            )
+        }
+        crate::effect::Restriction::ActivateNonManaAbilitiesOf(filter) => {
+            format!(
+                "non-mana activated abilities of {} can't be activated",
+                filter.description()
+            )
+        }
         crate::effect::Restriction::CastCreatureSpells(filter) => {
             format!(
                 "{} can't cast creature spells",

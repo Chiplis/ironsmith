@@ -2495,10 +2495,92 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_all_creatures_able_to_block_source_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_activated_abilities_cant_be_activated_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(abilities) = parse_cant_clauses(tokens)? {
         return Ok(Some(abilities));
     }
     Ok(None)
+}
+
+fn parse_activated_abilities_cant_be_activated_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    use crate::effect::Restriction;
+
+    let normalized = words(tokens);
+    if normalized.len() < 6 || !normalized.starts_with(&["activated", "abilities", "of"]) {
+        return Ok(None);
+    }
+
+    let Some(cant_idx) = normalized.iter().position(|word| *word == "cant") else {
+        return Ok(None);
+    };
+    if cant_idx <= 3 {
+        return Ok(None);
+    }
+
+    let tail = &normalized[cant_idx..];
+    if !tail.starts_with(&["cant", "be", "activated"]) {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[3..cant_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    // "Activated abilities of artifacts and creatures ..." should be a union of types.
+    // Our general object filter parser treats type lists joined by "and" as intersection,
+    // which is correct for many adjective chains, but incorrect for this rules pattern.
+    let subject_words: Vec<&str> = words(&subject_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+
+    let filter = if subject_words.len() == 3 && subject_words[1] == "and" {
+        let t1 = subject_words[0].strip_suffix('s').unwrap_or(subject_words[0]);
+        let t2 = subject_words[2].strip_suffix('s').unwrap_or(subject_words[2]);
+        if let (Some(ct1), Some(ct2)) = (parse_card_type(t1), parse_card_type(t2)) {
+            let mut a = ObjectFilter::default();
+            a.zone = Some(Zone::Battlefield);
+            a.card_types = vec![ct1];
+
+            let mut b = ObjectFilter::default();
+            b.zone = Some(Zone::Battlefield);
+            b.card_types = vec![ct2];
+
+            let mut disjunction = ObjectFilter::default();
+            disjunction.any_of = vec![a, b];
+            disjunction
+        } else {
+            parse_object_filter(&subject_tokens, false)?
+        }
+    } else {
+        parse_object_filter(&subject_tokens, false)?
+    };
+
+    let non_mana_only = normalized
+        .windows(4)
+        .any(|window| window == ["unless", "theyre", "mana", "abilities"]);
+
+    let restriction = if non_mana_only {
+        Restriction::activate_non_mana_abilities_of(filter)
+    } else {
+        Restriction::activate_abilities_of(filter)
+    };
+
+    let display_subject = subject_words.join(" ");
+    let display = if non_mana_only {
+        format!(
+            "Activated abilities of {display_subject} can't be activated unless they're mana abilities."
+        )
+    } else {
+        format!("Activated abilities of {display_subject} can't be activated.")
+    };
+
+    Ok(Some(StaticAbility::restriction(restriction, display)))
 }
 
 fn parse_can_block_additional_creature_each_combat_line(

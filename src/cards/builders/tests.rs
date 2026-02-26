@@ -2336,6 +2336,62 @@ fn test_parse_this_token_cant_attack_or_block_alone_static_line() {
 }
 
 #[test]
+fn test_parse_activated_abilities_of_artifacts_cant_be_activated_static_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Collector Ouphe Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Activated abilities of artifacts can't be activated.")
+        .expect("activated-abilities-of restriction should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("activated abilities of artifacts can't be activated"),
+        "expected activated-abilities-of restriction text, got {rendered}"
+    );
+
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        static_ids.contains(&StaticAbilityId::RuleRestriction),
+        "expected rule-restriction static ability id, got {static_ids:?}"
+    );
+}
+
+#[test]
+fn test_parse_activated_abilities_of_artifacts_and_creatures_unless_mana_static_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Damping Matrix Probe")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Activated abilities of artifacts and creatures can't be activated unless they're mana abilities.",
+        )
+        .expect("matrix-style restriction should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("activated abilities of artifacts and creatures can't be activated unless they're mana abilities"),
+        "expected matrix-style restriction text, got {rendered}"
+    );
+
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        static_ids.contains(&StaticAbilityId::RuleRestriction),
+        "expected rule-restriction static ability id, got {static_ids:?}"
+    );
+}
+
+#[test]
 fn test_parse_lands_dont_untap_during_controllers_steps_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rising Waters Probe")
         .card_types(vec![CardType::Enchantment])

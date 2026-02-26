@@ -780,6 +780,14 @@ pub(crate) fn can_activate_ability_with_restrictions(
         return false;
     }
 
+    // Object-scoped "can't activate" restrictions (Collector Ouphe / Damping Matrix style).
+    if !game.can_activate_abilities_of(source) {
+        return false;
+    }
+    if !activated.is_mana_ability() && !game.can_activate_non_mana_abilities_of(source) {
+        return false;
+    }
+
     let max_activations_per_turn = activated.max_activations_per_turn();
     let activation_count = game.ability_activation_count_this_turn(source, ability_index);
     if let Some(max_activations) = max_activations_per_turn
@@ -1757,6 +1765,11 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
         };
 
         if perm.controller != player {
+            continue;
+        }
+
+        // Collector Ouphe style restrictions prevent activating mana abilities too.
+        if !game.can_activate_abilities_of(perm_id) {
             continue;
         }
 
