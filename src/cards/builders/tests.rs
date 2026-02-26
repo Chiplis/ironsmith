@@ -8070,6 +8070,42 @@ fn parse_destroy_target_creature_dealt_damage_this_turn() {
 }
 
 #[test]
+fn parse_next_damage_redirect_to_target_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nomads en-Kor Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{0}: The next 1 damage that would be dealt to this creature this turn is dealt to target creature you control instead.",
+        )
+        .expect("parse next-damage redirect clause");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "the next 1 damage that would be dealt to this creature this turn is dealt to target creature you control instead"
+        ),
+        "expected redirected-next-damage text in compiled output, got {joined}"
+    );
+}
+
+#[test]
+fn parse_next_time_source_damage_redirect_to_this_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Shaman en-Kor Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{1}{W}: The next time a source of your choice would deal damage to target creature this turn, that damage is dealt to this creature instead.",
+        )
+        .expect("parse next-time source redirect clause");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "the next time a source of your choice would deal damage to target creature this turn, that damage is dealt to this creature instead"
+        ),
+        "expected next-time source redirect text in compiled output, got {joined}"
+    );
+}
+
+#[test]
 fn parse_spells_cost_modifier_subtype_does_not_force_creature_word() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinosaur Cost Variant")
         .card_types(vec![CardType::Creature])

@@ -20772,6 +20772,9 @@ fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextErr
 fn parse_effect_sentence_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
     parser_trace("parse_effect_sentence:entry", tokens);
     let sentence_words = words(tokens);
+    if let Some(effects) = parse_redirect_next_damage_sentence(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_prevent_next_time_damage_sentence(tokens)? {
         return Ok(effects);
     }
@@ -30926,6 +30929,196 @@ fn parse_prevent_next_time_damage_sentence(
     }]))
 }
 
+fn parse_redirect_next_damage_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.starts_with(&["the", "next", "time"]) {
+        let Some(would_idx) = clause_words.iter().position(|word| *word == "would") else {
+            return Ok(None);
+        };
+        if clause_words.get(would_idx + 1..would_idx + 4)
+            != Some(["deal", "damage", "to"].as_slice())
+        {
+            return Ok(None);
+        }
+
+        let this_turn_rel = clause_words[would_idx + 4..]
+            .windows(2)
+            .position(|window| window == ["this", "turn"])
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported redirected-next-time damage duration (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        let this_turn_idx = (would_idx + 4) + this_turn_rel;
+
+        let source_words = &clause_words[3..would_idx];
+        if source_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing redirected-next-time damage source (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let source = if source_words
+            .windows(3)
+            .any(|window| window == ["of", "your", "choice"])
+        {
+            PreventNextTimeDamageSourceAst::Choice
+        } else {
+            let mut words = source_words.to_vec();
+            if words.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+                words.remove(0);
+            }
+            if words.last().copied() == Some("source") {
+                words.pop();
+            }
+            let mut filter = ObjectFilter::default();
+            let mut colors: Option<crate::color::ColorSet> = None;
+            for word in words {
+                if matches!(word, "or" | "and") {
+                    continue;
+                }
+                if let Some(color) = parse_color(word) {
+                    colors = Some(
+                        colors
+                            .unwrap_or_else(crate::color::ColorSet::new)
+                            .union(color),
+                    );
+                    continue;
+                }
+                if let Some(card_type) = parse_card_type(word) {
+                    if !filter.card_types.contains(&card_type) {
+                        filter.card_types.push(card_type);
+                    }
+                    continue;
+                }
+                if word == "shadow" {
+                    filter = filter.with_static_ability(StaticAbilityId::Shadow);
+                    continue;
+                }
+            }
+            if let Some(colors) = colors {
+                filter.colors = Some(colors);
+            }
+            PreventNextTimeDamageSourceAst::Filter(filter)
+        };
+
+        let target_words = &clause_words[would_idx + 4..this_turn_idx];
+        if target_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing redirected-next-time damage target (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let target_tokens = target_words
+            .iter()
+            .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let target = parse_target_phrase(&target_tokens)?;
+
+        let tail = &clause_words[this_turn_idx + 2..];
+        if tail.len() < 7
+            || !tail.starts_with(&["that", "damage", "is", "dealt", "to"])
+            || tail.last().copied() != Some("instead")
+        {
+            return Ok(None);
+        }
+        let redirect_words = &tail[5..tail.len() - 1];
+        let redirects_to_source = matches!(
+            redirect_words,
+            ["this"] | ["it"] | ["this", "creature"] | ["this", "permanent"]
+        );
+        if !redirects_to_source {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported redirected-next-time damage destination (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        return Ok(Some(vec![EffectAst::RedirectNextTimeDamageToSource {
+            source,
+            target,
+        }]));
+    }
+
+    if !clause_words.starts_with(&["the", "next"]) {
+        return Ok(None);
+    }
+
+    let amount_token = Token::Word(
+        clause_words.get(2).copied().unwrap_or_default().to_string(),
+        TextSpan::synthetic(),
+    );
+    let Some((amount, amount_used)) = parse_value(&[amount_token]) else {
+        return Ok(None);
+    };
+    if amount_used != 1 {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported redirected-next-damage amount (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let mut idx = 3usize;
+    if clause_words.get(idx..idx + 6)
+        != Some(["damage", "that", "would", "be", "dealt", "to"].as_slice())
+    {
+        return Ok(None);
+    }
+    idx += 6;
+
+    let this_turn_rel = clause_words[idx..]
+        .windows(2)
+        .position(|window| window == ["this", "turn"])
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported redirected-next-damage duration (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+    let this_turn_idx = idx + this_turn_rel;
+    let protected_words = &clause_words[idx..this_turn_idx];
+    let protects_source = matches!(
+        protected_words,
+        ["this"] | ["it"] | ["this", "creature"] | ["this", "permanent"]
+    );
+    if !protects_source {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported redirected-next-damage protected target (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let tail = &clause_words[this_turn_idx + 2..];
+    if tail.len() < 5
+        || !tail.starts_with(&["is", "dealt", "to"])
+        || tail.last().copied() != Some("instead")
+    {
+        return Ok(None);
+    }
+
+    let target_words = &tail[3..tail.len() - 1];
+    if target_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing redirected-next-damage target (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let target_tokens = target_words
+        .iter()
+        .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let target = parse_target_phrase(&target_tokens)?;
+
+    Ok(Some(vec![EffectAst::RedirectNextDamageFromSourceToTarget {
+        amount,
+        target,
+    }]))
+}
+
 fn parse_prevent_next_damage_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.first().copied() != Some("prevent") {
@@ -36657,6 +36850,38 @@ mod parse_parsing_tests {
             EffectAst::PreventNextTimeDamage {
                 source: PreventNextTimeDamageSourceAst::Choice,
                 target: PreventNextTimeDamageTargetAst::AnyTarget
+            }
+        )));
+    }
+
+    #[test]
+    fn parse_redirect_next_damage_sentence_to_target_creature() {
+        let tokens = tokenize_line(
+            "The next 1 damage that would be dealt to this creature this turn is dealt to target creature you control instead.",
+            0,
+        );
+        let effects = parse_effect_sentence(&tokens).expect("parse effect sentence");
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            EffectAst::RedirectNextDamageFromSourceToTarget {
+                amount: Value::Fixed(1),
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn parse_redirect_next_time_source_damage_to_this_creature() {
+        let tokens = tokenize_line(
+            "The next time a source of your choice would deal damage to target creature this turn, that damage is dealt to this creature instead.",
+            0,
+        );
+        let effects = parse_effect_sentence(&tokens).expect("parse effect sentence");
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            EffectAst::RedirectNextTimeDamageToSource {
+                source: PreventNextTimeDamageSourceAst::Choice,
+                ..
             }
         )));
     }

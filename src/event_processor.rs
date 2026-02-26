@@ -44,7 +44,7 @@ pub enum ReplacementPriority {
 ///
 /// This is the main entry point for event processing. It finds and applies
 /// applicable replacement effects using trait-based matchers.
-pub fn process_trait_event(game: &GameState, event: Event) -> TraitEventResult {
+pub fn process_trait_event(game: &mut GameState, event: Event) -> TraitEventResult {
     let mut state = TraitEventProcessingState::default();
     process_event_direct(game, event, &mut state, &[])
 }
@@ -55,7 +55,7 @@ pub fn process_trait_event(game: &GameState, event: Event) -> TraitEventResult {
 /// which is needed for effects like shock lands' "pay 2 life or enter tapped" that apply
 /// to the object while it's still in the source zone (before it enters the battlefield).
 pub fn process_trait_event_with_self_effects(
-    game: &GameState,
+    game: &mut GameState,
     event: Event,
     self_effects: &[ReplacementEffect],
 ) -> TraitEventResult {
@@ -99,7 +99,7 @@ impl TraitEventProcessingState {
 
 /// Process an event directly using trait-based matchers.
 fn process_event_direct(
-    game: &GameState,
+    game: &mut GameState,
     event: Event,
     state: &mut TraitEventProcessingState,
     self_effects: &[ReplacementEffect],
@@ -157,6 +157,7 @@ fn process_event_direct(
 
     let result = apply_trait_replacement(game, event.clone(), &chosen_effect);
     state.mark_applied(effect_id);
+    consume_one_shot_if_applied(game, effect_id, &result);
 
     match result {
         TraitApplyResult::Modified(modified_event) => {
@@ -180,6 +181,16 @@ fn process_event_direct(
             filter,
             life_cost,
         },
+    }
+}
+
+fn consume_one_shot_if_applied(
+    game: &mut GameState,
+    effect_id: ReplacementEffectId,
+    result: &TraitApplyResult,
+) {
+    if !matches!(result, TraitApplyResult::Unchanged(_)) {
+        game.replacement_effects.mark_effect_used(effect_id);
     }
 }
 
@@ -785,6 +796,47 @@ fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::RedirectDamageAmount {
+            target,
+            which,
+            amount,
+        } => {
+            use crate::events::{DamageEvent, downcast_event};
+            use crate::game_event::DamageTarget;
+            use crate::game_state::Target;
+
+            if *amount == 0 {
+                return TraitApplyResult::Unchanged(event);
+            }
+
+            let Some(damage) = downcast_event::<DamageEvent>(event.inner()) else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let Some(new_target) =
+                resolve_trait_redirect_target(event.inner(), target, which, effect.controller)
+            else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let redirected_target = match new_target {
+                Target::Player(player_id) => DamageTarget::Player(player_id),
+                Target::Object(object_id) => DamageTarget::Object(object_id),
+            };
+
+            let redirected_amount = (*amount).min(damage.amount);
+            if redirected_amount == 0 {
+                return TraitApplyResult::Unchanged(event);
+            }
+
+            let mut modified = damage
+                .with_target(redirected_target)
+                .with_amount(redirected_amount);
+            if damage.amount > redirected_amount {
+                modified =
+                    modified.with_remainder(damage.target, damage.amount - redirected_amount);
+            }
+            TraitApplyResult::Modified(Event::new(modified))
+        }
+
         ReplacementAction::Additionally(_effects) => {
             // For "additionally" effects, proceed with original (additional effects handled separately)
             TraitApplyResult::Modified(event)
@@ -1173,14 +1225,32 @@ fn apply_trait_redirect(
     effect_controller: PlayerId,
     _effect_source: crate::ids::ObjectId,
 ) -> Option<Event> {
+    let new_target =
+        resolve_trait_redirect_target(event.0.as_ref(), redirect_target, which, effect_controller)?;
+    let redirectable = event.0.redirectable_targets();
+    let selected = match which {
+        crate::replacement::RedirectWhich::First => redirectable.first(),
+        crate::replacement::RedirectWhich::Index(idx) => redirectable.get(*idx),
+        crate::replacement::RedirectWhich::ByDescription(desc) => {
+            redirectable.iter().find(|t| t.description == *desc)
+        }
+    }?;
+    let new_event_box = event
+        .0
+        .with_target_replaced(&selected.target, &new_target)?;
+    Some(Event(new_event_box))
+}
+
+fn resolve_trait_redirect_target(
+    event: &dyn crate::events::traits::GameEventType,
+    redirect_target: &crate::replacement::RedirectTarget,
+    which: &crate::replacement::RedirectWhich,
+    effect_controller: PlayerId,
+) -> Option<crate::game_state::Target> {
     use crate::game_state::Target;
     use crate::replacement::{RedirectTarget, RedirectWhich};
 
-    let redirectable = event.0.redirectable_targets();
-    if redirectable.is_empty() {
-        return None;
-    }
-
+    let redirectable = event.redirectable_targets();
     let selected = match which {
         RedirectWhich::First => redirectable.first(),
         RedirectWhich::Index(idx) => redirectable.get(*idx),
@@ -1191,17 +1261,13 @@ fn apply_trait_redirect(
         RedirectTarget::ToController => Target::Player(effect_controller),
         RedirectTarget::ToPlayer(player_id) => Target::Player(*player_id),
         RedirectTarget::ToObject(object_id) => Target::Object(*object_id),
-        RedirectTarget::ToSource => Target::Object(event.0.source_object()?),
+        RedirectTarget::ToSource => Target::Object(event.source_object()?),
     };
 
     if !selected.valid_redirect_types.is_valid(&new_target) {
         return None;
     }
-
-    let new_event_box = event
-        .0
-        .with_target_replaced(&selected.target, &new_target)?;
-    Some(Event(new_event_box))
+    Some(new_target)
 }
 
 /// Result of processing an event through replacement effects.
@@ -1661,7 +1727,7 @@ pub fn process_draw(
 /// Takes a mutable reference to the Option so the decision maker can be reused by the caller
 /// for subsequent processing (e.g., zone change after destruction).
 fn process_with_dm(
-    game: &GameState,
+    game: &mut GameState,
     event: Event,
     dm: &mut (impl DecisionMaker + ?Sized),
 ) -> TraitEventResult {
@@ -1726,7 +1792,9 @@ fn process_with_dm(
 
                 state.mark_applied(effect_id);
 
-                match apply_trait_replacement(game, *boxed_event, &chosen_effect) {
+                let apply_result = apply_trait_replacement(game, *boxed_event, &chosen_effect);
+                consume_one_shot_if_applied(game, effect_id, &apply_result);
+                match apply_result {
                     TraitApplyResult::Modified(modified_event) => {
                         current_event = modified_event;
                     }
@@ -1834,7 +1902,42 @@ pub fn process_damage_with_event(
     amount: u32,
     is_combat: bool,
 ) -> (u32, bool) {
-    process_damage_with_event_with_source_snapshot(game, source, target, amount, is_combat, None)
+    let processed =
+        process_damage_assignments_with_event_with_source_snapshot(game, source, target, amount, is_combat, None);
+    let original_target_damage = processed
+        .assignments
+        .iter()
+        .filter(|assignment| assignment.target == target)
+        .map(|assignment| assignment.amount)
+        .sum();
+    (original_target_damage, processed.replacement_prevented)
+}
+
+/// A final damage assignment after replacement and prevention effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessedDamageAssignment {
+    pub target: DamageTarget,
+    pub amount: u32,
+}
+
+/// Final result of processing damage through replacement and prevention effects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessedDamageResult {
+    pub assignments: Vec<ProcessedDamageAssignment>,
+    pub replacement_prevented: bool,
+}
+
+/// Process damage and return all final assignments after replacement/prevention.
+pub fn process_damage_assignments_with_event(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    target: DamageTarget,
+    amount: u32,
+    is_combat: bool,
+) -> ProcessedDamageResult {
+    process_damage_assignments_with_event_with_source_snapshot(
+        game, source, target, amount, is_combat, None,
+    )
 }
 
 /// Process a damage event using the Event type, with optional source LKI.
@@ -1842,14 +1945,14 @@ pub fn process_damage_with_event(
 /// When `source_snapshot` is provided and the source object is no longer present
 /// in game state, source-dependent checks (like prevention based on source color/type)
 /// use the snapshot as last known information.
-pub fn process_damage_with_event_with_source_snapshot(
+pub fn process_damage_assignments_with_event_with_source_snapshot(
     game: &mut GameState,
     source: crate::ids::ObjectId,
     target: DamageTarget,
     amount: u32,
     is_combat: bool,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
-) -> (u32, bool) {
+) -> ProcessedDamageResult {
     use crate::events::{DamageEvent, downcast_event};
 
     // Check if damage can be prevented
@@ -1865,28 +1968,103 @@ pub fn process_damage_with_event_with_source_snapshot(
     // Process through the trait-based system
     let result = process_trait_event(game, event);
 
-    let after_replacement = match result {
-        TraitEventResult::Prevented => return (0, true),
+    let replaced = match result {
+        TraitEventResult::Prevented => {
+            return ProcessedDamageResult {
+                assignments: Vec::new(),
+                replacement_prevented: true,
+            };
+        }
         TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
-            // Extract the final damage amount from the event
             if let Some(damage) = downcast_event::<DamageEvent>(e.inner()) {
-                damage.amount
+                damage.clone()
             } else {
                 debug_assert!(
                     false,
                     "damage replacement processing returned a non-DamageEvent"
                 );
-                0
+                DamageEvent::new(source, target, amount, is_combat)
             }
         }
-        _ => amount,
+        _ => DamageEvent::new(source, target, amount, is_combat),
     };
 
-    if after_replacement == 0 {
-        return (0, false);
+    let mut assignments = Vec::new();
+    let final_damage = apply_prevention_for_damage_assignment(
+        game,
+        replaced.target,
+        replaced.amount,
+        replaced.is_combat,
+        replaced.source,
+        source_snapshot,
+        can_prevent,
+    );
+    if final_damage > 0 {
+        assignments.push(ProcessedDamageAssignment {
+            target: replaced.target,
+            amount: final_damage,
+        });
     }
 
-    // Apply prevention shields
+    if let Some((remainder_target, remainder_amount)) = replaced.remainder
+        && remainder_amount > 0
+    {
+        let remainder = process_damage_assignments_with_event_with_source_snapshot(
+            game,
+            replaced.source,
+            remainder_target,
+            remainder_amount,
+            replaced.is_combat,
+            source_snapshot,
+        );
+        assignments.extend(remainder.assignments);
+    }
+
+    ProcessedDamageResult {
+        assignments,
+        replacement_prevented: false,
+    }
+}
+
+/// Backwards-compatible wrapper that reports only damage assigned to the original target.
+pub fn process_damage_with_event_with_source_snapshot(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    target: DamageTarget,
+    amount: u32,
+    is_combat: bool,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+) -> (u32, bool) {
+    let processed = process_damage_assignments_with_event_with_source_snapshot(
+        game,
+        source,
+        target,
+        amount,
+        is_combat,
+        source_snapshot,
+    );
+    let original_target_damage = processed
+        .assignments
+        .iter()
+        .filter(|assignment| assignment.target == target)
+        .map(|assignment| assignment.amount)
+        .sum();
+    (original_target_damage, processed.replacement_prevented)
+}
+
+fn apply_prevention_for_damage_assignment(
+    game: &mut GameState,
+    target: DamageTarget,
+    amount: u32,
+    is_combat: bool,
+    source: crate::ids::ObjectId,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    can_prevent: bool,
+) -> u32 {
+    if amount == 0 {
+        return 0;
+    }
+
     let (source_colors, source_card_types) = if let Some(obj) = game.object(source) {
         (obj.colors(), obj.card_types.clone())
     } else if let Some(snapshot) = source_snapshot {
@@ -1895,10 +2073,10 @@ pub fn process_damage_with_event_with_source_snapshot(
         (crate::color::ColorSet::COLORLESS, Vec::new())
     };
 
-    let final_damage = match target {
+    match target {
         DamageTarget::Player(player_id) => game.prevention_effects.apply_prevention_to_player(
             player_id,
-            after_replacement,
+            amount,
             is_combat,
             source,
             &source_colors,
@@ -1913,7 +2091,7 @@ pub fn process_damage_with_event_with_source_snapshot(
             game.prevention_effects.apply_prevention_to_permanent(
                 object_id,
                 controller,
-                after_replacement,
+                amount,
                 is_combat,
                 source,
                 &source_colors,
@@ -1921,15 +2099,13 @@ pub fn process_damage_with_event_with_source_snapshot(
                 can_prevent,
             )
         }
-    };
-
-    (final_damage, false)
+    }
 }
 
 /// Process a life gain event using the new Event type.
 ///
 /// This is the Event-based version of `process_life_gain_event`.
-pub fn process_life_gain_with_event(game: &GameState, player: PlayerId, amount: u32) -> u32 {
+pub fn process_life_gain_with_event(game: &mut GameState, player: PlayerId, amount: u32) -> u32 {
     use crate::events::{LifeGainEvent, downcast_event};
 
     if !game.can_gain_life(player) {
@@ -1960,7 +2136,7 @@ pub fn process_life_gain_with_event(game: &GameState, player: PlayerId, amount: 
 /// Returns the zone the creature should go to (Graveyard by default, or
 /// another zone if a replacement effect changed it), or None if prevented.
 pub fn process_dies_with_event(
-    game: &GameState,
+    game: &mut GameState,
     creature: crate::ids::ObjectId,
     snapshot: crate::snapshot::ObjectSnapshot,
 ) -> Option<Zone> {
@@ -1991,7 +2167,7 @@ pub fn process_dies_with_event(
 ///
 /// Returns the final destination zone, or None if the change was prevented.
 pub fn process_zone_change_with_event(
-    game: &GameState,
+    game: &mut GameState,
     object: crate::ids::ObjectId,
     from: Zone,
     to: Zone,
@@ -2018,7 +2194,7 @@ pub fn process_zone_change_with_event(
 ///
 /// Returns the final number of counters to place.
 pub fn process_put_counters_with_event(
-    game: &GameState,
+    game: &mut GameState,
     target: crate::ids::ObjectId,
     counter_type: CounterType,
     count: u32,
@@ -2201,7 +2377,9 @@ pub fn process_etb_with_event_and_dm(
                 };
 
                 state.mark_applied(chosen_id);
-                match apply_trait_replacement(game, *event, &chosen_effect) {
+                let apply_result = apply_trait_replacement(game, *event, &chosen_effect);
+                consume_one_shot_if_applied(game, chosen_id, &apply_result);
+                match apply_result {
                     TraitApplyResult::Modified(modified_event) => current_event = modified_event,
                     TraitApplyResult::Prevented => {
                         return EtbEventResult {
@@ -2365,7 +2543,7 @@ pub enum ZoneChangeResult {
 /// including `Replaced` and `NeedsChoice` cases that the simpler
 /// `process_zone_change_with_event` doesn't support.
 pub fn process_zone_change_full(
-    game: &GameState,
+    game: &mut GameState,
     object: crate::ids::ObjectId,
     from: Zone,
     to: Zone,
@@ -2427,7 +2605,7 @@ pub enum DrawResult {
 /// This is the comprehensive version that returns all possible outcomes,
 /// using the new Event type.
 pub fn process_draw_full(
-    game: &GameState,
+    game: &mut GameState,
     player: PlayerId,
     count: u32,
     is_first_this_turn: bool,
@@ -2472,18 +2650,23 @@ pub fn process_draw_full(
 /// When a player chooses which replacement effect to apply (per Rule 616.1e),
 /// this function applies that effect and continues processing.
 pub fn process_event_with_chosen_replacement_trait(
-    game: &GameState,
+    game: &mut GameState,
     event: Event,
     chosen_effect_id: ReplacementEffectId,
 ) -> TraitEventResult {
     // Get the chosen effect
-    let Some(effect) = game.replacement_effects.get_effect(chosen_effect_id) else {
+    let Some(effect) = game
+        .replacement_effects
+        .get_effect(chosen_effect_id)
+        .cloned()
+    else {
         // Effect no longer exists - just process normally
         return process_trait_event(game, event);
     };
 
     // Apply the chosen replacement effect
-    let apply_result = apply_trait_replacement(game, event.clone(), effect);
+    let apply_result = apply_trait_replacement(game, event.clone(), &effect);
+    consume_one_shot_if_applied(game, chosen_effect_id, &apply_result);
 
     // Create state with the chosen effect marked as applied
     let mut state = TraitEventProcessingState::default();
@@ -2644,6 +2827,58 @@ mod tests {
             noncombat_damage, 3,
             "Noncombat damage should not be doubled"
         );
+    }
+
+    #[test]
+    fn test_redirect_damage_amount_splits_and_consumes_one_shot() {
+        use crate::events::DamageToSelfMatcher;
+        use crate::replacement::{
+            RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect,
+        };
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let attacker = ObjectId::from_raw(10);
+        let protected = ObjectId::from_raw(20);
+        let redirected = ObjectId::from_raw(30);
+
+        let effect = ReplacementEffect::with_matcher(
+            protected,
+            alice,
+            DamageToSelfMatcher::new(),
+            ReplacementAction::RedirectDamageAmount {
+                target: RedirectTarget::ToObject(redirected),
+                which: RedirectWhich::First,
+                amount: 1,
+            },
+        );
+        game.replacement_effects.add_one_shot_effect(effect);
+
+        let first = process_damage_assignments_with_event(
+            &mut game,
+            attacker,
+            DamageTarget::Object(protected),
+            3,
+            false,
+        );
+        assert!(!first.replacement_prevented);
+        assert_eq!(first.assignments.len(), 2);
+        assert_eq!(first.assignments[0].target, DamageTarget::Object(redirected));
+        assert_eq!(first.assignments[0].amount, 1);
+        assert_eq!(first.assignments[1].target, DamageTarget::Object(protected));
+        assert_eq!(first.assignments[1].amount, 2);
+
+        let second = process_damage_assignments_with_event(
+            &mut game,
+            attacker,
+            DamageTarget::Object(protected),
+            3,
+            false,
+        );
+        assert!(!second.replacement_prevented);
+        assert_eq!(second.assignments.len(), 1);
+        assert_eq!(second.assignments[0].target, DamageTarget::Object(protected));
+        assert_eq!(second.assignments[0].amount, 3);
     }
 
     #[test]

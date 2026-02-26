@@ -159,6 +159,7 @@ impl Event {
             amount,
             is_combat,
             is_unpreventable: false,
+            remainder: None,
         })
     }
 
@@ -175,6 +176,7 @@ impl Event {
             amount,
             is_combat,
             is_unpreventable: true,
+            remainder: None,
         })
     }
 

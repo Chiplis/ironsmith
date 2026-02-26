@@ -91,7 +91,8 @@ pub use counters::{
 };
 pub use damage::{
     ClearDamageEffect, DealDamageEffect, PreventNextTimeDamageEffect, PreventNextTimeDamageSource,
-    PreventNextTimeDamageTarget,
+    PreventNextTimeDamageTarget, RedirectNextDamageToTargetEffect,
+    RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
 };
 pub use delayed::{
     ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,

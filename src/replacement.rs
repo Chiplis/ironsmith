@@ -69,6 +69,21 @@ pub enum ReplacementAction {
         which: RedirectWhich,
     },
 
+    /// Redirect up to a fixed amount of damage to a different target.
+    ///
+    /// This is used by effects like:
+    /// "The next 1 damage that would be dealt to this creature this turn is dealt to target creature instead."
+    ///
+    /// If the event's damage amount is larger than `amount`, only `amount` is redirected and
+    /// the remainder stays on the original target.
+    RedirectDamageAmount {
+        target: RedirectTarget,
+        /// Which redirectable target to rewrite (default: First).
+        which: RedirectWhich,
+        /// Maximum damage to redirect from a single matching event.
+        amount: u32,
+    },
+
     /// Change the zone an object would go to
     ChangeDestination(Zone),
 

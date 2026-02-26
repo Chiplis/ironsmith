@@ -20,6 +20,11 @@ pub struct DamageEvent {
     pub is_combat: bool,
     /// Whether this damage cannot be prevented
     pub is_unpreventable: bool,
+    /// Optional remaining damage that should be processed as a follow-up event.
+    ///
+    /// This is used for partial-redirection effects that split one damage event
+    /// into a redirected chunk plus a remainder to the original target.
+    pub remainder: Option<(DamageTarget, u32)>,
 }
 
 impl DamageEvent {
@@ -31,6 +36,7 @@ impl DamageEvent {
             amount,
             is_combat,
             is_unpreventable: false,
+            remainder: None,
         }
     }
 
@@ -47,6 +53,7 @@ impl DamageEvent {
             amount,
             is_combat,
             is_unpreventable: true,
+            remainder: None,
         }
     }
 
@@ -86,6 +93,14 @@ impl DamageEvent {
     pub fn with_target(&self, target: DamageTarget) -> Self {
         Self {
             target,
+            ..self.clone()
+        }
+    }
+
+    /// Return a new event with a follow-up remainder chunk.
+    pub fn with_remainder(&self, target: DamageTarget, amount: u32) -> Self {
+        Self {
+            remainder: Some((target, amount)),
             ..self.clone()
         }
     }

@@ -12645,6 +12645,36 @@ fn describe_effect_impl(effect: &Effect) -> String {
             "Prevent the next time {source_text} would deal damage to {target_text} this turn"
         );
     }
+    if let Some(redirect_next) =
+        effect.downcast_ref::<crate::effects::RedirectNextDamageToTargetEffect>()
+    {
+        return format!(
+            "The next {} damage that would be dealt to this creature this turn is dealt to {} instead",
+            describe_value(&redirect_next.amount),
+            describe_choose_spec(&redirect_next.target)
+        );
+    }
+    if let Some(redirect_next_time) =
+        effect.downcast_ref::<crate::effects::RedirectNextTimeDamageToSourceEffect>()
+    {
+        let source_text = match &redirect_next_time.source {
+            crate::effects::RedirectNextTimeDamageSource::Choice => {
+                "a source of your choice".to_string()
+            }
+            crate::effects::RedirectNextTimeDamageSource::Filter(filter) => {
+                let desc = filter.description();
+                if desc.is_empty() {
+                    "a source".to_string()
+                } else {
+                    format!("{desc} source")
+                }
+            }
+        };
+        return format!(
+            "The next time {source_text} would deal damage to {} this turn, that damage is dealt to this creature instead",
+            describe_choose_spec(&redirect_next_time.target)
+        );
+    }
     if let Some(prevent_from) =
         effect.downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>()
     {

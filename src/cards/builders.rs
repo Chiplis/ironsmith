@@ -657,6 +657,14 @@ enum EffectAst {
         source: PreventNextTimeDamageSourceAst,
         target: PreventNextTimeDamageTargetAst,
     },
+    RedirectNextDamageFromSourceToTarget {
+        amount: Value,
+        target: TargetAst,
+    },
+    RedirectNextTimeDamageToSource {
+        source: PreventNextTimeDamageSourceAst,
+        target: TargetAst,
+    },
     PreventDamageEach {
         amount: Value,
         filter: ObjectFilter,

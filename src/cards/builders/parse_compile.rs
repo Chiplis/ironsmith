@@ -2938,6 +2938,31 @@ fn compile_effect(
                 Vec::new(),
             ))
         }
+        EffectAst::RedirectNextDamageFromSourceToTarget { amount, target } => {
+            let amount = resolve_value_it_tag(amount, ctx)?;
+            compile_effect_for_target(target, ctx, |spec| {
+                Effect::new(crate::effects::RedirectNextDamageToTargetEffect::new(
+                    amount.clone(),
+                    spec,
+                ))
+            })
+        }
+        EffectAst::RedirectNextTimeDamageToSource { source, target } => {
+            let source_spec = match source {
+                PreventNextTimeDamageSourceAst::Choice => {
+                    crate::effects::RedirectNextTimeDamageSource::Choice
+                }
+                PreventNextTimeDamageSourceAst::Filter(filter) => {
+                    crate::effects::RedirectNextTimeDamageSource::Filter(resolve_it_tag(filter, ctx)?)
+                }
+            };
+            compile_effect_for_target(target, ctx, |spec| {
+                Effect::new(crate::effects::RedirectNextTimeDamageToSourceEffect::new(
+                    source_spec.clone(),
+                    spec,
+                ))
+            })
+        }
         EffectAst::PreventDamageEach {
             amount,
             filter,

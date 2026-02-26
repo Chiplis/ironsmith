@@ -1635,14 +1635,14 @@ pub fn execute_combat_damage_step(
 
     // Now apply all blocker damage.
     for (blocker_id, attacker_id, controller, _assigned, damage_result) in blocker_damage_info {
-        let dealt_damage = apply_damage_to_permanent(game, attacker_id, blocker_id, &damage_result);
+        let applied = apply_damage_to_permanent(game, attacker_id, blocker_id, &damage_result);
 
         // Apply lifelink (through event processing)
-        if damage_result.has_lifelink && dealt_damage > 0 {
+        if damage_result.has_lifelink && applied.total_damage_dealt > 0 {
             let life_to_gain = crate::event_processor::process_life_gain_with_event(
                 game,
                 controller,
-                dealt_damage,
+                applied.total_damage_dealt,
             );
             if life_to_gain > 0
                 && let Some(player) = game.player_mut(controller)
@@ -1654,7 +1654,7 @@ pub fn execute_combat_damage_step(
         damage_events.push(CombatDamageEvent {
             source: blocker_id,
             target: DamageEventTarget::Object(attacker_id),
-            amount: dealt_damage,
+            amount: applied.damage_dealt,
             life_lost: 0,
             result: damage_result,
         });
@@ -1728,14 +1728,14 @@ fn deal_damage_to_blockers(
 
     // Now apply all damage (borrow of attacker is dropped)
     for (blocker_id, damage_result) in blocker_damages {
-        let dealt_damage = apply_damage_to_permanent(game, blocker_id, attacker_id, &damage_result);
+        let applied = apply_damage_to_permanent(game, blocker_id, attacker_id, &damage_result);
 
         // Apply lifelink (through event processing)
-        if damage_result.has_lifelink && dealt_damage > 0 {
+        if damage_result.has_lifelink && applied.total_damage_dealt > 0 {
             let life_to_gain = crate::event_processor::process_life_gain_with_event(
                 game,
                 controller,
-                dealt_damage,
+                applied.total_damage_dealt,
             );
             if life_to_gain > 0
                 && let Some(player) = game.player_mut(controller)
@@ -1747,7 +1747,7 @@ fn deal_damage_to_blockers(
         events.push(CombatDamageEvent {
             source: attacker_id,
             target: DamageEventTarget::Object(blocker_id),
-            amount: dealt_damage,
+            amount: applied.damage_dealt,
             life_lost: 0,
             result: damage_result,
         });
@@ -1758,11 +1758,11 @@ fn deal_damage_to_blockers(
         let applied = apply_damage_to_player(game, player_id, attacker_id, &damage_result);
 
         // Apply lifelink (through event processing)
-        if damage_result.has_lifelink && applied.damage_dealt > 0 {
+        if damage_result.has_lifelink && applied.total_damage_dealt > 0 {
             let life_to_gain = crate::event_processor::process_life_gain_with_event(
                 game,
                 controller,
-                applied.damage_dealt,
+                applied.total_damage_dealt,
             );
             if life_to_gain > 0
                 && let Some(player) = game.player_mut(controller)
@@ -1806,11 +1806,11 @@ fn deal_damage_to_defender(
             let applied = apply_damage_to_player(game, *player_id, attacker_id, &damage_result);
 
             // Apply lifelink (through event processing)
-            if damage_result.has_lifelink && applied.damage_dealt > 0 {
+            if damage_result.has_lifelink && applied.total_damage_dealt > 0 {
                 let life_to_gain = crate::event_processor::process_life_gain_with_event(
                     game,
                     controller,
-                    applied.damage_dealt,
+                    applied.total_damage_dealt,
                 );
                 if life_to_gain > 0
                     && let Some(player) = game.player_mut(controller)
@@ -1828,14 +1828,13 @@ fn deal_damage_to_defender(
             })
         }
         AttackTarget::Planeswalker(pw_id) => {
-            use crate::event_processor::process_damage_with_event;
+            use crate::event_processor::process_damage_assignments_with_event;
             use crate::game_event::DamageTarget as EventDamageTarget;
 
             let damage_result =
                 calculate_damage_with_game(game, attacker, DamageTarget::Permanent, damage, true);
 
-            // Process through replacement/prevention effects
-            let (final_damage, was_prevented) = process_damage_with_event(
+            let processed = process_damage_assignments_with_event(
                 game,
                 attacker_id,
                 EventDamageTarget::Object(*pw_id),
@@ -1843,26 +1842,65 @@ fn deal_damage_to_defender(
                 true, // is_combat
             );
 
-            // Damage to planeswalker removes loyalty counters
-            if !was_prevented
-                && final_damage > 0
-                && let Some(pw) = game.object_mut(*pw_id)
-            {
-                let current_loyalty = pw.counters.get(&CounterType::Loyalty).copied().unwrap_or(0);
-                let new_loyalty = current_loyalty.saturating_sub(final_damage);
-                if new_loyalty == 0 {
-                    pw.counters.remove(&CounterType::Loyalty);
-                } else {
-                    pw.counters.insert(CounterType::Loyalty, new_loyalty);
+            let mut final_damage = 0u32;
+            let mut total_damage_dealt = 0u32;
+            if !processed.replacement_prevented {
+                for assignment in processed.assignments {
+                    total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
+                    match assignment.target {
+                        EventDamageTarget::Object(object_id) => {
+                            if object_id == *pw_id {
+                                if let Some(pw) = game.object_mut(*pw_id) {
+                                    let current_loyalty =
+                                        pw.counters.get(&CounterType::Loyalty).copied().unwrap_or(0);
+                                    let new_loyalty = current_loyalty.saturating_sub(assignment.amount);
+                                    if new_loyalty == 0 {
+                                        pw.counters.remove(&CounterType::Loyalty);
+                                    } else {
+                                        pw.counters.insert(CounterType::Loyalty, new_loyalty);
+                                    }
+                                }
+                                final_damage = final_damage.saturating_add(assignment.amount);
+                                continue;
+                            }
+                            if damage_result.has_infect || damage_result.has_wither {
+                                if let Some(permanent) = game.object_mut(object_id) {
+                                    *permanent
+                                        .counters
+                                        .entry(CounterType::MinusOneMinusOne)
+                                        .or_insert(0) += assignment.amount;
+                                }
+                            } else {
+                                game.mark_damage(object_id, assignment.amount);
+                            }
+                            if game
+                                .object(object_id)
+                                .is_some_and(|o| o.has_card_type(crate::types::CardType::Creature))
+                            {
+                                game.record_creature_damaged_by_this_turn(object_id, attacker_id);
+                            }
+                        }
+                        EventDamageTarget::Player(player_id) => {
+                            if damage_result.has_infect {
+                                if let Some(player) = game.player_mut(player_id) {
+                                    player.poison_counters += assignment.amount;
+                                }
+                            } else if game.can_change_life_total(player_id)
+                                && let Some(player) = game.player_mut(player_id)
+                            {
+                                player.life -= assignment.amount as i32;
+                            }
+                        }
+                    }
                 }
             }
 
             // Apply lifelink (only if damage was dealt, through event processing)
-            if !was_prevented && final_damage > 0 && damage_result.has_lifelink {
+            if total_damage_dealt > 0 && damage_result.has_lifelink {
                 let life_to_gain = crate::event_processor::process_life_gain_with_event(
                     game,
                     controller,
-                    final_damage,
+                    total_damage_dealt,
                 );
                 if life_to_gain > 0
                     && let Some(player) = game.player_mut(controller)
@@ -1885,17 +1923,22 @@ fn deal_damage_to_defender(
 /// Apply damage to a permanent (creature or planeswalker).
 ///
 /// This processes the damage through replacement/prevention effects before applying.
+#[derive(Debug, Clone, Copy)]
+struct AppliedPermanentDamage {
+    damage_dealt: u32,
+    total_damage_dealt: u32,
+}
+
 fn apply_damage_to_permanent(
     game: &mut GameState,
     permanent_id: ObjectId,
     source_id: ObjectId,
     result: &DamageResult,
-) -> u32 {
-    use crate::event_processor::process_damage_with_event;
+) -> AppliedPermanentDamage {
+    use crate::event_processor::process_damage_assignments_with_event;
     use crate::game_event::DamageTarget;
 
-    // Process through replacement/prevention effects
-    let (final_damage, was_prevented) = process_damage_with_event(
+    let processed = process_damage_assignments_with_event(
         game,
         source_id,
         DamageTarget::Object(permanent_id),
@@ -1903,36 +1946,65 @@ fn apply_damage_to_permanent(
         true, // is_combat
     );
 
-    if was_prevented || final_damage == 0 {
-        return 0;
-    }
-
-    if result.has_infect || result.has_wither {
-        // Infect/wither: place -1/-1 counters instead of marking damage
-        // Scale counters based on final damage vs original damage
-        let counter_amount = if result.damage_dealt > 0 {
-            (result.minus_counters as u64 * final_damage as u64 / result.damage_dealt as u64) as u32
-        } else {
-            0
+    if processed.replacement_prevented {
+        return AppliedPermanentDamage {
+            damage_dealt: 0,
+            total_damage_dealt: 0,
         };
-        if let Some(permanent) = game.object_mut(permanent_id) {
-            *permanent
-                .counters
-                .entry(CounterType::MinusOneMinusOne)
-                .or_insert(0) += counter_amount;
-        }
-    } else {
-        // Normal damage
-        game.mark_damage(permanent_id, final_damage);
     }
 
-    final_damage
+    let mut damage_to_original = 0u32;
+    let mut total_damage_dealt = 0u32;
+
+    for assignment in processed.assignments {
+        total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
+        match assignment.target {
+            DamageTarget::Object(object_id) => {
+                if result.has_infect || result.has_wither {
+                    if let Some(permanent) = game.object_mut(object_id) {
+                        *permanent
+                            .counters
+                            .entry(CounterType::MinusOneMinusOne)
+                            .or_insert(0) += assignment.amount;
+                    }
+                } else {
+                    game.mark_damage(object_id, assignment.amount);
+                }
+                if game
+                    .object(object_id)
+                    .is_some_and(|o| o.has_card_type(crate::types::CardType::Creature))
+                {
+                    game.record_creature_damaged_by_this_turn(object_id, source_id);
+                }
+                if object_id == permanent_id {
+                    damage_to_original = damage_to_original.saturating_add(assignment.amount);
+                }
+            }
+            DamageTarget::Player(player_id) => {
+                if result.has_infect {
+                    if let Some(player) = game.player_mut(player_id) {
+                        player.poison_counters += assignment.amount;
+                    }
+                } else if game.can_change_life_total(player_id)
+                    && let Some(player) = game.player_mut(player_id)
+                {
+                    player.life -= assignment.amount as i32;
+                }
+            }
+        }
+    }
+
+    AppliedPermanentDamage {
+        damage_dealt: damage_to_original,
+        total_damage_dealt,
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct AppliedPlayerDamage {
     damage_dealt: u32,
     life_lost: u32,
+    total_damage_dealt: u32,
 }
 
 /// Apply damage to a player.
@@ -1944,11 +2016,10 @@ fn apply_damage_to_player(
     source_id: ObjectId,
     result: &DamageResult,
 ) -> AppliedPlayerDamage {
-    use crate::event_processor::process_damage_with_event;
+    use crate::event_processor::process_damage_assignments_with_event;
     use crate::game_event::DamageTarget;
 
-    // Process through replacement/prevention effects
-    let (final_damage, was_prevented) = process_damage_with_event(
+    let processed = process_damage_assignments_with_event(
         game,
         source_id,
         DamageTarget::Player(player_id),
@@ -1956,43 +2027,65 @@ fn apply_damage_to_player(
         true, // is_combat
     );
 
-    if was_prevented || final_damage == 0 {
+    if processed.replacement_prevented {
         return AppliedPlayerDamage {
             damage_dealt: 0,
             life_lost: 0,
+            total_damage_dealt: 0,
         };
     }
 
-    let mut life_lost = 0;
+    let mut damage_to_original = 0u32;
+    let mut life_lost_to_original = 0u32;
+    let mut total_damage_dealt = 0u32;
 
-    if result.has_infect {
-        let Some(player) = game.player_mut(player_id) else {
-            return AppliedPlayerDamage {
-                damage_dealt: 0,
-                life_lost: 0,
-            };
-        };
-
-        // Infect: give poison counters
-        // Scale counters based on final damage vs original damage
-        let counter_amount = if result.damage_dealt > 0 {
-            (result.poison_counters as u64 * final_damage as u64 / result.damage_dealt as u64)
-                as u32
-        } else {
-            0
-        };
-        player.poison_counters += counter_amount;
-    } else if game.can_change_life_total(player_id)
-        && let Some(player) = game.player_mut(player_id)
-    {
-        // Damage is still dealt even if life total cannot change; life loss tracks only actual life reduction.
-        player.life -= final_damage as i32;
-        life_lost = final_damage;
+    for assignment in processed.assignments {
+        total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
+        match assignment.target {
+            DamageTarget::Player(target_player) => {
+                if result.has_infect {
+                    if let Some(player) = game.player_mut(target_player) {
+                        player.poison_counters += assignment.amount;
+                    }
+                } else if game.can_change_life_total(target_player)
+                    && let Some(player) = game.player_mut(target_player)
+                {
+                    // Damage is still dealt even if life total cannot change; life loss tracks only actual life reduction.
+                    player.life -= assignment.amount as i32;
+                    if target_player == player_id {
+                        life_lost_to_original =
+                            life_lost_to_original.saturating_add(assignment.amount);
+                    }
+                }
+                if target_player == player_id {
+                    damage_to_original = damage_to_original.saturating_add(assignment.amount);
+                }
+            }
+            DamageTarget::Object(object_id) => {
+                if result.has_infect || result.has_wither {
+                    if let Some(permanent) = game.object_mut(object_id) {
+                        *permanent
+                            .counters
+                            .entry(CounterType::MinusOneMinusOne)
+                            .or_insert(0) += assignment.amount;
+                    }
+                } else {
+                    game.mark_damage(object_id, assignment.amount);
+                }
+                if game
+                    .object(object_id)
+                    .is_some_and(|o| o.has_card_type(crate::types::CardType::Creature))
+                {
+                    game.record_creature_damaged_by_this_turn(object_id, source_id);
+                }
+            }
+        }
     }
 
     AppliedPlayerDamage {
-        damage_dealt: final_damage,
-        life_lost,
+        damage_dealt: damage_to_original,
+        life_lost: life_lost_to_original,
+        total_damage_dealt,
     }
 }
 
