@@ -20529,6 +20529,126 @@ fn parse_sentence_exile_multi_target(
     ]))
 }
 
+fn split_destroy_target_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
+    let mut raw_segments: Vec<Vec<Token>> = Vec::new();
+    for and_segment in split_on_and(tokens) {
+        for comma_segment in split_on_comma(&and_segment) {
+            let trimmed = trim_commas(&comma_segment);
+            if !trimmed.is_empty() {
+                raw_segments.push(trimmed.to_vec());
+            }
+        }
+    }
+
+    let mut segments = Vec::new();
+    for segment in raw_segments {
+        let split_starts = segment
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, token)| {
+                if idx >= 3
+                    && token.is_word("target")
+                    && segment[idx - 3].is_word("up")
+                    && segment[idx - 2].is_word("to")
+                    && segment[idx - 1].is_word("one")
+                {
+                    Some(idx - 3)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if split_starts.len() <= 1 {
+            segments.push(segment);
+            continue;
+        }
+
+        for (idx, start) in split_starts.iter().enumerate() {
+            let end = split_starts.get(idx + 1).copied().unwrap_or(segment.len());
+            let trimmed = trim_commas(&segment[*start..end]);
+            if !trimmed.is_empty() {
+                segments.push(trimmed.to_vec());
+            }
+        }
+    }
+
+    segments
+}
+
+fn parse_sentence_destroy_multi_target(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.first() != Some(&"destroy") {
+        return Ok(None);
+    }
+    if clause_words.get(1).is_some_and(|word| matches!(*word, "all" | "each")) {
+        return Ok(None);
+    }
+    if clause_words.contains(&"unless") || clause_words.contains(&"if") {
+        return Ok(None);
+    }
+
+    let target_tokens = trim_commas(&tokens[1..]);
+    if target_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let has_separator = target_tokens.iter().any(|token| {
+        token.is_word("and") || matches!(token, Token::Comma(_))
+    });
+    let has_repeated_up_to_one_targets = target_tokens
+        .windows(4)
+        .filter(|window| {
+            window[0].is_word("up")
+                && window[1].is_word("to")
+                && window[2].is_word("one")
+                && window[3].is_word("target")
+        })
+        .count()
+        >= 2;
+    if !has_separator && !has_repeated_up_to_one_targets {
+        return Ok(None);
+    }
+
+    let segments = split_destroy_target_segments(&target_tokens);
+    if segments.len() < 2 {
+        return Ok(None);
+    }
+
+    let mut effects = Vec::new();
+    for segment in segments {
+        let segment_words = words(&segment);
+        if segment_words.iter().any(|word| {
+            matches!(
+                *word,
+                "then" | "if" | "unless" | "where" | "when" | "whenever"
+            )
+        }) {
+            return Ok(None);
+        }
+        let is_explicit_target = segment_words.first() == Some(&"target")
+            || (segment_words.starts_with(&["up", "to"]) && segment_words.contains(&"target"));
+        if !is_explicit_target && !is_likely_named_or_source_reference_words(&segment_words) {
+            return Ok(None);
+        }
+        let target = match parse_target_phrase(&segment) {
+            Ok(target) => target,
+            Err(_) if !is_explicit_target && is_likely_named_or_source_reference_words(&segment_words) => {
+                TargetAst::Source(span_from_tokens(&segment))
+            }
+            Err(err) => return Err(err),
+        };
+        effects.push(EffectAst::Destroy { target });
+    }
+
+    if effects.len() < 2 {
+        return Ok(None);
+    }
+    Ok(Some(effects))
+}
+
 fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilter, ChoiceCount)> {
     match target {
         TargetAst::Object(filter, _, _) => Some((filter.clone(), ChoiceCount::exactly(1))),
@@ -20546,6 +20666,34 @@ fn is_likely_named_or_source_reference_words(words: &[&str]) -> bool {
     }
     if is_source_reference_words(words) {
         return true;
+    }
+    if words.iter().any(|word| {
+        matches!(
+            *word,
+            "then"
+                | "if"
+                | "unless"
+                | "where"
+                | "when"
+                | "whenever"
+                | "for"
+                | "each"
+                | "search"
+                | "destroy"
+                | "exile"
+                | "draw"
+                | "gain"
+                | "lose"
+                | "counter"
+                | "put"
+                | "return"
+                | "create"
+                | "sacrifice"
+                | "deal"
+                | "populate"
+        )
+    }) {
+        return false;
     }
     !words.iter().any(|word| {
         matches!(
@@ -21276,6 +21424,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "exile-multi-target",
         parser: parse_sentence_exile_multi_target,
+    },
+    SentencePrimitive {
+        name: "destroy-multi-target",
+        parser: parse_sentence_destroy_multi_target,
     },
     SentencePrimitive {
         name: "damage-unless-controller-has-source-deal-damage",
@@ -33908,10 +34060,48 @@ fn parse_reveal(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
             tag: TagKey::from(IT_TAG),
         });
     }
+    let reveals_from_among = words.contains(&"from")
+        && words.contains(&"among")
+        && (words.contains(&"them") || words.contains(&"those"));
+    if reveals_from_among {
+        return Ok(EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+    let reveals_outside_game = words.contains(&"outside") && words.contains(&"game");
+    if reveals_outside_game {
+        return Ok(EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+    let reveals_first_draw = words.starts_with(&["the", "first", "card", "you", "draw"]);
+    if reveals_first_draw {
+        return Ok(EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+    let reveals_card_this_way = (words.contains(&"card") || words.contains(&"cards"))
+        && words.ends_with(&["this", "way"]);
+    if reveals_card_this_way {
+        return Ok(EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+    let reveals_conditional_it = words.first() == Some(&"it") && words.contains(&"if");
+    if reveals_conditional_it {
+        return Ok(EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
     if words.contains(&"hand") {
         let is_full_hand_reveal = matches!(words.as_slice(), ["your", "hand"] | ["their", "hand"])
             || words.as_slice() == ["his", "or", "her", "hand"];
         if !is_full_hand_reveal {
+            if words.contains(&"from") {
+                return Ok(EffectAst::RevealTagged {
+                    tag: TagKey::from(IT_TAG),
+                });
+            }
             return Err(CardTextError::ParseError(format!(
                 "unsupported reveal-hand clause (clause: '{}')",
                 words.join(" ")
@@ -33920,10 +34110,12 @@ fn parse_reveal(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
         return Ok(EffectAst::RevealHand { player });
     }
 
-    let has_top = words.contains(&"top");
-    let has_card = words.contains(&"card");
+    let has_card = words.contains(&"card") || words.contains(&"cards");
+    let has_library = words.contains(&"library") || words.contains(&"libraries");
+    let explicit_top_card = words.as_slice() == ["top", "card"]
+        || words.as_slice() == ["the", "top", "card"];
 
-    if !has_top || !has_card {
+    if !has_card || (!has_library && !explicit_top_card) {
         return Err(CardTextError::ParseError(format!(
             "unsupported reveal clause (clause: '{}')",
             words.join(" ")

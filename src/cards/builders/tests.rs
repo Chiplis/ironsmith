@@ -5192,6 +5192,36 @@ fn parse_reveal_hand_clause_with_colon_tail_fails_strictly() {
 }
 
 #[test]
+fn parse_reveal_top_plural_cards_clause() {
+    CardDefinitionBuilder::new(CardId::new(), "Top Reveal Variant")
+        .parse_text("Reveal the top five cards of your library.")
+        .expect("reveal-top plural cards clause should parse");
+}
+
+#[test]
+fn parse_reveal_top_card_clause_without_library_suffix() {
+    CardDefinitionBuilder::new(CardId::new(), "Top Card Reveal Variant")
+        .parse_text("Reveal the top card.")
+        .expect("reveal top-card shorthand should parse");
+}
+
+#[test]
+fn parse_reveal_card_this_way_trigger_clause() {
+    CardDefinitionBuilder::new(CardId::new(), "Primitive Etchings Variant")
+        .parse_text(
+            "Reveal the first card you draw each turn. Whenever you reveal a creature card this way, draw a card.",
+        )
+        .expect("reveal-card-this-way trigger clause should parse");
+}
+
+#[test]
+fn parse_reveal_cards_in_library_clause() {
+    CardDefinitionBuilder::new(CardId::new(), "Guided Passage Variant")
+        .parse_text("Reveal the cards in your library.")
+        .expect("reveal-all-library cards clause should parse");
+}
+
+#[test]
 fn parse_target_creature_attacks_or_blocks_if_able_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Hustle Variant")
         .parse_text("Target creature attacks or blocks this turn if able.")
@@ -5733,7 +5763,8 @@ fn parse_destroy_up_to_x_other_targets_fails_instead_of_partial_destroy() {
             .expect_err("unsupported dynamic multi-target destroy should fail parse");
     let message = format!("{err:?}");
     assert!(
-        message.contains("unsupported multi-target destroy clause"),
+        message.contains("unsupported multi-target destroy clause")
+            || message.contains("unsupported dynamic or missing target count after 'up to'"),
         "expected strict multi-target destroy parse error, got {message}"
     );
 }
@@ -8112,6 +8143,71 @@ fn parse_exile_target_creature_and_target_land_sentence() {
     assert!(
         joined.contains("exile target creature") && joined.contains("target land"),
         "expected both exile targets in rendered text, got {joined}"
+    );
+}
+
+#[test]
+fn parse_destroy_target_creature_and_target_land_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spiteful Blow Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy target creature and target land.")
+        .expect("parse destroy with two target objects");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("destroy target creature") && joined.contains("target land"),
+        "expected both destroy targets in rendered text, got {joined}"
+    );
+}
+
+#[test]
+fn parse_destroy_up_to_one_each_target_type_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Convert Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy up to one target artifact, up to one target creature, and up to one target enchantment.",
+        )
+        .expect("parse destroy up-to-one multi-target sentence");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("up to one target artifact")
+            && joined.contains("up to one target creature")
+            && joined.contains("up to one target enchantment"),
+        "expected three up-to-one target destroy clauses, got {joined}"
+    );
+}
+
+#[test]
+fn parse_destroy_source_and_target_blocking_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wall of Vipers Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{3}: Destroy this creature and target creature it's blocking.")
+        .expect("parse destroy source + target creature it's blocking");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        (joined.contains("destroy this creature") || joined.contains("destroy this permanent"))
+            && (joined.contains("target creature its blocking")
+                || joined.contains("target blocking creature")),
+        "expected source + blocking target destroy effects, got {joined}"
+    );
+}
+
+#[test]
+fn parse_destroy_target_artifact_creature_enchantment_and_land_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Decimate Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Destroy target artifact, target creature, target enchantment, and target land.")
+        .expect("parse four-target destroy sentence");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("destroy target artifact")
+            && joined.contains("target creature")
+            && joined.contains("target enchantment")
+            && joined.contains("target land"),
+        "expected four destroy targets in rendered text, got {joined}"
     );
 }
 
