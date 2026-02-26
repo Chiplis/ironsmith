@@ -7,6 +7,7 @@ use crate::ability::SpellFilter;
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
 use crate::filter::{AlternativeCastKind, Comparison};
+use crate::mana::ManaCost;
 use crate::object::CounterType;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
@@ -175,6 +176,10 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
         }
         _ => ("{X}".to_string(), None),
     }
+}
+
+fn describe_cost_modifier_mana_cost(cost: &ManaCost) -> String {
+    cost.to_oracle()
 }
 
 fn describe_spell_filter(filter: &SpellFilter) -> String {
@@ -471,6 +476,84 @@ impl StaticAbilityKind for CostIncrease {
     }
 
     fn cost_increase(&self) -> Option<&CostIncrease> {
+        Some(self)
+    }
+}
+
+/// Mana-symbol cost reduction: "Spells cost {B} less to cast"
+#[derive(Debug, Clone, PartialEq)]
+pub struct CostReductionManaCost {
+    pub filter: SpellFilter,
+    pub reduction: ManaCost,
+}
+
+impl CostReductionManaCost {
+    pub fn new(filter: SpellFilter, reduction: ManaCost) -> Self {
+        Self { filter, reduction }
+    }
+}
+
+impl StaticAbilityKind for CostReductionManaCost {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CostReductionManaCost
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "{} cost {} less to cast",
+            describe_spell_filter(&self.filter),
+            describe_cost_modifier_mana_cost(&self.reduction)
+        )
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn modifies_costs(&self) -> bool {
+        true
+    }
+
+    fn cost_reduction_mana_cost(&self) -> Option<&CostReductionManaCost> {
+        Some(self)
+    }
+}
+
+/// Mana-symbol cost increase: "Spells cost {B} more to cast"
+#[derive(Debug, Clone, PartialEq)]
+pub struct CostIncreaseManaCost {
+    pub filter: SpellFilter,
+    pub increase: ManaCost,
+}
+
+impl CostIncreaseManaCost {
+    pub fn new(filter: SpellFilter, increase: ManaCost) -> Self {
+        Self { filter, increase }
+    }
+}
+
+impl StaticAbilityKind for CostIncreaseManaCost {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CostIncreaseManaCost
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "{} cost {} more to cast",
+            describe_spell_filter(&self.filter),
+            describe_cost_modifier_mana_cost(&self.increase)
+        )
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn modifies_costs(&self) -> bool {
+        true
+    }
+
+    fn cost_increase_mana_cost(&self) -> Option<&CostIncreaseManaCost> {
         Some(self)
     }
 }

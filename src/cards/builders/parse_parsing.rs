@@ -3569,10 +3569,21 @@ fn parse_spells_cost_modifier_line(
 
     let amount_tokens = &tokens[cost_idx + 1..];
     let parsed_amount = parse_cost_modifier_amount(amount_tokens);
+    let parsed_mana_cost = if parsed_amount.is_none() {
+        parse_cost_modifier_mana_cost(amount_tokens)
+    } else {
+        None
+    };
     let (mut amount_value, used) = parsed_amount
         .clone()
         .map(|(value, used)| (value, used))
-        .unwrap_or((Value::Fixed(1), 0));
+        .unwrap_or_else(|| {
+            if let Some((_, used)) = &parsed_mana_cost {
+                (Value::Fixed(1), *used)
+            } else {
+                (Value::Fixed(1), 0)
+            }
+        });
     let remaining_tokens = &amount_tokens[used..];
     let remaining_words = words(remaining_tokens);
     let is_less = remaining_words.contains(&"less");
@@ -3582,8 +3593,14 @@ fn parse_spells_cost_modifier_line(
     }
 
     if let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)? {
+        if parsed_mana_cost.is_some() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported dynamic mana-symbol cost modifier (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
         amount_value = dynamic_value;
-    } else if parsed_amount.is_none() {
+    } else if parsed_amount.is_none() && parsed_mana_cost.is_none() {
         return Err(CardTextError::ParseError(
             "missing cost modifier amount".to_string(),
         ));
@@ -3596,8 +3613,19 @@ fn parse_spells_cost_modifier_line(
     )?;
 
     if is_less {
+        if let Some((cost, _)) = parsed_mana_cost {
+            return Ok(Some(StaticAbility::new(
+                crate::static_abilities::CostReductionManaCost::new(filter, cost),
+            )));
+        }
         return Ok(Some(StaticAbility::new(
             crate::static_abilities::CostReduction::new(filter, amount_value),
+        )));
+    }
+
+    if let Some((cost, _)) = parsed_mana_cost {
+        return Ok(Some(StaticAbility::new(
+            crate::static_abilities::CostIncreaseManaCost::new(filter, cost),
         )));
     }
 
@@ -3732,6 +3760,29 @@ fn parse_cost_modifier_amount(tokens: &[Token]) -> Option<(Value, usize)> {
         return Some((Value::Fixed(amount as i32), 1));
     }
     None
+}
+
+fn parse_cost_modifier_mana_cost(tokens: &[Token]) -> Option<(crate::mana::ManaCost, usize)> {
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    let mut pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    let mut used = 0usize;
+    while let Some(word) = tokens.get(used).and_then(Token::as_word) {
+        let symbol = parse_mana_symbol(word).ok()?;
+        match symbol {
+            ManaSymbol::Generic(_) | ManaSymbol::X | ManaSymbol::Snow | ManaSymbol::Life(_) => {
+                break;
+            }
+            _ => {
+                pips.push(vec![symbol]);
+                used += 1;
+            }
+        }
+    }
+    if used == 0 {
+        return None;
+    }
+    Some((ManaCost::from_pips(pips), used))
 }
 
 fn parse_dynamic_cost_modifier_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {

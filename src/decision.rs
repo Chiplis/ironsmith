@@ -1532,6 +1532,15 @@ fn calculate_effective_mana_cost_with_targets_internal(
     current_cost =
         apply_spell_cost_modifiers(game, player, spell, &current_cost, chosen_target_count);
 
+    // Apply global cost modifiers from battlefield permanents (Sphere of Resistance, leeches, etc.).
+    current_cost = apply_battlefield_spell_cost_modifiers(
+        game,
+        player,
+        spell,
+        &current_cost,
+        chosen_target_count,
+    );
+
     // Check for Delve
     let has_delve_ability = has_delve(spell);
 
@@ -1570,9 +1579,12 @@ fn apply_spell_cost_modifiers(
     chosen_target_count: usize,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
+    use crate::mana::{ManaCost, ManaSymbol};
 
     let mut total_increase: i32 = 0;
     let mut total_reduction: i32 = 0;
+    let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
 
     for ability in &spell.abilities {
         let AbilityKind::Static(static_ability) = &ability.kind else {
@@ -1590,6 +1602,12 @@ fn apply_spell_cost_modifiers(
                 total_increase = total_increase.saturating_add(amount);
             }
         }
+        if let Some(increase) = static_ability.cost_increase_mana_cost() {
+            increase_pips.extend(increase.increase.pips().iter().cloned());
+        }
+        if let Some(reduction) = static_ability.cost_reduction_mana_cost() {
+            reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+        }
         if let Some(per_target_amount) = static_ability.cost_increase_per_additional_target() {
             let additional_targets = chosen_target_count.saturating_sub(1);
             if additional_targets > 0 {
@@ -1600,11 +1618,170 @@ fn apply_spell_cost_modifiers(
     }
 
     let mut adjusted = cost.clone();
+    if !increase_pips.is_empty() {
+        adjusted = add_mana_cost(&adjusted, &ManaCost::from_pips(increase_pips));
+    }
     if total_increase > 0 {
         adjusted = add_generic_mana_cost(&adjusted, total_increase as u32);
     }
     if total_reduction > 0 {
         adjusted = adjusted.reduce_generic(total_reduction as u32);
+    }
+    if !reduction_pips.is_empty() {
+        adjusted = reduce_mana_cost(&adjusted, &ManaCost::from_pips(reduction_pips));
+    }
+    adjusted
+}
+
+fn apply_battlefield_spell_cost_modifiers(
+    game: &GameState,
+    caster: PlayerId,
+    spell: &crate::object::Object,
+    cost: &crate::mana::ManaCost,
+    chosen_target_count: usize,
+) -> crate::mana::ManaCost {
+    use crate::ability::AbilityKind;
+    use crate::ability::SpellFilter;
+    use crate::filter::FilterContext;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    fn opponents_of(game: &GameState, player: PlayerId) -> Vec<PlayerId> {
+        game.turn_order
+            .iter()
+            .copied()
+            .filter(|p| *p != player)
+            .collect()
+    }
+
+    fn spell_matches_filter(
+        game: &GameState,
+        spell: &crate::object::Object,
+        caster: PlayerId,
+        filter: &SpellFilter,
+        ctx: &FilterContext,
+        _chosen_target_count: usize,
+    ) -> bool {
+        if let Some(controller) = &filter.controller {
+            if !controller.matches_player(caster, ctx) {
+                return false;
+            }
+        }
+
+        for excluded in &filter.excluded_card_types {
+            if game.object_has_card_type(spell.id, *excluded) {
+                return false;
+            }
+        }
+        for required in &filter.card_types {
+            if !game.object_has_card_type(spell.id, *required) {
+                return false;
+            }
+        }
+        for subtype in &filter.subtypes {
+            if !game.calculated_subtypes(spell.id).contains(subtype) {
+                return false;
+            }
+        }
+        if let Some(colors) = filter.colors {
+            let spell_colors = game
+                .calculated_characteristics(spell.id)
+                .map(|c| c.colors)
+                .unwrap_or_else(|| spell.colors());
+            if spell_colors.intersection(colors).is_empty() {
+                return false;
+            }
+        }
+        if filter.targets_object.is_some() || filter.targets_player.is_some() {
+            // Target-dependent cost modifiers require target selection context.
+            return false;
+        }
+        if filter.alternative_cast.is_some() {
+            // Alternative casting method isn't tracked for cost computation yet.
+            return false;
+        }
+        true
+    }
+
+    let mut total_increase: i32 = 0;
+    let mut total_reduction: i32 = 0;
+    let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+
+    for &perm_id in &game.battlefield {
+        let Some(perm) = game.object(perm_id) else {
+            continue;
+        };
+        let controller = perm.controller;
+        let ctx = FilterContext::new(controller)
+            .with_source(perm_id)
+            .with_active_player(game.turn.active_player)
+            .with_opponents(opponents_of(game, controller));
+
+        let static_abilities = game
+            .calculated_characteristics(perm_id)
+            .map(|c| c.static_abilities)
+            .unwrap_or_else(|| {
+                perm.abilities
+                    .iter()
+                    .filter_map(|a| match &a.kind {
+                        AbilityKind::Static(sa) => Some(sa.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            });
+
+        for static_ability in static_abilities {
+            if let Some(reduction) = static_ability.cost_reduction()
+                && spell_matches_filter(game, spell, caster, &reduction.filter, &ctx, chosen_target_count)
+            {
+                let amount = resolve_cost_modifier_value_for_source(
+                    game,
+                    perm_id,
+                    controller,
+                    &reduction.reduction,
+                );
+                if amount > 0 {
+                    total_reduction = total_reduction.saturating_add(amount);
+                }
+            }
+            if let Some(increase) = static_ability.cost_increase()
+                && spell_matches_filter(game, spell, caster, &increase.filter, &ctx, chosen_target_count)
+            {
+                let amount = resolve_cost_modifier_value_for_source(
+                    game,
+                    perm_id,
+                    controller,
+                    &increase.increase,
+                );
+                if amount > 0 {
+                    total_increase = total_increase.saturating_add(amount);
+                }
+            }
+            if let Some(increase) = static_ability.cost_increase_mana_cost()
+                && spell_matches_filter(game, spell, caster, &increase.filter, &ctx, chosen_target_count)
+            {
+                increase_pips.extend(increase.increase.pips().iter().cloned());
+            }
+            if let Some(reduction) = static_ability.cost_reduction_mana_cost()
+                && spell_matches_filter(game, spell, caster, &reduction.filter, &ctx, chosen_target_count)
+            {
+                reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+            }
+        }
+    }
+
+    let mut adjusted = cost.clone();
+    if !increase_pips.is_empty() {
+        adjusted = add_mana_cost(&adjusted, &ManaCost::from_pips(increase_pips));
+    }
+    if total_increase > 0 {
+        adjusted = add_generic_mana_cost(&adjusted, total_increase as u32);
+    }
+    if total_reduction > 0 {
+        adjusted = adjusted.reduce_generic(total_reduction as u32);
+    }
+    if !reduction_pips.is_empty() {
+        adjusted = reduce_mana_cost(&adjusted, &ManaCost::from_pips(reduction_pips));
     }
     adjusted
 }
@@ -1626,6 +1803,36 @@ fn add_generic_mana_cost(cost: &crate::mana::ManaCost, increase: u32) -> crate::
     crate::mana::ManaCost::from_pips(new_pips)
 }
 
+fn add_mana_cost(cost: &crate::mana::ManaCost, add: &crate::mana::ManaCost) -> crate::mana::ManaCost {
+    if add.pips().is_empty() {
+        return cost.clone();
+    }
+    let mut new_pips = cost.pips().to_vec();
+    new_pips.extend(add.pips().iter().cloned());
+    crate::mana::ManaCost::from_pips(new_pips)
+}
+
+fn reduce_mana_cost(
+    cost: &crate::mana::ManaCost,
+    reduction: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    use crate::mana::ManaSymbol;
+
+    if reduction.pips().is_empty() {
+        return cost.clone();
+    }
+    let mut pips = cost.pips().to_vec();
+    for red_pip in reduction.pips() {
+        if red_pip.len() == 1 && matches!(red_pip[0], ManaSymbol::Generic(_)) {
+            continue;
+        }
+        if let Some(pos) = pips.iter().position(|pip| pip == red_pip) {
+            pips.remove(pos);
+        }
+    }
+    crate::mana::ManaCost::from_pips(pips)
+}
+
 fn resolve_cost_modifier_value(
     game: &GameState,
     player: PlayerId,
@@ -1634,6 +1841,17 @@ fn resolve_cost_modifier_value(
 ) -> i32 {
     let mut dm = SelectFirstDecisionMaker;
     let ctx = ExecutionContext::new(spell.id, player, &mut dm);
+    resolve_value(game, value, &ctx).unwrap_or(0)
+}
+
+fn resolve_cost_modifier_value_for_source(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    value: &crate::effect::Value,
+) -> i32 {
+    let mut dm = SelectFirstDecisionMaker;
+    let ctx = ExecutionContext::new(source, controller, &mut dm);
     resolve_value(game, value, &ctx).unwrap_or(0)
 }
 
@@ -5684,6 +5902,11 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::static_abilities::StaticAbility;
+    use crate::ability::{Ability, SpellFilter};
+    use crate::color::ColorSet;
+    use crate::target::PlayerFilter;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -5827,6 +6050,44 @@ mod tests {
             options[0].valid_blockers.is_empty(),
             "single creature with can't-block-alone should not be a legal blocker, got {options:?}"
         );
+    }
+
+    #[test]
+    fn global_colored_spell_cost_increase_adds_pips_to_effective_cost() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        // Battlefield permanent that taxes black spells you cast by {B}.
+        let tax_card = CardBuilder::new(CardId::from_raw(10), "Derelor Variant")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let tax_id = game.create_object_from_card(&tax_card, alice, Zone::Battlefield);
+        let mut filter = SpellFilter::default();
+        filter.colors = Some(ColorSet::BLACK);
+        filter.controller = Some(PlayerFilter::You);
+        let tax = StaticAbility::new(crate::static_abilities::CostIncreaseManaCost::new(
+            filter,
+            ManaCost::from_symbols(vec![ManaSymbol::Black]),
+        ));
+        game.object_mut(tax_id)
+            .expect("tax permanent exists")
+            .abilities
+            .push(Ability::static_ability(tax));
+
+        // A black spell with base cost {1}{B}.
+        let black_spell_card = CardBuilder::new(CardId::from_raw(11), "Black Spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Black],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&black_spell_card, alice, Zone::Hand);
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{1}{B}{B}");
     }
 
     #[test]

@@ -355,6 +355,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
         None
     }
 
+    /// Get cost reduction details if this reduces specific mana symbols (e.g., "{B} less").
+    fn cost_reduction_mana_cost(&self) -> Option<&CostReductionManaCost> {
+        None
+    }
+
+    /// Get cost increase details if this adds specific mana symbols (e.g., "{B} more").
+    fn cost_increase_mana_cost(&self) -> Option<&CostIncreaseManaCost> {
+        None
+    }
+
     /// Get additional cost per target beyond the first, if any.
     fn cost_increase_per_additional_target(&self) -> Option<u32> {
         None
@@ -624,6 +634,14 @@ impl StaticAbility {
 
     pub fn cost_increase(&self) -> Option<&CostIncrease> {
         self.0.cost_increase()
+    }
+
+    pub fn cost_reduction_mana_cost(&self) -> Option<&CostReductionManaCost> {
+        self.0.cost_reduction_mana_cost()
+    }
+
+    pub fn cost_increase_mana_cost(&self) -> Option<&CostIncreaseManaCost> {
+        self.0.cost_increase_mana_cost()
     }
 
     pub fn cost_increase_per_additional_target(&self) -> Option<u32> {

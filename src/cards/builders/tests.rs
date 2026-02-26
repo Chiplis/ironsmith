@@ -7836,6 +7836,33 @@ fn parse_spells_cost_modifier_keeps_noncreature_qualifier() {
 }
 
 #[test]
+fn parse_spells_cost_modifier_supports_colored_mana_increase() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Derelor Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Black spells you cast cost {B} more to cast.")
+        .expect("parse colored spell tax clause");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::CostIncreaseManaCost),
+        "expected CostIncreaseManaCost static ability, got {ids:?}"
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("black spells you cast cost {b} more to cast"),
+        "expected colored cost increase to render, got {joined}"
+    );
+}
+
+#[test]
 fn parse_spells_cost_modifier_subtype_does_not_force_creature_word() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinosaur Cost Variant")
         .card_types(vec![CardType::Creature])

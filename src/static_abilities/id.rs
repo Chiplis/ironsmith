@@ -101,6 +101,8 @@ pub enum StaticAbilityId {
     // === Cost modifiers ===
     CostReduction,
     CostIncrease,
+    CostReductionManaCost,
+    CostIncreaseManaCost,
     CostIncreasePerAdditionalTarget,
     AffinityForArtifacts,
     Delve,
