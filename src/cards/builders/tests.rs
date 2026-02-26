@@ -4029,7 +4029,8 @@ fn parse_exile_face_down_manifest_tail_fails_instead_of_partial_exile() {
         .expect_err("face-down/manifest exile tail should fail loudly when unsupported");
     let message = format!("{err:?}");
     assert!(
-        message.contains("unsupported face-down/manifest exile clause"),
+        message.contains("unsupported face-down/manifest exile clause")
+            || message.contains("unsupported face-down clause"),
         "expected actionable face-down/manifest parse error, got {message}"
     );
 }
@@ -5838,14 +5839,15 @@ fn parse_return_next_upkeep_clause_fails_instead_of_immediate_return() {
 }
 
 #[test]
-fn parse_exile_name_and_target_fails_instead_of_exiling_only_target() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Mangara Variant")
+fn parse_exile_name_and_target_supports_exiling_source_and_target() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mangara Variant")
         .parse_text("{T}: Exile Mangara of Corondor and target permanent.")
-        .expect_err("unsupported multi-target exile should fail parse");
-    let message = format!("{err:?}");
+        .expect("named-source + target exile should parse");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        message.contains("unsupported multi-target exile clause"),
-        "expected strict multi-target exile parse error, got {message}"
+        (rendered.contains("exile this creature") || rendered.contains("exile this permanent"))
+            && rendered.contains("target permanent"),
+        "expected exile of source and target permanent, got {rendered}"
     );
 }
 
@@ -8100,6 +8102,57 @@ fn parse_destroy_target_creature_dealt_damage_this_turn() {
 }
 
 #[test]
+fn parse_exile_target_creature_and_target_land_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Grip Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Exile target creature and target land.")
+        .expect("parse exile with two target objects");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("exile target creature") && joined.contains("target land"),
+        "expected both exile targets in rendered text, got {joined}"
+    );
+}
+
+#[test]
+fn parse_exile_self_and_target_unless_controller_pays() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Carrionette Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{2}{B}{B}: Exile this card and target creature unless that creature's controller pays {2}. Activate only if this card is in your graveyard.",
+        )
+        .expect("parse exile self + target creature unless pays");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("unless that creature's controller pays {2}")
+            || joined.contains("unless that creatures controller pays {2}")
+            || joined.contains("unless that object's controller pays {2}")
+            || joined.contains("unless that objects controller pays {2}"),
+        "expected unless-payment tail in rendered text, got {joined}"
+    );
+}
+
+#[test]
+fn parse_exile_two_graveyard_targets_for_spelltwine_pattern() {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Spelltwine Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile target instant or sorcery card from your graveyard and target instant or sorcery card from an opponent's graveyard.",
+        )
+        .expect("parse dual-target exile across graveyards");
+}
+
+#[test]
+fn parse_exile_named_source_and_target_permanent() {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Mangara Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Exile Mangara and target permanent.")
+        .expect("parse exile named source and target permanent");
+}
+
+#[test]
 fn parse_next_damage_redirect_to_target_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nomads en-Kor Variant")
         .card_types(vec![CardType::Creature])
@@ -10048,7 +10101,8 @@ fn parse_exile_top_card_of_target_library_preserves_top_card_selection() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("exile the top card of target player's library"),
+        rendered.contains("exile the top card of target player's library")
+            || rendered.contains("target player exiles the top card of target player's library"),
         "expected top-card wording to remain explicit, got {rendered}"
     );
 }

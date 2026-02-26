@@ -19271,41 +19271,7 @@ fn parse_exile_source_with_counters_sentence(
         return Ok(None);
     }
     let source_name_words = words(&source_name_tokens);
-    let references_source = source_name_words.as_slice() == ["this"]
-        || source_name_words.as_slice() == ["this", "card"]
-        || source_name_words.as_slice() == ["this", "spell"];
-    let has_generic_object_words = source_name_words.iter().any(|word| {
-        matches!(
-            *word,
-            "a" | "an"
-                | "the"
-                | "this"
-                | "that"
-                | "those"
-                | "it"
-                | "them"
-                | "target"
-                | "all"
-                | "each"
-                | "card"
-                | "cards"
-                | "creature"
-                | "creatures"
-                | "permanent"
-                | "permanents"
-                | "artifact"
-                | "artifacts"
-                | "enchantment"
-                | "enchantments"
-                | "land"
-                | "lands"
-                | "planeswalker"
-                | "planeswalkers"
-                | "spell"
-                | "spells"
-        )
-    });
-    if has_generic_object_words && !references_source {
+    if !is_likely_named_or_source_reference_words(&source_name_words) {
         return Ok(None);
     }
 
@@ -20465,6 +20431,160 @@ fn parse_sentence_exile_up_to_one_each_target_type(
     parse_exile_up_to_one_each_target_type_sentence(tokens)
 }
 
+fn parse_sentence_exile_multi_target(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.first() != Some(&"exile") || clause_words.contains(&"unless") {
+        return Ok(None);
+    }
+
+    let mut split_idx = None;
+    for (idx, token) in tokens.iter().enumerate() {
+        if !token.is_word("and") || idx == 0 || idx + 1 >= tokens.len() {
+            continue;
+        }
+        let tail_words = words(&tokens[idx + 1..]);
+        let starts_second_target = tail_words.first() == Some(&"target")
+            || (tail_words.starts_with(&["up", "to"]) && tail_words.contains(&"target"));
+        if starts_second_target {
+            split_idx = Some(idx);
+            break;
+        }
+    }
+
+    let Some(and_idx) = split_idx else {
+        return Ok(None);
+    };
+
+    let first_tokens = trim_commas(&tokens[1..and_idx]);
+    let second_tokens = trim_commas(&tokens[and_idx + 1..]);
+    if first_tokens.is_empty() || second_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let first_words = words(&first_tokens);
+    let second_words = words(&second_tokens);
+    let first_is_explicit_target = first_words.first() == Some(&"target")
+        || (first_words.starts_with(&["up", "to"]) && first_words.contains(&"target"));
+    let second_is_explicit_target = second_words.first() == Some(&"target")
+        || (second_words.starts_with(&["up", "to"]) && second_words.contains(&"target"));
+
+    let mut first_target = match parse_target_phrase(&first_tokens) {
+        Ok(target) => target,
+        Err(_) if !first_is_explicit_target && is_likely_named_or_source_reference_words(&first_words) => {
+            TargetAst::Source(span_from_tokens(&first_tokens))
+        }
+        Err(err) => return Err(err),
+    };
+    let mut second_target = parse_target_phrase(&second_tokens)?;
+
+    if first_is_explicit_target
+        && second_is_explicit_target
+        && let (Some((mut first_filter, first_count)), Some((mut second_filter, second_count))) = (
+            object_target_with_count(&first_target),
+            object_target_with_count(&second_target),
+        )
+        && first_filter.zone == Some(Zone::Graveyard)
+        && second_filter.zone == Some(Zone::Graveyard)
+    {
+        if first_filter.controller.is_none() {
+            first_filter.controller = Some(PlayerFilter::Any);
+        }
+        if second_filter.controller.is_none() {
+            second_filter.controller = Some(PlayerFilter::Any);
+        }
+        let tag = TagKey::from("exiled_0");
+        return Ok(Some(vec![
+            EffectAst::ChooseObjects {
+                filter: first_filter,
+                count: first_count,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+            },
+            EffectAst::ChooseObjects {
+                filter: second_filter,
+                count: second_count,
+                player: PlayerAst::You,
+                tag: tag.clone(),
+            },
+            EffectAst::Exile {
+                target: TargetAst::Tagged(tag, None),
+                face_down: false,
+            },
+        ]));
+    }
+
+    apply_exile_subject_hand_owner_context(&mut first_target, None);
+    apply_exile_subject_hand_owner_context(&mut second_target, None);
+    Ok(Some(vec![
+        EffectAst::Exile {
+            target: first_target,
+            face_down: false,
+        },
+        EffectAst::Exile {
+            target: second_target,
+            face_down: false,
+        },
+    ]))
+}
+
+fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilter, ChoiceCount)> {
+    match target {
+        TargetAst::Object(filter, _, _) => Some((filter.clone(), ChoiceCount::exactly(1))),
+        TargetAst::WithCount(inner, count) => match inner.as_ref() {
+            TargetAst::Object(filter, _, _) => Some((filter.clone(), count.clone())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn is_likely_named_or_source_reference_words(words: &[&str]) -> bool {
+    if words.is_empty() {
+        return false;
+    }
+    if is_source_reference_words(words) {
+        return true;
+    }
+    !words.iter().any(|word| {
+        matches!(
+            *word,
+            "a" | "an"
+                | "the"
+                | "this"
+                | "that"
+                | "those"
+                | "it"
+                | "them"
+                | "target"
+                | "all"
+                | "any"
+                | "each"
+                | "another"
+                | "other"
+                | "up"
+                | "to"
+                | "card"
+                | "cards"
+                | "creature"
+                | "creatures"
+                | "permanent"
+                | "permanents"
+                | "artifact"
+                | "artifacts"
+                | "enchantment"
+                | "enchantments"
+                | "land"
+                | "lands"
+                | "planeswalker"
+                | "planeswalkers"
+                | "spell"
+                | "spells"
+        )
+    })
+}
+
 fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -21152,6 +21272,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "exile-up-to-one-each-target-type",
         parser: parse_sentence_exile_up_to_one_each_target_type,
+    },
+    SentencePrimitive {
+        name: "exile-multi-target",
+        parser: parse_sentence_exile_multi_target,
     },
     SentencePrimitive {
         name: "damage-unless-controller-has-source-deal-damage",
