@@ -616,6 +616,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
         | EffectAst::BecomeBasicLandTypeChoice { target, .. }
+        | EffectAst::BecomeCreatureTypeChoice { target, .. }
         | EffectAst::BecomeColorChoice { target, .. }
         | EffectAst::SetBasePower { target, .. }
         | EffectAst::SetBasePowerToughness { target, .. }
@@ -1053,6 +1054,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
         | EffectAst::BecomeBasicLandTypeChoice { target, .. }
+        | EffectAst::BecomeCreatureTypeChoice { target, .. }
         | EffectAst::BecomeColorChoice { target, .. }
         | EffectAst::SetBasePower { target, .. }
         | EffectAst::SetBasePowerToughness { target, .. }
@@ -1551,6 +1553,7 @@ fn collect_tag_spans_from_effect(
         | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
         | EffectAst::BecomeBasicLandTypeChoice { target, .. }
+        | EffectAst::BecomeCreatureTypeChoice { target, .. }
         | EffectAst::BecomeColorChoice { target, .. }
         | EffectAst::SetBasePower { target, .. }
         | EffectAst::SetBasePowerToughness { target, .. }
@@ -3058,6 +3061,17 @@ fn compile_effect(
                 ))
             })
         }
+        EffectAst::BecomeCreatureTypeChoice {
+            target,
+            duration,
+            excluded_subtypes,
+        } => compile_tagged_effect_for_target(target, ctx, "become_creature_type_choice", |spec| {
+            Effect::new(crate::effects::BecomeCreatureTypeChoiceEffect::new(
+                spec,
+                duration.clone(),
+                excluded_subtypes.clone(),
+            ))
+        }),
         EffectAst::BecomeColorChoice { target, duration } => {
             compile_tagged_effect_for_target(target, ctx, "become_color_choice", |spec| {
                 Effect::new(crate::effects::BecomeColorChoiceEffect::new(

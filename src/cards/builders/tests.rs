@@ -10073,3 +10073,31 @@ fn parse_target_creature_becomes_color_of_your_choice_until_end_of_turn() {
         "expected become-color-choice effect in activated ability, got {abilities_debug}"
     );
 }
+
+#[test]
+fn parse_choose_creature_type_then_target_becomes_that_type() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imagecrafter Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Choose a creature type other than Wall. Target creature becomes that type until end of turn.")
+        .expect("choose-creature-type then target becomes that type should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("becomecreaturetypechoiceeffect"),
+        "expected become-creature-type-choice effect in activated ability, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_choose_creature_type_then_each_creature_becomes_that_type() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Standardize Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Choose a creature type other than Wall. Each creature becomes that type until end of turn.")
+        .expect("choose-creature-type then each creature becomes that type should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("becomecreaturetypechoiceeffect"),
+        "expected become-creature-type-choice effect in sorcery text, got {rendered}"
+    );
+}

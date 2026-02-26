@@ -15765,6 +15765,111 @@ fn parse_target_player_chooses_then_other_cant_block(
     ]))
 }
 
+fn parse_choose_creature_type_then_become_type(
+    first: &[Token],
+    second: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(first);
+    let first_words = words(&first_tokens);
+    if first_words.is_empty() || !matches!(first_words[0], "choose" | "chooses") {
+        return Ok(None);
+    }
+
+    let mut idx = 1usize;
+    if first_words.get(idx).is_some_and(|word| is_article(word)) {
+        idx += 1;
+    }
+    if first_words.get(idx) != Some(&"creature") || first_words.get(idx + 1) != Some(&"type") {
+        return Ok(None);
+    }
+    idx += 2;
+
+    let mut excluded_subtypes = Vec::new();
+    if idx < first_words.len() {
+        if first_words.get(idx) == Some(&"other") && first_words.get(idx + 1) == Some(&"than") {
+            let subtype_word = first_words.get(idx + 2).copied().ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing creature subtype exclusion in creature-type choice clause (clause: '{}')",
+                    first_words.join(" ")
+                ))
+            })?;
+            let subtype = parse_subtype_word(subtype_word)
+                .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word))
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported creature subtype exclusion in creature-type choice clause (clause: '{}')",
+                        first_words.join(" ")
+                    ))
+                })?;
+            excluded_subtypes.push(subtype);
+            idx += 3;
+        }
+        if idx != first_words.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported creature-type choice clause (clause: '{}')",
+                first_words.join(" ")
+            )));
+        }
+    }
+
+    let second_words = words(second);
+    let Some(become_idx) = second
+        .iter()
+        .position(|token| token.is_word("become") || token.is_word("becomes"))
+    else {
+        return Ok(None);
+    };
+    if become_idx == 0 {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&second[..become_idx]);
+    if subject_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing target in creature-type become clause (clause: '{}')",
+            second_words.join(" ")
+        )));
+    }
+
+    let become_tail_tokens = trim_commas(&second[become_idx + 1..]);
+    let (duration, become_tokens) =
+        if let Some((duration, remainder)) = parse_restriction_duration(&become_tail_tokens)? {
+            (duration, remainder)
+        } else {
+            (Until::Forever, become_tail_tokens.to_vec())
+        };
+    let become_words = words(&become_tokens);
+    if become_words.as_slice() != ["that", "type"] {
+        return Ok(None);
+    }
+
+    let subject_words = words(&subject_tokens);
+    let target = if subject_words.starts_with(&["each"]) || subject_words.starts_with(&["all"]) {
+        let filter_tokens = trim_commas(&subject_tokens[1..]);
+        if filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing object filter in creature-type become clause (clause: '{}')",
+                second_words.join(" ")
+            )));
+        }
+        let filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported object filter in creature-type become clause (clause: '{}')",
+                second_words.join(" ")
+            ))
+        })?;
+        TargetAst::Object(filter, span_from_tokens(&subject_tokens), None)
+    } else {
+        parse_target_phrase(&subject_tokens)?
+    };
+
+    Ok(Some(vec![EffectAst::BecomeCreatureTypeChoice {
+        target,
+        duration,
+        excluded_subtypes,
+    }]))
+}
+
 fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -15999,6 +16104,18 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
         {
             parser_trace(
                 "parse_effect_sentences:sequence-hit:target-chooses-other-cant-block",
+                sentence,
+            );
+            effects.append(&mut combined);
+            sentence_idx += 2;
+            continue;
+        }
+        if sentence_idx + 1 < sentences.len()
+            && let Some(mut combined) =
+                parse_choose_creature_type_then_become_type(sentence, &sentences[sentence_idx + 1])?
+        {
+            parser_trace(
+                "parse_effect_sentences:sequence-hit:choose-creature-type-then-become-type",
                 sentence,
             );
             effects.append(&mut combined);

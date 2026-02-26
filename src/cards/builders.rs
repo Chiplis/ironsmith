@@ -728,6 +728,11 @@ enum EffectAst {
         target: TargetAst,
         duration: Until,
     },
+    BecomeCreatureTypeChoice {
+        target: TargetAst,
+        duration: Until,
+        excluded_subtypes: Vec<Subtype>,
+    },
     BecomeColorChoice {
         target: TargetAst,
         duration: Until,
