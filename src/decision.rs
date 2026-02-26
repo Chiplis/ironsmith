@@ -5906,8 +5906,10 @@ mod tests {
     use crate::static_abilities::StaticAbility;
     use crate::ability::{Ability, SpellFilter};
     use crate::color::ColorSet;
-    use crate::target::PlayerFilter;
+    use crate::effect::Value;
+    use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
+    use crate::zone::Zone;
 
     fn setup_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
@@ -6088,6 +6090,49 @@ mod tests {
 
         let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(effective.to_oracle(), "{1}{B}{B}");
+    }
+
+    #[test]
+    fn dynamic_spell_cost_reduction_distinct_names_reduces_generic_cost() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        // Two differently named lands you control.
+        let forest = CardBuilder::new(CardId::from_raw(20), "Forest Variant")
+            .card_types(vec![CardType::Land])
+            .build();
+        game.create_object_from_card(&forest, alice, Zone::Battlefield);
+        let island = CardBuilder::new(CardId::from_raw(21), "Island Variant")
+            .card_types(vec![CardType::Land])
+            .build();
+        game.create_object_from_card(&island, alice, Zone::Battlefield);
+
+        // A spell with base cost {6}{G} that costs {X} less where X is distinct land names.
+        let spell_card = CardBuilder::new(CardId::from_raw(22), "Fungal Colossus Variant")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(6)],
+                vec![ManaSymbol::Green],
+            ]))
+            .build();
+        let mut filter = ObjectFilter::land().you_control();
+        filter.zone = Some(Zone::Battlefield);
+        let reduction = StaticAbility::new(crate::static_abilities::CostReduction::new(
+            SpellFilter::default(),
+            Value::DistinctNames(filter),
+        ));
+
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(reduction));
+
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{4}{G}");
     }
 
     #[test]

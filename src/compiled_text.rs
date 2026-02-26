@@ -5527,6 +5527,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::ColorsAmong(filter) => {
             format!("the number of {}", describe_colors_among(filter))
         }
+        Value::DistinctNames(filter) => format!(
+            "the number of differently named {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::CreaturesDiedThisTurn => "the number of creatures that died this turn".to_string(),
         Value::CreaturesDiedThisTurnControlledBy(filter) => format!(
             "the number of creatures that died under {} control this turn",

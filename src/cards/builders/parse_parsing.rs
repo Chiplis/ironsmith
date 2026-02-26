@@ -3606,6 +3606,37 @@ fn parse_spells_cost_modifier_line(
         ));
     }
 
+    // Handle trailing "where X is ..." clauses, e.g.
+    // "This spell costs {X} less to cast, where X is the number of differently named lands you control."
+    if remaining_words
+        .windows(3)
+        .any(|window| window == ["where", "x", "is"])
+    {
+        let clause = clause_words.join(" ");
+        let where_word_idx = remaining_words
+            .windows(3)
+            .position(|window| window == ["where", "x", "is"])
+            .unwrap_or(0);
+        let where_token_idx =
+            token_index_for_word_index(remaining_tokens, where_word_idx).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unable to map where-x clause in spells-cost modifier (clause: '{clause}')"
+                ))
+            })?;
+        let where_tokens = trim_commas(&remaining_tokens[where_token_idx..]);
+        let x_value = parse_where_x_value_clause(&where_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported where-x clause in spells-cost modifier (clause: '{clause}')"
+            ))
+        })?;
+        if !value_contains_unbound_x(&amount_value) {
+            return Err(CardTextError::ParseError(format!(
+                "missing where-x clause in spells-cost modifier (clause: '{clause}')"
+            )));
+        }
+        amount_value = replace_unbound_x_with_value(amount_value, &x_value, &clause)?;
+    }
+
     parse_trailing_targets_condition_in_cost_modifier(
         &mut filter,
         remaining_tokens,
@@ -3758,6 +3789,9 @@ fn parse_cost_modifier_amount(tokens: &[Token]) -> Option<(Value, usize)> {
     let symbol = parse_mana_symbol(word).ok()?;
     if let ManaSymbol::Generic(amount) = symbol {
         return Some((Value::Fixed(amount as i32), 1));
+    }
+    if symbol == ManaSymbol::X {
+        return Some((Value::X, 1));
     }
     None
 }
@@ -6031,12 +6065,41 @@ fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
         return Some(Value::PartySize(PlayerFilter::You));
     }
 
+    // where X is the number of differently named <objects>
+    if let Some(value) = parse_where_x_is_number_of_differently_named_filter_value(tokens) {
+        return Some(value);
+    }
+
     // where X is the number of <objects>
     if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
         return Some(value);
     }
 
     None
+}
+
+fn parse_where_x_is_number_of_differently_named_filter_value(tokens: &[Token]) -> Option<Value> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+
+    let number_idx = clause_words.iter().position(|word| *word == "number")?;
+    if clause_words.get(number_idx + 1).copied() != Some("of") {
+        return None;
+    }
+    if clause_words.get(number_idx + 2).copied() != Some("differently") {
+        return None;
+    }
+    if clause_words.get(number_idx + 3).copied() != Some("named") {
+        return None;
+    }
+
+    let object_start_word_idx = number_idx + 4;
+    let object_start_token_idx = token_index_for_word_index(tokens, object_start_word_idx)?;
+    let filter_tokens = &tokens[object_start_token_idx..];
+    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    Some(Value::DistinctNames(filter))
 }
 
 fn parse_where_x_is_number_of_filter_value(tokens: &[Token]) -> Option<Value> {

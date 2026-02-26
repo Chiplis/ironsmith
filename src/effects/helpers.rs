@@ -226,6 +226,43 @@ pub fn resolve_value(
                 + (has_red as i32)
                 + (has_green as i32))
         }
+        Value::DistinctNames(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = ctx.filter_context(game);
+            let candidate_ids: Vec<ObjectId> = match filter.zone {
+                Some(Zone::Battlefield) => game.battlefield.clone(),
+                Some(Zone::Graveyard) => game
+                    .players
+                    .iter()
+                    .flat_map(|player| player.graveyard.iter().copied())
+                    .collect(),
+                Some(Zone::Hand) => game
+                    .players
+                    .iter()
+                    .flat_map(|player| player.hand.iter().copied())
+                    .collect(),
+                Some(Zone::Library) => game
+                    .players
+                    .iter()
+                    .flat_map(|player| player.library.iter().copied())
+                    .collect(),
+                Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
+                Some(Zone::Exile) => game.exile.clone(),
+                Some(Zone::Command) => game.command_zone.clone(),
+                None => game.battlefield.clone(),
+            };
+
+            let mut seen: HashSet<&str> = HashSet::new();
+            for obj in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                seen.insert(obj.name.as_str());
+            }
+            Ok(seen.len() as i32)
+        }
         Value::CreaturesDiedThisTurn => Ok(game.creatures_died_this_turn as i32),
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
             let filter_ctx = ctx.filter_context(game);

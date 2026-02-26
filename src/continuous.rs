@@ -2673,6 +2673,40 @@ fn resolve_value_with_context(
                 + (has_red as i32)
                 + (has_green as i32)
         }
+        Value::DistinctNames(filter) => {
+            use std::collections::HashSet;
+
+            let controller = ctx
+                .objects
+                .get(&source)
+                .map(|o| o.controller)
+                .unwrap_or(crate::ids::PlayerId::from_index(0));
+
+            let filter_ctx = FilterContext {
+                you: Some(controller),
+                source: Some(source),
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                target_players: Vec::new(),
+                tagged_objects: std::collections::HashMap::new(),
+            };
+
+            let mut seen: HashSet<&str> = HashSet::new();
+            for obj in ctx
+                .battlefield
+                .iter()
+                .filter_map(|&id| ctx.objects.get(&id))
+                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, ctx.game))
+            {
+                seen.insert(obj.name.as_str());
+            }
+            seen.len() as i32
+        }
         Value::CreaturesDiedThisTurn => ctx.game.creatures_died_this_turn as i32,
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
             let controller = ctx

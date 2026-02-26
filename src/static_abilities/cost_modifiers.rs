@@ -154,6 +154,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{1}".to_string(),
             Some(format!("for each {}", filter.description())),
         ),
+        Value::DistinctNames(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the number of differently named {}",
+                filter.description()
+            )),
+        ),
         Value::CountersOnSource(counter_type) => (
             "{1}".to_string(),
             Some(format!(

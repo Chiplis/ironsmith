@@ -537,6 +537,11 @@ pub enum Value {
     /// Number of distinct colors among objects matching a filter.
     ColorsAmong(ObjectFilter),
 
+    /// Number of distinct object names among objects matching a filter.
+    ///
+    /// Used for phrases like "the number of differently named lands you control."
+    DistinctNames(ObjectFilter),
+
     /// Number of creatures that have died this turn.
     CreaturesDiedThisTurn,
 

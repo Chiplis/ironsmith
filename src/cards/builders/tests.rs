@@ -7863,6 +7863,26 @@ fn parse_spells_cost_modifier_supports_colored_mana_increase() {
 }
 
 #[test]
+fn parse_spells_cost_modifier_supports_where_x_differently_named_lands() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fungal Colossus Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This spell costs {X} less to cast, where X is the number of differently named lands you control.",
+        )
+        .expect("parse where-X cost reduction clause");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("cost {x} less to cast"),
+        "expected cost reduction in rendered text, got {joined}"
+    );
+    assert!(
+        joined.contains("where x is the number of differently named"),
+        "expected where-X tail in rendered text, got {joined}"
+    );
+}
+
+#[test]
 fn parse_spells_cost_modifier_subtype_does_not_force_creature_word() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinosaur Cost Variant")
         .card_types(vec![CardType::Creature])

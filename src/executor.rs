@@ -740,6 +740,21 @@ pub fn resolve_value(
                 + (has_red as i32)
                 + (has_green as i32))
         }
+        Value::DistinctNames(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = ctx.filter_context(game);
+            let mut seen: HashSet<&str> = HashSet::new();
+            for obj in game
+                .battlefield
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                seen.insert(obj.name.as_str());
+            }
+            Ok(seen.len() as i32)
+        }
         Value::CreaturesDiedThisTurn => Ok(game.creatures_died_this_turn as i32),
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
             let filter_ctx = ctx.filter_context(game);
