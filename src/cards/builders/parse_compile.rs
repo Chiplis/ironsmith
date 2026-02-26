@@ -760,6 +760,14 @@ fn value_references_tag(value: &Value, tag: &str) -> bool {
             .tagged_constraints
             .iter()
             .any(|constraint| constraint.tag.as_str() == tag),
+        Value::TotalPower(filter)
+        | Value::TotalToughness(filter)
+        | Value::TotalManaValue(filter)
+        | Value::GreatestPower(filter)
+        | Value::GreatestManaValue(filter) => filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == tag),
         Value::PowerOf(spec) | Value::ToughnessOf(spec) => choose_spec_references_tag(spec, tag),
         Value::ManaValueOf(spec) => choose_spec_references_tag(spec, tag),
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
@@ -5775,6 +5783,13 @@ fn resolve_value_it_tag(value: &Value, ctx: &CompileContext) -> Result<Value, Ca
             resolve_it_tag(filter, ctx)?,
             *multiplier,
         )),
+        Value::TotalPower(filter) => Ok(Value::TotalPower(resolve_it_tag(filter, ctx)?)),
+        Value::TotalToughness(filter) => Ok(Value::TotalToughness(resolve_it_tag(filter, ctx)?)),
+        Value::TotalManaValue(filter) => Ok(Value::TotalManaValue(resolve_it_tag(filter, ctx)?)),
+        Value::GreatestPower(filter) => Ok(Value::GreatestPower(resolve_it_tag(filter, ctx)?)),
+        Value::GreatestManaValue(filter) => {
+            Ok(Value::GreatestManaValue(resolve_it_tag(filter, ctx)?))
+        }
         Value::BasicLandTypesAmong(filter) => {
             Ok(Value::BasicLandTypesAmong(resolve_it_tag(filter, ctx)?))
         }

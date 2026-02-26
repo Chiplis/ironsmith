@@ -29,7 +29,7 @@ use crate::events::combat::{
     CreatureBlockedEvent,
 };
 use crate::events::damage::DamageEvent;
-use crate::events::life::LifeLossEvent;
+use crate::events::life::{LifeGainEvent, LifeLossEvent};
 use crate::events::permanents::SacrificeEvent;
 use crate::events::spells::{AbilityActivatedEvent, BecomesTargetedEvent, SpellCastEvent};
 use crate::events::zones::EnterBattlefieldEvent;
@@ -201,6 +201,12 @@ fn queue_triggers_from_event(
             .damage_to_players_this_turn
             .entry(player_id)
             .or_insert(0) += damage_event.amount;
+        if !damage_event.is_combat {
+            *game
+                .noncombat_damage_to_players_this_turn
+                .entry(player_id)
+                .or_insert(0) += damage_event.amount;
+        }
 
         if game
             .object(damage_event.source)
@@ -212,6 +218,12 @@ fn queue_triggers_from_event(
                 .entry(player_id)
                 .or_insert(0) += damage_event.amount;
         }
+    }
+    if let Some(life_gain_event) = event.downcast::<LifeGainEvent>() {
+        *game
+            .life_gained_this_turn
+            .entry(life_gain_event.player)
+            .or_insert(0) += life_gain_event.amount;
     }
 
     game.record_trigger_event_kind(event.kind());
@@ -8754,6 +8766,40 @@ mod tests {
                 .get(&PlayerId::from_index(1)),
             Some(&3)
         );
+    }
+
+    #[test]
+    fn test_queue_triggers_tracks_noncombat_damage_to_players_this_turn() {
+        let mut game = setup_game();
+        let mut trigger_queue = TriggerQueue::new();
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::from_raw(200);
+
+        let event = TriggerEvent::new(DamageEvent::new(
+            source,
+            EventDamageTarget::Player(bob),
+            4,
+            false,
+        ));
+        queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+
+        assert_eq!(game.damage_to_players_this_turn.get(&bob), Some(&4));
+        assert_eq!(
+            game.noncombat_damage_to_players_this_turn.get(&bob),
+            Some(&4)
+        );
+    }
+
+    #[test]
+    fn test_queue_triggers_tracks_life_gained_this_turn() {
+        let mut game = setup_game();
+        let mut trigger_queue = TriggerQueue::new();
+        let alice = PlayerId::from_index(0);
+
+        let event = TriggerEvent::new(LifeGainEvent::new(alice, 5));
+        queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+
+        assert_eq!(game.life_gained_this_turn.get(&alice), Some(&5));
     }
 
     #[test]

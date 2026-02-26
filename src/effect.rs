@@ -531,6 +531,21 @@ pub enum Value {
     /// A scaled count of objects matching a filter (factor * count(filter)).
     CountScaled(ObjectFilter, i32),
 
+    /// The total power among objects matching a filter.
+    TotalPower(ObjectFilter),
+
+    /// The total toughness among objects matching a filter.
+    TotalToughness(ObjectFilter),
+
+    /// The total mana value among objects matching a filter.
+    TotalManaValue(ObjectFilter),
+
+    /// The greatest power among objects matching a filter.
+    GreatestPower(ObjectFilter),
+
+    /// The greatest mana value among objects matching a filter.
+    GreatestManaValue(ObjectFilter),
+
     /// Number of distinct basic land types among objects matching a filter.
     BasicLandTypesAmong(ObjectFilter),
 
@@ -574,6 +589,12 @@ pub enum Value {
 
     /// Number of cards in a player's hand
     CardsInHand(PlayerFilter),
+
+    /// Total life gained this turn by players matching the filter.
+    LifeGainedThisTurn(PlayerFilter),
+
+    /// Total noncombat damage dealt this turn to players matching the filter.
+    NoncombatDamageDealtToPlayersThisTurn(PlayerFilter),
 
     /// The greatest number of cards in hand among players matching a filter.
     ///

@@ -1003,6 +1003,7 @@ fn value_references_pt(value: &Value) -> bool {
         // These directly reference P/T of objects
         Value::SourcePower | Value::SourceToughness => true,
         Value::PowerOf(_) | Value::ToughnessOf(_) => true,
+        Value::TotalPower(_) | Value::TotalToughness(_) | Value::GreatestPower(_) => true,
         Value::Add(left, right) => value_references_pt(left) || value_references_pt(right),
 
         // EffectValue could reference P/T from a prior effect
@@ -1014,6 +1015,8 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::XTimes(_)
         | Value::Count(_)
         | Value::CountScaled(_, _)
+        | Value::TotalManaValue(_)
+        | Value::GreatestManaValue(_)
         | Value::BasicLandTypesAmong(_)
         | Value::ColorsAmong(_)
         | Value::DistinctNames(_)
@@ -1026,6 +1029,8 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
         | Value::CardsInHand(_)
+        | Value::LifeGainedThisTurn(_)
+        | Value::NoncombatDamageDealtToPlayersThisTurn(_)
         | Value::MaxCardsInHand(_)
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)

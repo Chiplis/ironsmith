@@ -6546,6 +6546,22 @@ fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
         return None;
     }
 
+    if let Some(value) = parse_where_x_source_stat_value(tokens) {
+        return Some(value);
+    }
+
+    if let Some(value) = parse_where_x_life_gained_this_turn_value(tokens) {
+        return Some(value);
+    }
+
+    if let Some(value) = parse_where_x_noncombat_damage_to_opponents_value(tokens) {
+        return Some(value);
+    }
+
+    if let Some(value) = parse_where_x_is_aggregate_filter_value(tokens) {
+        return Some(value);
+    }
+
     // where X is your devotion to black
     if words.contains(&"devotion") {
         if let Ok(Some(value)) = parse_devotion_value_from_add_clause(tokens) {
@@ -6603,6 +6619,174 @@ fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
     }
 
     None
+}
+
+fn parse_where_x_source_stat_value(tokens: &[Token]) -> Option<Value> {
+    let words = words(tokens);
+    if !words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+    match words.get(3..) {
+        Some(["this", "creatures", "power"]) | Some(["its", "power"]) => Some(Value::SourcePower),
+        Some(["this", "creatures", "toughness"]) | Some(["its", "toughness"]) => {
+            Some(Value::SourceToughness)
+        }
+        Some(["this", "creatures", "mana", "value"]) | Some(["its", "mana", "value"]) => {
+            Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)))
+        }
+        _ => None,
+    }
+}
+
+fn parse_where_x_life_gained_this_turn_value(tokens: &[Token]) -> Option<Value> {
+    let words = words(tokens);
+    if !words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+    match words.get(3..) {
+        Some(["the", "amount", "of", "life", "you", "gained", "this", "turn"])
+        | Some(["amount", "of", "life", "you", "gained", "this", "turn"]) => {
+            Some(Value::LifeGainedThisTurn(PlayerFilter::You))
+        }
+        _ => None,
+    }
+}
+
+fn parse_where_x_noncombat_damage_to_opponents_value(tokens: &[Token]) -> Option<Value> {
+    let words = words(tokens);
+    if !words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+    match words.get(3..) {
+        Some([
+            "the",
+            "total",
+            "amount",
+            "of",
+            "noncombat",
+            "damage",
+            "dealt",
+            "to",
+            "your",
+            "opponents",
+            "this",
+            "turn",
+        ])
+        | Some([
+            "total",
+            "amount",
+            "of",
+            "noncombat",
+            "damage",
+            "dealt",
+            "to",
+            "your",
+            "opponents",
+            "this",
+            "turn",
+        ]) => Some(Value::NoncombatDamageDealtToPlayersThisTurn(
+            PlayerFilter::Opponent,
+        )),
+        _ => None,
+    }
+}
+
+fn parse_where_x_is_aggregate_filter_value(tokens: &[Token]) -> Option<Value> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+
+    let mut idx = 3usize;
+    if clause_words.get(idx).copied() == Some("the") {
+        idx += 1;
+    }
+    let aggregate = match clause_words.get(idx).copied() {
+        Some("total") => "total",
+        Some("greatest") => "greatest",
+        _ => return None,
+    };
+    idx += 1;
+
+    let value_kind = if clause_words.get(idx).copied() == Some("power") {
+        idx += 1;
+        "power"
+    } else if clause_words.get(idx).copied() == Some("toughness") {
+        idx += 1;
+        "toughness"
+    } else if clause_words.get(idx).copied() == Some("mana")
+        && clause_words.get(idx + 1).copied() == Some("value")
+    {
+        idx += 2;
+        "mana_value"
+    } else {
+        return None;
+    };
+
+    if !matches!(clause_words.get(idx).copied(), Some("of" | "among")) {
+        return None;
+    }
+    idx += 1;
+
+    if aggregate == "greatest" && value_kind == "mana_value" {
+        if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
+            return Some(value);
+        }
+    }
+
+    let object_start_token_idx = token_index_for_word_index(tokens, idx)?;
+    let filter_tokens = &tokens[object_start_token_idx..];
+    let filter = parse_object_filter(filter_tokens, false).ok()?;
+
+    match (aggregate, value_kind) {
+        ("total", "power") => Some(Value::TotalPower(filter)),
+        ("total", "toughness") => Some(Value::TotalToughness(filter)),
+        ("total", "mana_value") => Some(Value::TotalManaValue(filter)),
+        ("greatest", "power") => Some(Value::GreatestPower(filter)),
+        ("greatest", "mana_value") => Some(Value::GreatestManaValue(filter)),
+        _ => None,
+    }
+}
+
+fn parse_where_x_greatest_commander_mana_value(
+    tokens: &[Token],
+    commander_start_word_idx: usize,
+) -> Option<Value> {
+    let commander_start_token_idx = token_index_for_word_index(tokens, commander_start_word_idx)?;
+    let commander_words = words(&tokens[commander_start_token_idx..]);
+    let normalized: Vec<&str> = commander_words
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect();
+    if normalized
+        != [
+            "commander",
+            "you",
+            "own",
+            "on",
+            "battlefield",
+            "or",
+            "in",
+            "command",
+            "zone",
+        ]
+    {
+        return None;
+    }
+
+    let mut battlefield_commander = ObjectFilter::default();
+    battlefield_commander.zone = Some(Zone::Battlefield);
+    battlefield_commander.is_commander = true;
+    battlefield_commander.owner = Some(PlayerFilter::You);
+
+    let mut command_zone_commander = battlefield_commander.clone();
+    command_zone_commander.zone = Some(Zone::Command);
+
+    let mut combined = ObjectFilter::default();
+    combined.any_of = vec![battlefield_commander, command_zone_commander];
+
+    Some(Value::GreatestManaValue(combined))
 }
 
 fn parse_where_x_is_number_of_differently_named_filter_value(tokens: &[Token]) -> Option<Value> {

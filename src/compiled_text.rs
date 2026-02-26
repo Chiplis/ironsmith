@@ -5521,6 +5521,36 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::TotalPower(filter) => {
+            format!(
+                "the total power of {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        Value::TotalToughness(filter) => {
+            format!(
+                "the total toughness of {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        Value::TotalManaValue(filter) => {
+            format!(
+                "the total mana value of {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        Value::GreatestPower(filter) => {
+            format!(
+                "the greatest power among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        Value::GreatestManaValue(filter) => {
+            format!(
+                "the greatest mana value among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
         Value::BasicLandTypesAmong(filter) => {
             format!("the number of {}", describe_basic_land_types_among(filter))
         }
@@ -5568,6 +5598,26 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of cards in {} hand",
             describe_possessive_player_filter(filter)
         ),
+        Value::LifeGainedThisTurn(filter) => match filter {
+            PlayerFilter::You => "the amount of life you gained this turn".to_string(),
+            PlayerFilter::Opponent => "the amount of life your opponents gained this turn".to_string(),
+            _ => format!(
+                "the amount of life {} gained this turn",
+                describe_player_filter(filter)
+            ),
+        },
+        Value::NoncombatDamageDealtToPlayersThisTurn(filter) => match filter {
+            PlayerFilter::You => {
+                "the total amount of noncombat damage dealt to you this turn".to_string()
+            }
+            PlayerFilter::Opponent => {
+                "the total amount of noncombat damage dealt to your opponents this turn".to_string()
+            }
+            _ => format!(
+                "the total amount of noncombat damage dealt to {} this turn",
+                describe_player_filter(filter)
+            ),
+        },
         Value::MaxCardsInHand(filter) => {
             // Prefer the oracle-style phrasing used on Adamaro, First to Desire.
             // (We keep this structured so that other filters still render coherently.)

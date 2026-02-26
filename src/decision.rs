@@ -6264,6 +6264,168 @@ mod tests {
     }
 
     #[test]
+    fn this_spell_cost_reduction_supports_total_power_where_x_is_clause() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let bear = CardBuilder::new(CardId::from_raw(43), "Cost Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        game.create_object_from_card(&bear, alice, Zone::Battlefield);
+        let giant = CardBuilder::new(CardId::from_raw(44), "Cost Giant")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build();
+        game.create_object_from_card(&giant, alice, Zone::Battlefield);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(45), "Power Discount Variant")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(10)],
+                vec![ManaSymbol::Green],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::TotalPower(ObjectFilter::creature().you_control()),
+            crate::static_abilities::ThisSpellCostCondition::Always,
+        ));
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{3}{G}");
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_supports_life_gained_this_turn_where_x_is_clause() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.life_gained_this_turn.insert(alice, 5);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(46), "Life Discount Variant")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(7)],
+                vec![ManaSymbol::Green],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::LifeGainedThisTurn(PlayerFilter::You),
+            crate::static_abilities::ThisSpellCostCondition::Always,
+        ));
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{2}{G}");
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_supports_noncombat_damage_to_opponents_where_x_is_clause() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.noncombat_damage_to_players_this_turn.insert(bob, 6);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(47), "Damage Discount Variant")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(8)],
+                vec![ManaSymbol::Red],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::NoncombatDamageDealtToPlayersThisTurn(PlayerFilter::Opponent),
+            crate::static_abilities::ThisSpellCostCondition::Always,
+        ));
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{2}{R}");
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_supports_greatest_commander_mana_value_where_x_is_clause() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let commander_battlefield = CardBuilder::new(CardId::from_raw(48), "Battlefield Commander")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Green],
+            ]))
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build();
+        let battlefield_id =
+            game.create_object_from_card(&commander_battlefield, alice, Zone::Battlefield);
+        game.set_as_commander(battlefield_id, alice);
+
+        let commander_command_zone =
+            CardBuilder::new(CardId::from_raw(49), "Command Zone Commander")
+                .card_types(vec![CardType::Creature])
+                .mana_cost(ManaCost::from_pips(vec![
+                    vec![ManaSymbol::Generic(5)],
+                    vec![ManaSymbol::Blue],
+                ]))
+                .power_toughness(PowerToughness::fixed(5, 5))
+                .build();
+        let command_id = game.create_object_from_card(&commander_command_zone, alice, Zone::Command);
+        game.set_as_commander(command_id, alice);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(50), "Commander Discount Variant")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(9)],
+                vec![ManaSymbol::White],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+
+        let mut battlefield_filter = ObjectFilter::default();
+        battlefield_filter.zone = Some(Zone::Battlefield);
+        battlefield_filter.owner = Some(PlayerFilter::You);
+        battlefield_filter.is_commander = true;
+        let mut command_filter = battlefield_filter.clone();
+        command_filter.zone = Some(Zone::Command);
+        let mut commander_filter = ObjectFilter::default();
+        commander_filter.any_of = vec![battlefield_filter, command_filter];
+
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::GreatestManaValue(commander_filter),
+            crate::static_abilities::ThisSpellCostCondition::Always,
+        ));
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{3}{W}");
+    }
+
+    #[test]
     fn test_can_cast_spell_respects_cant_cast_creature_spells_restriction() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

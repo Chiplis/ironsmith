@@ -42,6 +42,52 @@ pub fn get_optional_costs_paid<'a>(
     &ctx.optional_costs_paid
 }
 
+fn candidate_ids_for_zone(game: &GameState, zone: Option<Zone>) -> Vec<ObjectId> {
+    match zone {
+        Some(Zone::Battlefield) => game.battlefield.clone(),
+        Some(Zone::Graveyard) => game
+            .players
+            .iter()
+            .flat_map(|player| player.graveyard.iter().copied())
+            .collect(),
+        Some(Zone::Hand) => game
+            .players
+            .iter()
+            .flat_map(|player| player.hand.iter().copied())
+            .collect(),
+        Some(Zone::Library) => game
+            .players
+            .iter()
+            .flat_map(|player| player.library.iter().copied())
+            .collect(),
+        Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
+        Some(Zone::Exile) => game.exile.clone(),
+        Some(Zone::Command) => game.command_zone.clone(),
+        None => game.battlefield.clone(),
+    }
+}
+
+fn candidate_ids_for_filter(game: &GameState, filter: &crate::filter::ObjectFilter) -> Vec<ObjectId> {
+    if let Some(zone) = filter.zone {
+        return candidate_ids_for_zone(game, Some(zone));
+    }
+    if filter.any_of.is_empty() {
+        return candidate_ids_for_zone(game, None);
+    }
+
+    let mut ids = std::collections::HashSet::new();
+    for nested in &filter.any_of {
+        for id in candidate_ids_for_zone(game, nested.zone) {
+            ids.insert(id);
+        }
+    }
+    if ids.is_empty() {
+        candidate_ids_for_zone(game, None)
+    } else {
+        ids.into_iter().collect()
+    }
+}
+
 /// Resolve a Value to a concrete i32.
 pub fn resolve_value(
     game: &GameState,
@@ -66,28 +112,7 @@ pub fn resolve_value(
 
         Value::Count(filter) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids: Vec<ObjectId> = match filter.zone {
-                Some(Zone::Battlefield) => game.battlefield.clone(),
-                Some(Zone::Graveyard) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.graveyard.iter().copied())
-                    .collect(),
-                Some(Zone::Hand) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.hand.iter().copied())
-                    .collect(),
-                Some(Zone::Library) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.library.iter().copied())
-                    .collect(),
-                Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-                Some(Zone::Exile) => game.exile.clone(),
-                Some(Zone::Command) => game.command_zone.clone(),
-                None => game.battlefield.clone(),
-            };
+            let candidate_ids = candidate_ids_for_filter(game, filter);
 
             let count = candidate_ids
                 .iter()
@@ -98,28 +123,7 @@ pub fn resolve_value(
         }
         Value::CountScaled(filter, multiplier) => {
             let filter_ctx = ctx.filter_context(game);
-            let candidate_ids: Vec<ObjectId> = match filter.zone {
-                Some(Zone::Battlefield) => game.battlefield.clone(),
-                Some(Zone::Graveyard) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.graveyard.iter().copied())
-                    .collect(),
-                Some(Zone::Hand) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.hand.iter().copied())
-                    .collect(),
-                Some(Zone::Library) => game
-                    .players
-                    .iter()
-                    .flat_map(|player| player.library.iter().copied())
-                    .collect(),
-                Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
-                Some(Zone::Exile) => game.exile.clone(),
-                Some(Zone::Command) => game.command_zone.clone(),
-                None => game.battlefield.clone(),
-            };
+            let candidate_ids = candidate_ids_for_filter(game, filter);
 
             let count = candidate_ids
                 .iter()
@@ -127,6 +131,75 @@ pub fn resolve_value(
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
                 .count() as i32;
             Ok(count * *multiplier)
+        }
+        Value::TotalPower(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let candidate_ids = candidate_ids_for_filter(game, filter);
+            let total = candidate_ids
+                .iter()
+                .copied()
+                .filter_map(|id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+                .map(|(id, obj)| game.calculated_power(id).or_else(|| obj.power()).unwrap_or(0))
+                .sum();
+            Ok(total)
+        }
+        Value::TotalToughness(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let candidate_ids = candidate_ids_for_filter(game, filter);
+            let total = candidate_ids
+                .iter()
+                .copied()
+                .filter_map(|id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+                .map(|(id, obj)| {
+                    game.calculated_toughness(id)
+                        .or_else(|| obj.toughness())
+                        .unwrap_or(0)
+                })
+                .sum();
+            Ok(total)
+        }
+        Value::TotalManaValue(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let candidate_ids = candidate_ids_for_filter(game, filter);
+            let total = candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                .map(|obj| {
+                    obj.mana_cost
+                        .as_ref()
+                        .map(|cost| cost.mana_value() as i32)
+                        .unwrap_or(0)
+                })
+                .sum();
+            Ok(total)
+        }
+        Value::GreatestPower(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let candidate_ids = candidate_ids_for_filter(game, filter);
+            let max = candidate_ids
+                .iter()
+                .copied()
+                .filter_map(|id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+                .filter_map(|(id, obj)| game.calculated_power(id).or_else(|| obj.power()))
+                .max()
+                .unwrap_or(0);
+            Ok(max)
+        }
+        Value::GreatestManaValue(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let candidate_ids = candidate_ids_for_filter(game, filter);
+            let max = candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                .filter_map(|obj| obj.mana_cost.as_ref().map(|cost| cost.mana_value() as i32))
+                .max()
+                .unwrap_or(0);
+            Ok(max)
         }
         Value::BasicLandTypesAmong(filter) => {
             use std::collections::HashSet;
@@ -436,6 +509,31 @@ pub fn resolve_value(
                 .player(player_id)
                 .ok_or(ExecutionError::PlayerNotFound(player_id))?;
             Ok(player.hand.len() as i32)
+        }
+
+        Value::LifeGainedThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let total: u32 = player_ids
+                .iter()
+                .map(|pid| game.life_gained_this_turn.get(pid).copied().unwrap_or(0))
+                .sum();
+            Ok(total as i32)
+        }
+
+        Value::NoncombatDamageDealtToPlayersThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let total: u32 = player_ids
+                .iter()
+                .map(|pid| {
+                    game.noncombat_damage_to_players_this_turn
+                        .get(pid)
+                        .copied()
+                        .unwrap_or(0)
+                })
+                .sum();
+            Ok(total as i32)
         }
 
         Value::MaxCardsInHand(player_spec) => {

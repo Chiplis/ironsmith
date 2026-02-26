@@ -2797,6 +2797,11 @@ fn resolve_value_with_context(
         Value::XTimes(_)
         | Value::CountPlayers(_)
         | Value::PartySize(_)
+        | Value::TotalPower(_)
+        | Value::TotalToughness(_)
+        | Value::TotalManaValue(_)
+        | Value::GreatestPower(_)
+        | Value::GreatestManaValue(_)
         | Value::Devotion { .. }
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::CountersOn(_, _)
@@ -2805,6 +2810,8 @@ fn resolve_value_with_context(
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
         | Value::CardsInHand(_)
+        | Value::LifeGainedThisTurn(_)
+        | Value::NoncombatDamageDealtToPlayersThisTurn(_)
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)

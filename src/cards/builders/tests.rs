@@ -8041,6 +8041,36 @@ fn parse_spells_cost_modifier_supports_where_x_differently_named_lands() {
 }
 
 #[test]
+fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
+    let clauses = [
+        "This spell costs {X} less to cast, where X is the total power of creatures you control.",
+        "This spell costs {X} less to cast, where X is the total toughness of creatures you control.",
+        "This spell costs {X} less to cast, where X is the total mana value of Dragons you control.",
+        "This spell costs {X} less to cast, where X is the total mana value of Dragons you control not named Earthquake Dragon.",
+        "This spell costs {X} less to cast, where X is the total mana value of noncreature artifacts you control.",
+        "This spell costs {X} less to cast, where X is the total mana value of noncreature enchantments you control.",
+        "This spell costs {X} less to cast, where X is the total mana value of historic permanents you control.",
+        "This spell costs {X} less to cast, where X is the greatest power among creatures you control.",
+        "This spell costs {X} less to cast, where X is the greatest mana value among Elementals you control.",
+        "This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone.",
+        "This spell costs {X} less to cast, where X is the amount of life you gained this turn.",
+        "Creature spells you cast cost {X} less to cast, where X is the amount of life you gained this turn.",
+        "This spell costs {X} less to cast, where X is the total amount of noncombat damage dealt to your opponents this turn.",
+        "Aura and Equipment spells you cast cost {X} less to cast, where X is this creature's power.",
+    ];
+
+    for (idx, clause) in clauses.iter().enumerate() {
+        CardDefinitionBuilder::new(
+            CardId::from_raw(90_000 + idx as u32),
+            format!("Where X Extension {idx}"),
+        )
+        .card_types(vec![CardType::Creature])
+        .parse_text(*clause)
+        .expect("extended where-X spells-cost modifier should parse");
+    }
+}
+
+#[test]
 fn parse_destroy_cant_be_regenerated_followup_sentence() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wrath Tail Variant")
         .card_types(vec![CardType::Sorcery])

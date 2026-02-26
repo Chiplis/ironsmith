@@ -154,6 +154,41 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{1}".to_string(),
             Some(format!("for each {}", filter.description())),
         ),
+        Value::TotalPower(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the total power of {}",
+                filter.description()
+            )),
+        ),
+        Value::TotalToughness(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the total toughness of {}",
+                filter.description()
+            )),
+        ),
+        Value::TotalManaValue(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the total mana value of {}",
+                filter.description()
+            )),
+        ),
+        Value::GreatestPower(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the greatest power among {}",
+                filter.description()
+            )),
+        ),
+        Value::GreatestManaValue(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the greatest mana value among {}",
+                filter.description()
+            )),
+        ),
         Value::DistinctNames(filter) => (
             "{X}".to_string(),
             Some(format!(
@@ -161,6 +196,32 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 filter.description()
             )),
         ),
+        Value::LifeGainedThisTurn(player) => {
+            let phrase = match player {
+                PlayerFilter::You => "the amount of life you gained this turn".to_string(),
+                PlayerFilter::Opponent => {
+                    "the amount of life your opponents gained this turn".to_string()
+                }
+                _ => format!(
+                    "the amount of life {} gained this turn",
+                    describe_player_filter_for_spell_target(player)
+                ),
+            };
+            ("{X}".to_string(), Some(format!("where X is {phrase}")))
+        }
+        Value::NoncombatDamageDealtToPlayersThisTurn(player) => {
+            let phrase = match player {
+                PlayerFilter::You => {
+                    "the total amount of noncombat damage dealt to you this turn".to_string()
+                }
+                PlayerFilter::Opponent => "the total amount of noncombat damage dealt to your opponents this turn".to_string(),
+                _ => format!(
+                    "the total amount of noncombat damage dealt to {} this turn",
+                    describe_player_filter_for_spell_target(player)
+                ),
+            };
+            ("{X}".to_string(), Some(format!("where X is {phrase}")))
+        }
         Value::CountersOnSource(counter_type) => (
             "{1}".to_string(),
             Some(format!(

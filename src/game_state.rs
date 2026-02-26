@@ -1165,6 +1165,12 @@ pub struct GameState {
     /// Used for mechanics like Bloodthirst.
     pub damage_to_players_this_turn: HashMap<PlayerId, u32>,
 
+    /// Noncombat damage dealt to each player this turn.
+    pub noncombat_damage_to_players_this_turn: HashMap<PlayerId, u32>,
+
+    /// Life gained by each player this turn.
+    pub life_gained_this_turn: HashMap<PlayerId, u32>,
+
     /// Creatures that have been dealt damage this turn, keyed by the damaged creature.
     ///
     /// Value is the set of object IDs that dealt damage to that creature this turn.
@@ -1317,6 +1323,8 @@ impl GameState {
             ninjutsu_attack_targets: HashMap::new(),
             creature_damage_to_players_this_turn: HashMap::new(),
             damage_to_players_this_turn: HashMap::new(),
+            noncombat_damage_to_players_this_turn: HashMap::new(),
+            life_gained_this_turn: HashMap::new(),
             creatures_damaged_by_this_turn: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
             granted_mana_abilities: Vec::new(),
@@ -2786,6 +2794,8 @@ impl GameState {
         self.ninjutsu_attack_targets.clear();
         self.creature_damage_to_players_this_turn.clear();
         self.damage_to_players_this_turn.clear();
+        self.noncombat_damage_to_players_this_turn.clear();
+        self.life_gained_this_turn.clear();
         self.creatures_damaged_by_this_turn.clear();
         self.combat_damage_player_batch_hits.clear();
 
