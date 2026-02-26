@@ -2078,6 +2078,24 @@ fn test_parse_counter_target_activated_or_triggered_ability_clause() {
 }
 
 #[test]
+fn test_parse_counter_target_spell_activated_or_triggered_ability_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Disallow Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell, activated ability, or triggered ability.")
+        .expect("counter spell-or-ability clause should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("counter target spell or ability"),
+        "expected counter spell-or-ability text in oracle-like output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "counter spell-or-ability clause should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_prevent_all_damage_to_creatures_static_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bubble Matrix Probe")
         .card_types(vec![CardType::Artifact])

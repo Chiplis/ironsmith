@@ -32255,6 +32255,28 @@ fn parse_counter(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         if clause_words == ["target", "activated", "or", "triggered", "ability"] {
             return Ok(EffectAst::CounterActivatedOrTriggeredAbility);
         }
+        if matches!(
+            clause_words.as_slice(),
+            ["target", "spell", "activated", "ability", "or", "triggered", "ability"]
+                | [
+                    "target",
+                    "spell",
+                    "or",
+                    "activated",
+                    "ability",
+                    "or",
+                    "triggered",
+                    "ability"
+                ]
+        ) {
+            return Ok(EffectAst::Counter {
+                target: TargetAst::Object(
+                    ObjectFilter::spell_or_ability(),
+                    Some(TextSpan::synthetic()),
+                    None,
+                ),
+            });
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported counter-ability target clause (clause: '{}')",
             clause_words.join(" ")
