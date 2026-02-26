@@ -2401,6 +2401,13 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_all_creatures_lose_flying_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_each_creature_cant_be_blocked_by_more_than_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
+    if let Some(ability) = parse_each_creature_can_block_additional_creature_each_combat_line(tokens)?
+    {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(abilities) = parse_anthem_and_type_color_addition_line(tokens)? {
         return Ok(Some(abilities));
     }
@@ -4515,6 +4522,77 @@ fn parse_all_creatures_lose_flying_line(
         )));
     }
     Ok(None)
+}
+
+fn parse_each_creature_cant_be_blocked_by_more_than_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    // Familiar Ground: "Each creature can't be blocked by more than one creature."
+    let clause_words = words(tokens);
+    if clause_words.len() < 10 {
+        return Ok(None);
+    }
+    if !clause_words.starts_with(&[
+        "each", "creature", "cant", "be", "blocked", "by", "more", "than",
+    ]) {
+        return Ok(None);
+    }
+
+    let amount_word_idx = 8;
+    let Some(amount_token_idx) = token_index_for_word_index(tokens, amount_word_idx) else {
+        return Ok(None);
+    };
+    let Some((amount, used)) = parse_number(&tokens[amount_token_idx..]) else {
+        return Ok(None);
+    };
+
+    // Expect "... creature(s)" after the number.
+    let rest_tokens = &tokens[amount_token_idx + used..];
+    let rest_words = words(rest_tokens);
+    if rest_words.first().is_some_and(|w| *w == "creature" || *w == "creatures") {
+        let filter = ObjectFilter::creature();
+        let granted = StaticAbility::cant_be_blocked_by_more_than(amount as usize);
+        return Ok(Some(StaticAbility::grant_ability(filter, granted)));
+    }
+
+    Ok(None)
+}
+
+fn parse_each_creature_can_block_additional_creature_each_combat_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    // High Ground: "Each creature can block an additional creature each combat."
+    let clause_words = words(tokens);
+    if clause_words.len() < 9 {
+        return Ok(None);
+    }
+    if !clause_words.starts_with(&["each", "creature", "can", "block"]) {
+        return Ok(None);
+    }
+    if !clause_words.ends_with(&["each", "combat"]) {
+        return Ok(None);
+    }
+    let Some(additional_word_idx) = clause_words.iter().position(|w| *w == "additional") else {
+        return Ok(None);
+    };
+    if additional_word_idx == 0 {
+        return Ok(None);
+    }
+
+    let mut additional = 1usize;
+    let prev = clause_words[additional_word_idx - 1];
+    if prev != "an" {
+        if let Some(prev_token_idx) = token_index_for_word_index(tokens, additional_word_idx - 1)
+            && let Some((count, used)) = parse_number(&tokens[prev_token_idx..])
+            && used > 0
+        {
+            additional = count as usize;
+        }
+    }
+
+    let filter = ObjectFilter::creature();
+    let granted = StaticAbility::can_block_additional_creature_each_combat(additional);
+    Ok(Some(StaticAbility::grant_ability(filter, granted)))
 }
 
 fn parse_lose_all_abilities_and_transform_base_pt_line(

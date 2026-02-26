@@ -2588,6 +2588,44 @@ fn test_parse_cant_be_blocked_by_more_than_one_creature() {
 }
 
 #[test]
+fn test_parse_each_creature_cant_be_blocked_by_more_than_one_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Familiar Ground Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Each creature can't be blocked by more than one creature.")
+        .expect("global max-blockers line should parse");
+
+    let has_grant = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability) if static_ability.grants_abilities()
+        )
+    });
+    assert!(
+        has_grant,
+        "expected Familiar Ground-style line to compile to an ability-granting static ability"
+    );
+}
+
+#[test]
+fn test_parse_each_creature_can_block_additional_creature_each_combat() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "High Ground Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Each creature can block an additional creature each combat.")
+        .expect("global can-block-additional line should parse");
+
+    let has_grant = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability) if static_ability.grants_abilities()
+        )
+    });
+    assert!(
+        has_grant,
+        "expected High Ground-style line to compile to an ability-granting static ability"
+    );
+}
+
+#[test]
 fn test_parse_trigger_becomes_targeted_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phantasmal Probe")
         .card_types(vec![CardType::Creature])

@@ -37,7 +37,7 @@ use crate::events::zones::EnterBattlefieldEvent;
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
 use crate::game_event::DamageTarget as EventDamageTarget;
-use crate::game_state::{GameState, Phase, StackEntry, Step, Target};
+use crate::game_state::{GameState, StackEntry, Step, Target};
 use crate::ids::{ObjectId, PlayerId, StableId};
 #[cfg(feature = "net")]
 use crate::net::{CostPayment, CostStep, GameObjectId, ManaSymbolCode, ManaSymbolSpec, ZoneCode};
@@ -4848,7 +4848,6 @@ fn get_available_mana_abilities(
     player: PlayerId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Vec<(ObjectId, usize, String)> {
-    use crate::ability::AbilityKind;
     use crate::special_actions::{SpecialAction, can_perform};
 
     let mut abilities = Vec::new();
@@ -8302,19 +8301,12 @@ pub fn apply_blocker_declarations(
     declarations: &[BlockerDeclaration],
     defending_player: PlayerId,
 ) -> Result<(), GameLoopError> {
-    // Clear existing blockers
+    // Clear existing blockers.
     combat.blockers.clear();
-    let mut seen_blockers = std::collections::HashSet::new();
 
+    // Pre-validate controlling player constraints (combat_state::declare_blockers does not).
+    let mut pairs: Vec<(ObjectId, ObjectId)> = Vec::with_capacity(declarations.len());
     for decl in declarations {
-        if !seen_blockers.insert(decl.blocker) {
-            return Err(ResponseError::InvalidBlockers(
-                "A creature can't block multiple attackers".to_string(),
-            )
-            .into());
-        }
-
-        // Validate the blocker
         let Some(blocker) = game.object(decl.blocker) else {
             return Err(ResponseError::InvalidBlockers(format!(
                 "Blocker {:?} not found",
@@ -8322,44 +8314,31 @@ pub fn apply_blocker_declarations(
             ))
             .into());
         };
-
         if blocker.controller != defending_player {
             return Err(ResponseError::InvalidBlockers(
                 "Can only block with creatures you control".to_string(),
             )
             .into());
         }
-
-        if !blocker.is_creature() {
-            return Err(ResponseError::InvalidBlockers("Not a creature".to_string()).into());
-        }
-
-        // Validate the attacker
-        let Some(attacker) = game.object(decl.blocking) else {
+        if game.object(decl.blocking).is_none() {
             return Err(ResponseError::InvalidBlockers(format!(
                 "Attacker {:?} not found",
                 decl.blocking
             ))
             .into());
-        };
-
-        if !crate::rules::combat::can_block(attacker, blocker, game) {
-            return Err(ResponseError::InvalidBlockers(format!(
-                "{:?} can't block {:?}",
-                decl.blocker, decl.blocking
-            ))
-            .into());
         }
+        pairs.push((decl.blocker, decl.blocking));
+    }
 
-        // Add to combat blockers
-        combat
-            .blockers
-            .entry(decl.blocking)
-            .or_default()
-            .push(decl.blocker);
+    // Validate and apply using the combat rules engine (handles menace, max blockers,
+    // and "can block additional attackers").
+    if let Err(err) = crate::combat_state::declare_blockers(game, combat, pairs.clone()) {
+        return Err(ResponseError::InvalidBlockers(err.to_string()).into());
+    }
 
-        // Generate block trigger
-        let event = TriggerEvent::new(CreatureBlockedEvent::new(decl.blocker, decl.blocking));
+    // Emit block triggers (per declaration).
+    for (blocker, attacker) in &pairs {
+        let event = TriggerEvent::new(CreatureBlockedEvent::new(*blocker, *attacker));
         let triggers = check_triggers(game, &event);
         for trigger in triggers {
             trigger_queue.add(trigger);
@@ -8638,12 +8617,15 @@ pub fn queue_combat_damage_triggers(
 mod tests {
     use super::*;
     use crate::ability::Ability;
+    use crate::ability::AbilityKind;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::combat_state::AttackTarget;
     use crate::decision::AutoPassDecisionMaker;
     use crate::effect::{Effect, Value};
     use crate::events::EventKind;
     use crate::ids::CardId;
+    use crate::game_state::Phase;
+    use crate::static_abilities::StaticAbility;
     use crate::triggers::Trigger;
     use crate::types::CardType;
 
@@ -9081,6 +9063,103 @@ mod tests {
         assert!(
             !has_targets,
             "sequence-wrapped targeted effects must still require legal targets"
+        );
+    }
+
+    #[test]
+    fn test_apply_blocker_declarations_allows_blocking_multiple_attackers_with_ability() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let mut combat = CombatState::default();
+
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker1 = create_creature(&mut game, "Attacker 1", alice, 2, 2);
+        let attacker2 = create_creature(&mut game, "Attacker 2", alice, 2, 2);
+        let blocker = create_creature(&mut game, "Blocker", bob, 1, 4);
+
+        // Grant: "can block an additional creature each combat" so it can block two attackers.
+        game.object_mut(blocker)
+            .expect("blocker exists")
+            .abilities
+            .push(Ability {
+                kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(
+                    1,
+                )),
+                functional_zones: vec![Zone::Battlefield],
+                text: None,
+            });
+
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker1,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker2,
+            target: AttackTarget::Player(bob),
+        });
+
+        let decls = vec![
+            BlockerDeclaration {
+                blocker,
+                blocking: attacker1,
+            },
+            BlockerDeclaration {
+                blocker,
+                blocking: attacker2,
+            },
+        ];
+
+        apply_blocker_declarations(&mut game, &mut combat, &mut tq, &decls, bob)
+            .expect("should allow blocker to block multiple attackers with ability");
+    }
+
+    #[test]
+    fn test_apply_blocker_declarations_enforces_maximum_blockers() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let mut combat = CombatState::default();
+
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker = create_creature(&mut game, "Elusive Attacker", alice, 2, 2);
+        let blocker1 = create_creature(&mut game, "Blocker 1", bob, 1, 1);
+        let blocker2 = create_creature(&mut game, "Blocker 2", bob, 1, 1);
+
+        // "Can't be blocked by more than one creature."
+        game.object_mut(attacker)
+            .expect("attacker exists")
+            .abilities
+            .push(Ability {
+                kind: AbilityKind::Static(StaticAbility::cant_be_blocked_by_more_than(1)),
+                functional_zones: vec![Zone::Battlefield],
+                text: None,
+            });
+
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+
+        let decls = vec![
+            BlockerDeclaration {
+                blocker: blocker1,
+                blocking: attacker,
+            },
+            BlockerDeclaration {
+                blocker: blocker2,
+                blocking: attacker,
+            },
+        ];
+
+        let err = apply_blocker_declarations(&mut game, &mut combat, &mut tq, &decls, bob)
+            .expect_err("should reject too many blockers");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("InvalidBlockers"),
+            "expected invalid blockers error, got {msg}"
         );
     }
 
