@@ -62,10 +62,10 @@ pub use executor_trait::{CostValidationError, EffectExecutor, ModalSpec};
 
 // Re-export effect implementations
 pub use cards::{
-    ConniveEffect, DiscardEffect, DiscardHandEffect, DrawCardsEffect, ExileTopOfLibraryEffect,
-    LookAtHandEffect, LookAtTopCardsEffect, MillEffect, RevealTaggedEffect, RevealTopEffect,
-    ScryEffect, SearchLibraryEffect, ShuffleGraveyardIntoLibraryEffect, ShuffleLibraryEffect,
-    SurveilEffect,
+    ClashEffect, ConniveEffect, DiscardEffect, DiscardHandEffect, DrawCardsEffect,
+    ExileTopOfLibraryEffect, LookAtHandEffect, LookAtTopCardsEffect, MillEffect,
+    RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect,
+    ShuffleGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
     EnterAttackingEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,

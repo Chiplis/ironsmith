@@ -26725,6 +26725,13 @@ fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPredicate> {
     if words.len() >= 2 && words[0] == "you" && words[1] == "do" {
         return Some(IfResultPredicate::Did);
     }
+    if words.len() >= 2
+        && words[0] == "you"
+        && (words[1] == "win" || words[1] == "won")
+        && (words.len() == 2 || words.iter().any(|word| *word == "clash"))
+    {
+        return Some(IfResultPredicate::Did);
+    }
     if words.len() >= 2 && words[0] == "they" && words[1] == "do" {
         return Some(IfResultPredicate::Did);
     }
@@ -28932,6 +28939,9 @@ fn run_clause_primitives(tokens: &[Token]) -> Result<Option<EffectAst>, CardText
             parser: parse_fight_clause,
         },
         ClausePrimitive {
+            parser: parse_clash_clause,
+        },
+        ClausePrimitive {
             parser: parse_for_each_target_players_clause,
         },
         ClausePrimitive {
@@ -29348,6 +29358,41 @@ fn parse_fight_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextErr
         creature1,
         creature2,
     }))
+}
+
+fn parse_clash_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    let Some(first) = clause_words.first().copied() else {
+        return Ok(None);
+    };
+    if first != "clash" && first != "clashes" {
+        return Ok(None);
+    }
+
+    let mut tail = trim_commas(&tokens[1..]);
+    if tail.first().is_some_and(|token| token.is_word("with")) {
+        tail = trim_commas(&tail[1..]);
+    }
+    if tail.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing opponent in clash clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let tail_words: Vec<&str> = words(&tail)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    let is_supported = matches!(tail_words.as_slice(), ["opponent"] | ["target", "opponent"]);
+    if !is_supported {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported clash target (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    Ok(Some(EffectAst::Clash))
 }
 
 fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
@@ -37096,6 +37141,26 @@ mod parse_parsing_tests {
         assert!(actions
             .iter()
             .any(|action| matches!(action, KeywordAction::LivingWeapon)));
+    }
+
+    #[test]
+    fn parse_clash_clause() {
+        let tokens = tokenize_line("Clash with an opponent.", 0);
+        let effects = parse_effect_sentence(&tokens).expect("parse effect sentence");
+        assert!(effects.iter().any(|effect| matches!(effect, EffectAst::Clash)));
+    }
+
+    #[test]
+    fn parse_if_you_win_as_if_result_predicate() {
+        let tokens = tokenize_line("If you win, put a +1/+1 counter on this creature.", 0);
+        let effects = parse_effect_sentence(&tokens).expect("parse effect sentence");
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                ..
+            }
+        )));
     }
 
     #[test]

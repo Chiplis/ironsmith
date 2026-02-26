@@ -547,6 +547,7 @@ enum EffectAst {
     FightIterated {
         creature2: TargetAst,
     },
+    Clash,
     DealDamageEach {
         amount: Value,
         filter: ObjectFilter,

@@ -3,6 +3,7 @@
 //! This module contains effects that manipulate cards in zones,
 //! such as milling, shuffling libraries, drawing cards, discarding, etc.
 
+mod clash;
 mod connive;
 mod discard;
 mod discard_hand;
@@ -20,6 +21,7 @@ mod shuffle_graveyard_into_library;
 mod shuffle_library;
 mod surveil;
 
+pub use clash::ClashEffect;
 pub use connive::ConniveEffect;
 pub use discard::DiscardEffect;
 pub use discard_hand::DiscardHandEffect;
