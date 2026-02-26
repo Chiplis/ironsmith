@@ -4677,13 +4677,20 @@ fn parse_each_creature_cant_be_blocked_by_more_than_line(
     if clause_words.len() < 10 {
         return Ok(None);
     }
-    if !clause_words.starts_with(&[
+    let (subject_len, you_control) = if clause_words.starts_with(&[
+        "each", "creature", "you", "control", "cant", "be", "blocked", "by", "more", "than",
+    ]) {
+        (4usize, true)
+    } else if clause_words.starts_with(&[
         "each", "creature", "cant", "be", "blocked", "by", "more", "than",
     ]) {
+        (2usize, false)
+    } else {
         return Ok(None);
-    }
+    };
 
-    let amount_word_idx = 8;
+    // "Each creature (you control) can't be blocked by more than <N> creature(s)"
+    let amount_word_idx = subject_len + 6;
     let Some(amount_token_idx) = token_index_for_word_index(tokens, amount_word_idx) else {
         return Ok(None);
     };
@@ -4695,7 +4702,11 @@ fn parse_each_creature_cant_be_blocked_by_more_than_line(
     let rest_tokens = &tokens[amount_token_idx + used..];
     let rest_words = words(rest_tokens);
     if rest_words.first().is_some_and(|w| *w == "creature" || *w == "creatures") {
-        let filter = ObjectFilter::creature();
+        let filter = if you_control {
+            ObjectFilter::creature().you_control()
+        } else {
+            ObjectFilter::creature()
+        };
         let granted = StaticAbility::cant_be_blocked_by_more_than(amount as usize);
         return Ok(Some(StaticAbility::grant_ability(filter, granted)));
     }
@@ -4711,9 +4722,14 @@ fn parse_each_creature_can_block_additional_creature_each_combat_line(
     if clause_words.len() < 9 {
         return Ok(None);
     }
-    if !clause_words.starts_with(&["each", "creature", "can", "block"]) {
-        return Ok(None);
-    }
+    let (subject_len, you_control) =
+        if clause_words.starts_with(&["each", "creature", "you", "control", "can", "block"]) {
+            (4usize, true)
+        } else if clause_words.starts_with(&["each", "creature", "can", "block"]) {
+            (2usize, false)
+        } else {
+            return Ok(None);
+        };
     if !clause_words.ends_with(&["each", "combat"]) {
         return Ok(None);
     }
@@ -4735,7 +4751,11 @@ fn parse_each_creature_can_block_additional_creature_each_combat_line(
         }
     }
 
-    let filter = ObjectFilter::creature();
+    let filter = if you_control {
+        ObjectFilter::creature().you_control()
+    } else {
+        ObjectFilter::creature()
+    };
     let granted = StaticAbility::can_block_additional_creature_each_combat(additional);
     Ok(Some(StaticAbility::grant_ability(filter, granted)))
 }
