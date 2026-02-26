@@ -10438,6 +10438,11 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
                 energy_count = energy_count.saturating_add(1);
                 continue;
             }
+            if *word == "q" {
+                // {Q} is the untap symbol.
+                explicit_costs.push(crate::costs::Cost::untap());
+                continue;
+            }
             if word.contains('/') {
                 let alternatives = parse_mana_symbol_group(word)?;
                 mana_pips.push(alternatives);
