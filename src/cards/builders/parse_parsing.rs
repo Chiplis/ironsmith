@@ -1112,6 +1112,13 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                     && (after_words.starts_with(&["put"]) || after_words.starts_with(&["puts"]))
                     && after_words.contains(&"into")
                     && after_words.contains(&"hand");
+                let allow_put_back_in_any_order_followup = has_back_ref
+                    && (after_words.starts_with(&["put", "it", "back"])
+                        || after_words.starts_with(&["put", "them", "back"])
+                        || after_words.starts_with(&["puts", "it", "back"])
+                        || after_words.starts_with(&["puts", "them", "back"]))
+                    && after_words.contains(&"any")
+                    && after_words.contains(&"order");
                 if has_effect_head && (!has_back_ref || allow_backref_split) {
                     split_point = Some(i);
                     break;
@@ -1134,6 +1141,9 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
                     split_point = Some(i);
                     break;
                 } else if has_effect_head && allow_put_into_hand_followup {
+                    split_point = Some(i);
+                    break;
+                } else if has_effect_head && allow_put_back_in_any_order_followup {
                     split_point = Some(i);
                     break;
                 }
@@ -17160,6 +17170,12 @@ fn parse_sentence_put_counter_sequence(
     if !tokens.first().is_some_and(|token| token.is_word("put")) {
         return Ok(None);
     }
+    if !tokens
+        .iter()
+        .any(|token| token.is_word("counter") || token.is_word("counters"))
+    {
+        return Ok(None);
+    }
 
     if let Some(effects) = parse_put_counter_ladder_segments(tokens)? {
         return Ok(Some(effects));
@@ -32680,6 +32696,47 @@ fn parse_put_into_hand(
     let has_into = clause_words.contains(&"into");
 
     if has_hand && has_into && (has_it || has_them) {
+        // "Put N of them into your hand and the rest on the bottom of your library in any order."
+        if has_them
+            && clause_words.contains(&"rest")
+            && clause_words.contains(&"bottom")
+            && clause_words.contains(&"library")
+            && clause_words.iter().any(|w| *w == "and" || *w == "then")
+        {
+            let (count, used) = parse_number(tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing put count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            let mut idx = used;
+            if tokens.get(idx).is_some_and(|t| t.is_word("of")) {
+                idx += 1;
+            }
+            if !tokens.get(idx).is_some_and(|t| t.is_word("them")) {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported multi-destination put clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+
+            let dest_player = if clause_words.contains(&"your") {
+                PlayerAst::You
+            } else if clause_words.contains(&"their")
+                || clause_words.starts_with(&["that", "player"])
+                || clause_words.starts_with(&["that", "players"])
+            {
+                PlayerAst::That
+            } else {
+                player
+            };
+
+            return Ok(EffectAst::PutSomeIntoHandRestOnBottomOfLibrary {
+                player: dest_player,
+                count: count as u32,
+            });
+        }
+
         // "Put N of them into your hand and the rest into your graveyard."
         if has_them
             && clause_words.contains(&"rest")

@@ -809,6 +809,10 @@ enum EffectAst {
         player: PlayerAst,
         count: u32,
     },
+    PutSomeIntoHandRestOnBottomOfLibrary {
+        player: PlayerAst,
+        count: u32,
+    },
     CopySpell {
         target: TargetAst,
         count: Value,
