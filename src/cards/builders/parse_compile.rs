@@ -4004,6 +4004,12 @@ fn compile_effect(
             let effect = Effect::reveal_top(player_filter, tag);
             Ok((vec![effect], choices))
         }
+        EffectAst::RevealTagged { tag } => Ok((
+            vec![Effect::new(crate::effects::RevealTaggedEffect::new(
+                tag.clone(),
+            ))],
+            Vec::new(),
+        )),
         EffectAst::LookAtTopCards { player, count, tag } => {
             let (player_filter, choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;

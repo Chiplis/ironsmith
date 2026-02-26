@@ -781,6 +781,9 @@ enum EffectAst {
     RevealTop {
         player: PlayerAst,
     },
+    RevealTagged {
+        tag: TagKey,
+    },
     LookAtTopCards {
         player: PlayerAst,
         count: u32,

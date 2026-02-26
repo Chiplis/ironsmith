@@ -1179,6 +1179,11 @@ fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> Vec<Vec<Tok
             if before_words.first() == Some(&"unless") {
                 continue;
             }
+            // Keep search instructions in a single segment so the dedicated
+            // search-library parser can see "reveal/put/shuffle" tails.
+            if before_words.contains(&"search") && before_words.contains(&"library") {
+                continue;
+            }
             let is_inline_token_rules_split = (is_token_creation_context(&before_words)
                 || has_inline_token_rules_context(&before_words))
                 && (starts_with_inline_token_rules_tail(&after_words)
@@ -23065,11 +23070,19 @@ fn parse_search_library_sentence(
     {
         return Ok(None);
     }
-    if tokens[..search_idx]
+    // Allow "you may search ..." to parse as a search sentence, but avoid treating
+    // a larger "may ... then search ..." chain as a single search clause. In those
+    // cases, we need the higher-level parser to preserve conditionals like "If you do".
+    let may_positions: Vec<usize> = tokens[..search_idx]
         .iter()
-        .any(|token| token.is_word("may"))
-    {
-        return Ok(None);
+        .enumerate()
+        .filter_map(|(idx, token)| token.is_word("may").then_some(idx))
+        .collect();
+    if !may_positions.is_empty() {
+        let allowed_may = may_positions.len() == 1 && may_positions[0] + 1 == search_idx;
+        if !allowed_may {
+            return Ok(None);
+        }
     }
 
     let mut subject_tokens = &tokens[..search_idx];
@@ -31312,6 +31325,24 @@ fn parse_reveal(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectA
     };
 
     let words = words(tokens);
+    // Many effects split "reveal it/that card/those cards" into a standalone clause.
+    // The engine does not model hidden information, so this compiles to a semantic no-op
+    // that still allows parsing and auditing to proceed.
+    if matches!(
+        words.as_slice(),
+        ["it"]
+            | ["them"]
+            | ["that"]
+            | ["that", "card"]
+            | ["those", "cards"]
+            | ["those"]
+            | ["this", "card"]
+            | ["this"]
+    ) {
+        return Ok(EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
     if words.contains(&"hand") {
         let is_full_hand_reveal = matches!(words.as_slice(), ["your", "hand"] | ["their", "hand"])
             || words.as_slice() == ["his", "or", "her", "hand"];
