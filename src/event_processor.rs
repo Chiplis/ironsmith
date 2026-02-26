@@ -1975,6 +1975,47 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
                 replacement_prevented: true,
             };
         }
+        TraitEventResult::Replaced { effects, effect_id } => {
+            let (replacement_source, replacement_controller) = game
+                .replacement_effects
+                .get_effect(effect_id)
+                .map(|effect| (effect.source, effect.controller))
+                .unwrap_or_else(|| {
+                    let controller = game
+                        .object(source)
+                        .map(|object| object.controller)
+                        .unwrap_or(game.turn.active_player);
+                    (source, controller)
+                });
+
+            let mut dm = crate::decision::AutoPassDecisionMaker;
+            let mut exec_ctx =
+                crate::executor::ExecutionContext::new(
+                    replacement_source,
+                    replacement_controller,
+                    &mut dm,
+                )
+                .with_cause(crate::events::cause::EventCause::from_effect(
+                    replacement_source,
+                    replacement_controller,
+                ));
+            exec_ctx
+                .targets
+                .push(crate::executor::ResolvedTarget::Object(replacement_source));
+            for effect in effects {
+                if let Ok(outcome) = crate::executor::execute_effect(game, &effect, &mut exec_ctx)
+                {
+                    for trigger_event in outcome.events {
+                        game.queue_trigger_event(trigger_event);
+                    }
+                }
+            }
+
+            return ProcessedDamageResult {
+                assignments: Vec::new(),
+                replacement_prevented: true,
+            };
+        }
         TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
             if let Some(damage) = downcast_event::<DamageEvent>(e.inner()) {
                 damage.clone()
@@ -2879,6 +2920,66 @@ mod tests {
         assert_eq!(second.assignments.len(), 1);
         assert_eq!(second.assignments[0].target, DamageTarget::Object(protected));
         assert_eq!(second.assignments[0].amount, 3);
+    }
+
+    #[test]
+    fn test_damage_replacement_instead_effect_executes_and_prevents_damage() {
+        use crate::card::PowerToughness;
+        use crate::effect::Effect;
+        use crate::events::DamageToSelfMatcher;
+        use crate::object::CounterType;
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        use crate::target::ChooseSpec;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let attacker = ObjectId::from_raw(10);
+
+        let protected_card = CardBuilder::new(CardId::new(), "Phantom Test")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 0))
+            .build();
+        let protected = game.create_object_from_card(&protected_card, alice, Zone::Battlefield);
+        game.object_mut(protected)
+            .expect("protected object should exist")
+            .add_counters(CounterType::PlusOnePlusOne, 2);
+
+        let effect = ReplacementEffect::with_matcher(
+            protected,
+            alice,
+            DamageToSelfMatcher::new(),
+            ReplacementAction::Instead(vec![Effect::remove_counters(
+                CounterType::PlusOnePlusOne,
+                1,
+                ChooseSpec::Source,
+            )]),
+        );
+        game.replacement_effects.add_effect(effect);
+
+        let result = process_damage_assignments_with_event(
+            &mut game,
+            attacker,
+            DamageTarget::Object(protected),
+            3,
+            false,
+        );
+        assert!(
+            result.replacement_prevented,
+            "damage should be prevented when replaced by an effect"
+        );
+        assert!(
+            result.assignments.is_empty(),
+            "replacement should prevent the original damage assignment"
+        );
+
+        let remaining = game
+            .object(protected)
+            .and_then(|object| object.counters.get(&CounterType::PlusOnePlusOne).copied())
+            .unwrap_or(0);
+        assert_eq!(
+            remaining, 1,
+            "replacement effect should remove one +1/+1 counter"
+        );
     }
 
     #[test]

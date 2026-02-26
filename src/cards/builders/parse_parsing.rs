@@ -2305,6 +2305,9 @@ fn parse_static_ability_line(
     if let Some(ability) = parse_damage_not_removed_cleanup_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_prevent_damage_to_source_remove_counter_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(ability) = parse_choose_color_as_enters_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -7096,6 +7099,94 @@ fn parse_attached_gets_and_cant_block_line(
     let grant = StaticAbility::attached_ability_grant(granted, display);
     let anthem = build_anthem_static_ability(&parse_anthem_clause(tokens, get_idx, and_idx)?);
     Ok(Some(vec![anthem, grant]))
+}
+
+fn parse_prevent_damage_to_source_remove_counter_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 12 {
+        return Ok(None);
+    }
+
+    if !line_words.starts_with(&["if", "damage", "would", "be", "dealt", "to"]) {
+        return Ok(None);
+    }
+    if !(line_words[6..].starts_with(&["this", "creature"])
+        || line_words[6..].starts_with(&["this", "permanent"]))
+    {
+        return Ok(None);
+    }
+    if !line_words
+        .windows(3)
+        .any(|window| window == ["prevent", "that", "damage"])
+    {
+        return Ok(None);
+    }
+
+    let Some(remove_word_idx) = line_words.iter().position(|word| *word == "remove") else {
+        return Ok(None);
+    };
+    let Some(counter_word_idx) = line_words[remove_word_idx + 1..]
+        .iter()
+        .position(|word| *word == "counter" || *word == "counters")
+        .map(|idx| remove_word_idx + 1 + idx)
+    else {
+        return Ok(None);
+    };
+
+    let remove_token_idx = token_index_for_word_index(tokens, remove_word_idx).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unable to map remove clause in prevent-damage line (clause: '{}')",
+            line_words.join(" ")
+        ))
+    })?;
+    let counter_token_idx = token_index_for_word_index(tokens, counter_word_idx).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unable to map counter clause in prevent-damage line (clause: '{}')",
+            line_words.join(" ")
+        ))
+    })?;
+
+    let mut descriptor_tokens = trim_commas(&tokens[remove_token_idx + 1..=counter_token_idx]);
+    if descriptor_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing counter descriptor in prevent-damage line (clause: '{}')",
+            line_words.join(" ")
+        )));
+    }
+
+    let (amount, used) = parse_number(&descriptor_tokens).unwrap_or((1, 0));
+    descriptor_tokens = descriptor_tokens[used..].to_vec();
+    while descriptor_tokens
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        descriptor_tokens.remove(0);
+    }
+
+    let counter_type = parse_counter_type_from_tokens(&descriptor_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported counter type in prevent-damage line (clause: '{}')",
+            line_words.join(" ")
+        ))
+    })?;
+
+    let after_counter_words = line_words.get(counter_word_idx + 1..).unwrap_or_default();
+    let valid_tail = after_counter_words.starts_with(&["from", "this", "creature"])
+        || after_counter_words.starts_with(&["from", "this", "permanent"])
+        || after_counter_words.starts_with(&["from", "it"]);
+    if !valid_tail {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported prevent-damage remove tail (clause: '{}')",
+            line_words.join(" ")
+        )));
+    }
+
+    Ok(Some(StaticAbility::prevent_damage_to_self_remove_counter(
+        counter_type,
+        amount,
+    )))
 }
 
 fn parse_attached_prevent_all_damage_dealt_by_attached_line(
@@ -36857,6 +36948,20 @@ mod parse_parsing_tests {
             .expect("expected static ability");
         assert_eq!(abilities.len(), 1);
         assert_eq!(abilities[0].id(), StaticAbilityId::AttachedAbilityGrant);
+    }
+
+    #[test]
+    fn parse_prevent_damage_to_source_remove_counter_static_line() {
+        let tokens = tokenize_line(
+            "If damage would be dealt to this creature, prevent that damage. Remove a +1/+1 counter from this creature.",
+            0,
+        );
+        let abilities = parse_static_ability_line(&tokens)
+            .expect("parse static ability line")
+            .expect("expected static ability");
+        assert!(abilities
+            .iter()
+            .any(|ability| ability.id() == StaticAbilityId::PreventDamageToSelfRemoveCounter));
     }
 
     #[test]

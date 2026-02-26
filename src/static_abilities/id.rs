@@ -135,6 +135,7 @@ pub enum StaticAbilityId {
     RedirectDamageToSource,
     PreventAllDamageDealtByThisPermanent,
     PreventAllDamageDealtToCreatures,
+    PreventDamageToSelfRemoveCounter,
     DoesntUntap,
     EntersTapped,
     EntersTappedUnlessControlTwoOrMoreOtherLands,

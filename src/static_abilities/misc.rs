@@ -1172,6 +1172,61 @@ impl StaticAbilityKind for PreventAllDamageDealtToCreatures {
     }
 }
 
+/// "If damage would be dealt to this creature, prevent that damage.
+/// Remove N <counter> counter(s) from this creature."
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventDamageToSelfRemoveCounter {
+    pub counter_type: CounterType,
+    pub amount: u32,
+}
+
+impl PreventDamageToSelfRemoveCounter {
+    pub const fn new(counter_type: CounterType, amount: u32) -> Self {
+        Self {
+            counter_type,
+            amount,
+        }
+    }
+}
+
+impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventDamageToSelfRemoveCounter
+    }
+
+    fn display(&self) -> String {
+        let counter = describe_counter_type(self.counter_type);
+        let amount_word = number_word(self.amount)
+            .map(str::to_string)
+            .unwrap_or_else(|| self.amount.to_string());
+        let suffix = if self.amount == 1 { "" } else { "s" };
+        format!(
+            "If damage would be dealt to this creature, prevent that damage. Remove {amount_word} {counter} counter{suffix} from this creature."
+        )
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::DamageToSelfMatcher::new(),
+            ReplacementAction::Instead(vec![Effect::remove_counters(
+                self.counter_type,
+                Value::Fixed(self.amount as i32),
+                ChooseSpec::Source,
+            )]),
+        ))
+    }
+}
+
 /// Permanents matching a filter enter the battlefield tapped.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterTappedForFilter {
@@ -2127,5 +2182,27 @@ mod tests {
 
         let player_damage = DamageEvent::new(src, DamageTarget::Player(alice), 3, false);
         assert!(!matcher.matches_event(&player_damage, &ctx));
+    }
+
+    #[test]
+    fn test_prevent_damage_to_self_remove_counter_generates_replacement() {
+        let src = ObjectId::from_raw(42);
+        let alice = PlayerId::from_index(0);
+
+        let ability = PreventDamageToSelfRemoveCounter::new(CounterType::PlusOnePlusOne, 1);
+        let replacement = ability
+            .generate_replacement_effect(src, alice)
+            .expect("should generate replacement effect");
+
+        let ReplacementAction::Instead(effects) = &replacement.replacement else {
+            panic!("expected replacement to use Instead action");
+        };
+        assert_eq!(effects.len(), 1, "expected one removal effect");
+        let remove = effects[0]
+            .downcast_ref::<crate::effects::RemoveCountersEffect>()
+            .expect("expected remove counters effect");
+        assert_eq!(remove.counter_type, CounterType::PlusOnePlusOne);
+        assert_eq!(remove.count, Value::Fixed(1));
+        assert!(matches!(remove.target, ChooseSpec::Source));
     }
 }
