@@ -6613,6 +6613,32 @@ fn render_create_lander_token_uses_compact_wording() {
 }
 
 #[test]
+fn render_create_junk_token_uses_expected_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Junk Maker Variant")
+        .parse_text("When this creature enters, create a Junk token.")
+        .expect("junk token creation should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("create a Junk artifact token")
+            || joined.contains("Create a Junk artifact token"),
+        "expected junk token rendering, got {joined}"
+    );
+    assert!(
+        joined
+            .to_ascii_lowercase()
+            .contains("activate only as a sorcery"),
+        "expected junk token rules text to include sorcery restriction, got {joined}"
+    );
+    assert!(
+        !joined
+            .to_ascii_lowercase()
+            .contains("unsupported parser line fallback"),
+        "junk token parsing should not rely on unsupported fallback marker, got {joined}"
+    );
+}
+
+#[test]
 fn oracle_like_lines_compact_each_opponent_discard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Burglar Rat Variant")
         .card_types(vec![CardType::Creature])
