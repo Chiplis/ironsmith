@@ -1388,6 +1388,14 @@ pub(crate) fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<
     let mut exile_tag_id = 0u32;
     let mut return_tag_id = 0u32;
 
+    if let Some((left, right)) = parse_shard_style_mana_or_tap_cost(tokens) {
+        let costs = vec![
+            crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![left, right]])),
+            crate::costs::Cost::effect(Effect::tap_source()),
+        ];
+        return Ok((TotalCost::from_costs(costs), cost_effects));
+    }
+
     for raw_segment in split_cost_segments(tokens) {
         if raw_segment.is_empty() {
             continue;
@@ -2144,6 +2152,22 @@ pub(crate) fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<
     };
 
     Ok((total_cost, cost_effects))
+}
+
+fn parse_shard_style_mana_or_tap_cost(tokens: &[Token]) -> Option<(ManaSymbol, ManaSymbol)> {
+    let words = words(tokens);
+    let is_tap_word = |word: &str| matches!(word, "t" | "tap");
+    if words.len() != 5
+        || !is_tap_word(words[1])
+        || words[2] != "or"
+        || !is_tap_word(words[4])
+    {
+        return None;
+    }
+
+    let left = parse_mana_symbol(words[0]).ok()?;
+    let right = parse_mana_symbol(words[3]).ok()?;
+    Some((left, right))
 }
 
 pub(crate) fn parse_devotion_value_from_add_clause(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {

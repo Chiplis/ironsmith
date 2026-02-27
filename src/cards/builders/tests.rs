@@ -9192,6 +9192,57 @@ fn render_activation_return_cost_preserves_numeric_count() {
 }
 
 #[test]
+fn parse_shard_style_or_tap_activation_cost_uses_single_tap_and_alternative_mana() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Pearl Shard Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{3}, {T} or {W}, {T}: Prevent the next 2 damage that would be dealt to any target this turn.",
+        )
+        .expect("shard-style mana-or-tap activation cost should parse");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("expected activated ability");
+
+    let mana = activated
+        .mana_cost
+        .mana_cost()
+        .expect("expected mana component in activation cost");
+    assert_eq!(
+        mana.pips().len(),
+        1,
+        "expected single alternative mana pip in shard-style cost"
+    );
+    let alternatives = &mana.pips()[0];
+    assert!(
+        alternatives.contains(&ManaSymbol::Generic(3)) && alternatives.contains(&ManaSymbol::White),
+        "expected {{3}} or {{W}} in same mana pip, got {alternatives:?}"
+    );
+
+    let tap_cost_count = activated
+        .mana_cost
+        .costs()
+        .iter()
+        .filter(|cost| cost.requires_tap())
+        .count();
+    assert_eq!(
+        tap_cost_count, 1,
+        "expected exactly one tap cost, got {tap_cost_count}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("{3/W}, {T}: Prevent the next 2 damage"),
+        "expected rendered shard-style cost to preserve mana-or-tap meaning, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_delayed_return_at_end_of_combat_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kaijin Variant")
         .parse_text("Return target creature to its owner's hand at end of combat.")
