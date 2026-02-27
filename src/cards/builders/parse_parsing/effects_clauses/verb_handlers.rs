@@ -79,6 +79,11 @@ pub(crate) fn parse_look(tokens: &[Token], subject: Option<SubjectAst>) -> Resul
         if words.starts_with(&["your", "library"]) {
             return Some((PlayerAst::You, 2));
         }
+        if words.starts_with(&["each", "player", "library"])
+            || words.starts_with(&["each", "players", "library"])
+        {
+            return Some((PlayerAst::Any, 3));
+        }
         if words.starts_with(&["their", "library"]) {
             return Some((PlayerAst::That, 2));
         }
@@ -199,6 +204,16 @@ pub(crate) fn parse_look(tokens: &[Token], subject: Option<SubjectAst>) -> Resul
             "unsupported trailing look clause (clause: '{}')",
             clause_words.join(" ")
         )));
+    }
+
+    if matches!(player, PlayerAst::Any) {
+        return Ok(EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::LookAtTopCards {
+                player: PlayerAst::That,
+                count,
+                tag: TagKey::from(IT_TAG),
+            }],
+        });
     }
 
     Ok(EffectAst::LookAtTopCards {

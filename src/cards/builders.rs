@@ -5928,6 +5928,24 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_draw_then_look_top_card_of_each_players_library() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Case the Joint Variant")
+            .parse_text("Draw two cards. Look at the top card of each player's library.")
+            .expect("each-player library look clause should parse");
+
+        let effects = def.spell_effect.as_ref().expect("spell effects");
+        let for_players = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<ForPlayersEffect>())
+            .expect("expected ForPlayersEffect for each-player look clause");
+        let debug = format!("{for_players:?}");
+        assert!(
+            debug.contains("LookAtTopCardsEffect"),
+            "expected nested look-at-top effect, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_its_owner_shuffles_it_into_their_library() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Deglamer Variant")
             .parse_text("Choose target artifact or enchantment. Its owner shuffles it into their library.")
