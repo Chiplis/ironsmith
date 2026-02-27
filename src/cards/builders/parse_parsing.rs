@@ -3700,6 +3700,38 @@ fn parse_if_this_spell_costs_less_to_cast_line(
     )))
 }
 
+fn parse_this_spell_target_condition(
+    tokens: &[Token],
+) -> Option<crate::static_abilities::ThisSpellCostCondition> {
+    use crate::static_abilities::ThisSpellCostCondition;
+
+    let w = words(tokens);
+    let target_start = if w.starts_with(&["it", "targets"]) {
+        2
+    } else if w.starts_with(&["this", "spell", "targets"]) {
+        3
+    } else {
+        return None;
+    };
+    let target_tokens = trim_commas(tokens.get(target_start..).unwrap_or_default());
+    if target_tokens.is_empty() {
+        return None;
+    }
+    let target_words = words(&target_tokens);
+    if target_words.starts_with(&["you"]) {
+        return Some(ThisSpellCostCondition::TargetsPlayer(PlayerFilter::You));
+    }
+    if target_words.starts_with(&["an", "opponent"]) || target_words.starts_with(&["opponent"]) {
+        return Some(ThisSpellCostCondition::TargetsPlayer(PlayerFilter::Opponent));
+    }
+    if target_words.starts_with(&["a", "player"]) || target_words.starts_with(&["player"]) {
+        return Some(ThisSpellCostCondition::TargetsPlayer(PlayerFilter::Any));
+    }
+    parse_object_filter(&target_tokens, false)
+        .ok()
+        .map(ThisSpellCostCondition::TargetsObject)
+}
+
 fn parse_this_spell_cost_condition(
     tokens: &[Token],
 ) -> Option<crate::static_abilities::ThisSpellCostCondition> {
@@ -3717,6 +3749,149 @@ fn parse_this_spell_cost_condition(
                 return Some(ThisSpellCostCondition::YouLifeTotalOrLess(n as i32));
             }
         }
+    }
+    // your life total is 5 or less
+    if w.len() >= 7
+        && w[0] == "your"
+        && w[1] == "life"
+        && w[2] == "total"
+        && w[3] == "is"
+        && w[w.len().saturating_sub(2)..] == ["or", "less"]
+        && let Some((n, _)) = parse_number(tokens.get(4..).unwrap_or_default())
+    {
+        return Some(ThisSpellCostCondition::YouLifeTotalOrLess(n as i32));
+    }
+
+    if w.as_slice() == ["you", "attacked", "this", "turn"]
+        || w.as_slice() == ["youve", "attacked", "this", "turn"]
+    {
+        return Some(ThisSpellCostCondition::ConditionExpr {
+            condition: crate::ConditionExpr::AttackedThisTurn,
+            display: w.join(" "),
+        });
+    }
+    if w.as_slice() == ["a", "creature", "died", "this", "turn"]
+        || w.as_slice() == ["creature", "died", "this", "turn"]
+    {
+        return Some(ThisSpellCostCondition::ConditionExpr {
+            condition: crate::ConditionExpr::CreatureDiedThisTurn,
+            display: w.join(" "),
+        });
+    }
+    if w.as_slice() == ["you", "gained", "life", "this", "turn"]
+        || w.as_slice() == ["youve", "gained", "life", "this", "turn"]
+    {
+        return Some(ThisSpellCostCondition::YouGainedLifeThisTurnOrMore(1));
+    }
+    if (w.starts_with(&["youve", "gained"]) || w.starts_with(&["you", "gained"]))
+        && w.len() >= 7
+        && w[w.len() - 3..] == ["life", "this", "turn"]
+        && let Some((n, _)) = parse_number(tokens.get(2..).unwrap_or_default())
+        && w.get(3) == Some(&"or")
+        && w.get(4) == Some(&"more")
+    {
+        return Some(ThisSpellCostCondition::YouGainedLifeThisTurnOrMore(n));
+    }
+    if (w.starts_with(&["youve", "cast", "another"])
+        || w.starts_with(&["you", "cast", "another"]))
+        && w.ends_with(&["this", "turn"])
+    {
+        if w.contains(&"instant") || w.contains(&"sorcery") {
+            let mut types = Vec::new();
+            if w.contains(&"instant") {
+                types.push(CardType::Instant);
+            }
+            if w.contains(&"sorcery") {
+                types.push(CardType::Sorcery);
+            }
+            return Some(ThisSpellCostCondition::YouCastSpellsThisTurnOrMore {
+                count: 1,
+                card_types: types,
+            });
+        }
+        return Some(ThisSpellCostCondition::YouCastSpellsThisTurnOrMore {
+            count: 1,
+            card_types: Vec::new(),
+        });
+    }
+
+    if w.as_slice() == ["you", "werent", "the", "starting", "player"] {
+        return Some(ThisSpellCostCondition::NotStartingPlayer);
+    }
+    if w.as_slice()
+        == [
+            "a",
+            "creature",
+            "card",
+            "was",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "from",
+            "anywhere",
+            "this",
+            "turn",
+        ]
+    {
+        return Some(ThisSpellCostCondition::CreatureCardPutIntoYourGraveyardThisTurn);
+    }
+    if w.len() >= 11
+        && w[0] == "there"
+        && w[1] == "are"
+        && w.contains(&"card")
+        && w.contains(&"types")
+        && w.contains(&"graveyard")
+        && let Some((n, _)) = parse_number(tokens.get(2..).unwrap_or_default())
+    {
+        return Some(ThisSpellCostCondition::DistinctCardTypesInYourGraveyardOrMore(
+            n,
+        ));
+    }
+    if w.len() >= 7
+        && ((w[0] == "an" && w[1] == "opponent" && w[2] == "has")
+            || (w[0] == "opponent" && w[1] == "has"))
+    {
+        let count_start = if w[0] == "an" { 3 } else { 2 };
+        if let Some((n, _)) = parse_number(tokens.get(count_start..).unwrap_or_default()) {
+            let tail = &w[count_start + 1..];
+            if tail == ["or", "more", "poison", "counters"]
+                || tail == ["or", "more", "poison", "counter"]
+            {
+                return Some(ThisSpellCostCondition::OpponentHasPoisonCountersOrMore(n));
+            }
+            if tail == ["or", "more", "cards", "in", "their", "graveyard"]
+                || tail == ["or", "more", "cards", "in", "his", "graveyard"]
+                || tail == ["or", "more", "cards", "in", "her", "graveyard"]
+                || tail == ["or", "more", "card", "in", "their", "graveyard"]
+            {
+                return Some(ThisSpellCostCondition::OpponentHasCardsInGraveyardOrMore(n));
+            }
+        }
+    }
+
+    if w.starts_with(&["there", "are", "no"]) && w.ends_with(&["in", "your", "hand"]) {
+        let filter_tokens = trim_commas(tokens.get(3..).unwrap_or_default());
+        if let Ok(filter) = parse_object_filter(&filter_tokens, false) {
+            return Some(ThisSpellCostCondition::NoCardsInHandMatching {
+                filter,
+                display: w.join(" "),
+            });
+        }
+    }
+
+    if w.starts_with(&["there", "is"]) && w.ends_with(&["in", "your", "graveyard"]) {
+        let filter_tokens = trim_commas(tokens.get(2..).unwrap_or_default());
+        if let Ok(filter) = parse_object_filter(&filter_tokens, false) {
+            return Some(ThisSpellCostCondition::CardInYourGraveyardMatching {
+                filter,
+                display: w.join(" "),
+            });
+        }
+    }
+
+    if let Some(target_condition) = parse_this_spell_target_condition(tokens) {
+        return Some(target_condition);
     }
 
     // an opponent has no cards in hand
@@ -3807,6 +3982,13 @@ fn parse_this_spell_cost_condition(
                 return Some(ThisSpellCostCondition::OpponentDrewCardsThisTurnOrMore(n));
             }
         }
+    }
+
+    if let Ok(condition_expr) = parse_static_condition_clause(tokens) {
+        return Some(ThisSpellCostCondition::ConditionExpr {
+            condition: condition_expr,
+            display: w.join(" "),
+        });
     }
 
     None
@@ -5742,7 +5924,8 @@ fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::ConditionExp
         )));
     }
 
-    if clause_words.starts_with(&["there", "are"]) {
+    if clause_words.starts_with(&["there", "are"]) || clause_words.starts_with(&["there", "is"])
+    {
         let quantified = &tokens[2..];
         let (comparison, used) = parse_static_quantity_prefix(quantified, false)?;
         let mut filter_tokens = &quantified[used..];
@@ -5782,6 +5965,12 @@ fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::ConditionExp
         || clause_words.starts_with(&["opponents", "controls"])
     {
         2
+    } else if clause_words.starts_with(&["an", "opponent", "control"])
+        || clause_words.starts_with(&["an", "opponent", "controls"])
+        || clause_words.starts_with(&["your", "opponents", "control"])
+        || clause_words.starts_with(&["your", "opponents", "controls"])
+    {
+        3
     } else {
         0
     };
@@ -38739,6 +38928,67 @@ mod parse_parsing_tests {
             found,
             "expected conditional this-spell colored reduction with opponent-cast condition"
         );
+    }
+
+    #[test]
+    fn parse_this_spell_cost_modifier_with_you_control_condition_expr() {
+        let card = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Wizard Discount Parse Probe",
+        )
+        .parse_text("This spell costs {1} less to cast if you control a wizard.\nDraw a card.")
+        .expect("parse this-spell reduction with you-control condition");
+
+        let mut found = false;
+        for ability in &card.abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if let Some(modifier) = static_ability.this_spell_cost_reduction()
+                && modifier.reduction == Value::Fixed(1)
+                && matches!(
+                    modifier.condition,
+                    crate::static_abilities::ThisSpellCostCondition::ConditionExpr { .. }
+                )
+            {
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected this-spell reduction with parsed condition expression"
+        );
+    }
+
+    #[test]
+    fn parse_this_spell_cost_modifier_with_targets_object_condition() {
+        let card = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Tapped Target Discount Parse Probe",
+        )
+        .parse_text(
+            "This spell costs {2} less to cast if it targets a tapped creature.\nDestroy target creature.",
+        )
+        .expect("parse this-spell reduction with target condition");
+
+        let mut found = false;
+        for ability in &card.abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if let Some(modifier) = static_ability.this_spell_cost_reduction()
+                && modifier.reduction == Value::Fixed(2)
+                && let crate::static_abilities::ThisSpellCostCondition::TargetsObject(filter) =
+                    &modifier.condition
+                && filter.tapped
+                && filter.card_types.contains(&CardType::Creature)
+            {
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected tapped-creature target condition");
     }
 
     #[test]

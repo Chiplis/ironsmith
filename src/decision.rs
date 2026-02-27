@@ -1478,6 +1478,26 @@ pub fn calculate_effective_mana_cost_with_targets(
         spell,
         base_cost,
         chosen_target_count,
+        &[],
+        true,
+    )
+}
+
+/// Calculate the effective mana cost using the exact chosen targets.
+pub fn calculate_effective_mana_cost_with_chosen_targets(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    chosen_targets: &[Target],
+) -> crate::mana::ManaCost {
+    calculate_effective_mana_cost_with_targets_internal(
+        game,
+        player,
+        spell,
+        base_cost,
+        chosen_targets.len(),
+        chosen_targets,
         true,
     )
 }
@@ -1497,6 +1517,26 @@ pub fn calculate_effective_mana_cost_for_payment_with_targets(
         spell,
         base_cost,
         chosen_target_count,
+        &[],
+        false,
+    )
+}
+
+/// Calculate payment-stage effective cost using exact chosen targets.
+pub fn calculate_effective_mana_cost_for_payment_with_chosen_targets(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    chosen_targets: &[Target],
+) -> crate::mana::ManaCost {
+    calculate_effective_mana_cost_with_targets_internal(
+        game,
+        player,
+        spell,
+        base_cost,
+        chosen_targets.len(),
+        chosen_targets,
         false,
     )
 }
@@ -1507,6 +1547,7 @@ fn calculate_effective_mana_cost_with_targets_internal(
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
+    chosen_targets: &[Target],
     include_convoke_improvise_reductions: bool,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
@@ -1529,8 +1570,14 @@ fn calculate_effective_mana_cost_with_targets_internal(
     }
 
     // Apply explicit cost reductions/increases on the spell itself.
-    current_cost =
-        apply_spell_cost_modifiers(game, player, spell, &current_cost, chosen_target_count);
+    current_cost = apply_spell_cost_modifiers(
+        game,
+        player,
+        spell,
+        &current_cost,
+        chosen_target_count,
+        chosen_targets,
+    );
 
     // Apply global cost modifiers from battlefield permanents (Sphere of Resistance, leeches, etc.).
     current_cost = apply_battlefield_spell_cost_modifiers(
@@ -1577,6 +1624,7 @@ fn apply_spell_cost_modifiers(
     spell: &crate::object::Object,
     cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
+    chosen_targets: &[Target],
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -1590,17 +1638,31 @@ fn apply_spell_cost_modifiers(
         let AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
         };
-        if !static_ability.is_active(game, spell.id) {
-            continue;
-        }
         if let Some(reduction) = static_ability.this_spell_cost_reduction() {
-            let amount = resolve_cost_modifier_value(game, player, spell, &reduction.reduction);
-            if amount > 0 {
-                total_reduction = total_reduction.saturating_add(amount);
+            if crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+                game,
+                spell.id,
+                &reduction.condition,
+                chosen_targets,
+            ) {
+                let amount = resolve_cost_modifier_value(game, player, spell, &reduction.reduction);
+                if amount > 0 {
+                    total_reduction = total_reduction.saturating_add(amount);
+                }
             }
         }
         if let Some(reduction) = static_ability.this_spell_cost_reduction_mana_cost() {
-            reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+            if crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+                game,
+                spell.id,
+                &reduction.condition,
+                chosen_targets,
+            ) {
+                reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+            }
+        }
+        if !static_ability.is_active(game, spell.id) {
+            continue;
         }
         if let Some(reduction) = static_ability.cost_reduction() {
             let amount = resolve_cost_modifier_value(game, player, spell, &reduction.reduction);
@@ -1966,6 +2028,7 @@ pub fn calculate_delve_exile_count_with_targets(
         spell,
         &cost_after_reductions,
         chosen_target_count,
+        &[],
     );
 
     // Now calculate how much generic mana remains
@@ -2204,7 +2267,7 @@ pub fn calculate_convoke_creatures_to_tap(
     }
 
     cost_after_reductions =
-        apply_spell_cost_modifiers(game, player, spell, &cost_after_reductions, 1);
+        apply_spell_cost_modifiers(game, player, spell, &cost_after_reductions, 1, &[]);
 
     let has_delve_ability = has_delve(spell);
 
@@ -2336,7 +2399,7 @@ pub fn calculate_improvise_artifacts_to_tap(
     }
 
     cost_after_reductions =
-        apply_spell_cost_modifiers(game, player, spell, &cost_after_reductions, 1);
+        apply_spell_cost_modifiers(game, player, spell, &cost_after_reductions, 1, &[]);
 
     let has_delve_ability = has_delve(spell);
 
@@ -6359,6 +6422,113 @@ mod tests {
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
         let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(effective.to_oracle(), "{6}{U}{U}");
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_with_target_condition_uses_chosen_targets() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(133), "Target Discount Variant")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Red],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let condition = crate::static_abilities::ThisSpellCostCondition::TargetsObject(
+            ObjectFilter::creature().tapped(),
+        );
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Fixed(2),
+            condition,
+        ));
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        let creature_card = CardBuilder::new(CardId::from_raw(134), "Target Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        // Untapped target does not satisfy condition.
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost_for_payment_with_chosen_targets(
+            &game,
+            alice,
+            spell_obj,
+            base_cost,
+            &[Target::Object(creature_id)],
+        );
+        assert_eq!(effective.to_oracle(), "{3}{R}");
+
+        // Tapped target satisfies condition.
+        game.tap(creature_id);
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost_for_payment_with_chosen_targets(
+            &game,
+            alice,
+            spell_obj,
+            base_cost,
+            &[Target::Object(creature_id)],
+        );
+        assert_eq!(effective.to_oracle(), "{1}{R}");
+    }
+
+    #[test]
+    fn this_spell_cost_reduction_cast_another_instant_or_sorcery_condition() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(135), "Spell History Discount Variant")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(4)],
+                vec![ManaSymbol::Blue],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let condition = crate::static_abilities::ThisSpellCostCondition::YouCastSpellsThisTurnOrMore {
+            count: 1,
+            card_types: vec![CardType::Instant, CardType::Sorcery],
+        };
+        let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Fixed(2),
+            condition,
+        ));
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        // No prior instant/sorcery this turn.
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{4}{U}");
+
+        // One instant cast this turn enables reduction.
+        let prior_card = CardBuilder::new(CardId::from_raw(136), "Prior Instant")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let prior_id = game.create_object_from_card(&prior_card, alice, Zone::Graveyard);
+        let prior_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(prior_id).expect("prior instant exists"),
+            &game,
+        );
+        game.spells_cast_this_turn_snapshots.push(prior_snapshot);
+        game.spells_cast_this_turn.insert(alice, 1);
+
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{2}{U}");
     }
 
     #[test]

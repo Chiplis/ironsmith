@@ -4460,7 +4460,7 @@ fn continue_to_mana_payment(
     targets: Vec<Target>,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    use crate::decision::calculate_effective_mana_cost_for_payment_with_targets;
+    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets;
 
     let mut pending = pending;
     pending.chosen_targets = targets;
@@ -4515,12 +4515,12 @@ fn continue_to_mana_payment(
 
         // Apply cost reductions (affinity, delve, convoke, improvise)
         base_cost.map(|bc| {
-            calculate_effective_mana_cost_for_payment_with_targets(
+            calculate_effective_mana_cost_for_payment_with_chosen_targets(
                 game,
                 pending.caster,
                 obj,
                 &bc,
-                pending.chosen_targets.len(),
+                &pending.chosen_targets,
             )
         })
     } else {
@@ -6778,7 +6778,7 @@ fn apply_card_to_exile_response(
 
     // Continue with mana payment (or finalize if no mana needed)
     // We need to re-run the logic from continue_to_mana_payment
-    use crate::decision::calculate_effective_mana_cost_for_payment_with_targets;
+    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets;
 
     // Compute the effective mana cost for this spell
     let effective_cost = if let Some(obj) = game.object(pending.spell_id) {
@@ -6827,12 +6827,12 @@ fn apply_card_to_exile_response(
             }
         };
         base_cost.map(|bc| {
-            calculate_effective_mana_cost_for_payment_with_targets(
+            calculate_effective_mana_cost_for_payment_with_chosen_targets(
                 game,
                 pending.caster,
                 obj,
                 &bc,
-                pending.chosen_targets.len(),
+                &pending.chosen_targets,
             )
         })
     } else {
@@ -7068,7 +7068,7 @@ fn finalize_spell_cast(
     stack_id: ObjectId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<SpellCastResult, GameLoopError> {
-    use crate::decision::calculate_effective_mana_cost_with_targets;
+    use crate::decision::calculate_effective_mana_cost_with_chosen_targets;
     #[cfg(not(feature = "net"))]
     let _ = payment_trace;
 
@@ -7258,12 +7258,12 @@ fn finalize_spell_cast(
     // Calculate effective cost and Delve exile count
     let (effective_cost, delve_exile_count) = if let Some(ref base_cost) = base_mana_cost {
         if let Some(obj) = game.object(spell_id) {
-            let eff_cost = calculate_effective_mana_cost_with_targets(
+            let eff_cost = calculate_effective_mana_cost_with_chosen_targets(
                 game,
                 caster,
                 obj,
                 base_cost,
-                targets.len(),
+                &targets,
             );
             let delve_count = crate::decision::calculate_delve_exile_count_with_targets(
                 game,
