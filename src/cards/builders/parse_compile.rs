@@ -12,6 +12,9 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::AttacksOneOrMore(filter) => Trigger::attacks_one_or_more(filter),
         TriggerSpec::AttacksAlone(filter) => Trigger::attacks_alone(filter),
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => Trigger::attacks_you(filter),
+        TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(filter) => {
+            Trigger::attacks_you_one_or_more(filter)
+        }
         TriggerSpec::ThisBlocks => Trigger::this_blocks(),
         TriggerSpec::ThisBlocksObject(filter) => Trigger::this_blocks_object(filter),
         TriggerSpec::Blocks(filter) => Trigger::blocks(filter),

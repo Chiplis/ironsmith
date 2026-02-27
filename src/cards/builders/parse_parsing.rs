@@ -14597,8 +14597,9 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
             .position(|token| token.is_word("deal") || token.is_word("deals"))
         {
             let subject_tokens = &tokens[..deals_idx];
-            let one_or_more = has_leading_one_or_more(subject_tokens);
-            return Ok(match parse_trigger_subject_filter(subject_tokens)? {
+            let player_subject = trigger_subject_player_selector(subject_tokens).is_some();
+            let one_or_more = has_leading_one_or_more(subject_tokens) || player_subject;
+            return Ok(match parse_attack_trigger_subject_filter(subject_tokens)? {
                 Some(filter) => {
                     if one_or_more {
                         TriggerSpec::DealsCombatDamageToPlayerOneOrMore(filter)
@@ -15107,7 +15108,7 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
             let attacks_token_idx =
                 token_index_for_word_index(tokens, attacks_word_idx).unwrap_or(tokens.len());
             let subject_tokens = &tokens[..attacks_token_idx];
-            return Ok(match parse_trigger_subject_filter(subject_tokens)? {
+            return Ok(match parse_attack_trigger_subject_filter(subject_tokens)? {
                 Some(filter) => TriggerSpec::AttacksAndIsntBlocked(filter),
                 None => TriggerSpec::ThisAttacksAndIsntBlocked,
             });
@@ -15175,7 +15176,7 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         } else {
             &[]
         };
-        return Ok(match parse_trigger_subject_filter(subject_tokens)? {
+        return Ok(match parse_attack_trigger_subject_filter(subject_tokens)? {
             Some(filter) => TriggerSpec::AttacksAlone(filter),
             None => TriggerSpec::AttacksAlone(ObjectFilter::source()),
         });
@@ -15192,11 +15193,14 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
             let attacks_token_idx =
                 token_index_for_word_index(tokens, attacks_word_idx).unwrap_or(tokens.len());
             let subject_tokens = &tokens[..attacks_token_idx];
-            let subject_filter =
-                parse_trigger_subject_filter(subject_tokens)?.unwrap_or_else(ObjectFilter::source);
-            return Ok(TriggerSpec::AttacksYouOrPlaneswalkerYouControl(
-                subject_filter,
-            ));
+            let subject_filter = parse_attack_trigger_subject_filter(subject_tokens)?
+                .unwrap_or_else(ObjectFilter::source);
+            let player_subject = trigger_subject_player_selector(subject_tokens).is_some();
+            return Ok(if player_subject {
+                TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(subject_filter)
+            } else {
+                TriggerSpec::AttacksYouOrPlaneswalkerYouControl(subject_filter)
+            });
         }
     }
 
@@ -15212,7 +15216,7 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
         let attacks_token_idx =
             token_index_for_word_index(tokens, attacks_word_idx).unwrap_or(tokens.len());
         let subject_tokens = &tokens[..attacks_token_idx];
-        return Ok(match parse_trigger_subject_filter(subject_tokens)? {
+        return Ok(match parse_attack_trigger_subject_filter(subject_tokens)? {
             Some(filter) => TriggerSpec::AttacksWhileSaddled(filter),
             None => TriggerSpec::ThisAttacksWhileSaddled,
         });
@@ -15225,8 +15229,9 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
             } else {
                 &[]
             };
-            let one_or_more = has_leading_one_or_more(subject_tokens);
-            Ok(match parse_trigger_subject_filter(subject_tokens)? {
+            let player_subject = trigger_subject_player_selector(subject_tokens).is_some();
+            let one_or_more = has_leading_one_or_more(subject_tokens) || player_subject;
+            Ok(match parse_attack_trigger_subject_filter(subject_tokens)? {
                 Some(filter) => {
                     if one_or_more {
                         TriggerSpec::AttacksOneOrMore(filter)
@@ -15731,6 +15736,29 @@ fn parse_trigger_subject_filter(
                 words(subject_tokens).join(" ")
             ))
         })
+}
+
+fn trigger_subject_player_selector(subject_tokens: &[Token]) -> Option<PlayerFilter> {
+    let subject_tokens = strip_leading_one_or_more(subject_tokens);
+    let subject_words = words(subject_tokens);
+    parse_trigger_subject_player_filter(&subject_words)
+}
+
+fn attacking_filter_for_player(player: PlayerFilter) -> ObjectFilter {
+    let mut filter = ObjectFilter::creature();
+    if !matches!(player, PlayerFilter::Any) {
+        filter.controller = Some(player);
+    }
+    filter
+}
+
+fn parse_attack_trigger_subject_filter(
+    subject_tokens: &[Token],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if let Some(player) = trigger_subject_player_selector(subject_tokens) {
+        return Ok(Some(attacking_filter_for_player(player)));
+    }
+    parse_trigger_subject_filter(subject_tokens)
 }
 
 fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {
@@ -38697,6 +38725,49 @@ mod parse_parsing_tests {
             found,
             "expected conditional this-spell colored reduction with opponent-cast condition"
         );
+    }
+
+    #[test]
+    fn parse_trigger_clause_player_subject_attack_uses_one_or_more() {
+        let tokens = tokenize_line("you attack", 0);
+        let trigger = parse_trigger_clause(&tokens).expect("parse trigger clause");
+        match trigger {
+            TriggerSpec::AttacksOneOrMore(filter) => {
+                assert_eq!(filter.controller, Some(PlayerFilter::You));
+                assert!(filter.card_types.contains(&CardType::Creature));
+            }
+            other => panic!("expected AttacksOneOrMore trigger, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_trigger_clause_opponent_attacks_you_uses_one_or_more() {
+        let tokens = tokenize_line("an opponent attacks you or a planeswalker you control", 0);
+        let trigger = parse_trigger_clause(&tokens).expect("parse trigger clause");
+        match trigger {
+            TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(filter) => {
+                assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+                assert!(filter.card_types.contains(&CardType::Creature));
+            }
+            other => panic!(
+                "expected AttacksYouOrPlaneswalkerYouControlOneOrMore trigger, got {other:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn parse_trigger_clause_player_subject_combat_damage_uses_one_or_more() {
+        let tokens = tokenize_line("you deal combat damage to a player", 0);
+        let trigger = parse_trigger_clause(&tokens).expect("parse trigger clause");
+        match trigger {
+            TriggerSpec::DealsCombatDamageToPlayerOneOrMore(filter) => {
+                assert_eq!(filter.controller, Some(PlayerFilter::You));
+                assert!(filter.card_types.contains(&CardType::Creature));
+            }
+            other => panic!(
+                "expected DealsCombatDamageToPlayerOneOrMore trigger, got {other:?}"
+            ),
+        }
     }
 
     #[test]

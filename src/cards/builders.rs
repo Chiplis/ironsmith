@@ -245,6 +245,7 @@ enum TriggerSpec {
     AttacksOneOrMore(ObjectFilter),
     AttacksAlone(ObjectFilter),
     AttacksYouOrPlaneswalkerYouControl(ObjectFilter),
+    AttacksYouOrPlaneswalkerYouControlOneOrMore(ObjectFilter),
     ThisBlocks,
     ThisBlocksObject(ObjectFilter),
     Blocks(ObjectFilter),

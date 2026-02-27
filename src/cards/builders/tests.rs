@@ -1311,6 +1311,38 @@ fn test_parse_trigger_unknown_non_source_subject_fails() {
 }
 
 #[test]
+fn test_parse_player_subject_attack_trigger_uses_one_or_more_creature_filter() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Player Attack Subject Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Whenever you attack, draw a card.")
+        .expect("player-subject attack trigger should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("AttacksTrigger")
+            && debug.contains("one_or_more: true")
+            && debug.contains("controller: Some(You)"),
+        "expected one-or-more attacks trigger for creatures you control, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_opponent_attacks_you_trigger_uses_one_or_more_mode() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Attacks You Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Whenever an opponent attacks you or a planeswalker you control, draw a card.")
+        .expect("opponent-attacks-you trigger should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("AttacksYouTrigger")
+            && debug.contains("one_or_more: true")
+            && debug.contains("controller: Some(Opponent)"),
+        "expected one-or-more attacks-you trigger for opponent-controlled creatures, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_target_creature_you_control_fights_target_creature_you_dont_control() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Prey Upon Probe")
         .card_types(vec![CardType::Sorcery])

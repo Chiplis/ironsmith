@@ -352,6 +352,11 @@ impl Trigger {
         Self::new(AttacksYouTrigger::new(filter))
     }
 
+    /// Create a "when one or more [filter] attack you or a planeswalker you control" trigger.
+    pub fn attacks_you_one_or_more(filter: ObjectFilter) -> Self {
+        Self::new(AttacksYouTrigger::one_or_more(filter))
+    }
+
     /// Create a "when this creature blocks" trigger.
     pub fn this_blocks() -> Self {
         Self::new(ThisBlocksTrigger)
