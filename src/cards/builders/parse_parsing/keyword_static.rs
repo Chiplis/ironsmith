@@ -454,6 +454,9 @@ pub(crate) fn parse_static_ability_line(
     if let Some(ability) = parse_equipped_creature_has_line(tokens)? {
         return Ok(Some(ability));
     }
+    if let Some(ability) = parse_enchanted_creature_has_line(tokens)? {
+        return Ok(Some(ability));
+    }
     if let Some(ability) = parse_you_control_attached_creature_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -5881,6 +5884,59 @@ pub(crate) fn parse_equipped_creature_has_line(
         out.push(StaticAbility::equipment_grant(abilities));
     }
     out.extend(extra_grants);
+    Ok(Some(out))
+}
+
+pub(crate) fn parse_enchanted_creature_has_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let words = words(tokens);
+    let clause_text = words.join(" ");
+    if words.len() < 4 || words.first().copied() != Some("enchanted") {
+        return Ok(None);
+    }
+    let subject = match words.get(1).copied() {
+        Some("creature") => "enchanted creature",
+        Some("permanent") => "enchanted permanent",
+        _ => return Ok(None),
+    };
+    if words.get(2).copied() != Some("has") {
+        return Ok(None);
+    }
+
+    let ability_tokens = &tokens[3..];
+    if ability_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(actions) = parse_ability_line(ability_tokens) else {
+        return Ok(None);
+    };
+    let mut out = Vec::new();
+    for action in actions {
+        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
+        if let KeywordAction::Annihilator(amount) = action {
+            out.push(StaticAbility::attached_ability_grant(
+                annihilator_granted_ability(amount),
+                format!("{subject} has annihilator {amount}"),
+            ));
+            continue;
+        }
+
+        let Some(static_ability) = keyword_action_to_static_ability(action) else {
+            continue;
+        };
+        let ability_text = format!(
+            "{subject} has {}",
+            static_ability.display().to_ascii_lowercase()
+        );
+        let granted = Ability::static_ability(static_ability).with_text(&ability_text);
+        out.push(StaticAbility::attached_ability_grant(granted, ability_text));
+    }
+
+    if out.is_empty() {
+        return Ok(None);
+    }
     Ok(Some(out))
 }
 

@@ -7894,6 +7894,20 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_enchanted_creature_has_keyword_static_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Lance Variant")
+            .parse_text("Enchant creature\nEnchanted creature has first strike.")
+            .expect("enchanted-creature keyword grant should parse");
+
+        let debug = format!("{:?}", def);
+        assert!(
+            debug.contains("AttachedAbilityGrant")
+                && debug.contains("enchanted creature has first strike"),
+            "expected attached keyword grant lowering, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_counter_unless_pays_dynamic_mana_equal_value() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Repulsive Mutation Variant")
             .parse_text(
