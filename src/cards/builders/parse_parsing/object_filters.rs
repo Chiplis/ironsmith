@@ -176,6 +176,119 @@ pub(crate) fn parse_object_filter(tokens: &[Token], other: bool) -> Result<Objec
         .filter(|word| !is_article(word))
         .collect();
 
+    // "that were put there from the battlefield this turn" means the card entered
+    // a graveyard from the battlefield this turn.
+    for phrase in [
+        [
+            "that",
+            "was",
+            "put",
+            "there",
+            "from",
+            "battlefield",
+            "this",
+            "turn",
+        ],
+        [
+            "that",
+            "were",
+            "put",
+            "there",
+            "from",
+            "battlefield",
+            "this",
+            "turn",
+        ],
+    ] {
+        if let Some(word_start) = all_words.windows(8).position(|window| window == phrase) {
+            filter.entered_graveyard_this_turn = true;
+            filter.entered_graveyard_from_battlefield_this_turn = true;
+            all_words.drain(word_start..word_start + 8);
+
+            let segment_words = words(&segment_tokens);
+            let mut segment_match: Option<(usize, usize)> = None;
+            for (len, segment_phrase) in if phrase[1] == "was" {
+                vec![
+                    (
+                        9usize,
+                        &[
+                            "that",
+                            "was",
+                            "put",
+                            "there",
+                            "from",
+                            "the",
+                            "battlefield",
+                            "this",
+                            "turn",
+                        ][..],
+                    ),
+                    (
+                        8usize,
+                        &[
+                            "that",
+                            "was",
+                            "put",
+                            "there",
+                            "from",
+                            "battlefield",
+                            "this",
+                            "turn",
+                        ][..],
+                    ),
+                ]
+            } else {
+                vec![
+                    (
+                        9usize,
+                        &[
+                            "that",
+                            "were",
+                            "put",
+                            "there",
+                            "from",
+                            "the",
+                            "battlefield",
+                            "this",
+                            "turn",
+                        ][..],
+                    ),
+                    (
+                        8usize,
+                        &[
+                            "that",
+                            "were",
+                            "put",
+                            "there",
+                            "from",
+                            "battlefield",
+                            "this",
+                            "turn",
+                        ][..],
+                    ),
+                ]
+            } {
+                if let Some(seg_start) = segment_words
+                    .windows(len)
+                    .position(|window| window == segment_phrase)
+                {
+                    segment_match = Some((seg_start, len));
+                    break;
+                }
+            }
+            if let Some((seg_start, len)) = segment_match
+                && let Some(start_token_idx) =
+                    token_index_for_word_index(&segment_tokens, seg_start)
+            {
+                let end_word_idx = seg_start + len;
+                let end_token_idx = token_index_for_word_index(&segment_tokens, end_word_idx)
+                    .unwrap_or(segment_tokens.len());
+                segment_tokens.drain(start_token_idx..end_token_idx);
+            }
+            break;
+        }
+    }
+
     // "legendary or Rat card" (Nashi, Moon's Legacy) is a supertype/subtype disjunction.
     // We parse it by collecting both selectors and then expanding into an `any_of` filter
     // after the normal pass so other shared qualifiers (zone/owner/etc.) are preserved.
@@ -2276,4 +2389,3 @@ pub(crate) fn is_comparison_or_delimiter(tokens: &[Token], idx: usize) -> bool {
     }
     false
 }
-

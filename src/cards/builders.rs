@@ -7856,6 +7856,23 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_destination_first_put_onto_battlefield_under_your_control() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Thrilling Encore Variant")
+            .parse_text(
+                "Put onto the battlefield under your control all creature cards in all graveyards that were put there from the battlefield this turn.",
+            )
+            .expect("destination-first put clause should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("ReturnAllToBattlefieldEffect")
+                && debug.contains("card_types: [Creature]")
+                && debug.contains("entered_graveyard_from_battlefield_this_turn: true"),
+            "expected creature graveyard-history return-all lowering, got {debug}"
+        );
+    }
+
+    #[test]
     fn reject_counter_ability_target_clause() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Tales End Variant")
             .parse_text("Counter target activated ability, triggered ability, or legendary spell.")

@@ -2068,6 +2068,61 @@ pub(crate) fn parse_put_into_hand(
         });
     }
 
+    // Support destination-first wording:
+    // "Put onto the battlefield under your control all creature cards ..."
+    if tokens.first().is_some_and(|token| token.is_word("onto")) {
+        let mut idx = 1usize;
+        while tokens.get(idx).and_then(Token::as_word).is_some_and(is_article) {
+            idx += 1;
+        }
+        if !tokens.get(idx).is_some_and(|token| token.is_word("battlefield")) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported put destination after 'onto' (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        idx += 1;
+
+        if tokens.get(idx).is_some_and(|token| token.is_word("tapped")) {
+            idx += 1;
+        }
+
+        if tokens.get(idx).is_some_and(|token| token.is_word("under")) {
+            let tail_words = words(&tokens[idx..]);
+            let consumed = if tail_words.starts_with(&["under", "your", "control"]) {
+                Some(3usize)
+            } else if tail_words.starts_with(&["under", "its", "owners", "control"])
+                || tail_words.starts_with(&["under", "their", "owners", "control"])
+                || tail_words.starts_with(&["under", "that", "players", "control"])
+            {
+                Some(4usize)
+            } else {
+                None
+            };
+            if let Some(consumed) = consumed {
+                idx += consumed;
+            }
+        }
+
+        let target_tokens = trim_commas(&tokens[idx..]);
+        if target_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing target before 'onto' (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        if !target_tokens
+            .first()
+            .is_some_and(|token| token.is_word("attached"))
+        {
+            let mut rewritten = target_tokens;
+            rewritten.push(Token::Word("onto".to_string(), tokens[0].span()));
+            rewritten.extend_from_slice(&tokens[1..idx]);
+            return parse_put_into_hand(&rewritten, subject);
+        }
+    }
+
     if let Some(on_idx) = tokens.iter().position(|token| token.is_word("on"))
         && tokens
             .get(on_idx + 1)
