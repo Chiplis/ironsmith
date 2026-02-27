@@ -37165,6 +37165,83 @@ fn parse_discard(
     })
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum DelayedReturnTimingAst {
+    NextEndStep(PlayerFilter),
+    NextUpkeep(PlayerAst),
+    EndOfCombat,
+}
+
+fn parse_delayed_return_timing_words(words: &[&str]) -> Option<DelayedReturnTimingAst> {
+    if matches!(
+        words,
+        ["at", "end", "of", "combat"] | ["at", "the", "end", "of", "combat"]
+    ) {
+        return Some(DelayedReturnTimingAst::EndOfCombat);
+    }
+
+    if matches!(
+        words,
+        ["at", "beginning", "of", "next", "end", "step"]
+            | ["at", "beginning", "of", "the", "next", "end", "step"]
+            | ["at", "the", "beginning", "of", "next", "end", "step"]
+            | ["at", "the", "beginning", "of", "the", "next", "end", "step"]
+    ) {
+        return Some(DelayedReturnTimingAst::NextEndStep(PlayerFilter::Any));
+    }
+
+    if matches!(
+        words,
+        ["at", "beginning", "of", "your", "next", "end", "step"]
+            | ["at", "the", "beginning", "of", "your", "next", "end", "step"]
+    ) {
+        return Some(DelayedReturnTimingAst::NextEndStep(PlayerFilter::You));
+    }
+
+    if matches!(
+        words,
+        ["at", "beginning", "of", "next", "upkeep"]
+            | ["at", "beginning", "of", "the", "next", "upkeep"]
+            | ["at", "the", "beginning", "of", "next", "upkeep"]
+            | ["at", "the", "beginning", "of", "the", "next", "upkeep"]
+    ) {
+        return Some(DelayedReturnTimingAst::NextUpkeep(PlayerAst::Any));
+    }
+
+    if matches!(
+        words,
+        ["at", "beginning", "of", "your", "next", "upkeep"]
+            | ["at", "the", "beginning", "of", "your", "next", "upkeep"]
+    ) {
+        return Some(DelayedReturnTimingAst::NextUpkeep(PlayerAst::You));
+    }
+
+    None
+}
+
+fn wrap_return_with_delayed_timing(
+    effect: EffectAst,
+    timing: Option<DelayedReturnTimingAst>,
+) -> EffectAst {
+    let Some(timing) = timing else {
+        return effect;
+    };
+
+    match timing {
+        DelayedReturnTimingAst::NextEndStep(player) => EffectAst::DelayedUntilNextEndStep {
+            player,
+            effects: vec![effect],
+        },
+        DelayedReturnTimingAst::NextUpkeep(player) => EffectAst::DelayedUntilNextUpkeep {
+            player,
+            effects: vec![effect],
+        },
+        DelayedReturnTimingAst::EndOfCombat => EffectAst::DelayedUntilEndOfCombat {
+            effects: vec![effect],
+        },
+    }
+}
+
 fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.contains(&"unless") {
@@ -37206,14 +37283,37 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         random_idx += 1;
     }
     let target_tokens = target_tokens_vec.as_slice();
-    let destination_words_full = words(&tokens[to_idx + 1..]);
-    let mut destination_words = destination_words_full.clone();
+    let destination_tokens_full = &tokens[to_idx + 1..];
+    let destination_words_full = words(destination_tokens_full);
+    let mut delayed_timing = None;
+    let mut destination_word_cutoff = destination_words_full.len();
+    for word_idx in 0..destination_words_full.len() {
+        if destination_words_full[word_idx] != "at" {
+            continue;
+        }
+        if let Some(timing) = parse_delayed_return_timing_words(&destination_words_full[word_idx..])
+        {
+            delayed_timing = Some(timing);
+            destination_word_cutoff = word_idx;
+            break;
+        }
+    }
+
+    let destination_tokens = if destination_word_cutoff < destination_words_full.len() {
+        let token_cutoff = token_index_for_word_index(destination_tokens_full, destination_word_cutoff)
+            .unwrap_or(destination_tokens_full.len());
+        &destination_tokens_full[..token_cutoff]
+    } else {
+        destination_tokens_full
+    };
+
+    let mut destination_words = words(destination_tokens);
     let mut destination_excluded_subtypes: Vec<Subtype> = Vec::new();
-    if let Some(except_idx) = destination_words_full
+    if let Some(except_idx) = destination_words
         .windows(2)
         .position(|window| window == ["except", "for"])
     {
-        let exception_words = &destination_words_full[except_idx + 2..];
+        let exception_words = &destination_words[except_idx + 2..];
         if exception_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing return exception qualifiers (clause: '{}')",
@@ -37268,14 +37368,14 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             words(tokens).join(" ")
         )));
     }
-    let has_delayed_timing = destination_words.contains(&"beginning")
-        || destination_words.contains(&"upkeep")
-        || destination_words
+    let has_delayed_timing_words = destination_words_full.contains(&"beginning")
+        || destination_words_full.contains(&"upkeep")
+        || destination_words_full
             .windows(3)
             .any(|window| window == ["end", "of", "combat"])
-        || destination_words.contains(&"end")
-            && (destination_words.contains(&"next") || destination_words.contains(&"step"));
-    if has_delayed_timing {
+        || destination_words_full.contains(&"end")
+            && (destination_words_full.contains(&"next") || destination_words_full.contains(&"step"));
+    if delayed_timing.is_none() && has_delayed_timing_words {
         return Err(CardTextError::ParseError(format!(
             "unsupported delayed return timing clause (clause: '{}')",
             words(tokens).join(" ")
@@ -37307,11 +37407,12 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         && target_words.contains(&"cards")
     {
         let filter = parse_object_filter(target_tokens, false)?;
-        return if is_battlefield {
-            Ok(EffectAst::ReturnAllToBattlefield { filter, tapped })
+        let effect = if is_battlefield {
+            EffectAst::ReturnAllToBattlefield { filter, tapped }
         } else {
-            Ok(EffectAst::ReturnAllToHand { filter })
+            EffectAst::ReturnAllToHand { filter }
         };
+        return Ok(wrap_return_with_delayed_timing(effect, delayed_timing));
     }
     if target_words
         .first()
@@ -37354,7 +37455,10 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
                     filter.excluded_subtypes.push(subtype);
                 }
             }
-            return Ok(EffectAst::ReturnAllToHandOfChosenColor { filter });
+            return Ok(wrap_return_with_delayed_timing(
+                EffectAst::ReturnAllToHandOfChosenColor { filter },
+                delayed_timing,
+            ));
         }
         let mut filter = parse_object_filter(return_filter_tokens, false)?;
         for subtype in destination_excluded_subtypes {
@@ -37362,11 +37466,12 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
                 filter.excluded_subtypes.push(subtype);
             }
         }
-        return if is_battlefield {
-            Ok(EffectAst::ReturnAllToBattlefield { filter, tapped })
+        let effect = if is_battlefield {
+            EffectAst::ReturnAllToBattlefield { filter, tapped }
         } else {
-            Ok(EffectAst::ReturnAllToHand { filter })
+            EffectAst::ReturnAllToHand { filter }
         };
+        return Ok(wrap_return_with_delayed_timing(effect, delayed_timing));
     }
     if !destination_excluded_subtypes.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -37376,15 +37481,16 @@ fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     }
 
     let target = parse_target_phrase(target_tokens)?;
-    if is_battlefield {
-        Ok(EffectAst::ReturnToBattlefield {
+    let effect = if is_battlefield {
+        EffectAst::ReturnToBattlefield {
             target,
             tapped,
             controller: return_controller,
-        })
+        }
     } else {
-        Ok(EffectAst::ReturnToHand { target, random })
-    }
+        EffectAst::ReturnToHand { target, random }
+    };
+    Ok(wrap_return_with_delayed_timing(effect, delayed_timing))
 }
 
 fn parse_exchange(tokens: &[Token]) -> Result<EffectAst, CardTextError> {

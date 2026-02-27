@@ -8858,13 +8858,67 @@ fn render_activation_return_cost_preserves_numeric_count() {
 }
 
 #[test]
-fn parse_delayed_return_at_end_of_combat_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Kaijin Variant")
+fn parse_delayed_return_at_end_of_combat_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kaijin Variant")
         .parse_text("Return target creature to its owner's hand at end of combat.")
-        .expect_err("delayed return timing should fail strict parse");
+        .expect("delayed end-of-combat return should parse");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
     assert!(
-        format!("{err:?}").contains("unsupported delayed return timing clause"),
-        "expected delayed return timing parse error, got {err:?}"
+        debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling, got {debug}"
+    );
+    assert!(
+        debug.contains("EndOfCombatTrigger"),
+        "expected end-of-combat delayed trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("ReturnToHandEffect"),
+        "expected delayed return-to-hand payload, got {debug}"
+    );
+}
+
+#[test]
+fn parse_delayed_return_at_next_end_step_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Flicker Variant")
+        .parse_text(
+            "Exile target creature. Return that card to the battlefield under its owner's control at the beginning of the next end step.",
+        )
+        .expect("next-end-step return should parse");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling, got {debug}"
+    );
+    assert!(
+        debug.contains("BeginningOfEndStepTrigger"),
+        "expected next-end-step delayed trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("MoveToZoneEffect"),
+        "expected delayed return-to-battlefield payload, got {debug}"
+    );
+}
+
+#[test]
+fn parse_delayed_return_at_your_next_upkeep_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Upkeep Return Variant")
+        .parse_text("Return target creature to its owner's hand at the beginning of your next upkeep.")
+        .expect("next-upkeep return should parse");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling, got {debug}"
+    );
+    assert!(
+        debug.contains("BeginningOfUpkeepTrigger"),
+        "expected beginning-of-upkeep delayed trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("start_next_turn: true"),
+        "expected next-turn gate for next-upkeep trigger, got {debug}"
     );
 }
 
