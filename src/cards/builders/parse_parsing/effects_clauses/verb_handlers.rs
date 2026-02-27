@@ -411,6 +411,29 @@ pub(crate) fn parse_attach(tokens: &[Token]) -> Result<EffectAst, CardTextError>
         ));
     }
 
+    if tokens.first().is_some_and(|token| token.is_word("to")) {
+        let rest = trim_commas(&tokens[1..]);
+        let Some(first) = rest.first() else {
+            return Err(CardTextError::ParseError(format!(
+                "attach clause missing object or destination (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        if first.is_word("it") || first.is_word("them") {
+            let target_tokens = vec![first.clone()];
+            let object_tokens = trim_commas(&rest[1..]);
+            if object_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "attach clause missing object or destination (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens));
+            let object = parse_attach_object_phrase(&object_tokens)?;
+            return Ok(EffectAst::Attach { object, target });
+        }
+    }
+
     let Some(to_idx) = tokens.iter().rposition(|token| token.is_word("to")) else {
         return Err(CardTextError::ParseError(format!(
             "attach clause missing destination (clause: '{}')",

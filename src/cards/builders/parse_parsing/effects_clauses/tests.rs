@@ -143,6 +143,22 @@ use super::*;
     }
 
     #[test]
+    fn parse_attach_reverse_order_to_it_any_number_of_auras() {
+        let tokens = tokenize_line("to it any number of auras on the battlefield", 0);
+        let effect = parse_attach(&tokens).expect("reverse-order attach clause should parse");
+
+        match effect {
+            EffectAst::Attach { object: _, target } => match target {
+                TargetAst::Tagged(tag, _) => {
+                    assert_eq!(tag.as_str(), IT_TAG, "expected attach target to reference 'it'");
+                }
+                other => panic!("expected tagged attach target, got {other:?}"),
+            },
+            other => panic!("expected attach effect, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_clash_clause() {
         let tokens = tokenize_line("Clash with an opponent.", 0);
         let effects = parse_effect_sentence(&tokens).expect("parse effect sentence");
