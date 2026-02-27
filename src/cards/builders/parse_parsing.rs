@@ -40544,20 +40544,100 @@ fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     })
 }
 
-fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
-    let clause_words = words(tokens);
-    if let Some(target) = parse_destroy_combat_history_target(tokens)? {
-        return Ok(EffectAst::Destroy { target });
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DelayedDestroyTimingAst {
+    EndOfCombat,
+    NextEndStep,
+}
+
+fn parse_delayed_destroy_timing_words(words: &[&str]) -> Option<DelayedDestroyTimingAst> {
+    if matches!(
+        words,
+        ["at", "end", "of", "combat"] | ["at", "the", "end", "of", "combat"]
+    ) {
+        return Some(DelayedDestroyTimingAst::EndOfCombat);
     }
-    if clause_words
-        .windows(3)
-        .any(|window| window == ["end", "of", "combat"])
-        || (clause_words.contains(&"beginning") && clause_words.contains(&"end"))
+
+    if matches!(
+        words,
+        ["at", "beginning", "of", "next", "end", "step"]
+            | ["at", "beginning", "of", "the", "next", "end", "step"]
+            | ["at", "the", "beginning", "of", "next", "end", "step"]
+            | ["at", "the", "beginning", "of", "the", "next", "end", "step"]
+    ) {
+        return Some(DelayedDestroyTimingAst::NextEndStep);
+    }
+
+    None
+}
+
+fn wrap_destroy_with_delayed_timing(
+    effect: EffectAst,
+    timing: Option<DelayedDestroyTimingAst>,
+) -> EffectAst {
+    let Some(timing) = timing else {
+        return effect;
+    };
+
+    match timing {
+        DelayedDestroyTimingAst::EndOfCombat => EffectAst::DelayedUntilEndOfCombat {
+            effects: vec![effect],
+        },
+        DelayedDestroyTimingAst::NextEndStep => EffectAst::DelayedUntilNextEndStep {
+            player: PlayerFilter::Any,
+            effects: vec![effect],
+        },
+    }
+}
+
+fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+    let original_clause_words = words(tokens);
+    let mut delayed_timing = None;
+    let mut timing_cut_word_idx = original_clause_words.len();
+    for word_idx in 0..original_clause_words.len() {
+        if original_clause_words[word_idx] != "at" {
+            continue;
+        }
+        if let Some(timing) = parse_delayed_destroy_timing_words(&original_clause_words[word_idx..])
+        {
+            delayed_timing = Some(timing);
+            timing_cut_word_idx = word_idx;
+            break;
+        }
+    }
+
+    let core_tokens = if timing_cut_word_idx < original_clause_words.len() {
+        let token_cutoff =
+            token_index_for_word_index(tokens, timing_cut_word_idx).unwrap_or(tokens.len());
+        trim_commas(&tokens[..token_cutoff])
+    } else {
+        trim_commas(tokens)
+    };
+    let clause_words = words(&core_tokens);
+    if clause_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing destroy target before delayed timing clause (clause: '{}')",
+            original_clause_words.join(" ")
+        )));
+    }
+
+    if delayed_timing.is_none()
+        && (original_clause_words
+            .windows(3)
+            .any(|window| window == ["end", "of", "combat"])
+            || (original_clause_words.contains(&"beginning")
+                && original_clause_words.contains(&"end")))
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported delayed destroy timing clause (clause: '{}')",
-            clause_words.join(" ")
+            original_clause_words.join(" ")
         )));
+    }
+    if let Some(target) = parse_destroy_combat_history_target(&core_tokens)? {
+        return Ok(wrap_destroy_with_delayed_timing(
+            EffectAst::Destroy { target },
+            delayed_timing,
+        ));
     }
     let has_combat_history = (clause_words.contains(&"dealt")
         && clause_words.contains(&"damage")
@@ -40578,13 +40658,13 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         )));
     }
     if matches!(clause_words.first().copied(), Some("all" | "each")) {
-        if let Some(attached_idx) = tokens.iter().position(|token| token.is_word("attached"))
-            && tokens
+        if let Some(attached_idx) = core_tokens.iter().position(|token| token.is_word("attached"))
+            && core_tokens
                 .get(attached_idx + 1)
                 .is_some_and(|token| token.is_word("to"))
             && attached_idx > 1
         {
-            let mut filter_tokens = trim_commas(&tokens[1..attached_idx]).to_vec();
+            let mut filter_tokens = trim_commas(&core_tokens[1..attached_idx]).to_vec();
             while filter_tokens
                 .last()
                 .and_then(Token::as_word)
@@ -40592,7 +40672,7 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             {
                 filter_tokens.pop();
             }
-            let target_tokens = trim_commas(&tokens[attached_idx + 2..]);
+            let target_tokens = trim_commas(&core_tokens[attached_idx + 2..]);
             let target_words = words(&target_tokens);
             let has_timing_tail = target_words.iter().any(|word| {
                 matches!(
@@ -40614,24 +40694,30 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             {
                 let filter = parse_object_filter(&filter_tokens, false)?;
                 let target = parse_target_phrase(&target_tokens)?;
-                return Ok(EffectAst::DestroyAllAttachedTo { filter, target });
+                return Ok(wrap_destroy_with_delayed_timing(
+                    EffectAst::DestroyAllAttachedTo { filter, target },
+                    delayed_timing,
+                ));
             }
         }
-        if let Some(except_for_idx) = tokens
+        if let Some(except_for_idx) = core_tokens
             .windows(2)
             .position(|window| window[0].is_word("except") && window[1].is_word("for"))
             && except_for_idx > 1
         {
-            let base_filter_tokens = trim_commas(&tokens[1..except_for_idx]);
-            let exception_tokens = trim_commas(&tokens[except_for_idx + 2..]);
+            let base_filter_tokens = trim_commas(&core_tokens[1..except_for_idx]);
+            let exception_tokens = trim_commas(&core_tokens[except_for_idx + 2..]);
             if !base_filter_tokens.is_empty() && !exception_tokens.is_empty() {
                 let mut filter = parse_object_filter(&base_filter_tokens, false)?;
                 let exception_filter = parse_object_filter(&exception_tokens, false)?;
                 apply_except_filter_exclusions(&mut filter, &exception_filter);
-                return Ok(EffectAst::DestroyAll { filter });
+                return Ok(wrap_destroy_with_delayed_timing(
+                    EffectAst::DestroyAll { filter },
+                    delayed_timing,
+                ));
             }
         }
-        let filter_tokens = &tokens[1..];
+        let filter_tokens = &core_tokens[1..];
         if let Some((choice_idx, consumed)) = find_color_choice_phrase(filter_tokens) {
             let base_filter_tokens = trim_commas(&filter_tokens[..choice_idx]);
             let trailing = trim_commas(&filter_tokens[choice_idx + consumed..]);
@@ -40648,10 +40734,16 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
                 )));
             }
             let filter = parse_object_filter(&base_filter_tokens, false)?;
-            return Ok(EffectAst::DestroyAllOfChosenColor { filter });
+            return Ok(wrap_destroy_with_delayed_timing(
+                EffectAst::DestroyAllOfChosenColor { filter },
+                delayed_timing,
+            ));
         }
         let filter = parse_object_filter(filter_tokens, false)?;
-        return Ok(EffectAst::DestroyAll { filter });
+        return Ok(wrap_destroy_with_delayed_timing(
+            EffectAst::DestroyAll { filter },
+            delayed_timing,
+        ));
     }
 
     if clause_words.contains(&"unless") {
@@ -40667,8 +40759,8 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             clause_words.join(" ")
         )));
     }
-    if let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) {
-        let tail_words = words(&tokens[and_idx + 1..]);
+    if let Some(and_idx) = core_tokens.iter().position(|token| token.is_word("and")) {
+        let tail_words = words(&core_tokens[and_idx + 1..]);
         let starts_multi_target = tail_words.first() == Some(&"target")
             || (tail_words.starts_with(&["up", "to"]) && tail_words.contains(&"target"));
         if starts_multi_target {
@@ -40680,7 +40772,7 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     }
 
     if clause_words.starts_with(&["target", "blocked"]) {
-        let mut target_tokens = tokens.to_vec();
+        let mut target_tokens = core_tokens.to_vec();
         if let Some(blocked_idx) = target_tokens
             .iter()
             .position(|token| token.is_word("blocked"))
@@ -40688,15 +40780,21 @@ fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             target_tokens.remove(blocked_idx);
         }
         let target = parse_target_phrase(&target_tokens)?;
-        return Ok(EffectAst::Conditional {
-            predicate: PredicateAst::TargetIsBlocked,
-            if_true: vec![EffectAst::Destroy { target }],
-            if_false: Vec::new(),
-        });
+        return Ok(wrap_destroy_with_delayed_timing(
+            EffectAst::Conditional {
+                predicate: PredicateAst::TargetIsBlocked,
+                if_true: vec![EffectAst::Destroy { target }],
+                if_false: Vec::new(),
+            },
+            delayed_timing,
+        ));
     }
 
-    let target = parse_target_phrase(tokens)?;
-    Ok(EffectAst::Destroy { target })
+    let target = parse_target_phrase(&core_tokens)?;
+    Ok(wrap_destroy_with_delayed_timing(
+        EffectAst::Destroy { target },
+        delayed_timing,
+    ))
 }
 
 fn parse_destroy_combat_history_target(

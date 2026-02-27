@@ -8923,6 +8923,48 @@ fn parse_delayed_return_at_your_next_upkeep_parses() {
 }
 
 #[test]
+fn parse_delayed_destroy_at_end_of_combat_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Basilisk Variant")
+        .parse_text("Destroy target creature at end of combat.")
+        .expect("delayed destroy at end of combat should parse");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling, got {debug}"
+    );
+    assert!(
+        debug.contains("EndOfCombatTrigger"),
+        "expected end-of-combat delayed trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("DestroyEffect"),
+        "expected delayed destroy payload, got {debug}"
+    );
+}
+
+#[test]
+fn parse_delayed_destroy_at_next_end_step_parses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bearer Variant")
+        .parse_text("Destroy all permanents at the beginning of the next end step.")
+        .expect("delayed destroy at next end step should parse");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling, got {debug}"
+    );
+    assert!(
+        debug.contains("BeginningOfEndStepTrigger"),
+        "expected next-end-step delayed trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("DestroyEffect"),
+        "expected delayed destroy payload, got {debug}"
+    );
+}
+
+#[test]
 fn parse_counter_unless_or_mana_choice_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Thrull Wizard Variant")
         .parse_text("Counter target black spell unless that spell's controller pays {B} or {3}.")
