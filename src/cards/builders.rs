@@ -7705,6 +7705,28 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_static_condition_its_attacking() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Kitesail Corsair Variant")
+            .parse_text("This creature has flying as long as it's attacking.")
+            .expect("parse source-attacking static condition");
+
+        let displays = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.display()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            displays
+                .iter()
+                .any(|display| display.contains("as long as this creature is attacking")),
+            "missing source-attacking condition in displays: {displays:?}"
+        );
+    }
+
+    #[test]
     fn reject_counter_ability_target_clause() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Tales End Variant")
             .parse_text("Counter target activated ability, triggered ability, or legendary spell.")

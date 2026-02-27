@@ -451,6 +451,9 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
         crate::ConditionExpr::EquippedCreatureUntapped => {
             "as long as equipped creature is untapped".to_string()
         }
+        crate::ConditionExpr::SourceIsAttacking => {
+            "as long as this creature is attacking".to_string()
+        }
         crate::ConditionExpr::CountComparison {
             count,
             comparison,

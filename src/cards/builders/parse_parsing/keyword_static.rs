@@ -3997,6 +3997,13 @@ pub(crate) fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::C
     if clause_words == ["equipped", "creature", "is", "untapped"] {
         return Ok(crate::ConditionExpr::EquippedCreatureUntapped);
     }
+    if clause_words == ["it", "is", "attacking"]
+        || clause_words == ["its", "attacking"]
+        || clause_words == ["this", "creature", "is", "attacking"]
+        || clause_words == ["this", "permanent", "is", "attacking"]
+    {
+        return Ok(crate::ConditionExpr::SourceIsAttacking);
+    }
     if clause_words == ["it", "is", "your", "turn"] || clause_words == ["its", "your", "turn"] {
         return Ok(crate::ConditionExpr::YourTurn);
     }
@@ -7682,4 +7689,3 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         clause_words.join(" "),
     )))
 }
-
