@@ -1011,6 +1011,20 @@ fn test_parse_lose_keyword_ability_does_not_fall_back_to_lose_life() {
 }
 
 #[test]
+fn test_parse_lose_keyword_ability_without_duration() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lose Keyword No Duration Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature loses flying.")
+        .expect("parse lose-keyword line without explicit duration");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("RemoveAbility(StaticAbility(Flying))"),
+        "expected flying-removal effect, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
         .card_types(vec![CardType::Instant])

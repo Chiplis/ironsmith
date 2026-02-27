@@ -25422,9 +25422,6 @@ fn parse_simple_ability_modifier_clause(
     }
 
     let duration_phrase = parse_simple_ability_duration(words_after_verb);
-    if duration_phrase.is_none() {
-        return Ok(None);
-    }
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
