@@ -449,6 +449,13 @@ fn compile_condition_from_predicate_ast(
                 count: *count,
             }
         }
+        PredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, ctx)?;
+            Condition::PlayerHasCardTypesInGraveyardOrMore {
+                player,
+                count: *count,
+            }
+        }
         PredicateAst::PlayerCardsInHandOrMore { player, count } => {
             let player = resolve_non_target_player_filter(*player, ctx)?;
             Condition::PlayerCardsInHandOrMore {
@@ -4841,6 +4848,13 @@ fn compile_effect(
         PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count } => {
             let player = resolve_non_target_player_filter(*player, ctx)?;
             Condition::PlayerControlsBasicLandTypesAmongLandsOrMore {
+                player,
+                count: *count,
+            }
+        }
+        PredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, ctx)?;
+            Condition::PlayerHasCardTypesInGraveyardOrMore {
                 player,
                 count: *count,
             }

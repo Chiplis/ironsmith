@@ -1520,6 +1520,9 @@ pub enum Condition {
     /// No spells were cast last turn
     NoSpellsWereCastLastTurn,
 
+    /// A specific player's graveyard contains cards with at least N distinct card types.
+    PlayerHasCardTypesInGraveyardOrMore { player: PlayerFilter, count: u32 },
+
     /// Target is tapped
     TargetIsTapped,
 

@@ -474,6 +474,10 @@ enum PredicateAst {
         player: PlayerAst,
         count: u32,
     },
+    PlayerHasCardTypesInGraveyardOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
     PlayerCardsInHandOrMore {
         player: PlayerAst,
         count: u32,

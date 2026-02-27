@@ -17638,6 +17638,13 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
             )));
         }
 
+        if let Some(effect) = parse_choose_target_prelude_sentence(&sentence_tokens)? {
+            effects.push(effect);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
         let mut sentence_effects = parse_effect_sentence(&sentence_tokens)?;
         if wraps_as_if_did_not {
             sentence_effects = vec![EffectAst::IfResult {
@@ -28681,6 +28688,62 @@ fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardTextError> {
         return Ok(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count });
     }
 
+    let parse_graveyard_card_types_subject = |words: &[&str]| -> Option<PlayerAst> {
+        match words {
+            [first, second] if *first == "your" && *second == "graveyard" => Some(PlayerAst::You),
+            [first, second, third]
+                if *first == "that"
+                    && (*second == "player" || *second == "players")
+                    && *third == "graveyard" =>
+            {
+                Some(PlayerAst::That)
+            }
+            [first, second, third]
+                if *first == "target"
+                    && (*second == "player" || *second == "players")
+                    && *third == "graveyard" =>
+            {
+                Some(PlayerAst::Target)
+            }
+            [first, second, third]
+                if *first == "target"
+                    && (*second == "opponent" || *second == "opponents")
+                    && *third == "graveyard" =>
+            {
+                Some(PlayerAst::TargetOpponent)
+            }
+            [first, second] if (*first == "opponent" || *first == "opponents") && *second == "graveyard" => {
+                Some(PlayerAst::Opponent)
+            }
+            _ => None,
+        }
+    };
+    if filtered.len() >= 11 {
+        let (count_idx, subject_start, constrained_player) =
+            if filtered[0] == "there" && filtered[1] == "are" {
+                (2usize, 10usize, None)
+            } else if filtered[0] == "you" && filtered[1] == "have" {
+                (2usize, 10usize, Some(PlayerAst::You))
+            } else {
+                (usize::MAX, usize::MAX, None)
+            };
+        if count_idx != usize::MAX
+            && filtered.get(count_idx + 1).copied() == Some("or")
+            && filtered.get(count_idx + 2).copied() == Some("more")
+            && filtered.get(count_idx + 3).copied() == Some("card")
+            && matches!(filtered.get(count_idx + 4).copied(), Some("type" | "types"))
+            && filtered.get(count_idx + 5).copied() == Some("among")
+            && matches!(filtered.get(count_idx + 6).copied(), Some("card" | "cards"))
+            && filtered.get(count_idx + 7).copied() == Some("in")
+            && subject_start <= filtered.len()
+            && let Some(count) = parse_named_number(filtered[count_idx])
+            && let Some(player) = parse_graveyard_card_types_subject(&filtered[subject_start..])
+            && constrained_player.map_or(true, |expected| expected == player)
+        {
+            return Ok(PredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count });
+        }
+    }
+
     let parse_cards_in_hand_subject = |words: &[&str]| -> Option<(PlayerAst, usize)> {
         match words {
             [first, second, ..] if *first == "that" && *second == "player" => {
@@ -33902,6 +33965,24 @@ fn parse_choose_target_and_verb_clause(
 
     let effect = parse_effect_with_verb(verb, None, &target_tokens)?;
     Ok(Some(effect))
+}
+
+fn parse_choose_target_prelude_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.first().copied() != Some("choose") {
+        return Ok(None);
+    }
+
+    let target_tokens = trim_commas(&tokens[1..]);
+    if target_tokens.is_empty() || !starts_with_target_indicator(&target_tokens) {
+        return Ok(None);
+    }
+    if find_verb(&target_tokens).is_some() {
+        return Ok(None);
+    }
+
+    let target = parse_target_phrase(&target_tokens)?;
+    Ok(Some(EffectAst::TargetOnly { target }))
 }
 
 fn parse_keyword_mechanic_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
@@ -40087,6 +40168,22 @@ mod parse_parsing_tests {
     }
 
     #[test]
+    fn parse_predicate_card_types_among_cards_in_graveyard_threshold() {
+        let tokens = tokenize_line(
+            "there are four or more card types among cards in your graveyard",
+            0,
+        );
+        let predicate = parse_predicate(&tokens).expect("parse delirium predicate");
+        assert!(matches!(
+            predicate,
+            PredicateAst::PlayerHasCardTypesInGraveyardOrMore {
+                player: PlayerAst::You,
+                count: 4
+            }
+        ));
+    }
+
+    #[test]
     fn parse_if_its_your_turn_sentence_clause() {
         crate::cards::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
@@ -40106,6 +40203,38 @@ mod parse_parsing_tests {
         )
         .parse_text("If there are seven or more cards in your graveyard, creatures can't block this turn.")
         .expect("parse threshold-style graveyard card count predicate");
+    }
+
+    #[test]
+    fn parse_choose_target_creature_prelude_sentence() {
+        let tokens = tokenize_line("Choose target creature. It gets +2/+2 until end of turn.", 0);
+        let effects =
+            parse_effect_sentences(&tokens).expect("parse choose-target prelude sentence");
+        assert!(matches!(
+            effects.first(),
+            Some(EffectAst::TargetOnly {
+                target: TargetAst::Object(_, _, _)
+            })
+        ));
+        assert!(effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::Pump { .. })));
+    }
+
+    #[test]
+    fn parse_choose_target_opponent_prelude_sentence() {
+        let tokens = tokenize_line("Choose target opponent. That player discards a card.", 0);
+        let effects =
+            parse_effect_sentences(&tokens).expect("parse choose-target-opponent prelude");
+        assert!(matches!(
+            effects.first(),
+            Some(EffectAst::TargetOnly {
+                target: TargetAst::Player(_, _)
+            })
+        ));
+        assert!(effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::Discard { .. })));
     }
 
     #[test]

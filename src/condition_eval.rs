@@ -244,6 +244,13 @@ pub fn evaluate_condition_external(
             }
             seen.len() >= *count as usize
         }
+        Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
+            else {
+                return false;
+            };
+            count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize
+        }
         Condition::CardInYourGraveyard {
             card_types,
             subtypes,
@@ -497,6 +504,22 @@ fn condition_object_matches_player_zone(
     }
 }
 
+fn count_distinct_card_types_in_graveyard(game: &GameState, player_id: PlayerId) -> usize {
+    use std::collections::HashSet;
+
+    let Some(player_state) = game.player(player_id) else {
+        return 0;
+    };
+
+    let mut seen = HashSet::new();
+    for &object_id in &player_state.graveyard {
+        for card_type in game.calculated_card_types(object_id) {
+            seen.insert(card_type);
+        }
+    }
+    seen.len()
+}
+
 fn count_distinct_matching_powers(
     game: &GameState,
     player_id: PlayerId,
@@ -675,6 +698,12 @@ fn evaluate_condition_simple(
                 }
             }
             seen.len() >= *count as usize
+        }
+        Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize
         }
         Condition::PlayerControlsExactly {
             player,
@@ -1059,6 +1088,10 @@ fn evaluate_condition(
                 }
             }
             Ok(seen.len() >= *count as usize)
+        }
+        Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize)
         }
         Condition::PlayerControlsExactly {
             player,
@@ -1627,5 +1660,62 @@ mod tests {
             count: 5,
         };
         assert!(!evaluate_condition_external(&game, &condition, &ctx));
+    }
+
+    #[test]
+    fn player_has_card_types_in_graveyard_or_more_counts_distinct_types() {
+        use crate::target::PlayerFilter;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let mk_card = |id: u32, name: &str, card_types: Vec<CardType>| {
+            CardBuilder::new(CardId::from_raw(id), name)
+                .card_types(card_types)
+                .build()
+        };
+
+        game.create_object_from_card(
+            &mk_card(11, "Artifact Shard", vec![CardType::Artifact]),
+            alice,
+            Zone::Graveyard,
+        );
+        game.create_object_from_card(
+            &mk_card(12, "Creature Husk", vec![CardType::Creature]),
+            alice,
+            Zone::Graveyard,
+        );
+        game.create_object_from_card(
+            &mk_card(13, "Sorcery Echo", vec![CardType::Sorcery]),
+            alice,
+            Zone::Graveyard,
+        );
+        game.create_object_from_card(
+            &mk_card(14, "Enchantment Memory", vec![CardType::Enchantment]),
+            alice,
+            Zone::Graveyard,
+        );
+
+        let ctx = ExternalEvaluationContext {
+            controller: alice,
+            source: ObjectId::from_raw(999),
+            filter_source: None,
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: ExternalEvaluationOptions::default(),
+        };
+
+        let delirium = Condition::PlayerHasCardTypesInGraveyardOrMore {
+            player: PlayerFilter::You,
+            count: 4,
+        };
+        assert!(evaluate_condition_external(&game, &delirium, &ctx));
+
+        let too_many = Condition::PlayerHasCardTypesInGraveyardOrMore {
+            player: PlayerFilter::You,
+            count: 5,
+        };
+        assert!(!evaluate_condition_external(&game, &too_many, &ctx));
     }
 }

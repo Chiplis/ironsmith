@@ -6656,6 +6656,16 @@ fn describe_condition(condition: &Condition) -> String {
                 count_text, subject, verb
             )
         }
+        Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
+            let subject = describe_player_filter(player);
+            let count_text = small_number_word(*count)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            format!(
+                "there are {} or more card types among cards in {} graveyard",
+                count_text, subject
+            )
+        }
         Condition::PlayerControlsMost { player, filter } => {
             let controller = describe_player_filter(player);
             let mut described_filter = filter.clone();
