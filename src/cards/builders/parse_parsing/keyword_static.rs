@@ -396,6 +396,9 @@ pub(crate) fn parse_static_ability_line(
     if let Some(ability) = parse_blood_moon_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_land_type_addition_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(ability) = parse_remove_snow_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -3183,6 +3186,60 @@ pub(crate) fn parse_remove_snow_line(tokens: &[Token]) -> Result<Option<StaticAb
         )));
     }
     Ok(None)
+}
+
+pub(crate) fn parse_land_type_addition_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.len() < 10 {
+        return Ok(None);
+    }
+
+    let Some(be_idx) = words
+        .iter()
+        .position(|word| *word == "is" || *word == "are")
+    else {
+        return Ok(None);
+    };
+    if be_idx == 0 || be_idx + 1 >= words.len() {
+        return Ok(None);
+    }
+
+    let filter = parse_object_filter(&tokens[..be_idx], false)?;
+
+    let mut subtype_word_idx = be_idx + 1;
+    if words
+        .get(subtype_word_idx)
+        .is_some_and(|word| is_article(word))
+    {
+        subtype_word_idx += 1;
+    }
+    let Some(subtype_word) = words.get(subtype_word_idx).copied() else {
+        return Ok(None);
+    };
+    let Some(subtype) = parse_subtype_word(subtype_word)
+        .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word))
+    else {
+        return Ok(None);
+    };
+    if !is_land_subtype(subtype) {
+        return Ok(None);
+    }
+
+    let tail = &words[subtype_word_idx + 1..];
+    let valid_tail = matches!(
+        tail,
+        ["in", "addition", "to", "its", "other", "land", "type"]
+            | ["in", "addition", "to", "its", "other", "land", "types"]
+            | ["in", "addition", "to", "their", "other", "land", "type"]
+            | ["in", "addition", "to", "their", "other", "land", "types"]
+    );
+    if !valid_tail {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::add_subtypes(filter, vec![subtype])))
 }
 
 pub(crate) fn parse_granted_keyword_static_line(

@@ -7935,6 +7935,19 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_land_type_addition_static_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Blanket Variant")
+            .parse_text("Each land is a Swamp in addition to its other land types.")
+            .expect("land type addition static line should parse");
+
+        let debug = format!("{:?}", def);
+        assert!(
+            debug.contains("AddSubtypesForFilter") && debug.contains("Swamp"),
+            "expected subtype-add static lowering for swamp addition, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_counter_unless_pays_dynamic_mana_equal_value() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Repulsive Mutation Variant")
             .parse_text(
