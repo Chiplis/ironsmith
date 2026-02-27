@@ -7480,6 +7480,23 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_enchanted_permanent_doesnt_untap_static_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Coma Veil Variant")
+            .parse_text(
+                "Enchant artifact or creature.\nEnchanted permanent doesn't untap during its controller's untap step.",
+            )
+            .expect("enchanted permanent doesnt-untap line should parse");
+
+        let compiled = compiled_lines(&def).join(" | ").to_ascii_lowercase();
+        assert!(
+            compiled.contains("enchanted permanent doesnt untap during its controllers untap step")
+                || compiled
+                    .contains("enchanted permanent doesn't untap during its controller's untap step"),
+            "expected compiled untap restriction text, got: {compiled}"
+        );
+    }
+
+    #[test]
     fn parse_static_gets_rejects_unsupported_trailing_clause() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Unsupported Static Tail Variant")
             .parse_text("This creature gets +1/+1 unless you control an artifact.")

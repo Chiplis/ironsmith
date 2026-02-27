@@ -6816,10 +6816,19 @@ pub(crate) fn parse_doesnt_untap_during_untap_step_line(
         )));
     }
 
-    let attached_subject = clause_words.starts_with(&["enchanted", "creature"])
-        || clause_words.starts_with(&["equipped", "creature"]);
-    if attached_subject {
-        let remainder = &clause_words[2..];
+    let attached_subject_len = if clause_words.starts_with(&["enchanted", "creature"])
+        || clause_words.starts_with(&["enchanted", "permanent"])
+        || clause_words.starts_with(&["enchanted", "artifact"])
+        || clause_words.starts_with(&["enchanted", "land"])
+        || clause_words.starts_with(&["equipped", "creature"])
+        || clause_words.starts_with(&["equipped", "permanent"])
+    {
+        Some(2usize)
+    } else {
+        None
+    };
+    if let Some(subject_len) = attached_subject_len {
+        let remainder = &clause_words[subject_len..];
         let attached_matches = matches!(
             remainder,
             [
