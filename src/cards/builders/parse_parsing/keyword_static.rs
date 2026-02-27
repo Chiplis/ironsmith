@@ -4167,11 +4167,13 @@ pub(crate) fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::C
 
     if clause_words == ["this", "creature", "is", "equipped"]
         || clause_words == ["it", "is", "equipped"]
+        || clause_words == ["its", "equipped"]
     {
         return Ok(crate::ConditionExpr::SourceIsEquipped);
     }
     if clause_words == ["this", "creature", "is", "enchanted"]
         || clause_words == ["it", "is", "enchanted"]
+        || clause_words == ["its", "enchanted"]
     {
         return Ok(crate::ConditionExpr::SourceIsEnchanted);
     }

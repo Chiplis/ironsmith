@@ -11045,6 +11045,24 @@ fn parse_creatures_entering_dont_trigger_static_line() {
 }
 
 #[test]
+fn parse_as_long_as_its_enchanted_condition_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fledgling Osprey Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature has flying as long as it's enchanted.")
+        .expect("as-long-as-its-enchanted static line should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("flying"),
+        "expected flying in rendered static text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("as long as this creature is enchanted"),
+        "expected enchanted condition in rendered static text, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_each_creature_assigns_combat_damage_with_toughness_static_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Doran Variant")
         .card_types(vec![CardType::Creature])
