@@ -8890,6 +8890,112 @@ fn parse_shared_color_prevent_fanout_clause() {
 }
 
 #[test]
+fn parse_shared_color_gain_ability_fanout_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Radiance Gain Variant")
+        .parse_text(
+            "Radiance — Target creature and each other creature that shares a color with it gain haste until end of turn.",
+        )
+        .expect("shared-color gain fanout should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("shares a color with that object"),
+        "expected shared-color fanout filter, got {rendered}"
+    );
+    assert!(
+        rendered.contains("haste until end of turn"),
+        "expected haste grant to fanout targets, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_shared_color_pump_fanout_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Radiance Pump Variant")
+        .parse_text(
+            "Radiance — Target creature and each other creature that shares a color with it get +1/+1 until end of turn.",
+        )
+        .expect("shared-color pump fanout should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("shares a color with that object"),
+        "expected shared-color fanout filter, got {rendered}"
+    );
+    assert!(
+        rendered.contains("+1/+1"),
+        "expected +1/+1 pump to be preserved, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_shared_color_damage_with_named_subject_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Radiance Damage Variant")
+        .parse_text(
+            "Radiance — Cleansing Beam deals 2 damage to target creature and each other creature that shares a color with it.",
+        )
+        .expect("named-subject shared-color damage fanout should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("deal 2 damage to target creature"),
+        "expected primary target damage clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("shares a color with that object"),
+        "expected shared-color fanout damage clause, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_counter_unless_then_counter_that_spell_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter That Spell Variant")
+        .parse_text(
+            "Counter target noncreature spell unless its controller pays {1}. If you control a creature with power 4 or greater, counter that spell instead.",
+        )
+        .expect("counter-that-spell follow-up should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("counter target noncreature spell"),
+        "expected base counter clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if you control a creature with power 4 or greater")
+            && rendered.contains("otherwise, counter target noncreature spell unless"),
+        "expected conditional replacement to keep shared target semantics, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_additional_cost_sacrificed_power_reference_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fling")
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice a creature.\nFling deals damage equal to the sacrificed creature's power to any target.",
+        )
+        .expect("sacrificed-power follow-up should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("sacrifice")
+            && rendered.contains("deals damage equal to")
+            && rendered.contains("power"),
+        "expected additional-cost sacrificed-power linkage, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_named_spell_exile_self_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Burning Wish")
+        .parse_text("Exile Burning Wish.")
+        .expect("named self-exile clause should parse");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("exile"),
+        "expected exile-self clause to remain present, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_delayed_next_end_step_sentence_schedules_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Planebound Variant")
         .parse_text("{R}: You may put a planeswalker card from your hand onto the battlefield. Sacrifice it at the beginning of the next end step.")

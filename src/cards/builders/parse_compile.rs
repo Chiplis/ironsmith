@@ -165,7 +165,16 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
 }
 
 fn compile_statement_effects(effects: &[EffectAst]) -> Result<Vec<Effect>, CardTextError> {
+    compile_statement_effects_seeded(effects, None)
+}
+
+fn compile_statement_effects_seeded(
+    effects: &[EffectAst],
+    seed_last_object_tag: Option<String>,
+) -> Result<Vec<Effect>, CardTextError> {
     let mut ctx = CompileContext::new();
+    ctx.last_object_tag = seed_last_object_tag;
+    ctx.force_auto_tag_object_targets = true;
     ctx.allow_life_event_value = false;
     let mut prelude = Vec::new();
     for tag in ["equipped", "enchanted"] {
@@ -637,7 +646,9 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         }
         EffectAst::DealDamage { target, .. }
         | EffectAst::Counter { target }
+        | EffectAst::CounterUnlessPays { target, .. }
         | EffectAst::Explore { target }
+        | EffectAst::Connive { target }
         | EffectAst::Goad { target }
         | EffectAst::PutCounters { target, .. }
         | EffectAst::PutOrRemoveCounters { target, .. }
@@ -673,8 +684,15 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::GrantAbilitiesToTarget { target, .. }
         | EffectAst::RemoveAbilitiesFromTarget { target, .. }
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
+        | EffectAst::GrantProtectionChoice { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
+        | EffectAst::RedirectNextDamageFromSourceToTarget { target, .. }
+        | EffectAst::RedirectNextTimeDamageToSource { target, .. }
+        | EffectAst::GainControl { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
+            matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
+        }
+        EffectAst::PreventAllCombatDamageFromSource { source: target, .. } => {
             matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
         }
         EffectAst::Conditional {
@@ -1093,6 +1111,20 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
                     .iter()
                     .any(|constraint| constraint.tag.as_str() == IT_TAG)
         }
+        EffectAst::CounterUnlessPays {
+            target,
+            life,
+            additional_generic,
+            ..
+        } => {
+            target_references_tag(target, IT_TAG)
+                || life
+                    .as_ref()
+                    .is_some_and(|value| value_references_tag(value, IT_TAG))
+                || additional_generic
+                    .as_ref()
+                    .is_some_and(|value| value_references_tag(value, IT_TAG))
+        }
         EffectAst::Counter { target }
         | EffectAst::Explore { target }
         | EffectAst::Connive { target }
@@ -1130,9 +1162,15 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::GrantAbilitiesToTarget { target, .. }
         | EffectAst::RemoveAbilitiesFromTarget { target, .. }
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
+        | EffectAst::GrantProtectionChoice { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
+        | EffectAst::RedirectNextDamageFromSourceToTarget { target, .. }
+        | EffectAst::RedirectNextTimeDamageToSource { target, .. }
         | EffectAst::GainControl { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
+            target_references_tag(target, IT_TAG)
+        }
+        EffectAst::PreventAllCombatDamageFromSource { source: target, .. } => {
             target_references_tag(target, IT_TAG)
         }
         EffectAst::Conditional {
@@ -1449,8 +1487,9 @@ fn compile_effects(
         } else {
             &[]
         };
-        ctx.auto_tag_object_targets =
-            effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
+        ctx.auto_tag_object_targets = ctx.force_auto_tag_object_targets
+            || effects_reference_it_tag(remaining)
+            || effects_reference_its_controller(remaining);
 
         let next_is_if_result =
             idx + 1 < effects.len() && matches!(effects[idx + 1], EffectAst::IfResult { .. });
@@ -1510,7 +1549,8 @@ fn compile_effects(
             } else {
                 &[]
             };
-            ctx.auto_tag_object_targets = effects_reference_it_tag(if_remaining)
+            ctx.auto_tag_object_targets = ctx.force_auto_tag_object_targets
+                || effects_reference_it_tag(if_remaining)
                 || effects_reference_its_controller(if_remaining);
             let (if_effects, if_choices) = compile_effect(&effects[idx + 1], ctx)?;
             compiled.extend(if_effects);
@@ -2096,6 +2136,7 @@ struct CompileContextState {
     last_effect_id: Option<EffectId>,
     last_object_tag: Option<String>,
     last_player_filter: Option<PlayerFilter>,
+    force_auto_tag_object_targets: bool,
     bind_unbound_x_to_last_effect: bool,
 }
 
@@ -2106,6 +2147,7 @@ impl CompileContextState {
             last_effect_id: ctx.last_effect_id,
             last_object_tag: ctx.last_object_tag.clone(),
             last_player_filter: ctx.last_player_filter.clone(),
+            force_auto_tag_object_targets: ctx.force_auto_tag_object_targets,
             bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
         }
     }
@@ -2115,6 +2157,7 @@ impl CompileContextState {
         ctx.last_effect_id = self.last_effect_id;
         ctx.last_object_tag = self.last_object_tag;
         ctx.last_player_filter = self.last_player_filter;
+        ctx.force_auto_tag_object_targets = self.force_auto_tag_object_targets;
         ctx.bind_unbound_x_to_last_effect = self.bind_unbound_x_to_last_effect;
     }
 }
@@ -2803,12 +2846,13 @@ fn compile_effect(
         }
         EffectAst::RemoveFromCombat { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
-            Ok((
-                vec![Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
-                    spec,
-                ))],
-                choices,
-            ))
+            let effect = tag_object_target_effect(
+                Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(spec.clone())),
+                &spec,
+                ctx,
+                "removed_from_combat",
+            );
+            Ok((vec![effect], choices))
         }
         EffectAst::TapOrUntap { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
@@ -2825,7 +2869,8 @@ fn compile_effect(
                     effects: vec![untap_effect],
                 },
             ];
-            let effect = Effect::choose_one(modes);
+            let effect =
+                tag_object_target_effect(Effect::choose_one(modes), &spec, ctx, "tap_or_untap");
             Ok((vec![effect], choices))
         }
         EffectAst::UntapAll { filter } => {
@@ -2878,7 +2923,8 @@ fn compile_effect(
                 });
             }
 
-            let effect = Effect::choose_one(modes);
+            let effect =
+                tag_object_target_effect(Effect::choose_one(modes), &spec, ctx, "protected");
             Ok((vec![effect], choices))
         }
         EffectAst::Earthbend { counters } => {
@@ -2896,7 +2942,9 @@ fn compile_effect(
         }
         EffectAst::Explore { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
-            Ok((vec![Effect::explore(spec)], choices))
+            let effect =
+                tag_object_target_effect(Effect::explore(spec.clone()), &spec, ctx, "explored");
+            Ok((vec![effect], choices))
         }
         EffectAst::OpenAttraction => Ok((vec![Effect::open_attraction()], Vec::new())),
         EffectAst::ManifestDread => Ok((vec![Effect::manifest_dread()], Vec::new())),
@@ -3566,7 +3614,8 @@ fn compile_effect(
         }
         EffectAst::Connive { target } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
-            let effect = Effect::connive(spec.clone());
+            let effect =
+                tag_object_target_effect(Effect::connive(spec.clone()), &spec, ctx, "connived");
             Ok((vec![effect], choices))
         }
         EffectAst::ConniveIterated => Ok((vec![Effect::connive(ChooseSpec::Iterated)], Vec::new())),
@@ -3580,7 +3629,9 @@ fn compile_effect(
             } else {
                 spec
             };
-            Ok((vec![Effect::goad(spec)], choices))
+            let effect =
+                tag_object_target_effect(Effect::goad(spec.clone()), &spec, ctx, "goaded");
+            Ok((vec![effect], choices))
         }
         EffectAst::ReturnToHand { target, random } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
@@ -4272,12 +4323,27 @@ fn compile_effect(
             let effect = Effect::reveal_top(player_filter, tag);
             Ok((vec![effect], choices))
         }
-        EffectAst::RevealTagged { tag } => Ok((
-            vec![Effect::new(crate::effects::RevealTaggedEffect::new(
-                tag.clone(),
-            ))],
-            Vec::new(),
-        )),
+        EffectAst::RevealTagged { tag } => {
+            let resolved_tag = if tag.as_str() == IT_TAG {
+                if let Some(existing) = ctx.last_object_tag.clone() {
+                    existing
+                } else {
+                    let generated = ctx.next_tag("revealed");
+                    ctx.last_object_tag = Some(generated.clone());
+                    generated
+                }
+            } else {
+                let explicit = tag.as_str().to_string();
+                ctx.last_object_tag = Some(explicit.clone());
+                explicit
+            };
+            Ok((
+                vec![Effect::new(crate::effects::RevealTaggedEffect::new(
+                    resolved_tag,
+                ))],
+                Vec::new(),
+            ))
+        }
         EffectAst::LookAtTopCards { player, count, tag } => {
             let (player_filter, choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
@@ -5479,15 +5545,24 @@ fn compile_effect(
                 && *destination != Zone::Battlefield
                 && owner_matches_chooser;
             if use_search_effect {
-                let effects = vec![Effect::search_library(
+                let mut effect = Effect::search_library(
                     filter,
                     *destination,
                     player_filter.clone(),
                     *reveal,
-                )];
+                );
+                if ctx.auto_tag_object_targets {
+                    let tag = ctx.next_tag("searched");
+                    ctx.last_object_tag = Some(tag.clone());
+                    effect = effect.tag(tag);
+                }
+                let effects = vec![effect];
                 Ok((effects, choices))
             } else {
                 let tag = ctx.next_tag("searched");
+                if ctx.auto_tag_object_targets {
+                    ctx.last_object_tag = Some(tag.clone());
+                }
                 let mut generic_search_filter = ObjectFilter::default();
                 generic_search_filter.owner = filter.owner.clone();
                 let choose_description = if filter == generic_search_filter {
@@ -5722,24 +5797,17 @@ fn resolve_it_tag(
     let Some(tag) = ctx.last_object_tag.as_ref() else {
         let mut resolved = filter.clone();
         let mut saw_it_constraint = false;
-        let mut has_non_identity_it_constraint = false;
         resolved.tagged_constraints.retain(|constraint| {
             if constraint.tag.as_str() != IT_TAG {
                 return true;
             }
             saw_it_constraint = true;
-            if matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject) {
-                false
-            } else {
-                has_non_identity_it_constraint = true;
-                true
-            }
+            false
         });
 
         // "from it"/"in it" after a hand/library reveal usually refers to the previously
         // referenced player's hidden zone, not a tagged object.
         if saw_it_constraint
-            && !has_non_identity_it_constraint
             && matches!(
                 resolved.zone,
                 Some(Zone::Hand | Zone::Library | Zone::Graveyard | Zone::Exile)
@@ -5752,12 +5820,22 @@ fn resolve_it_tag(
             return Ok(resolved);
         }
         if saw_it_constraint
-            && !has_non_identity_it_constraint
             && resolved == ObjectFilter::default()
             && let Some(player_filter) = ctx.last_player_filter.clone()
         {
             resolved.zone = Some(Zone::Hand);
             resolved.owner = Some(player_filter);
+            return Ok(resolved);
+        }
+        if saw_it_constraint && resolved == ObjectFilter::default() {
+            // Bare "it" with no object/player context in spell text commonly means "this source".
+            // Example: "Exile CARDNAME."
+            resolved.source = true;
+            return Ok(resolved);
+        }
+        if saw_it_constraint {
+            // Last-resort fallback: keep the non-referential portion of the filter when
+            // no prior tag exists (e.g., "those creatures" on a later line).
             return Ok(resolved);
         }
 
@@ -5861,9 +5939,7 @@ fn resolve_choose_spec_it_tag(
                 };
                 return Ok(ChooseSpec::Object(filter));
             }
-            Err(CardTextError::ParseError(
-                "unable to resolve 'it' without prior reference".to_string(),
-            ))
+            return Ok(ChooseSpec::Source);
         }
         ChooseSpec::Tagged(tag) => Ok(ChooseSpec::Tagged(tag.clone())),
         ChooseSpec::Object(filter) => {
@@ -7884,14 +7960,15 @@ fn resolve_attach_object_spec(
 
 fn compile_effect_for_target<Builder>(
     target: &TargetAst,
-    ctx: &CompileContext,
+    ctx: &mut CompileContext,
     build: Builder,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError>
 where
     Builder: FnOnce(ChooseSpec) -> Effect,
 {
     let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
-    Ok((vec![build(spec)], choices))
+    let effect = tag_object_target_effect(build(spec.clone()), &spec, ctx, "targeted");
+    Ok((vec![effect], choices))
 }
 
 fn compile_tagged_effect_for_target<Builder>(

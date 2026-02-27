@@ -912,6 +912,84 @@ fn keyword_actions_line_text(actions: &[KeywordAction], separator: &str) -> Opti
     Some(parts.join(separator))
 }
 
+fn latest_choose_objects_tag_in_effect(effect: &Effect) -> Option<String> {
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        return Some(choose.tag.as_str().to_string());
+    }
+
+    if let Some(modes) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        for mode in modes.modes.iter().rev() {
+            for nested in mode.effects.iter().rev() {
+                if let Some(tag) = latest_choose_objects_tag_in_effect(nested) {
+                    return Some(tag);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn latest_tagged_reference_tag_in_effect(effect: &Effect) -> Option<String> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Some(tagged.tag.as_str().to_string());
+    }
+    if let Some(tagged_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return Some(tagged_all.tag.as_str().to_string());
+    }
+
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        for nested in conditional.if_true.iter().rev() {
+            if let Some(tag) = latest_tagged_reference_tag_in_effect(nested)
+                .or_else(|| latest_choose_objects_tag_in_effect(nested))
+            {
+                return Some(tag);
+            }
+        }
+        for nested in conditional.if_false.iter().rev() {
+            if let Some(tag) = latest_tagged_reference_tag_in_effect(nested)
+                .or_else(|| latest_choose_objects_tag_in_effect(nested))
+            {
+                return Some(tag);
+            }
+        }
+    }
+
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        for nested in may.effects.iter().rev() {
+            if let Some(tag) = latest_tagged_reference_tag_in_effect(nested)
+                .or_else(|| latest_choose_objects_tag_in_effect(nested))
+            {
+                return Some(tag);
+            }
+        }
+    }
+
+    None
+}
+
+fn latest_cost_choice_tag(cost_effects: &[Effect]) -> Option<String> {
+    for effect in cost_effects.iter().rev() {
+        if let Some(tag) = latest_choose_objects_tag_in_effect(effect)
+            .or_else(|| latest_tagged_reference_tag_in_effect(effect))
+        {
+            return Some(tag);
+        }
+    }
+    None
+}
+
+fn latest_spell_reference_tag(spell_effects: &[Effect]) -> Option<String> {
+    for effect in spell_effects.iter().rev() {
+        if let Some(tag) = latest_tagged_reference_tag_in_effect(effect)
+            .or_else(|| latest_choose_objects_tag_in_effect(effect))
+        {
+            return Some(tag);
+        }
+    }
+    None
+}
+
 fn apply_line_ast(
     mut builder: CardDefinitionBuilder,
     parsed: LineAst,
@@ -1021,7 +1099,21 @@ fn apply_line_ast(
                 builder.aura_attach_filter = Some(enchant_filter);
             }
 
-            let compiled = match compile_statement_effects(&effects) {
+            let seed_last_object_tag = if effects_reference_it_tag(&effects)
+                || effects_reference_its_controller(&effects)
+            {
+                latest_cost_choice_tag(&builder.cost_effects).or_else(|| {
+                    builder
+                        .spell_effect
+                        .as_ref()
+                        .and_then(|effects| latest_spell_reference_tag(effects))
+                })
+            } else {
+                None
+            };
+
+            let compiled = match compile_statement_effects_seeded(&effects, seed_last_object_tag)
+            {
                 Ok(compiled) => compiled,
                 Err(err) if allow_unsupported => {
                     return Ok(push_unsupported_marker(

@@ -17698,10 +17698,8 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
                 Some(EffectAst::Conditional { .. })
             ) {
                 let previous = effects.pop().expect("effects length checked above");
-                let previous_target = match &previous {
-                    EffectAst::DealDamage { target, .. } => Some(target.clone()),
-                    _ => None,
-                };
+                let previous_target = primary_target_from_effect(&previous);
+                let previous_damage_target = primary_damage_target_from_effect(&previous);
                 if let Some(EffectAst::Conditional {
                     predicate,
                     mut if_true,
@@ -17709,6 +17707,9 @@ fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextEr
                 }) = sentence_effects.pop()
                 {
                     if let Some(target) = previous_target {
+                        replace_it_target_in_effects(&mut if_true, &target);
+                    }
+                    if let Some(target) = previous_damage_target {
                         replace_it_damage_target_in_effects(&mut if_true, &target);
                         replace_placeholder_damage_target_in_effects(&mut if_true, &target);
                     }
@@ -17809,9 +17810,88 @@ fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     }
 }
 
+fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
+    match effect {
+        EffectAst::DealDamage { target, .. }
+        | EffectAst::DealDamageEqualToPower { target, .. }
+        | EffectAst::Counter { target }
+        | EffectAst::CounterUnlessPays { target, .. }
+        | EffectAst::Explore { target }
+        | EffectAst::Connive { target }
+        | EffectAst::Goad { target }
+        | EffectAst::Tap { target }
+        | EffectAst::Untap { target }
+        | EffectAst::RemoveFromCombat { target }
+        | EffectAst::TapOrUntap { target }
+        | EffectAst::Destroy { target }
+        | EffectAst::DestroyNoRegeneration { target }
+        | EffectAst::Exile { target, .. }
+        | EffectAst::ExileWhenSourceLeaves { target }
+        | EffectAst::SacrificeSourceWhenLeaves { target }
+        | EffectAst::ExileUntilSourceLeaves { target, .. }
+        | EffectAst::LookAtHand { target }
+        | EffectAst::Transform { target }
+        | EffectAst::Flip { target }
+        | EffectAst::Regenerate { target }
+        | EffectAst::TargetOnly { target }
+        | EffectAst::ReturnToHand { target, .. }
+        | EffectAst::ReturnToBattlefield { target, .. }
+        | EffectAst::MoveToZone { target, .. }
+        | EffectAst::Pump { target, .. }
+        | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
+        | EffectAst::GrantProtectionChoice { target, .. }
+        | EffectAst::PreventDamage { target, .. }
+        | EffectAst::PreventAllDamageToTarget { target, .. }
+        | EffectAst::PreventAllCombatDamageFromSource { source: target, .. }
+        | EffectAst::RedirectNextDamageFromSourceToTarget { target, .. }
+        | EffectAst::RedirectNextTimeDamageToSource { target, .. }
+        | EffectAst::GainControl { target, .. } => Some(target.clone()),
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => if_true
+            .iter()
+            .find_map(primary_target_from_effect)
+            .or_else(|| if_false.iter().find_map(primary_target_from_effect)),
+        EffectAst::UnlessPays { effects, .. }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::MayByTaggedController { effects, .. }
+        | EffectAst::IfResult { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachTargetPlayers { effects, .. }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachPlayerDoesNot { effects, .. }
+        | EffectAst::ForEachOpponentDoesNot { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachTaggedPlayer { effects, .. }
+        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+        | EffectAst::VoteOption { effects, .. }
+        | EffectAst::UnlessAction {
+            effects,
+            alternative: _,
+            ..
+        } => effects.iter().find_map(primary_target_from_effect),
+        _ => None,
+    }
+}
+
 fn replace_it_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
     for effect in effects {
         replace_it_damage_target(effect, target);
+    }
+}
+
+fn replace_it_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
+    for effect in effects {
+        replace_it_target(effect, target);
     }
 }
 
@@ -18155,6 +18235,176 @@ fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAst) {
         } => {
             replace_it_damage_target_in_effects(effects, target);
             replace_it_damage_target_in_effects(alternative, target);
+        }
+        _ => {}
+    }
+}
+
+fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
+    match effect {
+        EffectAst::DealDamage {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::DealDamageEqualToPower {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::Counter {
+            target: effect_target,
+        }
+        | EffectAst::CounterUnlessPays {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::Explore {
+            target: effect_target,
+        }
+        | EffectAst::Connive {
+            target: effect_target,
+        }
+        | EffectAst::Goad {
+            target: effect_target,
+        }
+        | EffectAst::Tap {
+            target: effect_target,
+        }
+        | EffectAst::Untap {
+            target: effect_target,
+        }
+        | EffectAst::RemoveFromCombat {
+            target: effect_target,
+        }
+        | EffectAst::TapOrUntap {
+            target: effect_target,
+        }
+        | EffectAst::Destroy {
+            target: effect_target,
+        }
+        | EffectAst::DestroyNoRegeneration {
+            target: effect_target,
+        }
+        | EffectAst::Exile {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::ExileWhenSourceLeaves {
+            target: effect_target,
+        }
+        | EffectAst::SacrificeSourceWhenLeaves {
+            target: effect_target,
+        }
+        | EffectAst::ExileUntilSourceLeaves {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::LookAtHand {
+            target: effect_target,
+        }
+        | EffectAst::Transform {
+            target: effect_target,
+        }
+        | EffectAst::Flip {
+            target: effect_target,
+        }
+        | EffectAst::Regenerate {
+            target: effect_target,
+        }
+        | EffectAst::TargetOnly {
+            target: effect_target,
+        }
+        | EffectAst::ReturnToHand {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::ReturnToBattlefield {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::MoveToZone {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::Pump {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::GrantAbilitiesToTarget {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::GrantAbilitiesChoiceToTarget {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::GrantProtectionChoice {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::PreventDamage {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::PreventAllDamageToTarget {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::PreventAllCombatDamageFromSource {
+            source: effect_target,
+            ..
+        }
+        | EffectAst::RedirectNextDamageFromSourceToTarget {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::RedirectNextTimeDamageToSource {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::GainControl {
+            target: effect_target,
+            ..
+        } => {
+            if target_references_it(effect_target) {
+                *effect_target = target.clone();
+            }
+        }
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => {
+            replace_it_target_in_effects(if_true, target);
+            replace_it_target_in_effects(if_false, target);
+        }
+        EffectAst::UnlessPays { effects, .. }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::MayByTaggedController { effects, .. }
+        | EffectAst::IfResult { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachTargetPlayers { effects, .. }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachPlayerDoesNot { effects, .. }
+        | EffectAst::ForEachOpponentDoesNot { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachTaggedPlayer { effects, .. }
+        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+        | EffectAst::VoteOption { effects, .. } => {
+            replace_it_target_in_effects(effects, target);
+        }
+        EffectAst::UnlessAction {
+            effects,
+            alternative,
+            ..
+        } => {
+            replace_it_target_in_effects(effects, target);
+            replace_it_target_in_effects(alternative, target);
         }
         _ => {}
     }
@@ -22051,6 +22301,10 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parser: parse_sentence_prevent_damage,
     },
     SentencePrimitive {
+        name: "shared-color-target-fanout",
+        parser: parse_sentence_shared_color_target_fanout,
+    },
+    SentencePrimitive {
         name: "gain-ability-to-source",
         parser: parse_sentence_gain_ability_to_source,
     },
@@ -22149,10 +22403,6 @@ const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "same-name-target-fanout",
         parser: parse_sentence_same_name_target_fanout,
-    },
-    SentencePrimitive {
-        name: "shared-color-target-fanout",
-        parser: parse_sentence_shared_color_target_fanout,
     },
     SentencePrimitive {
         name: "same-name-gets-fanout",
@@ -24053,24 +24303,27 @@ fn parse_shared_color_target_fanout_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words_all = words(tokens);
-    let Some(verb) = words_all.first().copied() else {
+    let Some((verb, verb_idx)) = find_verb(tokens) else {
+        return Ok(None);
+    };
+    let Some(verb_token_idx) = token_index_for_word_index(tokens, verb_idx) else {
         return Ok(None);
     };
 
-    let and_idx = (0..tokens.len().saturating_sub(2)).find(|idx| {
-        tokens[*idx].is_word("and")
-            && tokens[*idx + 1].is_word("each")
-            && tokens[*idx + 2].is_word("other")
-    });
-    let Some(and_idx) = and_idx else {
-        return Ok(None);
+    let find_and_each_other = |scope: &[Token]| {
+        (0..scope.len().saturating_sub(2)).find(|idx| {
+            scope[*idx].is_word("and")
+                && scope[*idx + 1].is_word("each")
+                && scope[*idx + 2].is_word("other")
+        })
     };
 
-    if matches!(verb, "destroy" | "exile") {
-        if and_idx <= 1 {
+    if matches!(verb, Verb::Destroy | Verb::Exile | Verb::Untap) {
+        let after_verb = &tokens[verb_token_idx + 1..];
+        let Some(split_idx) = find_and_each_other(after_verb) else {
             return Ok(None);
-        }
-        let first_target_tokens = trim_commas(&tokens[1..and_idx]);
+        };
+        let first_target_tokens = trim_commas(&after_verb[..split_idx]);
         if first_target_tokens.is_empty()
             || !first_target_tokens
                 .iter()
@@ -24078,7 +24331,7 @@ fn parse_shared_color_target_fanout_sentence(
         {
             return Ok(None);
         }
-        let second_clause_tokens = tokens[and_idx + 3..].to_vec();
+        let second_clause_tokens = after_verb[split_idx + 3..].to_vec();
         if second_clause_tokens.is_empty() {
             return Ok(None);
         }
@@ -24086,38 +24339,47 @@ fn parse_shared_color_target_fanout_sentence(
             return Ok(None);
         };
         let first_target = parse_target_phrase(&first_target_tokens)?;
-        let first_effect = if verb == "destroy" {
-            EffectAst::Destroy {
-                target: first_target,
+        let mut effects = Vec::with_capacity(2);
+        match verb {
+            Verb::Destroy => {
+                effects.push(EffectAst::Destroy {
+                    target: first_target,
+                });
+                effects.push(EffectAst::DestroyAll { filter });
             }
-        } else {
-            EffectAst::Exile {
-                target: first_target,
-                face_down: false,
+            Verb::Exile => {
+                effects.push(EffectAst::Exile {
+                    target: first_target,
+                    face_down: false,
+                });
+                effects.push(EffectAst::ExileAll {
+                    filter,
+                    face_down: false,
+                });
             }
-        };
-        let second_effect = if verb == "destroy" {
-            EffectAst::DestroyAll { filter }
-        } else {
-            EffectAst::ExileAll {
-                filter,
-                face_down: false,
+            Verb::Untap => {
+                effects.push(EffectAst::Untap {
+                    target: first_target,
+                });
+                effects.push(EffectAst::UntapAll { filter });
             }
-        };
-        return Ok(Some(vec![first_effect, second_effect]));
+            _ => return Ok(None),
+        }
+        return Ok(Some(effects));
     }
 
-    if verb == "deal" {
-        let (amount, used) =
-            if words_all.get(1) == Some(&"that") && words_all.get(2) == Some(&"much") {
-                (Value::EventValue(EventValueSpec::Amount), 2usize)
-            } else if let Some((value, used)) = parse_value(&tokens[1..]) {
-                (value, used)
-            } else {
-                return Ok(None);
-            };
+    if verb == Verb::Deal {
+        let after_verb = &tokens[verb_token_idx + 1..];
+        let after_words = words(after_verb);
+        let (amount, used) = if after_words.starts_with(&["that", "much"]) {
+            (Value::EventValue(EventValueSpec::Amount), 2usize)
+        } else if let Some((value, used)) = parse_value(after_verb) {
+            (value, used)
+        } else {
+            return Ok(None);
+        };
 
-        let after_amount = &tokens[1 + used..];
+        let after_amount = &after_verb[used..];
         if !after_amount
             .first()
             .is_some_and(|token| token.is_word("damage"))
@@ -24134,12 +24396,7 @@ fn parse_shared_color_target_fanout_sentence(
         if target_tokens.is_empty() {
             return Ok(None);
         }
-        let split_idx = (0..target_tokens.len().saturating_sub(2)).find(|idx| {
-            target_tokens[*idx].is_word("and")
-                && target_tokens[*idx + 1].is_word("each")
-                && target_tokens[*idx + 2].is_word("other")
-        });
-        let Some(split_idx) = split_idx else {
+        let Some(split_idx) = find_and_each_other(target_tokens) else {
             return Ok(None);
         };
         let first_target_tokens = trim_commas(&target_tokens[..split_idx]);
@@ -24167,8 +24424,8 @@ fn parse_shared_color_target_fanout_sentence(
         ]));
     }
 
-    if verb == "prevent" {
-        let mut idx = 1usize;
+    if words_all.first().copied() == Some("prevent") {
+        let mut idx = verb_token_idx + 1;
         if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
             idx += 1;
         }
@@ -24216,12 +24473,7 @@ fn parse_shared_color_target_fanout_sentence(
         }
 
         let scope_tokens = &tokens[idx..this_turn_abs];
-        let split_idx = (0..scope_tokens.len().saturating_sub(2)).find(|split| {
-            scope_tokens[*split].is_word("and")
-                && scope_tokens[*split + 1].is_word("each")
-                && scope_tokens[*split + 2].is_word("other")
-        });
-        let Some(split_idx) = split_idx else {
+        let Some(split_idx) = find_and_each_other(scope_tokens) else {
             return Ok(None);
         };
 
@@ -24251,6 +24503,95 @@ fn parse_shared_color_target_fanout_sentence(
                 duration: Until::EndOfTurn,
             },
         ]));
+    }
+
+    if matches!(verb, Verb::Get | Verb::Gain) {
+        if verb_idx == 0 || verb_token_idx + 1 >= tokens.len() {
+            return Ok(None);
+        }
+
+        let subject_tokens = &tokens[..verb_token_idx];
+        let Some(and_idx) = find_and_each_other(subject_tokens) else {
+            return Ok(None);
+        };
+        if and_idx == 0 {
+            return Ok(None);
+        }
+
+        let first_target_tokens = trim_commas(&subject_tokens[..and_idx]);
+        if first_target_tokens.is_empty()
+            || !first_target_tokens
+                .iter()
+                .any(|token| token.is_word("target"))
+        {
+            return Ok(None);
+        }
+        let second_clause_tokens = trim_commas(&subject_tokens[and_idx + 3..]);
+        if second_clause_tokens.is_empty() {
+            return Ok(None);
+        }
+        let Some(filter) = parse_shared_color_fanout_filter(&second_clause_tokens)? else {
+            return Ok(None);
+        };
+        let first_target = parse_target_phrase(&first_target_tokens)?;
+
+        if verb == Verb::Get {
+            let modifier_tokens = &tokens[verb_token_idx + 1..];
+            let modifier_word = modifier_tokens
+                .first()
+                .and_then(Token::as_word)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "missing modifier in shared-color gets clause (clause: '{}')",
+                        words_all.join(" ")
+                    ))
+                })?;
+            let (power, toughness) = parse_pt_modifier(modifier_word).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "invalid power/toughness modifier in shared-color gets clause (clause: '{}')",
+                    words_all.join(" ")
+                ))
+            })?;
+
+            return Ok(Some(vec![
+                EffectAst::Pump {
+                    power: Value::Fixed(power),
+                    toughness: Value::Fixed(toughness),
+                    target: first_target,
+                    duration: Until::EndOfTurn,
+                    condition: None,
+                },
+                EffectAst::PumpAll {
+                    filter,
+                    power: Value::Fixed(power),
+                    toughness: Value::Fixed(toughness),
+                    duration: Until::EndOfTurn,
+                },
+            ]));
+        }
+
+        let mut first_clause = first_target_tokens.clone();
+        first_clause.extend_from_slice(&tokens[verb_token_idx..]);
+        let Some(first_effect) = parse_simple_gain_ability_clause(&first_clause)? else {
+            return Ok(None);
+        };
+        if let EffectAst::GrantAbilitiesToTarget {
+            abilities, duration, ..
+        } = first_effect
+        {
+            return Ok(Some(vec![
+                EffectAst::GrantAbilitiesToTarget {
+                    target: first_target,
+                    abilities: abilities.clone(),
+                    duration: duration.clone(),
+                },
+                EffectAst::GrantAbilitiesAll {
+                    filter,
+                    abilities,
+                    duration,
+                },
+            ]));
+        }
     }
 
     Ok(None)
@@ -44161,6 +44502,7 @@ struct CompileContext {
     last_player_filter: Option<PlayerFilter>,
     iterated_player: bool,
     auto_tag_object_targets: bool,
+    force_auto_tag_object_targets: bool,
     allow_life_event_value: bool,
     bind_unbound_x_to_last_effect: bool,
 }
@@ -44175,6 +44517,7 @@ impl CompileContext {
             last_player_filter: None,
             iterated_player: false,
             auto_tag_object_targets: false,
+            force_auto_tag_object_targets: false,
             allow_life_event_value: false,
             bind_unbound_x_to_last_effect: false,
         }
