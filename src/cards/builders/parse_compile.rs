@@ -1,4 +1,6 @@
-fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
+use super::*;
+
+pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
         TriggerSpec::ThisAttacksAndIsntBlocked => Trigger::this_attacks_and_isnt_blocked(),
@@ -164,11 +166,11 @@ fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     }
 }
 
-fn compile_statement_effects(effects: &[EffectAst]) -> Result<Vec<Effect>, CardTextError> {
+pub(crate) fn compile_statement_effects(effects: &[EffectAst]) -> Result<Vec<Effect>, CardTextError> {
     compile_statement_effects_seeded(effects, None)
 }
 
-fn compile_statement_effects_seeded(
+pub(crate) fn compile_statement_effects_seeded(
     effects: &[EffectAst],
     seed_last_object_tag: Option<String>,
 ) -> Result<Vec<Effect>, CardTextError> {
@@ -194,7 +196,7 @@ fn compile_statement_effects_seeded(
     }
 }
 
-fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
+pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
         TriggerSpec::SpellCast { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::SpellCopied { .. } => Some(PlayerFilter::IteratedPlayer),
@@ -242,7 +244,7 @@ fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter>
     }
 }
 
-fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
+pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
     match spec {
         EventValueSpec::Amount | EventValueSpec::LifeAmount => match trigger {
             TriggerSpec::YouGainLife
@@ -277,7 +279,7 @@ fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) ->
     }
 }
 
-fn compile_trigger_effects(
+pub(crate) fn compile_trigger_effects(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -285,7 +287,7 @@ fn compile_trigger_effects(
     Ok((effects, choices))
 }
 
-fn compile_condition_from_predicate_ast(
+pub(crate) fn compile_condition_from_predicate_ast(
     predicate: &PredicateAst,
     ctx: &mut CompileContext,
     saved_last_tag: &Option<String>,
@@ -501,7 +503,7 @@ fn compile_condition_from_predicate_ast(
     })
 }
 
-fn compile_trigger_effects_with_intervening_if(
+pub(crate) fn compile_trigger_effects_with_intervening_if(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>, Option<Condition>), CardTextError> {
@@ -576,7 +578,7 @@ fn compile_trigger_effects_with_intervening_if(
     Ok((compiled, choices, intervening_if))
 }
 
-fn compile_trigger_effects_seeded(
+pub(crate) fn compile_trigger_effects_seeded(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
     seed_last_object_tag: Option<String>,
@@ -631,13 +633,13 @@ fn compile_trigger_effects_seeded(
     Ok((compiled, choices))
 }
 
-fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
+pub(crate) fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
     effects
         .iter()
         .any(|effect| effect_references_tag(effect, tag))
 }
 
-fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
+pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     match effect {
         EffectAst::Fight {
             creature1,
@@ -824,7 +826,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     }
 }
 
-fn value_references_tag(value: &Value, tag: &str) -> bool {
+pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
     match value {
         Value::Add(left, right) => {
             value_references_tag(left, tag) || value_references_tag(right, tag)
@@ -848,7 +850,7 @@ fn value_references_tag(value: &Value, tag: &str) -> bool {
     }
 }
 
-fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
+pub(crate) fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
     match spec {
         ChooseSpec::Tagged(t) => t.as_str() == tag,
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
@@ -862,7 +864,7 @@ fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
     }
 }
 
-fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
+pub(crate) fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Tagged(tag) => tag.as_str().starts_with("exiled_"),
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
@@ -878,11 +880,11 @@ fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
     }
 }
 
-fn object_ref_references_tag(reference: &ObjectRef, tag: &str) -> bool {
+pub(crate) fn object_ref_references_tag(reference: &ObjectRef, tag: &str) -> bool {
     matches!(reference, ObjectRef::Tagged(found) if found.as_str() == tag)
 }
 
-fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
+pub(crate) fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
     match filter {
         PlayerFilter::Target(inner) => player_filter_references_tag(inner, tag),
         PlayerFilter::ControllerOf(reference) | PlayerFilter::OwnerOf(reference) => {
@@ -892,7 +894,7 @@ fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
     }
 }
 
-fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
+pub(crate) fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
     match target {
         TargetAst::Tagged(found, _) => found.as_str() == tag,
         TargetAst::Object(filter, _, _) => filter
@@ -908,15 +910,15 @@ fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
     }
 }
 
-fn effects_reference_it_tag(effects: &[EffectAst]) -> bool {
+pub(crate) fn effects_reference_it_tag(effects: &[EffectAst]) -> bool {
     effects.iter().any(effect_references_it_tag)
 }
 
-fn effects_reference_its_controller(effects: &[EffectAst]) -> bool {
+pub(crate) fn effects_reference_its_controller(effects: &[EffectAst]) -> bool {
     effects.iter().any(effect_references_its_controller)
 }
 
-fn value_references_event_derived_amount(value: &Value) -> bool {
+pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
     matches!(
         value,
         Value::EventValue(EventValueSpec::Amount)
@@ -926,7 +928,7 @@ fn value_references_event_derived_amount(value: &Value) -> bool {
     )
 }
 
-fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
+pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::DealDamage { amount, .. }
         | EffectAst::DealDamageEach { amount, .. }
@@ -981,7 +983,7 @@ fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
     }
 }
 
-fn effect_references_its_controller(effect: &EffectAst) -> bool {
+pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::Draw { player, .. }
         | EffectAst::LoseLife { player, .. }
@@ -1080,7 +1082,7 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
     }
 }
 
-fn effect_references_it_tag(effect: &EffectAst) -> bool {
+pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::DealDamage { amount, target } => {
             target_references_tag(target, IT_TAG) || value_references_tag(amount, IT_TAG)
@@ -1308,7 +1310,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
     }
 }
 
-fn restriction_references_tag(restriction: &crate::effect::Restriction, tag: &str) -> bool {
+pub(crate) fn restriction_references_tag(restriction: &crate::effect::Restriction, tag: &str) -> bool {
     use crate::effect::Restriction;
 
     let maybe_filter = match restriction {
@@ -1358,7 +1360,7 @@ fn restriction_references_tag(restriction: &crate::effect::Restriction, tag: &st
     false
 }
 
-fn compile_effects(
+pub(crate) fn compile_effects(
     effects: &[EffectAst],
     ctx: &mut CompileContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -1600,7 +1602,7 @@ fn compile_effects(
     Ok((compiled, choices))
 }
 
-fn collect_tag_spans_from_line(
+pub(crate) fn collect_tag_spans_from_line(
     line: &LineAst,
     annotations: &mut ParseAnnotations,
     ctx: &NormalizedLine,
@@ -1625,7 +1627,7 @@ fn collect_tag_spans_from_line(
     }
 }
 
-fn collect_tag_spans_from_effects_with_context(
+pub(crate) fn collect_tag_spans_from_effects_with_context(
     effects: &[EffectAst],
     annotations: &mut ParseAnnotations,
     ctx: &NormalizedLine,
@@ -1635,7 +1637,7 @@ fn collect_tag_spans_from_effects_with_context(
     }
 }
 
-fn collect_tag_spans_from_effect(
+pub(crate) fn collect_tag_spans_from_effect(
     effect: &EffectAst,
     annotations: &mut ParseAnnotations,
     ctx: &NormalizedLine,
@@ -1741,7 +1743,7 @@ fn collect_tag_spans_from_effect(
     }
 }
 
-fn collect_tag_spans_from_target(
+pub(crate) fn collect_tag_spans_from_target(
     target: &TargetAst,
     annotations: &mut ParseAnnotations,
     ctx: &NormalizedLine,
@@ -1765,7 +1767,7 @@ fn collect_tag_spans_from_target(
     }
 }
 
-fn compile_if_do_with_opponent_doesnt(
+pub(crate) fn compile_if_do_with_opponent_doesnt(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut CompileContext,
@@ -1853,7 +1855,7 @@ fn compile_if_do_with_opponent_doesnt(
     Ok(Some((effects, choices)))
 }
 
-fn compile_if_do_with_player_doesnt(
+pub(crate) fn compile_if_do_with_player_doesnt(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut CompileContext,
@@ -1914,7 +1916,7 @@ fn compile_if_do_with_player_doesnt(
     Ok(Some((effects, choices)))
 }
 
-fn compile_if_do_with_opponent_did(
+pub(crate) fn compile_if_do_with_opponent_did(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut CompileContext,
@@ -2052,7 +2054,7 @@ fn compile_if_do_with_opponent_did(
     Ok(Some((effects, choices)))
 }
 
-fn compile_if_do_with_player_did(
+pub(crate) fn compile_if_do_with_player_did(
     first: &EffectAst,
     second: &EffectAst,
     ctx: &mut CompileContext,
@@ -2148,7 +2150,7 @@ fn compile_if_do_with_player_did(
 }
 
 #[derive(Debug, Clone)]
-struct CompileContextState {
+pub(crate) struct CompileContextState {
     iterated_player: bool,
     last_effect_id: Option<EffectId>,
     last_object_tag: Option<String>,
@@ -2179,7 +2181,7 @@ impl CompileContextState {
     }
 }
 
-fn with_preserved_compile_context<T, Configure, Run>(
+pub(crate) fn with_preserved_compile_context<T, Configure, Run>(
     ctx: &mut CompileContext,
     configure: Configure,
     run: Run,
@@ -2195,7 +2197,7 @@ where
     result
 }
 
-fn compile_effects_preserving_last_effect(
+pub(crate) fn compile_effects_preserving_last_effect(
     effects: &[EffectAst],
     ctx: &mut CompileContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -2205,7 +2207,7 @@ fn compile_effects_preserving_last_effect(
     result
 }
 
-fn compile_effects_in_iterated_player_context(
+pub(crate) fn compile_effects_in_iterated_player_context(
     effects: &[EffectAst],
     ctx: &mut CompileContext,
     tagged_object: Option<String>,
@@ -2230,7 +2232,7 @@ fn compile_effects_in_iterated_player_context(
     result
 }
 
-fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
+pub(crate) fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
     for effect in effects {
         match effect {
             EffectAst::CreateToken { player, .. }
@@ -2284,7 +2286,7 @@ fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
     }
 }
 
-fn compile_vote_sequence(
+pub(crate) fn compile_vote_sequence(
     effects: &[EffectAst],
     ctx: &mut CompileContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>, usize)>, CardTextError> {
@@ -2360,14 +2362,14 @@ fn compile_vote_sequence(
     Ok(Some((vec![effect], choices, consumed)))
 }
 
-fn choose_spec_for_targeted_player_filter(filter: &PlayerFilter) -> Option<ChooseSpec> {
+pub(crate) fn choose_spec_for_targeted_player_filter(filter: &PlayerFilter) -> Option<ChooseSpec> {
     if let PlayerFilter::Target(inner) = filter {
         return Some(ChooseSpec::target(ChooseSpec::Player((**inner).clone())));
     }
     None
 }
 
-fn collect_targeted_player_specs_from_filter(filter: &ObjectFilter, specs: &mut Vec<ChooseSpec>) {
+pub(crate) fn collect_targeted_player_specs_from_filter(filter: &ObjectFilter, specs: &mut Vec<ChooseSpec>) {
     if let Some(controller) = &filter.controller
         && let Some(spec) = choose_spec_for_targeted_player_filter(controller)
     {
@@ -2391,7 +2393,7 @@ fn collect_targeted_player_specs_from_filter(filter: &ObjectFilter, specs: &mut 
     }
 }
 
-fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>, Vec<ChooseSpec>) {
+pub(crate) fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>, Vec<ChooseSpec>) {
     let mut choices = Vec::new();
     collect_targeted_player_specs_from_filter(filter, &mut choices);
     let effects = choices
@@ -2402,7 +2404,7 @@ fn target_context_prelude_for_filter(filter: &ObjectFilter) -> (Vec<Effect>, Vec
     (effects, choices)
 }
 
-fn infer_player_filter_from_object_filter(filter: &ObjectFilter) -> Option<PlayerFilter> {
+pub(crate) fn infer_player_filter_from_object_filter(filter: &ObjectFilter) -> Option<PlayerFilter> {
     if let Some(owner) = &filter.owner {
         return Some(owner.clone());
     }
@@ -2422,7 +2424,7 @@ fn infer_player_filter_from_object_filter(filter: &ObjectFilter) -> Option<Playe
     None
 }
 
-fn hand_exile_filter_and_count(
+pub(crate) fn hand_exile_filter_and_count(
     target: &TargetAst,
     ctx: &CompileContext,
 ) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
@@ -2442,7 +2444,7 @@ fn hand_exile_filter_and_count(
     Ok(Some((resolved_filter, count)))
 }
 
-fn lower_hand_exile_target(
+pub(crate) fn lower_hand_exile_target(
     target: &TargetAst,
     face_down: bool,
     ctx: &mut CompileContext,
@@ -2484,7 +2486,7 @@ fn lower_hand_exile_target(
     Ok(Some((prelude, choices)))
 }
 
-fn lower_counted_non_target_exile_target(
+pub(crate) fn lower_counted_non_target_exile_target(
     target: &TargetAst,
     face_down: bool,
     ctx: &mut CompileContext,
@@ -2547,7 +2549,7 @@ fn lower_counted_non_target_exile_target(
     Ok(Some((prelude, choices)))
 }
 
-fn lower_single_non_target_exile_target(
+pub(crate) fn lower_single_non_target_exile_target(
     target: &TargetAst,
     face_down: bool,
     ctx: &mut CompileContext,
@@ -2608,7 +2610,7 @@ fn lower_single_non_target_exile_target(
     Ok(Some((prelude, choices)))
 }
 
-fn compile_effect(
+pub(crate) fn compile_effect(
     effect: &EffectAst,
     ctx: &mut CompileContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
@@ -5746,7 +5748,7 @@ fn compile_effect(
     }
 }
 
-fn resolve_effect_player_filter(
+pub(crate) fn resolve_effect_player_filter(
     player: PlayerAst,
     ctx: &mut CompileContext,
     allow_target: bool,
@@ -5773,7 +5775,7 @@ fn resolve_effect_player_filter(
     Ok((filter, choices))
 }
 
-fn compile_player_effect<YouBuilder, OtherBuilder>(
+pub(crate) fn compile_player_effect<YouBuilder, OtherBuilder>(
     player: PlayerAst,
     ctx: &mut CompileContext,
     allow_target: bool,
@@ -5794,7 +5796,7 @@ where
     Ok((vec![effect], choices))
 }
 
-fn compile_player_effect_from_filter<Builder>(
+pub(crate) fn compile_player_effect_from_filter<Builder>(
     player: PlayerAst,
     ctx: &mut CompileContext,
     allow_target: bool,
@@ -5808,7 +5810,7 @@ where
     Ok((vec![build(filter)], choices))
 }
 
-fn is_you_player_filter(filter: &PlayerFilter) -> bool {
+pub(crate) fn is_you_player_filter(filter: &PlayerFilter) -> bool {
     match filter {
         PlayerFilter::You => true,
         PlayerFilter::Target(inner) => is_you_player_filter(inner),
@@ -5816,7 +5818,7 @@ fn is_you_player_filter(filter: &PlayerFilter) -> bool {
     }
 }
 
-fn resolve_unless_player_filter(
+pub(crate) fn resolve_unless_player_filter(
     player: PlayerAst,
     ctx: &CompileContext,
     previous_last_player_filter: Option<PlayerFilter>,
@@ -5836,7 +5838,7 @@ fn resolve_unless_player_filter(
     resolve_non_target_player_filter(player, ctx)
 }
 
-fn resolve_non_target_player_filter(
+pub(crate) fn resolve_non_target_player_filter(
     player: PlayerAst,
     ctx: &CompileContext,
 ) -> Result<PlayerFilter, CardTextError> {
@@ -5882,7 +5884,7 @@ fn resolve_non_target_player_filter(
     }
 }
 
-fn resolve_it_tag(
+pub(crate) fn resolve_it_tag(
     filter: &ObjectFilter,
     ctx: &CompileContext,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -5953,7 +5955,7 @@ fn resolve_it_tag(
     Ok(resolved)
 }
 
-fn resolve_it_tag_key(tag: &TagKey, ctx: &CompileContext) -> Result<TagKey, CardTextError> {
+pub(crate) fn resolve_it_tag_key(tag: &TagKey, ctx: &CompileContext) -> Result<TagKey, CardTextError> {
     if tag.as_str() != IT_TAG {
         return Ok(tag.clone());
     }
@@ -5963,7 +5965,7 @@ fn resolve_it_tag_key(tag: &TagKey, ctx: &CompileContext) -> Result<TagKey, Card
     Ok(TagKey::from(resolved.as_str()))
 }
 
-fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey> {
+pub(crate) fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey> {
     if filter.tagged_constraints.len() != 1 {
         return None;
     }
@@ -5981,7 +5983,7 @@ fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option<TagKey> {
     }
 }
 
-fn resolve_restriction_it_tag(
+pub(crate) fn resolve_restriction_it_tag(
     restriction: &crate::effect::Restriction,
     ctx: &CompileContext,
 ) -> Result<crate::effect::Restriction, CardTextError> {
@@ -6022,7 +6024,7 @@ fn resolve_restriction_it_tag(
     Ok(resolved)
 }
 
-fn resolve_choose_spec_it_tag(
+pub(crate) fn resolve_choose_spec_it_tag(
     spec: &ChooseSpec,
     ctx: &CompileContext,
 ) -> Result<ChooseSpec, CardTextError> {
@@ -6074,7 +6076,7 @@ fn resolve_choose_spec_it_tag(
     }
 }
 
-fn resolve_value_it_tag(value: &Value, ctx: &CompileContext) -> Result<Value, CardTextError> {
+pub(crate) fn resolve_value_it_tag(value: &Value, ctx: &CompileContext) -> Result<Value, CardTextError> {
     match value {
         Value::X if ctx.bind_unbound_x_to_last_effect => {
             if let Some(id) = ctx.last_effect_id {
@@ -6140,7 +6142,7 @@ fn resolve_value_it_tag(value: &Value, ctx: &CompileContext) -> Result<Value, Ca
     }
 }
 
-fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
+pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
     match spec.base() {
         ChooseSpec::Object(_)
         | ChooseSpec::Tagged(_)
@@ -6150,7 +6152,7 @@ fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
     }
 }
 
-fn tag_object_target_effect(
+pub(crate) fn tag_object_target_effect(
     effect: Effect,
     spec: &ChooseSpec,
     ctx: &mut CompileContext,
@@ -6165,7 +6167,7 @@ fn tag_object_target_effect(
     }
 }
 
-fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
+pub(crate) fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
     Ability {
         kind: AbilityKind::Activated(ActivatedAbility::mana_with_cost_effects(
             TotalCost::free(),
@@ -6177,7 +6179,7 @@ fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
     }
 }
 
-fn eldrazi_spawn_token_definition() -> CardDefinition {
+pub(crate) fn eldrazi_spawn_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Eldrazi Spawn")
         .token()
         .card_types(vec![CardType::Creature])
@@ -6187,7 +6189,7 @@ fn eldrazi_spawn_token_definition() -> CardDefinition {
         .build()
 }
 
-fn eldrazi_scion_token_definition() -> CardDefinition {
+pub(crate) fn eldrazi_scion_token_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Eldrazi Scion")
         .token()
         .card_types(vec![CardType::Creature])
@@ -6197,7 +6199,7 @@ fn eldrazi_scion_token_definition() -> CardDefinition {
         .build()
 }
 
-fn parse_number_word(word: &str) -> Option<i32> {
+pub(crate) fn parse_number_word(word: &str) -> Option<i32> {
     match word {
         "zero" => Some(0),
         "one" => Some(1),
@@ -6214,7 +6216,7 @@ fn parse_number_word(word: &str) -> Option<i32> {
     }
 }
 
-fn parse_deals_damage_amount(words: &[&str]) -> Option<i32> {
+pub(crate) fn parse_deals_damage_amount(words: &[&str]) -> Option<i32> {
     for window in words.windows(3) {
         if (window[0] == "deals" || window[0] == "deal") && window[2] == "damage" {
             return parse_number_word(window[1]);
@@ -6223,7 +6225,7 @@ fn parse_deals_damage_amount(words: &[&str]) -> Option<i32> {
     None
 }
 
-fn token_inline_noncreature_spell_each_opponent_damage_amount(name: &str) -> Option<i32> {
+pub(crate) fn token_inline_noncreature_spell_each_opponent_damage_amount(name: &str) -> Option<i32> {
     let lower_name = name.to_ascii_lowercase();
     let words: Vec<&str> = lower_name
         .split_whitespace()
@@ -6263,21 +6265,21 @@ fn token_inline_noncreature_spell_each_opponent_damage_amount(name: &str) -> Opt
     parse_deals_damage_amount(&words)
 }
 
-fn parse_crew_amount(words: &[&str]) -> Option<u32> {
+pub(crate) fn parse_crew_amount(words: &[&str]) -> Option<u32> {
     let crew_idx = words.iter().position(|word| *word == "crew")?;
     let amount_word = words.get(crew_idx + 1)?;
     let amount = parse_number_word(amount_word)?;
     u32::try_from(amount).ok()
 }
 
-fn parse_equip_amount(words: &[&str]) -> Option<u32> {
+pub(crate) fn parse_equip_amount(words: &[&str]) -> Option<u32> {
     let equip_idx = words.iter().position(|word| *word == "equip")?;
     let amount_word = words.get(equip_idx + 1)?;
     let amount = parse_number_word(amount_word)?;
     u32::try_from(amount).ok()
 }
 
-fn join_simple_and_list(parts: &[&str]) -> String {
+pub(crate) fn join_simple_and_list(parts: &[&str]) -> String {
     match parts.len() {
         0 => String::new(),
         1 => parts[0].to_string(),
@@ -6291,7 +6293,7 @@ fn join_simple_and_list(parts: &[&str]) -> String {
     }
 }
 
-fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
+pub(crate) fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
     let has_equipped_subject = words
         .windows(2)
         .any(|window| window == ["equipped", "creature"]);
@@ -6345,7 +6347,7 @@ fn parse_equipment_rules_text(words: &[&str]) -> Option<String> {
     }
 }
 
-fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
+pub(crate) fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
     let target = ChooseSpec::AnyTarget;
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -6361,7 +6363,7 @@ fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
     }
 }
 
-fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
+pub(crate) fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
     let target = ChooseSpec::AnyTarget;
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -6377,7 +6379,7 @@ fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
     }
 }
 
-fn token_becomes_tapped_deals_damage_target_player_ability(amount: i32) -> Ability {
+pub(crate) fn token_becomes_tapped_deals_damage_target_player_ability(amount: i32) -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any));
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -6393,7 +6395,7 @@ fn token_becomes_tapped_deals_damage_target_player_ability(amount: i32) -> Abili
     }
 }
 
-fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability {
+pub(crate) fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
@@ -6409,7 +6411,7 @@ fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability {
     }
 }
 
-fn token_red_pump_ability() -> Ability {
+pub(crate) fn token_red_pump_ability() -> Ability {
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
             mana_cost: ability::merge_cost_effects(
@@ -6428,7 +6430,7 @@ fn token_red_pump_ability() -> Ability {
     }
 }
 
-fn token_white_tap_target_creature_ability() -> Ability {
+pub(crate) fn token_white_tap_target_creature_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
@@ -6448,7 +6450,7 @@ fn token_white_tap_target_creature_ability() -> Ability {
     }
 }
 
-fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
+pub(crate) fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
     let mana_text = ManaCost::from_pips(vec![vec![symbol]]).to_oracle();
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
@@ -6468,7 +6470,7 @@ fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
     }
 }
 
-fn parse_token_tap_add_single_mana_symbol(words: &[&str]) -> Option<ManaSymbol> {
+pub(crate) fn parse_token_tap_add_single_mana_symbol(words: &[&str]) -> Option<ManaSymbol> {
     let add_idx = words.iter().position(|word| *word == "add")?;
     if !words[..add_idx].contains(&"t") {
         return None;
@@ -6480,7 +6482,7 @@ fn parse_token_tap_add_single_mana_symbol(words: &[&str]) -> Option<ManaSymbol> 
     Some(symbol)
 }
 
-fn token_damage_to_player_poison_counter_ability() -> Ability {
+pub(crate) fn token_damage_to_player_poison_counter_ability() -> Ability {
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: Trigger::this_deals_combat_damage_to_player(),
@@ -6499,7 +6501,7 @@ fn token_damage_to_player_poison_counter_ability() -> Ability {
     }
 }
 
-fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) -> Ability {
+pub(crate) fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) -> Ability {
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: Trigger::spell_cast(
@@ -6520,7 +6522,7 @@ fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) -> Ability 
     }
 }
 
-fn token_combat_damage_gain_control_target_artifact_ability() -> Ability {
+pub(crate) fn token_combat_damage_gain_control_target_artifact_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(
         ObjectFilter::artifact().controlled_by(PlayerFilter::DamagedPlayer),
     ));
@@ -6545,7 +6547,7 @@ fn token_combat_damage_gain_control_target_artifact_ability() -> Ability {
     }
 }
 
-fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name: &str) -> Ability {
+pub(crate) fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name: &str) -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(
         ObjectFilter::default()
             .in_zone(Zone::Graveyard)
@@ -6566,7 +6568,7 @@ fn token_leaves_return_named_from_graveyard_to_hand_ability(card_name: &str) -> 
     }
 }
 
-fn parse_token_mana_symbol(word: &str) -> Option<ManaSymbol> {
+pub(crate) fn parse_token_mana_symbol(word: &str) -> Option<ManaSymbol> {
     match word {
         "w" => Some(ManaSymbol::White),
         "u" => Some(ManaSymbol::Blue),
@@ -6579,7 +6581,7 @@ fn parse_token_mana_symbol(word: &str) -> Option<ManaSymbol> {
     }
 }
 
-fn title_case_words(words: &[&str]) -> String {
+pub(crate) fn title_case_words(words: &[&str]) -> String {
     let lowercase_words = [
         "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet", "of", "in", "on", "at",
         "to", "from", "with", "without", "by", "as", "into", "onto", "over", "under",
@@ -6606,7 +6608,7 @@ fn title_case_words(words: &[&str]) -> String {
         .join(" ")
 }
 
-fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
+pub(crate) fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
     let lowercase_words = [
         "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet", "of", "in", "on", "at",
         "to", "from", "with", "without", "by", "as", "into", "onto", "over", "under",
@@ -6641,7 +6643,7 @@ fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
         .join(" ")
 }
 
-fn extract_named_card_name(words: &[&str], source_text: &str) -> Option<String> {
+pub(crate) fn extract_named_card_name(words: &[&str], source_text: &str) -> Option<String> {
     let named_idx = words.iter().position(|word| *word == "named")?;
     if named_idx > 0 && matches!(words[named_idx - 1], "card" | "cards") {
         return None;
@@ -6726,7 +6728,7 @@ fn extract_named_card_name(words: &[&str], source_text: &str) -> Option<String> 
     Some(title_case_words(&words[named_idx + 1..end]))
 }
 
-fn extract_leading_explicit_token_name(words: &[&str]) -> Option<String> {
+pub(crate) fn extract_leading_explicit_token_name(words: &[&str]) -> Option<String> {
     let is_simple_name_word = |word: &str| {
         word.chars()
             .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-')
@@ -6828,7 +6830,7 @@ fn extract_leading_explicit_token_name(words: &[&str]) -> Option<String> {
     }
 }
 
-fn extract_leading_token_name_phrase(words: &[&str]) -> Option<String> {
+pub(crate) fn extract_leading_token_name_phrase(words: &[&str]) -> Option<String> {
     let is_simple_name_word = |word: &str| {
         word.chars()
             .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-')
@@ -6922,7 +6924,7 @@ fn extract_leading_token_name_phrase(words: &[&str]) -> Option<String> {
     }
 }
 
-fn token_sacrifice_return_named_from_graveyard_ability(
+pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
     card_name: &str,
     mana_symbols: Vec<ManaSymbol>,
     tap_cost: bool,
@@ -6977,7 +6979,7 @@ fn token_sacrifice_return_named_from_graveyard_ability(
     }
 }
 
-fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
+pub(crate) fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
     card_name: &str,
     grants_haste: bool,
 ) -> Ability {
@@ -7018,7 +7020,7 @@ fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
     }
 }
 
-fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
+pub(crate) fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
     let dragon = CardDefinitionBuilder::new(CardId::new(), "Dragon")
         .token()
         .card_types(vec![CardType::Creature])
@@ -7042,7 +7044,7 @@ fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
     }
 }
 
-fn token_definition_for(name: &str) -> Option<CardDefinition> {
+pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let lower = name.trim().to_ascii_lowercase();
     let words: Vec<&str> = lower
         .split_whitespace()
@@ -7934,7 +7936,7 @@ fn token_definition_for(name: &str) -> Option<CardDefinition> {
     None
 }
 
-fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
+pub(crate) fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
     let (left, right) = word.split_once('/')?;
     if left.starts_with('+')
         || right.starts_with('+')
@@ -7948,7 +7950,7 @@ fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
     Some((power, toughness))
 }
 
-fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
+pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     match target {
         TargetAst::Source(_) => ChooseSpec::Source,
         TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
@@ -7980,7 +7982,7 @@ fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     }
 }
 
-fn target_mentions_graveyard(target: &TargetAst) -> bool {
+pub(crate) fn target_mentions_graveyard(target: &TargetAst) -> bool {
     match target {
         TargetAst::Object(filter, _, _) => filter.zone == Some(Zone::Graveyard),
         TargetAst::WithCount(inner, _) => target_mentions_graveyard(inner),
@@ -7988,7 +7990,7 @@ fn target_mentions_graveyard(target: &TargetAst) -> bool {
     }
 }
 
-fn resolve_target_spec_with_choices(
+pub(crate) fn resolve_target_spec_with_choices(
     target: &TargetAst,
     ctx: &CompileContext,
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {
@@ -8011,7 +8013,7 @@ fn resolve_target_spec_with_choices(
     Ok((spec, choices))
 }
 
-fn resolve_attach_object_spec(
+pub(crate) fn resolve_attach_object_spec(
     object: &TargetAst,
     ctx: &CompileContext,
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {
@@ -8058,7 +8060,7 @@ fn resolve_attach_object_spec(
     }
 }
 
-fn compile_effect_for_target<Builder>(
+pub(crate) fn compile_effect_for_target<Builder>(
     target: &TargetAst,
     ctx: &mut CompileContext,
     build: Builder,
@@ -8071,7 +8073,7 @@ where
     Ok((vec![effect], choices))
 }
 
-fn compile_tagged_effect_for_target<Builder>(
+pub(crate) fn compile_tagged_effect_for_target<Builder>(
     target: &TargetAst,
     ctx: &mut CompileContext,
     tag_prefix: &str,
@@ -8085,7 +8087,7 @@ where
     Ok((vec![effect], choices))
 }
 
-fn push_choice(choices: &mut Vec<ChooseSpec>, choice: ChooseSpec) {
+pub(crate) fn push_choice(choices: &mut Vec<ChooseSpec>, choice: ChooseSpec) {
     if !choices.iter().any(|existing| existing == &choice) {
         choices.push(choice);
     }

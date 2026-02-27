@@ -1,4 +1,6 @@
-fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+use super::*;
+
+pub(crate) fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(colon_idx) = tokens
         .iter()
         .position(|token| matches!(token, Token::Colon(_)))
@@ -334,7 +336,7 @@ fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardT
     }))
 }
 
-fn first_sacrifice_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
+pub(crate) fn first_sacrifice_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
     for cost in mana_cost.costs() {
         let Some(effect) = cost.effect_ref() else {
             continue;
@@ -349,7 +351,7 @@ fn first_sacrifice_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option
     None
 }
 
-fn last_exile_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
+pub(crate) fn last_exile_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
     let mut found = None;
     for cost in mana_cost.costs() {
         let Some(effect) = cost.effect_ref() else {
@@ -365,7 +367,7 @@ fn last_exile_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagK
     found
 }
 
-fn resolve_mana_ability_scaled_amount_from_cost(
+pub(crate) fn resolve_mana_ability_scaled_amount_from_cost(
     amount: Value,
     mana_cost: &crate::cost::TotalCost,
 ) -> Result<Value, CardTextError> {
@@ -384,7 +386,7 @@ fn resolve_mana_ability_scaled_amount_from_cost(
     Ok(amount)
 }
 
-fn infer_activated_functional_zones(
+pub(crate) fn infer_activated_functional_zones(
     cost_tokens: &[Token],
     effect_sentences: &[Vec<Token>],
 ) -> Vec<Zone> {
@@ -415,7 +417,7 @@ fn infer_activated_functional_zones(
     }
 }
 
-fn parse_activate_only_timing(tokens: &[Token]) -> Option<ActivationTiming> {
+pub(crate) fn parse_activate_only_timing(tokens: &[Token]) -> Option<ActivationTiming> {
     let words = words(tokens);
     if words.starts_with(&["activate", "only", "as", "a", "sorcery"]) {
         return Some(ActivationTiming::SorcerySpeed);
@@ -445,7 +447,7 @@ fn parse_activate_only_timing(tokens: &[Token]) -> Option<ActivationTiming> {
     None
 }
 
-fn normalize_activate_only_restriction(
+pub(crate) fn normalize_activate_only_restriction(
     tokens: &[Token],
     timing: &ActivationTiming,
 ) -> Option<String> {
@@ -481,7 +483,7 @@ fn normalize_activate_only_restriction(
     }
 }
 
-fn contains_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
+pub(crate) fn contains_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
     if sequence.is_empty() || words.len() < sequence.len() {
         return false;
     }
@@ -490,7 +492,7 @@ fn contains_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
         .any(|window| window == sequence)
 }
 
-fn flatten_mana_activation_conditions(
+pub(crate) fn flatten_mana_activation_conditions(
     condition: &crate::ConditionExpr,
     out: &mut Vec<crate::ConditionExpr>,
 ) {
@@ -503,7 +505,7 @@ fn flatten_mana_activation_conditions(
     }
 }
 
-fn rebuild_mana_activation_conditions(
+pub(crate) fn rebuild_mana_activation_conditions(
     conditions: Vec<crate::ConditionExpr>,
 ) -> Option<crate::ConditionExpr> {
     let mut iter = conditions.into_iter();
@@ -513,7 +515,7 @@ fn rebuild_mana_activation_conditions(
     }))
 }
 
-fn combine_mana_activation_condition(
+pub(crate) fn combine_mana_activation_condition(
     base: Option<crate::ConditionExpr>,
     timing: ActivationTiming,
 ) -> Option<crate::ConditionExpr> {
@@ -523,7 +525,7 @@ fn combine_mana_activation_condition(
     merge_mana_activation_conditions(base, crate::ConditionExpr::ActivationTiming(timing))
 }
 
-fn merge_mana_activation_conditions(
+pub(crate) fn merge_mana_activation_conditions(
     base: Option<crate::ConditionExpr>,
     condition: crate::ConditionExpr,
 ) -> Option<crate::ConditionExpr> {
@@ -537,25 +539,25 @@ fn merge_mana_activation_conditions(
     rebuild_mana_activation_conditions(conditions)
 }
 
-fn is_activate_only_restriction_sentence(tokens: &[Token]) -> bool {
+pub(crate) fn is_activate_only_restriction_sentence(tokens: &[Token]) -> bool {
     let words = words(tokens);
     words.starts_with(&["activate", "only"])
         || words.starts_with(&["activate", "no", "more", "than"])
 }
 
-fn is_trigger_only_restriction_sentence(tokens: &[Token]) -> bool {
+pub(crate) fn is_trigger_only_restriction_sentence(tokens: &[Token]) -> bool {
     let words = words(tokens);
     words.starts_with(&["this", "ability", "triggers", "only"])
 }
 
-fn parse_triggered_times_each_turn_sentence(sentences: &[Vec<Token>]) -> Option<u32> {
+pub(crate) fn parse_triggered_times_each_turn_sentence(sentences: &[Vec<Token>]) -> Option<u32> {
     sentences.iter().find_map(|sentence| {
         let words = words(sentence);
         parse_triggered_times_each_turn_from_words(&words)
     })
 }
 
-fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
+pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
     if words.len() < 7 || !words.starts_with(&["this", "ability", "triggers", "only"]) {
         return None;
     }
@@ -580,7 +582,7 @@ fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
     }
 }
 
-fn parse_named_number(word: &str) -> Option<u32> {
+pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
     if let Ok(value) = word.parse::<u32>() {
         return Some(value);
     }
@@ -611,7 +613,7 @@ fn parse_named_number(word: &str) -> Option<u32> {
     }
 }
 
-fn parse_level_up_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+pub(crate) fn parse_level_up_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
     let words = words(tokens);
     if words.len() < 3 || words[0] != "level" || words[1] != "up" {
         return Ok(None);
@@ -652,7 +654,7 @@ fn parse_level_up_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTe
     }))
 }
 
-fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+pub(crate) fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
     let words_all = words(tokens);
     if words_all.is_empty() {
         return Ok(None);
@@ -758,7 +760,7 @@ fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTex
     }))
 }
 
-fn parse_cycling_keyword_cost_groups(tokens: &[Token]) -> Vec<(Vec<Token>, Vec<Token>)> {
+pub(crate) fn parse_cycling_keyword_cost_groups(tokens: &[Token]) -> Vec<(Vec<Token>, Vec<Token>)> {
     let mut groups = Vec::new();
     let mut idx = 0usize;
 
@@ -844,7 +846,7 @@ fn parse_cycling_keyword_cost_groups(tokens: &[Token]) -> Vec<(Vec<Token>, Vec<T
     groups
 }
 
-fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilter) {
+pub(crate) fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilter) {
     for supertype in &extra.supertypes {
         if !base.supertypes.contains(supertype) {
             base.supertypes.push(*supertype);
@@ -868,7 +870,7 @@ fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilter) {
     }
 }
 
-fn parse_cycling_keyword_group_text(tokens: &[Token]) -> Option<String> {
+pub(crate) fn parse_cycling_keyword_group_text(tokens: &[Token]) -> Option<String> {
     let groups = parse_cycling_keyword_cost_groups(tokens);
     if groups.is_empty() {
         return None;
@@ -899,7 +901,7 @@ fn parse_cycling_keyword_group_text(tokens: &[Token]) -> Option<String> {
     }
 }
 
-fn is_cycling_cost_word(word: &str) -> bool {
+pub(crate) fn is_cycling_cost_word(word: &str) -> bool {
     !word.is_empty()
         && word.chars().all(|ch| {
             ch.is_ascii_digit()
@@ -910,7 +912,7 @@ fn is_cycling_cost_word(word: &str) -> bool {
         })
 }
 
-fn parse_madness_line(tokens: &[Token]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+pub(crate) fn parse_madness_line(tokens: &[Token]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     if !tokens.first().is_some_and(|token| token.is_word("madness")) {
         return Ok(None);
     }
@@ -946,7 +948,7 @@ fn parse_madness_line(tokens: &[Token]) -> Result<Option<AlternativeCastingMetho
     Ok(Some(AlternativeCastingMethod::Madness { cost: mana_cost }))
 }
 
-fn parse_buyback_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_buyback_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
     if !tokens.first().is_some_and(|token| token.is_word("buyback")) {
         return Ok(None);
     }
@@ -985,7 +987,7 @@ fn parse_buyback_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardText
     Ok(Some(OptionalCost::buyback(total_cost)))
 }
 
-fn parse_optional_cost_keyword_line(
+pub(crate) fn parse_optional_cost_keyword_line(
     tokens: &[Token],
     keyword: &str,
     constructor: fn(TotalCost) -> OptionalCost,
@@ -1030,19 +1032,19 @@ fn parse_optional_cost_keyword_line(
     Ok(Some(constructor(total_cost)))
 }
 
-fn parse_kicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_kicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "kicker", OptionalCost::kicker)
 }
 
-fn parse_multikicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_multikicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "multikicker", OptionalCost::multikicker)
 }
 
-fn parse_entwine_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_entwine_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "entwine", OptionalCost::entwine)
 }
 
-fn parse_morph_keyword_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+pub(crate) fn parse_morph_keyword_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(first_word) = tokens.first().and_then(Token::as_word) else {
         return Ok(None);
     };
@@ -1097,7 +1099,7 @@ fn parse_morph_keyword_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, C
     }))
 }
 
-fn parse_escape_line(tokens: &[Token]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+pub(crate) fn parse_escape_line(tokens: &[Token]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     if !tokens.first().is_some_and(|token| token.is_word("escape")) {
         return Ok(None);
     }
@@ -1182,7 +1184,7 @@ fn parse_escape_line(tokens: &[Token]) -> Result<Option<AlternativeCastingMethod
     }))
 }
 
-fn parse_cycling_search_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>, CardTextError> {
+pub(crate) fn parse_cycling_search_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>, CardTextError> {
     let words = words(tokens);
     if words.is_empty() {
         return Ok(None);
@@ -1263,7 +1265,7 @@ fn parse_cycling_search_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>,
     )))
 }
 
-fn is_land_subtype(subtype: Subtype) -> bool {
+pub(crate) fn is_land_subtype(subtype: Subtype) -> bool {
     matches!(
         subtype,
         Subtype::Plains
@@ -1275,7 +1277,7 @@ fn is_land_subtype(subtype: Subtype) -> bool {
     )
 }
 
-fn parse_equip_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+pub(crate) fn parse_equip_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.first().copied() != Some("equip") {
         return Ok(None);
@@ -1376,7 +1378,7 @@ fn parse_equip_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextE
     }))
 }
 
-fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), CardTextError> {
+pub(crate) fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), CardTextError> {
     let mut mana_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let cost_effects = Vec::new();
     let mut explicit_costs = Vec::new();
@@ -2144,7 +2146,7 @@ fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), C
     Ok((total_cost, cost_effects))
 }
 
-fn parse_devotion_value_from_add_clause(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
+pub(crate) fn parse_devotion_value_from_add_clause(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
     let words = words(tokens);
     let Some(devotion_idx) = words.iter().position(|word| *word == "devotion") else {
         return Ok(None);
@@ -2191,7 +2193,7 @@ fn parse_devotion_value_from_add_clause(tokens: &[Token]) -> Result<Option<Value
     Ok(Some(Value::Devotion { player, color }))
 }
 
-fn parse_devotion_player_from_words(words: &[&str], devotion_idx: usize) -> Option<PlayerFilter> {
+pub(crate) fn parse_devotion_player_from_words(words: &[&str], devotion_idx: usize) -> Option<PlayerFilter> {
     if devotion_idx == 0 {
         return None;
     }
@@ -2208,7 +2210,7 @@ fn parse_devotion_player_from_words(words: &[&str], devotion_idx: usize) -> Opti
     None
 }
 
-fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Color> {
+pub(crate) fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Color> {
     let mut found = None;
     for color in [
         crate::color::Color::White,
@@ -2227,7 +2229,7 @@ fn color_from_color_set(colors: ColorSet) -> Option<crate::color::Color> {
     found
 }
 
-fn parse_activation_condition(tokens: &[Token]) -> Option<crate::ConditionExpr> {
+pub(crate) fn parse_activation_condition(tokens: &[Token]) -> Option<crate::ConditionExpr> {
     let line_words = words(tokens);
     if line_words.len() < 5 {
         return None;
@@ -2383,12 +2385,12 @@ fn parse_activation_condition(tokens: &[Token]) -> Option<crate::ConditionExpr> 
     Some(crate::ConditionExpr::ControlLandWithSubtype(subtypes))
 }
 
-fn parse_cardinal_u32(word: &str) -> Option<u32> {
+pub(crate) fn parse_cardinal_u32(word: &str) -> Option<u32> {
     let token = Token::Word(word.to_string(), TextSpan::synthetic());
     parse_number(&[token]).map(|(value, _)| value)
 }
 
-fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
+pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
     let count = parse_named_number(words.first()?)?;
     let mut index = 1usize;
     if words
@@ -2404,7 +2406,7 @@ fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
     }
 }
 
-fn parse_enters_tapped_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_enters_tapped_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.is_empty() {
         return Ok(None);
@@ -2452,7 +2454,7 @@ fn parse_enters_tapped_line(tokens: &[Token]) -> Result<Option<StaticAbility>, C
     Ok(None)
 }
 
-fn parse_cost_reduction_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_cost_reduction_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = words(tokens);
     let has_commander_cast_count_clause = line_words
         .windows(3)
@@ -2536,7 +2538,7 @@ fn parse_cost_reduction_line(tokens: &[Token]) -> Result<Option<StaticAbility>, 
     Ok(None)
 }
 
-fn parse_all_creatures_able_to_block_source_line(
+pub(crate) fn parse_all_creatures_able_to_block_source_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = normalize_cant_words(tokens);
@@ -2572,7 +2574,7 @@ fn parse_all_creatures_able_to_block_source_line(
     Ok(None)
 }
 
-fn parse_cant_clauses(tokens: &[Token]) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+pub(crate) fn parse_cant_clauses(tokens: &[Token]) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     if find_negation_span(tokens).is_none() {
         return Ok(None);
     }
@@ -2612,7 +2614,7 @@ fn parse_cant_clauses(tokens: &[Token]) -> Result<Option<Vec<StaticAbility>>, Ca
     parse_cant_clause(tokens).map(|ability| ability.map(|ability| vec![ability]))
 }
 
-fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = words(tokens)
         .into_iter()
         .map(|word| if word == "cannot" { "cant" } else { word })
@@ -2980,7 +2982,7 @@ fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility>, CardText
     Ok(Some(ability))
 }
 
-fn parse_cant_restrictions(
+pub(crate) fn parse_cant_restrictions(
     tokens: &[Token],
 ) -> Result<Option<Vec<ParsedCantRestriction>>, CardTextError> {
     if find_negation_span(tokens).is_none() {
@@ -3022,7 +3024,7 @@ fn parse_cant_restrictions(
     parse_cant_restriction_clause(tokens).map(|restriction| restriction.map(|r| vec![r]))
 }
 
-fn parse_cant_restriction_clause(
+pub(crate) fn parse_cant_restriction_clause(
     tokens: &[Token],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
@@ -3087,7 +3089,7 @@ fn parse_cant_restriction_clause(
     }))
 }
 
-fn parse_negated_object_restriction_clause(
+pub(crate) fn parse_negated_object_restriction_clause(
     tokens: &[Token],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
     use crate::effect::Restriction;
@@ -3180,12 +3182,12 @@ fn parse_negated_object_restriction_clause(
 }
 
 #[derive(Debug, Clone)]
-struct ParsedCantRestriction {
-    restriction: crate::effect::Restriction,
-    target: Option<TargetAst>,
+pub(crate) struct ParsedCantRestriction {
+    pub(crate) restriction: crate::effect::Restriction,
+    pub(crate) target: Option<TargetAst>,
 }
 
-fn starts_with_target_indicator(tokens: &[Token]) -> bool {
+pub(crate) fn starts_with_target_indicator(tokens: &[Token]) -> bool {
     let mut idx = 0usize;
     if tokens.get(idx).is_some_and(|token| token.is_word("any"))
         && tokens
@@ -3233,7 +3235,7 @@ fn starts_with_target_indicator(tokens: &[Token]) -> bool {
     tokens.get(idx).is_some_and(|token| token.is_word("target"))
 }
 
-fn find_negation_span(tokens: &[Token]) -> Option<(usize, usize)> {
+pub(crate) fn find_negation_span(tokens: &[Token]) -> Option<(usize, usize)> {
     for (idx, token) in tokens.iter().enumerate() {
         let Some(word) = token.as_word() else {
             continue;
@@ -3250,7 +3252,7 @@ fn find_negation_span(tokens: &[Token]) -> Option<(usize, usize)> {
     None
 }
 
-fn parse_subject_object_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>, CardTextError> {
+pub(crate) fn parse_subject_object_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>, CardTextError> {
     if tokens.is_empty() {
         return Ok(None);
     }
@@ -3265,7 +3267,7 @@ fn parse_subject_object_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>,
     Ok(target_ast_to_object_filter(target))
 }
 
-fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
+pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
     match target {
         TargetAst::Source(_) => Some(ObjectFilter::source()),
         TargetAst::Object(filter, _, _) => Some(filter),
@@ -3275,7 +3277,7 @@ fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
     }
 }
 
-fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
+pub(crate) fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
     if words.is_empty() {
         return false;
     }
@@ -3307,14 +3309,14 @@ fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
     words.contains(&"during") && words.contains(&"step")
 }
 
-fn normalize_cant_words(tokens: &[Token]) -> Vec<&str> {
+pub(crate) fn normalize_cant_words(tokens: &[Token]) -> Vec<&str> {
     words(tokens)
         .into_iter()
         .map(|word| if word == "cannot" { "cant" } else { word })
         .collect()
 }
 
-fn keyword_title(keyword: &str) -> String {
+pub(crate) fn keyword_title(keyword: &str) -> String {
     let mut words = keyword.split_whitespace();
     let Some(first) = words.next() else {
         return String::new();
@@ -3332,7 +3334,7 @@ fn keyword_title(keyword: &str) -> String {
     out
 }
 
-fn leading_mana_symbols_to_oracle(words: &[&str]) -> Option<(String, usize)> {
+pub(crate) fn leading_mana_symbols_to_oracle(words: &[&str]) -> Option<(String, usize)> {
     if words.is_empty() {
         return None;
     }
@@ -3351,7 +3353,7 @@ fn leading_mana_symbols_to_oracle(words: &[&str]) -> Option<(String, usize)> {
     Some((ManaCost::from_pips(pips).to_oracle(), consumed))
 }
 
-fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
+pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
     match keyword {
         "banding" => Some("banding"),
         "fabricate" => Some("fabricate"),
@@ -3389,7 +3391,7 @@ fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
     }
 }
 
-fn marker_keyword_display(words: &[&str]) -> Option<String> {
+pub(crate) fn marker_keyword_display(words: &[&str]) -> Option<String> {
     let keyword = words.first().copied()?;
     let title = keyword_title(keyword);
 
@@ -3444,7 +3446,7 @@ fn marker_keyword_display(words: &[&str]) -> Option<String> {
     }
 }
 
-fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
+pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
     let mut words = words(tokens);
     if words.is_empty() {
         return None;
@@ -4149,7 +4151,7 @@ fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
     Some(action)
 }
 
-fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
+pub(crate) fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
     let start_idx = if tokens.first().is_some_and(|token| {
         token.is_word("whenever") || token.is_word("at") || token.is_word("when")
     }) {
@@ -4342,7 +4344,7 @@ fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
     )))
 }
 
-fn rewrite_attached_controller_trigger_effect_tokens(
+pub(crate) fn rewrite_attached_controller_trigger_effect_tokens(
     trigger_tokens: &[Token],
     effects_tokens: &[Token],
 ) -> Vec<Token> {
@@ -4400,7 +4402,7 @@ fn rewrite_attached_controller_trigger_effect_tokens(
     rewritten
 }
 
-fn looks_like_trigger_object_list_tail(tokens: &[Token]) -> bool {
+pub(crate) fn looks_like_trigger_object_list_tail(tokens: &[Token]) -> bool {
     if tokens.is_empty() {
         return false;
     }
@@ -4432,7 +4434,7 @@ fn looks_like_trigger_object_list_tail(tokens: &[Token]) -> bool {
     tokens.iter().any(|token| matches!(token, Token::Comma(_)))
 }
 
-fn looks_like_trigger_discard_qualifier_tail(
+pub(crate) fn looks_like_trigger_discard_qualifier_tail(
     trigger_prefix_tokens: &[Token],
     tail_tokens: &[Token],
 ) -> bool {
@@ -4469,7 +4471,7 @@ fn looks_like_trigger_discard_qualifier_tail(
         })
 }
 
-fn looks_like_trigger_type_list_tail(tokens: &[Token]) -> bool {
+pub(crate) fn looks_like_trigger_type_list_tail(tokens: &[Token]) -> bool {
     if tokens.is_empty() {
         return false;
     }
@@ -4488,7 +4490,7 @@ fn looks_like_trigger_type_list_tail(tokens: &[Token]) -> bool {
         && tokens.iter().any(|token| matches!(token, Token::Comma(_)))
 }
 
-fn looks_like_trigger_color_list_tail(tokens: &[Token]) -> bool {
+pub(crate) fn looks_like_trigger_color_list_tail(tokens: &[Token]) -> bool {
     if tokens.is_empty() {
         return false;
     }
@@ -4501,7 +4503,7 @@ fn looks_like_trigger_color_list_tail(tokens: &[Token]) -> bool {
         && tokens.iter().any(|token| matches!(token, Token::Comma(_)))
 }
 
-fn looks_like_trigger_numeric_list_tail(tokens: &[Token]) -> bool {
+pub(crate) fn looks_like_trigger_numeric_list_tail(tokens: &[Token]) -> bool {
     if tokens.is_empty() {
         return false;
     }
@@ -4516,7 +4518,7 @@ fn looks_like_trigger_numeric_list_tail(tokens: &[Token]) -> bool {
     has_second_number && words.contains(&"or")
 }
 
-fn is_trigger_objectish_word(word: &str) -> bool {
+pub(crate) fn is_trigger_objectish_word(word: &str) -> bool {
     parse_card_type(word).is_some()
         || parse_subtype_word(word).is_some()
         || word.strip_suffix('s').is_some_and(|stem| {
@@ -4524,7 +4526,7 @@ fn is_trigger_objectish_word(word: &str) -> bool {
         })
 }
 
-fn strip_leading_trigger_intro(tokens: &[Token]) -> &[Token] {
+pub(crate) fn strip_leading_trigger_intro(tokens: &[Token]) -> &[Token] {
     if tokens.first().is_some_and(|token| {
         token.is_word("when") || token.is_word("whenever") || token.is_word("at")
     }) {
@@ -4534,7 +4536,7 @@ fn strip_leading_trigger_intro(tokens: &[Token]) -> &[Token] {
     }
 }
 
-fn split_trigger_or_index(tokens: &[Token]) -> Option<usize> {
+pub(crate) fn split_trigger_or_index(tokens: &[Token]) -> Option<usize> {
     tokens.iter().enumerate().find_map(|(idx, token)| {
         if !token.is_word("or") {
             return None;
@@ -4619,14 +4621,14 @@ fn split_trigger_or_index(tokens: &[Token]) -> Option<usize> {
     })
 }
 
-fn has_leading_one_or_more(tokens: &[Token]) -> bool {
+pub(crate) fn has_leading_one_or_more(tokens: &[Token]) -> bool {
     tokens.len() >= 3
         && tokens.first().is_some_and(|token| token.is_word("one"))
         && tokens.get(1).is_some_and(|token| token.is_word("or"))
         && tokens.get(2).is_some_and(|token| token.is_word("more"))
 }
 
-fn strip_leading_one_or_more(tokens: &[Token]) -> &[Token] {
+pub(crate) fn strip_leading_one_or_more(tokens: &[Token]) -> &[Token] {
     if has_leading_one_or_more(tokens) {
         &tokens[3..]
     } else {
@@ -4634,7 +4636,7 @@ fn strip_leading_one_or_more(tokens: &[Token]) -> &[Token] {
     }
 }
 
-fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> {
+pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> {
     let words = words(tokens);
 
     if words.len() == 9
@@ -6044,7 +6046,7 @@ fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> 
     }
 }
 
-fn parse_discard_trigger_card_filter(
+pub(crate) fn parse_discard_trigger_card_filter(
     after_discard_tokens: &[Token],
     clause_words: &[&str],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -6153,7 +6155,7 @@ fn parse_discard_trigger_card_filter(
     }
 }
 
-fn parse_subtype_list_enters_trigger_filter(tokens: &[Token], other: bool) -> Option<ObjectFilter> {
+pub(crate) fn parse_subtype_list_enters_trigger_filter(tokens: &[Token], other: bool) -> Option<ObjectFilter> {
     let words = words(tokens);
     if words.is_empty() {
         return None;
@@ -6203,7 +6205,7 @@ fn parse_subtype_list_enters_trigger_filter(tokens: &[Token], other: bool) -> Op
     Some(filter)
 }
 
-fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
+pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
     let attached_controller_filter =
         |tag: &str| PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(TagKey::from(tag)));
     let has_attached_controller = |subject: &str| {
@@ -6242,7 +6244,7 @@ fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
     }
 }
 
-fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
+pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
     if contains_your_team_words(words) || words.contains(&"you") {
         PlayerFilter::You
     } else if contains_opponent_word(words) {
@@ -6252,18 +6254,18 @@ fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
     }
 }
 
-fn contains_opponent_word(words: &[&str]) -> bool {
+pub(crate) fn contains_opponent_word(words: &[&str]) -> bool {
     words.contains(&"opponent") || words.contains(&"opponents")
 }
 
-fn contains_your_team_words(words: &[&str]) -> bool {
+pub(crate) fn contains_your_team_words(words: &[&str]) -> bool {
     words.windows(2).any(|window| window == ["your", "team"])
         || words
             .windows(3)
             .any(|window| window == ["on", "your", "team"])
 }
 
-fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
+pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
     if subject == ["you"] {
         return Some(PlayerFilter::You);
     }
@@ -6296,7 +6298,7 @@ fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter>
     None
 }
 
-fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
+pub(crate) fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
     let (prefix_len, controller_end) = if words.starts_with(&["a", "spell", "or", "ability"]) {
         (4usize, words.len())
     } else if words.starts_with(&["spell", "or", "ability"]) {
@@ -6316,7 +6318,7 @@ fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<PlayerFilter
     parse_trigger_subject_player_filter(controller_words)
 }
 
-fn parse_trigger_subject_filter(
+pub(crate) fn parse_trigger_subject_filter(
     subject_tokens: &[Token],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if subject_tokens.is_empty() {
@@ -6360,13 +6362,13 @@ fn parse_trigger_subject_filter(
         })
 }
 
-fn trigger_subject_player_selector(subject_tokens: &[Token]) -> Option<PlayerFilter> {
+pub(crate) fn trigger_subject_player_selector(subject_tokens: &[Token]) -> Option<PlayerFilter> {
     let subject_tokens = strip_leading_one_or_more(subject_tokens);
     let subject_words = words(subject_tokens);
     parse_trigger_subject_player_filter(&subject_words)
 }
 
-fn attacking_filter_for_player(player: PlayerFilter) -> ObjectFilter {
+pub(crate) fn attacking_filter_for_player(player: PlayerFilter) -> ObjectFilter {
     let mut filter = ObjectFilter::creature();
     if !matches!(player, PlayerFilter::Any) {
         filter.controller = Some(player);
@@ -6374,7 +6376,7 @@ fn attacking_filter_for_player(player: PlayerFilter) -> ObjectFilter {
     filter
 }
 
-fn parse_attack_trigger_subject_filter(
+pub(crate) fn parse_attack_trigger_subject_filter(
     subject_tokens: &[Token],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if let Some(player) = trigger_subject_player_selector(subject_tokens) {
@@ -6383,7 +6385,7 @@ fn parse_attack_trigger_subject_filter(
     parse_trigger_subject_filter(subject_tokens)
 }
 
-fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {
+pub(crate) fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {
     for (ordinal, count) in [
         ("third", 3u32),
         ("fourth", 4u32),
@@ -6408,7 +6410,7 @@ fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {
     None
 }
 
-fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
+pub(crate) fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
     for (ordinal, count) in [
         ("second", 2u32),
         ("third", 3u32),
@@ -6439,7 +6441,7 @@ fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
     None
 }
 
-fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
+pub(crate) fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
     let has_turn_context = contains_word_sequence(words, &["each", "turn"])
         || contains_word_sequence(words, &["this", "turn"])
         || contains_word_sequence(words, &["of", "a", "turn"])
@@ -6467,7 +6469,7 @@ fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
     false
 }
 
-fn has_second_spell_turn_pattern(words: &[&str]) -> bool {
+pub(crate) fn has_second_spell_turn_pattern(words: &[&str]) -> bool {
     contains_word_sequence(words, &["second", "spell", "cast", "this", "turn"])
         || contains_word_sequence(words, &["second", "spell", "this", "turn"])
         || contains_word_sequence(words, &["your", "second", "spell", "each", "turn"])
@@ -6488,7 +6490,7 @@ fn has_second_spell_turn_pattern(words: &[&str]) -> bool {
         )
 }
 
-fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>, CardTextError> {
+pub(crate) fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words.contains(&"spell") && !clause_words.contains(&"spells") {
         return Ok(None);
@@ -6724,7 +6726,7 @@ fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>,
     Ok(None)
 }
 
-fn is_spawn_scion_token_mana_reminder(tokens: &[Token]) -> bool {
+pub(crate) fn is_spawn_scion_token_mana_reminder(tokens: &[Token]) -> bool {
     let words = words(tokens);
     let starts_with_token_pronoun = words.starts_with(&["they", "have"])
         || words.starts_with(&["it", "has"])
@@ -6736,23 +6738,23 @@ fn is_spawn_scion_token_mana_reminder(tokens: &[Token]) -> bool {
         && words.contains(&"c")
 }
 
-fn is_round_up_each_time_sentence(tokens: &[Token]) -> bool {
+pub(crate) fn is_round_up_each_time_sentence(tokens: &[Token]) -> bool {
     let words = words(tokens);
     words.starts_with(&["round", "up", "each", "time"])
 }
 
-enum MayCastItVerb {
+pub(crate) enum MayCastItVerb {
     Cast,
     Play,
 }
 
-struct MayCastTaggedSpec {
-    verb: MayCastItVerb,
-    as_copy: bool,
-    without_paying_mana_cost: bool,
+pub(crate) struct MayCastTaggedSpec {
+    pub(crate) verb: MayCastItVerb,
+    pub(crate) as_copy: bool,
+    pub(crate) without_paying_mana_cost: bool,
 }
 
-fn parse_may_cast_it_sentence(tokens: &[Token]) -> Option<MayCastTaggedSpec> {
+pub(crate) fn parse_may_cast_it_sentence(tokens: &[Token]) -> Option<MayCastTaggedSpec> {
     let mut clause_words = words(tokens);
     while clause_words
         .first()
@@ -6811,7 +6813,7 @@ fn parse_may_cast_it_sentence(tokens: &[Token]) -> Option<MayCastTaggedSpec> {
     None
 }
 
-fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
+pub(crate) fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
     EffectAst::May {
         effects: vec![EffectAst::CastTagged {
             tag: TagKey::from(IT_TAG),
@@ -6822,7 +6824,7 @@ fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
     }
 }
 
-fn is_simple_copy_reference_sentence(tokens: &[Token]) -> bool {
+pub(crate) fn is_simple_copy_reference_sentence(tokens: &[Token]) -> bool {
     let clause_words = words(tokens);
     clause_words.as_slice() == ["copy", "it"]
         || clause_words.as_slice() == ["copy", "this"]
@@ -6831,13 +6833,13 @@ fn is_simple_copy_reference_sentence(tokens: &[Token]) -> bool {
         || clause_words.as_slice() == ["copy", "the", "exiled", "card"]
 }
 
-fn token_name_mentions_eldrazi_spawn_or_scion(name: &str) -> bool {
+pub(crate) fn token_name_mentions_eldrazi_spawn_or_scion(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     (lower.contains("eldrazi") && lower.contains("spawn"))
         || (lower.contains("eldrazi") && lower.contains("scion"))
 }
 
-fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
+pub(crate) fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::CreateToken { name, .. } | EffectAst::CreateTokenWithMods { name, .. } => {
             token_name_mentions_eldrazi_spawn_or_scion(name)
@@ -6846,7 +6848,7 @@ fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
     }
 }
 
-fn effect_creates_any_token(effect: &EffectAst) -> bool {
+pub(crate) fn effect_creates_any_token(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::CreateToken { .. }
         | EffectAst::CreateTokenWithMods { .. }
@@ -6861,7 +6863,7 @@ fn effect_creates_any_token(effect: &EffectAst) -> bool {
     }
 }
 
-fn last_created_token_info(effects: &[EffectAst]) -> Option<(String, PlayerAst)> {
+pub(crate) fn last_created_token_info(effects: &[EffectAst]) -> Option<(String, PlayerAst)> {
     for effect in effects.iter().rev() {
         if let Some(info) = created_token_info_from_effect(effect) {
             return Some(info);
@@ -6870,7 +6872,7 @@ fn last_created_token_info(effects: &[EffectAst]) -> Option<(String, PlayerAst)>
     None
 }
 
-fn created_token_info_from_effect(effect: &EffectAst) -> Option<(String, PlayerAst)> {
+pub(crate) fn created_token_info_from_effect(effect: &EffectAst) -> Option<(String, PlayerAst)> {
     match effect {
         EffectAst::CreateToken { name, player, .. }
         | EffectAst::CreateTokenWithMods { name, player, .. } => Some((name.clone(), *player)),
@@ -6903,7 +6905,7 @@ fn created_token_info_from_effect(effect: &EffectAst) -> Option<(String, PlayerA
     }
 }
 
-fn title_case_token_word(word: &str) -> String {
+pub(crate) fn title_case_token_word(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
         Some(first) => {
@@ -6916,7 +6918,7 @@ fn title_case_token_word(word: &str) -> String {
 }
 
 #[allow(dead_code)]
-fn linked_token_name_from_create_name(raw_name: &str) -> Option<String> {
+pub(crate) fn linked_token_name_from_create_name(raw_name: &str) -> Option<String> {
     let words: Vec<&str> = raw_name.split_whitespace().collect();
     if words.is_empty() {
         return None;
@@ -6976,7 +6978,7 @@ fn linked_token_name_from_create_name(raw_name: &str) -> Option<String> {
     }
 }
 
-fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFilter> {
+pub(crate) fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
@@ -6987,7 +6989,7 @@ fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFilter>
     }
 }
 
-fn parse_sentence_exile_that_token_when_source_leaves(
+pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
     tokens: &[Token],
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
@@ -7023,7 +7025,7 @@ fn parse_sentence_exile_that_token_when_source_leaves(
     })
 }
 
-fn parse_sentence_sacrifice_source_when_that_token_leaves(
+pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
     tokens: &[Token],
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
@@ -7050,7 +7052,7 @@ fn parse_sentence_sacrifice_source_when_that_token_leaves(
     })
 }
 
-fn is_generic_token_reminder_sentence(tokens: &[Token]) -> bool {
+pub(crate) fn is_generic_token_reminder_sentence(tokens: &[Token]) -> bool {
     let words = words(tokens);
     if words.is_empty() {
         return false;
@@ -7080,7 +7082,7 @@ fn is_generic_token_reminder_sentence(tokens: &[Token]) -> bool {
         || words.starts_with(&["those", "tokens"])
 }
 
-fn strip_embedded_token_rules_text(tokens: &[Token]) -> Vec<Token> {
+pub(crate) fn strip_embedded_token_rules_text(tokens: &[Token]) -> Vec<Token> {
     let words_all = words(tokens);
     if !words_all.contains(&"create") || !words_all.contains(&"token") {
         return tokens.to_vec();
@@ -7096,7 +7098,7 @@ fn strip_embedded_token_rules_text(tokens: &[Token]) -> Vec<Token> {
 }
 
 #[allow(dead_code)]
-fn append_token_reminder_to_last_create_effect(
+pub(crate) fn append_token_reminder_to_last_create_effect(
     effects: &mut Vec<EffectAst>,
     tokens: &[Token],
 ) -> bool {
@@ -7135,7 +7137,7 @@ fn append_token_reminder_to_last_create_effect(
 }
 
 #[allow(dead_code)]
-fn append_token_reminder_to_effect(
+pub(crate) fn append_token_reminder_to_effect(
     effect: Option<&mut EffectAst>,
     reminder: &str,
     reminder_words: &[&str],
@@ -7194,7 +7196,7 @@ fn append_token_reminder_to_effect(
     }
 }
 
-fn parse_target_player_choose_objects_clause(
+pub(crate) fn parse_target_player_choose_objects_clause(
     tokens: &[Token],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
     let clause_words = words(tokens);
@@ -7291,7 +7293,7 @@ fn parse_target_player_choose_objects_clause(
     Ok(Some((chooser, choose_filter, count)))
 }
 
-fn parse_target_player_chooses_then_other_cant_block(
+pub(crate) fn parse_target_player_chooses_then_other_cant_block(
     first: &[Token],
     second: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -7382,7 +7384,7 @@ fn parse_target_player_chooses_then_other_cant_block(
     ]))
 }
 
-fn parse_choose_creature_type_then_become_type(
+pub(crate) fn parse_choose_creature_type_then_become_type(
     first: &[Token],
     second: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -7487,7 +7489,7 @@ fn parse_choose_creature_type_then_become_type(
     }]))
 }
 
-fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
+pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
@@ -7555,7 +7557,7 @@ fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     ]))
 }
 
-fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
+pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let split = tokens

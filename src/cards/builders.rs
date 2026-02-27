@@ -1347,17 +1347,11 @@ enum IfResultPredicate {
 
 const IT_TAG: &str = "__it__";
 
-include!("builders/parser/parse_parsing/lex.rs");
-include!("builders/parser/parse_parsing/line_dispatch.rs");
-include!("builders/parser/parse_parsing/keyword_static.rs");
-include!("builders/parser/parse_parsing/activation_and_restrictions.rs");
-include!("builders/parser/parse_parsing/effects_sentences.rs");
-include!("builders/parser/parse_parsing/effects_clauses.rs");
-include!("builders/parser/parse_parsing/targets.rs");
-include!("builders/parser/parse_parsing/object_filters.rs");
-include!("builders/parser/parse_parsing/primitives.rs");
+mod parse_parsing;
+pub(crate) use parse_parsing::*;
 
-include!("builders/parse_compile.rs");
+mod parse_compile;
+pub(crate) use parse_compile::*;
 
 /// Builder for creating CardDefinitions with abilities.
 #[derive(Debug, Clone)]

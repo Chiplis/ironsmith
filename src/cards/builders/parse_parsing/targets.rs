@@ -1,4 +1,6 @@
-fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
+use super::*;
+
+pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
     let mut tokens = tokens;
     while tokens.first().is_some_and(|token| token.is_word("then")) {
         tokens = &tokens[1..];
@@ -681,7 +683,7 @@ fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
     ))
 }
 
-fn parse_target_count_range_prefix(tokens: &[Token]) -> Option<(ChoiceCount, usize)> {
+pub(crate) fn parse_target_count_range_prefix(tokens: &[Token]) -> Option<(ChoiceCount, usize)> {
     let (first, first_used) = parse_number(tokens)?;
     let or_idx = first_used;
     if !tokens.get(or_idx).is_some_and(|token| token.is_word("or")) {
@@ -701,7 +703,7 @@ fn parse_target_count_range_prefix(tokens: &[Token]) -> Option<(ChoiceCount, usi
     ))
 }
 
-fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> TargetAst {
+pub(crate) fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> TargetAst {
     if let Some(count) = target_count {
         TargetAst::WithCount(Box::new(target), count)
     } else {
@@ -709,7 +711,7 @@ fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> Ta
     }
 }
 
-fn is_source_from_your_graveyard_words(words: &[&str]) -> bool {
+pub(crate) fn is_source_from_your_graveyard_words(words: &[&str]) -> bool {
     if words.len() < 4 {
         return false;
     }
@@ -725,7 +727,7 @@ fn is_source_from_your_graveyard_words(words: &[&str]) -> bool {
         && words.contains(&"graveyard")
 }
 
-fn is_source_reference_words(words: &[&str]) -> bool {
+pub(crate) fn is_source_reference_words(words: &[&str]) -> bool {
     if words.is_empty() {
         return false;
     }
@@ -748,7 +750,7 @@ fn is_source_reference_words(words: &[&str]) -> bool {
     }
 }
 
-fn contains_source_from_your_graveyard_phrase(words: &[&str]) -> bool {
+pub(crate) fn contains_source_from_your_graveyard_phrase(words: &[&str]) -> bool {
     words.windows(5).any(|window| {
         (window[0] == "this" || window[0] == "thiss")
             && matches!(window[1], "card" | "creature" | "permanent")
@@ -758,7 +760,7 @@ fn contains_source_from_your_graveyard_phrase(words: &[&str]) -> bool {
     })
 }
 
-fn contains_source_from_your_hand_phrase(words: &[&str]) -> bool {
+pub(crate) fn contains_source_from_your_hand_phrase(words: &[&str]) -> bool {
     // Match "this card/creature/permanent from your hand" (5 words)
     words.windows(5).any(|window| {
         (window[0] == "this" || window[0] == "thiss")
@@ -776,13 +778,13 @@ fn contains_source_from_your_hand_phrase(words: &[&str]) -> bool {
     })
 }
 
-fn contains_discard_source_phrase(words: &[&str]) -> bool {
+pub(crate) fn contains_discard_source_phrase(words: &[&str]) -> bool {
     words
         .windows(3)
         .any(|window| window == ["discard", "this", "card"])
 }
 
-fn is_demonstrative_object_head(word: &str) -> bool {
+pub(crate) fn is_demonstrative_object_head(word: &str) -> bool {
     if matches!(
         word,
         "creature"

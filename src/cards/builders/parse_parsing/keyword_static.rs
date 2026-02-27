@@ -1,4 +1,6 @@
-fn parse_ability_line(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
+use super::*;
+
+pub(crate) fn parse_ability_line(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
     }
@@ -51,14 +53,14 @@ fn parse_ability_line(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
     }
 }
 
-fn reject_unimplemented_keyword_actions(
+pub(crate) fn reject_unimplemented_keyword_actions(
     _actions: &[KeywordAction],
     _clause: &str,
 ) -> Result<(), CardTextError> {
     Ok(())
 }
 
-fn parse_protection_chain(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
+pub(crate) fn parse_protection_chain(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
     let mut words = words(tokens);
     if words.first().copied() == Some("and") {
         words.remove(0);
@@ -115,7 +117,7 @@ fn parse_protection_chain(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
     }
 }
 
-fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbility> {
+pub(crate) fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbility> {
     match action {
         KeywordAction::Flying => Some(StaticAbility::flying()),
         KeywordAction::Menace => Some(StaticAbility::menace()),
@@ -270,7 +272,7 @@ fn keyword_action_to_static_ability(action: KeywordAction) -> Option<StaticAbili
     }
 }
 
-fn parse_static_ability_line(
+pub(crate) fn parse_static_ability_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     if let Some(ability) = parse_ward_static_ability_line(tokens)? {
@@ -548,7 +550,7 @@ fn parse_static_ability_line(
     Ok(None)
 }
 
-fn parse_activated_abilities_cant_be_activated_line(
+pub(crate) fn parse_activated_abilities_cant_be_activated_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     use crate::effect::Restriction;
@@ -631,7 +633,7 @@ fn parse_activated_abilities_cant_be_activated_line(
     Ok(Some(StaticAbility::restriction(restriction, display)))
 }
 
-fn parse_can_block_additional_creature_each_combat_line(
+pub(crate) fn parse_can_block_additional_creature_each_combat_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = words(tokens);
@@ -665,7 +667,7 @@ fn parse_can_block_additional_creature_each_combat_line(
     Ok(None)
 }
 
-fn parse_ward_static_ability_line(
+pub(crate) fn parse_ward_static_ability_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
@@ -699,7 +701,7 @@ fn parse_ward_static_ability_line(
     Ok(Some(StaticAbility::custom("keyword_marker", marker)))
 }
 
-fn parse_ward_discard_card_type_cost(tokens: &[Token]) -> Option<TotalCost> {
+pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[Token]) -> Option<TotalCost> {
     let cost_words = words(tokens);
     if cost_words.first().copied() != Some("discard") {
         return None;
@@ -755,7 +757,7 @@ fn parse_ward_discard_card_type_cost(tokens: &[Token]) -> Option<TotalCost> {
     Some(TotalCost::from_cost(cost))
 }
 
-fn format_ward_marker_tail(tokens: &[Token]) -> String {
+pub(crate) fn format_ward_marker_tail(tokens: &[Token]) -> String {
     let mut parts = Vec::new();
     let mut previous_word: Option<String> = None;
     for word in words(tokens) {
@@ -787,7 +789,7 @@ fn format_ward_marker_tail(tokens: &[Token]) -> String {
     parts.join(" ")
 }
 
-fn parse_composed_anthem_effects_line(
+pub(crate) fn parse_composed_anthem_effects_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
@@ -875,7 +877,7 @@ fn parse_composed_anthem_effects_line(
     Ok(Some(compiled))
 }
 
-fn parse_static_text_marker_line(tokens: &[Token]) -> Option<StaticAbility> {
+pub(crate) fn parse_static_text_marker_line(tokens: &[Token]) -> Option<StaticAbility> {
     let words = words(tokens);
     if words.is_empty() {
         return None;
@@ -969,7 +971,7 @@ fn parse_static_text_marker_line(tokens: &[Token]) -> Option<StaticAbility> {
     None
 }
 
-fn parse_subject_cant_be_blocked_line(
+pub(crate) fn parse_subject_cant_be_blocked_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = words(tokens)
@@ -1039,7 +1041,7 @@ fn parse_subject_cant_be_blocked_line(
     Ok(Some(ability))
 }
 
-fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line(
+pub(crate) fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = words(tokens)
@@ -1103,7 +1105,7 @@ fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_
     Ok(Some(ability))
 }
 
-fn parse_enters_tapped_with_choose_color_line(
+pub(crate) fn parse_enters_tapped_with_choose_color_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
@@ -1142,7 +1144,7 @@ fn parse_enters_tapped_with_choose_color_line(
     ]))
 }
 
-fn parse_damage_not_removed_cleanup_line(
+pub(crate) fn parse_damage_not_removed_cleanup_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -1166,7 +1168,7 @@ fn parse_damage_not_removed_cleanup_line(
     Ok(None)
 }
 
-fn parse_choose_color_as_enters_line(
+pub(crate) fn parse_choose_color_as_enters_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -1261,7 +1263,7 @@ fn parse_choose_color_as_enters_line(
     )))
 }
 
-fn parse_damage_redirect_to_source_line(
+pub(crate) fn parse_damage_redirect_to_source_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -1295,7 +1297,7 @@ fn parse_damage_redirect_to_source_line(
     Ok(None)
 }
 
-fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
+pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = words(tokens);
@@ -1328,7 +1330,7 @@ fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
     Ok(Some(ability))
 }
 
-fn parse_characteristic_defining_pt_line(
+pub(crate) fn parse_characteristic_defining_pt_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = words(tokens);
@@ -1378,7 +1380,7 @@ fn parse_characteristic_defining_pt_line(
     )))
 }
 
-fn parse_characteristic_defining_pt_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_characteristic_defining_pt_value(tokens: &[Token]) -> Option<Value> {
     let words = words(tokens);
     if words.is_empty() {
         return None;
@@ -1416,7 +1418,7 @@ fn parse_characteristic_defining_pt_value(tokens: &[Token]) -> Option<Value> {
     Some(acc)
 }
 
-fn parse_characteristic_defining_pt_term(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_characteristic_defining_pt_term(tokens: &[Token]) -> Option<Value> {
     if tokens.is_empty() {
         return None;
     }
@@ -1476,7 +1478,7 @@ fn parse_characteristic_defining_pt_term(tokens: &[Token]) -> Option<Value> {
     Some(Value::Count(filter))
 }
 
-fn parse_shuffle_into_library_from_graveyard_line(
+pub(crate) fn parse_shuffle_into_library_from_graveyard_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -1506,7 +1508,7 @@ fn parse_shuffle_into_library_from_graveyard_line(
     Ok(None)
 }
 
-fn parse_permanents_enter_tapped_line(
+pub(crate) fn parse_permanents_enter_tapped_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -1518,7 +1520,7 @@ fn parse_permanents_enter_tapped_line(
     Ok(None)
 }
 
-fn parse_players_cant_cycle_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_players_cant_cycle_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
     if words.as_slice() == ["players", "cant", "cycle", "cards"] {
         return Ok(Some(StaticAbility::players_cant_cycle()));
@@ -1526,7 +1528,7 @@ fn parse_players_cant_cycle_line(tokens: &[Token]) -> Result<Option<StaticAbilit
     Ok(None)
 }
 
-fn parse_starting_life_bonus_line(
+pub(crate) fn parse_starting_life_bonus_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -1548,7 +1550,7 @@ fn parse_starting_life_bonus_line(
     Ok(Some(StaticAbility::starting_life_bonus(amount as i32)))
 }
 
-fn parse_buyback_cost_reduction_line(
+pub(crate) fn parse_buyback_cost_reduction_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -1563,7 +1565,7 @@ fn parse_buyback_cost_reduction_line(
     Ok(Some(StaticAbility::buyback_cost_reduction(amount)))
 }
 
-fn parse_spell_cost_increase_per_target_beyond_first_line(
+pub(crate) fn parse_spell_cost_increase_per_target_beyond_first_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -1592,7 +1594,7 @@ fn parse_spell_cost_increase_per_target_beyond_first_line(
     )))
 }
 
-fn parse_if_this_spell_costs_less_to_cast_line(
+pub(crate) fn parse_if_this_spell_costs_less_to_cast_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words_all = words(tokens);
@@ -1653,7 +1655,7 @@ fn parse_if_this_spell_costs_less_to_cast_line(
     )))
 }
 
-fn parse_this_spell_target_condition(
+pub(crate) fn parse_this_spell_target_condition(
     tokens: &[Token],
 ) -> Option<crate::static_abilities::ThisSpellCostCondition> {
     use crate::static_abilities::ThisSpellCostCondition;
@@ -1685,7 +1687,7 @@ fn parse_this_spell_target_condition(
         .map(ThisSpellCostCondition::TargetsObject)
 }
 
-fn parse_this_spell_cost_condition(
+pub(crate) fn parse_this_spell_cost_condition(
     tokens: &[Token],
 ) -> Option<crate::static_abilities::ThisSpellCostCondition> {
     use crate::static_abilities::ThisSpellCostCondition;
@@ -2064,7 +2066,7 @@ fn parse_this_spell_cost_condition(
     None
 }
 
-fn parse_trailing_this_spell_cost_condition(
+pub(crate) fn parse_trailing_this_spell_cost_condition(
     remaining_tokens: &[Token],
     clause_words: &[&str],
 ) -> Result<Option<crate::static_abilities::ThisSpellCostCondition>, CardTextError> {
@@ -2096,7 +2098,7 @@ fn parse_trailing_this_spell_cost_condition(
     Ok(Some(condition))
 }
 
-fn parse_cost_modifier_prefix_condition(
+pub(crate) fn parse_cost_modifier_prefix_condition(
     tokens: &[Token],
     spells_token_idx: usize,
 ) -> Result<(Option<crate::ConditionExpr>, usize), CardTextError> {
@@ -2170,7 +2172,7 @@ fn parse_cost_modifier_prefix_condition(
     Ok((None, 0))
 }
 
-fn parse_spells_cost_modifier_line(
+pub(crate) fn parse_spells_cost_modifier_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
@@ -2476,7 +2478,7 @@ fn parse_spells_cost_modifier_line(
     )))
 }
 
-fn parse_trailing_targets_condition_in_cost_modifier(
+pub(crate) fn parse_trailing_targets_condition_in_cost_modifier(
     filter: &mut crate::ability::SpellFilter,
     remaining_tokens: &[Token],
     clause_words: &[&str],
@@ -2532,7 +2534,7 @@ fn parse_trailing_targets_condition_in_cost_modifier(
     Ok(())
 }
 
-fn parse_flashback_cost_modifier_line(
+pub(crate) fn parse_flashback_cost_modifier_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
@@ -2591,7 +2593,7 @@ fn parse_flashback_cost_modifier_line(
     )))
 }
 
-fn parse_cost_modifier_amount(tokens: &[Token]) -> Option<(Value, usize)> {
+pub(crate) fn parse_cost_modifier_amount(tokens: &[Token]) -> Option<(Value, usize)> {
     if let Some((amount, used)) = parse_number(tokens) {
         return Some((Value::Fixed(amount as i32), used));
     }
@@ -2607,7 +2609,7 @@ fn parse_cost_modifier_amount(tokens: &[Token]) -> Option<(Value, usize)> {
     None
 }
 
-fn parse_cost_modifier_mana_cost(tokens: &[Token]) -> Option<(crate::mana::ManaCost, usize)> {
+pub(crate) fn parse_cost_modifier_mana_cost(tokens: &[Token]) -> Option<(crate::mana::ManaCost, usize)> {
     use crate::mana::{ManaCost, ManaSymbol};
 
     let mut pips: Vec<Vec<ManaSymbol>> = Vec::new();
@@ -2632,7 +2634,7 @@ fn parse_cost_modifier_mana_cost(tokens: &[Token]) -> Option<(crate::mana::ManaC
     Some((ManaCost::from_pips(pips), used))
 }
 
-fn parse_cost_modifier_components(
+pub(crate) fn parse_cost_modifier_components(
     amount_tokens: &[Token],
 ) -> (Option<(Value, usize)>, Option<(crate::mana::ManaCost, usize)>) {
     let parsed_amount = parse_cost_modifier_amount(amount_tokens);
@@ -2653,7 +2655,7 @@ fn parse_cost_modifier_components(
     (parsed_amount, None)
 }
 
-fn parse_dynamic_cost_modifier_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
+pub(crate) fn parse_dynamic_cost_modifier_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
     let words_all = words(tokens);
     let Some(each_idx) = words_all.iter().position(|word| *word == "each") else {
         return Ok(None);
@@ -2838,7 +2840,7 @@ fn parse_dynamic_cost_modifier_value(tokens: &[Token]) -> Result<Option<Value>, 
     Ok(None)
 }
 
-fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
     let words_all = words(tokens);
     let equal_idx = words_all
         .windows(2)
@@ -2982,7 +2984,7 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
     None
 }
 
-fn parse_add_mana_that_much_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_add_mana_that_much_value(tokens: &[Token]) -> Option<Value> {
     let words_all = words(tokens);
     if words_all.starts_with(&["that", "much"]) {
         return Some(Value::EventValue(EventValueSpec::Amount));
@@ -2990,7 +2992,7 @@ fn parse_add_mana_that_much_value(tokens: &[Token]) -> Option<Value> {
     None
 }
 
-fn parse_players_skip_upkeep_line(
+pub(crate) fn parse_players_skip_upkeep_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -3000,7 +3002,7 @@ fn parse_players_skip_upkeep_line(
     Ok(None)
 }
 
-fn parse_legend_rule_doesnt_apply_line(
+pub(crate) fn parse_legend_rule_doesnt_apply_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -3010,7 +3012,7 @@ fn parse_legend_rule_doesnt_apply_line(
     Ok(None)
 }
 
-fn parse_all_permanents_colorless_line(
+pub(crate) fn parse_all_permanents_colorless_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -3022,7 +3024,7 @@ fn parse_all_permanents_colorless_line(
     Ok(None)
 }
 
-fn parse_all_permanents_are_artifacts_line(
+pub(crate) fn parse_all_permanents_are_artifacts_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -3035,7 +3037,7 @@ fn parse_all_permanents_are_artifacts_line(
     Ok(None)
 }
 
-fn parse_all_cards_spells_permanents_colorless_line(
+pub(crate) fn parse_all_cards_spells_permanents_colorless_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -3049,7 +3051,7 @@ fn parse_all_cards_spells_permanents_colorless_line(
     Ok(None)
 }
 
-fn parse_all_are_color_and_type_addition_line(
+pub(crate) fn parse_all_are_color_and_type_addition_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let words = words(tokens);
@@ -3132,7 +3134,7 @@ fn parse_all_are_color_and_type_addition_line(
     Ok(Some(abilities))
 }
 
-fn parse_all_creatures_are_color_line(
+pub(crate) fn parse_all_creatures_are_color_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -3161,7 +3163,7 @@ fn parse_all_creatures_are_color_line(
     Ok(Some(StaticAbility::set_colors(filter, color)))
 }
 
-fn parse_blood_moon_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_blood_moon_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
     if words.as_slice() == ["nonbasic", "lands", "are", "mountains"] {
         return Ok(Some(StaticAbility::blood_moon()));
@@ -3169,7 +3171,7 @@ fn parse_blood_moon_line(tokens: &[Token]) -> Result<Option<StaticAbility>, Card
     Ok(None)
 }
 
-fn parse_remove_snow_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_remove_snow_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
     if words.as_slice() == ["all", "lands", "are", "no", "longer", "snow"] {
         return Ok(Some(StaticAbility::remove_supertypes(
@@ -3180,7 +3182,7 @@ fn parse_remove_snow_line(tokens: &[Token]) -> Result<Option<StaticAbility>, Car
     Ok(None)
 }
 
-fn parse_granted_keyword_static_line(
+pub(crate) fn parse_granted_keyword_static_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
@@ -3372,7 +3374,7 @@ fn parse_granted_keyword_static_line(
     Ok(Some(compiled))
 }
 
-fn parse_all_creatures_lose_flying_line(
+pub(crate) fn parse_all_creatures_lose_flying_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -3385,7 +3387,7 @@ fn parse_all_creatures_lose_flying_line(
     Ok(None)
 }
 
-fn parse_each_creature_cant_be_blocked_by_more_than_line(
+pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     // Familiar Ground: "Each creature can't be blocked by more than one creature."
@@ -3433,7 +3435,7 @@ fn parse_each_creature_cant_be_blocked_by_more_than_line(
     Ok(None)
 }
 
-fn parse_each_creature_can_block_additional_creature_each_combat_line(
+pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     // High Ground: "Each creature can block an additional creature each combat."
@@ -3479,7 +3481,7 @@ fn parse_each_creature_can_block_additional_creature_each_combat_line(
     Ok(Some(StaticAbility::grant_ability(filter, granted)))
 }
 
-fn parse_lose_all_abilities_and_transform_base_pt_line(
+pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     fn title_case_words(words: &[&str]) -> String {
@@ -3660,7 +3662,7 @@ fn parse_lose_all_abilities_and_transform_base_pt_line(
     Ok(Some(abilities))
 }
 
-fn parse_lose_all_abilities_and_base_pt_line(
+pub(crate) fn parse_lose_all_abilities_and_base_pt_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let words = words(tokens);
@@ -3719,7 +3721,7 @@ fn parse_lose_all_abilities_and_base_pt_line(
     Ok(Some(abilities))
 }
 
-fn parse_all_have_indestructible_line(
+pub(crate) fn parse_all_have_indestructible_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -3761,24 +3763,24 @@ fn parse_all_have_indestructible_line(
 }
 
 #[derive(Debug, Clone)]
-enum AnthemSubjectAst {
+pub(crate) enum AnthemSubjectAst {
     Source,
     Filter(ObjectFilter),
 }
 
 #[derive(Debug, Clone)]
-struct ParsedAnthemClause {
-    subject: AnthemSubjectAst,
-    power: AnthemValue,
-    toughness: AnthemValue,
-    condition: Option<crate::ConditionExpr>,
+pub(crate) struct ParsedAnthemClause {
+    pub(crate) subject: AnthemSubjectAst,
+    pub(crate) power: AnthemValue,
+    pub(crate) toughness: AnthemValue,
+    pub(crate) condition: Option<crate::ConditionExpr>,
 }
 
-fn words_start_with(tokens: &[Token], expected: &[&str]) -> bool {
+pub(crate) fn words_start_with(tokens: &[Token], expected: &[&str]) -> bool {
     words(tokens).starts_with(expected)
 }
 
-fn find_source_reference_start(tokens: &[Token]) -> Option<usize> {
+pub(crate) fn find_source_reference_start(tokens: &[Token]) -> Option<usize> {
     let mut token_indices = Vec::new();
     let mut token_words = Vec::new();
     for (idx, token) in tokens.iter().enumerate() {
@@ -3796,7 +3798,7 @@ fn find_source_reference_start(tokens: &[Token]) -> Option<usize> {
     None
 }
 
-fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
+pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     let mut score = 0usize;
     score += filter.tagged_constraints.len() * 20;
     score += filter.card_types.len() * 10;
@@ -3833,7 +3835,7 @@ fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score
 }
 
-fn parse_best_object_filter_suffix(tokens: &[Token]) -> Option<ObjectFilter> {
+pub(crate) fn parse_best_object_filter_suffix(tokens: &[Token]) -> Option<ObjectFilter> {
     let mut best: Option<(usize, ObjectFilter)> = None;
     for start in 0..tokens.len() {
         if tokens[start].as_word().is_none() {
@@ -3869,7 +3871,7 @@ fn parse_best_object_filter_suffix(tokens: &[Token]) -> Option<ObjectFilter> {
     best.map(|(_, filter)| filter)
 }
 
-fn parse_anthem_subject(tokens: &[Token]) -> Result<AnthemSubjectAst, CardTextError> {
+pub(crate) fn parse_anthem_subject(tokens: &[Token]) -> Result<AnthemSubjectAst, CardTextError> {
     let subject_words = words(tokens);
     if subject_words.as_slice() == ["it"] {
         return Ok(AnthemSubjectAst::Source);
@@ -3887,7 +3889,7 @@ fn parse_anthem_subject(tokens: &[Token]) -> Result<AnthemSubjectAst, CardTextEr
         })
 }
 
-fn parse_static_quantity_prefix(
+pub(crate) fn parse_static_quantity_prefix(
     tokens: &[Token],
     allow_default_one: bool,
 ) -> Result<(crate::effect::Comparison, usize), CardTextError> {
@@ -3936,7 +3938,7 @@ fn parse_static_quantity_prefix(
     ))
 }
 
-fn parse_permanent_card_count_filter(tokens: &[Token]) -> Option<ObjectFilter> {
+pub(crate) fn parse_permanent_card_count_filter(tokens: &[Token]) -> Option<ObjectFilter> {
     let token_words = words(tokens);
     if !token_words.starts_with(&["permanent", "card"])
         && !token_words.starts_with(&["permanent", "cards"])
@@ -3970,7 +3972,7 @@ fn parse_permanent_card_count_filter(tokens: &[Token]) -> Option<ObjectFilter> {
     filter.zone.map(|_| filter)
 }
 
-fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::ConditionExpr, CardTextError> {
+pub(crate) fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::ConditionExpr, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
     let clause_words = words(&tokens);
     if clause_words.is_empty() {
@@ -4104,7 +4106,7 @@ fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::ConditionExp
     )))
 }
 
-fn parse_anthem_for_each_expression(
+pub(crate) fn parse_anthem_for_each_expression(
     tokens: &[Token],
 ) -> Result<AnthemCountExpression, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
@@ -4157,7 +4159,7 @@ fn parse_anthem_for_each_expression(
     Ok(AnthemCountExpression::MatchingFilter(filter))
 }
 
-fn parse_anthem_prefix_condition(
+pub(crate) fn parse_anthem_prefix_condition(
     tokens: &[Token],
     get_idx: usize,
 ) -> Result<(Option<crate::ConditionExpr>, usize), CardTextError> {
@@ -4211,7 +4213,7 @@ fn parse_anthem_prefix_condition(
     Ok((None, 0))
 }
 
-fn parse_anthem_clause(
+pub(crate) fn parse_anthem_clause(
     tokens: &[Token],
     get_idx: usize,
     tail_end: usize,
@@ -4290,7 +4292,7 @@ fn parse_anthem_clause(
     })
 }
 
-fn build_anthem_static_ability(clause: &ParsedAnthemClause) -> StaticAbility {
+pub(crate) fn build_anthem_static_ability(clause: &ParsedAnthemClause) -> StaticAbility {
     let mut anthem = match &clause.subject {
         AnthemSubjectAst::Source => Anthem::for_source(0, 0),
         AnthemSubjectAst::Filter(filter) => Anthem::new(filter.clone(), 0, 0),
@@ -4305,14 +4307,14 @@ fn build_anthem_static_ability(clause: &ParsedAnthemClause) -> StaticAbility {
 }
 
 #[derive(Debug)]
-struct TypeColorAdditionClause {
-    added_colors: ColorSet,
-    set_colors: ColorSet,
-    card_types: Vec<CardType>,
-    subtypes: Vec<Subtype>,
+pub(crate) struct TypeColorAdditionClause {
+    pub(crate) added_colors: ColorSet,
+    pub(crate) set_colors: ColorSet,
+    pub(crate) card_types: Vec<CardType>,
+    pub(crate) subtypes: Vec<Subtype>,
 }
 
-fn parse_type_color_addition_clause(
+pub(crate) fn parse_type_color_addition_clause(
     tokens: &[Token],
 ) -> Result<Option<TypeColorAdditionClause>, CardTextError> {
     let words = words(tokens);
@@ -4456,7 +4458,7 @@ fn parse_type_color_addition_clause(
     }))
 }
 
-fn is_type_scope_qualifier_word(word: &str) -> bool {
+pub(crate) fn is_type_scope_qualifier_word(word: &str) -> bool {
     parse_card_type(word).is_some()
         || matches!(
             word,
@@ -4464,7 +4466,7 @@ fn is_type_scope_qualifier_word(word: &str) -> bool {
         )
 }
 
-fn parse_soulbond_shared_line(tokens: &[Token]) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+pub(crate) fn parse_soulbond_shared_line(tokens: &[Token]) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
     let prefix = [
         "as",
@@ -4567,7 +4569,7 @@ fn parse_soulbond_shared_line(tokens: &[Token]) -> Result<Option<Vec<StaticAbili
     )))
 }
 
-fn parse_anthem_and_type_color_addition_line(
+pub(crate) fn parse_anthem_and_type_color_addition_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let words = words(tokens);
@@ -4634,7 +4636,7 @@ fn parse_anthem_and_type_color_addition_line(
     Ok(Some(result))
 }
 
-fn parse_anthem_and_keyword_line(
+pub(crate) fn parse_anthem_and_keyword_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
@@ -4819,7 +4821,7 @@ fn parse_anthem_and_keyword_line(
     Ok(Some(result))
 }
 
-fn parse_gets_and_attacks_each_combat_if_able_line(
+pub(crate) fn parse_gets_and_attacks_each_combat_if_able_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
@@ -4874,7 +4876,7 @@ fn parse_gets_and_attacks_each_combat_if_able_line(
     Ok(Some(result))
 }
 
-fn parse_anthem_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_anthem_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
     // Targeted "gets +N/+N" text is usually a one-shot spell/ability effect,
     // not a global/static anthem.
@@ -4899,7 +4901,7 @@ fn parse_anthem_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardText
     Ok(Some(build_anthem_static_ability(&clause)))
 }
 
-fn parse_has_base_power_toughness_static_line(
+pub(crate) fn parse_has_base_power_toughness_static_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words_all = words(tokens);
@@ -4950,7 +4952,7 @@ fn parse_has_base_power_toughness_static_line(
     )))
 }
 
-fn parse_enters_tapped_with_counters_line(
+pub(crate) fn parse_enters_tapped_with_counters_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
@@ -4995,7 +4997,7 @@ fn parse_enters_tapped_with_counters_line(
     Ok(Some(vec![StaticAbility::enters_tapped_ability(), counters]))
 }
 
-fn parse_enters_with_counters_line(
+pub(crate) fn parse_enters_with_counters_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -5093,7 +5095,7 @@ fn parse_enters_with_counters_line(
     )))
 }
 
-fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
     let words = words(tokens);
     if !words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5174,7 +5176,7 @@ fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
     None
 }
 
-fn parse_where_x_source_stat_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_source_stat_value(tokens: &[Token]) -> Option<Value> {
     let words = words(tokens);
     if !words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5191,7 +5193,7 @@ fn parse_where_x_source_stat_value(tokens: &[Token]) -> Option<Value> {
     }
 }
 
-fn parse_where_x_life_gained_this_turn_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[Token]) -> Option<Value> {
     let words = words(tokens);
     if !words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5205,7 +5207,7 @@ fn parse_where_x_life_gained_this_turn_value(tokens: &[Token]) -> Option<Value> 
     }
 }
 
-fn parse_where_x_noncombat_damage_to_opponents_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_noncombat_damage_to_opponents_value(tokens: &[Token]) -> Option<Value> {
     let words = words(tokens);
     if !words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5244,7 +5246,7 @@ fn parse_where_x_noncombat_damage_to_opponents_value(tokens: &[Token]) -> Option
     }
 }
 
-fn parse_where_x_is_aggregate_filter_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[Token]) -> Option<Value> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5301,7 +5303,7 @@ fn parse_where_x_is_aggregate_filter_value(tokens: &[Token]) -> Option<Value> {
     }
 }
 
-fn parse_where_x_greatest_commander_mana_value(
+pub(crate) fn parse_where_x_greatest_commander_mana_value(
     tokens: &[Token],
     commander_start_word_idx: usize,
 ) -> Option<Value> {
@@ -5342,7 +5344,7 @@ fn parse_where_x_greatest_commander_mana_value(
     Some(Value::GreatestManaValue(combined))
 }
 
-fn parse_where_x_is_number_of_differently_named_filter_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_is_number_of_differently_named_filter_value(tokens: &[Token]) -> Option<Value> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5366,7 +5368,7 @@ fn parse_where_x_is_number_of_differently_named_filter_value(tokens: &[Token]) -
     Some(Value::DistinctNames(filter))
 }
 
-fn parse_where_x_is_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5430,7 +5432,7 @@ fn parse_where_x_is_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
     Some(Value::Count(filter))
 }
 
-fn parse_where_x_is_fixed_plus_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
     let words = words(tokens);
     if !words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5462,7 +5464,7 @@ fn parse_where_x_is_fixed_plus_number_of_filter_value(tokens: &[Token]) -> Optio
     ))
 }
 
-fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(tokens: &[Token]) -> Option<Value> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["where", "x", "is"]) {
         return None;
@@ -5517,7 +5519,7 @@ fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(tokens: &[Token])
     ))
 }
 
-fn token_index_for_word_index(tokens: &[Token], word_index: usize) -> Option<usize> {
+pub(crate) fn token_index_for_word_index(tokens: &[Token], word_index: usize) -> Option<usize> {
     let mut seen_words = 0usize;
     for (idx, token) in tokens.iter().enumerate() {
         if token.as_word().is_none() {
@@ -5531,7 +5533,7 @@ fn token_index_for_word_index(tokens: &[Token], word_index: usize) -> Option<usi
     None
 }
 
-fn parse_enters_tapped_for_filter_line(
+pub(crate) fn parse_enters_tapped_for_filter_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
@@ -5601,7 +5603,7 @@ fn parse_enters_tapped_for_filter_line(
     Ok(Some(StaticAbility::enters_tapped_for_filter(filter)))
 }
 
-fn parse_conditional_enters_tapped_unless_line(
+pub(crate) fn parse_conditional_enters_tapped_unless_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
@@ -5671,7 +5673,7 @@ fn parse_conditional_enters_tapped_unless_line(
     )))
 }
 
-fn parse_enters_with_additional_counter_for_filter_line(
+pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -5737,7 +5739,7 @@ fn parse_enters_with_additional_counter_for_filter_line(
     )))
 }
 
-fn parse_creatures_cant_block_line(
+pub(crate) fn parse_creatures_cant_block_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -5750,7 +5752,7 @@ fn parse_creatures_cant_block_line(
     Ok(None)
 }
 
-fn parse_prevent_all_damage_dealt_to_creatures_line(
+pub(crate) fn parse_prevent_all_damage_dealt_to_creatures_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -5772,7 +5774,7 @@ fn parse_prevent_all_damage_dealt_to_creatures_line(
     Ok(None)
 }
 
-fn parse_prevent_all_damage_to_source_by_creatures_line(
+pub(crate) fn parse_prevent_all_damage_to_source_by_creatures_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -5813,7 +5815,7 @@ fn parse_prevent_all_damage_to_source_by_creatures_line(
     Ok(None)
 }
 
-fn annihilator_granted_ability(amount: u32) -> Ability {
+pub(crate) fn annihilator_granted_ability(amount: u32) -> Ability {
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: Trigger::this_attacks(),
@@ -5830,7 +5832,7 @@ fn annihilator_granted_ability(amount: u32) -> Ability {
     }
 }
 
-fn parse_equipped_creature_has_line(
+pub(crate) fn parse_equipped_creature_has_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let words = words(tokens);
@@ -5875,7 +5877,7 @@ fn parse_equipped_creature_has_line(
     Ok(Some(out))
 }
 
-fn parse_attached_cant_attack_or_block_line(
+pub(crate) fn parse_attached_cant_attack_or_block_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = normalize_cant_words(tokens);
@@ -5932,7 +5934,7 @@ fn parse_attached_cant_attack_or_block_line(
     )))
 }
 
-fn parse_you_control_attached_creature_line(
+pub(crate) fn parse_you_control_attached_creature_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = words(tokens);
@@ -5957,7 +5959,7 @@ fn parse_you_control_attached_creature_line(
     )))
 }
 
-fn parse_attached_gets_and_cant_block_line(
+pub(crate) fn parse_attached_gets_and_cant_block_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let line_words = words(tokens);
@@ -6015,7 +6017,7 @@ fn parse_attached_gets_and_cant_block_line(
     Ok(Some(vec![anthem, grant]))
 }
 
-fn parse_prevent_damage_to_source_remove_counter_line(
+pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = words(tokens);
@@ -6103,7 +6105,7 @@ fn parse_prevent_damage_to_source_remove_counter_line(
     )))
 }
 
-fn parse_attached_prevent_all_damage_dealt_by_attached_line(
+pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = words(tokens);
@@ -6133,7 +6135,7 @@ fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     )))
 }
 
-fn parse_attached_has_keywords_and_triggered_ability_line(
+pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let line_words = words(tokens);
@@ -6259,7 +6261,7 @@ fn parse_attached_has_keywords_and_triggered_ability_line(
     Ok(Some(static_abilities))
 }
 
-fn parse_attached_is_legendary_gets_and_has_keywords_line(
+pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let line_words = words(tokens);
@@ -6348,7 +6350,7 @@ fn parse_attached_is_legendary_gets_and_has_keywords_line(
     Ok(Some(out))
 }
 
-fn parse_attached_gets_and_has_ability_line(
+pub(crate) fn parse_attached_gets_and_has_ability_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let line_words = words(tokens);
@@ -6407,7 +6409,7 @@ fn parse_attached_gets_and_has_ability_line(
     Ok(Some(vec![anthem, grant]))
 }
 
-fn parse_equipped_gets_and_has_activated_ability_line(
+pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let line_words = words(tokens);
@@ -6466,7 +6468,7 @@ fn parse_equipped_gets_and_has_activated_ability_line(
     Ok(Some(static_abilities))
 }
 
-fn parse_may_choose_not_to_untap_during_untap_step_line(
+pub(crate) fn parse_may_choose_not_to_untap_during_untap_step_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -6503,7 +6505,7 @@ fn parse_may_choose_not_to_untap_during_untap_step_line(
     )))
 }
 
-fn parse_untap_during_each_other_players_untap_step_line(
+pub(crate) fn parse_untap_during_each_other_players_untap_step_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = words(tokens);
@@ -6516,7 +6518,7 @@ fn parse_untap_during_each_other_players_untap_step_line(
     )))
 }
 
-fn parse_doesnt_untap_during_untap_step_line(
+pub(crate) fn parse_doesnt_untap_during_untap_step_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
@@ -6643,7 +6645,7 @@ fn parse_doesnt_untap_during_untap_step_line(
     Ok(None)
 }
 
-fn parse_flying_restriction_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_flying_restriction_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = words(tokens)
         .into_iter()
         .map(|word| if word == "cannot" { "cant" } else { word })
@@ -6716,7 +6718,7 @@ fn parse_flying_restriction_line(tokens: &[Token]) -> Result<Option<StaticAbilit
     Ok(None)
 }
 
-fn parse_can_block_only_flying_line(
+pub(crate) fn parse_can_block_only_flying_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = words(tokens)
@@ -6759,7 +6761,7 @@ fn parse_can_block_only_flying_line(
     Ok(None)
 }
 
-fn parse_assign_damage_as_unblocked_line(
+pub(crate) fn parse_assign_damage_as_unblocked_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = words(tokens)
@@ -6803,7 +6805,7 @@ fn parse_assign_damage_as_unblocked_line(
     Ok(None)
 }
 
-fn parse_grant_flash_to_noncreature_spells_line(
+pub(crate) fn parse_grant_flash_to_noncreature_spells_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let normalized = words(tokens)
@@ -6854,7 +6856,7 @@ fn parse_grant_flash_to_noncreature_spells_line(
     Ok(None)
 }
 
-fn parse_attacks_each_combat_if_able_line(
+pub(crate) fn parse_attacks_each_combat_if_able_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -6888,7 +6890,7 @@ fn parse_attacks_each_combat_if_able_line(
     }
 }
 
-fn parse_additional_land_play_line(
+pub(crate) fn parse_additional_land_play_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -6912,7 +6914,7 @@ fn parse_additional_land_play_line(
     Ok(None)
 }
 
-fn parse_play_lands_from_graveyard_line(
+pub(crate) fn parse_play_lands_from_graveyard_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -6927,7 +6929,7 @@ fn parse_play_lands_from_graveyard_line(
     Ok(None)
 }
 
-fn parse_pt_modifier(raw: &str) -> Result<(i32, i32), CardTextError> {
+pub(crate) fn parse_pt_modifier(raw: &str) -> Result<(i32, i32), CardTextError> {
     let parts: Vec<&str> = raw.split('/').collect();
     if parts.len() != 2 {
         return Err(CardTextError::ParseError(
@@ -6945,7 +6947,7 @@ fn parse_pt_modifier(raw: &str) -> Result<(i32, i32), CardTextError> {
     Ok((power, toughness))
 }
 
-fn parse_signed_pt_component(raw: &str) -> Result<Value, CardTextError> {
+pub(crate) fn parse_signed_pt_component(raw: &str) -> Result<Value, CardTextError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(CardTextError::ParseError(
@@ -6975,7 +6977,7 @@ fn parse_signed_pt_component(raw: &str) -> Result<Value, CardTextError> {
     Ok(Value::Fixed(parsed * sign))
 }
 
-fn parse_pt_modifier_values(raw: &str) -> Result<(Value, Value), CardTextError> {
+pub(crate) fn parse_pt_modifier_values(raw: &str) -> Result<(Value, Value), CardTextError> {
     let parts: Vec<&str> = raw.split('/').collect();
     if parts.len() != 2 {
         return Err(CardTextError::ParseError(
@@ -6988,7 +6990,7 @@ fn parse_pt_modifier_values(raw: &str) -> Result<(Value, Value), CardTextError> 
     Ok((power, toughness))
 }
 
-fn parse_no_maximum_hand_size_line(
+pub(crate) fn parse_no_maximum_hand_size_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -6998,7 +7000,7 @@ fn parse_no_maximum_hand_size_line(
     Ok(None)
 }
 
-fn parse_reduced_maximum_hand_size_line(
+pub(crate) fn parse_reduced_maximum_hand_size_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7054,7 +7056,7 @@ fn parse_reduced_maximum_hand_size_line(
     )))
 }
 
-fn parse_library_of_leng_discard_replacement_line(
+pub(crate) fn parse_library_of_leng_discard_replacement_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7076,7 +7078,7 @@ fn parse_library_of_leng_discard_replacement_line(
     Ok(None)
 }
 
-fn parse_draw_replace_exile_top_face_down_line(
+pub(crate) fn parse_draw_replace_exile_top_face_down_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7101,7 +7103,7 @@ fn parse_draw_replace_exile_top_face_down_line(
     Ok(None)
 }
 
-fn parse_toph_first_metalbender_line(
+pub(crate) fn parse_toph_first_metalbender_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7130,7 +7132,7 @@ fn parse_toph_first_metalbender_line(
     Ok(None)
 }
 
-fn parse_discard_or_redirect_replacement_line(
+pub(crate) fn parse_discard_or_redirect_replacement_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7157,7 +7159,7 @@ fn parse_discard_or_redirect_replacement_line(
     Ok(None)
 }
 
-fn parse_pay_life_or_enter_tapped_line(
+pub(crate) fn parse_pay_life_or_enter_tapped_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7224,7 +7226,7 @@ fn parse_pay_life_or_enter_tapped_line(
     Ok(Some(StaticAbility::pay_life_or_enter_tapped(value)))
 }
 
-fn parse_copy_activated_abilities_line(
+pub(crate) fn parse_copy_activated_abilities_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7324,7 +7326,7 @@ fn parse_copy_activated_abilities_line(
     Ok(Some(StaticAbility::copy_activated_abilities(ability)))
 }
 
-fn parse_players_spend_mana_as_any_color_line(
+pub(crate) fn parse_players_spend_mana_as_any_color_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7338,7 +7340,7 @@ fn parse_players_spend_mana_as_any_color_line(
     Ok(None)
 }
 
-fn parse_source_activation_spend_mana_as_any_color_line(
+pub(crate) fn parse_source_activation_spend_mana_as_any_color_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
@@ -7377,7 +7379,7 @@ fn parse_source_activation_spend_mana_as_any_color_line(
     Ok(None)
 }
 
-fn parse_enchanted_has_activated_ability_line(
+pub(crate) fn parse_enchanted_has_activated_ability_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let token_words = words(tokens);
@@ -7405,7 +7407,7 @@ fn parse_enchanted_has_activated_ability_line(
     )))
 }
 
-fn parse_has_base_power_toughness_and_granted_keywords_static_line(
+pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
@@ -7511,7 +7513,7 @@ fn parse_has_base_power_toughness_and_granted_keywords_static_line(
     Ok(Some(compiled))
 }
 
-fn parse_filter_has_granted_ability_line(
+pub(crate) fn parse_filter_has_granted_ability_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);

@@ -1,4 +1,6 @@
-fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, CardTextError> {
+use super::*;
+
+pub(crate) fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, CardTextError> {
     let mut filter = ObjectFilter::default();
     if other {
         filter.other = true;
@@ -2110,7 +2112,7 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     Ok(filter)
 }
 
-fn parse_spell_filter(tokens: &[Token]) -> crate::ability::SpellFilter {
+pub(crate) fn parse_spell_filter(tokens: &[Token]) -> crate::ability::SpellFilter {
     let mut filter = crate::ability::SpellFilter::default();
     let words: Vec<&str> = words(tokens)
         .into_iter()
@@ -2192,7 +2194,7 @@ fn parse_spell_filter(tokens: &[Token]) -> crate::ability::SpellFilter {
     filter
 }
 
-fn spell_filter_has_identity(filter: &crate::ability::SpellFilter) -> bool {
+pub(crate) fn spell_filter_has_identity(filter: &crate::ability::SpellFilter) -> bool {
     !filter.card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
@@ -2203,7 +2205,7 @@ fn spell_filter_has_identity(filter: &crate::ability::SpellFilter) -> bool {
         || filter.alternative_cast.is_some()
 }
 
-fn merge_spell_filters(base: &mut crate::ability::SpellFilter, extra: crate::ability::SpellFilter) {
+pub(crate) fn merge_spell_filters(base: &mut crate::ability::SpellFilter, extra: crate::ability::SpellFilter) {
     for card_type in extra.card_types {
         if !base.card_types.contains(&card_type) {
             base.card_types.push(card_type);
@@ -2237,7 +2239,7 @@ fn merge_spell_filters(base: &mut crate::ability::SpellFilter, extra: crate::abi
     }
 }
 
-fn split_on_or(tokens: &[Token]) -> Vec<Vec<Token>> {
+pub(crate) fn split_on_or(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
 
@@ -2260,7 +2262,7 @@ fn split_on_or(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
-fn is_comparison_or_delimiter(tokens: &[Token], idx: usize) -> bool {
+pub(crate) fn is_comparison_or_delimiter(tokens: &[Token], idx: usize) -> bool {
     if !tokens.get(idx).is_some_and(|token| token.is_word("or")) {
         return false;
     }

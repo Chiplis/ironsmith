@@ -1,4 +1,6 @@
-fn parse_card_type(word: &str) -> Option<CardType> {
+use super::*;
+
+pub(crate) fn parse_card_type(word: &str) -> Option<CardType> {
     match word {
         "creature" | "creatures" => Some(CardType::Creature),
         "artifact" | "artifacts" => Some(CardType::Artifact),
@@ -13,17 +15,17 @@ fn parse_card_type(word: &str) -> Option<CardType> {
     }
 }
 
-fn parse_non_type(word: &str) -> Option<CardType> {
+pub(crate) fn parse_non_type(word: &str) -> Option<CardType> {
     let rest = word.strip_prefix("non")?;
     parse_card_type(rest)
 }
 
-fn parse_non_supertype(word: &str) -> Option<Supertype> {
+pub(crate) fn parse_non_supertype(word: &str) -> Option<Supertype> {
     let rest = word.strip_prefix("non")?;
     parse_supertype_word(rest)
 }
 
-fn parse_non_color(word: &str) -> Option<ColorSet> {
+pub(crate) fn parse_non_color(word: &str) -> Option<ColorSet> {
     let rest = word.strip_prefix("non")?;
     match rest {
         "white" => Some(ColorSet::WHITE),
@@ -35,23 +37,23 @@ fn parse_non_color(word: &str) -> Option<ColorSet> {
     }
 }
 
-fn parse_non_subtype(word: &str) -> Option<Subtype> {
+pub(crate) fn parse_non_subtype(word: &str) -> Option<Subtype> {
     let rest = word.strip_prefix("non")?;
     parse_subtype_word(rest).or_else(|| rest.strip_suffix('s').and_then(parse_subtype_word))
 }
 
-fn is_outlaw_word(word: &str) -> bool {
+pub(crate) fn is_outlaw_word(word: &str) -> bool {
     matches!(word, "outlaw" | "outlaws")
 }
 
-fn is_non_outlaw_word(word: &str) -> bool {
+pub(crate) fn is_non_outlaw_word(word: &str) -> bool {
     matches!(
         word,
         "nonoutlaw" | "nonoutlaws" | "non-outlaw" | "non-outlaws"
     )
 }
 
-fn push_outlaw_subtypes(out: &mut Vec<Subtype>) {
+pub(crate) fn push_outlaw_subtypes(out: &mut Vec<Subtype>) {
     for subtype in [
         Subtype::Assassin,
         Subtype::Mercenary,
@@ -65,7 +67,7 @@ fn push_outlaw_subtypes(out: &mut Vec<Subtype>) {
     }
 }
 
-fn parse_color(word: &str) -> Option<ColorSet> {
+pub(crate) fn parse_color(word: &str) -> Option<ColorSet> {
     match word {
         "white" => Some(ColorSet::WHITE),
         "blue" => Some(ColorSet::BLUE),
@@ -76,7 +78,7 @@ fn parse_color(word: &str) -> Option<ColorSet> {
     }
 }
 
-fn parse_zone_word(word: &str) -> Option<Zone> {
+pub(crate) fn parse_zone_word(word: &str) -> Option<Zone> {
     match word {
         "battlefield" => Some(Zone::Battlefield),
         "graveyard" | "graveyards" => Some(Zone::Graveyard),
@@ -88,7 +90,7 @@ fn parse_zone_word(word: &str) -> Option<Zone> {
     }
 }
 
-fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
+pub(crate) fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
     match words {
         ["flashback", ..] => Some((AlternativeCastKind::Flashback, 1)),
         ["jump", "start", ..] => Some((AlternativeCastKind::JumpStart, 2)),
@@ -101,12 +103,12 @@ fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, 
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FilterKeywordConstraint {
+pub(crate) enum FilterKeywordConstraint {
     Static(StaticAbilityId),
     Marker(&'static str),
 }
 
-fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKeywordConstraint> {
+pub(crate) fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKeywordConstraint> {
     use FilterKeywordConstraint::{Marker, Static};
     let ability = match action {
         KeywordAction::Flying => Static(StaticAbilityId::Flying),
@@ -150,7 +152,7 @@ fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKe
     Some(ability)
 }
 
-fn parse_filter_keyword_constraint_words(
+pub(crate) fn parse_filter_keyword_constraint_words(
     words: &[&str],
 ) -> Option<(FilterKeywordConstraint, usize)> {
     if words.is_empty() {
@@ -182,7 +184,7 @@ fn parse_filter_keyword_constraint_words(
     None
 }
 
-fn parse_filter_counter_constraint_words(
+pub(crate) fn parse_filter_counter_constraint_words(
     words: &[&str],
 ) -> Option<(crate::filter::CounterConstraint, usize)> {
     if words.len() < 3 {
@@ -221,7 +223,7 @@ fn parse_filter_counter_constraint_words(
     ))
 }
 
-fn apply_filter_keyword_constraint(
+pub(crate) fn apply_filter_keyword_constraint(
     filter: &mut ObjectFilter,
     constraint: FilterKeywordConstraint,
     excluded: bool,
@@ -258,7 +260,7 @@ fn apply_filter_keyword_constraint(
     }
 }
 
-fn is_permanent_type(card_type: CardType) -> bool {
+pub(crate) fn is_permanent_type(card_type: CardType) -> bool {
     matches!(
         card_type,
         CardType::Artifact
@@ -270,11 +272,11 @@ fn is_permanent_type(card_type: CardType) -> bool {
     )
 }
 
-fn is_article(word: &str) -> bool {
+pub(crate) fn is_article(word: &str) -> bool {
     matches!(word, "a" | "an" | "the")
 }
 
-fn parse_number(tokens: &[Token]) -> Option<(u32, usize)> {
+pub(crate) fn parse_number(tokens: &[Token]) -> Option<(u32, usize)> {
     let token = tokens.first()?;
     let word = token.as_word()?;
 
@@ -299,7 +301,7 @@ fn parse_number(tokens: &[Token]) -> Option<(u32, usize)> {
     Some((value, 1))
 }
 
-fn parse_value(tokens: &[Token]) -> Option<(Value, usize)> {
+pub(crate) fn parse_value(tokens: &[Token]) -> Option<(Value, usize)> {
     let token = tokens.first()?;
     let word = token.as_word()?;
 
@@ -312,21 +314,21 @@ fn parse_value(tokens: &[Token]) -> Option<(Value, usize)> {
 }
 
 #[derive(Debug, Clone)]
-struct CompileContext {
-    next_effect_id: u32,
-    next_tag_id: u32,
-    last_effect_id: Option<EffectId>,
-    last_object_tag: Option<String>,
-    last_player_filter: Option<PlayerFilter>,
-    iterated_player: bool,
-    auto_tag_object_targets: bool,
-    force_auto_tag_object_targets: bool,
-    allow_life_event_value: bool,
-    bind_unbound_x_to_last_effect: bool,
+pub(crate) struct CompileContext {
+    pub(crate) next_effect_id: u32,
+    pub(crate) next_tag_id: u32,
+    pub(crate) last_effect_id: Option<EffectId>,
+    pub(crate) last_object_tag: Option<String>,
+    pub(crate) last_player_filter: Option<PlayerFilter>,
+    pub(crate) iterated_player: bool,
+    pub(crate) auto_tag_object_targets: bool,
+    pub(crate) force_auto_tag_object_targets: bool,
+    pub(crate) allow_life_event_value: bool,
+    pub(crate) bind_unbound_x_to_last_effect: bool,
 }
 
 impl CompileContext {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             next_effect_id: 0,
             next_tag_id: 0,
@@ -341,13 +343,13 @@ impl CompileContext {
         }
     }
 
-    fn next_effect_id(&mut self) -> EffectId {
+    pub(crate) fn next_effect_id(&mut self) -> EffectId {
         let id = EffectId(self.next_effect_id);
         self.next_effect_id += 1;
         id
     }
 
-    fn next_tag(&mut self, prefix: &str) -> String {
+    pub(crate) fn next_tag(&mut self, prefix: &str) -> String {
         let tag = format!("{prefix}_{}", self.next_tag_id);
         self.next_tag_id += 1;
         tag

@@ -1,4 +1,6 @@
-fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
+use super::*;
+
+pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut buffer = String::new();
     let mut word_start: Option<usize> = None;
@@ -97,7 +99,7 @@ fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
     tokens
 }
 
-fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError> {
+pub(crate) fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -133,7 +135,7 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
 }
 
 #[derive(Debug, Clone)]
-enum MetadataLine {
+pub(crate) enum MetadataLine {
     ManaCost(String),
     TypeLine(String),
     PowerToughness(String),
@@ -141,29 +143,29 @@ enum MetadataLine {
     Defense(String),
 }
 
-fn words(tokens: &[Token]) -> Vec<&str> {
+pub(crate) fn words(tokens: &[Token]) -> Vec<&str> {
     tokens.iter().filter_map(Token::as_word).collect()
 }
 
-fn parser_stacktrace_enabled() -> bool {
+pub(crate) fn parser_stacktrace_enabled() -> bool {
     std::env::var("IRONSMITH_PARSER_STACKTRACE")
         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false)
 }
 
-fn parser_trace_enabled() -> bool {
+pub(crate) fn parser_trace_enabled() -> bool {
     std::env::var("IRONSMITH_PARSER_TRACE")
         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false)
 }
 
-fn parser_allow_unsupported_enabled() -> bool {
+pub(crate) fn parser_allow_unsupported_enabled() -> bool {
     std::env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED")
         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false)
 }
 
-fn parser_trace(stage: &str, tokens: &[Token]) {
+pub(crate) fn parser_trace(stage: &str, tokens: &[Token]) {
     if !parser_trace_enabled() {
         return;
     }
@@ -173,14 +175,14 @@ fn parser_trace(stage: &str, tokens: &[Token]) {
     );
 }
 
-fn parser_trace_line(stage: &str, line: &str) {
+pub(crate) fn parser_trace_line(stage: &str, line: &str) {
     if !parser_trace_enabled() {
         return;
     }
     eprintln!("[parser-flow] stage={stage} line='{}'", line.trim());
 }
 
-fn parser_trace_stack(stage: &str, tokens: &[Token]) {
+pub(crate) fn parser_trace_stack(stage: &str, tokens: &[Token]) {
     if !parser_stacktrace_enabled() {
         return;
     }
@@ -191,7 +193,7 @@ fn parser_trace_stack(stage: &str, tokens: &[Token]) {
     eprintln!("{}", std::backtrace::Backtrace::force_capture());
 }
 
-fn span_from_tokens(tokens: &[Token]) -> Option<TextSpan> {
+pub(crate) fn span_from_tokens(tokens: &[Token]) -> Option<TextSpan> {
     let first = tokens.first()?;
     let last = tokens.last()?;
     let start = first.span().start;
@@ -204,20 +206,20 @@ fn span_from_tokens(tokens: &[Token]) -> Option<TextSpan> {
 }
 
 #[derive(Debug, Clone)]
-struct NormalizedLine {
-    original: String,
-    normalized: String,
-    char_map: Vec<usize>,
+pub(crate) struct NormalizedLine {
+    pub(crate) original: String,
+    pub(crate) normalized: String,
+    pub(crate) char_map: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
-struct LineInfo {
-    line_index: usize,
-    raw_line: String,
-    normalized: NormalizedLine,
+pub(crate) struct LineInfo {
+    pub(crate) line_index: usize,
+    pub(crate) raw_line: String,
+    pub(crate) normalized: NormalizedLine,
 }
 
-fn replace_names_with_map(
+pub(crate) fn replace_names_with_map(
     line: &str,
     full_name: &str,
     short_name: &str,
@@ -379,7 +381,7 @@ fn replace_names_with_map(
     (out, map)
 }
 
-fn strip_parenthetical_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
+pub(crate) fn strip_parenthetical_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
     let mut out = String::new();
     let mut out_map = Vec::new();
     let mut depth = 0u32;
@@ -408,7 +410,7 @@ fn strip_parenthetical_with_map(text: &str, map: &[usize]) -> (String, Vec<usize
     (out, out_map)
 }
 
-fn is_labeled_ability_word_prefix(prefix: &str) -> bool {
+pub(crate) fn is_labeled_ability_word_prefix(prefix: &str) -> bool {
     let words: Vec<&str> = prefix
         .split_whitespace()
         .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
@@ -501,7 +503,7 @@ fn is_labeled_ability_word_prefix(prefix: &str) -> bool {
     )
 }
 
-fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
+pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
     let words: Vec<&str> = prefix
         .split_whitespace()
         .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
@@ -531,12 +533,12 @@ fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
     )
 }
 
-fn starts_with_if_clause(text: &str) -> bool {
+pub(crate) fn starts_with_if_clause(text: &str) -> bool {
     let trimmed = text.trim_start();
     trimmed == "if" || trimmed.starts_with("if ")
 }
 
-fn is_generic_ability_label_prefix(prefix: &str) -> bool {
+pub(crate) fn is_generic_ability_label_prefix(prefix: &str) -> bool {
     let words: Vec<&str> = prefix
         .split_whitespace()
         .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
@@ -552,7 +554,7 @@ fn is_generic_ability_label_prefix(prefix: &str) -> bool {
     })
 }
 
-fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
+pub(crate) fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
     let separator = text
         .find('—')
         .map(|idx| (idx, '—'.len_utf8()))
@@ -599,7 +601,7 @@ fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (Str
     (remainder, remainder_map)
 }
 
-fn normalize_line_for_parse(
+pub(crate) fn normalize_line_for_parse(
     line: &str,
     full_name: &str,
     short_name: &str,
@@ -646,12 +648,12 @@ fn normalize_line_for_parse(
     })
 }
 
-fn is_ignorable_unparsed_line(line: &str) -> bool {
+pub(crate) fn is_ignorable_unparsed_line(line: &str) -> bool {
     let trimmed = line.trim();
     !trimmed.is_empty() && trimmed.starts_with('(') && trimmed.ends_with(')')
 }
 
-fn byte_to_char_index(text: &str, byte_idx: usize) -> usize {
+pub(crate) fn byte_to_char_index(text: &str, byte_idx: usize) -> usize {
     if byte_idx == 0 {
         return 0;
     }
@@ -659,7 +661,7 @@ fn byte_to_char_index(text: &str, byte_idx: usize) -> usize {
     text[..clamped].chars().count()
 }
 
-fn map_span_to_original(
+pub(crate) fn map_span_to_original(
     span: TextSpan,
     normalized_line: &str,
     original_line: &str,
@@ -691,7 +693,7 @@ fn map_span_to_original(
     }
 }
 
-fn split_on_period(tokens: &[Token]) -> Vec<Vec<Token>> {
+pub(crate) fn split_on_period(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
 
@@ -712,7 +714,7 @@ fn split_on_period(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
-fn split_on_comma(tokens: &[Token]) -> Vec<Vec<Token>> {
+pub(crate) fn split_on_comma(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
 
@@ -733,7 +735,7 @@ fn split_on_comma(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
-fn split_on_comma_or_semicolon(tokens: &[Token]) -> Vec<Vec<Token>> {
+pub(crate) fn split_on_comma_or_semicolon(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
 
@@ -754,7 +756,7 @@ fn split_on_comma_or_semicolon(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
-fn split_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
+pub(crate) fn split_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
 
@@ -775,14 +777,14 @@ fn split_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
-fn is_basic_color_word(word: &str) -> bool {
+pub(crate) fn is_basic_color_word(word: &str) -> bool {
     matches!(
         word,
         "white" | "blue" | "black" | "red" | "green" | "colorless"
     )
 }
 
-fn starts_with_inline_token_rules_tail(words: &[&str]) -> bool {
+pub(crate) fn starts_with_inline_token_rules_tail(words: &[&str]) -> bool {
     words.starts_with(&["when"])
         || words.starts_with(&["whenever"])
         || words.starts_with(&["when", "this", "token"])
@@ -815,7 +817,7 @@ fn starts_with_inline_token_rules_tail(words: &[&str]) -> bool {
         || words.starts_with(&["t"])
 }
 
-fn starts_with_inline_token_rules_continuation(words: &[&str]) -> bool {
+pub(crate) fn starts_with_inline_token_rules_continuation(words: &[&str]) -> bool {
     matches!(
         words.first().copied(),
         Some(
@@ -847,12 +849,12 @@ fn starts_with_inline_token_rules_continuation(words: &[&str]) -> bool {
     )
 }
 
-fn is_token_creation_context(words: &[&str]) -> bool {
+pub(crate) fn is_token_creation_context(words: &[&str]) -> bool {
     words.first().copied() == Some("create")
         && words.iter().any(|word| matches!(*word, "token" | "tokens"))
 }
 
-fn has_inline_token_rules_context(words: &[&str]) -> bool {
+pub(crate) fn has_inline_token_rules_context(words: &[&str]) -> bool {
     words.windows(3).any(|window| {
         matches!(
             window,
@@ -864,7 +866,7 @@ fn has_inline_token_rules_context(words: &[&str]) -> bool {
         || (words.contains(&"except") && words.contains(&"copy") && words.contains(&"token"))
 }
 
-fn should_keep_and_for_token_rules(current: &[Token], remaining: &[Token]) -> bool {
+pub(crate) fn should_keep_and_for_token_rules(current: &[Token], remaining: &[Token]) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -880,7 +882,7 @@ fn should_keep_and_for_token_rules(current: &[Token], remaining: &[Token]) -> bo
     starts_with_inline_token_rules_tail(&remaining_words)
 }
 
-fn should_keep_and_for_attachment_object_list(current: &[Token], remaining: &[Token]) -> bool {
+pub(crate) fn should_keep_and_for_attachment_object_list(current: &[Token], remaining: &[Token]) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -912,7 +914,7 @@ fn should_keep_and_for_attachment_object_list(current: &[Token], remaining: &[To
         || current_words.starts_with(&["gain", "control", "of", "all"])
 }
 
-fn should_keep_and_for_each_player_may_clause(current: &[Token], remaining: &[Token]) -> bool {
+pub(crate) fn should_keep_and_for_each_player_may_clause(current: &[Token], remaining: &[Token]) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -944,7 +946,7 @@ fn should_keep_and_for_each_player_may_clause(current: &[Token], remaining: &[To
     true
 }
 
-fn should_keep_and_for_put_rest_clause(current: &[Token], remaining: &[Token]) -> bool {
+pub(crate) fn should_keep_and_for_put_rest_clause(current: &[Token], remaining: &[Token]) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -968,7 +970,7 @@ fn should_keep_and_for_put_rest_clause(current: &[Token], remaining: &[Token]) -
         && current_words.contains(&"hand")
 }
 
-fn split_effect_chain_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
+pub(crate) fn split_effect_chain_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
 
@@ -1003,7 +1005,7 @@ fn split_effect_chain_on_and(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
-fn has_effect_head_without_verb(tokens: &[Token]) -> bool {
+pub(crate) fn has_effect_head_without_verb(tokens: &[Token]) -> bool {
     parse_prevent_next_damage_clause(tokens)
         .ok()
         .flatten()
@@ -1018,11 +1020,11 @@ fn has_effect_head_without_verb(tokens: &[Token]) -> bool {
             .is_some()
 }
 
-fn segment_has_effect_head(tokens: &[Token]) -> bool {
+pub(crate) fn segment_has_effect_head(tokens: &[Token]) -> bool {
     find_verb(tokens).is_some() || has_effect_head_without_verb(tokens)
 }
 
-fn join_sentences_with_period(sentences: &[Vec<Token>]) -> Vec<Token> {
+pub(crate) fn join_sentences_with_period(sentences: &[Vec<Token>]) -> Vec<Token> {
     let mut joined = Vec::new();
     for (idx, sentence) in sentences.iter().enumerate() {
         if idx > 0 {
@@ -1037,7 +1039,7 @@ fn join_sentences_with_period(sentences: &[Vec<Token>]) -> Vec<Token> {
 /// clause (doesn't back-reference the first part with "that", "it", "them", "its").
 /// This handles patterns like "discard your hand, then draw four cards" without
 /// breaking cross-referencing patterns like "exile X, then return that card".
-fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
+pub(crate) fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
     let back_ref_words = ["that", "it", "them", "its"];
     let mut result = Vec::new();
     for segment in segments {
@@ -1198,7 +1200,7 @@ fn split_segments_on_comma_then(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
     result
 }
 
-fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
+pub(crate) fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
     let mut result = Vec::new();
     for segment in segments {
         let mut start = 0usize;
@@ -1256,7 +1258,7 @@ fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> Vec<Vec<Tok
     result
 }
 
-fn split_cost_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
+pub(crate) fn split_cost_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
 
@@ -1277,7 +1279,7 @@ fn split_cost_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
-fn alternative_cast_parts_from_total_cost(
+pub(crate) fn alternative_cast_parts_from_total_cost(
     total_cost: &crate::cost::TotalCost,
 ) -> (Option<ManaCost>, Vec<Effect>) {
     let mut mana_cost: Option<ManaCost> = None;
@@ -1344,7 +1346,7 @@ fn alternative_cast_parts_from_total_cost(
     )
 }
 
-fn normalize_alternative_cast_cost_effects(cost_effects: Vec<Effect>) -> Vec<Effect> {
+pub(crate) fn normalize_alternative_cast_cost_effects(cost_effects: Vec<Effect>) -> Vec<Effect> {
     use crate::filter::TaggedOpbjectRelation;
 
     let mut out = Vec::new();
@@ -1378,7 +1380,7 @@ fn normalize_alternative_cast_cost_effects(cost_effects: Vec<Effect>) -> Vec<Eff
     out
 }
 
-fn parse_mana_output_options_tokens(
+pub(crate) fn parse_mana_output_options_tokens(
     tokens: &[Token],
 ) -> Result<Vec<Vec<ManaSymbol>>, CardTextError> {
     let mut segments = Vec::new();
@@ -1451,7 +1453,7 @@ fn parse_mana_output_options_tokens(
     Ok(options)
 }
 
-fn parse_mana_output_options_for_line(
+pub(crate) fn parse_mana_output_options_for_line(
     line: &str,
     line_index: usize,
 ) -> Result<Option<Vec<Vec<ManaSymbol>>>, CardTextError> {
@@ -1494,7 +1496,7 @@ fn parse_mana_output_options_for_line(
     Ok(Some(options))
 }
 
-fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, &str)> {
+pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, &str)> {
     let (prefix, rest) = line.split_once('—').or_else(|| line.split_once(" - "))?;
 
     let mut chapters = Vec::new();
@@ -1514,7 +1516,7 @@ fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, &str)> {
     Some((chapters, rest.trim()))
 }
 
-fn roman_to_int(roman: &str) -> Option<u32> {
+pub(crate) fn roman_to_int(roman: &str) -> Option<u32> {
     match roman {
         "i" => Some(1),
         "ii" => Some(2),
@@ -1526,7 +1528,7 @@ fn roman_to_int(roman: &str) -> Option<u32> {
     }
 }
 
-fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
+pub(crate) fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
     let lower = line.trim().to_ascii_lowercase();
     let rest = lower.strip_prefix("level ")?;
     let token = rest.split_whitespace().next()?;
@@ -1543,7 +1545,7 @@ fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
     Some((value, Some(value)))
 }
 
-fn is_untap_during_each_other_players_untap_step_words(words: &[&str]) -> bool {
+pub(crate) fn is_untap_during_each_other_players_untap_step_words(words: &[&str]) -> bool {
     if words.first().copied() != Some("untap") {
         return false;
     }
@@ -1553,7 +1555,7 @@ fn is_untap_during_each_other_players_untap_step_words(words: &[&str]) -> bool {
     })
 }
 
-fn is_non_mana_additional_cost_modifier_line(normalized_line: &str) -> bool {
+pub(crate) fn is_non_mana_additional_cost_modifier_line(normalized_line: &str) -> bool {
     let has_additional_cost = normalized_line.contains(" cost an additional ")
         || normalized_line.contains(" costs an additional ");
     if !has_additional_cost {
@@ -1567,7 +1569,7 @@ fn is_non_mana_additional_cost_modifier_line(normalized_line: &str) -> bool {
     normalized_line.contains('"') || normalized_line.contains('“') || normalized_line.contains('”')
 }
 
-fn dash_labeled_remainder_starts_with_trigger(line: &str) -> bool {
+pub(crate) fn dash_labeled_remainder_starts_with_trigger(line: &str) -> bool {
     let lower = line.trim().to_ascii_lowercase();
     let remainder = lower
         .split_once('—')

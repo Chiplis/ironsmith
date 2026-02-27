@@ -1,4 +1,6 @@
-fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
+use super::*;
+
+pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     parser_trace_line("parse_line:entry", line);
     let normalized = line
         .trim()
@@ -336,7 +338,7 @@ fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     Ok(LineAst::Statement { effects })
 }
 
-fn parse_additional_cost_choice_options(
+pub(crate) fn parse_additional_cost_choice_options(
     tokens: &[Token],
 ) -> Result<Option<Vec<AdditionalCostChoiceOptionAst>>, CardTextError> {
     let clause_words = words(tokens);
@@ -400,7 +402,7 @@ fn parse_additional_cost_choice_options(
     Ok(Some(options))
 }
 
-fn is_at_trigger_intro(tokens: &[Token], idx: usize) -> bool {
+pub(crate) fn is_at_trigger_intro(tokens: &[Token], idx: usize) -> bool {
     if !tokens.get(idx).is_some_and(|token| token.is_word("at")) {
         return false;
     }
@@ -416,7 +418,7 @@ fn is_at_trigger_intro(tokens: &[Token], idx: usize) -> bool {
     )
 }
 
-fn starts_with_activation_cost(tokens: &[Token]) -> bool {
+pub(crate) fn starts_with_activation_cost(tokens: &[Token]) -> bool {
     let Some(word) = tokens.first().and_then(Token::as_word) else {
         return false;
     };
@@ -442,11 +444,11 @@ fn starts_with_activation_cost(tokens: &[Token]) -> bool {
     parse_mana_symbol(word).is_ok()
 }
 
-fn find_activation_cost_start(tokens: &[Token]) -> Option<usize> {
+pub(crate) fn find_activation_cost_start(tokens: &[Token]) -> Option<usize> {
     (0..tokens.len()).find(|idx| starts_with_activation_cost(&tokens[*idx..]))
 }
 
-fn parse_flashback_keyword_line(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
+pub(crate) fn parse_flashback_keyword_line(tokens: &[Token]) -> Option<Vec<KeywordAction>> {
     let words_all = words(tokens);
     if words_all.first().copied() != Some("flashback") {
         return None;
@@ -467,7 +469,7 @@ fn parse_flashback_keyword_line(tokens: &[Token]) -> Option<Vec<KeywordAction>> 
     Some(vec![KeywordAction::MarkerText(text)])
 }
 
-fn parse_flashback_line(
+pub(crate) fn parse_flashback_line(
     tokens: &[Token],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     if !tokens
