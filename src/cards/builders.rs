@@ -490,6 +490,8 @@ enum PredicateAst {
         counter_type: CounterType,
         count: u32,
     },
+    YourTurn,
+    CreatureDiedThisTurn,
     YouAttackedThisTurn,
     NoSpellsWereCastLastTurn,
     /// The current resolving spell was kicked (not a target predicate).

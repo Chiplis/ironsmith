@@ -28506,6 +28506,16 @@ fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPredicate> {
 
     if words.len() >= 5
         && (words[0] == "that" || words[0] == "it")
+        && words[1] == "spell"
+        && words.iter().any(|word| *word == "countered")
+        && words[words.len() - 2] == "this"
+        && words[words.len() - 1] == "way"
+    {
+        return Some(IfResultPredicate::Did);
+    }
+
+    if words.len() >= 5
+        && (words[0] == "that" || words[0] == "it")
         && (words[1] == "creature" || words[1] == "permanent" || words[1] == "card")
         && words[2] == "dies"
         && words[3] == "this"
@@ -28556,6 +28566,10 @@ fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardTextError> {
         return Err(CardTextError::ParseError(
             "empty predicate in if clause".to_string(),
         ));
+    }
+
+    if let Some(predicate) = parse_graveyard_threshold_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     // Handle simple conjunction predicates like "... and have no cards in hand".
@@ -28712,6 +28726,20 @@ fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardTextError> {
 
     if filtered.as_slice() == ["you", "have", "no", "cards", "in", "hand"] {
         return Ok(PredicateAst::YouHaveNoCardsInHand);
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        ["it", "your", "turn"] | ["its", "your", "turn"] | ["your", "turn"]
+    ) {
+        return Ok(PredicateAst::YourTurn);
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        ["creature", "died", "this", "turn"] | ["creatures", "died", "this", "turn"]
+    ) {
+        return Ok(PredicateAst::CreatureDiedThisTurn);
     }
 
     if filtered.as_slice() == ["you", "attacked", "this", "turn"] {
@@ -29090,6 +29118,106 @@ fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardTextError> {
         "unsupported predicate (predicate: '{}')",
         filtered.join(" ")
     )))
+}
+
+fn parse_graveyard_threshold_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let (count, tail_start, constrained_player) = if filtered.len() >= 5
+        && filtered[0] == "there"
+        && filtered[1] == "are"
+        && filtered[3] == "or"
+        && filtered[4] == "more"
+    {
+        let Some(count) = parse_named_number(filtered[2]) else {
+            return Ok(None);
+        };
+        (count, 5usize, None)
+    } else if filtered.len() >= 5
+        && filtered[0] == "you"
+        && filtered[1] == "have"
+        && filtered[3] == "or"
+        && filtered[4] == "more"
+    {
+        let Some(count) = parse_named_number(filtered[2]) else {
+            return Ok(None);
+        };
+        (count, 5usize, Some(PlayerAst::You))
+    } else {
+        return Ok(None);
+    };
+
+    let tail = &filtered[tail_start..];
+    let Some(in_idx) = tail.iter().rposition(|word| *word == "in") else {
+        return Ok(None);
+    };
+    if in_idx == 0 || in_idx + 1 >= tail.len() {
+        return Ok(None);
+    }
+
+    let graveyard_owner_words = &tail[in_idx + 1..];
+    let player = match graveyard_owner_words {
+        ["your", "graveyard"] => PlayerAst::You,
+        ["that", "player", "graveyard"] | ["that", "players", "graveyard"] => PlayerAst::That,
+        ["target", "player", "graveyard"] | ["target", "players", "graveyard"] => {
+            PlayerAst::Target
+        }
+        ["target", "opponent", "graveyard"] | ["target", "opponents", "graveyard"] => {
+            PlayerAst::TargetOpponent
+        }
+        ["opponent", "graveyard"] | ["opponents", "graveyard"] => PlayerAst::Opponent,
+        _ => return Ok(None),
+    };
+    if constrained_player.is_some_and(|expected| expected != player) {
+        return Ok(None);
+    }
+
+    let raw_filter_words = &tail[..in_idx];
+    if raw_filter_words.is_empty()
+        || raw_filter_words.contains(&"type")
+        || raw_filter_words.contains(&"types")
+    {
+        return Ok(None);
+    }
+
+    let mut normalized_filter_words = Vec::with_capacity(raw_filter_words.len());
+    for (idx, word) in raw_filter_words.iter().enumerate() {
+        // Normalize "instant and/or sorcery" -> "instant or sorcery".
+        if *word == "and"
+            && raw_filter_words
+                .get(idx + 1)
+                .is_some_and(|next| *next == "or")
+        {
+            continue;
+        }
+        normalized_filter_words.push(*word);
+    }
+    if normalized_filter_words.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = if matches!(
+        normalized_filter_words.as_slice(),
+        ["card"] | ["cards"]
+    ) {
+        ObjectFilter::default()
+    } else {
+        let filter_tokens = normalized_filter_words
+            .iter()
+            .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let Ok(filter) = parse_object_filter(&filter_tokens, false) else {
+            return Ok(None);
+        };
+        filter
+    };
+    filter.zone = Some(Zone::Graveyard);
+
+    Ok(Some(PredicateAst::PlayerControlsAtLeast {
+        player,
+        filter,
+        count,
+    }))
 }
 
 fn parse_sentence_counter_target_spell_if_it_was_kicked(
@@ -39870,6 +39998,22 @@ mod parse_parsing_tests {
     }
 
     #[test]
+    fn parse_if_that_spell_is_countered_this_way_as_if_result_predicate() {
+        let tokens = tokenize_line(
+            "If that spell is countered this way, exile it instead of putting it into its owners graveyard.",
+            0,
+        );
+        let effects = parse_effect_sentence(&tokens).expect("parse countered-this-way predicate");
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                ..
+            }
+        )));
+    }
+
+    #[test]
     fn parse_predicate_that_player_has_cards_in_hand_or_more() {
         let tokens = tokenize_line("that player has seven or more cards in hand", 0);
         let predicate = parse_predicate(&tokens).expect("parse cards-in-hand predicate");
@@ -39893,6 +40037,75 @@ mod parse_parsing_tests {
                 count: 2
             }
         ));
+    }
+
+    #[test]
+    fn parse_predicate_creature_died_this_turn() {
+        let tokens = tokenize_line("a creature died this turn", 0);
+        let predicate = parse_predicate(&tokens).expect("parse creature-died predicate");
+        assert!(matches!(predicate, PredicateAst::CreatureDiedThisTurn));
+    }
+
+    #[test]
+    fn parse_predicate_its_your_turn() {
+        let tokens = tokenize_line("its your turn", 0);
+        let predicate = parse_predicate(&tokens).expect("parse your-turn predicate");
+        assert!(matches!(predicate, PredicateAst::YourTurn));
+    }
+
+    #[test]
+    fn parse_predicate_cards_in_your_graveyard_threshold() {
+        let tokens = tokenize_line("there are seven or more cards in your graveyard", 0);
+        let predicate = parse_predicate(&tokens).expect("parse graveyard-threshold predicate");
+        assert!(matches!(
+            predicate,
+            PredicateAst::PlayerControlsAtLeast {
+                player: PlayerAst::You,
+                filter,
+                count: 7
+            } if filter.zone == Some(Zone::Graveyard)
+        ));
+    }
+
+    #[test]
+    fn parse_predicate_instant_or_sorcery_cards_in_graveyard_threshold() {
+        let tokens = tokenize_line(
+            "there are two or more instant and or sorcery cards in your graveyard",
+            0,
+        );
+        let predicate = parse_predicate(&tokens).expect("parse instants-or-sorceries threshold");
+        assert!(matches!(
+            predicate,
+            PredicateAst::PlayerControlsAtLeast {
+                player: PlayerAst::You,
+                filter,
+                count: 2
+            } if filter.zone == Some(Zone::Graveyard)
+                && filter.card_types.contains(&CardType::Instant)
+                && filter.card_types.contains(&CardType::Sorcery)
+        ));
+    }
+
+    #[test]
+    fn parse_if_its_your_turn_sentence_clause() {
+        crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Fated Predicate Parse Probe",
+        )
+        .parse_text(
+            "This spell deals 5 damage to target creature.\nIf it's your turn, scry 2.",
+        )
+        .expect("parse if-its-your-turn conditional clause");
+    }
+
+    #[test]
+    fn parse_threshold_cards_in_graveyard_clause() {
+        crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Threshold Predicate Parse Probe",
+        )
+        .parse_text("If there are seven or more cards in your graveyard, creatures can't block this turn.")
+        .expect("parse threshold-style graveyard card count predicate");
     }
 
     #[test]

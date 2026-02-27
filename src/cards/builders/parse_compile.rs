@@ -464,6 +464,8 @@ fn compile_condition_from_predicate_ast(
             }
         }
         PredicateAst::YouHaveNoCardsInHand => Condition::Not(Box::new(Condition::CardsInHandOrMore(1))),
+        PredicateAst::YourTurn => Condition::YourTurn,
+        PredicateAst::CreatureDiedThisTurn => Condition::CreatureDiedThisTurn,
         PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
         PredicateAst::SourceHasNoCounter(counter_type) => Condition::SourceHasNoCounter(*counter_type),
         PredicateAst::SourceHasCounterAtLeast { counter_type, count } => {
@@ -4860,6 +4862,8 @@ fn compile_effect(
         PredicateAst::YouHaveNoCardsInHand => {
             Condition::Not(Box::new(Condition::CardsInHandOrMore(1)))
         }
+        PredicateAst::YourTurn => Condition::YourTurn,
+        PredicateAst::CreatureDiedThisTurn => Condition::CreatureDiedThisTurn,
         PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
                     PredicateAst::SourceHasNoCounter(counter_type) => {
                         Condition::SourceHasNoCounter(*counter_type)
