@@ -960,6 +960,7 @@ enum EffectAst {
         zone: Zone,
         to_top: bool,
         battlefield_controller: ReturnControllerAst,
+        battlefield_tapped: bool,
     },
     ReturnAllToHand {
         filter: ObjectFilter,
@@ -7723,6 +7724,52 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 .iter()
                 .any(|display| display.contains("as long as this creature is attacking")),
             "missing source-attacking condition in displays: {displays:?}"
+        );
+    }
+
+    #[test]
+    fn parse_put_that_card_into_hand_with_prior_reference() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Put Referenced Card Into Hand Variant")
+            .parse_text("Reveal the top card of your library. Put that card into your hand.")
+            .expect("put that card into hand should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("MoveToZoneEffect")
+                && debug.contains("zone: Hand")
+                && debug.contains("Tagged"),
+            "expected move-to-hand tagged effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_put_that_card_into_graveyard_with_prior_reference() {
+        let def =
+            CardDefinitionBuilder::new(CardId::new(), "Put Referenced Card Into Graveyard Variant")
+                .parse_text("Reveal the top card of your library. Put that card into your graveyard.")
+                .expect("put that card into graveyard should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("MoveToZoneEffect")
+                && debug.contains("zone: Graveyard")
+                && debug.contains("Tagged"),
+            "expected move-to-graveyard tagged effect, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_put_land_from_hand_onto_battlefield_tapped() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Put Land Tapped Variant")
+            .parse_text("Put a land card from your hand onto the battlefield tapped.")
+            .expect("put land card from hand onto battlefield tapped should parse");
+
+        let spell_debug = format!("{:?}", def.spell_effect);
+        assert!(
+            spell_debug.contains("MoveToZoneEffect")
+                && spell_debug.contains("zone: Battlefield")
+                && spell_debug.contains("enters_tapped: true"),
+            "expected tapped battlefield move effect, got {spell_debug}"
         );
     }
 

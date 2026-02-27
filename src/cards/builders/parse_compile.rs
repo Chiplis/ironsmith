@@ -3757,9 +3757,15 @@ pub(crate) fn compile_effect(
             zone,
             to_top,
             battlefield_controller,
+            battlefield_tapped,
         } => {
             let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
+            let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {
+                move_effect.tapped()
+            } else {
+                move_effect
+            };
             let move_effect = match battlefield_controller {
                 ReturnControllerAst::Preserve => move_effect,
                 ReturnControllerAst::Owner => move_effect.under_owner_control(),

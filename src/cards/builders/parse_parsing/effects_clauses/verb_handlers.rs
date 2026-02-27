@@ -2082,6 +2082,7 @@ pub(crate) fn parse_put_into_hand(
             zone: Zone::Library,
             to_top: true,
             battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
         });
     }
 
@@ -2138,6 +2139,54 @@ pub(crate) fn parse_put_into_hand(
                 zone: Zone::Library,
                 to_top: false,
                 battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+            });
+        }
+    }
+
+    if let Some(into_idx) = tokens.iter().position(|token| token.is_word("into")) {
+        let target_tokens = trim_commas(&tokens[..into_idx]);
+        if target_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing target before 'into' (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let destination_words: Vec<&str> = words(&tokens[into_idx + 1..])
+            .into_iter()
+            .filter(|word| !is_article(word))
+            .collect();
+        let zone = if destination_words.contains(&"hand") || destination_words.contains(&"hands") {
+            Some(Zone::Hand)
+        } else if destination_words.contains(&"graveyard")
+            || destination_words.contains(&"graveyards")
+        {
+            Some(Zone::Graveyard)
+        } else {
+            None
+        };
+
+        if let Some(zone) = zone {
+            if zone == Zone::Hand {
+                let target_words = words(&target_tokens);
+                if matches!(
+                    target_words.as_slice(),
+                    ["it"] | ["them"] | ["that", "card"] | ["those", "card"] | ["those", "cards"]
+                ) {
+                    return Ok(EffectAst::PutIntoHand {
+                        player,
+                        object: ObjectRefAst::It,
+                    });
+                }
+            }
+
+            return Ok(EffectAst::MoveToZone {
+                target: parse_target_phrase(&target_tokens)?,
+                zone,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
             });
         }
     }
@@ -2161,23 +2210,26 @@ pub(crate) fn parse_put_into_hand(
                 clause_words.join(" ")
             )));
         }
-        let destination_tail = &destination_words[1..];
+        let mut destination_tail: Vec<&str> = destination_words[1..].to_vec();
+        let battlefield_tapped = destination_tail.contains(&"tapped");
+        destination_tail.retain(|word| *word != "tapped");
         let supported_control_tail = destination_tail.is_empty()
-            || destination_tail == ["under", "your", "control"]
-            || destination_tail == ["under", "its", "owners", "control"]
-            || destination_tail == ["under", "their", "owners", "control"]
-            || destination_tail == ["under", "that", "players", "control"];
+            || destination_tail.as_slice() == ["under", "your", "control"]
+            || destination_tail.as_slice() == ["under", "its", "owners", "control"]
+            || destination_tail.as_slice() == ["under", "their", "owners", "control"]
+            || destination_tail.as_slice() == ["under", "that", "players", "control"];
         if !supported_control_tail {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
-        let battlefield_controller = if destination_tail == ["under", "your", "control"] {
+        let battlefield_controller = if destination_tail.as_slice() == ["under", "your", "control"]
+        {
             ReturnControllerAst::You
-        } else if destination_tail == ["under", "its", "owners", "control"]
-            || destination_tail == ["under", "their", "owners", "control"]
-            || destination_tail == ["under", "that", "players", "control"]
+        } else if destination_tail.as_slice() == ["under", "its", "owners", "control"]
+            || destination_tail.as_slice() == ["under", "their", "owners", "control"]
+            || destination_tail.as_slice() == ["under", "that", "players", "control"]
         {
             ReturnControllerAst::Owner
         } else {
@@ -2220,7 +2272,7 @@ pub(crate) fn parse_put_into_hand(
             }
             return Ok(EffectAst::ReturnAllToBattlefield {
                 filter,
-                tapped: false,
+                tapped: battlefield_tapped,
             });
         }
 
@@ -2229,6 +2281,7 @@ pub(crate) fn parse_put_into_hand(
             zone: Zone::Battlefield,
             to_top: false,
             battlefield_controller,
+            battlefield_tapped,
         });
     }
 
@@ -2237,4 +2290,3 @@ pub(crate) fn parse_put_into_hand(
         clause_words.join(" ")
     )))
 }
-

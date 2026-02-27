@@ -7553,6 +7553,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
             zone: Zone::Library,
             to_top: true,
             battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
         },
     ]))
 }
@@ -7616,14 +7617,16 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
     if destination_words.first() != Some(&"battlefield") {
         return Ok(None);
     }
-    let destination_tail = &destination_words[1..];
-    let battlefield_controller = if destination_tail == ["under", "your", "control"] {
+    let mut destination_tail: Vec<&str> = destination_words[1..].to_vec();
+    let battlefield_tapped = destination_tail.contains(&"tapped");
+    destination_tail.retain(|word| *word != "tapped");
+    let battlefield_controller = if destination_tail.as_slice() == ["under", "your", "control"] {
         ReturnControllerAst::You
     } else if destination_tail.is_empty() {
         ReturnControllerAst::Preserve
-    } else if destination_tail == ["under", "its", "owners", "control"]
-        || destination_tail == ["under", "their", "owners", "control"]
-        || destination_tail == ["under", "that", "players", "control"]
+    } else if destination_tail.as_slice() == ["under", "its", "owners", "control"]
+        || destination_tail.as_slice() == ["under", "their", "owners", "control"]
+        || destination_tail.as_slice() == ["under", "that", "players", "control"]
     {
         ReturnControllerAst::Owner
     } else {
@@ -7642,7 +7645,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
             zone: Zone::Battlefield,
             to_top: false,
             battlefield_controller,
+            battlefield_tapped,
         },
     ]))
 }
-

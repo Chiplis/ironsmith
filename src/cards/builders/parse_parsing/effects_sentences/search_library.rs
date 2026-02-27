@@ -593,6 +593,7 @@ pub(crate) fn parse_search_library_sentence(
             zone: destination,
             to_top: matches!(destination, Zone::Library),
             battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: battlefield_tapped,
         });
 
         let mut first_filter = filter.clone();
@@ -914,6 +915,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                 zone: Zone::Library,
                 to_top: false,
                 battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
             });
             if owner_library_destination {
                 effects.push(EffectAst::ShuffleLibrary {
@@ -930,6 +932,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                 zone: Zone::Library,
                 to_top: false,
                 battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
             });
         }
         effects.push(EffectAst::ShuffleGraveyardIntoLibrary { player });
@@ -948,6 +951,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
             zone: Zone::Library,
             to_top: false,
             battlefield_controller: ReturnControllerAst::Preserve,
+            battlefield_tapped: false,
         },
         EffectAst::ShuffleLibrary { player },
     ])

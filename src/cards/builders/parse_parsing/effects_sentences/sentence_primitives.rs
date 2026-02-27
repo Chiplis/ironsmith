@@ -927,6 +927,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
         zone: Zone::Battlefield,
         to_top: false,
         battlefield_controller,
+        battlefield_tapped: false,
     }];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
     for descriptor in descriptors {
@@ -3814,4 +3815,3 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parser: parse_sentence_unless_pays,
     },
 ];
-
