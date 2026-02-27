@@ -483,6 +483,11 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     }
 
     let tail_words = words(&tail_tokens);
+    // "gets +4/+4 until end of turn instead" appears in conditional replacement
+    // branches where "instead" is grammatical glue, not an additional modifier.
+    if tail_words.as_slice() == ["instead"] {
+        return Ok((out_power, out_toughness, duration, condition));
+    }
     if tail_words.starts_with(&["for", "as", "long", "as"])
         && tail_words.contains(&"this")
         && tail_words.contains(&"remains")
@@ -1066,4 +1071,3 @@ pub(crate) fn parse_for_each_player_clause(tokens: &[Token]) -> Result<Option<Ef
 
     Ok(Some(EffectAst::ForEachPlayer { effects }))
 }
-

@@ -8045,6 +8045,24 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_conditional_instead_branch_with_trailing_gets_instead() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Groundswell Variant")
+            .parse_text(
+                "Target creature gets +2/+2 until end of turn. If it's a Human, that creature gets +3/+3 until end of turn instead.",
+            )
+            .expect("trailing gets-instead conditional should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("ConditionalEffect")
+                && (debug.contains("TargetMatches") || debug.contains("TaggedObjectMatches"))
+                && debug.contains("power: Fixed(3)")
+                && debug.contains("toughness: Fixed(3)"),
+            "expected +3/+3 conditional replacement branch, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_destination_first_put_onto_battlefield_under_your_control() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Thrilling Encore Variant")
             .parse_text(
