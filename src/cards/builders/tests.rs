@@ -975,6 +975,42 @@ fn test_parse_choose_new_targets_for_the_copy() {
 }
 
 #[test]
+fn test_parse_gain_keyword_ability_does_not_fall_back_to_gain_life() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gain Keyword Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Put a +1/+1 counter on target creature you control and it gains deathtouch until end of turn.")
+        .expect("parse gain-keyword line");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("AddAbility(StaticAbility(Deathtouch))"),
+        "expected ability grant effect, got {debug}"
+    );
+    assert!(
+        !debug.contains("GainLifeEffect"),
+        "did not expect life-gain fallback for keyword grant, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_lose_keyword_ability_does_not_fall_back_to_lose_life() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lose Keyword Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature loses flying until end of turn.")
+        .expect("parse lose-keyword line");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("RemoveAbility(StaticAbility(Flying))"),
+        "expected ability removal effect, got {debug}"
+    );
+    assert!(
+        !debug.contains("LoseLifeEffect"),
+        "did not expect life-loss fallback for keyword removal, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
         .card_types(vec![CardType::Instant])

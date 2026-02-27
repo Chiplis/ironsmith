@@ -31483,6 +31483,16 @@ fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
             });
         }
     }
+    if matches!(verb, Verb::Gain)
+        && let Some(effect) = parse_simple_gain_ability_clause(tokens)?
+    {
+        return Ok(effect);
+    }
+    if matches!(verb, Verb::Lose)
+        && let Some(effect) = parse_simple_lose_ability_clause(tokens)?
+    {
+        return Ok(effect);
+    }
     let for_each_subject_filter = parse_for_each_object_subject(subject_tokens)?;
     let rest = &tokens[verb_idx + 1..];
     let mut effect = if matches!(verb, Verb::Become) {
