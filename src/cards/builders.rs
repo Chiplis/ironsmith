@@ -466,6 +466,14 @@ enum PredicateAst {
         player: PlayerAst,
         count: u32,
     },
+    PlayerCardsInHandOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
+    PlayerCardsInHandOrFewer {
+        player: PlayerAst,
+        count: u32,
+    },
     YouHaveNoCardsInHand,
     SourceIsTapped,
     #[allow(dead_code)]

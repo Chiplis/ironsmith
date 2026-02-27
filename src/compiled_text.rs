@@ -6683,6 +6683,16 @@ fn describe_condition(condition: &Condition) -> String {
         Condition::LifeTotalOrLess(n) => format!("your life total is {n} or less"),
         Condition::LifeTotalOrGreater(n) => format!("your life total is {n} or greater"),
         Condition::CardsInHandOrMore(n) => format!("you have {n} or more cards in hand"),
+        Condition::PlayerCardsInHandOrMore { player, count } => {
+            format!("{} has {} or more cards in hand", describe_player_filter(player), count)
+        }
+        Condition::PlayerCardsInHandOrFewer { player, count } => {
+            format!(
+                "{} has {} or fewer cards in hand",
+                describe_player_filter(player),
+                count
+            )
+        }
         Condition::YourTurn => "it is your turn".to_string(),
         Condition::CreatureDiedThisTurn => "a creature died this turn".to_string(),
         Condition::CastSpellThisTurn => "a spell was cast this turn".to_string(),
@@ -13148,6 +13158,50 @@ fn choices_are_simple_targets(choices: &[ChooseSpec]) -> bool {
     choices.iter().all(is_simple_target)
 }
 
+fn flatten_condition_and_expr(
+    condition: &crate::ConditionExpr,
+    out: &mut Vec<crate::ConditionExpr>,
+) {
+    match condition {
+        crate::ConditionExpr::And(left, right) => {
+            flatten_condition_and_expr(left, out);
+            flatten_condition_and_expr(right, out);
+        }
+        _ => out.push(condition.clone()),
+    }
+}
+
+fn fold_condition_exprs(conditions: Vec<crate::ConditionExpr>) -> Option<crate::ConditionExpr> {
+    let mut iter = conditions.into_iter();
+    let first = iter.next()?;
+    Some(iter.fold(first, |acc, next| {
+        crate::ConditionExpr::And(Box::new(acc), Box::new(next))
+    }))
+}
+
+fn split_trigger_intervening_if(
+    condition: &crate::ConditionExpr,
+) -> (Option<crate::ConditionExpr>, Option<u32>) {
+    let mut flat = Vec::new();
+    flatten_condition_and_expr(condition, &mut flat);
+
+    let mut non_limit = Vec::new();
+    let mut max_times_each_turn: Option<u32> = None;
+    for item in flat {
+        match item {
+            crate::ConditionExpr::MaxTimesEachTurn(limit) => {
+                max_times_each_turn = Some(match max_times_each_turn {
+                    Some(existing) => existing.min(limit),
+                    None => limit,
+                });
+            }
+            other => non_limit.push(other),
+        }
+    }
+
+    (fold_condition_exprs(non_limit), max_times_each_turn)
+}
+
 fn describe_ability(
     index: usize,
     ability: &Ability,
@@ -13204,6 +13258,15 @@ fn describe_ability(
                 }
             }
             let mut line = format!("Triggered ability {index}: {}", triggered.trigger.display());
+            let (intervening_condition, max_times_each_turn) = triggered
+                .intervening_if
+                .as_ref()
+                .map(split_trigger_intervening_if)
+                .unwrap_or((None, None));
+            if let Some(condition) = intervening_condition {
+                line.push_str(", if ");
+                line.push_str(&describe_condition(&condition));
+            }
             let mut clauses = Vec::new();
             if !triggered.choices.is_empty()
                 && !(!triggered.effects.is_empty()
@@ -13244,16 +13307,14 @@ fn describe_ability(
                     line.push_str(&clauses.join(": "));
                 }
             }
-            if let Some(crate::ConditionExpr::MaxTimesEachTurn(max)) =
-                triggered.intervening_if.as_ref()
-            {
-                if *max == 1 {
+            if let Some(max) = max_times_each_turn {
+                if max == 1 {
                     line.push_str(". This ability triggers only once each turn");
-                } else if *max == 2 {
+                } else if max == 2 {
                     line.push_str(". This ability triggers only twice each turn");
                 } else {
                     line.push_str(". This ability triggers only ");
-                    line.push_str(&format!("{max}"));
+                    line.push_str(&max.to_string());
                     line.push_str(" times");
                     line.push_str(" each turn");
                 }

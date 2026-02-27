@@ -424,6 +424,20 @@ fn compile_condition_from_predicate_ast(
                 count: *count,
             }
         }
+        PredicateAst::PlayerCardsInHandOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, ctx)?;
+            Condition::PlayerCardsInHandOrMore {
+                player,
+                count: *count as i32,
+            }
+        }
+        PredicateAst::PlayerCardsInHandOrFewer { player, count } => {
+            let player = resolve_non_target_player_filter(*player, ctx)?;
+            Condition::PlayerCardsInHandOrFewer {
+                player,
+                count: *count as i32,
+            }
+        }
         PredicateAst::YouHaveNoCardsInHand => Condition::Not(Box::new(Condition::CardsInHandOrMore(1))),
         PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
         PredicateAst::SourceHasNoCounter(counter_type) => Condition::SourceHasNoCounter(*counter_type),
@@ -4632,6 +4646,20 @@ fn compile_effect(
             Condition::PlayerControlsBasicLandTypesAmongLandsOrMore {
                 player,
                 count: *count,
+            }
+        }
+        PredicateAst::PlayerCardsInHandOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, ctx)?;
+            Condition::PlayerCardsInHandOrMore {
+                player,
+                count: *count as i32,
+            }
+        }
+        PredicateAst::PlayerCardsInHandOrFewer { player, count } => {
+            let player = resolve_non_target_player_filter(*player, ctx)?;
+            Condition::PlayerCardsInHandOrFewer {
+                player,
+                count: *count as i32,
             }
         }
         PredicateAst::YouHaveNoCardsInHand => {

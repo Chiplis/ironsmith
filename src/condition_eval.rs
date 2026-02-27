@@ -111,6 +111,24 @@ pub fn evaluate_condition_external(
             .player(ctx.controller)
             .map(|p| p.hand.len() as i32 >= *threshold)
             .unwrap_or(false),
+        Condition::PlayerCardsInHandOrMore { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
+            else {
+                return false;
+            };
+            game.player(player_id)
+                .map(|p| p.hand.len() as i32 >= *count)
+                .unwrap_or(false)
+        }
+        Condition::PlayerCardsInHandOrFewer { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
+            else {
+                return false;
+            };
+            game.player(player_id)
+                .map(|p| p.hand.len() as i32 <= *count)
+                .unwrap_or(false)
+        }
         Condition::PlayerHasLessLifeThanYou { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
             else {
@@ -767,6 +785,20 @@ fn evaluate_condition_simple(
             let count = game.player(controller).map(|p| p.hand.len()).unwrap_or(0);
             count >= *threshold as usize
         }
+        Condition::PlayerCardsInHandOrMore { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+            hand >= *count as usize
+        }
+        Condition::PlayerCardsInHandOrFewer { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+            hand <= *count as usize
+        }
         Condition::YourTurn => game.turn.active_player == controller,
         Condition::CreatureDiedThisTurn => game.creatures_died_this_turn > 0,
         Condition::CastSpellThisTurn => game.spells_cast_this_turn.values().any(|&count| count > 0),
@@ -1096,6 +1128,16 @@ fn evaluate_condition(
                 .map(|p| p.hand.len())
                 .unwrap_or(0);
             Ok(count >= *threshold as usize)
+        }
+        Condition::PlayerCardsInHandOrMore { player, count } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let hand_count = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+            Ok(hand_count >= *count as usize)
+        }
+        Condition::PlayerCardsInHandOrFewer { player, count } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let hand_count = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
+            Ok(hand_count <= *count as usize)
         }
         Condition::YourTurn => Ok(game.turn.active_player == ctx.controller),
         Condition::CreatureDiedThisTurn => {

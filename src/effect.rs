@@ -1496,6 +1496,12 @@ pub enum Condition {
     /// You have N or more cards in hand
     CardsInHandOrMore(i32),
 
+    /// A specific player has N or more cards in hand.
+    PlayerCardsInHandOrMore { player: PlayerFilter, count: i32 },
+
+    /// A specific player has N or fewer cards in hand.
+    PlayerCardsInHandOrFewer { player: PlayerFilter, count: i32 },
+
     /// It's your turn
     YourTurn,
 

@@ -27646,6 +27646,49 @@ fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardTextError> {
         return Ok(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count });
     }
 
+    let parse_cards_in_hand_subject = |words: &[&str]| -> Option<(PlayerAst, usize)> {
+        match words {
+            [first, second, ..] if *first == "that" && *second == "player" => {
+                Some((PlayerAst::That, 2))
+            }
+            [first, second, ..] if *first == "target" && *second == "player" => {
+                Some((PlayerAst::Target, 2))
+            }
+            [first, second, ..] if *first == "target" && *second == "opponent" => {
+                Some((PlayerAst::TargetOpponent, 2))
+            }
+            [first, second, ..] if *first == "each" && *second == "opponent" => {
+                Some((PlayerAst::Opponent, 2))
+            }
+            [first, ..] if *first == "you" => Some((PlayerAst::You, 1)),
+            [first, ..] if *first == "opponent" || *first == "opponents" => {
+                Some((PlayerAst::Opponent, 1))
+            }
+            [first, second, ..] if *first == "player" && *second == "who" => {
+                Some((PlayerAst::That, 1))
+            }
+            _ => None,
+        }
+    };
+    if let Some((player, subject_len)) = parse_cards_in_hand_subject(&filtered)
+        && filtered.get(subject_len).copied() == Some("has")
+        && let Some(count_word) = filtered.get(subject_len + 1).copied()
+        && let Some(count) = parse_named_number(count_word)
+        && filtered.get(subject_len + 2).copied() == Some("or")
+        && let Some(comp_word) = filtered.get(subject_len + 3).copied()
+        && matches!(comp_word, "more" | "fewer" | "less")
+        && matches!(filtered.get(subject_len + 4).copied(), Some("card" | "cards"))
+        && filtered.get(subject_len + 5).copied() == Some("in")
+        && filtered.get(subject_len + 6).copied() == Some("hand")
+        && filtered.len() == subject_len + 7
+    {
+        return Ok(if comp_word == "more" {
+            PredicateAst::PlayerCardsInHandOrMore { player, count }
+        } else {
+            PredicateAst::PlayerCardsInHandOrFewer { player, count }
+        });
+    }
+
     if filtered.as_slice() == ["you", "have", "no", "cards", "in", "hand"] {
         return Ok(PredicateAst::YouHaveNoCardsInHand);
     }
@@ -38005,6 +38048,32 @@ mod parse_parsing_tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn parse_predicate_that_player_has_cards_in_hand_or_more() {
+        let tokens = tokenize_line("that player has seven or more cards in hand", 0);
+        let predicate = parse_predicate(&tokens).expect("parse cards-in-hand predicate");
+        assert!(matches!(
+            predicate,
+            PredicateAst::PlayerCardsInHandOrMore {
+                player: PlayerAst::That,
+                count: 7
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_predicate_that_player_has_cards_in_hand_or_fewer() {
+        let tokens = tokenize_line("that player has two or fewer cards in hand", 0);
+        let predicate = parse_predicate(&tokens).expect("parse cards-in-hand predicate");
+        assert!(matches!(
+            predicate,
+            PredicateAst::PlayerCardsInHandOrFewer {
+                player: PlayerAst::That,
+                count: 2
+            }
+        ));
     }
 
     #[test]
