@@ -7873,6 +7873,23 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_counter_unless_pays_dynamic_mana_equal_value() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Repulsive Mutation Variant")
+            .parse_text(
+                "Put X +1/+1 counters on target creature you control. Then counter up to one target spell unless its controller pays mana equal to the greatest power among creatures you control.",
+            )
+            .expect("counter-unless with dynamic mana-equal payment should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("UnlessPaysEffect")
+                && debug.contains("additional_generic: Some")
+                && debug.contains("GreatestPower"),
+            "expected dynamic greatest-power payment in counter-unless lowering, got {debug}"
+        );
+    }
+
+    #[test]
     fn reject_counter_ability_target_clause() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Tales End Variant")
             .parse_text("Counter target activated ability, triggered ability, or legendary spell.")

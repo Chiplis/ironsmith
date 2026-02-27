@@ -1360,15 +1360,26 @@ pub(crate) fn parse_counter(tokens: &[Token]) -> Result<EffectAst, CardTextError
             }
         }
 
-        if mana.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing mana cost (clause: '{}')",
-                words(tokens).join(" ")
-            )));
-        }
-
         let mut life = None;
         let mut additional_generic = None;
+        if mana.is_empty() {
+            let payment_tokens = trim_commas(&unless_tokens[pays_idx + 1..]);
+            let payment_words = words(&payment_tokens);
+            // "unless its controller pays mana equal to ..." uses a dynamic generic payment.
+            if payment_words.first().copied() == Some("mana")
+                && let Some(value) = parse_equal_to_aggregate_filter_value(&payment_tokens)
+                    .or_else(|| parse_equal_to_number_of_filter_value(&payment_tokens))
+            {
+                additional_generic = Some(value);
+                trailing_start = None;
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "missing mana cost (clause: '{}')",
+                    words(tokens).join(" ")
+                )));
+            }
+        }
+
         if let Some(trailing_idx) = trailing_start {
             let trailing_tokens = trim_commas(&unless_tokens[trailing_idx..]);
             let trailing_words = words(&trailing_tokens);
