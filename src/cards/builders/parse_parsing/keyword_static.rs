@@ -399,6 +399,9 @@ pub(crate) fn parse_static_ability_line(
     if let Some(ability) = parse_land_type_addition_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(abilities) = parse_lands_are_pt_creatures_still_lands_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(ability) = parse_remove_snow_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -3240,6 +3243,52 @@ pub(crate) fn parse_land_type_addition_line(
     }
 
     Ok(Some(StaticAbility::add_subtypes(filter, vec![subtype])))
+}
+
+pub(crate) fn parse_lands_are_pt_creatures_still_lands_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let words = words(tokens);
+    if words.len() < 8 {
+        return Ok(None);
+    }
+
+    let Some(be_idx) = words
+        .iter()
+        .position(|word| *word == "is" || *word == "are")
+    else {
+        return Ok(None);
+    };
+    if be_idx == 0 || be_idx + 2 >= words.len() {
+        return Ok(None);
+    }
+
+    let filter = parse_object_filter(&tokens[..be_idx], false)?;
+    let (power, toughness) = match parse_pt_modifier(words[be_idx + 1]) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+
+    if !matches!(words[be_idx + 2], "creature" | "creatures") {
+        return Ok(None);
+    }
+
+    let tail = &words[be_idx + 3..];
+    let valid_tail = matches!(
+        tail,
+        ["that", "are", "still", "land"]
+            | ["that", "are", "still", "lands"]
+            | ["that", "is", "still", "land"]
+            | ["that", "is", "still", "a", "land"]
+    );
+    if !valid_tail {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        StaticAbility::add_card_types(filter.clone(), vec![CardType::Creature]),
+        StaticAbility::set_base_power_toughness(filter, power, toughness),
+    ]))
 }
 
 pub(crate) fn parse_granted_keyword_static_line(

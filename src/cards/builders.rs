@@ -7948,6 +7948,30 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_lands_are_pt_creatures_still_lands_static_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Living Plane Variant")
+            .parse_text("All lands are 1/1 creatures that are still lands.")
+            .expect("lands become creatures static line should parse");
+
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            static_ids.contains(&StaticAbilityId::AddCardTypes),
+            "expected AddCardTypes static ability for lands becoming creatures, got {static_ids:?}"
+        );
+        assert!(
+            static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+            "expected SetBasePowerToughnessForFilter static ability for lands becoming 1/1, got {static_ids:?}"
+        );
+    }
+
+    #[test]
     fn parse_multiple_additional_land_plays_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Azusa Variant")
             .parse_text("You may play two additional lands on each of your turns.")
