@@ -3881,6 +3881,50 @@ fn render_gain_life_equal_to_its_power_uses_possessive_wording() {
 }
 
 #[test]
+fn parse_gain_life_equal_to_sacrificed_creature_toughness() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Diamond Valley Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text("{T}, Sacrifice a creature: You gain life equal to the sacrificed creature's toughness.")
+        .expect("sacrificed-creature toughness life amount should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("GainLifeEffect") && abilities_debug.contains("ToughnessOf"),
+        "expected gain-life amount to bind to sacrificed creature toughness, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_gain_life_equal_to_devotion_value() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Nylea Disciple Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("You gain life equal to your devotion to green.")
+        .expect("devotion-based life gain should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("GainLifeEffect") && spell_debug.contains("Devotion"),
+        "expected devotion value in life-gain amount, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_gain_life_equal_to_life_lost_this_way() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Agent of Masks Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Each opponent loses 1 life. You gain life equal to the life lost this way.")
+        .expect("life-lost-this-way life gain should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("GainLifeEffect")
+            && spell_debug.contains("EventValue")
+            && spell_debug.contains("LifeAmount"),
+        "expected life-gain amount to use life-lost event value, got {spell_debug}"
+    );
+}
+
+#[test]
 fn render_artifact_land_self_reference_prefers_land() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Artifact Land Variant")
         .card_types(vec![CardType::Artifact, CardType::Land])

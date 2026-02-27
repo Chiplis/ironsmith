@@ -4337,6 +4337,10 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
     }
 
     let parse_power_or_toughness_segment = |segment: &[&str]| -> Option<Value> {
+        let tagged_it_power = Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
+        let tagged_it_toughness =
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
+
         if segment == ["this", "creature", "power"]
             || segment == ["this", "creatures", "power"]
             || segment == ["its", "power"]
@@ -4353,17 +4357,27 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
             || segment == ["that", "creatures", "power"]
             || segment == ["that", "objects", "power"]
         {
-            return Some(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
-                IT_TAG,
-            )))));
+            return Some(tagged_it_power.clone());
         }
         if segment == ["that", "creature", "toughness"]
             || segment == ["that", "creatures", "toughness"]
             || segment == ["that", "objects", "toughness"]
         {
-            return Some(Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
-                TagKey::from(IT_TAG),
-            ))));
+            return Some(tagged_it_toughness.clone());
+        }
+        if segment == ["the", "sacrificed", "creature", "power"]
+            || segment == ["the", "sacrificed", "creatures", "power"]
+            || segment == ["sacrificed", "creature", "power"]
+            || segment == ["sacrificed", "creatures", "power"]
+        {
+            return Some(tagged_it_power);
+        }
+        if segment == ["the", "sacrificed", "creature", "toughness"]
+            || segment == ["the", "sacrificed", "creatures", "toughness"]
+            || segment == ["sacrificed", "creature", "toughness"]
+            || segment == ["sacrificed", "creatures", "toughness"]
+        {
+            return Some(tagged_it_toughness);
         }
         None
     };
@@ -4383,8 +4397,12 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
         || tail.starts_with(&["that", "creature", "power"])
         || tail.starts_with(&["that", "creatures", "power"])
         || tail.starts_with(&["that", "objects", "power"])
+        || tail.starts_with(&["the", "sacrificed", "creature", "power"])
+        || tail.starts_with(&["the", "sacrificed", "creatures", "power"])
+        || tail.starts_with(&["sacrificed", "creature", "power"])
+        || tail.starts_with(&["sacrificed", "creatures", "power"])
     {
-        let source = if tail[0] == "that" {
+        let source = if tail[0] == "that" || tail.contains(&"sacrificed") {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
             ChooseSpec::Source
@@ -4398,8 +4416,12 @@ fn parse_add_mana_equal_amount_value(tokens: &[Token]) -> Option<Value> {
         || tail.starts_with(&["that", "creature", "toughness"])
         || tail.starts_with(&["that", "creatures", "toughness"])
         || tail.starts_with(&["that", "objects", "toughness"])
+        || tail.starts_with(&["the", "sacrificed", "creature", "toughness"])
+        || tail.starts_with(&["the", "sacrificed", "creatures", "toughness"])
+        || tail.starts_with(&["sacrificed", "creature", "toughness"])
+        || tail.starts_with(&["sacrificed", "creatures", "toughness"])
     {
-        let source = if tail[0] == "that" {
+        let source = if tail[0] == "that" || tail.contains(&"sacrificed") {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
             ChooseSpec::Source
@@ -34257,10 +34279,28 @@ fn parse_life_equal_to_value(tokens: &[Token]) -> Result<Option<Value>, CardText
         return Ok(None);
     }
 
-    if let Some(value) = parse_add_mana_equal_amount_value(&tokens[1..]) {
+    let amount_tokens = &tokens[1..];
+    let amount_words = words(amount_tokens);
+
+    if let Some(value) = parse_add_mana_equal_amount_value(amount_tokens) {
         return Ok(Some(value));
     }
-    if let Some(value) = parse_dynamic_cost_modifier_value(&tokens[1..])? {
+    if let Some(value) = parse_devotion_value_from_add_clause(amount_tokens)? {
+        return Ok(Some(value));
+    }
+    if let Some(value) = parse_equal_to_number_of_filter_value(amount_tokens) {
+        return Ok(Some(value));
+    }
+    if matches!(
+        amount_words.as_slice(),
+        ["equal", "to", "the", "life", "lost", "this", "way"]
+            | ["equal", "to", "life", "lost", "this", "way"]
+            | ["equal", "to", "the", "amount", "of", "life", "lost", "this", "way"]
+            | ["equal", "to", "amount", "of", "life", "lost", "this", "way"]
+    ) {
+        return Ok(Some(Value::EventValue(EventValueSpec::LifeAmount)));
+    }
+    if let Some(value) = parse_dynamic_cost_modifier_value(amount_tokens)? {
         return Ok(Some(value));
     }
 
@@ -38040,6 +38080,54 @@ mod parse_parsing_tests {
             has_random_discard_cost,
             "expected random discard effect-backed cost"
         );
+    }
+
+    #[test]
+    fn parse_gain_life_equal_to_sacrificed_creature_toughness_clause() {
+        let tokens = tokenize_line("life equal to the sacrificed creature's toughness", 0);
+        let effect = parse_gain_life(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse gain life equal to sacrificed creature toughness");
+        assert!(matches!(
+            effect,
+            EffectAst::GainLife {
+                amount: Value::ToughnessOf(spec),
+                player: PlayerAst::You,
+            } if matches!(
+                spec.as_ref(),
+                ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+            )
+        ));
+    }
+
+    #[test]
+    fn parse_gain_life_equal_to_devotion_clause() {
+        let tokens = tokenize_line("life equal to your devotion to green", 0);
+        let effect = parse_gain_life(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse gain life equal to devotion");
+        assert!(matches!(
+            effect,
+            EffectAst::GainLife {
+                amount: Value::Devotion {
+                    player: PlayerFilter::You,
+                    color: crate::color::Color::Green
+                },
+                player: PlayerAst::You,
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_gain_life_equal_to_life_lost_this_way_clause() {
+        let tokens = tokenize_line("life equal to the life lost this way", 0);
+        let effect = parse_gain_life(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse gain life equal to life lost this way");
+        assert!(matches!(
+            effect,
+            EffectAst::GainLife {
+                amount: Value::EventValue(EventValueSpec::LifeAmount),
+                player: PlayerAst::You,
+            }
+        ));
     }
 }
 
