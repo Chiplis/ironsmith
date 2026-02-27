@@ -35063,6 +35063,7 @@ fn parse_move(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
 fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
     let mut parsed_that_many_minus_one = false;
+    let mut consumed_embedded_card_keyword = false;
     let (mut count, used) = if clause_words.starts_with(&["that", "many"]) {
         let mut value = Value::EventValue(EventValueSpec::Amount);
         let consumed = 2usize;
@@ -35088,6 +35089,22 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
             }
         }
         (value, consumed)
+    } else if let Some(value) = parse_draw_as_many_cards_value(tokens) {
+        consumed_embedded_card_keyword = true;
+        (value, tokens.len())
+    } else if tokens
+        .first()
+        .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+    {
+        let tail = trim_commas(&tokens[1..]);
+        let value = parse_draw_card_prefixed_count_value(&tail)?.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing draw count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        consumed_embedded_card_keyword = true;
+        (value, tokens.len())
     } else {
         parse_value(tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -35098,16 +35115,20 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
     };
 
     let rest = &tokens[used..];
-    if rest
-        .first()
-        .and_then(Token::as_word)
-        .is_some_and(|word| word != "card" && word != "cards")
-    {
-        return Err(CardTextError::ParseError(
-            "missing card keyword".to_string(),
-        ));
-    }
-    let tail = trim_commas(&rest[1..]);
+    let tail = if consumed_embedded_card_keyword {
+        trim_commas(rest)
+    } else {
+        if rest
+            .first()
+            .and_then(Token::as_word)
+            .is_some_and(|word| word != "card" && word != "cards")
+        {
+            return Err(CardTextError::ParseError(
+                "missing card keyword".to_string(),
+            ));
+        }
+        trim_commas(&rest[1..])
+    };
     if !tail.is_empty() {
         let tail_words = words(&tail);
         if !(parsed_that_many_minus_one && tail_words.as_slice() == ["minus", "one"]) {
@@ -35145,6 +35166,67 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
     };
 
     Ok(EffectAst::Draw { count, player })
+}
+
+fn parse_draw_as_many_cards_value(tokens: &[Token]) -> Option<Value> {
+    let clause_words = words(tokens);
+    let starts_as_many = clause_words.len() >= 4
+        && clause_words[0] == "as"
+        && clause_words[1] == "many"
+        && matches!(clause_words[2], "card" | "cards")
+        && clause_words[3] == "as";
+    if !starts_as_many {
+        return None;
+    }
+
+    let tail = &clause_words[4..];
+    let references_previous_event = tail.windows(2).any(|window| window == ["this", "way"]);
+    if references_previous_event {
+        return Some(Value::EventValue(EventValueSpec::Amount));
+    }
+
+    None
+}
+
+fn parse_draw_card_prefixed_count_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
+    if tokens.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(value) = parse_draw_equal_to_value(tokens)? {
+        return Ok(Some(value));
+    }
+    if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {
+        return Ok(Some(value));
+    }
+
+    Ok(None)
+}
+
+fn parse_draw_equal_to_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["equal", "to"]) {
+        return Ok(None);
+    }
+
+    if let Some(value) = parse_add_mana_equal_amount_value(tokens)
+        .or_else(|| parse_equal_to_aggregate_filter_value(tokens))
+        .or_else(|| parse_equal_to_number_of_filter_plus_or_minus_fixed_value(tokens))
+        .or_else(|| parse_equal_to_number_of_filter_value(tokens))
+    {
+        return Ok(Some(value));
+    }
+    if clause_words
+        .windows(2)
+        .any(|window| window == ["this", "way"])
+    {
+        return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
+    }
+    if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {
+        return Ok(Some(value));
+    }
+
+    Ok(None)
 }
 
 fn parse_counter(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
@@ -37790,6 +37872,51 @@ fn parse_equal_to_number_of_filter_value(tokens: &[Token]) -> Option<Value> {
     Some(Value::Count(filter))
 }
 
+fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(tokens: &[Token]) -> Option<Value> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["equal", "to"]) {
+        return None;
+    }
+
+    let mut number_word_idx = 2usize;
+    if clause_words.get(number_word_idx).copied() == Some("the") {
+        number_word_idx += 1;
+    }
+    if clause_words.get(number_word_idx).copied() != Some("number")
+        || clause_words.get(number_word_idx + 1).copied() != Some("of")
+    {
+        return None;
+    }
+
+    let filter_start_word_idx = number_word_idx + 2;
+    let operator_word_idx = (filter_start_word_idx + 1..clause_words.len())
+        .find(|idx| matches!(clause_words[*idx], "plus" | "minus"))?;
+    let operator = clause_words[operator_word_idx];
+
+    let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)?;
+    let operator_token_idx = token_index_for_word_index(tokens, operator_word_idx)?;
+    let filter_tokens = trim_commas(&tokens[filter_start_token_idx..operator_token_idx]);
+    let filter = parse_object_filter(&filter_tokens, false).ok()?;
+
+    let offset_start_token_idx = token_index_for_word_index(tokens, operator_word_idx + 1)?;
+    let offset_tokens = trim_commas(&tokens[offset_start_token_idx..]);
+    let (offset_value, used) = parse_number(&offset_tokens)?;
+    let trailing_words = words(&offset_tokens[used..]);
+    if !trailing_words.is_empty() {
+        return None;
+    }
+
+    let signed_offset = if operator == "minus" {
+        -(offset_value as i32)
+    } else {
+        offset_value as i32
+    };
+    Some(Value::Add(
+        Box::new(Value::Count(filter)),
+        Box::new(Value::Fixed(signed_offset)),
+    ))
+}
+
 fn parse_equal_to_aggregate_filter_value(tokens: &[Token]) -> Option<Value> {
     let clause_words = words(tokens);
     let equal_idx = clause_words
@@ -40359,6 +40486,95 @@ mod parse_parsing_tests {
             effect,
             EffectAst::GainLife {
                 amount: Value::EventValue(EventValueSpec::LifeAmount),
+                player: PlayerAst::You,
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_draw_cards_equal_to_number_of_named_cards_in_graveyards() {
+        let tokens = tokenize_line(
+            "cards equal to the number of cards named accumulated knowledge in all graveyards",
+            0,
+        );
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw equal to number-of filter");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::Count(filter),
+                player: PlayerAst::You,
+            } if filter.zone == Some(Zone::Graveyard)
+                && filter.name.as_deref() == Some("accumulated knowledge")
+        ));
+    }
+
+    #[test]
+    fn parse_draw_cards_equal_to_greatest_power_among_creatures() {
+        let tokens = tokenize_line(
+            "cards equal to the greatest power among creatures you control",
+            0,
+        );
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw equal to aggregate filter");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::GreatestPower(filter),
+                player: PlayerAst::You,
+            } if filter.controller == Some(PlayerFilter::You)
+                && filter.card_types.contains(&CardType::Creature)
+        ));
+    }
+
+    #[test]
+    fn parse_draw_cards_equal_to_number_of_hand_plus_one() {
+        let tokens = tokenize_line(
+            "cards equal to the number of cards in your hand plus one",
+            0,
+        );
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw equal to number-of filter plus fixed");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::Add(left, right),
+                player: PlayerAst::You,
+            } if matches!(
+                (left.as_ref(), right.as_ref()),
+                (Value::Count(filter), Value::Fixed(1))
+                    if filter.zone == Some(Zone::Hand)
+                        && filter.owner == Some(PlayerFilter::You)
+            )
+        ));
+    }
+
+    #[test]
+    fn parse_draw_cards_equal_to_that_spells_mana_value() {
+        let tokens = tokenize_line("cards equal to that spells mana value", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw equal to tagged mana value");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::ManaValueOf(spec),
+                player: PlayerAst::You,
+            } if matches!(
+                spec.as_ref(),
+                ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+            )
+        ));
+    }
+
+    #[test]
+    fn parse_draw_as_many_cards_as_discarded_this_way() {
+        let tokens = tokenize_line("as many cards as they discarded this way", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw as-many previous-event amount");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::EventValue(EventValueSpec::Amount),
                 player: PlayerAst::You,
             }
         ));
