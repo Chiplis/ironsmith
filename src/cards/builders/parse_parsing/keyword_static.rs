@@ -6010,6 +6010,8 @@ pub(crate) fn parse_you_control_attached_creature_line(
         tail,
         ["enchanted", "creature"]
             | ["enchanted", "permanent"]
+            | ["enchanted", "land"]
+            | ["enchanted", "artifact"]
             | ["equipped", "creature"]
             | ["equipped", "permanent"]
     );

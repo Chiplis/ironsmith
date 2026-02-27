@@ -7908,6 +7908,19 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_you_control_enchanted_land_static_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Annex Variant")
+            .parse_text("Enchant land\nYou control enchanted land.")
+            .expect("control enchanted land static line should parse");
+
+        let debug = format!("{:?}", def);
+        assert!(
+            debug.contains("ControlAttachedPermanent"),
+            "expected control-attached static lowering, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_counter_unless_pays_dynamic_mana_equal_value() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Repulsive Mutation Variant")
             .parse_text(
