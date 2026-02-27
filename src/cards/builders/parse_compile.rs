@@ -646,6 +646,7 @@ fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Destroy { target }
+        | EffectAst::DestroyNoRegeneration { target }
         | EffectAst::Exile { target, .. }
         | EffectAst::ExileWhenSourceLeaves { target }
         | EffectAst::SacrificeSourceWhenLeaves { target }
@@ -956,6 +957,7 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
         EffectAst::Draw { player, .. }
         | EffectAst::LoseLife { player, .. }
         | EffectAst::GainLife { player, .. }
+        | EffectAst::GainControl { player, .. }
         | EffectAst::LoseGame { player }
         | EffectAst::AddMana { player, .. }
         | EffectAst::AddManaScaled { player, .. }
@@ -1025,14 +1027,21 @@ fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::ForEachOpponentDid { effects, .. }
         | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::UnlessPays { effects, .. } => effects_reference_its_controller(effects),
+        | EffectAst::ForEachTaggedPlayer { effects, .. } => effects_reference_its_controller(effects),
+        EffectAst::UnlessPays {
+            effects, player, ..
+        } => {
+            matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+                || effects_reference_its_controller(effects)
+        }
         EffectAst::UnlessAction {
             effects,
             alternative,
+            player,
             ..
         } => {
-            effects_reference_its_controller(effects)
+            matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+                || effects_reference_its_controller(effects)
                 || effects_reference_its_controller(alternative)
         }
         EffectAst::VoteOption { effects, .. } => effects_reference_its_controller(effects),
@@ -1086,6 +1095,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         }
         EffectAst::Counter { target }
         | EffectAst::Explore { target }
+        | EffectAst::Connive { target }
         | EffectAst::Goad { target }
         | EffectAst::PutOrRemoveCounters { target, .. }
         | EffectAst::Tap { target }
@@ -1093,6 +1103,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Destroy { target }
+        | EffectAst::DestroyNoRegeneration { target }
         | EffectAst::Exile { target, .. }
         | EffectAst::ExileWhenSourceLeaves { target }
         | EffectAst::SacrificeSourceWhenLeaves { target }
@@ -1120,6 +1131,7 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::RemoveAbilitiesFromTarget { target, .. }
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. }
+        | EffectAst::GainControl { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
             target_references_tag(target, IT_TAG)
         }
@@ -1198,6 +1210,9 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
             references
         }
         EffectAst::CreateTokenCopy { object, .. } => matches!(object, ObjectRefAst::It),
+        EffectAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }
+        | EffectAst::CastTagged { tag, .. }
+        | EffectAst::ReorderTopOfLibrary { tag } => tag.as_str() == IT_TAG,
         EffectAst::CreateToken { count, .. } | EffectAst::CreateTokenWithMods { count, .. } => {
             value_references_tag(count, IT_TAG)
         }
@@ -1212,12 +1227,14 @@ fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects }
         | EffectAst::ForEachPlayerDoesNot { effects }
         | EffectAst::ForEachOpponentDid { effects, .. }
         | EffectAst::ForEachPlayerDid { effects, .. }
         | EffectAst::UnlessPays { effects, .. } => effects_reference_it_tag(effects),
+        EffectAst::ForEachTagged { tag, effects } => {
+            tag.as_str() == IT_TAG || effects_reference_it_tag(effects)
+        }
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => true,
         EffectAst::ForEachObject { filter, effects } => {
             filter
@@ -5702,9 +5719,52 @@ fn resolve_it_tag(
         return Ok(filter.clone());
     }
 
-    let tag = ctx.last_object_tag.as_ref().ok_or_else(|| {
-        CardTextError::ParseError("unable to resolve 'it' without prior reference".to_string())
-    })?;
+    let Some(tag) = ctx.last_object_tag.as_ref() else {
+        let mut resolved = filter.clone();
+        let mut saw_it_constraint = false;
+        let mut has_non_identity_it_constraint = false;
+        resolved.tagged_constraints.retain(|constraint| {
+            if constraint.tag.as_str() != IT_TAG {
+                return true;
+            }
+            saw_it_constraint = true;
+            if matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject) {
+                false
+            } else {
+                has_non_identity_it_constraint = true;
+                true
+            }
+        });
+
+        // "from it"/"in it" after a hand/library reveal usually refers to the previously
+        // referenced player's hidden zone, not a tagged object.
+        if saw_it_constraint
+            && !has_non_identity_it_constraint
+            && matches!(
+                resolved.zone,
+                Some(Zone::Hand | Zone::Library | Zone::Graveyard | Zone::Exile)
+            )
+            && let Some(player_filter) = ctx.last_player_filter.clone()
+        {
+            if resolved.owner.is_none() {
+                resolved.owner = Some(player_filter);
+            }
+            return Ok(resolved);
+        }
+        if saw_it_constraint
+            && !has_non_identity_it_constraint
+            && resolved == ObjectFilter::default()
+            && let Some(player_filter) = ctx.last_player_filter.clone()
+        {
+            resolved.zone = Some(Zone::Hand);
+            resolved.owner = Some(player_filter);
+            return Ok(resolved);
+        }
+
+        return Err(CardTextError::ParseError(
+            "unable to resolve 'it' without prior reference".to_string(),
+        ));
+    };
 
     let mut resolved = filter.clone();
     for constraint in &mut resolved.tagged_constraints {
@@ -5790,12 +5850,20 @@ fn resolve_choose_spec_it_tag(
 ) -> Result<ChooseSpec, CardTextError> {
     match spec {
         ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG => {
-            let resolved = ctx.last_object_tag.as_ref().ok_or_else(|| {
-                CardTextError::ParseError(
-                    "unable to resolve 'it' without prior reference".to_string(),
-                )
-            })?;
-            Ok(ChooseSpec::Tagged(TagKey::from(resolved.as_str())))
+            if let Some(resolved) = ctx.last_object_tag.as_ref() {
+                return Ok(ChooseSpec::Tagged(TagKey::from(resolved.as_str())));
+            }
+            if let Some(player_filter) = ctx.last_player_filter.clone() {
+                let filter = ObjectFilter {
+                    zone: Some(Zone::Hand),
+                    owner: Some(player_filter),
+                    ..Default::default()
+                };
+                return Ok(ChooseSpec::Object(filter));
+            }
+            Err(CardTextError::ParseError(
+                "unable to resolve 'it' without prior reference".to_string(),
+            ))
         }
         ChooseSpec::Tagged(tag) => Ok(ChooseSpec::Tagged(tag.clone())),
         ChooseSpec::Object(filter) => {

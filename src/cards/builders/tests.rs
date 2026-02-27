@@ -5982,6 +5982,59 @@ fn parse_trigger_target_opponent_may_draw_card() {
 }
 
 #[test]
+fn parse_trigger_it_connives_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Connive It Variant")
+        .parse_text("When this creature enters, it connives.")
+        .expect("it-connives trigger clause should parse");
+    let joined = compiled_lines(&def).join(" ").to_lowercase();
+    assert!(
+        joined.contains("connive"),
+        "expected connive text to be preserved, got {joined}"
+    );
+}
+
+#[test]
+fn parse_reveal_hand_choose_card_from_it_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Reveal Hand From It Variant")
+        .parse_text(
+            "Target opponent reveals their hand. You choose a nonland card from it and exile that card.",
+        )
+        .expect("reveal-hand choose-from-it clause should parse");
+    let joined = compiled_lines(&def).join(" ").to_lowercase();
+    assert!(
+        joined.contains("reveals their hand")
+            && joined.contains("exiles a card from their hand"),
+        "expected reveal/exile sequence to be preserved, got {joined}"
+    );
+}
+
+#[test]
+fn parse_trigger_target_opponent_gains_control_of_it_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gain Control Of It Variant")
+        .parse_text("When this creature enters, target opponent gains control of it.")
+        .expect("gain-control-of-it trigger clause should parse");
+    let joined = compiled_lines(&def).join(" ").to_lowercase();
+    assert!(
+        joined.contains("target opponent gains control"),
+        "expected gain-control text to be preserved, got {joined}"
+    );
+}
+
+#[test]
+fn parse_trigger_destroy_it_then_cant_regenerate_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Destroy It No Regen Variant")
+        .parse_text(
+            "Whenever this creature deals combat damage to a creature, destroy it. It can't be regenerated.",
+        )
+        .expect("destroy-it then cant-regenerate trigger should parse");
+    let joined = compiled_lines(&def).join(" ").to_lowercase();
+    assert!(
+        joined.contains("destroy") && joined.contains("can't be regenerated"),
+        "expected destroy/no-regeneration sequence to be preserved, got {joined}"
+    );
+}
+
+#[test]
 fn parse_each_player_multi_step_then_clause_fails_instead_of_partial_parse() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Each Player Multi-step Variant")
             .parse_text(
