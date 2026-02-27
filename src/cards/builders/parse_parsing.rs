@@ -3671,12 +3671,7 @@ fn parse_if_this_spell_costs_less_to_cast_line(
         .position(|token| token.is_word("costs"))
         .ok_or_else(|| CardTextError::ParseError("missing costs keyword".to_string()))?;
     let amount_tokens = tail_tokens.get(costs_idx + 1..).unwrap_or_default();
-    let parsed_amount = parse_cost_modifier_amount(amount_tokens);
-    let parsed_mana_cost = if parsed_amount.is_none() {
-        parse_cost_modifier_mana_cost(amount_tokens)
-    } else {
-        None
-    };
+    let (parsed_amount, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
     let (amount_value, used) = parsed_amount
         .clone()
         .unwrap_or_else(|| (Value::Fixed(0), 0));
@@ -3849,6 +3844,80 @@ fn parse_trailing_this_spell_cost_condition(
     Ok(Some(condition))
 }
 
+fn parse_cost_modifier_prefix_condition(
+    tokens: &[Token],
+    spells_token_idx: usize,
+) -> Result<(Option<crate::ConditionExpr>, usize), CardTextError> {
+    let subject_end = spells_token_idx.min(tokens.len());
+    let head_tokens = &tokens[..subject_end];
+
+    if words_start_with(tokens, &["during", "turns", "other", "than", "yours"]) {
+        let subject_start = head_tokens
+            .iter()
+            .position(|token| matches!(token, Token::Comma(_)))
+            .map(|idx| idx + 1)
+            .unwrap_or(5);
+        return Ok((
+            Some(crate::ConditionExpr::Not(Box::new(
+                crate::ConditionExpr::YourTurn,
+            ))),
+            subject_start,
+        ));
+    }
+
+    if words_start_with(tokens, &["during", "your", "turn"]) {
+        let subject_start = head_tokens
+            .iter()
+            .position(|token| matches!(token, Token::Comma(_)))
+            .map(|idx| idx + 1)
+            .unwrap_or(3);
+        return Ok((Some(crate::ConditionExpr::YourTurn), subject_start));
+    }
+
+    if words_start_with(tokens, &["as", "long", "as"]) {
+        let subject_start = head_tokens
+            .iter()
+            .position(|token| matches!(token, Token::Comma(_)))
+            .map(|idx| idx + 1)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing subject boundary in leading static condition clause (clause: '{}')",
+                    words(tokens).join(" ")
+                ))
+            })?;
+        if subject_start <= 3 {
+            return Err(CardTextError::ParseError(format!(
+                "missing condition after leading 'as long as' clause (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
+        let condition_tokens = trim_commas(&tokens[3..subject_start]);
+        let condition = match parse_static_condition_clause(&condition_tokens) {
+            Ok(condition) => condition,
+            Err(_) => {
+                let condition_words = words(&condition_tokens);
+                match condition_words.as_slice() {
+                    ["this", "creature", "is", "tapped"]
+                    | ["this", "permanent", "is", "tapped"]
+                    | ["it", "is", "tapped"] => crate::ConditionExpr::SourceIsTapped,
+                    ["this", "creature", "is", "untapped"]
+                    | ["this", "permanent", "is", "untapped"]
+                    | ["it", "is", "untapped"] => crate::ConditionExpr::SourceIsUntapped,
+                    _ => {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported static condition clause (clause: '{}')",
+                            condition_words.join(" ")
+                        )));
+                    }
+                }
+            }
+        };
+        return Ok((Some(condition), subject_start));
+    }
+
+    Ok((None, 0))
+}
+
 fn parse_spells_cost_modifier_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -3856,7 +3925,6 @@ fn parse_spells_cost_modifier_line(
     if clause_words.len() < 4 {
         return Ok(None);
     }
-    let is_this_spell = clause_words.starts_with(&["this", "spell"]);
     if clause_words.contains(&"first")
         && clause_words.contains(&"each")
         && clause_words.contains(&"turn")
@@ -3867,111 +3935,131 @@ fn parse_spells_cost_modifier_line(
         )));
     }
 
-    let spells_idx = clause_words
+    let Some(spells_token_idx) = tokens
         .iter()
-        .position(|word| *word == "spell" || *word == "spells");
-    let Some(spells_idx) = spells_idx else {
+        .position(|token| token.is_word("spell") || token.is_word("spells"))
+    else {
         return Ok(None);
     };
-    let cost_idx = clause_words
-        .iter()
-        .position(|word| *word == "cost" || *word == "costs");
-    let Some(cost_idx) = cost_idx else {
+
+    let (prefix_condition, subject_start) =
+        parse_cost_modifier_prefix_condition(tokens, spells_token_idx)?;
+    if subject_start > spells_token_idx {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[subject_start..spells_token_idx]);
+    let subject_words = words(&subject_tokens);
+    let is_this_spell =
+        subject_words.as_slice() == ["this"] || subject_words.as_slice() == ["thiss"];
+
+    let mut cost_token_idx = None;
+    for idx in spells_token_idx + 1..tokens.len() {
+        if !tokens[idx].is_word("cost") && !tokens[idx].is_word("costs") {
+            continue;
+        }
+        let amount_tokens = &tokens[idx + 1..];
+        let (parsed_amount, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
+        if parsed_amount.is_some() || parsed_mana_cost.is_some() {
+            cost_token_idx = Some(idx);
+            break;
+        }
+    }
+    let Some(cost_token_idx) = cost_token_idx else {
         return Ok(None);
     };
-    if cost_idx <= spells_idx {
+    if cost_token_idx <= spells_token_idx {
         return Ok(None);
     }
 
-    let mut filter = parse_spell_filter(&tokens[..spells_idx]);
-
-    let between_tokens = &tokens[spells_idx + 1..cost_idx];
-    let between_words = &clause_words[spells_idx + 1..cost_idx];
-    for (idx, token) in between_tokens.iter().enumerate() {
-        if !token.is_word("spell") && !token.is_word("spells") {
-            continue;
-        }
-        let mut start = idx;
-        while start > 0 {
-            if between_tokens[start - 1].is_word("and")
-                || between_tokens[start - 1].is_word("or")
-                || matches!(between_tokens[start - 1], Token::Comma(_))
-            {
-                break;
-            }
-            start -= 1;
-        }
-        let descriptor_tokens = trim_commas(&between_tokens[start..idx]);
-        if descriptor_tokens.is_empty() {
-            continue;
-        }
-        let extra_filter = parse_spell_filter(&descriptor_tokens);
-        if spell_filter_has_identity(&extra_filter) {
-            merge_spell_filters(&mut filter, extra_filter);
-        }
-    }
-    let between_filter = parse_spell_filter(between_tokens);
-    if spell_filter_has_identity(&between_filter) {
-        merge_spell_filters(&mut filter, between_filter);
-    }
-    if between_words
-        .windows(2)
-        .any(|window| window == ["you", "cast"])
-    {
-        filter.controller = Some(PlayerFilter::You);
-    }
-    if between_words
-        .iter()
-        .any(|word| *word == "opponent" || *word == "opponents")
-        && between_words
-            .iter()
-            .any(|word| *word == "cast" || *word == "casts")
-    {
-        filter.controller = Some(PlayerFilter::Opponent);
-    }
-
-    let mut target_player: Option<PlayerFilter> = None;
-    let mut target_object: Option<ObjectFilter> = None;
-    let mut targets_idx = None;
-    for (idx, token) in between_tokens.iter().enumerate() {
-        if token.is_word("target") || token.is_word("targets") {
-            if idx > 0 && between_tokens[idx - 1].is_word("that") {
-                targets_idx = Some(idx);
-                break;
-            }
-        }
-    }
-    if let Some(targets_idx) = targets_idx {
-        let target_tokens = &between_tokens[targets_idx + 1..];
-        if target_tokens.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing target in spells-cost modifier clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-        let target_words = words(target_tokens);
-        if target_words.starts_with(&["you"]) {
-            target_player = Some(PlayerFilter::You);
-        } else if target_words.starts_with(&["opponent"])
-            || target_words.starts_with(&["opponents"])
-        {
-            target_player = Some(PlayerFilter::Opponent);
-        } else if target_words.starts_with(&["player"]) || target_words.starts_with(&["players"]) {
-            target_player = Some(PlayerFilter::Any);
-        } else {
-            target_object = Some(parse_object_filter(target_tokens, false)?);
-        }
-        filter.targets_player = target_player;
-        filter.targets_object = target_object;
-    }
-
-    let amount_tokens = &tokens[cost_idx + 1..];
-    let parsed_amount = parse_cost_modifier_amount(amount_tokens);
-    let parsed_mana_cost = if parsed_amount.is_none() {
-        parse_cost_modifier_mana_cost(amount_tokens)
+    let mut filter = if is_this_spell {
+        crate::ability::SpellFilter::default()
     } else {
-        None
+        parse_spell_filter(&subject_tokens)
     };
+
+    let between_tokens = &tokens[spells_token_idx + 1..cost_token_idx];
+    let between_words = words(between_tokens);
+    if !is_this_spell {
+        for (idx, token) in between_tokens.iter().enumerate() {
+            if !token.is_word("spell") && !token.is_word("spells") {
+                continue;
+            }
+            let mut start = idx;
+            while start > 0 {
+                if between_tokens[start - 1].is_word("and")
+                    || between_tokens[start - 1].is_word("or")
+                    || matches!(between_tokens[start - 1], Token::Comma(_))
+                {
+                    break;
+                }
+                start -= 1;
+            }
+            let descriptor_tokens = trim_commas(&between_tokens[start..idx]);
+            if descriptor_tokens.is_empty() {
+                continue;
+            }
+            let extra_filter = parse_spell_filter(&descriptor_tokens);
+            if spell_filter_has_identity(&extra_filter) {
+                merge_spell_filters(&mut filter, extra_filter);
+            }
+        }
+        let between_filter = parse_spell_filter(between_tokens);
+        if spell_filter_has_identity(&between_filter) {
+            merge_spell_filters(&mut filter, between_filter);
+        }
+        if between_words.windows(2).any(|window| window == ["you", "cast"]) {
+            filter.controller = Some(PlayerFilter::You);
+        }
+        if between_words
+            .iter()
+            .any(|word| *word == "opponent" || *word == "opponents")
+            && between_words
+                .iter()
+                .any(|word| *word == "cast" || *word == "casts")
+        {
+            filter.controller = Some(PlayerFilter::Opponent);
+        }
+        let mut target_player: Option<PlayerFilter> = None;
+        let mut target_object: Option<ObjectFilter> = None;
+        let mut targets_idx = None;
+        for (idx, token) in between_tokens.iter().enumerate() {
+            if token.is_word("target") || token.is_word("targets") {
+                if idx > 0 && between_tokens[idx - 1].is_word("that") {
+                    targets_idx = Some(idx);
+                    break;
+                }
+            }
+        }
+        if let Some(targets_idx) = targets_idx {
+            let target_tokens = &between_tokens[targets_idx + 1..];
+            if target_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing target in spells-cost modifier clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let target_words = words(target_tokens);
+            if target_words.starts_with(&["you"]) {
+                target_player = Some(PlayerFilter::You);
+            } else if target_words.starts_with(&["opponent"])
+                || target_words.starts_with(&["opponents"])
+            {
+                target_player = Some(PlayerFilter::Opponent);
+            } else if target_words.starts_with(&["player"])
+                || target_words.starts_with(&["players"])
+            {
+                target_player = Some(PlayerFilter::Any);
+            } else {
+                target_object = Some(parse_object_filter(target_tokens, false)?);
+            }
+            filter.targets_player = target_player;
+            filter.targets_object = target_object;
+        }
+    }
+
+    let amount_tokens = &tokens[cost_token_idx + 1..];
+    let (parsed_amount, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
     let (mut amount_value, used) = parsed_amount
         .clone()
         .map(|(value, used)| (value, used))
@@ -4035,17 +4123,47 @@ fn parse_spells_cost_modifier_line(
         amount_value = replace_unbound_x_with_value(amount_value, &x_value, &clause)?;
     }
 
-    parse_trailing_targets_condition_in_cost_modifier(
-        &mut filter,
-        remaining_tokens,
-        &clause_words,
-    )?;
+    if !is_this_spell {
+        parse_trailing_targets_condition_in_cost_modifier(
+            &mut filter,
+            remaining_tokens,
+            &clause_words,
+        )?;
+    }
 
     let this_spell_condition = if is_this_spell {
-        parse_trailing_this_spell_cost_condition(remaining_tokens, &clause_words)?
-            .unwrap_or(crate::static_abilities::ThisSpellCostCondition::Always)
+        if let Some(condition) =
+            parse_trailing_this_spell_cost_condition(remaining_tokens, &clause_words)?
+        {
+            condition
+        } else if let Some(prefix) = &prefix_condition {
+            match prefix {
+                crate::ConditionExpr::YourTurn => {
+                    crate::static_abilities::ThisSpellCostCondition::YourTurn
+                }
+                crate::ConditionExpr::Not(inner)
+                    if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn) =>
+                {
+                    crate::static_abilities::ThisSpellCostCondition::NotYourTurn
+                }
+                other => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported leading this-spell cost condition (clause: '{}'; condition: {other:?})",
+                        clause_words.join(" ")
+                    )));
+                }
+            }
+        } else {
+            crate::static_abilities::ThisSpellCostCondition::Always
+        }
     } else {
         crate::static_abilities::ThisSpellCostCondition::Always
+    };
+
+    let non_this_condition = if is_this_spell {
+        None
+    } else {
+        prefix_condition.clone()
     };
 
     if is_less {
@@ -4053,7 +4171,10 @@ fn parse_spells_cost_modifier_line(
         // apply from the permanent on the battlefield after it resolves.
         if is_this_spell && parsed_mana_cost.is_none() {
             return Ok(Some(StaticAbility::new(
-                crate::static_abilities::ThisSpellCostReduction::new(amount_value, this_spell_condition),
+                crate::static_abilities::ThisSpellCostReduction::new(
+                    amount_value,
+                    this_spell_condition,
+                ),
             )));
         }
         if is_this_spell
@@ -4067,23 +4188,39 @@ fn parse_spells_cost_modifier_line(
             )));
         }
         if let Some((cost, _)) = parsed_mana_cost {
+            let mut ability = crate::static_abilities::CostReductionManaCost::new(filter, cost);
+            if let Some(condition) = non_this_condition.clone() {
+                ability = ability.with_condition(condition);
+            }
             return Ok(Some(StaticAbility::new(
-                crate::static_abilities::CostReductionManaCost::new(filter, cost),
+                ability,
             )));
         }
+        let mut ability = crate::static_abilities::CostReduction::new(filter, amount_value);
+        if let Some(condition) = non_this_condition.clone() {
+            ability = ability.with_condition(condition);
+        }
         return Ok(Some(StaticAbility::new(
-            crate::static_abilities::CostReduction::new(filter, amount_value),
+            ability,
         )));
     }
 
     if let Some((cost, _)) = parsed_mana_cost {
+        let mut ability = crate::static_abilities::CostIncreaseManaCost::new(filter, cost);
+        if let Some(condition) = non_this_condition.clone() {
+            ability = ability.with_condition(condition);
+        }
         return Ok(Some(StaticAbility::new(
-            crate::static_abilities::CostIncreaseManaCost::new(filter, cost),
+            ability,
         )));
     }
 
+    let mut ability = crate::static_abilities::CostIncrease::new(filter, amount_value);
+    if let Some(condition) = non_this_condition.clone() {
+        ability = ability.with_condition(condition);
+    }
     Ok(Some(StaticAbility::new(
-        crate::static_abilities::CostIncrease::new(filter, amount_value),
+        ability,
     )))
 }
 
@@ -4228,7 +4365,7 @@ fn parse_cost_modifier_mana_cost(tokens: &[Token]) -> Option<(crate::mana::ManaC
             break;
         };
         match symbol {
-            ManaSymbol::Generic(_) | ManaSymbol::X | ManaSymbol::Snow | ManaSymbol::Life(_) => {
+            ManaSymbol::X | ManaSymbol::Snow | ManaSymbol::Life(_) => {
                 break;
             }
             _ => {
@@ -4241,6 +4378,27 @@ fn parse_cost_modifier_mana_cost(tokens: &[Token]) -> Option<(crate::mana::ManaC
         return None;
     }
     Some((ManaCost::from_pips(pips), used))
+}
+
+fn parse_cost_modifier_components(
+    amount_tokens: &[Token],
+) -> (Option<(Value, usize)>, Option<(crate::mana::ManaCost, usize)>) {
+    let parsed_amount = parse_cost_modifier_amount(amount_tokens);
+    let parsed_mana_cost = parse_cost_modifier_mana_cost(amount_tokens);
+
+    let amount_used = parsed_amount.as_ref().map(|(_, used)| *used).unwrap_or(0);
+    let mana_used = parsed_mana_cost
+        .as_ref()
+        .map(|(_, used)| *used)
+        .unwrap_or(0);
+
+    // Prefer mana-symbol parsing when it consumes a longer contiguous mana sequence
+    // (e.g. "{2}{U}{U}" should stay a single mana-cost reduction component).
+    if mana_used > amount_used {
+        return (None, parsed_mana_cost);
+    }
+
+    (parsed_amount, None)
 }
 
 fn parse_dynamic_cost_modifier_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
@@ -38375,6 +38533,103 @@ mod parse_parsing_tests {
         assert!(
             found,
             "expected multicolor mana-symbol cost reduction in parsed static abilities"
+        );
+    }
+
+    #[test]
+    fn parse_spells_cost_modifier_with_during_other_turns_condition() {
+        let card = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Naiad Condition Parse Probe",
+        )
+        .parse_text("During turns other than yours, spells you cast cost {1} less to cast.")
+        .expect("parse turn-conditioned cost reduction");
+
+        let mut found = false;
+        for ability in &card.abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if let Some(modifier) = static_ability.cost_reduction()
+                && matches!(
+                    (&modifier.reduction, &modifier.condition),
+                    (
+                        Value::Fixed(1),
+                        Some(crate::ConditionExpr::Not(inner))
+                    ) if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn)
+                )
+            {
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected turn-conditioned generic cost reduction for spells you cast"
+        );
+    }
+
+    #[test]
+    fn parse_spells_cost_modifier_with_as_long_as_tapped_condition() {
+        let card = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Centaur Omenreader Parse Probe",
+        )
+        .parse_text("As long as this creature is tapped, creature spells you cast cost {2} less to cast.")
+        .expect("parse tapped-conditioned cost reduction");
+
+        let mut found = false;
+        for ability in &card.abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if let Some(modifier) = static_ability.cost_reduction()
+                && modifier.reduction == Value::Fixed(2)
+                && matches!(
+                    modifier.condition,
+                    Some(crate::ConditionExpr::SourceIsTapped)
+                )
+            {
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected source-tapped condition on creature spell cost reduction"
+        );
+    }
+
+    #[test]
+    fn parse_this_spell_cost_modifier_with_during_your_turn_and_mixed_mana() {
+        let card = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Discontinuity Parse Probe",
+        )
+        .parse_text(
+            "During your turn, this spell costs {2}{U}{U} less to cast.\nDraw a card.",
+        )
+        .expect("parse this-spell mixed-mana reduction with turn condition");
+
+        let mut found = false;
+        for ability in &card.abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if let Some(modifier) = static_ability.this_spell_cost_reduction_mana_cost()
+                && modifier.reduction.to_oracle() == "{2}{U}{U}"
+                && matches!(
+                    modifier.condition,
+                    crate::static_abilities::ThisSpellCostCondition::YourTurn
+                )
+            {
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected this-spell mixed-mana reduction with during-your-turn condition"
         );
     }
 

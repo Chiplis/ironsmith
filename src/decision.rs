@@ -1865,15 +1865,24 @@ fn reduce_mana_cost(
         return cost.clone();
     }
     let mut pips = cost.pips().to_vec();
+    let mut generic_reduction: u32 = 0;
     for red_pip in reduction.pips() {
-        if red_pip.len() == 1 && matches!(red_pip[0], ManaSymbol::Generic(_)) {
+        if red_pip.len() == 1
+            && let ManaSymbol::Generic(amount) = red_pip[0]
+        {
+            generic_reduction = generic_reduction.saturating_add(amount as u32);
             continue;
         }
         if let Some(pos) = pips.iter().position(|pip| pip == red_pip) {
             pips.remove(pos);
         }
     }
-    crate::mana::ManaCost::from_pips(pips)
+    let reduced = crate::mana::ManaCost::from_pips(pips);
+    if generic_reduction > 0 {
+        reduced.reduce_generic(generic_reduction)
+    } else {
+        reduced
+    }
 }
 
 fn resolve_cost_modifier_value(
@@ -6304,6 +6313,52 @@ mod tests {
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
         let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(effective.to_oracle(), "{2}");
+    }
+
+    #[test]
+    fn conditional_this_spell_mana_cost_reduction_with_generic_and_colored_pips() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(33), "Discontinuity Variant")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(6)],
+                vec![ManaSymbol::Blue],
+                vec![ManaSymbol::Blue],
+            ]))
+            .build();
+        let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let reduction = ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]);
+        let ability = StaticAbility::new(
+            crate::static_abilities::ThisSpellCostReductionManaCost::new(
+                reduction,
+                crate::static_abilities::ThisSpellCostCondition::YourTurn,
+            ),
+        );
+        game.object_mut(spell_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(ability));
+
+        // Condition met (it's your turn).
+        game.turn.active_player = alice;
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{4}");
+
+        // Condition not met.
+        game.turn.active_player = bob;
+        let spell_obj = game.object(spell_id).expect("spell exists");
+        let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
+        assert_eq!(effective.to_oracle(), "{6}{U}{U}");
     }
 
     #[test]

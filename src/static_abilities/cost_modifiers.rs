@@ -250,6 +250,68 @@ fn describe_cost_modifier_mana_cost(cost: &ManaCost) -> String {
     cost.to_oracle()
 }
 
+fn describe_cost_modifier_condition_prefix(condition: &crate::ConditionExpr) -> String {
+    match condition {
+        crate::ConditionExpr::YourTurn => "During your turn".to_string(),
+        crate::ConditionExpr::Not(inner)
+            if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn) =>
+        {
+            "During turns other than yours".to_string()
+        }
+        crate::ConditionExpr::SourceIsTapped => {
+            "As long as this permanent is tapped".to_string()
+        }
+        crate::ConditionExpr::SourceIsUntapped => {
+            "As long as this permanent is untapped".to_string()
+        }
+        crate::ConditionExpr::SourceIsEquipped => {
+            "As long as this permanent is equipped".to_string()
+        }
+        crate::ConditionExpr::SourceIsEnchanted => {
+            "As long as this permanent is enchanted".to_string()
+        }
+        other => format!("As long as {other:?}"),
+    }
+}
+
+fn describe_cost_modifier_with_condition(
+    body: String,
+    condition: &Option<crate::ConditionExpr>,
+) -> String {
+    if let Some(condition) = condition {
+        format!(
+            "{}, {}",
+            describe_cost_modifier_condition_prefix(condition),
+            body
+        )
+    } else {
+        body
+    }
+}
+
+fn cost_modifier_condition_is_active(
+    condition: &Option<crate::ConditionExpr>,
+    game: &crate::game_state::GameState,
+    source: crate::ids::ObjectId,
+) -> bool {
+    let Some(condition) = condition else {
+        return true;
+    };
+    let Some(source_obj) = game.object(source) else {
+        return false;
+    };
+    let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+        controller: source_obj.controller,
+        source,
+        filter_source: Some(source),
+        triggering_event: None,
+        trigger_identity: None,
+        ability_index: None,
+        options: Default::default(),
+    };
+    crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
+}
+
 fn describe_spell_filter(filter: &SpellFilter) -> String {
     let mut qualifiers = Vec::<String>::new();
     if let Some(colors) = filter.colors {
@@ -447,11 +509,21 @@ impl StaticAbilityKind for Improvise {
 pub struct CostReduction {
     pub filter: SpellFilter,
     pub reduction: Value,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl CostReduction {
     pub fn new(filter: SpellFilter, reduction: Value) -> Self {
-        Self { filter, reduction }
+        Self {
+            filter,
+            reduction,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -468,7 +540,7 @@ impl StaticAbilityKind for CostReduction {
                 line.push(' ');
                 line.push_str(&tail);
             }
-            return line;
+            return describe_cost_modifier_with_condition(line, &self.condition);
         }
         let mut line = format!(
             "{} cost {} less to cast",
@@ -479,7 +551,7 @@ impl StaticAbilityKind for CostReduction {
             line.push(' ');
             line.push_str(&tail);
         }
-        line
+        describe_cost_modifier_with_condition(line, &self.condition)
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -493,11 +565,17 @@ impl StaticAbilityKind for CostReduction {
     fn cost_reduction(&self) -> Option<&CostReduction> {
         Some(self)
     }
+
+    fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
+        cost_modifier_condition_is_active(&self.condition, game, source)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ThisSpellCostCondition {
     Always,
+    YourTurn,
+    NotYourTurn,
     YouLifeTotalOrLess(i32),
     OpponentHasNoCardsInHand,
     OpponentControlsLandsOrMore(u32),
@@ -534,6 +612,8 @@ impl StaticAbilityKind for ThisSpellCostReduction {
             ThisSpellCostCondition::Always => {
                 return format!("This spell costs {amount_text} less to cast");
             }
+            ThisSpellCostCondition::YourTurn => "it's your turn".to_string(),
+            ThisSpellCostCondition::NotYourTurn => "it isn't your turn".to_string(),
             ThisSpellCostCondition::YouLifeTotalOrLess(n) => format!("you have {n} or less life"),
             ThisSpellCostCondition::OpponentHasNoCardsInHand => {
                 "an opponent has no cards in hand".to_string()
@@ -581,6 +661,8 @@ impl StaticAbilityKind for ThisSpellCostReduction {
 
         match self.condition {
             ThisSpellCostCondition::Always => true,
+            ThisSpellCostCondition::YourTurn => game.turn.active_player == controller,
+            ThisSpellCostCondition::NotYourTurn => game.turn.active_player != controller,
             ThisSpellCostCondition::YouLifeTotalOrLess(n) => {
                 game.player(controller).is_some_and(|p| p.life <= n)
             }
@@ -689,6 +771,8 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
             ThisSpellCostCondition::Always => {
                 return format!("This spell costs {amount_text} less to cast");
             }
+            ThisSpellCostCondition::YourTurn => "it's your turn".to_string(),
+            ThisSpellCostCondition::NotYourTurn => "it isn't your turn".to_string(),
             ThisSpellCostCondition::YouLifeTotalOrLess(n) => format!("you have {n} or less life"),
             ThisSpellCostCondition::OpponentHasNoCardsInHand => {
                 "an opponent has no cards in hand".to_string()
@@ -736,6 +820,8 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
 
         match self.condition {
             ThisSpellCostCondition::Always => true,
+            ThisSpellCostCondition::YourTurn => game.turn.active_player == controller,
+            ThisSpellCostCondition::NotYourTurn => game.turn.active_player != controller,
             ThisSpellCostCondition::YouLifeTotalOrLess(n) => {
                 game.player(controller).is_some_and(|p| p.life <= n)
             }
@@ -821,11 +907,21 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
 pub struct CostIncrease {
     pub filter: SpellFilter,
     pub increase: Value,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl CostIncrease {
     pub fn new(filter: SpellFilter, increase: Value) -> Self {
-        Self { filter, increase }
+        Self {
+            filter,
+            increase,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -842,7 +938,7 @@ impl StaticAbilityKind for CostIncrease {
                 line.push(' ');
                 line.push_str(&tail);
             }
-            return line;
+            return describe_cost_modifier_with_condition(line, &self.condition);
         }
         let mut line = format!(
             "{} cost {} more to cast",
@@ -853,7 +949,7 @@ impl StaticAbilityKind for CostIncrease {
             line.push(' ');
             line.push_str(&tail);
         }
-        line
+        describe_cost_modifier_with_condition(line, &self.condition)
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -867,6 +963,10 @@ impl StaticAbilityKind for CostIncrease {
     fn cost_increase(&self) -> Option<&CostIncrease> {
         Some(self)
     }
+
+    fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
+        cost_modifier_condition_is_active(&self.condition, game, source)
+    }
 }
 
 /// Mana-symbol cost reduction: "Spells cost {B} less to cast"
@@ -874,11 +974,21 @@ impl StaticAbilityKind for CostIncrease {
 pub struct CostReductionManaCost {
     pub filter: SpellFilter,
     pub reduction: ManaCost,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl CostReductionManaCost {
     pub fn new(filter: SpellFilter, reduction: ManaCost) -> Self {
-        Self { filter, reduction }
+        Self {
+            filter,
+            reduction,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -888,11 +998,12 @@ impl StaticAbilityKind for CostReductionManaCost {
     }
 
     fn display(&self) -> String {
-        format!(
+        let line = format!(
             "{} cost {} less to cast",
             describe_spell_filter(&self.filter),
             describe_cost_modifier_mana_cost(&self.reduction)
-        )
+        );
+        describe_cost_modifier_with_condition(line, &self.condition)
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -906,6 +1017,10 @@ impl StaticAbilityKind for CostReductionManaCost {
     fn cost_reduction_mana_cost(&self) -> Option<&CostReductionManaCost> {
         Some(self)
     }
+
+    fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
+        cost_modifier_condition_is_active(&self.condition, game, source)
+    }
 }
 
 /// Mana-symbol cost increase: "Spells cost {B} more to cast"
@@ -913,11 +1028,21 @@ impl StaticAbilityKind for CostReductionManaCost {
 pub struct CostIncreaseManaCost {
     pub filter: SpellFilter,
     pub increase: ManaCost,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl CostIncreaseManaCost {
     pub fn new(filter: SpellFilter, increase: ManaCost) -> Self {
-        Self { filter, increase }
+        Self {
+            filter,
+            increase,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -927,11 +1052,12 @@ impl StaticAbilityKind for CostIncreaseManaCost {
     }
 
     fn display(&self) -> String {
-        format!(
+        let line = format!(
             "{} cost {} more to cast",
             describe_spell_filter(&self.filter),
             describe_cost_modifier_mana_cost(&self.increase)
-        )
+        );
+        describe_cost_modifier_with_condition(line, &self.condition)
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -944,6 +1070,10 @@ impl StaticAbilityKind for CostIncreaseManaCost {
 
     fn cost_increase_mana_cost(&self) -> Option<&CostIncreaseManaCost> {
         Some(self)
+    }
+
+    fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
+        cost_modifier_condition_is_active(&self.condition, game, source)
     }
 }
 
