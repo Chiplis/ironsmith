@@ -1462,6 +1462,29 @@ fn test_parse_target_creature_you_control_deals_damage_equal_to_its_power_to_tar
 }
 
 #[test]
+fn test_parse_source_deals_damage_to_target_equal_to_number_of_filter() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ben-Ben Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: This creature deals damage to target attacking creature equal to the number of untapped Mountains you control.",
+        )
+        .expect("parse damage-to-target equal-to-count clause");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("DealDamageEffect"),
+        "expected damage effect in activated ability, got {debug}"
+    );
+    let lower = debug.to_ascii_lowercase();
+    assert!(
+        lower.contains("count(")
+            && lower.contains("untapped: true")
+            && lower.contains("subtypes: [mountain]"),
+        "expected dynamic count amount using untapped Mountains, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_put_counter_then_it_deals_damage_equal_to_its_power() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Knockout Maneuver Variant")
         .card_types(vec![CardType::Instant])

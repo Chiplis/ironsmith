@@ -34401,6 +34401,9 @@ fn parse_deal_damage(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if let Some(effect) = parse_deal_damage_equal_to_clause(tokens)? {
         return Ok(effect);
     }
+    if let Some(effect) = parse_deal_damage_to_target_equal_to_clause(tokens)? {
+        return Ok(effect);
+    }
     if clause_words.starts_with(&["that", "much"]) {
         return parse_deal_damage_with_amount(tokens, Value::EventValue(EventValueSpec::Amount), 2);
     }
@@ -34427,6 +34430,52 @@ fn parse_deal_damage(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
         "missing damage amount (clause: '{}')",
         clause_words.join(" ")
     )))
+}
+
+fn parse_deal_damage_to_target_equal_to_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["damage", "to"]) {
+        return Ok(None);
+    }
+
+    let Some(equal_word_idx) = clause_words
+        .windows(2)
+        .position(|window| window == ["equal", "to"])
+    else {
+        return Ok(None);
+    };
+    let Some(equal_token_idx) = token_index_for_word_index(tokens, equal_word_idx) else {
+        return Ok(None);
+    };
+
+    let mut target_tokens = trim_commas(&tokens[1..equal_token_idx]);
+    if target_tokens
+        .first()
+        .is_some_and(|token| token.is_word("to"))
+    {
+        target_tokens.remove(0);
+    }
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing damage target in equal-to clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let amount = parse_add_mana_equal_amount_value(tokens)
+        .or(parse_equal_to_aggregate_filter_value(tokens))
+        .or(parse_equal_to_number_of_filter_value(tokens))
+        .or(parse_dynamic_cost_modifier_value(tokens)?)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing damage amount (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+    let target = parse_target_phrase(&target_tokens)?;
+    Ok(Some(EffectAst::DealDamage { amount, target }))
 }
 
 fn parse_deal_damage_equal_to_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
