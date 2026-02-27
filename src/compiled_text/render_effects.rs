@@ -1953,7 +1953,7 @@ fn describe_compact_create_token(
     let token_name = create_token.token.name();
     let is_compact_named_token = matches!(
         token_name,
-        "Treasure" | "Clue" | "Food" | "Blood" | "Powerstone"
+        "Treasure" | "Clue" | "Food" | "Blood" | "Gold" | "Powerstone"
     );
     if !is_compact_named_token {
         return None;
@@ -6894,4 +6894,3 @@ fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> String {
         }
     }
 }
-

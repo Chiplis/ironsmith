@@ -7166,6 +7166,15 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     if has_word("junk") && !words.contains(&"creature") {
         return Some(crate::cards::tokens::junk_token_definition());
     }
+    if has_word("gold") && !words.contains(&"creature") {
+        return Some(crate::cards::tokens::gold_token_definition());
+    }
+    if has_word("shard") && !words.contains(&"creature") {
+        return Some(crate::cards::tokens::shard_token_definition());
+    }
+    if has_word("walker") && !has_word("planeswalker") {
+        return Some(crate::cards::tokens::walker_token_definition());
+    }
     if has_word("eldrazi") && has_word("spawn") {
         return Some(eldrazi_spawn_token_definition());
     }

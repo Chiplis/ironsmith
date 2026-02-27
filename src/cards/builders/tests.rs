@@ -6672,6 +6672,65 @@ fn parse_create_supported_role_tokens_attached_to_creature() {
 }
 
 #[test]
+fn render_create_gold_token_uses_compact_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gild Variant")
+        .parse_text("Exile target creature. Create a Gold token.")
+        .expect("gold token creation should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("Create a Gold token") || joined.contains("create a Gold token"),
+        "expected compact gold token wording, got {joined}"
+    );
+    assert!(
+        !joined
+            .to_ascii_lowercase()
+            .contains("unsupported parser line fallback"),
+        "gold token parsing should not rely on unsupported fallback marker, got {joined}"
+    );
+}
+
+#[test]
+fn render_create_shard_token_includes_scry_draw_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Niko Variant")
+        .parse_text("When this permanent enters, create two Shard tokens.")
+        .expect("shard token creation should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n");
+    let lower = joined.to_ascii_lowercase();
+    assert!(
+        lower.contains("shard"),
+        "expected shard token wording in compiled text, got {joined}"
+    );
+    assert!(
+        lower.contains("scry 1") && lower.contains("draw a card"),
+        "expected shard token rules text to include scry and draw, got {joined}"
+    );
+    assert!(
+        !lower.contains("unsupported parser line fallback"),
+        "shard token parsing should not rely on unsupported fallback marker, got {joined}"
+    );
+}
+
+#[test]
+fn render_create_walker_token_uses_expected_characteristics() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Walker Maker Variant")
+        .parse_text("Create three Walker tokens.")
+        .expect("walker token creation should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n");
+    let lower = joined.to_ascii_lowercase();
+    assert!(
+        lower.contains("walker") && lower.contains("2/2") && lower.contains("zombie"),
+        "expected walker token characteristics in compiled text, got {joined}"
+    );
+    assert!(
+        !lower.contains("unsupported parser line fallback"),
+        "walker token parsing should not rely on unsupported fallback marker, got {joined}"
+    );
+}
+
+#[test]
 fn oracle_like_lines_compact_each_opponent_discard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Burglar Rat Variant")
         .card_types(vec![CardType::Creature])
