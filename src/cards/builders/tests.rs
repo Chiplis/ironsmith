@@ -8420,6 +8420,41 @@ fn parse_destroy_cant_be_regenerated_followup_sentence() {
 }
 
 #[test]
+fn parse_damage_cant_be_regenerated_followup_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Engulfing Flames Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Engulfing Flames deals 1 damage to target creature. It can't be regenerated this turn.")
+        .expect("parse damage + can't-be-regenerated-this-turn followup");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("deal 1 damage to target creature"),
+        "expected damage clause in rendered text, got {joined}"
+    );
+    assert!(
+        joined.contains("can't be regenerated") || joined.contains("cant be regenerated"),
+        "expected can't-be-regenerated clause in rendered text, got {joined}"
+    );
+}
+
+#[test]
+fn parse_threshold_destroy_cant_be_regenerated_followup_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Toxic Stench Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target nonblack creature gets -1/-1 until end of turn. Threshold \u{2014} If there are seven or more cards in your graveyard, instead destroy that creature. It can't be regenerated.",
+        )
+        .expect("parse conditional destroy + can't-be-regenerated followup");
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("destroy target nonblack creature")
+            && (joined.contains("can't be regenerated") || joined.contains("cant be regenerated")),
+        "expected destroy-no-regeneration conditional branch in rendered text, got {joined}"
+    );
+}
+
+#[test]
 fn parse_destroy_target_creature_dealt_damage_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Siegebreaker Variant")
         .card_types(vec![CardType::Sorcery])

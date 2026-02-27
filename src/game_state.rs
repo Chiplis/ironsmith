@@ -170,6 +170,10 @@ pub struct CantEffectTracker {
     /// Note: Intrinsic indestructible keyword is checked separately on the object.
     pub cant_be_destroyed: HashSet<ObjectId>,
 
+    /// Permanents that can't be regenerated.
+    /// Example: "Target creature can't be regenerated this turn."
+    pub cant_be_regenerated: HashSet<ObjectId>,
+
     /// Permanents that can't be sacrificed.
     /// Example: Sigarda, Host of Herons (for creatures you control)
     pub cant_be_sacrificed: HashSet<ObjectId>,
@@ -361,6 +365,8 @@ impl CantEffectTracker {
         self.cant_block_alone.extend(other.cant_block_alone);
         self.cant_untap.extend(other.cant_untap);
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
+        self.cant_be_regenerated
+            .extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
         self.cant_cast_spells.extend(other.cant_cast_spells);
         self.cant_activate_non_mana_abilities
@@ -403,6 +409,7 @@ impl CantEffectTracker {
         self.cant_block_alone.clear();
         self.cant_untap.clear();
         self.cant_be_destroyed.clear();
+        self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
         self.cant_cast_spells.clear();
         self.cant_activate_non_mana_abilities.clear();
@@ -498,6 +505,11 @@ impl CantEffectTracker {
     /// Check if a permanent can be destroyed.
     pub fn can_be_destroyed(&self, permanent: ObjectId) -> bool {
         !self.cant_be_destroyed.contains(&permanent)
+    }
+
+    /// Check if a permanent can be regenerated.
+    pub fn can_be_regenerated(&self, permanent: ObjectId) -> bool {
+        !self.cant_be_regenerated.contains(&permanent)
     }
 
     /// Check if a permanent can be sacrificed.
@@ -1524,6 +1536,11 @@ impl GameState {
         self.cant_effects.can_be_destroyed(permanent)
     }
 
+    /// Can the permanent be regenerated?
+    pub fn can_be_regenerated(&self, permanent: ObjectId) -> bool {
+        self.cant_effects.can_be_regenerated(permanent)
+    }
+
     /// Can the permanent be sacrificed?
     pub fn can_be_sacrificed(&self, permanent: ObjectId) -> bool {
         self.cant_effects.can_be_sacrificed(permanent)
@@ -2513,6 +2530,19 @@ impl GameState {
             );
         }
         self.cant_effects.merge(restriction_tracker);
+
+        // "Can't be regenerated" restrictions disable both new and existing shields.
+        let cant_be_regenerated: Vec<_> = self
+            .cant_effects
+            .cant_be_regenerated
+            .iter()
+            .copied()
+            .collect();
+        for object_id in cant_be_regenerated {
+            self.replacement_effects
+                .remove_one_shot_effects_from_source(object_id);
+            self.clear_regeneration_shields(object_id);
+        }
     }
 
     pub fn keep_damage_marked(&mut self, object: ObjectId) {
@@ -4029,6 +4059,10 @@ mod tests {
         game.cant_effects.cant_be_destroyed.insert(obj_id);
         assert!(!game.can_be_destroyed(obj_id));
 
+        assert!(game.can_be_regenerated(obj_id));
+        game.cant_effects.cant_be_regenerated.insert(obj_id);
+        assert!(!game.can_be_regenerated(obj_id));
+
         assert!(game.can_be_sacrificed(obj_id));
         game.cant_effects.cant_be_sacrificed.insert(obj_id);
         assert!(!game.can_be_sacrificed(obj_id));
@@ -4102,6 +4136,7 @@ mod tests {
             .insert(ObjectId::from_raw(3));
         tracker.cant_untap.insert(object);
         tracker.cant_be_destroyed.insert(object);
+        tracker.cant_be_regenerated.insert(object);
         tracker.cant_be_blocked.insert(object);
         tracker.cant_be_countered.insert(object);
         tracker.cant_transform.insert(object);
@@ -4126,6 +4161,7 @@ mod tests {
         assert!(!tracker.must_block_specific_attackers.is_empty());
         assert!(!tracker.cant_untap.is_empty());
         assert!(!tracker.cant_be_destroyed.is_empty());
+        assert!(!tracker.cant_be_regenerated.is_empty());
         assert!(!tracker.cant_be_blocked.is_empty());
         assert!(!tracker.cant_be_countered.is_empty());
         assert!(!tracker.cant_transform.is_empty());
@@ -4211,6 +4247,10 @@ mod tests {
         assert!(
             tracker.cant_be_destroyed.is_empty(),
             "cant_be_destroyed should be cleared"
+        );
+        assert!(
+            tracker.cant_be_regenerated.is_empty(),
+            "cant_be_regenerated should be cleared"
         );
         assert!(
             tracker.cant_be_blocked.is_empty(),

@@ -85,10 +85,15 @@ impl EffectExecutor for CantEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::CardBuilder;
+    use crate::effects::RegenerateEffect;
     use crate::executor::ExecutionContext;
     use crate::game_state::GameState;
+    use crate::ids::CardId;
     use crate::ids::PlayerId;
-    use crate::target::PlayerFilter;
+    use crate::target::{ObjectFilter, PlayerFilter};
+    use crate::types::CardType;
+    use crate::zone::Zone;
 
     #[test]
     fn cant_effect_blocks_life_gain() {
@@ -104,5 +109,41 @@ mod tests {
 
         assert!(!game.can_gain_life(PlayerId::from_index(0)));
         assert!(!game.can_gain_life(PlayerId::from_index(1)));
+    }
+
+    #[test]
+    fn cant_be_regenerated_clears_existing_regeneration_shields() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let creature_card = CardBuilder::new(CardId::from_raw(1), "Shielded Bear")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        let mut regen_ctx = ExecutionContext::new_default(creature_id, alice);
+        RegenerateEffect::source(Until::EndOfTurn)
+            .execute(&mut game, &mut regen_ctx)
+            .expect("apply regeneration shield");
+        assert!(
+            game.replacement_effects
+                .count_one_shot_effects_from_source(creature_id)
+                > 0
+        );
+
+        let source = game.new_object_id();
+        let mut cant_ctx = ExecutionContext::new_default(source, alice);
+        CantEffect::until_end_of_turn(Restriction::be_regenerated(ObjectFilter::specific(
+            creature_id,
+        )))
+        .execute(&mut game, &mut cant_ctx)
+        .expect("apply cant be regenerated");
+
+        assert!(!game.can_be_regenerated(creature_id));
+        assert_eq!(
+            game.replacement_effects
+                .count_one_shot_effects_from_source(creature_id),
+            0
+        );
     }
 }

@@ -89,6 +89,9 @@ impl EffectExecutor for RegenerateEffect {
             if obj.zone != Zone::Battlefield || !obj.is_creature() {
                 continue;
             }
+            if !game.can_be_regenerated(target_id) {
+                continue;
+            }
             let controller = obj.controller;
 
             let replacement_effects = vec![
@@ -285,6 +288,31 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.result, EffectResult::TargetInvalid);
+    }
+
+    #[test]
+    fn test_regenerate_fails_when_target_cant_be_regenerated() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature(&mut game, "Troll", alice);
+
+        game.cant_effects.cant_be_regenerated.insert(creature_id);
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+        let effect = RegenerateEffect::new(
+            ChooseSpec::Object(ObjectFilter::creature()),
+            Until::EndOfTurn,
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.result, EffectResult::TargetInvalid);
+        assert_eq!(
+            game.replacement_effects
+                .count_one_shot_effects_from_source(creature_id),
+            0
+        );
     }
 
     #[test]

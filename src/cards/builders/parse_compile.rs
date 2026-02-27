@@ -1342,6 +1342,7 @@ pub(crate) fn restriction_references_tag(restriction: &crate::effect::Restrictio
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
+        | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::BeTargeted(filter)
@@ -6083,6 +6084,9 @@ pub(crate) fn resolve_restriction_it_tag(
         Restriction::Untap(filter) => Restriction::untap(resolve_it_tag(filter, ctx)?),
         Restriction::BeBlocked(filter) => Restriction::be_blocked(resolve_it_tag(filter, ctx)?),
         Restriction::BeDestroyed(filter) => Restriction::be_destroyed(resolve_it_tag(filter, ctx)?),
+        Restriction::BeRegenerated(filter) => {
+            Restriction::be_regenerated(resolve_it_tag(filter, ctx)?)
+        }
         Restriction::BeSacrificed(filter) => {
             Restriction::be_sacrificed(resolve_it_tag(filter, ctx)?)
         }

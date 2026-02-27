@@ -6392,6 +6392,9 @@ fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
         crate::effect::Restriction::BeDestroyed(filter) => {
             format!("{} can't be destroyed", filter.description())
         }
+        crate::effect::Restriction::BeRegenerated(filter) => {
+            format!("{} can't be regenerated", filter.description())
+        }
         crate::effect::Restriction::BeSacrificed(filter) => {
             format!("{} can't be sacrificed", filter.description())
         }

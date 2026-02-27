@@ -761,6 +761,7 @@ pub enum Restriction {
     Untap(ObjectFilter),
     BeBlocked(ObjectFilter),
     BeDestroyed(ObjectFilter),
+    BeRegenerated(ObjectFilter),
     BeSacrificed(ObjectFilter),
     HaveCountersPlaced(ObjectFilter),
     BeTargeted(ObjectFilter),
@@ -862,6 +863,10 @@ impl Restriction {
 
     pub fn be_destroyed(filter: ObjectFilter) -> Self {
         Self::BeDestroyed(filter)
+    }
+
+    pub fn be_regenerated(filter: ObjectFilter) -> Self {
+        Self::BeRegenerated(filter)
     }
 
     pub fn be_sacrificed(filter: ObjectFilter) -> Self {
@@ -1165,6 +1170,15 @@ impl Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.cant_be_destroyed.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeRegenerated(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_regenerated.insert(obj_id);
                     }
                 }
             }

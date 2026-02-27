@@ -3150,6 +3150,8 @@ pub(crate) fn parse_negated_object_restriction_clause(
         ["block", "this", "turn"] => Restriction::block(filter),
         ["be", "blocked"] => Restriction::be_blocked(filter),
         ["be", "destroyed"] => Restriction::be_destroyed(filter),
+        ["be", "regenerated"] => Restriction::be_regenerated(filter),
+        ["be", "regenerated", "this", "turn"] => Restriction::be_regenerated(filter),
         ["be", "sacrificed"] => Restriction::be_sacrificed(filter),
         ["be", "countered"] => Restriction::be_countered(filter),
         ["transform"] => Restriction::transform(filter),

@@ -4144,6 +4144,39 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_target_cant_be_regenerated_this_turn_from_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Furnace Brood Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text("{B}: Target creature can't be regenerated this turn.")
+            .expect("target cant-be-regenerated clause should parse");
+
+        let activated = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .expect("expected activated ability");
+
+        let cant = activated
+            .effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<CantEffect>())
+            .expect("expected cant effect");
+        assert_eq!(cant.duration, crate::effect::Until::EndOfTurn);
+        match &cant.restriction {
+            crate::effect::Restriction::BeRegenerated(filter) => {
+                assert!(
+                    !filter.tagged_constraints.is_empty(),
+                    "expected target-bound regeneration restriction filter, got {filter:?}"
+                );
+            }
+            other => panic!("expected be-regenerated restriction, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_source_doesnt_untap_during_next_untap_step_from_text() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Cloudcrest Lake Variant")
             .card_types(vec![CardType::Land])

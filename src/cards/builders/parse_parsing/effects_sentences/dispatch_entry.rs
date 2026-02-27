@@ -137,6 +137,16 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
                 sentence_idx += 1;
                 continue;
             }
+            if is_cant_be_regenerated_this_turn_followup_sentence(&sentence_tokens)
+                && apply_cant_be_regenerated_to_last_target_effect(&mut effects)
+            {
+                parser_trace(
+                    "parse_effect_sentences:cant-be-regenerated-this-turn-followup",
+                    &sentence_tokens,
+                );
+                sentence_idx += 1;
+                continue;
+            }
             return Err(CardTextError::ParseError(format!(
                 "unsupported standalone cant-be-regenerated clause (clause: '{}')",
                 words(&sentence_tokens).join(" ")
@@ -389,29 +399,112 @@ pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[Token]) -> bool
     )
 }
 
+pub(crate) fn is_cant_be_regenerated_this_turn_followup_sentence(tokens: &[Token]) -> bool {
+    let words = normalize_cant_words(tokens);
+    matches!(
+        words.as_slice(),
+        ["it", "cant", "be", "regenerated", "this", "turn"]
+            | ["they", "cant", "be", "regenerated", "this", "turn"]
+    )
+}
+
 pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(effects: &mut Vec<EffectAst>) -> bool {
-    let Some(last) = effects.pop() else {
+    let Some(last) = effects.last_mut() else {
         return false;
     };
+    apply_cant_be_regenerated_to_effect(last)
+}
 
-    match last {
+pub(crate) fn apply_cant_be_regenerated_to_last_target_effect(effects: &mut Vec<EffectAst>) -> bool {
+    let Some(previous_target) = effects.last().and_then(primary_target_from_effect) else {
+        return false;
+    };
+    let Some(mut filter) = target_ast_to_object_filter(previous_target) else {
+        return false;
+    };
+    if !filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    }
+
+    effects.push(EffectAst::Cant {
+        restriction: crate::effect::Restriction::be_regenerated(filter),
+        duration: Until::EndOfTurn,
+    });
+    true
+}
+
+fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
+    match effect {
         EffectAst::Destroy { target } => {
-            effects.push(EffectAst::DestroyNoRegeneration { target });
+            let target = target.clone();
+            *effect = EffectAst::DestroyNoRegeneration { target };
             true
         }
         EffectAst::DestroyAll { filter } => {
-            effects.push(EffectAst::DestroyAllNoRegeneration { filter });
+            let filter = filter.clone();
+            *effect = EffectAst::DestroyAllNoRegeneration { filter };
             true
         }
         EffectAst::DestroyAllOfChosenColor { filter } => {
-            effects.push(EffectAst::DestroyAllOfChosenColorNoRegeneration { filter });
+            let filter = filter.clone();
+            *effect = EffectAst::DestroyAllOfChosenColorNoRegeneration { filter };
             true
         }
-        other => {
-            effects.push(other);
-            false
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => {
+            apply_cant_be_regenerated_to_effects_tail(if_true)
+                || apply_cant_be_regenerated_to_effects_tail(if_false)
+        }
+        EffectAst::UnlessPays { effects, .. }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::MayByTaggedController { effects, .. }
+        | EffectAst::IfResult { effects, .. }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachTargetPlayers { effects, .. }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachOpponentDoesNot { effects }
+        | EffectAst::ForEachPlayerDoesNot { effects }
+        | EffectAst::ForEachOpponentDid { effects, .. }
+        | EffectAst::ForEachPlayerDid { effects, .. }
+        | EffectAst::ForEachTaggedPlayer { effects, .. }
+        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+        | EffectAst::VoteOption { effects, .. } => {
+            apply_cant_be_regenerated_to_effects_tail(effects)
+        }
+        EffectAst::UnlessAction {
+            effects,
+            alternative,
+            ..
+        } => {
+            apply_cant_be_regenerated_to_effects_tail(effects)
+                || apply_cant_be_regenerated_to_effects_tail(alternative)
+        }
+        _ => false,
+    }
+}
+
+fn apply_cant_be_regenerated_to_effects_tail(effects: &mut [EffectAst]) -> bool {
+    for effect in effects.iter_mut().rev() {
+        if apply_cant_be_regenerated_to_effect(effect) {
+            return true;
         }
     }
+    false
 }
 
 pub(crate) fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
