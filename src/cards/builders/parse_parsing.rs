@@ -39418,6 +39418,38 @@ mod parse_parsing_tests {
     }
 
     #[test]
+    fn parse_object_filter_spell_from_hand_keeps_origin_zone() {
+        let tokens = tokenize_line("instant or sorcery spell from your hand", 0);
+        let filter = parse_object_filter(&tokens, false).expect("parse spell-origin filter");
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn parse_object_filter_spell_with_source_linked_exile_reference_stays_on_stack() {
+        let tokens = tokenize_line("spell with the same name as a card exiled with this creature", 0);
+        let filter =
+            parse_object_filter(&tokens, false).expect("parse spell with source-linked exile ref");
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert!(
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            }),
+            "expected source-linked exile tagged constraint"
+        );
+    }
+
+    #[test]
+    fn parse_target_phrase_spell_cast_from_graveyard_uses_spell_origin_zone() {
+        let tokens = tokenize_line("target spell cast from a graveyard", 0);
+        let target = parse_target_phrase(&tokens).expect("parse target spell cast from graveyard");
+        let TargetAst::Object(filter, _, _) = target else {
+            panic!("expected object target");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+    }
+
+    #[test]
     fn parse_trigger_clause_player_subject_attack_uses_one_or_more() {
         let tokens = tokenize_line("you attack", 0);
         let trigger = parse_trigger_clause(&tokens).expect("parse trigger clause");
@@ -42299,7 +42331,9 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     let is_source_linked_exile_reference = has_exiled_with_phrase
         || (starts_with_exiled_card
             && (all_words.len() == 2 || owner_only_tail_after_exiled_cards));
+    let mut source_linked_exile_reference = false;
     if is_source_linked_exile_reference {
+        source_linked_exile_reference = true;
         filter.zone = Some(Zone::Exile);
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
@@ -43215,6 +43249,11 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
             saw_subtype = true;
         }
     }
+    if saw_spell && source_linked_exile_reference {
+        // "spell ... exiled with this" describes a stack spell with a relation
+        // to source-linked exiled cards, not a spell object in exile.
+        filter.zone = Some(Zone::Stack);
+    }
 
     let segments = split_on_or(&segment_tokens);
     let mut segment_types = Vec::new();
@@ -43396,9 +43435,15 @@ fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, Ca
     if filter.any_of.is_empty() {
         if let Some(zone) = filter.zone {
             if saw_spell && zone != Zone::Stack {
-                return Err(CardTextError::ParseError(
-                    "spell targets must be on the stack".to_string(),
-                ));
+                let is_spell_origin_zone = matches!(
+                    zone,
+                    Zone::Hand | Zone::Graveyard | Zone::Exile | Zone::Library | Zone::Command
+                );
+                if !is_spell_origin_zone {
+                    return Err(CardTextError::ParseError(
+                        "spell targets must be on the stack".to_string(),
+                    ));
+                }
             }
         } else if saw_spell {
             filter.zone = Some(Zone::Stack);

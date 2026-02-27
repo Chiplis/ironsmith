@@ -1356,7 +1356,8 @@ impl ObjectFilter {
             || self.targets_only_player.is_some()
             || self.targets_only_object.is_some()
             || self.targets_player.is_some()
-            || self.targets_object.is_some();
+            || self.targets_object.is_some()
+            || (self.zone.is_some_and(|zone| zone != Zone::Stack) && object.zone == Zone::Stack);
 
         let mut stack_entry = None;
         if wants_stack {
@@ -1370,9 +1371,33 @@ impl ObjectFilter {
 
         if let Some(zone) = &self.zone
             && *zone != Zone::Stack
-            && object.zone != *zone
         {
-            return false;
+            if object.zone == Zone::Stack {
+                // For stack spells, non-stack zone filters mean
+                // "cast from <zone>" (e.g. "target spell cast from a graveyard").
+                if !game.spell_cast_order_this_turn.contains_key(&object.id) {
+                    return false;
+                }
+                let Some(entry) = stack_entry else {
+                    return false;
+                };
+                let cast_from_zone = match &entry.casting_method {
+                    crate::alternative_cast::CastingMethod::Normal => Zone::Hand,
+                    crate::alternative_cast::CastingMethod::Alternative(index) => object
+                        .alternative_casts
+                        .get(*index)
+                        .map(|method| method.cast_from_zone())
+                        .unwrap_or(Zone::Hand),
+                    crate::alternative_cast::CastingMethod::GrantedEscape { .. }
+                    | crate::alternative_cast::CastingMethod::GrantedFlashback => Zone::Graveyard,
+                    crate::alternative_cast::CastingMethod::PlayFrom { zone, .. } => *zone,
+                };
+                if cast_from_zone != *zone {
+                    return false;
+                }
+            } else if object.zone != *zone {
+                return false;
+            }
         }
 
         if let Some(kind) = self.stack_kind {
@@ -4034,6 +4059,92 @@ mod tests {
             .with_subtype(crate::types::Subtype::Warrior);
 
         assert_eq!(filter.subtypes.len(), 2);
+    }
+
+    #[test]
+    fn test_spell_zone_filter_matches_stack_spell_cast_from_graveyard() {
+        use crate::alternative_cast::CastingMethod;
+        use crate::card::CardBuilder;
+        use crate::ids::CardId;
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::zone::Zone;
+
+        let mut game = crate::game_state::GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+
+        let spell = CardBuilder::new(CardId::from_raw(1), "Graveyard Cast Probe")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .build();
+        let graveyard_id = game.create_object_from_card(&spell, alice, Zone::Graveyard);
+        let stack_id = game
+            .move_object(graveyard_id, Zone::Stack)
+            .expect("move probe spell to stack");
+        game.push_to_stack(
+            crate::game_state::StackEntry::new(stack_id, alice).with_casting_method(
+                CastingMethod::PlayFrom {
+                    source: stack_id,
+                    zone: Zone::Graveyard,
+                    use_alternative: None,
+                },
+            ),
+        );
+        game.spell_cast_order_this_turn.insert(stack_id, 1);
+
+        let filter = ObjectFilter::spell().in_zone(Zone::Graveyard);
+        let ctx = FilterContext::new(alice);
+        let object = game.object(stack_id).expect("stack spell should exist");
+        assert!(
+            filter.matches(object, &ctx, &game),
+            "spell cast from graveyard should satisfy graveyard origin filter"
+        );
+    }
+
+    #[test]
+    fn test_spell_zone_filter_matches_stack_spell_with_graveyard_alternative_cast() {
+        use crate::alternative_cast::{AlternativeCastingMethod, CastingMethod};
+        use crate::card::CardBuilder;
+        use crate::ids::CardId;
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::zone::Zone;
+
+        let mut game = crate::game_state::GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+
+        let spell = CardBuilder::new(CardId::from_raw(2), "Flashback Probe")
+            .card_types(vec![CardType::Instant])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+            .build();
+        let graveyard_id = game.create_object_from_card(&spell, alice, Zone::Graveyard);
+        let stack_id = game
+            .move_object(graveyard_id, Zone::Stack)
+            .expect("move flashback probe to stack");
+        game.object_mut(stack_id)
+            .expect("stack spell should exist")
+            .alternative_casts
+            .push(AlternativeCastingMethod::Flashback {
+                cost: ManaCost::default(),
+                cost_effects: Vec::new(),
+            });
+        game.push_to_stack(
+            crate::game_state::StackEntry::new(stack_id, alice)
+                .with_casting_method(CastingMethod::Alternative(0)),
+        );
+        game.spell_cast_order_this_turn.insert(stack_id, 1);
+
+        let filter = ObjectFilter::spell().in_zone(Zone::Graveyard);
+        let ctx = FilterContext::new(alice);
+        let object = game.object(stack_id).expect("stack spell should exist");
+        assert!(
+            filter.matches(object, &ctx, &game),
+            "spell cast with a graveyard alternative method should satisfy graveyard origin filter"
+        );
     }
 
     #[test]
