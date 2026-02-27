@@ -6639,6 +6639,39 @@ fn render_create_junk_token_uses_expected_wording() {
 }
 
 #[test]
+fn parse_create_supported_role_tokens_attached_to_creature() {
+    let role_names = [
+        "Young Hero Role",
+        "Monster Role",
+        "Sorcerer Role",
+        "Royal Role",
+        "Cursed Role",
+    ];
+
+    for role_name in role_names {
+        let text = format!(
+            "Create a {role_name} token attached to target creature you control."
+        );
+        let def = CardDefinitionBuilder::new(CardId::new(), format!("{role_name} Variant"))
+            .parse_text(&text)
+            .unwrap_or_else(|err| panic!("{role_name} token creation should parse: {err:?}"));
+        let joined = crate::compiled_text::compiled_lines(&def).join("\n");
+        assert!(
+            joined
+                .to_ascii_lowercase()
+                .contains(&role_name.to_ascii_lowercase()),
+            "expected compiled text to include role token name '{role_name}', got {joined}"
+        );
+        assert!(
+            !joined
+                .to_ascii_lowercase()
+                .contains("unsupported parser line fallback"),
+            "{role_name} token creation should not rely on unsupported fallback marker, got {joined}"
+        );
+    }
+}
+
+#[test]
 fn oracle_like_lines_compact_each_opponent_discard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Burglar Rat Variant")
         .card_types(vec![CardType::Creature])

@@ -7124,6 +7124,15 @@ pub(crate) fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
     }
 }
 
+fn role_token_definition(name: &str, rules_text: &str) -> Option<CardDefinition> {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .token()
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Role])
+        .parse_text(rules_text)
+        .ok()
+}
+
 pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let lower = name.trim().to_ascii_lowercase();
     let words: Vec<&str> = lower
@@ -7171,16 +7180,40 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         return Some(builder.build());
     }
     if has_word("wicked") && has_word("role") {
-        let builder = CardDefinitionBuilder::new(CardId::new(), "Wicked Role")
-            .token()
-            .card_types(vec![CardType::Enchantment])
-            .subtypes(vec![Subtype::Aura, Subtype::Role]);
-        if let Ok(def) = builder.clone().parse_text(
+        return role_token_definition(
+            "Wicked Role",
             "Enchant creature\nEnchanted creature gets +1/+1.\nWhen this token is put into a graveyard from the battlefield, each opponent loses 1 life.",
-        ) {
-            return Some(def);
-        }
-        return Some(builder.build());
+        );
+    }
+    if has_word("young") && has_word("hero") && has_word("role") {
+        return role_token_definition(
+            "Young Hero Role",
+            "Enchant creature\nEnchanted creature has \"Whenever this creature attacks, if its toughness is 3 or less, put a +1/+1 counter on it.\"",
+        );
+    }
+    if has_word("monster") && has_word("role") {
+        return role_token_definition(
+            "Monster Role",
+            "Enchant creature\nEnchanted creature gets +1/+1 and has trample.",
+        );
+    }
+    if has_word("sorcerer") && has_word("role") {
+        return role_token_definition(
+            "Sorcerer Role",
+            "Enchant creature\nEnchanted creature gets +1/+1 and has \"Whenever this creature attacks, scry 1.\"",
+        );
+    }
+    if has_word("royal") && has_word("role") {
+        return role_token_definition(
+            "Royal Role",
+            "Enchant creature\nEnchanted creature gets +1/+1 and has ward {1}.",
+        );
+    }
+    if has_word("cursed") && has_word("role") {
+        return role_token_definition(
+            "Cursed Role",
+            "Enchant creature\nEnchanted creature has base power and toughness 1/1.",
+        );
     }
     if has_word("blood") && !words.contains(&"creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Blood")
