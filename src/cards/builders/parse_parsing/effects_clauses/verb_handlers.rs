@@ -1960,6 +1960,62 @@ pub(crate) fn parse_put_into_hand(
     tokens: &[Token],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    fn force_object_targeting(target: TargetAst, span: TextSpan) -> TargetAst {
+        match target {
+            TargetAst::Object(filter, explicit_span, fixed_span) => {
+                TargetAst::Object(filter, explicit_span.or(Some(span)), fixed_span)
+            }
+            TargetAst::WithCount(inner, count) => {
+                TargetAst::WithCount(Box::new(force_object_targeting(*inner, span)), count)
+            }
+            other => other,
+        }
+    }
+
+    fn expand_graveyard_or_hand_disjunction(
+        mut target: TargetAst,
+        target_tokens: &[Token],
+    ) -> TargetAst {
+        let target_words = words(target_tokens);
+        let has_graveyard = target_words
+            .iter()
+            .any(|word| matches!(*word, "graveyard" | "graveyards"));
+        let has_hand = target_words
+            .iter()
+            .any(|word| matches!(*word, "hand" | "hands"));
+        if !(has_graveyard && has_hand) {
+            return target;
+        }
+
+        fn apply(filter: &ObjectFilter) -> ObjectFilter {
+            let mut graveyard = filter.clone();
+            graveyard.any_of.clear();
+            graveyard.zone = Some(Zone::Graveyard);
+
+            let mut hand = filter.clone();
+            hand.any_of.clear();
+            hand.zone = Some(Zone::Hand);
+
+            let mut disjunction = ObjectFilter::default();
+            disjunction.any_of = vec![graveyard, hand];
+            disjunction
+        }
+
+        match &mut target {
+            TargetAst::Object(filter, _, _) => {
+                *filter = apply(filter);
+            }
+            TargetAst::WithCount(inner, _) => {
+                if let TargetAst::Object(filter, _, _) = inner.as_mut() {
+                    *filter = apply(filter);
+                }
+            }
+            _ => {}
+        }
+
+        target
+    }
+
     let player = match subject {
         Some(SubjectAst::Player(player)) => player,
         _ => PlayerAst::Implicit,
@@ -2094,18 +2150,23 @@ pub(crate) fn parse_put_into_hand(
         }
         idx += 1;
 
+        let mut battlefield_tapped = false;
         if tokens.get(idx).is_some_and(|token| token.is_word("tapped")) {
+            battlefield_tapped = true;
             idx += 1;
         }
 
+        let mut battlefield_controller = ReturnControllerAst::Preserve;
         if tokens.get(idx).is_some_and(|token| token.is_word("under")) {
             let tail_words = words(&tokens[idx..]);
             let consumed = if tail_words.starts_with(&["under", "your", "control"]) {
+                battlefield_controller = ReturnControllerAst::You;
                 Some(3usize)
             } else if tail_words.starts_with(&["under", "its", "owners", "control"])
                 || tail_words.starts_with(&["under", "their", "owners", "control"])
                 || tail_words.starts_with(&["under", "that", "players", "control"])
             {
+                battlefield_controller = ReturnControllerAst::Owner;
                 Some(4usize)
             } else {
                 None
@@ -2121,6 +2182,61 @@ pub(crate) fn parse_put_into_hand(
                 "missing target before 'onto' (clause: '{}')",
                 clause_words.join(" ")
             )));
+        }
+
+        if target_tokens
+            .first()
+            .is_some_and(|token| token.is_word("attached"))
+            && target_tokens
+                .get(1)
+                .is_some_and(|token| token.is_word("to"))
+        {
+            let after_to = &target_tokens[2..];
+            if after_to.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing attachment target after 'attached to' (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+
+            let attachment_target_len = if after_to.first().is_some_and(|token| token.is_word("it"))
+            {
+                1usize
+            } else if after_to.len() >= 2
+                && after_to[0].is_word("that")
+                && after_to[1].as_word().is_some_and(|word| {
+                    matches!(word, "creature" | "permanent" | "object" | "aura" | "equipment")
+                })
+            {
+                2usize
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported attachment target after 'attached to' (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+
+            let attachment_target = parse_target_phrase(&after_to[..attachment_target_len])?;
+            let object_tokens = trim_commas(&after_to[attachment_target_len..]);
+            if object_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing object after attachment target (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+
+            let mut object_target = parse_target_phrase(&object_tokens)?;
+            object_target = expand_graveyard_or_hand_disjunction(object_target, &object_tokens);
+            object_target = force_object_targeting(object_target, tokens[0].span());
+
+            return Ok(EffectAst::MoveToZone {
+                target: object_target,
+                zone: Zone::Battlefield,
+                to_top: false,
+                battlefield_controller,
+                battlefield_tapped,
+                attached_to: Some(attachment_target),
+            });
         }
 
         if !target_tokens
@@ -2172,6 +2288,7 @@ pub(crate) fn parse_put_into_hand(
             to_top: true,
             battlefield_controller: ReturnControllerAst::Preserve,
             battlefield_tapped: false,
+            attached_to: None,
         });
     }
 
@@ -2229,6 +2346,7 @@ pub(crate) fn parse_put_into_hand(
                 to_top: false,
                 battlefield_controller: ReturnControllerAst::Preserve,
                 battlefield_tapped: false,
+                attached_to: None,
             });
         }
     }
@@ -2276,6 +2394,7 @@ pub(crate) fn parse_put_into_hand(
                 to_top: false,
                 battlefield_controller: ReturnControllerAst::Preserve,
                 battlefield_tapped: false,
+                attached_to: None,
             });
         }
     }
@@ -2371,6 +2490,7 @@ pub(crate) fn parse_put_into_hand(
             to_top: false,
             battlefield_controller,
             battlefield_tapped,
+            attached_to: None,
         });
     }
 

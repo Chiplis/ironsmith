@@ -682,7 +682,6 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::RemoveUpToAnyCounters { target, .. }
         | EffectAst::ReturnToHand { target, .. }
         | EffectAst::ReturnToBattlefield { target, .. }
-        | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
         | EffectAst::BecomeBasicLandTypeChoice { target, .. }
         | EffectAst::BecomeCreatureTypeChoice { target, .. }
@@ -703,6 +702,16 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::GainControl { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
             matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
+        }
+        EffectAst::MoveToZone {
+            target,
+            attached_to,
+            ..
+        } => {
+            matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
+                || attached_to
+                    .as_ref()
+                    .is_some_and(|target| matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag))
         }
         EffectAst::PreventAllCombatDamageFromSource { source: target, .. } => {
             matches!(target, TargetAst::Tagged(t, _) if t.as_str() == tag)
@@ -1164,7 +1173,6 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::RemoveUpToAnyCounters { target, .. }
         | EffectAst::ReturnToHand { target, .. }
         | EffectAst::ReturnToBattlefield { target, .. }
-        | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
         | EffectAst::BecomeBasicLandTypeChoice { target, .. }
         | EffectAst::BecomeCreatureTypeChoice { target, .. }
@@ -1185,6 +1193,16 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::GainControl { target, .. }
         | EffectAst::CreateTokenCopyFromSource { source: target, .. } => {
             target_references_tag(target, IT_TAG)
+        }
+        EffectAst::MoveToZone {
+            target,
+            attached_to,
+            ..
+        } => {
+            target_references_tag(target, IT_TAG)
+                || attached_to
+                    .as_ref()
+                    .is_some_and(|target| target_references_tag(target, IT_TAG))
         }
         EffectAst::PreventAllCombatDamageFromSource { source: target, .. } => {
             target_references_tag(target, IT_TAG)
@@ -1681,7 +1699,6 @@ pub(crate) fn collect_tag_spans_from_effect(
         | EffectAst::RemoveUpToAnyCounters { target, .. }
         | EffectAst::ReturnToHand { target, .. }
         | EffectAst::ReturnToBattlefield { target, .. }
-        | EffectAst::MoveToZone { target, .. }
         | EffectAst::Pump { target, .. }
         | EffectAst::BecomeBasicLandTypeChoice { target, .. }
         | EffectAst::BecomeCreatureTypeChoice { target, .. }
@@ -1696,6 +1713,16 @@ pub(crate) fn collect_tag_spans_from_effect(
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::PreventAllDamageToTarget { target, .. } => {
             collect_tag_spans_from_target(target, annotations, ctx);
+        }
+        EffectAst::MoveToZone {
+            target,
+            attached_to,
+            ..
+        } => {
+            collect_tag_spans_from_target(target, annotations, ctx);
+            if let Some(attach_target) = attached_to {
+                collect_tag_spans_from_target(attach_target, annotations, ctx);
+            }
         }
         EffectAst::MoveAllCounters { from, to } => {
             collect_tag_spans_from_target(from, annotations, ctx);
@@ -3759,8 +3786,24 @@ pub(crate) fn compile_effect(
             to_top,
             battlefield_controller,
             battlefield_tapped,
+            attached_to,
         } => {
-            let (spec, choices) = resolve_target_spec_with_choices(target, ctx)?;
+            let (spec, mut choices) = resolve_target_spec_with_choices(target, ctx)?;
+            let resolved_attach_spec = if let Some(attach_target) = attached_to {
+                if *zone != Zone::Battlefield {
+                    return Err(CardTextError::ParseError(
+                        "attached battlefield destination requires zone battlefield".to_string(),
+                    ));
+                }
+                let (attach_spec, attach_choices) =
+                    resolve_target_spec_with_choices(attach_target, ctx)?;
+                for choice in attach_choices {
+                    push_choice(&mut choices, choice);
+                }
+                Some(attach_spec)
+            } else {
+                None
+            };
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {
                 move_effect.tapped()
@@ -3772,14 +3815,33 @@ pub(crate) fn compile_effect(
                 ReturnControllerAst::Owner => move_effect.under_owner_control(),
                 ReturnControllerAst::You => move_effect.under_you_control(),
             };
-            let mut effect =
-                tag_object_target_effect(Effect::new(move_effect), &spec, ctx, "moved");
-            if ctx.auto_tag_object_targets && !spec.is_target() && choose_spec_targets_object(&spec)
-            {
+            let mut effect = Effect::new(move_effect);
+            let mut moved_tag: Option<String> = None;
+            let should_tag = choose_spec_targets_object(&spec)
+                && (ctx.auto_tag_object_targets || attached_to.is_some());
+            if should_tag {
                 let tag = ctx.next_tag("moved");
+                moved_tag = Some(tag.clone());
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
             }
+
+            if let Some(attach_spec) = resolved_attach_spec {
+                let moved_tag = moved_tag.ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "attached battlefield destination requires object-tagged move source"
+                            .to_string(),
+                    )
+                })?;
+                let moved_objects = ChooseSpec::All(ObjectFilter::tagged(TagKey::from(
+                    moved_tag.as_str(),
+                )));
+                return Ok((
+                    vec![effect, Effect::attach_objects(moved_objects, attach_spec)],
+                    choices,
+                ));
+            }
+
             Ok((vec![effect], choices))
         }
         EffectAst::ReturnAllToHand { filter } => {

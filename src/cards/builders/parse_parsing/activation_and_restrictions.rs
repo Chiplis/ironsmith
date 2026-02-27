@@ -7554,6 +7554,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
             to_top: true,
             battlefield_controller: ReturnControllerAst::Preserve,
             battlefield_tapped: false,
+            attached_to: None,
         },
     ]))
 }
@@ -7646,6 +7647,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
             to_top: false,
             battlefield_controller,
             battlefield_tapped,
+            attached_to: None,
         },
     ]))
 }

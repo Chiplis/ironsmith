@@ -2,8 +2,9 @@
 
 use crate::effect::{EffectOutcome, EffectResult};
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_objects_from_spec;
 use crate::event_processor::{EventOutcome, process_zone_change};
-use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
@@ -102,29 +103,19 @@ impl EffectExecutor for MoveToZoneEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let object_id = match &self.target {
-            ChooseSpec::Source => Some(ctx.source),
-            ChooseSpec::SpecificObject(id) => Some(*id),
-            ChooseSpec::Iterated => ctx.iterated_object,
-            ChooseSpec::Tagged(tag) => ctx
-                .tagged_objects
-                .get(tag)
-                .and_then(|snapshots| snapshots.first())
-                .map(|snapshot| snapshot.object_id),
-            _ => ctx.targets.first().and_then(|target| {
-                if let ResolvedTarget::Object(id) = target {
-                    Some(*id)
-                } else {
-                    None
-                }
-            }),
-        };
-
-        let Some(object_id) = object_id else {
+        let object_ids = resolve_objects_from_spec(game, &self.target, ctx)?;
+        if object_ids.is_empty() {
             return Ok(EffectOutcome::from_result(EffectResult::TargetInvalid));
-        };
+        }
 
-        if let Some(obj) = game.object(object_id) {
+        let mut moved_ids = Vec::new();
+        let mut any_prevented = false;
+        let mut any_replaced = false;
+
+        for object_id in object_ids {
+            let Some(obj) = game.object(object_id) else {
+                continue;
+            };
             let from_zone = obj.zone;
 
             // Process through replacement effects with decision maker
@@ -154,16 +145,15 @@ impl EffectExecutor for MoveToZoneEffect {
                                 self.enters_tapped,
                             ),
                         };
-                        return Ok(
-                            match move_to_battlefield_with_options(game, ctx, object_id, options) {
-                                BattlefieldEntryOutcome::Moved(new_id) => {
-                                    EffectOutcome::from_result(EffectResult::Objects(vec![new_id]))
-                                }
-                                BattlefieldEntryOutcome::Prevented => {
-                                    EffectOutcome::from_result(EffectResult::Prevented)
-                                }
-                            },
-                        );
+                        match move_to_battlefield_with_options(game, ctx, object_id, options) {
+                            BattlefieldEntryOutcome::Moved(new_id) => {
+                                moved_ids.push(new_id);
+                            }
+                            BattlefieldEntryOutcome::Prevented => {
+                                any_prevented = true;
+                            }
+                        }
+                        continue;
                     }
 
                     if let Some(new_id) = game.move_object(object_id, final_zone) {
@@ -182,23 +172,30 @@ impl EffectExecutor for MoveToZoneEffect {
                                 }
                             }
                         }
-                        return Ok(EffectOutcome::from_result(EffectResult::Objects(vec![
-                            new_id,
-                        ])));
+                        moved_ids.push(new_id);
+                        continue;
                     }
 
-                    return Ok(EffectOutcome::from_result(EffectResult::TargetInvalid));
+                    continue;
                 }
                 EventOutcome::Replaced => {
-                    // Replacement effects already executed
-                    return Ok(EffectOutcome::from_result(EffectResult::Replaced));
+                    any_replaced = true;
                 }
                 EventOutcome::NotApplicable => {
-                    return Ok(EffectOutcome::from_result(EffectResult::TargetInvalid));
+                    continue;
                 }
             }
         }
 
+        if !moved_ids.is_empty() {
+            return Ok(EffectOutcome::from_result(EffectResult::Objects(moved_ids)));
+        }
+        if any_prevented {
+            return Ok(EffectOutcome::from_result(EffectResult::Prevented));
+        }
+        if any_replaced {
+            return Ok(EffectOutcome::from_result(EffectResult::Replaced));
+        }
         Ok(EffectOutcome::from_result(EffectResult::TargetInvalid))
     }
 
@@ -219,9 +216,12 @@ impl EffectExecutor for MoveToZoneEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::ChoiceCount;
+    use crate::executor::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::target::ObjectFilter;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -323,6 +323,33 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.result, EffectResult::TargetInvalid);
+    }
+
+    #[test]
+    fn test_move_to_zone_moves_all_resolved_targets() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_a = create_creature(&mut game, "A", alice);
+        let creature_b = create_creature(&mut game, "B", alice);
+        let source = game.new_object_id();
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            crate::executor::ResolvedTarget::Object(creature_a),
+            crate::executor::ResolvedTarget::Object(creature_b),
+        ]);
+
+        let target_spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()))
+            .with_count(ChoiceCount::exactly(2));
+        let effect = MoveToZoneEffect::to_graveyard(target_spec);
+        let result = effect.execute(&mut game, &mut ctx).expect("move should resolve");
+
+        let moved_ids = match result.result {
+            EffectResult::Objects(ids) => ids,
+            other => panic!("expected Objects result, got {other:?}"),
+        };
+        assert_eq!(moved_ids.len(), 2, "expected two moved objects");
+        assert!(!game.battlefield.contains(&creature_a));
+        assert!(!game.battlefield.contains(&creature_b));
     }
 
     #[test]

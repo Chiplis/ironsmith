@@ -961,6 +961,7 @@ enum EffectAst {
         to_top: bool,
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
+        attached_to: Option<TargetAst>,
     },
     ReturnAllToHand {
         filter: ObjectFilter,
@@ -7869,6 +7870,26 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 && debug.contains("card_types: [Creature]")
                 && debug.contains("entered_graveyard_from_battlefield_this_turn: true"),
             "expected creature graveyard-history return-all lowering, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_destination_first_put_attached_to_it_from_graveyard_or_hand() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Bruna Variant")
+            .parse_text(
+                "Flying, vigilance\nWhenever this creature attacks or blocks, you may attach to it any number of Auras on the battlefield and you may put onto the battlefield attached to it any number of Aura cards that could enchant it from your graveyard and/or hand.",
+            )
+            .expect("destination-first put-attached clause should parse");
+
+        let debug = format!("{:?}", def);
+        assert!(
+            debug.contains("MoveToZoneEffect")
+                && debug.contains("AttachObjectsEffect")
+                && debug.contains("TagKey(\"triggering\")")
+                && debug.contains("TagKey(\"moved_")
+                && debug.contains("zone: Some(Graveyard)")
+                && debug.contains("zone: Some(Hand)"),
+            "expected move+attach lowering with triggering target and hand/graveyard disjunction, got {debug}"
         );
     }
 

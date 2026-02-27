@@ -928,6 +928,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
         to_top: false,
         battlefield_controller,
         battlefield_tapped: false,
+        attached_to: None,
     }];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
     for descriptor in descriptors {
