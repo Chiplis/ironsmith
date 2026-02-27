@@ -7890,6 +7890,24 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_until_next_turn_whenever_trigger_clause() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Dont Move Variant")
+            .parse_text(
+                "Destroy all tapped creatures. Until your next turn, whenever a creature becomes tapped, destroy it.",
+            )
+            .expect("until-next-turn triggered clause should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("DestroyEffect { spec: All(")
+                && debug.contains("ApplyContinuousEffect")
+                && debug.contains("PermanentBecomesTappedTrigger")
+                && debug.contains("until: YourNextTurn"),
+            "expected destroy-all plus delayed tap trigger granting, got {debug}"
+        );
+    }
+
+    #[test]
     fn reject_counter_ability_target_clause() {
         let err = CardDefinitionBuilder::new(CardId::new(), "Tales End Variant")
             .parse_text("Counter target activated ability, triggered ability, or legendary spell.")

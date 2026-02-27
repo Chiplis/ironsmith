@@ -1221,7 +1221,17 @@ pub(crate) fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> 
                 || has_effect_head_without_verb(after.as_slice());
             let before_words = words(before.as_slice());
             let after_words = words(after.as_slice());
+            let duration_trigger_prefix = (before_words.first() == Some(&"until")
+                || before_words.first() == Some(&"during"))
+                && (before_words.contains(&"whenever")
+                    || before_words.contains(&"when")
+                    || before_words.windows(2).any(|window| window == ["at", "the"]));
             if before_words.first() == Some(&"unless") {
+                continue;
+            }
+            // Keep "until ... whenever ..., <effect>" in one segment so the duration-triggered
+            // clause parser can consume the full trigger+effect text.
+            if duration_trigger_prefix {
                 continue;
             }
             // Keep search instructions in a single segment so the dedicated
@@ -1580,4 +1590,3 @@ pub(crate) fn dash_labeled_remainder_starts_with_trigger(line: &str) -> bool {
     };
     rest.starts_with("whenever ") || rest.starts_with("when ") || rest.starts_with("at ")
 }
-

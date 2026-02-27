@@ -1973,4 +1973,3 @@ pub(crate) fn parse_clash_clause(tokens: &[Token]) -> Result<Option<EffectAst>, 
 
     Ok(Some(EffectAst::Clash { opponent }))
 }
-
