@@ -1930,7 +1930,7 @@ fn parse_additional_cost_choice_options(
         return Ok(None);
     }
 
-    let mut options = Vec::new();
+    let mut normalized_options = Vec::new();
     for mut option in option_tokens {
         while option
             .first()
@@ -1942,10 +1942,24 @@ fn parse_additional_cost_choice_options(
         if option.is_empty() {
             continue;
         }
+        normalized_options.push(option);
+    }
 
-        if find_verb(&option).is_none() {
-            return Ok(None);
-        }
+    if normalized_options.len() < 2 {
+        return Ok(None);
+    }
+
+    // If any branch lacks a verb, this "or" belongs to a noun phrase
+    // (for example, "discard a red or green card"), not a cost choice.
+    if normalized_options
+        .iter()
+        .any(|option| find_verb(option).is_none())
+    {
+        return Ok(None);
+    }
+
+    let mut options = Vec::new();
+    for option in normalized_options {
 
         let effects = parse_effect_sentences(&option)?;
         if effects.is_empty() {
@@ -35146,16 +35160,24 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
     let tail = if consumed_embedded_card_keyword {
         trim_commas(rest)
     } else {
+        let mut card_word_idx = 0usize;
         if rest
             .first()
-            .and_then(Token::as_word)
-            .is_some_and(|word| word != "card" && word != "cards")
+            .is_some_and(|token| token.is_word("additional"))
         {
+            card_word_idx = 1;
+        }
+        let Some(card_word) = rest.get(card_word_idx).and_then(Token::as_word) else {
+            return Err(CardTextError::ParseError(
+                "missing card keyword".to_string(),
+            ));
+        };
+        if card_word != "card" && card_word != "cards" {
             return Err(CardTextError::ParseError(
                 "missing card keyword".to_string(),
             ));
         }
-        trim_commas(&rest[1..])
+        trim_commas(&rest[card_word_idx + 1..])
     };
     let player = match subject {
         Some(SubjectAst::Player(player)) => player,
@@ -37313,12 +37335,16 @@ fn parse_discard(
     let qualifier_tokens = trim_commas(&rest[..card_token_idx]);
     let mut discard_filter = None;
     if !qualifier_tokens.is_empty() {
-        let mut filter = parse_object_filter(&qualifier_tokens, false).map_err(|_| {
-            CardTextError::ParseError(format!(
+        let mut filter = if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
+            filter
+        } else if let Some(filter) = parse_discard_color_qualifier_filter(&qualifier_tokens) {
+            filter
+        } else {
+            return Err(CardTextError::ParseError(format!(
                 "unsupported discard card qualifier (clause: '{}')",
                 clause_words.join(" ")
-            ))
-        })?;
+            )));
+        };
         filter.zone = Some(Zone::Hand);
         discard_filter = Some(filter);
     }
@@ -37345,6 +37371,35 @@ fn parse_discard(
         random,
         filter: discard_filter,
     })
+}
+
+fn parse_discard_color_qualifier_filter(tokens: &[Token]) -> Option<ObjectFilter> {
+    let qualifier_words: Vec<&str> = words(tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    if qualifier_words.is_empty() {
+        return None;
+    }
+
+    let mut colors = crate::color::ColorSet::new();
+    let mut saw_color = false;
+    for word in qualifier_words {
+        if word == "or" {
+            continue;
+        }
+        let color = parse_color(word)?;
+        colors = colors.union(color);
+        saw_color = true;
+    }
+
+    if !saw_color {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.colors = Some(colors);
+    Some(filter)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40876,6 +40931,34 @@ mod parse_parsing_tests {
     }
 
     #[test]
+    fn parse_draw_an_additional_card_clause() {
+        let tokens = tokenize_line("an additional card", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw with additional card wording");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::Fixed(1),
+                player: PlayerAst::You,
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_draw_two_additional_cards_clause() {
+        let tokens = tokenize_line("two additional cards", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw with numeric additional cards wording");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::Fixed(2),
+                player: PlayerAst::You,
+            }
+        ));
+    }
+
+    #[test]
     fn parse_draw_card_next_turns_upkeep_trailing_clause() {
         let tokens = tokenize_line("a card at the beginning of the next turns upkeep", 0);
         let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
@@ -40957,8 +41040,36 @@ mod parse_parsing_tests {
                     count: Value::Fixed(1),
                     player: PlayerAst::You,
                 }]
-            )
+                )
         ));
+    }
+
+    #[test]
+    fn parse_discard_a_red_or_green_card_qualifier() {
+        let tokens = tokenize_line("a red or green card", 0);
+        let effect = parse_discard(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse discard with color disjunction qualifier");
+        assert!(matches!(
+            effect,
+            EffectAst::Discard {
+                count: Value::Fixed(1),
+                player: PlayerAst::You,
+                random: false,
+                filter: Some(filter),
+            } if filter.zone == Some(Zone::Hand)
+        ));
+    }
+
+    #[test]
+    fn parse_surge_of_strength_additional_discard_cost() {
+        crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Surge of Strength Parse Probe",
+        )
+        .parse_text(
+            "As an additional cost to cast this spell, discard a red or green card.\nTarget creature gains trample and gets +X/+0 until end of turn, where X is that creature's mana value.",
+        )
+        .expect("parse surge of strength additional discard cost");
     }
 
     #[test]
