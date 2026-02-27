@@ -6573,6 +6573,26 @@ fn render_create_treasure_token_uses_compact_wording() {
 }
 
 #[test]
+fn render_create_map_token_uses_compact_wording() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Spyglass Siren Variant")
+        .parse_text("When this creature enters, create a Map token.")
+        .expect("map token creation should parse");
+    let lines = crate::compiled_text::compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("create a Map artifact token")
+            || joined.contains("Create a Map artifact token"),
+        "expected compact map token wording, got {joined}"
+    );
+    assert!(
+        !joined
+            .to_ascii_lowercase()
+            .contains("unsupported parser line fallback"),
+        "map token parsing should not rely on unsupported fallback marker, got {joined}"
+    );
+}
+
+#[test]
 fn oracle_like_lines_compact_each_opponent_discard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Burglar Rat Variant")
         .card_types(vec![CardType::Creature])

@@ -241,6 +241,7 @@ pub enum Subtype {
     Food,
     Fortification,
     Gold,
+    Map,
     Treasure,
     Vehicle,
 

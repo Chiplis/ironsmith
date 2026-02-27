@@ -7148,6 +7148,9 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     if has_word("clue") && !words.contains(&"creature") {
         return Some(crate::cards::tokens::clue_token_definition());
     }
+    if has_word("map") && !words.contains(&"creature") {
+        return Some(crate::cards::tokens::map_token_definition());
+    }
     if has_word("eldrazi") && has_word("spawn") {
         return Some(eldrazi_spawn_token_definition());
     }
