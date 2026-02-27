@@ -5810,6 +5810,22 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_discard_it_after_reveal_clause() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Faadiyah Variant")
+            .parse_text("{T}: Draw a card and reveal it. If it isn't a land card, discard it.")
+            .expect("discard-it clause should parse");
+
+        let debug = format!("{:?}", def);
+        assert!(
+            debug.contains("DiscardEffect")
+                && debug.contains("card_filter: Some")
+                && debug.contains("tagged_constraints: [TaggedObjectConstraint")
+                && debug.contains("zone: Some(Hand)"),
+            "expected discard-it lowering to a tagged hand-card discard filter, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_mindculling_draw_then_target_opponent_discards() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mindculling Variant")
             .parse_text("You draw two cards and target opponent discards two cards.")

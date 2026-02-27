@@ -183,6 +183,17 @@ pub(crate) fn parse_discard(
         return Ok(EffectAst::DiscardHand { player });
     }
 
+    if matches!(clause_words.as_slice(), ["it"] | ["that", "card"]) {
+        let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        tagged_filter.zone = Some(Zone::Hand);
+        return Ok(EffectAst::Discard {
+            count: Value::Fixed(1),
+            player,
+            random: false,
+            filter: Some(tagged_filter),
+        });
+    }
+
     let (count, used) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing discard count (clause: '{}')",
@@ -2662,4 +2673,3 @@ pub(crate) fn parse_filter_comparison_tokens(
 
     Ok(None)
 }
-
