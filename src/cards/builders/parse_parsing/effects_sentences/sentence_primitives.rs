@@ -2540,6 +2540,12 @@ pub(crate) fn parse_sentence_shuffle_graveyard_into_library(
     parse_shuffle_graveyard_into_library_sentence(tokens)
 }
 
+pub(crate) fn parse_sentence_shuffle_object_into_library(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_shuffle_object_into_library_sentence(tokens)
+}
+
 pub(crate) fn parse_sentence_exile_hand_and_graveyard_bundle(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3714,6 +3720,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "shuffle-graveyard-into-library",
         parser: parse_sentence_shuffle_graveyard_into_library,
+    },
+    SentencePrimitive {
+        name: "shuffle-object-into-library",
+        parser: parse_sentence_shuffle_object_into_library,
     },
     SentencePrimitive {
         name: "exile-hand-and-graveyard-bundle",

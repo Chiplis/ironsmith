@@ -5868,6 +5868,28 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_its_owner_shuffles_it_into_their_library() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Deglamer Variant")
+            .parse_text("Choose target artifact or enchantment. Its owner shuffles it into their library.")
+            .expect("deglamer-style shuffle clause should parse");
+
+        let effects = def.spell_effect.expect("spell effects");
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("MoveToZoneEffect"),
+            "expected move-to-library effect, got {debug}"
+        );
+        assert!(
+            debug.contains("ShuffleLibraryEffect"),
+            "expected shuffle-library effect, got {debug}"
+        );
+        assert!(
+            debug.contains("OwnerOf("),
+            "expected owner-of-target library shuffle, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_put_counters_on_each_creature_you_control_compiles_foreach() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Saga Counter Variant")
             .parse_text("Put a +1/+1 counter on each creature you control.")
