@@ -7921,6 +7921,20 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_can_block_additional_creature_this_turn_clause() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Anurid Variant")
+            .parse_text("Reach\n{1}{G}: This creature can block an additional creature this turn.")
+            .expect("temporary can-block-additional clause should parse");
+
+        let debug = format!("{:?}", def);
+        assert!(
+            debug.contains("CanBlockAdditionalCreatureEachCombat")
+                && debug.contains("until: EndOfTurn"),
+            "expected end-of-turn can-block-additional grant, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_counter_unless_pays_dynamic_mana_equal_value() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Repulsive Mutation Variant")
             .parse_text(

@@ -682,6 +682,59 @@ pub(crate) fn parse_can_attack_as_though_no_defender_clause(
     }))
 }
 
+pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = words(tokens);
+    let Some(can_idx) = clause_words.iter().position(|word| *word == "can") else {
+        return Ok(None);
+    };
+    let subject_words = &clause_words[..can_idx];
+    let tail = &clause_words[can_idx..];
+    if !tail.starts_with(&["can", "block"]) || !tail.ends_with(&["this", "turn"]) {
+        return Ok(None);
+    }
+
+    let Some(additional_offset) = tail.iter().position(|word| *word == "additional") else {
+        return Ok(None);
+    };
+    if tail.get(additional_offset + 1).copied() != Some("creature")
+        && tail.get(additional_offset + 1).copied() != Some("creatures")
+    {
+        return Ok(None);
+    }
+
+    let mut additional = 1usize;
+    if additional_offset > 0 {
+        let number_word_idx = can_idx + additional_offset - 1;
+        if clause_words[number_word_idx] != "a" && clause_words[number_word_idx] != "an"
+            && let Some(number_token_idx) = token_index_for_word_index(tokens, number_word_idx)
+            && let Some((parsed, used)) = parse_number(&tokens[number_token_idx..])
+            && used > 0
+        {
+            additional = parsed as usize;
+        }
+    }
+
+    let target = if subject_words.is_empty() {
+        TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()))
+    } else {
+        let subject_tokens = subject_words
+            .iter()
+            .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        parse_target_phrase(&subject_tokens)?
+    };
+
+    Ok(Some(EffectAst::GrantAbilitiesToTarget {
+        target,
+        abilities: vec![StaticAbility::can_block_additional_creature_each_combat(
+            additional,
+        )],
+        duration: Until::EndOfTurn,
+    }))
+}
+
 pub(crate) fn parse_win_the_game_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.len() < 4 {
@@ -1374,4 +1427,3 @@ pub(crate) fn parse_subject(tokens: &[Token]) -> SubjectAst {
 
     SubjectAst::This
 }
-

@@ -1539,6 +1539,9 @@ pub(crate) fn run_clause_primitives(tokens: &[Token]) -> Result<Option<EffectAst
             parser: parse_can_attack_as_though_no_defender_clause,
         },
         ClausePrimitive {
+            parser: parse_can_block_additional_creature_this_turn_clause,
+        },
+        ClausePrimitive {
             parser: parse_must_block_if_able_clause,
         },
         ClausePrimitive {
