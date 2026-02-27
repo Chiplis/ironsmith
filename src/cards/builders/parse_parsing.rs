@@ -21998,6 +21998,10 @@ fn try_build_unless(
     // Determine the player from the "unless" clause
     let (player, action_token_start) = if after_words.starts_with(&["you"]) {
         (PlayerAst::You, 1)
+    } else if after_words.starts_with(&["target", "opponent"]) {
+        (PlayerAst::TargetOpponent, 2)
+    } else if after_words.starts_with(&["target", "player"]) {
+        (PlayerAst::Target, 2)
     } else if after_words.starts_with(&["any", "player"]) {
         (PlayerAst::Any, 2)
     } else if after_words.len() >= 6
@@ -35075,6 +35079,7 @@ fn parse_move(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
 fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
     let mut parsed_that_many_minus_one = false;
+    let mut parsed_that_many_plus_one = false;
     let mut consumed_embedded_card_keyword = false;
     let (mut count, used) = if clause_words.starts_with(&["that", "many"]) {
         let mut value = Value::EventValue(EventValueSpec::Amount);
@@ -35089,6 +35094,9 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
             if trailing_words.as_slice() == ["minus", "one"] {
                 value = Value::EventValueOffset(EventValueSpec::Amount, -1);
                 parsed_that_many_minus_one = true;
+            } else if trailing_words.as_slice() == ["plus", "one"] {
+                value = Value::EventValueOffset(EventValueSpec::Amount, 1);
+                parsed_that_many_plus_one = true;
             } else if !trailing_words.is_empty()
                 && !(trailing_words
                     .windows(2)
@@ -35149,9 +35157,20 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
         }
         trim_commas(&rest[1..])
     };
+    let player = match subject {
+        Some(SubjectAst::Player(player)) => player,
+        _ => PlayerAst::Implicit,
+    };
+    let mut effect = EffectAst::Draw {
+        count: count.clone(),
+        player,
+    };
+
     if !tail.is_empty() {
         let tail_words = words(&tail);
-        if !(parsed_that_many_minus_one && tail_words.as_slice() == ["minus", "one"]) {
+        if !((parsed_that_many_minus_one && tail_words.as_slice() == ["minus", "one"])
+            || (parsed_that_many_plus_one && tail_words.as_slice() == ["plus", "one"]))
+        {
             let has_for_each = tail
                 .windows(2)
                 .any(|window| window[0].is_word("for") && window[1].is_word("each"));
@@ -35171,6 +35190,12 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
                         )));
                     }
                 }
+                effect = EffectAst::Draw {
+                    count: count.clone(),
+                    player,
+                };
+            } else if let Some(parsed) = parse_draw_trailing_clause(&tail, effect.clone())? {
+                effect = parsed;
             } else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing draw clause (clause: '{}')",
@@ -35179,13 +35204,63 @@ fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst
             }
         }
     }
+    Ok(effect)
+}
 
-    let player = match subject {
-        Some(SubjectAst::Player(player)) => player,
-        _ => PlayerAst::Implicit,
-    };
+fn parse_draw_trailing_clause(
+    tokens: &[Token],
+    draw_effect: EffectAst,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tail_words = words(tokens);
+    if tail_words.as_slice() == ["instead"] {
+        return Ok(Some(draw_effect));
+    }
 
-    Ok(EffectAst::Draw { count, player })
+    if let Some(timing) = parse_draw_delayed_timing_words(&tail_words) {
+        return Ok(Some(wrap_return_with_delayed_timing(
+            draw_effect,
+            Some(timing),
+        )));
+    }
+
+    if tail_words.first().copied() == Some("if") {
+        let predicate_tokens = trim_commas(&tokens[1..]);
+        if predicate_tokens.is_empty() {
+            return Err(CardTextError::ParseError(
+                "missing condition after trailing if clause".to_string(),
+            ));
+        }
+        let predicate = parse_predicate(&predicate_tokens)?;
+        return Ok(Some(EffectAst::Conditional {
+            predicate,
+            if_true: vec![draw_effect],
+            if_false: Vec::new(),
+        }));
+    }
+
+    if tail_words.first().copied() == Some("unless") {
+        return try_build_unless(vec![draw_effect], tokens, 0);
+    }
+
+    Ok(None)
+}
+
+fn parse_draw_delayed_timing_words(words: &[&str]) -> Option<DelayedReturnTimingAst> {
+    if let Some(timing) = parse_delayed_return_timing_words(words) {
+        return Some(timing);
+    }
+
+    if matches!(
+        words,
+        ["at", "beginning", "of", "next", "turns", "upkeep"]
+            | ["at", "beginning", "of", "the", "next", "turns", "upkeep"]
+            | ["at", "the", "beginning", "of", "next", "turns", "upkeep"]
+            | ["at", "the", "beginning", "of", "the", "next", "turns", "upkeep"]
+    ) {
+        return Some(DelayedReturnTimingAst::NextUpkeep(PlayerAst::Any));
+    }
+
+    None
 }
 
 fn parse_draw_as_many_cards_value(tokens: &[Token]) -> Option<Value> {
@@ -40769,6 +40844,120 @@ mod parse_parsing_tests {
                 count: Value::EventValue(EventValueSpec::Amount),
                 player: PlayerAst::You,
             }
+        ));
+    }
+
+    #[test]
+    fn parse_draw_that_many_cards_plus_one() {
+        let tokens = tokenize_line("that many cards plus one", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw that-many cards plus one");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::EventValueOffset(EventValueSpec::Amount, 1),
+                player: PlayerAst::You,
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_draw_three_cards_instead_trailing_clause() {
+        let tokens = tokenize_line("three cards instead", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw with trailing instead clause");
+        assert!(matches!(
+            effect,
+            EffectAst::Draw {
+                count: Value::Fixed(3),
+                player: PlayerAst::You,
+            }
+        ));
+    }
+
+    #[test]
+    fn parse_draw_card_next_turns_upkeep_trailing_clause() {
+        let tokens = tokenize_line("a card at the beginning of the next turns upkeep", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw delayed until next turn's upkeep");
+        assert!(matches!(
+            effect,
+            EffectAst::DelayedUntilNextUpkeep {
+                player: PlayerAst::Any,
+                effects,
+            } if matches!(
+                effects.as_slice(),
+                [EffectAst::Draw {
+                    count: Value::Fixed(1),
+                    player: PlayerAst::You,
+                }]
+            )
+        ));
+    }
+
+    #[test]
+    fn parse_draw_card_next_end_step_trailing_clause() {
+        let tokens = tokenize_line("a card at the beginning of the next end step", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw delayed until next end step");
+        assert!(matches!(
+            effect,
+            EffectAst::DelayedUntilNextEndStep {
+                player: PlayerFilter::Any,
+                effects,
+            } if matches!(
+                effects.as_slice(),
+                [EffectAst::Draw {
+                    count: Value::Fixed(1),
+                    player: PlayerAst::You,
+                }]
+            )
+        ));
+    }
+
+    #[test]
+    fn parse_draw_card_if_you_have_no_cards_in_hand_trailing_clause() {
+        let tokens = tokenize_line("a card if you have no cards in hand", 0);
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw with trailing if predicate");
+        assert!(matches!(
+            effect,
+            EffectAst::Conditional {
+                predicate: PredicateAst::YouHaveNoCardsInHand,
+                if_true,
+                if_false,
+            } if if_false.is_empty()
+                && matches!(
+                    if_true.as_slice(),
+                    [EffectAst::Draw {
+                        count: Value::Fixed(1),
+                        player: PlayerAst::You,
+                    }]
+                )
+        ));
+    }
+
+    #[test]
+    fn parse_draw_card_unless_target_opponent_action() {
+        let tokens = tokenize_line(
+            "a card unless target opponent sacrifices a creature of their choice or pays 3 life",
+            0,
+        );
+        let effect = parse_draw(&tokens, Some(SubjectAst::Player(PlayerAst::You)))
+            .expect("parse draw with trailing unless clause");
+        assert!(matches!(
+            effect,
+            EffectAst::UnlessAction {
+                player: PlayerAst::TargetOpponent,
+                effects,
+                ..
+            } if matches!(
+                effects.as_slice(),
+                [EffectAst::Draw {
+                    count: Value::Fixed(1),
+                    player: PlayerAst::You,
+                }]
+            )
         ));
     }
 
