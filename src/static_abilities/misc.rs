@@ -1527,6 +1527,24 @@ impl StaticAbilityKind for AdditionalLandPlay {
     }
 }
 
+/// Creatures entering don't cause abilities to trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CreaturesEnteringDontCauseAbilitiesToTrigger;
+
+impl StaticAbilityKind for CreaturesEnteringDontCauseAbilitiesToTrigger {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CreaturesEnteringDontCauseAbilitiesToTrigger
+    }
+
+    fn display(&self) -> String {
+        "Creatures entering don't cause abilities to trigger.".to_string()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(*self)
+    }
+}
+
 /// Can be your commander.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CanBeCommander;

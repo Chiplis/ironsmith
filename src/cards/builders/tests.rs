@@ -10970,6 +10970,30 @@ fn parse_due_respect_variant_renders_permanents_enter_tapped_compactly() {
 }
 
 #[test]
+fn parse_creatures_entering_dont_trigger_static_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Torpor Orb Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("Creatures entering don't cause abilities to trigger.")
+        .expect("torpor-orb static line should parse");
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        static_ids.contains(
+            &crate::static_abilities::StaticAbilityId::CreaturesEnteringDontCauseAbilitiesToTrigger
+        ),
+        "expected ETB trigger suppression static ability, got {static_ids:?}"
+    );
+}
+
+#[test]
 fn parse_return_up_to_one_subtype_list_target_stays_single_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thwart Return Variant")
         .card_types(vec![CardType::Sorcery])

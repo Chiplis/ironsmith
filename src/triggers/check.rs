@@ -11,7 +11,9 @@ use crate::ability::{AbilityKind, TriggeredAbility};
 use crate::filter::ObjectRef;
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::static_abilities::StaticAbilityId;
 use crate::target::PlayerFilter;
+use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::Trigger;
@@ -137,6 +139,56 @@ pub fn compute_delayed_trigger_identity(delayed: &DelayedTrigger) -> TriggerIden
     TriggerIdentity(hasher.finish())
 }
 
+fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId) -> bool {
+    game.battlefield.iter().any(|&obj_id| {
+        let Some(obj) = game.object(obj_id) else {
+            return false;
+        };
+        let static_abilities = game
+            .calculated_characteristics(obj_id)
+            .map(|chars| chars.static_abilities)
+            .unwrap_or_else(|| {
+                obj.abilities
+                    .iter()
+                    .filter_map(|ability| {
+                        let AbilityKind::Static(static_ability) = &ability.kind else {
+                            return None;
+                        };
+                        Some(static_ability.clone())
+                    })
+                    .collect::<Vec<_>>()
+            });
+        static_abilities
+            .iter()
+            .any(|static_ability| static_ability.id() == ability_id)
+    })
+}
+
+fn event_has_creature_entering_battlefield(game: &GameState, trigger_event: &TriggerEvent) -> bool {
+    let Some(zone_change) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>() else {
+        return false;
+    };
+    if !zone_change.is_etb() {
+        return false;
+    }
+
+    zone_change.objects.iter().any(|object_id| {
+        game.object(*object_id)
+            .is_some_and(|obj| game.object_has_card_type(obj.id, CardType::Creature))
+            || zone_change.snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot.object_id == *object_id
+                    && snapshot.card_types.contains(&CardType::Creature)
+            })
+    })
+}
+
+fn suppresses_creature_etb_triggers(game: &GameState, trigger_event: &TriggerEvent) -> bool {
+    battlefield_has_static_ability(
+        game,
+        StaticAbilityId::CreaturesEnteringDontCauseAbilitiesToTrigger,
+    ) && event_has_creature_entering_battlefield(game, trigger_event)
+}
+
 /// Check all permanents for triggered abilities that match the given event.
 ///
 /// Returns a list of triggered abilities that should go on the stack.
@@ -144,6 +196,10 @@ pub fn check_triggers(
     game: &GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
+    if suppresses_creature_etb_triggers(game, trigger_event) {
+        return Vec::new();
+    }
+
     let mut triggered = Vec::new();
 
     // Check all permanents on the battlefield
@@ -383,6 +439,10 @@ pub fn check_delayed_triggers(
     game: &mut GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
+    if suppresses_creature_etb_triggers(game, trigger_event) {
+        return Vec::new();
+    }
+
     let mut triggered = Vec::new();
     let mut to_remove = Vec::new();
 
@@ -730,6 +790,36 @@ mod tests {
         let triggered = check_triggers(&game, &event);
         assert_eq!(triggered.len(), 1);
         assert_eq!(triggered[0].source, creature_id);
+    }
+
+    #[test]
+    fn test_creature_etb_triggers_are_suppressed_by_torpor_orb_style_ability() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let creature_id = add_creature_with_etb(&mut game, alice);
+        let orb_card = CardBuilder::new(CardId::from_raw(2), "Torpor Orb Variant")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let orb_id = game.create_object_from_card(&orb_card, alice, Zone::Battlefield);
+        if let Some(orb) = game.object_mut(orb_id) {
+            orb.abilities.push(Ability::static_ability(
+                StaticAbility::creatures_entering_dont_cause_abilities_to_trigger(),
+            ));
+        }
+
+        let event = TriggerEvent::new(ZoneChangeEvent::new(
+            creature_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            None,
+        ));
+        let triggered = check_triggers(&game, &event);
+        assert_eq!(
+            triggered.len(),
+            0,
+            "expected ETB triggers to be suppressed, got {triggered:?}"
+        );
     }
 
     #[test]

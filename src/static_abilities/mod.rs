@@ -1290,6 +1290,10 @@ impl StaticAbility {
         Self::new(AdditionalLandPlay)
     }
 
+    pub fn creatures_entering_dont_cause_abilities_to_trigger() -> Self {
+        Self::new(CreaturesEnteringDontCauseAbilitiesToTrigger)
+    }
+
     pub fn library_of_leng_discard_replacement() -> Self {
         Self::new(LibraryOfLengDiscardReplacement)
     }

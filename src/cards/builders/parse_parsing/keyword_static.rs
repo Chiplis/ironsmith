@@ -354,6 +354,9 @@ pub(crate) fn parse_static_ability_line(
     if let Some(ability) = parse_permanents_enter_tapped_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_creatures_entering_dont_cause_abilities_to_trigger_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(ability) = parse_players_cant_cycle_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -1528,6 +1531,21 @@ pub(crate) fn parse_permanents_enter_tapped_line(
         || words.as_slice() == ["permanents", "enters", "tapped"]
     {
         return Ok(Some(StaticAbility::permanents_enter_tapped()));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_creatures_entering_dont_cause_abilities_to_trigger_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.as_slice() == ["creatures", "entering", "dont", "cause", "abilities", "to", "trigger"]
+        || words.as_slice()
+            == ["creatures", "entering", "don't", "cause", "abilities", "to", "trigger"]
+    {
+        return Ok(Some(
+            StaticAbility::creatures_entering_dont_cause_abilities_to_trigger(),
+        ));
     }
     Ok(None)
 }

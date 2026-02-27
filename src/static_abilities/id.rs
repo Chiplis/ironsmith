@@ -157,6 +157,7 @@ pub enum StaticAbilityId {
     ReduceMaximumHandSize,
     LibraryOfLengDiscardReplacement,
     DrawReplacementExileTopFaceDown,
+    CreaturesEnteringDontCauseAbilitiesToTrigger,
     StartingLifeBonus,
     BuybackCostReduction,
     LegendRuleDoesntApply,
