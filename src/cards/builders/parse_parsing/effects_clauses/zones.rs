@@ -1980,15 +1980,22 @@ pub(crate) fn parse_destroy_combat_history_target(
     tokens: &[Token],
 ) -> Result<Option<TargetAst>, CardTextError> {
     let clause_words = words(tokens);
-    if clause_words.as_slice()
-        != [
-            "target", "creature", "that", "was", "dealt", "damage", "this", "turn",
-        ]
-    {
+    let Some(that_idx) = clause_words
+        .windows(6)
+        .position(|window| window == ["that", "was", "dealt", "damage", "this", "turn"])
+    else {
+        return Ok(None);
+    };
+    if that_idx == 0 || that_idx + 6 != clause_words.len() {
+        return Ok(None);
+    }
+    let target_cutoff = token_index_for_word_index(tokens, that_idx).unwrap_or(tokens.len());
+    let target_tokens = trim_commas(&tokens[..target_cutoff]);
+    if target_tokens.is_empty() {
         return Ok(None);
     }
 
-    let target = parse_target_phrase(&tokens[..2])?;
+    let target = parse_target_phrase(&target_tokens)?;
     let TargetAst::Object(mut filter, target_span, it_span) = target else {
         return Ok(None);
     };

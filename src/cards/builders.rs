@@ -5886,6 +5886,27 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_destroy_opponent_creature_that_was_dealt_damage_this_turn() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Manticore Variant")
+            .parse_text("Destroy target creature an opponent controls that was dealt damage this turn.")
+            .expect("combat-history destroy filter should parse");
+
+        let debug = format!("{:?}", def.spell_effect.expect("spell effect"));
+        assert!(
+            debug.contains("DestroyEffect"),
+            "expected destroy effect, got {debug}"
+        );
+        assert!(
+            debug.contains("was_dealt_damage_this_turn: true"),
+            "expected dealt-damage-this-turn filter, got {debug}"
+        );
+        assert!(
+            debug.contains("controller: Some(Opponent)"),
+            "expected opponent-control filter on destroy target, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_mindculling_draw_then_target_opponent_discards() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Mindculling Variant")
             .parse_text("You draw two cards and target opponent discards two cards.")
