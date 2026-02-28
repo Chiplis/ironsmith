@@ -99,6 +99,22 @@ use super::*;
     }
 
     #[test]
+    fn parse_line_look_top_card_any_time_is_static_custom() {
+        let parsed = parse_line("You may look at the top card of your library any time.", 0)
+            .expect("parse static look-top-any-time line");
+        let ability = match parsed {
+            LineAst::StaticAbility(ability) => ability,
+            other => panic!("expected static ability line, got {other:?}"),
+        };
+        assert_eq!(ability.id(), StaticAbilityId::Custom);
+        let debug = format!("{ability:?}");
+        assert!(
+            debug.contains("static_rule_text"),
+            "expected static_rule_text marker, got {debug}"
+        );
+    }
+
+    #[test]
     fn parse_attached_prevent_all_damage_dealt_by_enchanted_creature() {
         let tokens = tokenize_line(
             "Prevent all damage that would be dealt by enchanted creature.",

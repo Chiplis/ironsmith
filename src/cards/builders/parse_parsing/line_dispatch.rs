@@ -50,6 +50,8 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         || normalized.starts_with("enchanted land is chosen type")
         || normalized.starts_with("this effect cant reduce the mana in that cost to less than")
         || normalized.starts_with("this effect cant reduce the mana in those costs to less than")
+        || normalized.starts_with("you may look at top card of your library any time")
+        || normalized.starts_with("you may look at the top card of your library any time")
         || normalized.starts_with("creatures cant attack you unless")
         || normalized.starts_with("this creature cant attack unless")
         || normalized.starts_with("this creature cant attack if")
