@@ -1476,6 +1476,28 @@ fn test_parse_target_creature_you_control_deals_damage_equal_to_its_power_to_tar
 }
 
 #[test]
+fn test_parse_double_target_creatures_power_until_end_of_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mr. Orfeo Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever you attack, double target creature's power until end of turn.")
+        .expect("parse double-target-power trigger clause");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PowerOf"),
+        "expected dynamic power-based pump amount, got {debug}"
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("gets")
+            && (joined.contains("its power") || joined.contains("target creature's power"))
+            && joined.contains("until end of turn"),
+        "expected compiled output to preserve double-power semantics, got {joined}"
+    );
+}
+
+#[test]
 fn test_parse_source_deals_damage_to_target_equal_to_number_of_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ben-Ben Variant")
         .card_types(vec![CardType::Creature])

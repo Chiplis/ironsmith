@@ -473,6 +473,10 @@ pub(crate) fn parse_effect_sentence_inner(tokens: &[Token]) -> Result<Vec<Effect
         parser_trace("parse_effect_sentence:leading-then", &tokens[1..]);
         return parse_effect_sentence(&tokens[1..]);
     }
+    if let Some(effects) = parse_double_target_power_sentence(tokens)? {
+        parser_trace("parse_effect_sentence:double-target-power", tokens);
+        return Ok(effects);
+    }
     if let Some(effects) = run_sentence_primitives(tokens, PRE_CONDITIONAL_SENTENCE_PRIMITIVES)? {
         return Ok(effects);
     }
@@ -2681,6 +2685,51 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
 
     let amount = Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
     Ok(Some(vec![EffectAst::GainLife { amount, player }]))
+}
+
+pub(crate) fn parse_double_target_power_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = words(tokens);
+    if !words.starts_with(&["double", "target"]) {
+        return Ok(None);
+    }
+
+    let Some(power_idx) = words.iter().position(|word| *word == "power") else {
+        return Ok(None);
+    };
+    if power_idx <= 1 {
+        return Ok(None);
+    }
+
+    let tail_words = &words[power_idx + 1..];
+    if !tail_words.is_empty() && tail_words != ["until", "end", "of", "turn"] {
+        return Ok(None);
+    }
+
+    let target_tokens = trim_commas(&tokens[1..power_idx]);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing target in double-power clause (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+
+    let target = parse_target_phrase(&target_tokens)?;
+    let amount_source_filter = target_ast_to_object_filter(target.clone()).unwrap_or_else(|| {
+        let mut fallback = ObjectFilter::default();
+        fallback.card_types.push(CardType::Creature);
+        fallback
+    });
+    Ok(Some(vec![EffectAst::Pump {
+        power: Value::PowerOf(Box::new(ChooseSpec::target(ChooseSpec::Object(
+            amount_source_filter,
+        )))),
+        toughness: Value::Fixed(0),
+        target,
+        duration: crate::effect::Until::EndOfTurn,
+        condition: None,
+    }]))
 }
 
 pub(crate) fn parse_prevent_damage_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
