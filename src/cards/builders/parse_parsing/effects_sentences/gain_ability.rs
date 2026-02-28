@@ -61,9 +61,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     let Some(verb_idx) = verb_idx else {
         return Ok(None);
     };
-    if verb_idx == 0 {
-        return Ok(None);
-    }
+    let implied_it_subject = verb_idx == 0;
     let Some(verb_token_idx) = token_index_for_word_index(tokens, verb_idx) else {
         return Ok(None);
     };
@@ -81,11 +79,12 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     }
 
     let subject_tokens = trim_commas(&tokens[..verb_token_idx]);
-    if subject_tokens.is_empty() {
+    if subject_tokens.is_empty() && !implied_it_subject {
         return Ok(None);
     }
 
     if !losing
+        && !subject_tokens.is_empty()
         && let Some((subject_verb, _)) = find_verb(&subject_tokens)
         && subject_verb != Verb::Get
     {
@@ -144,7 +143,8 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     }
 
     let subject_words = words(&subject_tokens);
-    let is_pronoun_subject = matches!(subject_words.as_slice(), ["it"] | ["they"] | ["them"]);
+    let is_pronoun_subject = implied_it_subject
+        || matches!(subject_words.as_slice(), ["it"] | ["they"] | ["them"]);
     if is_pronoun_subject {
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens));
         if losing {

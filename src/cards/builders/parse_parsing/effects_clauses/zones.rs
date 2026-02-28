@@ -877,29 +877,59 @@ pub(crate) fn parse_regenerate(tokens: &[Token]) -> Result<EffectAst, CardTextEr
 }
 
 pub(crate) fn parse_mill(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
-    let (count, used) = parse_value(tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing mill count (clause: '{}')",
-            words(tokens).join(" ")
-        ))
-    })?;
-
-    let rest = &tokens[used..];
-    if rest
+    let clause_words = words(tokens);
+    let starts_with_card_keyword = tokens
         .first()
         .and_then(Token::as_word)
-        .is_some_and(|word| word != "card" && word != "cards")
-    {
-        return Err(CardTextError::ParseError(
-            "missing card keyword".to_string(),
-        ));
-    }
-    let trailing_words: Vec<&str> = rest.iter().skip(1).filter_map(Token::as_word).collect();
-    if !trailing_words.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing mill clause (clause: '{}')",
-            words(tokens).join(" ")
-        )));
+        .is_some_and(|word| word == "card" || word == "cards");
+
+    let (count, used) = if starts_with_card_keyword {
+        if let Some((count, used_after_cards)) = parse_value(&tokens[1..]) {
+            (count, 1 + used_after_cards)
+        } else if let Some(count) = parse_add_mana_equal_amount_value(&tokens[1..]) {
+            // Mill clauses like "cards equal to its toughness" place the amount after "cards".
+            (count, tokens.len())
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "missing mill count (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+    } else {
+        parse_value(tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing mill count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?
+    };
+
+    let rest = &tokens[used..];
+    if starts_with_card_keyword {
+        let trailing_words: Vec<&str> = rest.iter().filter_map(Token::as_word).collect();
+        if !trailing_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing mill clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+    } else {
+        if rest
+            .first()
+            .and_then(Token::as_word)
+            .is_some_and(|word| word != "card" && word != "cards")
+        {
+            return Err(CardTextError::ParseError(
+                "missing card keyword".to_string(),
+            ));
+        }
+        let trailing_words: Vec<&str> = rest.iter().skip(1).filter_map(Token::as_word).collect();
+        if !trailing_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing mill clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
     }
 
     let player = match subject {

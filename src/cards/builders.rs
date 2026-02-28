@@ -7480,6 +7480,134 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_conditional_attached_anthem_keyword_and_activated_grant() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Careful Cultivation Variant")
+            .parse_text(
+                "Enchant artifact or creature.\nAs long as enchanted permanent is a creature, it gets +1/+3 and has reach and \"{T}: Add {G}{G}.\"",
+            )
+            .expect("conditional attached anthem + keyword + activated grant should parse");
+
+        let displays: Vec<String> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.display()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("this creature gets +1/+3")
+                    && display.contains("as long as enchanted permanent is a creature")
+            }),
+            "expected conditional attached anthem, got: {displays:?}"
+        );
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("has Reach")
+                    && display.contains("as long as enchanted permanent is a creature")
+            }),
+            "expected conditional attached reach grant, got: {displays:?}"
+        );
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("t add g g") || display.contains("add {G}{G}")
+            }),
+            "expected conditional attached activated mana grant, got: {displays:?}"
+        );
+    }
+
+    #[test]
+    fn parse_conditional_attached_anthem_and_loses_keyword() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Short Circuit Variant")
+            .parse_text(
+                "Enchant artifact or creature\nFlash\nAs long as enchanted permanent is a creature, it gets -3/-0 and loses flying.",
+            )
+            .expect("conditional attached anthem + loses keyword should parse");
+
+        let abilities_debug = format!("{:#?}", def.abilities);
+        assert!(
+            abilities_debug.contains("RemoveAbilityForFilter"),
+            "expected conditional lose-flying static effect, got: {abilities_debug}"
+        );
+        assert!(
+            abilities_debug.contains("EnchantedPermanentIsCreature"),
+            "expected conditional gating on enchanted permanent creature type, got: {abilities_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_conditional_equipment_granted_static_chain() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Rune of Might Variant")
+            .parse_text(
+                "Enchant permanent\nAs long as enchanted permanent is an Equipment, it has \"Equipped creature gets +1/+1 and has trample.\"",
+            )
+            .expect("conditional granted static chain for equipment should parse");
+
+        let displays: Vec<String> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.display()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("gets +1/+1")
+                    && display.contains("as long as enchanted permanent is an equipment")
+            }),
+            "expected conditional granted pump static, got: {displays:?}"
+        );
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("has Trample")
+                    && display.contains("as long as enchanted permanent is an equipment")
+            }),
+            "expected conditional granted trample static, got: {displays:?}"
+        );
+    }
+
+    #[test]
+    fn parse_soulbond_shared_attack_mill_equal_to_toughness() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Imperious Mindbreaker Variant")
+            .parse_text(
+                "Soulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures has \"Whenever this creature attacks, each opponent mills cards equal to its toughness.\"",
+            )
+            .expect("soulbond shared mill-by-toughness line should parse");
+
+        let abilities_debug = format!("{:#?}", def.abilities);
+        assert!(
+            abilities_debug.contains("Mill"),
+            "expected granted mill trigger in parsed abilities, got: {abilities_debug}"
+        );
+        assert!(
+            abilities_debug.contains("ToughnessOf"),
+            "expected mill count to reference toughness, got: {abilities_debug}"
+        );
+    }
+
+    #[test]
+    fn parse_soulbond_shared_copy_clause_can_lose_soulbond() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Mirage Phalanx Variant")
+            .parse_text(
+                "Soulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures has \"At the beginning of combat on your turn, create a token that's a copy of this creature, except it has haste and loses soulbond. Exile it at end of combat.\"",
+            )
+            .expect("soulbond shared copy clause with loses soulbond should parse");
+
+        let abilities_debug = format!("{:#?}", def.abilities);
+        assert!(
+            abilities_debug.contains("RemoveAbilitiesFromTarget"),
+            "expected parsed lose-ability effect for copied token, got: {abilities_debug}"
+        );
+        assert!(
+            abilities_debug.contains("soulbond"),
+            "expected lose-ability effect to target soulbond keyword, got: {abilities_debug}"
+        );
+    }
+
+    #[test]
     fn parse_threshold_additional_anthem_keeps_condition() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Divine Sacrament Variant")
             .parse_text(

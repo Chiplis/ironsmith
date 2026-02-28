@@ -1693,6 +1693,12 @@ pub enum Condition {
     /// Static condition for Auras: "as long as enchanted permanent is a creature".
     EnchantedPermanentIsCreature,
 
+    /// Static condition for Auras: "as long as enchanted permanent is an Equipment".
+    EnchantedPermanentIsEquipment,
+
+    /// Static condition for Auras: "as long as enchanted permanent is a Vehicle".
+    EnchantedPermanentIsVehicle,
+
     /// Static condition for equipment: "as long as equipped creature is tapped".
     EquippedCreatureTapped,
 
@@ -1720,6 +1726,9 @@ pub enum Condition {
 
     /// Source is blocking.
     SourceIsBlocking,
+
+    /// Source is currently paired with another creature via soulbond.
+    SourceIsSoulbondPaired,
 
     /// A specific player's graveyard has at least N cards.
     PlayerGraveyardHasCardsAtLeast { player: PlayerId, count: usize },

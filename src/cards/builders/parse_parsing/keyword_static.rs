@@ -4690,6 +4690,12 @@ pub(crate) fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::C
     {
         return Ok(crate::ConditionExpr::SourceIsEnchanted);
     }
+    if clause_words == ["this", "is", "paired", "with", "another", "creature"]
+        || clause_words == ["this", "creature", "is", "paired", "with", "another", "creature"]
+        || clause_words == ["it", "is", "paired", "with", "another", "creature"]
+    {
+        return Ok(crate::ConditionExpr::SourceIsSoulbondPaired);
+    }
     if clause_words == ["enchanted", "permanent", "is", "a", "creature"]
         || clause_words == ["enchanted", "permanent", "is", "creature"]
     {
@@ -5349,23 +5355,42 @@ pub(crate) fn is_type_scope_qualifier_word(word: &str) -> bool {
 
 pub(crate) fn parse_soulbond_shared_line(tokens: &[Token]) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let clause_words = words(tokens);
-    let prefix = [
-        "as",
-        "long",
-        "as",
-        "this",
-        "creature",
-        "is",
-        "paired",
-        "with",
-        "another",
-        "creature",
-    ];
-    if !clause_words.starts_with(&prefix) {
+    if !clause_words.starts_with(&["as", "long", "as"]) {
         return Ok(None);
     }
 
-    let rest = trim_commas(&tokens[prefix.len()..]);
+    let Some(paired_word_idx) = clause_words
+        .windows(5)
+        .enumerate()
+        .find_map(|(idx, window)| {
+            (idx >= 3 && window == ["is", "paired", "with", "another", "creature"])
+                .then_some(idx)
+        })
+    else {
+        return Ok(None);
+    };
+
+    let subject_words = &clause_words[3..paired_word_idx];
+    if subject_words.is_empty() {
+        return Ok(None);
+    }
+
+    let source_like_subject = is_source_reference_words(subject_words)
+        || matches!(subject_words, ["this"] | ["this", "creature"])
+        || !subject_words.iter().any(|word| {
+            matches!(
+                *word,
+                "enchanted" | "equipped" | "target" | "another" | "each" | "those"
+            )
+        });
+    if !source_like_subject {
+        return Ok(None);
+    }
+
+    let prefix_word_len = paired_word_idx + 5;
+    let prefix_len = token_index_for_word_index(tokens, prefix_word_len).unwrap_or(tokens.len());
+
+    let rest = trim_commas(&tokens[prefix_len..]);
     if rest.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing soulbond shared effect clause (clause: '{}')",
@@ -5408,11 +5433,7 @@ pub(crate) fn parse_soulbond_shared_line(tokens: &[Token]) -> Result<Option<Vec<
     };
     if let Some(ability_start) = ability_start {
         let mut ability_tokens = trim_commas(&rest[ability_start..]);
-        let ability_end = ability_tokens
-            .iter()
-            .position(|token| matches!(token, Token::Period(_) | Token::Comma(_)))
-            .unwrap_or(ability_tokens.len());
-        ability_tokens = trim_commas(&ability_tokens[..ability_end]);
+        ability_tokens = trim_edge_punctuation(&ability_tokens);
         if ability_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing shared ability in soulbond clause (clause: '{}')",
@@ -5420,28 +5441,38 @@ pub(crate) fn parse_soulbond_shared_line(tokens: &[Token]) -> Result<Option<Vec<
             )));
         }
 
-        let Some(actions) = parse_ability_line(&ability_tokens) else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported shared ability in soulbond clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        };
-        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        let abilities: Vec<StaticAbility> = actions
-            .into_iter()
-            .filter_map(keyword_action_to_static_ability)
-            .collect();
-        if abilities.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported shared ability in soulbond clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+        if let Some(actions) = parse_ability_line(&ability_tokens) {
+            reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+            let abilities: Vec<StaticAbility> = actions
+                .into_iter()
+                .filter_map(keyword_action_to_static_ability)
+                .collect();
+            if abilities.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported shared ability in soulbond clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let shared = abilities
+                .into_iter()
+                .map(StaticAbility::soulbond_shared_ability)
+                .collect();
+            return Ok(Some(shared));
         }
-        let shared = abilities
-            .into_iter()
-            .map(StaticAbility::soulbond_shared_ability)
-            .collect();
-        return Ok(Some(shared));
+
+        if let Some(granted) =
+            parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
+            && let Some(inline_ability) = granted.granted_inline_ability()
+        {
+            return Ok(Some(vec![StaticAbility::soulbond_shared_object_ability(
+                inline_ability.clone(),
+            )]));
+        }
+
+        return Err(CardTextError::ParseError(format!(
+            "unsupported shared ability in soulbond clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
     }
 
     Err(CardTextError::ParseError(format!(

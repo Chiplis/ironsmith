@@ -1158,6 +1158,10 @@ impl StaticAbility {
         Self::new(SoulbondSharedBonus::ability(ability))
     }
 
+    pub fn soulbond_shared_object_ability(ability: crate::ability::Ability) -> Self {
+        Self::new(SoulbondSharedBonus::object_ability(ability))
+    }
+
     pub fn remove_ability(filter: crate::target::ObjectFilter, ability: StaticAbility) -> Self {
         Self::new(RemoveAbilityForFilter::new(filter, ability))
     }

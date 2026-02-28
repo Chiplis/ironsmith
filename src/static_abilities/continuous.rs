@@ -448,6 +448,12 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
         crate::ConditionExpr::EnchantedPermanentIsCreature => {
             "as long as enchanted permanent is a creature".to_string()
         }
+        crate::ConditionExpr::EnchantedPermanentIsEquipment => {
+            "as long as enchanted permanent is an equipment".to_string()
+        }
+        crate::ConditionExpr::EnchantedPermanentIsVehicle => {
+            "as long as enchanted permanent is a vehicle".to_string()
+        }
         crate::ConditionExpr::EquippedCreatureTapped => {
             "as long as equipped creature is tapped".to_string()
         }
@@ -456,6 +462,9 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
         }
         crate::ConditionExpr::SourceIsAttacking => {
             "as long as this creature is attacking".to_string()
+        }
+        crate::ConditionExpr::SourceIsSoulbondPaired => {
+            "as long as this creature is paired with another creature".to_string()
         }
         crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
             let graveyard_owner = match player {
@@ -911,6 +920,7 @@ impl StaticAbilityKind for GrantAbility {
 pub enum SoulbondSharedMode {
     PowerToughness { power: i32, toughness: i32 },
     Ability(StaticAbility),
+    ObjectAbility(Ability),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -928,6 +938,12 @@ impl SoulbondSharedBonus {
     pub fn ability(ability: StaticAbility) -> Self {
         Self {
             mode: SoulbondSharedMode::Ability(ability),
+        }
+    }
+
+    pub fn object_ability(ability: Ability) -> Self {
+        Self {
+            mode: SoulbondSharedMode::ObjectAbility(ability),
         }
     }
 }
@@ -957,6 +973,16 @@ impl StaticAbilityKind for SoulbondSharedBonus {
                 "As long as this creature is paired with another creature, both creatures have {}",
                 ability.display()
             ),
+            SoulbondSharedMode::ObjectAbility(ability) => {
+                let text = ability
+                    .text
+                    .clone()
+                    .unwrap_or_else(|| "an ability".to_string());
+                format!(
+                    "As long as this creature is paired with another creature, both creatures have \"{}\"",
+                    text
+                )
+            }
         }
     }
 
@@ -982,6 +1008,9 @@ impl StaticAbilityKind for SoulbondSharedBonus {
                 }
             }
             SoulbondSharedMode::Ability(ability) => Modification::AddAbility(ability.clone()),
+            SoulbondSharedMode::ObjectAbility(ability) => {
+                Modification::AddAbilityGeneric(ability.clone())
+            }
         };
 
         vec![

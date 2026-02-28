@@ -7035,6 +7035,12 @@ fn describe_condition(condition: &Condition) -> String {
         Condition::EnchantedPermanentIsCreature => {
             "enchanted permanent is a creature".to_string()
         }
+        Condition::EnchantedPermanentIsEquipment => {
+            "enchanted permanent is an equipment".to_string()
+        }
+        Condition::EnchantedPermanentIsVehicle => {
+            "enchanted permanent is a vehicle".to_string()
+        }
         Condition::EquippedCreatureTapped => "equipped creature is tapped".to_string(),
         Condition::EquippedCreatureUntapped => "equipped creature is untapped".to_string(),
         Condition::CountComparison { display, .. } => display
@@ -7049,6 +7055,9 @@ fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsUntapped => "this source is untapped".to_string(),
         Condition::SourceIsAttacking => "this source is attacking".to_string(),
         Condition::SourceIsBlocking => "this source is blocking".to_string(),
+        Condition::SourceIsSoulbondPaired => {
+            "this creature is paired with another creature".to_string()
+        }
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => {
             format!("{player:?}'s graveyard has {count} or more cards")
         }

@@ -344,6 +344,20 @@ pub fn evaluate_condition_external(
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to)
             .is_some_and(|attached| game.object_has_card_type(attached, CardType::Creature)),
+        Condition::EnchantedPermanentIsEquipment => game
+            .object(ctx.source)
+            .and_then(|source_obj| source_obj.attached_to)
+            .is_some_and(|attached| {
+                game.calculated_subtypes(attached)
+                    .contains(&crate::types::Subtype::Equipment)
+            }),
+        Condition::EnchantedPermanentIsVehicle => game
+            .object(ctx.source)
+            .and_then(|source_obj| source_obj.attached_to)
+            .is_some_and(|attached| {
+                game.calculated_subtypes(attached)
+                    .contains(&crate::types::Subtype::Vehicle)
+            }),
         Condition::EquippedCreatureTapped => game
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to)
@@ -388,6 +402,7 @@ pub fn evaluate_condition_external(
             .combat
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)),
+        Condition::SourceIsSoulbondPaired => game.is_soulbond_paired(ctx.source),
 
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => game
             .player(*player)
@@ -946,6 +961,8 @@ fn evaluate_condition_simple(
         | Condition::SourceIsEquipped
         | Condition::SourceIsEnchanted
         | Condition::EnchantedPermanentIsCreature
+        | Condition::EnchantedPermanentIsEquipment
+        | Condition::EnchantedPermanentIsVehicle
         | Condition::EquippedCreatureTapped
         | Condition::EquippedCreatureUntapped
         | Condition::CountComparison { .. }
@@ -954,6 +971,7 @@ fn evaluate_condition_simple(
         | Condition::SourceIsUntapped
         | Condition::SourceIsAttacking
         | Condition::SourceIsBlocking
+        | Condition::SourceIsSoulbondPaired
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::Custom(_)
         | Condition::XValueAtLeast(_) => false,
@@ -1632,6 +1650,20 @@ fn evaluate_condition(
             .is_some_and(|attached| {
                 game.object_has_card_type(attached, crate::types::CardType::Creature)
             })),
+        Condition::EnchantedPermanentIsEquipment => Ok(game
+            .object(ctx.source)
+            .and_then(|source_obj| source_obj.attached_to)
+            .is_some_and(|attached| {
+                game.calculated_subtypes(attached)
+                    .contains(&crate::types::Subtype::Equipment)
+            })),
+        Condition::EnchantedPermanentIsVehicle => Ok(game
+            .object(ctx.source)
+            .and_then(|source_obj| source_obj.attached_to)
+            .is_some_and(|attached| {
+                game.calculated_subtypes(attached)
+                    .contains(&crate::types::Subtype::Vehicle)
+            })),
         Condition::EquippedCreatureTapped => Ok(game
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to)
@@ -1665,6 +1697,7 @@ fn evaluate_condition(
             .combat
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source))),
+        Condition::SourceIsSoulbondPaired => Ok(game.is_soulbond_paired(ctx.source)),
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => Ok(game
             .player(*player)
             .is_some_and(|p| p.graveyard.len() >= *count)),
@@ -1850,6 +1883,67 @@ mod tests {
             .card_types
             .push(CardType::Creature);
         assert!(evaluate_condition_external(&game, &condition, &ctx));
+    }
+
+    #[test]
+    fn enchanted_permanent_equipment_and_vehicle_conditions_use_calculated_subtypes() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let aura = CardBuilder::new(CardId::from_raw(41), "Rune Variant")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .build();
+        let equipment = CardBuilder::new(CardId::from_raw(42), "Equipment Variant")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .build();
+        let vehicle = CardBuilder::new(CardId::from_raw(43), "Vehicle Variant")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Vehicle])
+            .build();
+
+        let aura_id = game.create_object_from_card(&aura, alice, Zone::Battlefield);
+        let equipment_id = game.create_object_from_card(&equipment, alice, Zone::Battlefield);
+        let vehicle_id = game.create_object_from_card(&vehicle, alice, Zone::Battlefield);
+
+        let ctx = ExternalEvaluationContext {
+            controller: alice,
+            source: aura_id,
+            filter_source: Some(aura_id),
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: ExternalEvaluationOptions::default(),
+        };
+
+        game.object_mut(aura_id)
+            .expect("aura should exist")
+            .attached_to = Some(equipment_id);
+        assert!(evaluate_condition_external(
+            &game,
+            &Condition::EnchantedPermanentIsEquipment,
+            &ctx
+        ));
+        assert!(!evaluate_condition_external(
+            &game,
+            &Condition::EnchantedPermanentIsVehicle,
+            &ctx
+        ));
+
+        game.object_mut(aura_id)
+            .expect("aura should exist")
+            .attached_to = Some(vehicle_id);
+        assert!(evaluate_condition_external(
+            &game,
+            &Condition::EnchantedPermanentIsVehicle,
+            &ctx
+        ));
+        assert!(!evaluate_condition_external(
+            &game,
+            &Condition::EnchantedPermanentIsEquipment,
+            &ctx
+        ));
     }
 
     #[test]

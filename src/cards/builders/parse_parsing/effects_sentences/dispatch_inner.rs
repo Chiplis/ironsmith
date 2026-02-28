@@ -1400,36 +1400,46 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
 
 pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[Token]) -> bool {
     let words = words(tokens);
-    if words.len() != 7 && words.len() != 8 {
+    if words.first().copied() != Some("exile") {
         return false;
     }
-    if words.first().copied() != Some("exile") || words.get(3).copied() != Some("at") {
+
+    let at_idx = if matches!(words.get(1).copied(), Some("that" | "the" | "those"))
+        && matches!(words.get(2).copied(), Some("token" | "tokens"))
+    {
+        3
+    } else if words.get(1).copied() == Some("it") {
+        2
+    } else {
+        return false;
+    };
+    if words.get(at_idx).copied() != Some("at") {
         return false;
     }
-    if !matches!(words.get(1).copied(), Some("that" | "the" | "those")) {
-        return false;
-    }
-    if !matches!(words.get(2).copied(), Some("token" | "tokens")) {
-        return false;
-    }
-    words[4..] == ["end", "of", "combat"] || words[4..] == ["the", "end", "of", "combat"]
+    words[at_idx + 1..] == ["end", "of", "combat"]
+        || words[at_idx + 1..] == ["the", "end", "of", "combat"]
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[Token]) -> bool {
     let words = words(tokens);
-    if words.len() != 7 && words.len() != 8 {
+    if words.first().copied() != Some("sacrifice") {
         return false;
     }
-    if words.first().copied() != Some("sacrifice") || words.get(3).copied() != Some("at") {
+
+    let at_idx = if matches!(words.get(1).copied(), Some("that" | "the" | "those"))
+        && matches!(words.get(2).copied(), Some("token" | "tokens"))
+    {
+        3
+    } else if words.get(1).copied() == Some("it") {
+        2
+    } else {
+        return false;
+    };
+    if words.get(at_idx).copied() != Some("at") {
         return false;
     }
-    if !matches!(words.get(1).copied(), Some("that" | "the" | "those")) {
-        return false;
-    }
-    if !matches!(words.get(2).copied(), Some("token" | "tokens")) {
-        return false;
-    }
-    words[4..] == ["end", "of", "combat"] || words[4..] == ["the", "end", "of", "combat"]
+    words[at_idx + 1..] == ["end", "of", "combat"]
+        || words[at_idx + 1..] == ["the", "end", "of", "combat"]
 }
 
 pub(crate) fn parse_take_extra_turn_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
