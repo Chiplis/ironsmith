@@ -233,9 +233,15 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
         return Err(ActionError::AlreadyPlayedLand);
     }
 
-    // Check the object exists and is in hand
+    // Check the object exists
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-    if object.zone != Zone::Hand {
+    let can_play_from_zone = if object.zone == Zone::Hand {
+        true
+    } else {
+        game.grant_registry
+            .card_can_play_from_zone(game, card_id, object.zone, player)
+    };
+    if !can_play_from_zone {
         return Err(ActionError::WrongZone {
             expected: Zone::Hand,
             actual: object.zone,
@@ -247,8 +253,9 @@ fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Resul
         return Err(ActionError::NotALand);
     }
 
-    // Check the player owns the card
-    if object.owner != player {
+    // Normal land plays from hand require ownership. External permissions
+    // (e.g. "you may play that card from exile") can bypass this.
+    if object.zone == Zone::Hand && object.owner != player {
         return Err(ActionError::InvalidTarget);
     }
 

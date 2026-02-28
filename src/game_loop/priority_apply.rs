@@ -358,22 +358,20 @@ pub fn apply_priority_response_with_dm(
                     }
                     CastingMethod::PlayFrom {
                         use_alternative: Some(idx),
+                        zone,
                         ..
                     } => {
-                        // Yawgmoth's Will with alternative cost (like Force of Will's pitch)
-                        if let Some(method) = obj.alternative_casts.get(*idx) {
-                            // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
+                        crate::decision::resolve_play_from_alternative_method(
+                            game, player, obj, *zone, *idx,
+                        )
+                        .and_then(|method| {
                             if !method.cost_effects().is_empty() {
                                 method.mana_cost().cloned()
                             } else {
-                                method
-                                    .mana_cost()
-                                    .cloned()
-                                    .or_else(|| obj.mana_cost.clone())
+                                method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
                             }
-                        } else {
-                            obj.mana_cost.clone()
-                        }
+                        })
+                        .or_else(|| obj.mana_cost.clone())
                     }
                 };
                 (cost, obj.spell_effect.clone().unwrap_or_default())

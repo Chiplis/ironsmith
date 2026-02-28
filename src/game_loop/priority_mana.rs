@@ -1400,22 +1400,24 @@ fn apply_card_to_exile_response(
             } => obj.mana_cost.clone(),
             CastingMethod::PlayFrom {
                 use_alternative: Some(idx),
+                zone,
                 ..
             } => {
-                if let Some(method) = obj.alternative_casts.get(*idx) {
-                    // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                    // For other methods (flashback, etc.), fall back to spell's cost.
+                crate::decision::resolve_play_from_alternative_method(
+                    game,
+                    pending.caster,
+                    obj,
+                    *zone,
+                    *idx,
+                )
+                .and_then(|method| {
                     if !method.cost_effects().is_empty() {
                         method.mana_cost().cloned()
                     } else {
-                        method
-                            .mana_cost()
-                            .cloned()
-                            .or_else(|| obj.mana_cost.clone())
+                        method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
                     }
-                } else {
-                    obj.mana_cost.clone()
-                }
+                })
+                .or_else(|| obj.mana_cost.clone())
             }
         };
         base_cost.map(|bc| {
@@ -1495,22 +1497,20 @@ fn apply_casting_method_choice_response(
             } => obj.mana_cost.clone(),
             CastingMethod::PlayFrom {
                 use_alternative: Some(idx),
+                zone,
                 ..
             } => {
-                if let Some(method) = obj.alternative_casts.get(*idx) {
-                    // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                    // For other methods (flashback, etc.), fall back to spell's cost.
+                crate::decision::resolve_play_from_alternative_method(
+                    game, player, obj, *zone, *idx,
+                )
+                .and_then(|method| {
                     if !method.cost_effects().is_empty() {
                         method.mana_cost().cloned()
                     } else {
-                        method
-                            .mana_cost()
-                            .cloned()
-                            .or_else(|| obj.mana_cost.clone())
+                        method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
                     }
-                } else {
-                    obj.mana_cost.clone()
-                }
+                })
+                .or_else(|| obj.mana_cost.clone())
             }
         };
         (cost, obj.spell_effect.clone().unwrap_or_default())
@@ -1701,24 +1701,25 @@ fn finalize_spell_cast(
                 }
                 CastingMethod::PlayFrom {
                     use_alternative: Some(idx),
+                    zone,
                     ..
                 } => {
-                    // Yawgmoth's Will with alternative cost (like Force of Will)
-                    if let Some(method) = obj.alternative_casts.get(*idx) {
+                    crate::decision::resolve_play_from_alternative_method(
+                        game, caster, obj, *zone, *idx,
+                    )
+                    .map(|method| {
                         let cost_effects = method.cost_effects().to_vec();
                         if !cost_effects.is_empty() {
-                            let mana = method.mana_cost().cloned();
-                            (mana, cost_effects, None)
+                            (method.mana_cost().cloned(), cost_effects, None)
                         } else {
-                            let mana = method
-                                .mana_cost()
-                                .cloned()
-                                .or_else(|| obj.mana_cost.clone());
-                            (mana, Vec::new(), None)
+                            (
+                                method.mana_cost().cloned().or_else(|| obj.mana_cost.clone()),
+                                Vec::new(),
+                                None,
+                            )
                         }
-                    } else {
-                        (obj.mana_cost.clone(), Vec::new(), None)
-                    }
+                    })
+                    .unwrap_or_else(|| (obj.mana_cost.clone(), Vec::new(), None))
                 }
             }
         } else {
@@ -2428,4 +2429,3 @@ fn get_priority_player_from_ctx(
         None
     }
 }
-

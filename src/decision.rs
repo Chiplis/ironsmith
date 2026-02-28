@@ -409,6 +409,25 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
             }
         }
     }
+    for &card_id in &game.exile {
+        let Some(card) = game.object(card_id) else {
+            continue;
+        };
+        if !card.is_land() {
+            continue;
+        }
+        if game
+            .grant_registry
+            .granted_play_from_for_card(game, card_id, Zone::Exile, player)
+            .is_empty()
+        {
+            continue;
+        }
+        let action = SpecialAction::PlayLand { card_id };
+        if can_perform_check(&action, game, player).is_ok() {
+            actions.push(LegalAction::PlayLand { land_id: card_id });
+        }
+    }
 
     // Check for spells that can be cast from hand
     if let Some(player_obj) = game.player(player) {
@@ -492,14 +511,10 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                 );
 
                 for grant in play_from_grants {
-                    // PlayFrom (e.g., Yawgmoth's Will): can cast from zone as if from hand
-                    // This allows both normal cost and alternative costs
-                    use crate::types::CardType;
+                    // PlayFrom (e.g., Yawgmoth's Will): can cast from zone as if from hand.
                     let from_zone = grant.zone;
 
-                    let is_castable = card.has_card_type(CardType::Instant)
-                        || card.has_card_type(CardType::Sorcery);
-                    if is_castable
+                    if !card.is_land()
                         && let Some(mana_cost) = &card.mana_cost
                         && can_cast_with_cost(
                             game,
@@ -538,6 +553,97 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                             });
                         }
                     }
+
+                    let granted_alternatives = game.grant_registry.granted_alternative_casts_for_card(
+                        game,
+                        card_id,
+                        from_zone,
+                        player,
+                    );
+                    let base_alt_idx = card.alternative_casts.len();
+                    for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
+                        if can_cast_with_alternative(game, player, card, &granted_alt.method) {
+                            actions.push(LegalAction::CastSpell {
+                                spell_id: card_id,
+                                from_zone,
+                                casting_method: CastingMethod::PlayFrom {
+                                    source: granted_alt.source_id,
+                                    zone: from_zone,
+                                    use_alternative: Some(base_alt_idx + offset),
+                                },
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for cards that can be played/cast from exile via granted PlayFrom permissions.
+    for &card_id in &game.exile {
+        let Some(card) = game.object(card_id) else {
+            continue;
+        };
+
+        let play_from_grants = game
+            .grant_registry
+            .granted_play_from_for_card(game, card_id, Zone::Exile, player);
+        for grant in play_from_grants {
+            let from_zone = grant.zone;
+
+            if !card.is_land()
+                && let Some(mana_cost) = &card.mana_cost
+                && can_cast_with_cost(
+                    game,
+                    player,
+                    card,
+                    card_id,
+                    Some(mana_cost),
+                    &AdditionalCastRequirements::default(),
+                )
+            {
+                actions.push(LegalAction::CastSpell {
+                    spell_id: card_id,
+                    from_zone,
+                    casting_method: CastingMethod::PlayFrom {
+                        source: grant.source_id,
+                        zone: from_zone,
+                        use_alternative: None,
+                    },
+                });
+            }
+
+            for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
+                if alt_cast.cast_from_zone() == Zone::Hand
+                    && can_cast_with_alternative_from_hand(game, player, card, card_id, alt_cast)
+                {
+                    actions.push(LegalAction::CastSpell {
+                        spell_id: card_id,
+                        from_zone,
+                        casting_method: CastingMethod::PlayFrom {
+                            source: grant.source_id,
+                            zone: from_zone,
+                            use_alternative: Some(idx),
+                        },
+                    });
+                }
+            }
+
+            let granted_alternatives = game
+                .grant_registry
+                .granted_alternative_casts_for_card(game, card_id, from_zone, player);
+            let base_alt_idx = card.alternative_casts.len();
+            for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
+                if can_cast_with_alternative(game, player, card, &granted_alt.method) {
+                    actions.push(LegalAction::CastSpell {
+                        spell_id: card_id,
+                        from_zone,
+                        casting_method: CastingMethod::PlayFrom {
+                            source: granted_alt.source_id,
+                            zone: from_zone,
+                            use_alternative: Some(base_alt_idx + offset),
+                        },
+                    });
                 }
             }
         }
@@ -964,6 +1070,29 @@ pub fn can_potentially_pay_total_cost(
     true
 }
 
+/// Resolve an alternative method index for `CastingMethod::PlayFrom`.
+///
+/// The index space is:
+/// 1) Card intrinsic alternatives (`card.alternative_casts`)
+/// 2) Granted alternatives for this card/zone/player (appended after intrinsic methods)
+pub(crate) fn resolve_play_from_alternative_method(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    zone: Zone,
+    idx: usize,
+) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
+    if let Some(method) = spell.alternative_casts.get(idx) {
+        return Some(method.clone());
+    }
+
+    let granted = game
+        .grant_registry
+        .granted_alternative_casts_for_card(game, spell.id, zone, player);
+    let granted_idx = idx.checked_sub(spell.alternative_casts.len())?;
+    granted.get(granted_idx).map(|entry| entry.method.clone())
+}
+
 /// Check if a spell can be cast by a player using the given casting method.
 pub fn can_cast_spell(
     game: &GameState,
@@ -1036,37 +1165,31 @@ pub fn can_cast_spell(
         }
     }
 
-    // Determine which mana cost to check based on casting method
+    // Determine which mana cost to check based on casting method.
     let base_mana_cost = match casting_method {
-        CastingMethod::Normal => spell.mana_cost.as_ref(),
-        CastingMethod::Alternative(idx) => {
-            // Get the alternative cost
-            spell
-                .alternative_casts
-                .get(*idx)
-                .and_then(|method| method.mana_cost())
-                .or(spell.mana_cost.as_ref()) // Fallback to normal cost for jump-start
-        }
-        CastingMethod::GrantedEscape { .. } => spell.mana_cost.as_ref(), // Uses card's own cost
-        CastingMethod::GrantedFlashback => spell.mana_cost.as_ref(),     // Uses card's own cost
+        CastingMethod::Normal => spell.mana_cost.clone(),
+        CastingMethod::Alternative(idx) => spell
+            .alternative_casts
+            .get(*idx)
+            .and_then(|method| method.mana_cost().cloned())
+            .or_else(|| spell.mana_cost.clone()),
+        CastingMethod::GrantedEscape { .. } => spell.mana_cost.clone(),
+        CastingMethod::GrantedFlashback => spell.mana_cost.clone(),
         CastingMethod::PlayFrom {
             use_alternative: None,
             ..
-        } => {
-            // PlayFrom with normal cost - uses card's own mana cost
-            spell.mana_cost.as_ref()
-        }
+        } => spell.mana_cost.clone(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
+            zone,
             ..
-        } => spell
-            .alternative_casts
-            .get(*idx)
-            .and_then(|method| method.mana_cost()),
+        } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+            .and_then(|method| method.mana_cost().cloned())
+            .or_else(|| spell.mana_cost.clone()),
     };
 
     // Check mana availability with cost reductions applied
-    if let Some(base_cost) = base_mana_cost {
+    if let Some(base_cost) = base_mana_cost.as_ref() {
         // Calculate effective cost after applying cost reductions (Affinity, etc.)
         let effective_cost = calculate_effective_mana_cost(game, player, spell, base_cost);
 

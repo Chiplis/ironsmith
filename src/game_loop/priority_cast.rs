@@ -95,17 +95,22 @@ fn format_mana_cost_simple(cost: &crate::mana::ManaCost) -> String {
 }
 
 fn cost_effects_for_casting_method(
+    game: &GameState,
+    caster: PlayerId,
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
 ) -> Vec<Effect> {
     match casting_method {
-        CastingMethod::Alternative(idx)
-        | CastingMethod::PlayFrom {
-            use_alternative: Some(idx),
-            ..
-        } => spell
+        CastingMethod::Alternative(idx) => spell
             .alternative_casts
             .get(*idx)
+            .map(|method| method.cost_effects().to_vec())
+            .unwrap_or_default(),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => crate::decision::resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
             .map(|method| method.cost_effects().to_vec())
             .unwrap_or_default(),
         _ => Vec::new(),
@@ -260,7 +265,7 @@ fn compute_spell_cast_x_bounds(
     let printed_has_x = spell.mana_cost.as_ref().is_some_and(|cost| cost.has_x());
     let pay_has_x = mana_cost_to_pay.is_some_and(|cost| cost.has_x());
 
-    let mut cost_effects = cost_effects_for_casting_method(spell, casting_method);
+    let mut cost_effects = cost_effects_for_casting_method(game, caster, spell, casting_method);
     cost_effects.extend(spell.cost_effects.iter().cloned());
 
     let effects_need_x = cost_effects.iter().any(effect_references_x_for_cost);
@@ -571,6 +576,7 @@ fn check_optional_costs_or_continue(
 fn get_spell_mana_cost(
     game: &GameState,
     spell_id: ObjectId,
+    caster: PlayerId,
     casting_method: &CastingMethod,
 ) -> Option<crate::mana::ManaCost> {
     let obj = game.object(spell_id)?;
@@ -600,23 +606,19 @@ fn get_spell_mana_cost(
         } => obj.mana_cost.clone(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
+            zone,
             ..
-        } => {
-            if let Some(method) = obj.alternative_casts.get(*idx) {
-                // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                // For other methods (flashback, etc.), fall back to spell's cost
-                if !method.cost_effects().is_empty() {
-                    method.mana_cost().cloned()
-                } else {
-                    method
-                        .mana_cost()
-                        .cloned()
-                        .or_else(|| obj.mana_cost.clone())
-                }
+        } => crate::decision::resolve_play_from_alternative_method(
+            game, caster, obj, *zone, *idx,
+        )
+        .and_then(|method| {
+            if !method.cost_effects().is_empty() {
+                method.mana_cost().cloned()
             } else {
-                obj.mana_cost.clone()
+                method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
             }
-        }
+        })
+        .or_else(|| obj.mana_cost.clone()),
     }
 }
 
@@ -650,7 +652,7 @@ fn continue_to_targeting_or_finalize(
     // Skip if we already have hybrid choices (coming back from AnnouncingCost stage)
     if pending.hybrid_choices.is_empty()
         && let Some(mana_cost) =
-            get_spell_mana_cost(game, pending.spell_id, &pending.casting_method)
+            get_spell_mana_cost(game, pending.spell_id, pending.caster, &pending.casting_method)
     {
         let pips_to_announce = get_pips_requiring_announcement(&mana_cost);
         if !pips_to_announce.is_empty() {
@@ -884,23 +886,19 @@ fn continue_to_mana_payment(
             } => obj.mana_cost.clone(),
             CastingMethod::PlayFrom {
                 use_alternative: Some(idx),
+                zone,
                 ..
-            } => {
-                if let Some(method) = obj.alternative_casts.get(*idx) {
-                    // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                    // For other methods (flashback, etc.), fall back to spell's cost.
-                    if !method.cost_effects().is_empty() {
-                        method.mana_cost().cloned()
-                    } else {
-                        method
-                            .mana_cost()
-                            .cloned()
-                            .or_else(|| obj.mana_cost.clone())
-                    }
+            } => crate::decision::resolve_play_from_alternative_method(
+                game, pending.caster, obj, *zone, *idx,
+            )
+            .and_then(|method| {
+                if !method.cost_effects().is_empty() {
+                    method.mana_cost().cloned()
                 } else {
-                    obj.mana_cost.clone()
+                    method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
                 }
-            }
+            })
+            .or_else(|| obj.mana_cost.clone()),
         };
 
         // Apply cost reductions (affinity, delve, convoke, improvise)
@@ -1795,4 +1793,3 @@ fn continue_activation(
         }
     }
 }
-

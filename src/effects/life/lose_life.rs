@@ -73,7 +73,7 @@ impl EffectExecutor for LoseLifeEffect {
     fn can_execute_as_cost(
         &self,
         game: &GameState,
-        _source: crate::ids::ObjectId,
+        source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
         use crate::effects::CostValidationError;
@@ -84,11 +84,16 @@ impl EffectExecutor for LoseLifeEffect {
             return Ok(());
         }
 
-        // Get the amount (use base value for validation)
+        // Resolve the amount for validation.
         let amount = match &self.amount {
-            Value::Fixed(n) => *n as u32,
-            Value::X => 0, // X is usually 0 at validation time
-            _ => 0,
+            Value::Fixed(n) => (*n).max(0) as u32,
+            _ => {
+                let ctx = ExecutionContext::new_default(source, controller);
+                let resolved = resolve_value(game, &self.amount, &ctx).map_err(|err| {
+                    CostValidationError::Other(format!("Unable to resolve life cost: {err}"))
+                })?;
+                resolved.max(0) as u32
+            }
         };
 
         if amount == 0 {

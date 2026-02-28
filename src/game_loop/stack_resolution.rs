@@ -324,11 +324,17 @@ fn resolve_stack_entry_full(
                 CastingMethod::GrantedFlashback => true,     // Granted flashback always exiles
                 CastingMethod::PlayFrom {
                     use_alternative: Some(idx),
+                    zone,
                     ..
                 } => {
                     // Check if the alternative cost used exiles after resolution
-                    obj.alternative_casts
-                        .get(*idx)
+                    crate::decision::resolve_play_from_alternative_method(
+                        game,
+                        entry.controller,
+                        obj,
+                        *zone,
+                        *idx,
+                    )
                         .map(|m| m.exiles_after_resolution())
                         .unwrap_or(false)
                 }
@@ -424,4 +430,3 @@ fn get_effects_for_stack_entry(
 
     Vec::new()
 }
-
