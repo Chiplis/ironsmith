@@ -1950,10 +1950,55 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 normalized_target_tokens = each_of_tokens;
             }
         }
+        let normalized_target_words = words(normalized_target_tokens);
+        if normalized_target_words.as_slice() == ["each", "player"]
+            || normalized_target_words.as_slice() == ["each", "players"]
+        {
+            return Ok(Some(EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::DealDamageEqualToPower {
+                    source: source.clone(),
+                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                }],
+            }));
+        }
+        if normalized_target_words.as_slice() == ["each", "opponent"]
+            || normalized_target_words.as_slice() == ["each", "opponents"]
+            || normalized_target_words.as_slice() == ["each", "other", "player"]
+            || normalized_target_words.as_slice() == ["each", "other", "players"]
+        {
+            return Ok(Some(EffectAst::ForEachOpponent {
+                effects: vec![EffectAst::DealDamageEqualToPower {
+                    source: source.clone(),
+                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                }],
+            }));
+        }
         parse_target_phrase(normalized_target_tokens)?
     } else if pre_equal_words.starts_with(&["damage", "to"]) {
         let target_tokens = trim_commas(&rest[2..equal_idx]);
         let target_words = words(&target_tokens);
+        if target_words.as_slice() == ["each", "player"]
+            || target_words.as_slice() == ["each", "players"]
+        {
+            return Ok(Some(EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::DealDamageEqualToPower {
+                    source: source.clone(),
+                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                }],
+            }));
+        }
+        if target_words.as_slice() == ["each", "opponent"]
+            || target_words.as_slice() == ["each", "opponents"]
+            || target_words.as_slice() == ["each", "other", "player"]
+            || target_words.as_slice() == ["each", "other", "players"]
+        {
+            return Ok(Some(EffectAst::ForEachOpponent {
+                effects: vec![EffectAst::DealDamageEqualToPower {
+                    source: source.clone(),
+                    target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                }],
+            }));
+        }
         if target_words == ["itself"] || target_words == ["it"] {
             if !tail_after_power.is_empty() {
                 return Err(CardTextError::ParseError(format!(

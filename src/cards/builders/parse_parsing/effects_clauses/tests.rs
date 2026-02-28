@@ -52,6 +52,53 @@ use super::*;
     }
 
     #[test]
+    fn parse_deal_damage_equal_to_each_opponent_wraps_for_each_opponent() {
+        let tokens =
+            tokenize_line("deals damage equal to the number of cards in your hand to each opponent", 0);
+        let ast = parse_effect_clause(&tokens).expect("parse equal-to each opponent damage");
+        assert!(matches!(ast, EffectAst::ForEachOpponent { .. }));
+    }
+
+    #[test]
+    fn parse_deal_damage_equal_to_each_player_wraps_for_each_player() {
+        let tokens =
+            tokenize_line("deals damage equal to the number of cards in your hand to each player", 0);
+        let ast = parse_effect_clause(&tokens).expect("parse equal-to each player damage");
+        assert!(matches!(ast, EffectAst::ForEachPlayer { .. }));
+    }
+
+    #[test]
+    fn parse_deal_damage_equal_to_each_other_player_wraps_for_each_opponent() {
+        let tokens = tokenize_line(
+            "deals damage equal to the number of cards in your hand to each other player",
+            0,
+        );
+        let ast = parse_effect_clause(&tokens).expect("parse equal-to each other player damage");
+        assert!(matches!(ast, EffectAst::ForEachOpponent { .. }));
+    }
+
+    #[test]
+    fn parse_deal_damage_equal_to_power_each_opponent_wraps_for_each_opponent() {
+        let tokens = tokenize_line("this creature deals damage equal to its power to each opponent", 0);
+        let effects = parse_effect_sentence(&tokens).expect("parse equal-to-power each opponent");
+        assert!(matches!(effects.as_slice(), [EffectAst::ForEachOpponent { .. }]));
+    }
+
+    #[test]
+    fn parse_deal_damage_equal_to_power_each_player_wraps_for_each_player() {
+        let tokens = tokenize_line("this creature deals damage equal to its power to each player", 0);
+        let effects = parse_effect_sentence(&tokens).expect("parse equal-to-power each player");
+        assert!(matches!(effects.as_slice(), [EffectAst::ForEachPlayer { .. }]));
+    }
+
+    #[test]
+    fn parse_deal_damage_to_each_opponent_equal_to_power_wraps_for_each_opponent() {
+        let tokens = tokenize_line("this creature deals damage to each opponent equal to its power", 0);
+        let effects = parse_effect_sentence(&tokens).expect("parse to-each-opponent equal-to-power");
+        assert!(matches!(effects.as_slice(), [EffectAst::ForEachOpponent { .. }]));
+    }
+
+    #[test]
     fn parse_attached_prevent_all_damage_dealt_by_enchanted_creature() {
         let tokens = tokenize_line(
             "Prevent all damage that would be dealt by enchanted creature.",

@@ -569,6 +569,29 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
                 clause_words.join(" ")
             ))
         })?;
+    let target_words = words(&target_tokens);
+    if target_words.as_slice() == ["each", "player"]
+        || target_words.as_slice() == ["each", "players"]
+    {
+        return Ok(Some(EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::DealDamage {
+                amount: amount.clone(),
+                target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            }],
+        }));
+    }
+    if target_words.as_slice() == ["each", "opponent"]
+        || target_words.as_slice() == ["each", "opponents"]
+        || target_words.as_slice() == ["each", "other", "player"]
+        || target_words.as_slice() == ["each", "other", "players"]
+    {
+        return Ok(Some(EffectAst::ForEachOpponent {
+            effects: vec![EffectAst::DealDamage {
+                amount: amount.clone(),
+                target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            }],
+        }));
+    }
     let target = parse_target_phrase(&target_tokens)?;
     Ok(Some(EffectAst::DealDamage { amount, target }))
 }
@@ -658,6 +681,29 @@ pub(crate) fn parse_deal_damage_equal_to_clause(tokens: &[Token]) -> Result<Opti
         if each_of_words.iter().any(|word| *word == "target") {
             normalized_target_tokens = each_of_tokens;
         }
+    }
+    let normalized_target_words = words(normalized_target_tokens);
+    if normalized_target_words.as_slice() == ["each", "player"]
+        || normalized_target_words.as_slice() == ["each", "players"]
+    {
+        return Ok(Some(EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::DealDamage {
+                amount: amount.clone(),
+                target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            }],
+        }));
+    }
+    if normalized_target_words.as_slice() == ["each", "opponent"]
+        || normalized_target_words.as_slice() == ["each", "opponents"]
+        || normalized_target_words.as_slice() == ["each", "other", "player"]
+        || normalized_target_words.as_slice() == ["each", "other", "players"]
+    {
+        return Ok(Some(EffectAst::ForEachOpponent {
+            effects: vec![EffectAst::DealDamage {
+                amount: amount.clone(),
+                target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            }],
+        }));
     }
     let target = parse_target_phrase(normalized_target_tokens)?;
     Ok(Some(EffectAst::DealDamage { amount, target }))
