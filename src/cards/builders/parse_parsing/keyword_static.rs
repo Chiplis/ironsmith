@@ -4831,7 +4831,10 @@ pub(crate) fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::C
             .position(|word| *word == "has" || *word == "have")
     {
         let subject_words = &clause_words[..has_idx];
-        if !subject_words.is_empty() && is_source_reference_words(subject_words) {
+        let source_pronoun_subject = matches!(subject_words, ["it"] | ["its"]);
+        if !subject_words.is_empty()
+            && (is_source_reference_words(subject_words) || source_pronoun_subject)
+        {
             let quantified = &tokens[has_idx + 1..];
             let (comparison, used) = parse_static_quantity_prefix(quantified, true)?;
             let counter_tokens = &quantified[used..];
