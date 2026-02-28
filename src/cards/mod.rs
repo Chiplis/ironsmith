@@ -178,142 +178,207 @@ impl CardRegistry {
 
         #[cfg(test)]
         {
-            // Register all cards from definitions module
-            registry.register(llanowar_elves());
-            registry.register(chrome_mox());
-            registry.register(command_the_mind());
-            registry.register(serra_angel());
-            registry.register(grizzly_bears());
-            registry.register(lightning_bolt());
-            registry.register(doom_blade());
-            registry.register(demonic_tutor());
-            registry.register(enlightened_tutor());
-            registry.register(emrakul_the_promised_end());
-            registry.register(everflowing_chalice());
-            registry.register(force_of_will());
-            registry.register(giant_growth());
-            registry.register(mindbreak_trap());
-            registry.register(counterspell());
-            registry.register(dawn_charm());
-            registry.register(swords_to_plowshares());
-            registry.register(basic_forest());
-            registry.register(basic_island());
-            registry.register(basic_mountain());
-            registry.register(basic_plains());
-            registry.register(basic_swamp());
-            registry.register(ornithopter());
-            registry.register(murder_of_crows());
-            registry.register(goblin_guide());
-            registry.register(typhoid_rats());
-            registry.register(vampire_nighthawk());
-            registry.register(silhana_ledgewalker());
-            registry.register(thorn_elemental());
-            registry.register(mirran_crusader());
-            registry.register(crusade());
-            registry.register(stormbreath_dragon());
-            registry.register(geist_of_saint_traft());
-            registry.register(savannah_lions());
-            registry.register(saw_in_half());
-            registry.register(white_knight());
-            registry.register(giant_spider());
-            registry.register(wall_of_omens());
-            registry.register(boggart_brute());
-            registry.register(darksteel_colossus());
-            registry.register(snapcaster_mage());
-            registry.register(underworld_breach());
-            registry.register(frogmite());
-            registry.register(treasure_cruise());
-            registry.register(stoke_the_flames());
-            registry.register(reverse_engineer());
-            registry.register(the_birth_of_meletis());
-            registry.register(student_of_warfare());
-            registry.register(valley_floodcaller());
-            registry.register(yawgmoth_thran_physician());
-            registry.register(yawgmoths_will());
-            registry.register(butcher_ghoul());
-            registry.register(sightless_ghoul());
-            registry.register(hex_parasite());
-            registry.register(fireball());
-            registry.register(think_twice());
-            registry.register(urzas_saga());
-            registry.register(fate_transfer());
-            registry.register(accursed_marauder());
-            registry.register(accursed_duneyard());
-            registry.register(akromas_will());
-            registry.register(amulet_of_vigor());
-            registry.register(ancient_tomb());
-            registry.register(arcane_signet());
-            registry.register(arid_mesa());
-            registry.register(ashnods_altar());
-            registry.register(bello_bard_of_the_brambles());
-            registry.register(blade_of_the_bloodchief());
-            registry.register(bleachbone_verge());
-            registry.register(blood_celebrant());
-            registry.register(blood_artist());
-            registry.register(bloodstained_mire());
-            registry.register(braids_arisen_nightmare());
-            registry.register(brightclimb_pathway());
-            registry.register(grimclimb_pathway());
-            registry.register(buried_alive());
-            registry.register(cataclysm());
-            registry.register(cataclysmic_gearhulk());
-            registry.register(charismatic_conqueror());
-            registry.register(command_tower());
-            registry.register(sol_ring());
-            registry.register(scrubland());
-            registry.register(tainted_field());
-            registry.register(high_market());
-            registry.register(humility());
-            registry.register(vampiric_tutor());
-            registry.register(flooded_strand());
-            registry.register(mana_tithe());
-            registry.register(marsh_flats());
-            registry.register(polluted_delta());
-            registry.register(rebuff_the_wicked());
-            registry.register(verdant_catacombs());
-            registry.register(windswept_heath());
-            registry.register(lightning_greaves());
-            registry.register(selfless_spirit());
-            registry.register(mother_of_runes());
-            registry.register(giver_of_runes());
-            registry.register(selfless_savior());
-            registry.register(gods_willing());
-            registry.register(kami_of_false_hope());
-            registry.register(shelter());
-            registry.register(mox_diamond());
-            registry.register(library_of_leng());
-            registry.register(invisible_stalker());
-            registry.register(dauthi_slayer());
-            registry.register(zodiac_rooster());
-            registry.register(culling_the_weak());
-            registry.register(fleshbag_marauder());
-            registry.register(generous_gift());
-            registry.register(godless_shrine());
-            registry.register(innocent_blood());
-            registry.register(mana_vault());
-            registry.register(merciless_executioner());
-            registry.register(phyrexian_tower());
-            registry.register(shattered_sanctum());
-            registry.register(stroke_of_midnight());
-            registry.register(vault_of_champions());
-            registry.register(tayam_luminous_enigma());
-            registry.register(village_rites());
-            registry.register(model_of_unity());
-            registry.register(manascape_refractor());
-            registry.register(squirrel_nest());
-            registry.register(mycosynth_lattice());
-            registry.register(toph_the_first_metalbender());
-            registry.register(marneus_calgar());
-            registry.register(marvin_murderous_mimic());
-            registry.register(rex_cyber_hound());
-            registry.register(tivit_seller_of_secrets());
-            registry.register(wall_of_roots());
+            registry.register_builtin_handwritten_cards_if(|_| true);
         }
 
         // Non-test builds are populated from cards.json via generated parser output.
         generated_registry::register_generated_parser_cards(&mut registry);
 
         registry
+    }
+
+    /// Ensure cards with any of the requested names are loaded into this registry.
+    ///
+    /// Matching is case-insensitive and ignores surrounding whitespace.
+    pub fn ensure_cards_loaded<'a>(&mut self, names: impl IntoIterator<Item = &'a str>) {
+        let requested_names = names.into_iter().collect::<Vec<_>>();
+        if requested_names.is_empty() {
+            return;
+        }
+
+        let requested_name_keys = requested_names
+            .iter()
+            .map(|name| normalize_card_lookup_name(name))
+            .collect::<std::collections::HashSet<_>>();
+
+        #[cfg(test)]
+        {
+            let requested_keys = requested_names
+                .iter()
+                .map(|name| normalize_card_constructor_key(name))
+                .collect::<std::collections::HashSet<_>>();
+            self.register_builtin_handwritten_cards_if(|constructor_key| {
+                requested_keys.contains(constructor_key)
+                    || constructor_key
+                        .strip_prefix("basic_")
+                        .is_some_and(|stripped| requested_keys.contains(stripped))
+            });
+        }
+
+        generated_registry::register_generated_parser_cards_if_name(self, |name| {
+            requested_name_keys.contains(&normalize_card_lookup_name(name))
+        });
+    }
+
+    /// Ensure every generated parser definition is loaded into this registry.
+    pub fn ensure_all_generated_cards_loaded(&mut self) {
+        #[cfg(test)]
+        {
+            self.register_builtin_handwritten_cards_if(|_| true);
+        }
+        generated_registry::register_generated_parser_cards(self);
+    }
+
+    /// Create a card registry with only the requested hand-written cards plus generated parser cards.
+    #[cfg(test)]
+    pub fn with_builtin_cards_for_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut registry = Self::new();
+        registry.ensure_cards_loaded(names);
+        registry
+    }
+
+    #[cfg(test)]
+    fn register_builtin_handwritten_cards_if<F>(&mut self, mut include_constructor_key: F)
+    where
+        F: FnMut(&str) -> bool,
+    {
+        macro_rules! maybe_register {
+            ($constructor:ident) => {
+                if include_constructor_key(stringify!($constructor)) {
+                    self.register($constructor());
+                }
+            };
+        }
+
+        maybe_register!(llanowar_elves);
+        maybe_register!(chrome_mox);
+        maybe_register!(command_the_mind);
+        maybe_register!(serra_angel);
+        maybe_register!(grizzly_bears);
+        maybe_register!(lightning_bolt);
+        maybe_register!(doom_blade);
+        maybe_register!(demonic_tutor);
+        maybe_register!(enlightened_tutor);
+        maybe_register!(emrakul_the_promised_end);
+        maybe_register!(everflowing_chalice);
+        maybe_register!(force_of_will);
+        maybe_register!(giant_growth);
+        maybe_register!(mindbreak_trap);
+        maybe_register!(counterspell);
+        maybe_register!(dawn_charm);
+        maybe_register!(swords_to_plowshares);
+        maybe_register!(basic_forest);
+        maybe_register!(basic_island);
+        maybe_register!(basic_mountain);
+        maybe_register!(basic_plains);
+        maybe_register!(basic_swamp);
+        maybe_register!(ornithopter);
+        maybe_register!(murder_of_crows);
+        maybe_register!(goblin_guide);
+        maybe_register!(typhoid_rats);
+        maybe_register!(vampire_nighthawk);
+        maybe_register!(silhana_ledgewalker);
+        maybe_register!(thorn_elemental);
+        maybe_register!(mirran_crusader);
+        maybe_register!(crusade);
+        maybe_register!(stormbreath_dragon);
+        maybe_register!(geist_of_saint_traft);
+        maybe_register!(savannah_lions);
+        maybe_register!(saw_in_half);
+        maybe_register!(white_knight);
+        maybe_register!(giant_spider);
+        maybe_register!(wall_of_omens);
+        maybe_register!(boggart_brute);
+        maybe_register!(darksteel_colossus);
+        maybe_register!(snapcaster_mage);
+        maybe_register!(underworld_breach);
+        maybe_register!(frogmite);
+        maybe_register!(treasure_cruise);
+        maybe_register!(stoke_the_flames);
+        maybe_register!(reverse_engineer);
+        maybe_register!(the_birth_of_meletis);
+        maybe_register!(student_of_warfare);
+        maybe_register!(valley_floodcaller);
+        maybe_register!(yawgmoth_thran_physician);
+        maybe_register!(yawgmoths_will);
+        maybe_register!(butcher_ghoul);
+        maybe_register!(sightless_ghoul);
+        maybe_register!(hex_parasite);
+        maybe_register!(fireball);
+        maybe_register!(think_twice);
+        maybe_register!(urzas_saga);
+        maybe_register!(fate_transfer);
+        maybe_register!(accursed_marauder);
+        maybe_register!(accursed_duneyard);
+        maybe_register!(akromas_will);
+        maybe_register!(amulet_of_vigor);
+        maybe_register!(ancient_tomb);
+        maybe_register!(arcane_signet);
+        maybe_register!(arid_mesa);
+        maybe_register!(ashnods_altar);
+        maybe_register!(bello_bard_of_the_brambles);
+        maybe_register!(blade_of_the_bloodchief);
+        maybe_register!(bleachbone_verge);
+        maybe_register!(blood_celebrant);
+        maybe_register!(blood_artist);
+        maybe_register!(bloodstained_mire);
+        maybe_register!(braids_arisen_nightmare);
+        maybe_register!(brightclimb_pathway);
+        maybe_register!(grimclimb_pathway);
+        maybe_register!(buried_alive);
+        maybe_register!(cataclysm);
+        maybe_register!(cataclysmic_gearhulk);
+        maybe_register!(charismatic_conqueror);
+        maybe_register!(command_tower);
+        maybe_register!(sol_ring);
+        maybe_register!(scrubland);
+        maybe_register!(tainted_field);
+        maybe_register!(high_market);
+        maybe_register!(humility);
+        maybe_register!(vampiric_tutor);
+        maybe_register!(flooded_strand);
+        maybe_register!(mana_tithe);
+        maybe_register!(marsh_flats);
+        maybe_register!(polluted_delta);
+        maybe_register!(rebuff_the_wicked);
+        maybe_register!(verdant_catacombs);
+        maybe_register!(windswept_heath);
+        maybe_register!(lightning_greaves);
+        maybe_register!(selfless_spirit);
+        maybe_register!(mother_of_runes);
+        maybe_register!(giver_of_runes);
+        maybe_register!(selfless_savior);
+        maybe_register!(gods_willing);
+        maybe_register!(kami_of_false_hope);
+        maybe_register!(shelter);
+        maybe_register!(mox_diamond);
+        maybe_register!(library_of_leng);
+        maybe_register!(invisible_stalker);
+        maybe_register!(dauthi_slayer);
+        maybe_register!(zodiac_rooster);
+        maybe_register!(culling_the_weak);
+        maybe_register!(fleshbag_marauder);
+        maybe_register!(generous_gift);
+        maybe_register!(godless_shrine);
+        maybe_register!(innocent_blood);
+        maybe_register!(mana_vault);
+        maybe_register!(merciless_executioner);
+        maybe_register!(phyrexian_tower);
+        maybe_register!(shattered_sanctum);
+        maybe_register!(stroke_of_midnight);
+        maybe_register!(vault_of_champions);
+        maybe_register!(tayam_luminous_enigma);
+        maybe_register!(village_rites);
+        maybe_register!(model_of_unity);
+        maybe_register!(manascape_refractor);
+        maybe_register!(squirrel_nest);
+        maybe_register!(mycosynth_lattice);
+        maybe_register!(toph_the_first_metalbender);
+        maybe_register!(marneus_calgar);
+        maybe_register!(marvin_murderous_mimic);
+        maybe_register!(rex_cyber_hound);
+        maybe_register!(tivit_seller_of_secrets);
+        maybe_register!(wall_of_roots);
     }
 
     /// Register a card definition.
@@ -377,6 +442,31 @@ impl CardRegistry {
     pub fn lands(&self) -> impl Iterator<Item = &CardDefinition> {
         self.cards.values().filter(|c| c.card.is_land())
     }
+}
+
+#[cfg(test)]
+fn normalize_card_constructor_key(name: &str) -> String {
+    let mut normalized = String::with_capacity(name.len());
+    let mut previous_was_separator = false;
+
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            normalized.push(ch.to_ascii_lowercase());
+            previous_was_separator = false;
+        } else if ch == '\'' {
+            // Keep possessive words aligned with constructor names:
+            // "Akroma's Will" -> "akromas_will".
+        } else if !previous_was_separator {
+            normalized.push('_');
+            previous_was_separator = true;
+        }
+    }
+
+    normalized.trim_matches('_').to_string()
+}
+
+fn normalize_card_lookup_name(name: &str) -> String {
+    name.trim().to_lowercase()
 }
 
 /// A lazily-constructed singleton registry for effect/runtime lookups.
@@ -467,7 +557,8 @@ mod tests {
 
     #[test]
     fn test_registry_lookup() {
-        let registry = CardRegistry::with_builtin_cards();
+        let registry =
+            CardRegistry::with_builtin_cards_for_names(["Serra Angel", "Lightning Bolt", "Forest"]);
 
         let angel = registry.get("Serra Angel");
         assert!(angel.is_some());
@@ -480,7 +571,8 @@ mod tests {
 
     #[test]
     fn test_registry_queries() {
-        let registry = CardRegistry::with_builtin_cards();
+        let registry =
+            CardRegistry::with_builtin_cards_for_names(["Serra Angel", "Lightning Bolt", "Forest"]);
 
         let creatures: Vec<_> = registry.creatures().collect();
         assert!(!creatures.is_empty());
@@ -494,8 +586,42 @@ mod tests {
 
     #[test]
     fn test_registry_count() {
-        let registry = CardRegistry::with_builtin_cards();
-        assert!(registry.len() > 10);
+        let registry =
+            CardRegistry::with_builtin_cards_for_names(["Serra Angel", "Lightning Bolt", "Forest"]);
+        assert_eq!(registry.len(), 3);
+    }
+
+    #[test]
+    fn ensure_cards_loaded_is_incremental() {
+        let mut registry = CardRegistry::new();
+        assert_eq!(registry.len(), 0);
+
+        registry.ensure_cards_loaded(["Lightning Bolt"]);
+        assert_eq!(registry.len(), 1);
+        assert!(registry.get("Lightning Bolt").is_some());
+        assert!(registry.get("Serra Angel").is_none());
+
+        registry.ensure_cards_loaded(["Serra Angel"]);
+        assert_eq!(registry.len(), 2);
+        assert!(registry.get("Serra Angel").is_some());
+    }
+
+    #[test]
+    fn ensure_cards_loaded_normalizes_input_names() {
+        let mut registry = CardRegistry::new();
+        registry.ensure_cards_loaded(["  lightning bolt  ", " FoReSt "]);
+
+        assert!(registry.get("Lightning Bolt").is_some());
+        assert!(registry.get("Forest").is_some());
+        assert_eq!(registry.len(), 2);
+    }
+
+    #[cfg(feature = "generated-registry")]
+    #[test]
+    fn ensure_cards_loaded_can_load_generated_cards() {
+        let mut registry = CardRegistry::new();
+        registry.ensure_cards_loaded(["Conclave Evangelist"]);
+        assert!(registry.get("Conclave Evangelist").is_some());
     }
 
     #[test]

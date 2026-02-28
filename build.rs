@@ -24,6 +24,13 @@ fn main() {
         let stub = r#"
 pub const GENERATED_PARSER_CARD_SOURCE_COUNT: usize = 0;
 pub fn register_generated_parser_cards(_registry: &mut crate::cards::CardRegistry) {}
+pub fn register_generated_parser_cards_if_name<F>(
+    _registry: &mut crate::cards::CardRegistry,
+    _include_name: F,
+) where
+    F: FnMut(&str) -> bool,
+{
+}
 "#;
         fs::write(&out_file, stub).expect("failed to write generated_registry.rs stub");
         return;

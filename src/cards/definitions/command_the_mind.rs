@@ -47,7 +47,13 @@ mod tests {
     /// Alice's inputs should be used for Bob's vote while control is active.
     #[test]
     fn test_replay_control_player_during_own_turn() {
-        let registry = CardRegistry::with_builtin_cards();
+        let registry = CardRegistry::with_builtin_cards_for_names([
+            "Command the Mind",
+            "Tivit, Seller of Secrets",
+            "Island",
+            "Plains",
+            "Swamp",
+        ]);
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
 
         let alice = PlayerId::from_index(0);

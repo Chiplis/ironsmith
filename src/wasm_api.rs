@@ -1416,7 +1416,7 @@ impl WasmGame {
         priority_state.set_auto_choose_single_pip_payment(false);
         Self {
             game: GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20),
-            registry: CardRegistry::with_builtin_cards(),
+            registry: CardRegistry::new(),
             trigger_queue: TriggerQueue::new(),
             priority_state,
             pending_decision: None,
@@ -1564,16 +1564,10 @@ impl WasmGame {
             return Err(JsValue::from_str("card name cannot be empty"));
         }
 
+        self.registry.ensure_cards_loaded([query]);
         let definition = self
-            .registry
-            .get(query)
+            .find_card_definition(query)
             .cloned()
-            .or_else(|| {
-                self.registry
-                    .all()
-                    .find(|def| def.name().eq_ignore_ascii_case(query))
-                    .cloned()
-            })
             .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {query}")))?;
 
         let object_id = self.game.create_object_from_definition(
@@ -1827,6 +1821,10 @@ impl WasmGame {
         let spells_needed = deck_size - land_count;
         let mut rng = StdRng::seed_from_u64(self.next_deck_seed());
 
+        if self.registry.is_empty() {
+            self.registry.ensure_all_generated_cards_loaded();
+        }
+
         let mut strict_spell_pool: Vec<_> = self
             .registry
             .all()
@@ -1972,8 +1970,11 @@ impl WasmGame {
         player_id: PlayerId,
         deck_names: &[String],
     ) -> Result<(), JsValue> {
+        self.registry
+            .ensure_cards_loaded(deck_names.iter().map(|name| name.as_str()));
+
         for name in deck_names {
-            let Some(def) = self.registry.get(name) else {
+            let Some(def) = self.find_card_definition(name) else {
                 return Err(JsValue::from_str(&format!("unknown card name: {name}")));
             };
             self.game
@@ -1984,6 +1985,14 @@ impl WasmGame {
             player.shuffle_library();
         }
         Ok(())
+    }
+
+    fn find_card_definition(&self, query: &str) -> Option<&CardDefinition> {
+        self.registry.get(query).or_else(|| {
+            self.registry
+                .all()
+                .find(|def| def.name().eq_ignore_ascii_case(query))
+        })
     }
 
     fn reset_runtime_state(&mut self) {

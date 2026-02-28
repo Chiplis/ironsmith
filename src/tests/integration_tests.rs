@@ -304,8 +304,41 @@ impl GameScript {
 
     /// Run the game script and return the final game state.
     pub fn run(self) -> Result<GameState, ScriptError> {
+        let mut needed_cards = std::collections::HashSet::new();
+        for (_, hand) in &self.hands {
+            needed_cards.extend(hand.iter().copied());
+        }
+        for action in &self.actions {
+            match action {
+                Action::PlayLand(name) | Action::CastSpell(name) | Action::TapForMana(name) => {
+                    needed_cards.insert(*name);
+                }
+                Action::CastSpellTargeting { spell, targets } => {
+                    needed_cards.insert(*spell);
+                    for target in targets {
+                        if let TargetChoice::Permanent(name) = target {
+                            needed_cards.insert(*name);
+                        }
+                    }
+                }
+                Action::ActivateAbility { source, .. } => {
+                    needed_cards.insert(*source);
+                }
+                Action::DeclareAttackers(names) => {
+                    needed_cards.extend(names.iter().copied());
+                }
+                Action::DeclareBlockers(pairs) => {
+                    for (blocker, attacker) in pairs {
+                        needed_cards.insert(*blocker);
+                        needed_cards.insert(*attacker);
+                    }
+                }
+                Action::Pass | Action::DeclareNoAttackers | Action::DeclareNoBlockers => {}
+            }
+        }
+
         // Create the card registry
-        let registry = CardRegistry::with_builtin_cards();
+        let registry = CardRegistry::with_builtin_cards_for_names(needed_cards);
 
         // Create player names
         let player_names: Vec<String> = if self.hands.is_empty() {
@@ -925,6 +958,30 @@ fn resolve_inputs(input: ReplayInput) -> Vec<String> {
     }
 }
 
+fn replay_config_card_names(config: &ReplayTestConfig) -> Vec<&'static str> {
+    let mut seen = std::collections::HashSet::new();
+    let mut names = Vec::new();
+
+    for zone in [
+        &config.hands,
+        &config.battlefields,
+        &config.graveyards,
+        &config.decks,
+        &config.commanders,
+        &config.commanders_on_battlefield,
+    ] {
+        for cards in zone.iter() {
+            for &card_name in cards.iter() {
+                if seen.insert(card_name) {
+                    names.push(card_name);
+                }
+            }
+        }
+    }
+
+    names
+}
+
 /// Runs a game with inputs and returns the final game state.
 /// This is a simplified version that starts in the main phase (skipping upkeep/draw)
 /// to allow direct testing of spell casting and combat.
@@ -948,7 +1005,7 @@ pub fn run_replay_test(input: impl Into<ReplayInput>, config: ReplayTestConfig) 
     use crate::game_loop::run_priority_loop_with;
     use crate::triggers::TriggerQueue;
 
-    let registry = CardRegistry::with_builtin_cards();
+    let registry = CardRegistry::with_builtin_cards_for_names(replay_config_card_names(&config));
 
     let mut config = config;
     let player_count = config.player_count();
@@ -1103,7 +1160,7 @@ pub fn run_replay_test_full_turn(
     use crate::game_loop::execute_turn_with;
     use crate::triggers::TriggerQueue;
 
-    let registry = CardRegistry::with_builtin_cards();
+    let registry = CardRegistry::with_builtin_cards_for_names(replay_config_card_names(&config));
 
     let mut config = config;
     let player_count = config.player_count();
