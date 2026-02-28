@@ -1148,13 +1148,25 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[Token]) -> Option<
 
 pub(crate) fn parse_get(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
-    if clause_words.contains(&"poison") && clause_words.contains(&"counter") {
+    if clause_words.contains(&"poison")
+        && (clause_words.contains(&"counter") || clause_words.contains(&"counters"))
+    {
         let player = match subject {
             Some(SubjectAst::Player(player)) => player,
             _ => PlayerAst::Implicit,
         };
+        let count = if matches!(
+            clause_words.first().copied(),
+            Some("a" | "an" | "another" | "one")
+        ) {
+            Value::Fixed(1)
+        } else {
+            parse_value(tokens)
+                .map(|(value, _)| value)
+                .unwrap_or(Value::Fixed(1))
+        };
         return Ok(EffectAst::PoisonCounters {
-            count: Value::Fixed(1),
+            count,
             player,
         });
     }
@@ -1726,6 +1738,31 @@ pub(crate) fn parse_land_could_produce_filter(
     Ok(Some(filter))
 }
 
+fn parse_counter_type_from_descriptor_tokens(tokens: &[Token]) -> Option<CounterType> {
+    let words = words(tokens);
+    let last = *words.last()?;
+    if let Some(counter_type) = parse_counter_type_word(last) {
+        return Some(counter_type);
+    }
+    if last == "strike" && words.len() >= 2 {
+        return match words[words.len() - 2] {
+            "double" => Some(CounterType::DoubleStrike),
+            "first" => Some(CounterType::FirstStrike),
+            _ => None,
+        };
+    }
+    if matches!(
+        last,
+        "a" | "an" | "one" | "two" | "three" | "four" | "five" | "six" | "another"
+    ) {
+        return None;
+    }
+    if last.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Some(CounterType::Named(intern_counter_name(last)));
+    }
+    None
+}
+
 
 pub(crate) fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if let Some(from_idx) = tokens.iter().position(|token| token.is_word("from")) {
@@ -1740,6 +1777,47 @@ pub(crate) fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError>
             }
             let target = parse_target_phrase(&target_tokens)?;
             return Ok(EffectAst::RemoveFromCombat { target });
+        }
+    }
+
+    if tokens.first().is_some_and(|token| token.is_word("all"))
+        && let Some(counter_idx) = tokens
+            .iter()
+            .position(|token| token.is_word("counter") || token.is_word("counters"))
+        && counter_idx > 1
+    {
+        let counter_descriptor = trim_commas(&tokens[1..counter_idx]);
+        let counter_type = parse_counter_type_from_descriptor_tokens(&counter_descriptor);
+        let mut target_tokens = trim_commas(&tokens[counter_idx + 1..]);
+        if target_tokens
+            .first()
+            .is_some_and(|token| token.is_word("from"))
+        {
+            target_tokens = trim_commas(&target_tokens[1..]);
+        }
+
+        let target_words = words(&target_tokens);
+        let source_like_target = matches!(
+            target_words.as_slice(),
+            ["it"]
+                | ["this"]
+                | ["this", "creature"]
+                | ["this", "artifact"]
+                | ["this", "enchantment"]
+                | ["this", "permanent"]
+                | ["this", "card"]
+        );
+        if source_like_target {
+            let amount = match counter_type {
+                Some(counter_type) => Value::CountersOnSource(counter_type),
+                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+            };
+            return Ok(EffectAst::RemoveUpToAnyCounters {
+                amount,
+                target: TargetAst::Source(span_from_tokens(&target_tokens)),
+                counter_type,
+                up_to: false,
+            });
         }
     }
 
@@ -1766,7 +1844,7 @@ pub(crate) fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError>
         .map(|offset| idx + offset)
         .ok_or_else(|| CardTextError::ParseError("missing counter keyword".to_string()))?;
     let counter_descriptor = trim_commas(&tokens[idx..counter_idx]);
-    let counter_type = parse_counter_type_from_tokens(&counter_descriptor);
+    let counter_type = parse_counter_type_from_descriptor_tokens(&counter_descriptor);
     if counter_idx >= tokens.len() {
         return Err(CardTextError::ParseError(
             "missing counter keyword".to_string(),

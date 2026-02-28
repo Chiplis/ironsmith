@@ -4679,16 +4679,25 @@ pub(crate) fn parse_static_condition_clause(tokens: &[Token]) -> Result<crate::C
     }
 
     if clause_words == ["this", "creature", "is", "equipped"]
+        || clause_words == ["this", "is", "equipped"]
         || clause_words == ["it", "is", "equipped"]
         || clause_words == ["its", "equipped"]
     {
         return Ok(crate::ConditionExpr::SourceIsEquipped);
     }
     if clause_words == ["this", "creature", "is", "enchanted"]
+        || clause_words == ["this", "is", "enchanted"]
         || clause_words == ["it", "is", "enchanted"]
         || clause_words == ["its", "enchanted"]
     {
         return Ok(crate::ConditionExpr::SourceIsEnchanted);
+    }
+    if clause_words == ["this", "creature", "is", "untapped"]
+        || clause_words == ["this", "is", "untapped"]
+        || clause_words == ["it", "is", "untapped"]
+        || clause_words == ["its", "untapped"]
+    {
+        return Ok(crate::ConditionExpr::SourceIsUntapped);
     }
     if clause_words == ["this", "is", "paired", "with", "another", "creature"]
         || clause_words == ["this", "creature", "is", "paired", "with", "another", "creature"]

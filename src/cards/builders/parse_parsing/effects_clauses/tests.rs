@@ -1266,6 +1266,39 @@ use super::*;
         }
     }
 
+    #[test]
+    fn parse_effect_clause_player_gets_multiple_poison_counters() {
+        let tokens = tokenize_line("that player gets two poison counters", 0);
+        let effect = parse_effect_clause(&tokens).expect("parse effect clause");
+        match effect {
+            EffectAst::PoisonCounters { count, player } => {
+                assert_eq!(count, Value::Fixed(2));
+                assert_eq!(player, PlayerAst::That);
+            }
+            other => panic!("expected PoisonCounters effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_effect_clause_remove_all_minus_counters_from_it() {
+        let tokens = tokenize_line("remove all -1/-1 counters from it", 0);
+        let effect = parse_effect_clause(&tokens).expect("parse effect clause");
+        match effect {
+            EffectAst::RemoveUpToAnyCounters {
+                amount,
+                target,
+                counter_type,
+                up_to,
+            } => {
+                assert_eq!(amount, Value::CountersOnSource(CounterType::MinusOneMinusOne));
+                assert!(matches!(target, TargetAst::Source(_)));
+                assert_eq!(counter_type, Some(CounterType::MinusOneMinusOne));
+                assert!(!up_to);
+            }
+            other => panic!("expected RemoveUpToAnyCounters effect, got {other:?}"),
+        }
+    }
+
 
     #[test]
     fn parse_prevent_next_time_damage_sentence_source_of_your_choice_any_target() {

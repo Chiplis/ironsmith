@@ -7608,6 +7608,52 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
+    fn parse_static_condition_this_is_equipped_variant() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Armory Veteran Variant")
+            .parse_text("As long as this is equipped, it has trample.")
+            .expect("this-is-equipped static condition should parse");
+
+        let displays: Vec<String> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.display()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("as long as this creature is equipped")
+                    && display.contains("has Trample")
+            }),
+            "expected equipped-gated trample grant, got: {displays:?}"
+        );
+    }
+
+    #[test]
+    fn parse_static_condition_this_creature_is_untapped_variant() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Untapped Condition Variant")
+            .parse_text("As long as this creature is untapped, this creature has vigilance.")
+            .expect("this-creature-is-untapped static condition should parse");
+
+        let displays: Vec<String> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.display()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            displays.iter().any(|display| {
+                display.contains("as long as this creature is untapped")
+                    && display.contains("has Vigilance")
+            }),
+            "expected untapped-gated vigilance grant, got: {displays:?}"
+        );
+    }
+
+    #[test]
     fn parse_threshold_additional_anthem_keeps_condition() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Divine Sacrament Variant")
             .parse_text(

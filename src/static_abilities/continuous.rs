@@ -463,6 +463,9 @@ fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
         crate::ConditionExpr::SourceIsAttacking => {
             "as long as this creature is attacking".to_string()
         }
+        crate::ConditionExpr::SourceIsUntapped => {
+            "as long as this creature is untapped".to_string()
+        }
         crate::ConditionExpr::SourceIsSoulbondPaired => {
             "as long as this creature is paired with another creature".to_string()
         }
