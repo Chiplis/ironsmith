@@ -2802,6 +2802,13 @@ pub(crate) fn parse_cant_clauses(tokens: &[Token]) -> Result<Option<Vec<StaticAb
                 let mut with_subject = shared_subject.clone();
                 with_subject.extend(segment.clone());
                 expanded = with_subject;
+            } else if idx > 0
+                && !shared_subject.is_empty()
+                && starts_with_possessive_activated_ability_subject(segment)
+            {
+                let mut with_subject = shared_subject.clone();
+                with_subject.extend(segment.iter().skip(1).cloned());
+                expanded = with_subject;
             }
             let Some(ability) = parse_cant_clause(&expanded)? else {
                 return Err(CardTextError::ParseError(format!(
@@ -3328,6 +3335,13 @@ pub(crate) fn parse_cant_restrictions(
                 let mut with_subject = shared_subject.clone();
                 with_subject.extend(segment.clone());
                 expanded = with_subject;
+            } else if idx > 0
+                && !shared_subject.is_empty()
+                && starts_with_possessive_activated_ability_subject(segment)
+            {
+                let mut with_subject = shared_subject.clone();
+                with_subject.extend(segment.iter().skip(1).cloned());
+                expanded = with_subject;
             }
             let Some(restriction) = parse_cant_restriction_clause(&expanded)? else {
                 return Err(CardTextError::ParseError(format!(
@@ -3422,7 +3436,11 @@ pub(crate) fn parse_negated_object_restriction_clause(
     };
     let subject_tokens = trim_commas(&tokens[..neg_start]);
 
-    let (filter, target) = if starts_with_target_indicator(&subject_tokens) {
+    let (filter, target, ability_scope) = if let Some(parsed) =
+        parse_activated_ability_subject(&subject_tokens)?
+    {
+        (parsed.filter, parsed.target, Some(parsed.scope))
+    } else if starts_with_target_indicator(&subject_tokens) {
         let target = parse_target_phrase(&subject_tokens)?;
         let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -3430,21 +3448,16 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 words(tokens).join(" ")
             ))
         })?;
-        if !filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == IT_TAG)
-        {
-            filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
-                relation: TaggedOpbjectRelation::IsTaggedObject,
-            });
-        }
-        (filter, Some(target))
+        ensure_it_tagged_constraint(&mut filter);
+        (filter, Some(target), None)
     } else if subject_tokens.is_empty() {
         // Supports carried clauses like "... and can't be blocked this turn."
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
-        (ObjectFilter::tagged(TagKey::from(IT_TAG)), Some(target))
+        (
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            Some(target),
+            None,
+        )
     } else {
         let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
             return Err(CardTextError::ParseError(format!(
@@ -3452,7 +3465,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 words(tokens).join(" ")
             )));
         };
-        (filter, None)
+        (filter, None, None)
     };
 
     let remainder_tokens = trim_commas(&tokens[neg_end..]);
@@ -3478,6 +3491,27 @@ pub(crate) fn parse_negated_object_restriction_clause(
         ["be", "regenerated", "this", "turn"] => Restriction::be_regenerated(filter),
         ["be", "sacrificed"] => Restriction::be_sacrificed(filter),
         ["be", "countered"] => Restriction::be_countered(filter),
+        ["be", "activated"] | ["be", "activated", "this", "turn"] => match ability_scope {
+            Some(ActivatedAbilityScope::All) => Restriction::activate_abilities_of(filter),
+            Some(ActivatedAbilityScope::TapCostOnly) => {
+                Restriction::activate_tap_abilities_of(filter)
+            }
+            None => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported negated restriction tail (clause: '{}')",
+                    words(tokens).join(" ")
+                )));
+            }
+        },
+        ["be", "activated", "unless", "theyre", "mana", "abilities"] => match ability_scope {
+            Some(ActivatedAbilityScope::All) => Restriction::activate_non_mana_abilities_of(filter),
+            Some(ActivatedAbilityScope::TapCostOnly) | None => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported negated restriction tail (clause: '{}')",
+                    words(tokens).join(" ")
+                )));
+            }
+        },
         ["transform"] => Restriction::transform(filter),
         ["be", "targeted"] => Restriction::be_targeted(filter),
         _ if remainder_words.first() == Some(&"block") && remainder_words.len() > 1 => {
@@ -3505,6 +3539,112 @@ pub(crate) fn parse_negated_object_restriction_clause(
         restriction,
         target,
     }))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActivatedAbilityScope {
+    All,
+    TapCostOnly,
+}
+
+#[derive(Debug, Clone)]
+struct ParsedActivatedAbilitySubject {
+    filter: ObjectFilter,
+    target: Option<TargetAst>,
+    scope: ActivatedAbilityScope,
+}
+
+fn parse_activated_ability_subject(
+    tokens: &[Token],
+) -> Result<Option<ParsedActivatedAbilitySubject>, CardTextError> {
+    if tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let subject_words = normalize_cant_words(tokens);
+    let (owner_word_len, scope) = if subject_words.ends_with(&["activated", "abilities"]) {
+        (subject_words.len().saturating_sub(2), ActivatedAbilityScope::All)
+    } else if subject_words.ends_with(&["activated", "abilities", "with", "t", "in", "their", "costs"])
+    {
+        (
+            subject_words.len().saturating_sub(7),
+            ActivatedAbilityScope::TapCostOnly,
+        )
+    } else {
+        return Ok(None);
+    };
+
+    if owner_word_len == 0 {
+        return Ok(None);
+    }
+    let owner_tokens = trim_commas(&tokens[..owner_word_len]);
+    if owner_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let owner_words = words(&owner_tokens);
+    if owner_words.len() == 1
+        && matches!(owner_words[0], "it" | "its" | "them" | "their")
+    {
+        return Ok(Some(ParsedActivatedAbilitySubject {
+            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            target: Some(TargetAst::Tagged(
+                TagKey::from(IT_TAG),
+                span_from_tokens(tokens),
+            )),
+            scope,
+        }));
+    }
+
+    if starts_with_target_indicator(&owner_tokens) {
+        let target = parse_target_phrase(&owner_tokens)?;
+        let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported target restriction subject (clause: '{}')",
+                words(tokens).join(" ")
+            ))
+        })?;
+        ensure_it_tagged_constraint(&mut filter);
+        return Ok(Some(ParsedActivatedAbilitySubject {
+            filter,
+            target: Some(target),
+            scope,
+        }));
+    }
+
+    let Some(filter) = parse_subject_object_filter(&owner_tokens)?
+        .or_else(|| parse_object_filter(&owner_tokens, false).ok())
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported subject in negated restriction clause (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    };
+
+    Ok(Some(ParsedActivatedAbilitySubject {
+        filter,
+        target: None,
+        scope,
+    }))
+}
+
+fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
+    if !filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    }
+}
+
+fn starts_with_possessive_activated_ability_subject(tokens: &[Token]) -> bool {
+    let words = normalize_cant_words(tokens);
+    words.starts_with(&["its", "activated", "abilities"])
+        || words.starts_with(&["their", "activated", "abilities"])
 }
 
 #[derive(Debug, Clone)]

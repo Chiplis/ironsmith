@@ -543,6 +543,9 @@ fn can_activate_mana_ability(
     if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
         && mana_ability.is_mana_ability()
     {
+        if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
+            return Err(ActionError::CantPayCost);
+        }
         let total_cost = crate::decision::calculate_effective_activation_total_cost(
             game,
             player,
@@ -623,6 +626,9 @@ fn can_activate_mana_ability_check(
     if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
         && mana_ability.is_mana_ability()
     {
+        if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
+            return Err(ActionError::CantPayCost);
+        }
         let total_cost = crate::decision::calculate_effective_activation_total_cost(
             game,
             player,

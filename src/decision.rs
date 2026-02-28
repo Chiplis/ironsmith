@@ -890,6 +890,9 @@ pub(crate) fn can_activate_ability_with_restrictions(
     if !game.can_activate_abilities_of(source) {
         return false;
     }
+    if activated.has_tap_cost() && !game.can_activate_tap_abilities_of(source) {
+        return false;
+    }
     if !activated.is_mana_ability() && !game.can_activate_non_mana_abilities_of(source) {
         return false;
     }
@@ -2369,6 +2372,9 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
             if let AbilityKind::Activated(mana_ability) = &ability.kind
                 && mana_ability.is_mana_ability()
             {
+                if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(perm_id) {
+                    continue;
+                }
                 // Do a simple non-recursive check for whether this mana ability
                 // could be activated. We intentionally skip mana cost checks here
                 // to avoid infinite recursion (mana ability with mana cost would

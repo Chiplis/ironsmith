@@ -742,6 +742,8 @@ pub enum Restriction {
     ActivateNonManaAbilities(PlayerFilter),
     /// Activated abilities of matching objects can't be activated (including mana abilities).
     ActivateAbilitiesOf(ObjectFilter),
+    /// Activated abilities with {T} in their costs of matching objects can't be activated.
+    ActivateTapAbilitiesOf(ObjectFilter),
     /// Non-mana activated abilities of matching objects can't be activated (mana abilities are still allowed).
     ActivateNonManaAbilitiesOf(ObjectFilter),
     CastCreatureSpells(PlayerFilter),
@@ -797,6 +799,10 @@ impl Restriction {
 
     pub fn activate_abilities_of(filter: ObjectFilter) -> Self {
         Self::ActivateAbilitiesOf(filter)
+    }
+
+    pub fn activate_tap_abilities_of(filter: ObjectFilter) -> Self {
+        Self::ActivateTapAbilitiesOf(filter)
     }
 
     pub fn activate_non_mana_abilities_of(filter: ObjectFilter) -> Self {
@@ -970,6 +976,15 @@ impl Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.cant_activate_abilities_of.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::ActivateTapAbilitiesOf(filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_activate_tap_abilities_of.insert(obj_id);
                     }
                 }
             }

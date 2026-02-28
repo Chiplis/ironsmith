@@ -6325,6 +6325,12 @@ fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
                 filter.description()
             )
         }
+        crate::effect::Restriction::ActivateTapAbilitiesOf(filter) => {
+            format!(
+                "activated abilities with {{T}} in their costs of {} can't be activated",
+                filter.description()
+            )
+        }
         crate::effect::Restriction::ActivateNonManaAbilitiesOf(filter) => {
             format!(
                 "non-mana activated abilities of {} can't be activated",

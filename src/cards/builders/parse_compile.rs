@@ -1363,7 +1363,10 @@ pub(crate) fn restriction_references_tag(restriction: &crate::effect::Restrictio
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::Transform(filter)
-        | Restriction::AttackOrBlock(filter) => Some(filter),
+        | Restriction::AttackOrBlock(filter)
+        | Restriction::ActivateAbilitiesOf(filter)
+        | Restriction::ActivateTapAbilitiesOf(filter)
+        | Restriction::ActivateNonManaAbilitiesOf(filter) => Some(filter),
         _ => None,
     };
     if let Some(filter) = maybe_filter {
@@ -2660,6 +2663,36 @@ pub(crate) fn lower_single_non_target_exile_target(
             .with_face_down(face_down),
     ));
     Ok(Some((prelude, choices)))
+}
+
+pub(crate) fn lower_may_imprint_from_hand_effect(
+    effects: &[EffectAst],
+    ctx: &CompileContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    if effects.len() != 1 {
+        return Ok(None);
+    }
+
+    let EffectAst::Exile { target, face_down } = &effects[0] else {
+        return Ok(None);
+    };
+    if *face_down {
+        return Ok(None);
+    }
+
+    let Some((filter, count)) = hand_exile_filter_and_count(target, ctx)? else {
+        return Ok(None);
+    };
+    if !count.is_single() {
+        return Ok(None);
+    }
+
+    Ok(Some((
+        vec![Effect::new(crate::effects::cards::ImprintFromHandEffect::new(
+            filter,
+        ))],
+        Vec::new(),
+    )))
 }
 
 pub(crate) fn compile_effect(
@@ -4050,12 +4083,20 @@ pub(crate) fn compile_effect(
             |filter| Effect::energy_counters_player(count.clone(), filter),
         ),
         EffectAst::May { effects } => {
+            if let Some(compiled) = lower_may_imprint_from_hand_effect(effects, ctx)? {
+                return Ok(compiled);
+            }
             let (inner_effects, inner_choices) =
                 compile_effects_preserving_last_effect(effects, ctx)?;
             let effect = Effect::may(inner_effects);
             Ok((vec![effect], inner_choices))
         }
         EffectAst::MayByPlayer { player, effects } => {
+            if matches!(player, PlayerAst::You | PlayerAst::Implicit)
+                && let Some(compiled) = lower_may_imprint_from_hand_effect(effects, ctx)?
+            {
+                return Ok(compiled);
+            }
             let (inner_effects, inner_choices) =
                 compile_effects_preserving_last_effect(effects, ctx)?;
             let (player_filter, mut player_choices) =
@@ -6252,6 +6293,15 @@ pub(crate) fn resolve_restriction_it_tag(
         Restriction::Transform(filter) => Restriction::transform(resolve_it_tag(filter, ctx)?),
         Restriction::AttackOrBlock(filter) => {
             Restriction::attack_or_block(resolve_it_tag(filter, ctx)?)
+        }
+        Restriction::ActivateAbilitiesOf(filter) => {
+            Restriction::activate_abilities_of(resolve_it_tag(filter, ctx)?)
+        }
+        Restriction::ActivateTapAbilitiesOf(filter) => {
+            Restriction::activate_tap_abilities_of(resolve_it_tag(filter, ctx)?)
+        }
+        Restriction::ActivateNonManaAbilitiesOf(filter) => {
+            Restriction::activate_non_mana_abilities_of(resolve_it_tag(filter, ctx)?)
         }
         _ => restriction.clone(),
     };

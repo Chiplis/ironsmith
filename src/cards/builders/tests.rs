@@ -692,6 +692,61 @@ fn test_parse_enchanted_creature_cant_attack_or_block() {
 }
 
 #[test]
+fn test_parse_enchanted_creature_cant_activate_abilities() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Arrest Plus Test")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Enchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.",
+        )
+        .expect("parse enchanted creature activated-abilities restriction");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("enchanted creature can't attack or block")
+            && (rendered.contains("its activated abilities can't be activated")
+                || rendered.contains("enchanted creature activated abilities can't be activated")),
+        "expected arrest-style restriction text, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_deadlock_trap_its_activated_abilities_cant_be_activated_this_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Deadlock Trap Test")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "This artifact enters tapped.\n{T}, Pay {E}: Tap target creature or planeswalker. Its activated abilities can't be activated this turn.",
+        )
+        .expect("parse deadlock-trap style activated-abilities clause");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("its activated abilities can't be activated this turn")
+            || rendered.contains("activated abilities of permanent can't be activated this turn")
+            || rendered.contains("its activated abilities cant be activated this turn"),
+        "expected deadlock-trap restriction text, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_activated_abilities_with_t_in_costs_cant_be_activated() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Serra Bestiary Test")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Enchant creature\nEnchanted creature's activated abilities with {T} in their costs can't be activated.",
+        )
+        .expect("parse tap-cost activated-ability restriction");
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("activated abilities with {t} in their costs can't be activated")
+            || rendered
+                .contains("enchanted creatures activated abilities with t in their costs can't be activated")
+            || rendered.contains("activated abilities with t in their costs cant be activated"),
+        "expected tap-cost activated-ability restriction text, got {rendered}"
+    );
+}
+
+#[test]
 fn test_parse_enchanted_permanent_cant_attack_or_block() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bound In Gold Test")
         .card_types(vec![CardType::Enchantment])

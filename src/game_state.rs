@@ -190,6 +190,9 @@ pub struct CantEffectTracker {
     /// Example: Collector Ouphe ("Activated abilities of artifacts can't be activated.")
     pub cant_activate_abilities_of: HashSet<ObjectId>,
 
+    /// Permanents whose activated abilities with {T} in their costs can't be activated.
+    pub cant_activate_tap_abilities_of: HashSet<ObjectId>,
+
     /// Permanents whose non-mana activated abilities can't be activated.
     /// Example: Damping Matrix ("... can't be activated unless they're mana abilities.")
     pub cant_activate_non_mana_abilities_of: HashSet<ObjectId>,
@@ -373,6 +376,8 @@ impl CantEffectTracker {
             .extend(other.cant_activate_non_mana_abilities);
         self.cant_activate_abilities_of
             .extend(other.cant_activate_abilities_of);
+        self.cant_activate_tap_abilities_of
+            .extend(other.cant_activate_tap_abilities_of);
         self.cant_activate_non_mana_abilities_of
             .extend(other.cant_activate_non_mana_abilities_of);
         self.cant_cast_creature_spells
@@ -414,6 +419,7 @@ impl CantEffectTracker {
         self.cant_cast_spells.clear();
         self.cant_activate_non_mana_abilities.clear();
         self.cant_activate_abilities_of.clear();
+        self.cant_activate_tap_abilities_of.clear();
         self.cant_activate_non_mana_abilities_of.clear();
         self.cant_cast_creature_spells.clear();
         self.cant_cast_more_than_one_spell_each_turn.clear();
@@ -555,6 +561,11 @@ impl CantEffectTracker {
     /// Check if activated abilities of a permanent can be activated (including mana abilities).
     pub fn can_activate_abilities_of(&self, source: ObjectId) -> bool {
         !self.cant_activate_abilities_of.contains(&source)
+    }
+
+    /// Check if activated abilities with {T} in their costs of a permanent can be activated.
+    pub fn can_activate_tap_abilities_of(&self, source: ObjectId) -> bool {
+        !self.cant_activate_tap_abilities_of.contains(&source)
     }
 
     /// Check if non-mana activated abilities of a permanent can be activated.
@@ -1574,6 +1585,11 @@ impl GameState {
     /// Can activated abilities of this permanent be activated (including mana abilities)?
     pub fn can_activate_abilities_of(&self, source: ObjectId) -> bool {
         self.cant_effects.can_activate_abilities_of(source)
+    }
+
+    /// Can activated abilities with {T} in their costs of this permanent be activated?
+    pub fn can_activate_tap_abilities_of(&self, source: ObjectId) -> bool {
+        self.cant_effects.can_activate_tap_abilities_of(source)
     }
 
     /// Can non-mana activated abilities of this permanent be activated?
@@ -4025,6 +4041,10 @@ mod tests {
         game.cant_effects.cant_activate_abilities_of.insert(obj_id);
         assert!(!game.can_activate_abilities_of(obj_id));
 
+        assert!(game.can_activate_tap_abilities_of(obj_id));
+        game.cant_effects.cant_activate_tap_abilities_of.insert(obj_id);
+        assert!(!game.can_activate_tap_abilities_of(obj_id));
+
         assert!(game.can_activate_non_mana_abilities_of(obj_id));
         game.cant_effects
             .cant_activate_non_mana_abilities_of
@@ -4117,6 +4137,7 @@ mod tests {
         tracker.cant_cast_spells.insert(player);
         tracker.cant_activate_non_mana_abilities.insert(player);
         tracker.cant_activate_abilities_of.insert(object);
+        tracker.cant_activate_tap_abilities_of.insert(object);
         tracker.cant_activate_non_mana_abilities_of.insert(object);
         tracker.cant_draw.insert(player);
         tracker.cant_be_targeted.insert(object);
@@ -4151,6 +4172,7 @@ mod tests {
         assert!(!tracker.life_total_cant_change.is_empty());
         assert!(!tracker.cant_cast_spells.is_empty());
         assert!(!tracker.cant_activate_non_mana_abilities.is_empty());
+        assert!(!tracker.cant_activate_tap_abilities_of.is_empty());
         assert!(!tracker.cant_draw.is_empty());
         assert!(!tracker.cant_be_targeted.is_empty());
         assert!(!tracker.cant_be_sacrificed.is_empty());
@@ -4206,6 +4228,10 @@ mod tests {
         assert!(
             tracker.cant_activate_abilities_of.is_empty(),
             "cant_activate_abilities_of should be cleared"
+        );
+        assert!(
+            tracker.cant_activate_tap_abilities_of.is_empty(),
+            "cant_activate_tap_abilities_of should be cleared"
         );
         assert!(
             tracker.cant_activate_non_mana_abilities_of.is_empty(),
@@ -4442,6 +4468,89 @@ mod tests {
         assert!(
             !can_activate_ability_with_restrictions(&game, artifact_id, 1, activated),
             "Damping Matrix style restriction should prevent non-mana activated abilities"
+        );
+    }
+
+    #[test]
+    fn tap_cost_restriction_blocks_only_tap_abilities() {
+        use crate::ability::{Ability, AbilityKind};
+        use crate::card::CardBuilder;
+        use crate::costs::Cost;
+        use crate::decision::can_activate_ability_with_restrictions;
+        use crate::effect::{Effect, Restriction};
+        use crate::mana::ManaSymbol;
+        use crate::special_actions::{SpecialAction, can_perform_check};
+        use crate::static_abilities::StaticAbility;
+        use crate::target::ObjectFilter;
+        use crate::types::CardType;
+        use crate::{TotalCost, Zone};
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let artifact = CardBuilder::new(CardId::from_raw(2201), "Tap-Lock Target")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_id = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+        game.object_mut(artifact_id)
+            .expect("artifact should exist")
+            .abilities
+            .extend([
+                Ability::mana(TotalCost::free(), vec![ManaSymbol::Green]),
+                Ability::activated(TotalCost::from_costs(vec![Cost::tap()]), vec![Effect::draw(1)]),
+                Ability::activated(TotalCost::free(), vec![Effect::draw(1)]),
+            ]);
+
+        let lock = CardBuilder::new(CardId::from_raw(2202), "Tap-Lock Probe")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let lock_id = game.create_object_from_card(&lock, alice, Zone::Battlefield);
+
+        let mut artifact_filter = ObjectFilter::default();
+        artifact_filter.zone = Some(Zone::Battlefield);
+        artifact_filter.card_types = vec![CardType::Artifact];
+        game.object_mut(lock_id)
+            .expect("lock should exist")
+            .abilities
+            .push(
+                Ability::static_ability(StaticAbility::restriction(
+                    Restriction::activate_tap_abilities_of(artifact_filter),
+                    "Activated abilities with {T} in their costs of artifacts can't be activated."
+                        .to_string(),
+                ))
+                .with_text("Activated abilities with {T} in their costs of artifacts can't be activated."),
+            );
+
+        game.update_cant_effects();
+
+        let mana_action = SpecialAction::ActivateManaAbility {
+            permanent_id: artifact_id,
+            ability_index: 0,
+        };
+        assert!(
+            can_perform_check(&mana_action, &game, alice).is_err(),
+            "tap-cost restriction should block mana abilities that require tapping"
+        );
+
+        let Some(obj) = game.object(artifact_id) else {
+            panic!("artifact should exist");
+        };
+        let tapped_activated = match &obj.abilities[1].kind {
+            AbilityKind::Activated(ab) => ab,
+            other => panic!("expected activated ability, got {other:?}"),
+        };
+        assert!(
+            !can_activate_ability_with_restrictions(&game, artifact_id, 1, tapped_activated),
+            "tap-cost restriction should block non-mana tap-cost activations"
+        );
+
+        let free_activated = match &obj.abilities[2].kind {
+            AbilityKind::Activated(ab) => ab,
+            other => panic!("expected activated ability, got {other:?}"),
+        };
+        assert!(
+            can_activate_ability_with_restrictions(&game, artifact_id, 2, free_activated),
+            "tap-cost restriction should allow activations without {{T}} in the cost"
         );
     }
 
