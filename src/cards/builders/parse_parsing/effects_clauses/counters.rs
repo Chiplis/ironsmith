@@ -133,7 +133,9 @@ pub(crate) fn sentence_case_mode_text(text: &str) -> String {
     out
 }
 
-pub(crate) fn parse_counter_descriptor(tokens: &[Token]) -> Result<(u32, CounterType), CardTextError> {
+pub(crate) fn parse_counter_descriptor(
+    tokens: &[Token],
+) -> Result<(u32, CounterType), CardTextError> {
     let descriptor = trim_commas(tokens);
     let (count, used) = parse_number(&descriptor).ok_or_else(|| {
         CardTextError::ParseError(format!(
@@ -185,7 +187,10 @@ pub(crate) fn parse_referential_counter_count_value(tokens: &[Token]) -> Option<
         idx += 1;
         None
     } else if let Some(counter_type) = parse_counter_type_word(word) {
-        if !matches!(words_all.get(idx + 1).copied(), Some("counter" | "counters")) {
+        if !matches!(
+            words_all.get(idx + 1).copied(),
+            Some("counter" | "counters")
+        ) {
             return None;
         }
         idx += 2;
@@ -197,7 +202,9 @@ pub(crate) fn parse_referential_counter_count_value(tokens: &[Token]) -> Option<
     Some((Value::CountersOn(Box::new(source_spec), counter_type), idx))
 }
 
-pub(crate) fn parse_put_counter_count_value(tokens: &[Token]) -> Result<(Value, usize), CardTextError> {
+pub(crate) fn parse_put_counter_count_value(
+    tokens: &[Token],
+) -> Result<(Value, usize), CardTextError> {
     let clause = words(tokens).join(" ");
     let words_all = words(tokens);
 
@@ -230,14 +237,14 @@ pub(crate) fn parse_put_counter_count_value(tokens: &[Token]) -> Result<(Value, 
     }
 
     parse_value(tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing counter amount (clause: '{}')",
-            clause
-        ))
+        CardTextError::ParseError(format!("missing counter amount (clause: '{}')", clause))
     })
 }
 
-pub(crate) fn target_from_counter_source_spec(spec: &ChooseSpec, span: Option<TextSpan>) -> Option<TargetAst> {
+pub(crate) fn target_from_counter_source_spec(
+    spec: &ChooseSpec,
+    span: Option<TextSpan>,
+) -> Option<TargetAst> {
     match spec {
         ChooseSpec::Source => Some(TargetAst::Source(span)),
         ChooseSpec::Tagged(tag) => Some(TargetAst::Tagged(tag.clone(), span)),
@@ -261,7 +268,9 @@ pub(crate) fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardText
         })?;
 
     let mut target_tokens = rest[on_idx + 1..].to_vec();
-    if let Some(equal_idx) = target_tokens.iter().position(|token| token.is_word("equal"))
+    if let Some(equal_idx) = target_tokens
+        .iter()
+        .position(|token| token.is_word("equal"))
         && target_tokens
             .get(equal_idx + 1)
             .is_some_and(|token| token.is_word("to"))
@@ -309,7 +318,10 @@ pub(crate) fn parse_put_counters(tokens: &[Token]) -> Result<EffectAst, CardText
                     words(tokens).join(" ")
                 ))
             })?;
-        return Ok(wrap_conditional(EffectAst::MoveAllCounters { from, to: target }));
+        return Ok(wrap_conditional(EffectAst::MoveAllCounters {
+            from,
+            to: target,
+        }));
     } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported counter type (clause: '{}')",

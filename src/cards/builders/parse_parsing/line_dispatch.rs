@@ -18,22 +18,19 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         )));
     }
     if normalized.starts_with("activate only") {
-        return Ok(LineAst::StaticAbility(StaticAbility::custom(
-            "activation_restriction",
-            line.trim().to_string(),
-        )));
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
     }
     if normalized.starts_with("cast this spell only") {
-        return Ok(LineAst::StaticAbility(StaticAbility::custom(
-            "cast_restriction",
-            line.trim().to_string(),
-        )));
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
     }
     if normalized.starts_with("foretelling cards from your hand costs") {
-        return Ok(LineAst::StaticAbility(StaticAbility::custom(
-            "foretell_modifier",
-            line.trim().to_string(),
-        )));
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
     }
     if normalized == "play with the top card of your library revealed"
         || normalized.starts_with("gain the next level as a sorcery to add its ability")
@@ -58,44 +55,35 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         || normalized.starts_with("this creature cant block unless")
         || normalized.starts_with("this creature cant block if")
         || normalized == "this creature attacks or blocks each combat if able"
-        || normalized.starts_with("players cant untap more than one artifact during their untap steps")
+        || normalized
+            .starts_with("players cant untap more than one artifact during their untap steps")
         || normalized.starts_with("as long as")
             && normalized.contains("can attack as though it didnt have defender")
         || normalized.starts_with("as long as equipped creature is a human")
-        || normalized.starts_with("while an opponent is choosing targets as part of casting a spell")
-        || normalized.contains("this creature enters with")
-            && normalized.contains("+1/+1 counter")
-        || normalized.contains("it enters with")
-            && normalized.contains("+1/+1 counter")
+        || normalized
+            .starts_with("while an opponent is choosing targets as part of casting a spell")
+        || normalized.contains("this creature enters with") && normalized.contains("+1/+1 counter")
+        || normalized.contains("it enters with") && normalized.contains("+1/+1 counter")
         || normalized.starts_with("enchanted creature gets -x/-x")
-        || normalized.starts_with("creatures with power less than this creatures power cant block it")
+        || normalized
+            .starts_with("creatures with power less than this creatures power cant block it")
         || normalized.starts_with("if one or more +1/+1 counters would be put on")
         || normalized.starts_with("if an effect would create one or more tokens under your control")
-        || normalized.starts_with("prevent all damage that would be dealt to this creature")
-        || normalized.starts_with("prevent all damage that would be dealt to enchanted creature")
-        || normalized.starts_with("prevent all combat damage that would be dealt to and dealt by")
-        || normalized.starts_with("prevent all damage that would be dealt by creatures this turn")
-        || normalized.starts_with(
-            "prevent all damage that would be dealt to you this turn by attacking creatures",
-        )
     {
-        return Ok(LineAst::StaticAbility(StaticAbility::custom(
-            "static_rule_text",
-            line.trim().to_string(),
-        )));
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
     }
     if normalized.starts_with("this ability triggers only") {
-        return Ok(LineAst::StaticAbility(StaticAbility::custom(
-            "trigger_restriction",
-            line.trim().to_string(),
-        )));
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
     }
     if normalized.starts_with("as this land enters")
         && normalized.contains("reveal")
         && normalized.contains("from your hand")
     {
-        let mut abilities = vec![StaticAbility::custom(
-            "as_enters_reveal",
+        let mut abilities = vec![StaticAbility::rule_text_placeholder(
             line.trim().to_string(),
         )];
         if normalized.contains("enters tapped") || normalized.contains("enter tapped") {
@@ -120,10 +108,9 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     }
 
     if normalized.contains(": level ") {
-        return Ok(LineAst::StaticAbility(StaticAbility::custom(
-            "class_level_cost",
-            line.trim().to_string(),
-        )));
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
     }
 
     if tokens
@@ -170,10 +157,9 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     }
 
     if is_non_mana_additional_cost_modifier_line(&normalized) {
-        return Ok(LineAst::StaticAbility(StaticAbility::custom(
-            "additional_cost_modifier",
-            line.trim().to_string(),
-        )));
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
     }
 
     if tokens.first().is_some_and(|token| token.is_word("you"))

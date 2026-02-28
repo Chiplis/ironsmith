@@ -95,7 +95,11 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Hand)
     }
 
-    fn execute_chrome_mox_imprint_trigger(game: &mut GameState, controller: PlayerId, source: ObjectId) {
+    fn execute_chrome_mox_imprint_trigger(
+        game: &mut GameState,
+        controller: PlayerId,
+        source: ObjectId,
+    ) {
         let def = chrome_mox();
         let triggered = def
             .abilities
@@ -240,7 +244,9 @@ mod tests {
         assert!(game.has_imprinted_cards(mox_id));
         let imprinted = game.get_imprinted_cards(mox_id);
         assert_eq!(imprinted.len(), 1);
-        let imprinted_object = game.object(imprinted[0]).expect("Imprinted card should exist");
+        let imprinted_object = game
+            .object(imprinted[0])
+            .expect("Imprinted card should exist");
         assert_eq!(imprinted_object.zone, Zone::Exile);
     }
 

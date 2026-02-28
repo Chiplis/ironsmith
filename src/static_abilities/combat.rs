@@ -647,12 +647,12 @@ impl StaticAbilityKind for CantAttackUnlessControllerCastCreatureSpellThisTurn {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
-        let cast_creature_spell_this_turn = game
-            .spells_cast_this_turn_snapshots
-            .iter()
-            .any(|snapshot| {
+        let cast_creature_spell_this_turn =
+            game.spells_cast_this_turn_snapshots.iter().any(|snapshot| {
                 snapshot.controller == controller
-                    && snapshot.card_types.contains(&crate::types::CardType::Creature)
+                    && snapshot
+                        .card_types
+                        .contains(&crate::types::CardType::Creature)
             });
         if cast_creature_spell_this_turn {
             return;

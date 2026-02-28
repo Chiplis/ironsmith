@@ -1430,6 +1430,7 @@ fn describe_choose_then_for_each_copy(
         || create_copy.enters_tapped
         || create_copy.has_haste
         || create_copy.enters_attacking
+        || create_copy.attack_target_mode.is_some()
         || create_copy.exile_at_end_of_combat
         || create_copy.sacrifice_at_next_end_step
         || create_copy.exile_at_next_end_step
@@ -1679,8 +1680,8 @@ fn describe_each_controlled_by_iterated(filter: &ObjectFilter) -> Option<String>
         && filter.tagged_constraints.is_empty()
         && filter.targets_object.is_none()
         && filter.targets_player.is_none()
-        && filter.custom_static_markers.is_empty()
-        && filter.excluded_custom_static_markers.is_empty()
+        && filter.ability_markers.is_empty()
+        && filter.excluded_ability_markers.is_empty()
         && !filter.noncommander
     {
         let words = filter
@@ -4996,7 +4997,17 @@ fn describe_effect_impl(effect: &Effect) -> String {
             text.push_str(", with haste");
         }
         if create_copy.enters_attacking {
-            text.push_str(", attacking");
+            if let Some(crate::effects::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
+                player_filter,
+            )) = &create_copy.attack_target_mode
+            {
+                let player = describe_player_filter(player_filter);
+                text.push_str(&format!(
+                    ", attacking {player} or a planeswalker they control"
+                ));
+            } else {
+                text.push_str(", attacking");
+            }
         }
         if create_copy.exile_at_end_of_combat {
             text.push_str(", and exile at end of combat");
@@ -5800,6 +5811,14 @@ fn describe_effect_impl(effect: &Effect) -> String {
             describe_effect_list(&for_each_tagged_player.effects)
         );
     }
+    if effect
+        .downcast_ref::<crate::effects::EmitKeywordActionEffect>()
+        .is_some()
+    {
+        // Runtime keyword-action events are instrumentation; they should not leak
+        // into oracle-like rendered rules text.
+        return String::new();
+    }
     format!("{effect:?}")
 }
 
@@ -6171,8 +6190,12 @@ fn describe_ability(
                 }
                 return lines;
             }
-            if static_ability.id() == crate::static_abilities::StaticAbilityId::Custom
-                && let Some(text) = ability.text.as_deref()
+            if matches!(
+                static_ability.id(),
+                crate::static_abilities::StaticAbilityId::KeywordMarker
+                    | crate::static_abilities::StaticAbilityId::RuleTextPlaceholder
+                    | crate::static_abilities::StaticAbilityId::UnsupportedParserLine
+            ) && let Some(text) = ability.text.as_deref()
             {
                 let normalized = normalize_sentence_surface_style(text.trim());
                 if !normalized.is_empty() {
@@ -6748,7 +6771,7 @@ fn ability_can_render_as_keyword_group(ability: &Ability) -> bool {
     match &ability.kind {
         AbilityKind::Static(static_ability) => {
             static_ability.is_keyword()
-                || static_ability.id() == crate::static_abilities::StaticAbilityId::Custom
+                || static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
         }
         _ => false,
     }

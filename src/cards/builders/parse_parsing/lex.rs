@@ -583,7 +583,10 @@ pub(crate) fn is_generic_ability_label_prefix(prefix: &str) -> bool {
     })
 }
 
-pub(crate) fn strip_labeled_ability_word_prefix_with_map(text: &str, map: &[usize]) -> (String, Vec<usize>) {
+pub(crate) fn strip_labeled_ability_word_prefix_with_map(
+    text: &str,
+    map: &[usize],
+) -> (String, Vec<usize>) {
     let separator = text
         .find('—')
         .map(|idx| (idx, '—'.len_utf8()))
@@ -911,7 +914,10 @@ pub(crate) fn should_keep_and_for_token_rules(current: &[Token], remaining: &[To
     starts_with_inline_token_rules_tail(&remaining_words)
 }
 
-pub(crate) fn should_keep_and_for_attachment_object_list(current: &[Token], remaining: &[Token]) -> bool {
+pub(crate) fn should_keep_and_for_attachment_object_list(
+    current: &[Token],
+    remaining: &[Token],
+) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -943,7 +949,10 @@ pub(crate) fn should_keep_and_for_attachment_object_list(current: &[Token], rema
         || current_words.starts_with(&["gain", "control", "of", "all"])
 }
 
-pub(crate) fn should_keep_and_for_each_player_may_clause(current: &[Token], remaining: &[Token]) -> bool {
+pub(crate) fn should_keep_and_for_each_player_may_clause(
+    current: &[Token],
+    remaining: &[Token],
+) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -1254,7 +1263,9 @@ pub(crate) fn split_segments_on_comma_effect_head(segments: Vec<Vec<Token>>) -> 
                 || before_words.first() == Some(&"during"))
                 && (before_words.contains(&"whenever")
                     || before_words.contains(&"when")
-                    || before_words.windows(2).any(|window| window == ["at", "the"]));
+                    || before_words
+                        .windows(2)
+                        .any(|window| window == ["at", "the"]));
             if before_words.first() == Some(&"unless") {
                 continue;
             }

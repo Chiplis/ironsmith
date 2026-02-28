@@ -82,6 +82,7 @@ enum KeywordAction {
     Mentor,
     Skulk,
     Training,
+    Myriad,
     Riot,
     Unleash,
     Renown(u32),
@@ -494,6 +495,7 @@ enum PredicateAst {
     SourceIsTapped,
     #[allow(dead_code)]
     SourceHasNoCounter(CounterType),
+    TriggeringObjectHadNoCounter(CounterType),
     SourceHasCounterAtLeast {
         counter_type: CounterType,
         count: u32,
@@ -1040,6 +1042,10 @@ enum EffectAst {
     ForEachOpponent {
         effects: Vec<EffectAst>,
     },
+    ForEachPlayersFiltered {
+        filter: PlayerFilter,
+        effects: Vec<EffectAst>,
+    },
     ForEachPlayer {
         effects: Vec<EffectAst>,
     },
@@ -1141,6 +1147,7 @@ enum EffectAst {
         player: PlayerAst,
         enters_tapped: bool,
         enters_attacking: bool,
+        attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,
         half_power_toughness_round_up: bool,
         has_haste: bool,
         exile_at_end_of_combat: bool,
@@ -1161,6 +1168,7 @@ enum EffectAst {
         player: PlayerAst,
         enters_tapped: bool,
         enters_attacking: bool,
+        attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,
         half_power_toughness_round_up: bool,
         has_haste: bool,
         exile_at_end_of_combat: bool,
@@ -1599,6 +1607,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Mentor => self.mentor(),
             KeywordAction::Skulk => self.skulk(),
             KeywordAction::Training => self.training(),
+            KeywordAction::Myriad => self.myriad(),
             KeywordAction::Riot => self.riot(),
             KeywordAction::Unleash => self.unleash(),
             KeywordAction::Renown(amount) => self.renown(amount),
@@ -1654,11 +1663,9 @@ impl CardDefinitionBuilder {
             KeywordAction::ProtectionFromColorless => self.with_ability(Ability::static_ability(
                 StaticAbility::protection(crate::ability::ProtectionFrom::Colorless),
             )),
-            KeywordAction::ProtectionFromEverything => {
-                self.with_ability(Ability::static_ability(StaticAbility::protection(
-                    crate::ability::ProtectionFrom::Everything,
-                )))
-            }
+            KeywordAction::ProtectionFromEverything => self.with_ability(Ability::static_ability(
+                StaticAbility::protection(crate::ability::ProtectionFrom::Everything),
+            )),
             KeywordAction::ProtectionFromCardType(card_type) => {
                 self.protection_from_card_type(card_type)
             }
@@ -1742,12 +1749,12 @@ impl CardDefinitionBuilder {
                     text: Some(format!("Saddle {amount}")),
                 })
             }
-            KeywordAction::Marker(name) => self.with_ability(Ability::static_ability(
-                StaticAbility::custom(name, name.to_string()),
-            )),
-            KeywordAction::MarkerText(text) => self.with_ability(Ability::static_ability(
-                StaticAbility::custom("keyword_marker", text),
-            )),
+            KeywordAction::Marker(name) => {
+                self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(name)))
+            }
+            KeywordAction::MarkerText(text) => {
+                self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(text)))
+            }
         }
     }
 
@@ -2069,12 +2076,6 @@ impl CardDefinitionBuilder {
     /// counters on it, return it to the battlefield under its owner's control with
     /// a +1/+1 counter on it."
     pub fn undying(self) -> Self {
-        use crate::effect::Effect;
-        use crate::object::CounterType;
-        use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-        use crate::triggers::Trigger;
-        use crate::zone::Zone;
-
         let trigger_tag = "undying_trigger";
         let return_tag = "undying_return";
         let returned_tag = "undying_returned";
@@ -2106,10 +2107,15 @@ impl CardDefinitionBuilder {
         ];
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::undying(),
+                trigger: Trigger::this_dies(),
                 effects,
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(Condition::Not(Box::new(
+                    Condition::TriggeringObjectHadCounters {
+                        counter_type: CounterType::PlusOnePlusOne,
+                        min_count: 1,
+                    },
+                ))),
             }),
             // Functions from both zones because triggers can be checked at different points:
             // - From Battlefield: SBAs check triggers BEFORE moving object to graveyard
@@ -2125,12 +2131,6 @@ impl CardDefinitionBuilder {
     /// counters on it, return it to the battlefield under its owner's control with
     /// a -1/-1 counter on it."
     pub fn persist(self) -> Self {
-        use crate::effect::Effect;
-        use crate::object::CounterType;
-        use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-        use crate::triggers::Trigger;
-        use crate::zone::Zone;
-
         let trigger_tag = "persist_trigger";
         let return_tag = "persist_return";
         let returned_tag = "persist_returned";
@@ -2162,10 +2162,15 @@ impl CardDefinitionBuilder {
         ];
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::persist(),
+                trigger: Trigger::this_dies(),
                 effects,
                 choices: vec![],
-                intervening_if: None,
+                intervening_if: Some(Condition::Not(Box::new(
+                    Condition::TriggeringObjectHadCounters {
+                        counter_type: CounterType::MinusOneMinusOne,
+                        min_count: 1,
+                    },
+                ))),
             }),
             // Functions from both zones because triggers can be checked at different points:
             // - From Battlefield: SBAs check triggers BEFORE moving object to graveyard
@@ -2302,7 +2307,10 @@ impl CardDefinitionBuilder {
         self.with_ability(
             Ability::triggered(
                 Trigger::this_attacks_with_greater_power(),
-                vec![Effect::training_source()],
+                vec![
+                    Effect::plus_one_counters(1, ChooseSpec::Source),
+                    Effect::emit_keyword_action(crate::events::KeywordActionKind::Train, 1),
+                ],
             )
             .with_text("Training"),
         )
@@ -2628,9 +2636,7 @@ impl CardDefinitionBuilder {
         // The "any number" sacrifice + counter multiplication is complex;
         // we model it as a marker with correct text for now, since the sacrifice-
         // any-number + dynamic counter count needs dedicated effect support.
-        self.with_ability(Ability::static_ability(StaticAbility::custom(
-            "devour", text,
-        )))
+        self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(text)))
     }
 
     /// Add ravenous.
@@ -2669,9 +2675,8 @@ impl CardDefinitionBuilder {
         // as a static ability that checks permanent count. Full runtime support
         // for the designation would require a player flag; for now this preserves
         // the keyword text and structure.
-        self.with_ability(Ability::static_ability(StaticAbility::custom(
-            "ascend",
-            "Ascend".to_string(),
+        self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(
+            "Ascend",
         )))
     }
 
@@ -3146,7 +3151,8 @@ impl CardDefinitionBuilder {
             Ability::triggered(
                 Trigger::this_enters_battlefield(),
                 vec![
-                    Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1).tag(created_tag.clone()),
+                    Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1)
+                        .tag(created_tag.clone()),
                     Effect::attach_to(ChooseSpec::Tagged(created_tag)),
                 ],
             )
@@ -3163,11 +3169,43 @@ impl CardDefinitionBuilder {
             Ability::triggered(
                 Trigger::this_enters_battlefield(),
                 vec![
-                    Effect::create_tokens(Self::living_weapon_germ_token(), 1).tag(created_tag.clone()),
+                    Effect::create_tokens(Self::living_weapon_germ_token(), 1)
+                        .tag(created_tag.clone()),
                     Effect::attach_to(ChooseSpec::Tagged(created_tag)),
                 ],
             )
             .with_text("Living weapon"),
+        )
+    }
+
+    /// Add myriad.
+    ///
+    /// "Whenever this creature attacks, for each opponent other than defending player,
+    /// you may create a token that's a copy of this creature that's tapped and attacking
+    /// that player or a planeswalker they control. Exile the tokens at end of combat."
+    pub fn myriad(self) -> Self {
+        let opponent_other_than_defending =
+            PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending);
+        self.with_ability(
+            Ability::triggered(
+                Trigger::this_attacks(),
+                vec![Effect::for_players(
+                    opponent_other_than_defending,
+                    vec![Effect::may(vec![Effect::new(
+                        crate::effects::CreateTokenCopyEffect::new(
+                            ChooseSpec::Source,
+                            1,
+                            PlayerFilter::You,
+                        )
+                        .enters_tapped(true)
+                        .attacking_player_or_planeswalker_controlled_by(
+                            PlayerFilter::IteratedPlayer,
+                        )
+                        .exile_at_eoc(true),
+                    )])],
+                )],
+            )
+            .with_text("Myriad"),
         )
     }
 
@@ -3765,6 +3803,116 @@ mod keyword_behavior_tests {
             "expected Living weapon trigger to create Germ token and attach equipment, got {debug}"
         );
     }
+
+    #[test]
+    fn myriad_adds_attack_trigger_with_primitive_composition() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Myriad Variant")
+            .card_types(vec![CardType::Creature])
+            .myriad()
+            .build();
+
+        let ability = def
+            .abilities
+            .iter()
+            .find(|ability| ability.text.as_deref() == Some("Myriad"))
+            .expect("expected Myriad ability");
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            panic!("expected Myriad to add a triggered ability");
+        };
+
+        let debug = format!("{triggered:?}");
+        assert!(
+            debug.contains("ForPlayersEffect")
+                && debug.contains("MayEffect")
+                && debug.contains("CreateTokenCopyEffect")
+                && !debug.contains("MyriadTokenCopiesEffect"),
+            "expected composed myriad trigger (for-players + may + create-copy), got {debug}"
+        );
+    }
+
+    #[test]
+    fn undying_keyword_uses_trigger_intervening_if() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Undying Variant")
+            .card_types(vec![CardType::Creature])
+            .undying()
+            .build();
+
+        let ability = def
+            .abilities
+            .iter()
+            .find(|ability| ability.text.as_deref() == Some("Undying"))
+            .expect("expected Undying ability");
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            panic!("expected Undying to add a triggered ability");
+        };
+
+        let debug = format!("{triggered:?}");
+        assert!(
+            debug.contains("TriggeringObjectHadCounters")
+                && debug.contains("PlusOnePlusOne")
+                && !debug.contains("KeywordAbilityTriggerKind::Undying"),
+            "expected undying keyword to compile through generic trigger+condition path, got {debug}"
+        );
+    }
+
+    #[test]
+    fn persist_keyword_uses_trigger_intervening_if() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Persist Variant")
+            .card_types(vec![CardType::Creature])
+            .persist()
+            .build();
+
+        let ability = def
+            .abilities
+            .iter()
+            .find(|ability| ability.text.as_deref() == Some("Persist"))
+            .expect("expected Persist ability");
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            panic!("expected Persist to add a triggered ability");
+        };
+
+        let debug = format!("{triggered:?}");
+        assert!(
+            debug.contains("TriggeringObjectHadCounters")
+                && debug.contains("MinusOneMinusOne")
+                && !debug.contains("KeywordAbilityTriggerKind::Persist"),
+            "expected persist keyword to compile through generic trigger+condition path, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_undying_oracle_text_with_snapshot_counter_predicate() {
+        let text = "When this creature dies, if it had no +1/+1 counters on it, return it to the battlefield under its owner's control with a +1/+1 counter on it.";
+        let def = CardDefinitionBuilder::new(CardId::new(), "Undying Oracle Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(text)
+            .expect("undying oracle text should parse");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("TriggeringObjectHadCounters")
+                && debug.contains("PlusOnePlusOne")
+                && !debug.contains("UnsupportedParserLine"),
+            "expected undying oracle text to compile with snapshot counter predicate, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_persist_oracle_text_with_snapshot_counter_predicate() {
+        let text = "When this creature dies, if it had no -1/-1 counters on it, return it to the battlefield under its owner's control with a -1/-1 counter on it.";
+        let def = CardDefinitionBuilder::new(CardId::new(), "Persist Oracle Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(text)
+            .expect("persist oracle text should parse");
+
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("TriggeringObjectHadCounters")
+                && debug.contains("MinusOneMinusOne")
+                && !debug.contains("UnsupportedParserLine"),
+            "expected persist oracle text to compile with snapshot counter predicate, got {debug}"
+        );
+    }
 }
 
 #[cfg(all(test, feature = "parser-tests-full"))]
@@ -3950,11 +4098,11 @@ mod target_parse_tests {
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert!(
             filter
-                .custom_static_markers
+                .ability_markers
                 .iter()
                 .any(|marker| marker.eq_ignore_ascii_case("cycling")),
             "expected cycling marker in filter, got {:?}",
-            filter.custom_static_markers
+            filter.ability_markers
         );
     }
 
@@ -5757,7 +5905,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .available_colors
             .as_ref()
             .expect("expected restricted colors");
-        assert_eq!(colors.len(), 2, "expected two-color restriction, got {colors:?}");
+        assert_eq!(
+            colors.len(),
+            2,
+            "expected two-color restriction, got {colors:?}"
+        );
         assert!(colors.contains(&crate::color::Color::Green));
         assert!(colors.contains(&crate::color::Color::Blue));
     }
@@ -5962,7 +6114,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[test]
     fn parse_destroy_opponent_creature_that_was_dealt_damage_this_turn() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Manticore Variant")
-            .parse_text("Destroy target creature an opponent controls that was dealt damage this turn.")
+            .parse_text(
+                "Destroy target creature an opponent controls that was dealt damage this turn.",
+            )
             .expect("combat-history destroy filter should parse");
 
         let debug = format!("{:?}", def.spell_effect.expect("spell effect"));
@@ -6043,7 +6197,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[test]
     fn parse_its_owner_shuffles_it_into_their_library() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Deglamer Variant")
-            .parse_text("Choose target artifact or enchantment. Its owner shuffles it into their library.")
+            .parse_text(
+                "Choose target artifact or enchantment. Its owner shuffles it into their library.",
+            )
             .expect("deglamer-style shuffle clause should parse");
 
         let effects = def.spell_effect.expect("spell effects");
@@ -6337,7 +6493,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let debug = format!("{:?}", def.spell_effect);
         assert!(
-            debug.contains("custom_static_markers: [\"islandwalk\"]"),
+            debug.contains("ability_markers: [\"islandwalk\"]"),
             "expected islandwalk marker filter in runtime effect, got {debug}"
         );
 
@@ -6840,8 +6996,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected skulk ability in debug output, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "skulk should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "skulk should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -6857,8 +7014,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected ingest combat-damage trigger, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "ingest should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "ingest should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -6874,8 +7032,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected battle cry attack trigger, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "battle cry should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "battle cry should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -6891,8 +7050,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected dethrone most-life attack trigger, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "dethrone should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "dethrone should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -6912,8 +7072,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected evolve resolution effect, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "evolve should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "evolve should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -6933,8 +7094,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected mentor lesser-power target constraint, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "mentor should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "mentor should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -6950,12 +7112,80 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected training trigger matcher, got {debug}"
         );
         assert!(
-            debug.contains("TrainingEffect"),
-            "expected training resolution effect, got {debug}"
+            debug.contains("PutCountersEffect")
+                && debug.contains("EmitKeywordActionEffect")
+                && debug.contains("Train"),
+            "expected training to resolve via primitive counter + keyword-action emission, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "training should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "training should not compile as placeholder marker ability: {debug}"
+        );
+    }
+
+    #[test]
+    fn training_trigger_execution_adds_counter_and_emits_train_action() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::events::{KeywordActionEvent, KeywordActionKind};
+        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::ids::PlayerId;
+        use crate::zone::Zone;
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Training Probe")
+            .card_types(vec![CardType::Creature])
+            .training()
+            .build();
+
+        let ability = def
+            .abilities
+            .iter()
+            .find(|ability| ability.text.as_deref() == Some("Training"))
+            .expect("expected Training ability");
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            panic!("expected Training to add a triggered ability");
+        };
+
+        let mut game = crate::game_state::GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(9001), "Training Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let mut saw_train_keyword_action = false;
+        for effect in &triggered.effects {
+            let outcome = execute_effect(&mut game, effect, &mut ctx)
+                .expect("training trigger effect execution should succeed");
+            for event in outcome.events {
+                if let Some(action) = event.downcast::<KeywordActionEvent>()
+                    && action.action == KeywordActionKind::Train
+                    && action.player == alice
+                    && action.source == source
+                {
+                    saw_train_keyword_action = true;
+                }
+            }
+        }
+
+        let source_obj = game.object(source).expect("source object should exist");
+        assert_eq!(
+            source_obj
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied()
+                .unwrap_or(0),
+            1,
+            "training trigger should place one +1/+1 counter on source"
+        );
+        assert!(
+            saw_train_keyword_action,
+            "training trigger should emit a train keyword-action event"
         );
     }
 
@@ -6975,8 +7205,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected renown resolution effect, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "renown should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "renown should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -6998,8 +7229,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected afterlife token creation effect, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "afterlife should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "afterlife should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -7019,8 +7251,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected fabricate modal choice effect, got {debug}"
         );
         assert!(
-            !debug.contains("StaticAbilityId::Custom") && !debug.contains("custom_id"),
-            "fabricate should not compile as custom marker ability: {debug}"
+            !debug.contains("StaticAbilityId::KeywordMarker")
+                && !debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+            "fabricate should not compile as placeholder marker ability: {debug}"
         );
     }
 
@@ -7511,9 +7744,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             "expected conditional attached reach grant, got: {displays:?}"
         );
         assert!(
-            displays.iter().any(|display| {
-                display.contains("t add g g") || display.contains("add {G}{G}")
-            }),
+            displays
+                .iter()
+                .any(|display| { display.contains("t add g g") || display.contains("add {G}{G}") }),
             "expected conditional attached activated mana grant, got: {displays:?}"
         );
     }
@@ -7712,7 +7945,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let display_lc = display.to_ascii_lowercase();
         assert!(
             display_lc.contains("can't be blocked")
-                && display_lc.contains("as long as there are seven or more cards in your graveyard"),
+                && display_lc
+                    .contains("as long as there are seven or more cards in your graveyard"),
             "expected conditional unblockable grant, got: {display}"
         );
     }
@@ -7928,8 +8162,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let compiled = compiled_lines(&def).join(" | ").to_ascii_lowercase();
         assert!(
             compiled.contains("enchanted permanent doesnt untap during its controllers untap step")
-                || compiled
-                    .contains("enchanted permanent doesn't untap during its controller's untap step"),
+                || compiled.contains(
+                    "enchanted permanent doesn't untap during its controller's untap step"
+                ),
             "expected compiled untap restriction text, got: {compiled}"
         );
     }
@@ -8317,9 +8552,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[test]
     fn parse_put_that_card_into_hand_with_prior_reference() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Put Referenced Card Into Hand Variant")
-            .parse_text("Reveal the top card of your library. Put that card into your hand.")
-            .expect("put that card into hand should parse");
+        let def =
+            CardDefinitionBuilder::new(CardId::new(), "Put Referenced Card Into Hand Variant")
+                .parse_text("Reveal the top card of your library. Put that card into your hand.")
+                .expect("put that card into hand should parse");
 
         let debug = format!("{:?}", def.spell_effect);
         assert!(
@@ -8334,7 +8570,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     fn parse_put_that_card_into_graveyard_with_prior_reference() {
         let def =
             CardDefinitionBuilder::new(CardId::new(), "Put Referenced Card Into Graveyard Variant")
-                .parse_text("Reveal the top card of your library. Put that card into your graveyard.")
+                .parse_text(
+                    "Reveal the top card of your library. Put that card into your graveyard.",
+                )
                 .expect("put that card into graveyard should parse");
 
         let debug = format!("{:?}", def.spell_effect);

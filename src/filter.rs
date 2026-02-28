@@ -255,6 +255,14 @@ pub enum PlayerFilter {
     /// Target player (uses targeting with a filter)
     Target(Box<PlayerFilter>),
 
+    /// Players matching `base`, excluding players matching `excluded`.
+    ///
+    /// Useful for clauses like "each opponent other than the defending player".
+    Excluding {
+        base: Box<PlayerFilter>,
+        excluded: Box<PlayerFilter>,
+    },
+
     /// The controller of an object.
     ///
     /// - `ObjectRef::Target` = the first object target (default)
@@ -279,6 +287,14 @@ impl PlayerFilter {
     /// Create a filter for targeting an opponent.
     pub fn target_opponent() -> Self {
         Self::Target(Box::new(PlayerFilter::Opponent))
+    }
+
+    /// Build a player filter that excludes one set from another.
+    pub fn excluding(base: PlayerFilter, excluded: PlayerFilter) -> Self {
+        Self::Excluding {
+            base: Box::new(base),
+            excluded: Box::new(excluded),
+        }
     }
 
     /// Check if a player matches this filter.
@@ -310,6 +326,9 @@ impl PlayerFilter {
 
             // These are resolved at runtime during effect execution
             PlayerFilter::IteratedPlayer => ctx.iterated_player.is_some_and(|p| p == player),
+            PlayerFilter::Excluding { base, excluded } => {
+                base.matches_player(player, ctx) && !excluded.matches_player(player, ctx)
+            }
             PlayerFilter::Target(inner) => {
                 if !ctx.target_players.is_empty() {
                     return ctx.target_players.contains(&player)
@@ -337,6 +356,9 @@ impl PlayerFilter {
             PlayerFilter::Specific(_) => "that player".to_string(),
             PlayerFilter::IteratedPlayer => "that player".to_string(),
             PlayerFilter::Target(inner) => format!("target {}", inner.description()),
+            PlayerFilter::Excluding { base, excluded } => {
+                format!("{} other than {}", base.description(), excluded.description())
+            }
             PlayerFilter::ControllerOf(_) => "that object's controller".to_string(),
             PlayerFilter::OwnerOf(_) => "that object's owner".to_string(),
         }
@@ -633,11 +655,11 @@ pub struct ObjectFilter {
     /// Excluded static ability IDs (object must have none of these).
     pub excluded_static_abilities: Vec<StaticAbilityId>,
 
-    /// Required custom static-ability marker text (case-insensitive match on ability display text).
-    pub custom_static_markers: Vec<String>,
+    /// Required ability marker text (case-insensitive match on ability display text).
+    pub ability_markers: Vec<String>,
 
-    /// Excluded custom static-ability marker text.
-    pub excluded_custom_static_markers: Vec<String>,
+    /// Excluded ability marker text.
+    pub excluded_ability_markers: Vec<String>,
 
     /// If true, must be a commander creature (for Commander format)
     pub is_commander: bool,
@@ -1142,28 +1164,28 @@ impl ObjectFilter {
         self
     }
 
-    /// Require a custom static marker (for marker-style keyword abilities such as landwalk).
-    pub fn with_custom_static_marker(mut self, marker: impl Into<String>) -> Self {
+    /// Require a ability marker (for marker-style keyword abilities such as landwalk).
+    pub fn with_ability_marker(mut self, marker: impl Into<String>) -> Self {
         let marker = marker.into();
         if !self
-            .custom_static_markers
+            .ability_markers
             .iter()
             .any(|m| m.eq_ignore_ascii_case(&marker))
         {
-            self.custom_static_markers.push(marker);
+            self.ability_markers.push(marker);
         }
         self
     }
 
-    /// Exclude objects with a custom static marker.
-    pub fn without_custom_static_marker(mut self, marker: impl Into<String>) -> Self {
+    /// Exclude objects with a ability marker.
+    pub fn without_ability_marker(mut self, marker: impl Into<String>) -> Self {
         let marker = marker.into();
         if !self
-            .excluded_custom_static_markers
+            .excluded_ability_markers
             .iter()
             .any(|m| m.eq_ignore_ascii_case(&marker))
         {
-            self.excluded_custom_static_markers.push(marker);
+            self.excluded_ability_markers.push(marker);
         }
         self
     }
@@ -1825,18 +1847,18 @@ impl ObjectFilter {
             return false;
         }
 
-        // Required/excluded custom marker abilities
+        // Required/excluded ability markers
         if self
-            .custom_static_markers
+            .ability_markers
             .iter()
-            .any(|marker| !object_has_custom_static_marker(object, marker))
+            .any(|marker| !object_has_ability_marker(object, marker))
         {
             return false;
         }
         if self
-            .excluded_custom_static_markers
+            .excluded_ability_markers
             .iter()
-            .any(|marker| object_has_custom_static_marker(object, marker))
+            .any(|marker| object_has_ability_marker(object, marker))
         {
             return false;
         }
@@ -2466,18 +2488,18 @@ impl ObjectFilter {
             return false;
         }
 
-        // Required/excluded custom marker abilities
+        // Required/excluded ability markers
         if self
-            .custom_static_markers
+            .ability_markers
             .iter()
-            .any(|marker| !snapshot_has_custom_static_marker(snapshot, marker))
+            .any(|marker| !snapshot_has_ability_marker(snapshot, marker))
         {
             return false;
         }
         if self
-            .excluded_custom_static_markers
+            .excluded_ability_markers
             .iter()
-            .any(|marker| snapshot_has_custom_static_marker(snapshot, marker))
+            .any(|marker| snapshot_has_ability_marker(snapshot, marker))
         {
             return false;
         }
@@ -2751,6 +2773,9 @@ impl ObjectFilter {
                     }
                     controller_suffix = Some("that player controls".to_string())
                 }
+                PlayerFilter::Excluding { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::Target(inner) => {
                     let inner_desc = describe_player_filter(inner.as_ref());
                     if inner_desc == "player" {
@@ -2783,6 +2808,9 @@ impl ObjectFilter {
                 PlayerFilter::Attacking => "an attacking player owns".to_string(),
                 PlayerFilter::DamagedPlayer => "the damaged player owns".to_string(),
                 PlayerFilter::IteratedPlayer => "that player owns".to_string(),
+                PlayerFilter::Excluding { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
                 PlayerFilter::Target(inner) => {
                     format!("target {} owns", describe_player_filter(inner.as_ref()))
                 }
@@ -3279,7 +3307,7 @@ impl ObjectFilter {
                 parts.push(format!("with {}", label));
             }
         }
-        for marker in &self.custom_static_markers {
+        for marker in &self.ability_markers {
             parts.push(format!("with {}", marker.to_ascii_lowercase()));
         }
         for ability in &self.excluded_static_abilities {
@@ -3287,7 +3315,7 @@ impl ObjectFilter {
                 parts.push(format!("without {}", label));
             }
         }
-        for marker in &self.excluded_custom_static_markers {
+        for marker in &self.excluded_ability_markers {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));
         }
         if let Some(counter_requirement) = self.with_counter {
@@ -3536,19 +3564,19 @@ fn describe_simple_any_of_keyword_clause(any_of: &[ObjectFilter]) -> Option<Stri
         let mut stripped = filter.clone();
         stripped.static_abilities.clear();
         stripped.excluded_static_abilities.clear();
-        stripped.custom_static_markers.clear();
-        stripped.excluded_custom_static_markers.clear();
+        stripped.ability_markers.clear();
+        stripped.excluded_ability_markers.clear();
         if stripped != ObjectFilter::default() {
             return None;
         }
 
-        if filter.static_abilities.len() == 1 && filter.custom_static_markers.is_empty() {
+        if filter.static_abilities.len() == 1 && filter.ability_markers.is_empty() {
             let label = describe_filter_static_ability(filter.static_abilities[0])?;
             labels.push(label.to_string());
             continue;
         }
-        if filter.custom_static_markers.len() == 1 && filter.static_abilities.is_empty() {
-            labels.push(filter.custom_static_markers[0].to_ascii_lowercase());
+        if filter.ability_markers.len() == 1 && filter.static_abilities.is_empty() {
+            labels.push(filter.ability_markers[0].to_ascii_lowercase());
             continue;
         }
 
@@ -3668,6 +3696,11 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::DamagedPlayer => "the damaged player's".to_string(),
         PlayerFilter::Specific(_) => "that player's".to_string(),
         PlayerFilter::IteratedPlayer => "that player's".to_string(),
+        PlayerFilter::Excluding { base, excluded } => format!(
+            "{} other than {}",
+            describe_possessive_player_filter(base),
+            describe_possessive_player_filter(excluded)
+        ),
         PlayerFilter::Target(inner) => {
             let base = match inner.as_ref() {
                 PlayerFilter::Any => "target player".to_string(),
@@ -3693,6 +3726,11 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::DamagedPlayer => "damaged player".to_string(),
         PlayerFilter::Specific(_) => "player".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
+        PlayerFilter::Excluding { base, excluded } => format!(
+            "{} other than {}",
+            describe_player_filter(base),
+            describe_player_filter(excluded)
+        ),
         PlayerFilter::Target(inner) => format!("target {}", describe_player_filter(inner)),
         PlayerFilter::ControllerOf(_) => "controller".to_string(),
         PlayerFilter::OwnerOf(_) => "owner".to_string(),
@@ -3772,7 +3810,7 @@ fn object_has_static_ability_id(object: &Object, ability_id: StaticAbilityId) ->
         .any(|ability| ability.id() == ability_id)
 }
 
-fn object_has_custom_static_marker(object: &Object, marker: &str) -> bool {
+fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     use crate::ability::AbilityKind;
 
     let normalized_marker = marker.trim().to_ascii_lowercase();
@@ -3785,7 +3823,7 @@ fn object_has_custom_static_marker(object: &Object, marker: &str) -> bool {
 
     let has_regular = object.abilities.iter().any(|ability| {
         if let AbilityKind::Static(static_ability) = &ability.kind {
-            static_ability.id() == StaticAbilityId::Custom
+            static_ability.id() == StaticAbilityId::KeywordMarker
                 && static_ability.display().eq_ignore_ascii_case(marker)
         } else {
             false
@@ -3798,13 +3836,14 @@ fn object_has_custom_static_marker(object: &Object, marker: &str) -> bool {
     if object
         .abilities
         .iter()
-        .any(|ability| ability_text_has_custom_marker(ability, marker))
+        .any(|ability| ability_text_has_marker(ability, marker))
     {
         return true;
     }
 
     object.level_granted_abilities().iter().any(|ability| {
-        ability.id() == StaticAbilityId::Custom && ability.display().eq_ignore_ascii_case(marker)
+        ability.id() == StaticAbilityId::KeywordMarker
+            && ability.display().eq_ignore_ascii_case(marker)
     })
 }
 
@@ -3830,10 +3869,7 @@ fn snapshot_has_static_ability_id(
     snapshot.has_static_ability_id(ability_id)
 }
 
-fn snapshot_has_custom_static_marker(
-    snapshot: &crate::snapshot::ObjectSnapshot,
-    marker: &str,
-) -> bool {
+fn snapshot_has_ability_marker(snapshot: &crate::snapshot::ObjectSnapshot, marker: &str) -> bool {
     use crate::ability::AbilityKind;
 
     let normalized_marker = marker.trim().to_ascii_lowercase();
@@ -3846,12 +3882,12 @@ fn snapshot_has_custom_static_marker(
 
     snapshot.abilities.iter().any(|ability| {
         if let AbilityKind::Static(static_ability) = &ability.kind
-            && static_ability.id() == StaticAbilityId::Custom
+            && static_ability.id() == StaticAbilityId::KeywordMarker
             && static_ability.display().eq_ignore_ascii_case(marker)
         {
             return true;
         }
-        ability_text_has_custom_marker(ability, marker)
+        ability_text_has_marker(ability, marker)
     })
 }
 
@@ -3862,7 +3898,7 @@ fn snapshot_has_mana_ability(snapshot: &crate::snapshot::ObjectSnapshot) -> bool
         .any(|ability| ability.is_mana_ability())
 }
 
-fn ability_text_has_custom_marker(ability: &crate::ability::Ability, marker: &str) -> bool {
+fn ability_text_has_marker(ability: &crate::ability::Ability, marker: &str) -> bool {
     let marker = marker.trim().to_ascii_lowercase();
     if marker.is_empty() {
         return false;
@@ -4069,10 +4105,8 @@ mod tests {
         use crate::mana::{ManaCost, ManaSymbol};
         use crate::zone::Zone;
 
-        let mut game = crate::game_state::GameState::new(
-            vec!["Alice".to_string(), "Bob".to_string()],
-            20,
-        );
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
 
         let spell = CardBuilder::new(CardId::from_raw(1), "Graveyard Cast Probe")
@@ -4111,10 +4145,8 @@ mod tests {
         use crate::mana::{ManaCost, ManaSymbol};
         use crate::zone::Zone;
 
-        let mut game = crate::game_state::GameState::new(
-            vec!["Alice".to_string(), "Bob".to_string()],
-            20,
-        );
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
 
         let spell = CardBuilder::new(CardId::from_raw(2), "Flashback Probe")

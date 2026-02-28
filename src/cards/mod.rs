@@ -395,13 +395,19 @@ const UNSUPPORTED_PARSER_LINE_FALLBACK_PREFIX: &str = "Unsupported parser line f
 /// This is used by generated registries and reporting utilities to keep support
 /// classification consistent.
 pub fn generated_definition_has_unimplemented_content(definition: &CardDefinition) -> bool {
-    let has_custom_static = definition.abilities.iter().any(|ability| {
+    let has_placeholder_static = definition.abilities.iter().any(|ability| {
         matches!(
             &ability.kind,
-            AbilityKind::Static(static_ability) if static_ability.id() == StaticAbilityId::Custom
+            AbilityKind::Static(static_ability)
+                if matches!(
+                    static_ability.id(),
+                    StaticAbilityId::KeywordMarker
+                        | StaticAbilityId::RuleTextPlaceholder
+                        | StaticAbilityId::UnsupportedParserLine
+                )
         )
     });
-    if has_custom_static {
+    if has_placeholder_static {
         return true;
     }
 
@@ -420,7 +426,7 @@ pub(crate) fn generated_definition_is_supported(definition: &CardDefinition) -> 
         matches!(
             &ability.kind,
             AbilityKind::Static(static_ability)
-                if static_ability.id() == StaticAbilityId::Custom
+                if static_ability.id() == StaticAbilityId::UnsupportedParserLine
                     && static_ability
                         .display()
                         .starts_with(UNSUPPORTED_PARSER_LINE_FALLBACK_PREFIX)
@@ -875,9 +881,9 @@ mod tests {
         let card = CardBuilder::new(CardId::new(), "Fallback Probe")
             .card_types(vec![CardType::Creature])
             .build();
-        let fallback = Ability::static_ability(StaticAbility::custom(
-            "unsupported_line",
-            "Unsupported parser line fallback: probe text (ParseError(\"mock\"))".to_string(),
+        let fallback = Ability::static_ability(StaticAbility::unsupported_parser_line(
+            "probe text",
+            "ParseError(\"mock\")",
         ))
         .with_text("probe text");
         let mut definition = CardDefinition::new(card);
@@ -887,13 +893,12 @@ mod tests {
     }
 
     #[test]
-    fn generated_definition_support_rejects_custom_static_abilities() {
+    fn generated_definition_support_rejects_placeholder_static_abilities() {
         let card = CardBuilder::new(CardId::new(), "Custom Probe")
             .card_types(vec![CardType::Creature])
             .build();
-        let custom = Ability::static_ability(StaticAbility::custom(
-            "probe_custom",
-            "Probe custom rule text".to_string(),
+        let custom = Ability::static_ability(StaticAbility::rule_text_placeholder(
+            "Probe custom rule text",
         ));
         let mut definition = CardDefinition::new(card);
         definition.abilities.push(custom);
@@ -1139,9 +1144,9 @@ mod tests {
         let card = CardBuilder::new(CardId::new(), "Skipped Fallback")
             .card_types(vec![CardType::Creature])
             .build();
-        let fallback = Ability::static_ability(StaticAbility::custom(
-            "unsupported_line",
-            "Unsupported parser line fallback: skip me (ParseError(\"mock\"))".to_string(),
+        let fallback = Ability::static_ability(StaticAbility::unsupported_parser_line(
+            "skip me",
+            "ParseError(\"mock\")",
         ));
         let mut definition = CardDefinition::new(card);
         definition.abilities.push(fallback);

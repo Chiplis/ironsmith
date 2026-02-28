@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "—" {
@@ -404,7 +403,9 @@ pub(crate) fn parse_pt_value(raw: &str) -> Option<PtValue> {
     None
 }
 
-pub(crate) fn parse_for_each_opponent_doesnt(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_for_each_opponent_doesnt(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
     let mut clause_words = words(clause_tokens);
     if clause_words.first().copied() == Some("then") {
@@ -463,7 +464,9 @@ pub(crate) fn parse_for_each_opponent_doesnt(tokens: &[Token]) -> Result<Option<
     Ok(Some(EffectAst::ForEachOpponentDoesNot { effects }))
 }
 
-pub(crate) fn parse_for_each_player_doesnt(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_for_each_player_doesnt(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
     let mut clause_words = words(clause_tokens);
     if clause_words.first().copied() == Some("then") {
@@ -538,7 +541,9 @@ pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)
     None
 }
 
-pub(crate) fn parse_vote_start_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_vote_start_sentence(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = words(tokens);
     let vote_idx = words
         .iter()
@@ -592,7 +597,9 @@ pub(crate) fn parse_vote_start_sentence(tokens: &[Token]) -> Result<Option<Effec
     Ok(Some(EffectAst::VoteStart { options }))
 }
 
-pub(crate) fn parse_for_each_vote_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_for_each_vote_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = words(tokens);
     if words.len() < 4 {
         return Ok(None);
@@ -655,7 +662,9 @@ pub(crate) fn parse_vote_extra_sentence(tokens: &[Token]) -> Option<EffectAst> {
     Some(EffectAst::VoteExtra { count: 1, optional })
 }
 
-pub(crate) fn parse_after_turn_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_after_turn_sentence(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let line_words = words(tokens);
     if line_words.len() < 3
         || line_words[0] != "after"
@@ -706,7 +715,9 @@ pub(crate) fn parse_after_turn_sentence(tokens: &[Token]) -> Result<Option<Effec
     ))
 }
 
-pub(crate) fn parse_conditional_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
+pub(crate) fn parse_conditional_sentence(
+    tokens: &[Token],
+) -> Result<Vec<EffectAst>, CardTextError> {
     let comma_indices = tokens
         .iter()
         .enumerate()
@@ -975,6 +986,31 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
     }
 
     let raw_words = words(tokens);
+    let triggering_object_had_no_counter_prefix_len =
+        if raw_words.starts_with(&["it", "had", "no"]) {
+            Some(3)
+        } else if raw_words.starts_with(&["this", "creature", "had", "no"])
+            || raw_words.starts_with(&["that", "creature", "had", "no"])
+            || raw_words.starts_with(&["this", "permanent", "had", "no"])
+            || raw_words.starts_with(&["that", "permanent", "had", "no"])
+        {
+            Some(4)
+        } else {
+            None
+        };
+    if let Some(prefix_len) = triggering_object_had_no_counter_prefix_len
+        && raw_words.len() >= prefix_len + 4
+        && let Some(counter_type) = parse_counter_type_word(raw_words[prefix_len])
+        && matches!(raw_words[prefix_len + 1], "counter" | "counters")
+        && raw_words[prefix_len + 2] == "on"
+        && matches!(
+            raw_words[prefix_len + 3],
+            "it" | "them" | "this" | "that" | "itself"
+        )
+    {
+        return Ok(PredicateAst::TriggeringObjectHadNoCounter(counter_type));
+    }
+
     if raw_words.starts_with(&["there", "are"])
         && raw_words.get(3).copied() == Some("or")
         && raw_words.get(4).copied() == Some("more")
@@ -1061,7 +1097,9 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
             {
                 Some(PlayerAst::TargetOpponent)
             }
-            [first, second] if (*first == "opponent" || *first == "opponents") && *second == "graveyard" => {
+            [first, second]
+                if (*first == "opponent" || *first == "opponents") && *second == "graveyard" =>
+            {
                 Some(PlayerAst::Opponent)
             }
             _ => None,
@@ -1124,7 +1162,10 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
         && filtered.get(subject_len + 2).copied() == Some("or")
         && let Some(comp_word) = filtered.get(subject_len + 3).copied()
         && matches!(comp_word, "more" | "fewer" | "less")
-        && matches!(filtered.get(subject_len + 4).copied(), Some("card" | "cards"))
+        && matches!(
+            filtered.get(subject_len + 4).copied(),
+            Some("card" | "cards")
+        )
         && filtered.get(subject_len + 5).copied() == Some("in")
         && filtered.get(subject_len + 6).copied() == Some("hand")
         && filtered.len() == subject_len + 7
@@ -1156,10 +1197,51 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
 
     if matches!(
         filtered.as_slice(),
-        ["you", "had", "land", "enter", "battlefield", "under", "your", "control", "this", "turn"]
-            | ["you", "had", "land", "entered", "battlefield", "under", "your", "control", "this", "turn"]
-            | ["you", "had", "lands", "enter", "battlefield", "under", "your", "control", "this", "turn"]
-            | ["you", "had", "lands", "entered", "battlefield", "under", "your", "control", "this", "turn"]
+        [
+            "you",
+            "had",
+            "land",
+            "enter",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ] | [
+            "you",
+            "had",
+            "land",
+            "entered",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ] | [
+            "you",
+            "had",
+            "lands",
+            "enter",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ] | [
+            "you",
+            "had",
+            "lands",
+            "entered",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ]
     ) {
         return Ok(PredicateAst::PlayerHadLandEnterBattlefieldThisTurn {
             player: PlayerAst::You,
@@ -1592,12 +1674,36 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
         || filtered.as_slice() == ["an", "opponent", "lost", "life", "this", "turn"]
         || filtered.as_slice() == ["that", "creature", "would", "die", "this", "turn"]
         || filtered.as_slice()
-            == ["this", "second", "time", "this", "ability", "has", "resolved", "this", "turn"]
+            == [
+                "this", "second", "time", "this", "ability", "has", "resolved", "this", "turn",
+            ]
         || filtered.as_slice()
-            == ["this", "ability", "has", "been", "activated", "four", "or", "more", "times", "this", "turn"]
+            == [
+                "this",
+                "ability",
+                "has",
+                "been",
+                "activated",
+                "four",
+                "or",
+                "more",
+                "times",
+                "this",
+                "turn",
+            ]
         || filtered.as_slice() == ["it", "first", "combat", "phase", "of", "turn"]
         || filtered.as_slice()
-            == ["two", "or", "more", "creatures", "are", "tied", "for", "least", "power"];
+            == [
+                "two",
+                "or",
+                "more",
+                "creatures",
+                "are",
+                "tied",
+                "for",
+                "least",
+                "power",
+            ];
     if unsupported_unmodeled {
         return Ok(PredicateAst::Unmodeled(filtered.join(" ")));
     }
@@ -1647,9 +1753,7 @@ pub(crate) fn parse_graveyard_threshold_predicate(
     let player = match graveyard_owner_words {
         ["your", "graveyard"] => PlayerAst::You,
         ["that", "player", "graveyard"] | ["that", "players", "graveyard"] => PlayerAst::That,
-        ["target", "player", "graveyard"] | ["target", "players", "graveyard"] => {
-            PlayerAst::Target
-        }
+        ["target", "player", "graveyard"] | ["target", "players", "graveyard"] => PlayerAst::Target,
         ["target", "opponent", "graveyard"] | ["target", "opponents", "graveyard"] => {
             PlayerAst::TargetOpponent
         }
@@ -1684,10 +1788,7 @@ pub(crate) fn parse_graveyard_threshold_predicate(
         return Ok(None);
     }
 
-    let mut filter = if matches!(
-        normalized_filter_words.as_slice(),
-        ["card"] | ["cards"]
-    ) {
+    let mut filter = if matches!(normalized_filter_words.as_slice(), ["card"] | ["cards"]) {
         ObjectFilter::default()
     } else {
         let filter_tokens = normalized_filter_words
@@ -1783,7 +1884,9 @@ pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
     Ok(Some(vec![effect]))
 }
 
-pub(crate) fn parse_mana_spent_to_cast_predicate(words: &[&str]) -> Option<(u32, Option<ManaSymbol>)> {
+pub(crate) fn parse_mana_spent_to_cast_predicate(
+    words: &[&str],
+) -> Option<(u32, Option<ManaSymbol>)> {
     if words.len() < 10 || words[0] != "at" || words[1] != "least" {
         return None;
     }

@@ -1,7 +1,8 @@
 use super::*;
 
-
-pub(crate) fn parse_search_library_disjunction_filter(filter_tokens: &[Token]) -> Option<ObjectFilter> {
+pub(crate) fn parse_search_library_disjunction_filter(
+    filter_tokens: &[Token],
+) -> Option<ObjectFilter> {
     let segments = split_on_or(filter_tokens);
     if segments.len() < 2 {
         return None;
@@ -28,7 +29,9 @@ pub(crate) fn parse_search_library_disjunction_filter(filter_tokens: &[Token]) -
     Some(filter)
 }
 
-pub(crate) fn split_search_same_name_reference_filter(tokens: &[Token]) -> Option<(Vec<Token>, Vec<Token>)> {
+pub(crate) fn split_search_same_name_reference_filter(
+    tokens: &[Token],
+) -> Option<(Vec<Token>, Vec<Token>)> {
     let words_all = words(tokens);
     let (start_word_idx, phrase_len) = if let Some(idx) = words_all
         .windows(5)
@@ -1345,7 +1348,9 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
     }]))
 }
 
-pub(crate) fn parse_earthbend_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_earthbend_sentence(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = words(tokens);
     if words.first().copied() != Some("earthbend") {
         return Ok(None);
@@ -1373,7 +1378,9 @@ pub(crate) fn parse_enchant_sentence(tokens: &[Token]) -> Result<Option<EffectAs
     Ok(Some(EffectAst::Enchant { filter }))
 }
 
-pub(crate) fn parse_cant_effect_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_cant_effect_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some((duration, clause_tokens)) = parse_restriction_duration(tokens)? else {
         return Ok(None);
     };

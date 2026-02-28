@@ -1,6 +1,8 @@
 use super::*;
 
-pub(crate) fn parse_double_counters_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_double_counters_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["double", "the", "number", "of"]) {
         return Ok(None);
@@ -23,18 +25,22 @@ pub(crate) fn parse_double_counters_clause(tokens: &[Token]) -> Result<Option<Ef
     }
 
     let counter_tokens = &tokens[4..counters_idx];
-    let counter_type = parse_counter_type_from_tokens(counter_tokens).or_else(|| {
-        if counter_tokens.len() == 1 {
-            counter_tokens[0].as_word().and_then(parse_counter_type_word)
-        } else {
-            None
-        }
-    }).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unsupported counter type in double-counters clause (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
+    let counter_type = parse_counter_type_from_tokens(counter_tokens)
+        .or_else(|| {
+            if counter_tokens.len() == 1 {
+                counter_tokens[0]
+                    .as_word()
+                    .and_then(parse_counter_type_word)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported counter type in double-counters clause (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
 
     let on_idx = tokens[counters_idx + 1..]
         .iter()
@@ -68,7 +74,9 @@ pub(crate) fn parse_double_counters_clause(tokens: &[Token]) -> Result<Option<Ef
     }))
 }
 
-pub(crate) fn parse_distribute_counters_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_distribute_counters_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     parse_distribute_counters_sentence(tokens)
 }
 
@@ -179,7 +187,9 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
     }))
 }
 
-pub(crate) fn parse_cast_or_play_tagged_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_cast_or_play_tagged_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_words = words(tokens);
     while clause_words
         .first()
@@ -206,8 +216,8 @@ pub(crate) fn parse_cast_or_play_tagged_clause(tokens: &[Token]) -> Result<Optio
     }
 
     let has_this_turn_duration = tail == ["this", "turn"];
-    let has_until_end_of_turn_duration = tail == ["until", "end", "of", "turn"]
-        || tail == ["until", "the", "end", "of", "turn"];
+    let has_until_end_of_turn_duration =
+        tail == ["until", "end", "of", "turn"] || tail == ["until", "the", "end", "of", "turn"];
     if has_this_turn_duration || has_until_end_of_turn_duration {
         return Ok(Some(EffectAst::GrantPlayTaggedUntilEndOfTurn {
             tag: TagKey::from(IT_TAG),
@@ -383,7 +393,10 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             PreventNextTimeDamageSourceAst::Choice
         } else {
             let mut words = source_words.to_vec();
-            if words.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+            if words
+                .first()
+                .is_some_and(|word| matches!(*word, "a" | "an"))
+            {
                 words.remove(0);
             }
             if words.last().copied() == Some("source") {
@@ -527,13 +540,14 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         .collect::<Vec<_>>();
     let target = parse_target_phrase(&target_tokens)?;
 
-    Ok(Some(vec![EffectAst::RedirectNextDamageFromSourceToTarget {
-        amount,
-        target,
-    }]))
+    Ok(Some(vec![
+        EffectAst::RedirectNextDamageFromSourceToTarget { amount, target },
+    ]))
 }
 
-pub(crate) fn parse_prevent_next_damage_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_prevent_next_damage_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.first().copied() != Some("prevent") {
         return Ok(None);
@@ -622,7 +636,9 @@ pub(crate) fn parse_prevent_next_damage_clause(tokens: &[Token]) -> Result<Optio
     }))
 }
 
-pub(crate) fn parse_prevent_all_damage_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_prevent_all_damage_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     let prefix = [
         "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
@@ -724,7 +740,8 @@ pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
     let mut additional = 1usize;
     if additional_offset > 0 {
         let number_word_idx = can_idx + additional_offset - 1;
-        if clause_words[number_word_idx] != "a" && clause_words[number_word_idx] != "an"
+        if clause_words[number_word_idx] != "a"
+            && clause_words[number_word_idx] != "an"
             && let Some(number_token_idx) = token_index_for_word_index(tokens, number_word_idx)
             && let Some((parsed, used)) = parse_number(&tokens[number_token_idx..])
             && used > 0
@@ -752,7 +769,9 @@ pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
     }))
 }
 
-pub(crate) fn parse_win_the_game_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_win_the_game_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.len() < 4 {
         return Ok(None);
@@ -824,7 +843,9 @@ pub(crate) fn parse_win_the_game_clause(tokens: &[Token]) -> Result<Option<Effec
     }))
 }
 
-pub(crate) fn parse_copy_spell_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_copy_spell_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     let Some(copy_idx) = tokens
         .iter()
@@ -981,7 +1002,9 @@ pub(crate) fn parse_copy_spell_clause(tokens: &[Token]) -> Result<Option<EffectA
     }))
 }
 
-pub(crate) fn parse_verb_first_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_verb_first_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let Some(Token::Word(word, _)) = tokens.first() else {
         return Ok(None);
     };
@@ -1094,7 +1117,9 @@ pub(crate) fn parse_choose_target_and_verb_clause(
     Ok(Some(effect))
 }
 
-pub(crate) fn parse_choose_target_prelude_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_choose_target_prelude_sentence(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.first().copied() != Some("choose") {
         return Ok(None);
@@ -1112,7 +1137,9 @@ pub(crate) fn parse_choose_target_prelude_sentence(tokens: &[Token]) -> Result<O
     Ok(Some(EffectAst::TargetOnly { target }))
 }
 
-pub(crate) fn parse_keyword_mechanic_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_keyword_mechanic_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     if tokens.is_empty() {
         return Ok(None);
     }

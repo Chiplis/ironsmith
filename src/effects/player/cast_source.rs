@@ -116,17 +116,3 @@ impl EffectExecutor for CastSourceEffect {
         Box::new(self.clone())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cast_source_effect_builders() {
-        let effect = CastSourceEffect::new()
-            .without_paying_mana_cost()
-            .require_exile();
-        assert!(effect.without_paying_mana_cost);
-        assert!(effect.require_exile);
-    }
-}

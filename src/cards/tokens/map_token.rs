@@ -62,7 +62,10 @@ mod tests {
             AbilityKind::Activated(activated) => {
                 assert_eq!(activated.choices.len(), 1);
                 assert_eq!(activated.effects.len(), 1);
-                assert_eq!(activated.timing, crate::ability::ActivationTiming::SorcerySpeed);
+                assert_eq!(
+                    activated.timing,
+                    crate::ability::ActivationTiming::SorcerySpeed
+                );
             }
             other => panic!("expected activated ability, got {other:?}"),
         }

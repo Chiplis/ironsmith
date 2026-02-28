@@ -423,8 +423,14 @@ impl Trigger {
     }
 
     /// Create a "when [source-filter] deals combat damage to [target-filter]" trigger.
-    pub fn deals_combat_damage_to(source_filter: ObjectFilter, target_filter: ObjectFilter) -> Self {
-        Self::new(DealsDamageToTrigger::combat_only(source_filter, target_filter))
+    pub fn deals_combat_damage_to(
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+    ) -> Self {
+        Self::new(DealsDamageToTrigger::combat_only(
+            source_filter,
+            target_filter,
+        ))
     }
 
     /// Create a "when this permanent deals damage" trigger.

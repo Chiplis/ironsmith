@@ -259,6 +259,11 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::Attacking => "an attacking player".to_string(),
                 PlayerFilter::DamagedPlayer => "the damaged player".to_string(),
                 PlayerFilter::IteratedPlayer => "that player".to_string(),
+                PlayerFilter::Excluding { base, excluded } => format!(
+                    "{} other than {}",
+                    base.description(),
+                    excluded.description()
+                ),
                 PlayerFilter::Target(inner) => match inner.as_ref() {
                     PlayerFilter::You => "you".to_string(),
                     PlayerFilter::NotYou => "a player other than you".to_string(),

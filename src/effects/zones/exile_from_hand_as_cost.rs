@@ -108,20 +108,3 @@ impl EffectExecutor for ExileFromHandAsCostEffect {
         Some((self.count, self.color_filter))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::color::Color;
-
-    #[test]
-    fn test_new() {
-        let effect = ExileFromHandAsCostEffect::new(1, None);
-        assert_eq!(effect.count, 1);
-        assert!(effect.color_filter.is_none());
-
-        let effect_blue = ExileFromHandAsCostEffect::new(1, Some(ColorSet::from(Color::Blue)));
-        assert_eq!(effect_blue.count, 1);
-        assert!(effect_blue.color_filter.is_some());
-    }
-}

@@ -21,6 +21,7 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
             | EffectAst::MayByTaggedController { effects, .. }
             | EffectAst::IfResult { effects, .. }
             | EffectAst::ForEachOpponent { effects }
+            | EffectAst::ForEachPlayersFiltered { effects, .. }
             | EffectAst::ForEachPlayer { effects }
             | EffectAst::ForEachTargetPlayers { effects, .. }
             | EffectAst::ForEachObject { effects, .. }
@@ -88,10 +89,11 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
             continue;
         }
         if sentence_idx + 1 < sentences.len()
-            && let Some(mut combined) = parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
-                sentence,
-                &sentences[sentence_idx + 1],
-            )?
+            && let Some(mut combined) =
+                parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
+                    sentence,
+                    &sentences[sentence_idx + 1],
+                )?
         {
             parser_trace(
                 "parse_effect_sentences:sequence-hit:choose-card-type-then-reveal-and-put",
@@ -147,7 +149,10 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
                 .last()
                 .is_some_and(|effect| matches!(effect, EffectAst::BecomeBasePtCreature { .. }))
         {
-            parser_trace("parse_effect_sentences:skip:still-lands-followup", &sentence_tokens);
+            parser_trace(
+                "parse_effect_sentences:skip:still-lands-followup",
+                &sentence_tokens,
+            );
             sentence_idx += 1;
             continue;
         }
@@ -440,14 +445,18 @@ pub(crate) fn is_cant_be_regenerated_this_turn_followup_sentence(tokens: &[Token
     )
 }
 
-pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(effects: &mut Vec<EffectAst>) -> bool {
+pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(
+    effects: &mut Vec<EffectAst>,
+) -> bool {
     let Some(last) = effects.last_mut() else {
         return false;
     };
     apply_cant_be_regenerated_to_effect(last)
 }
 
-pub(crate) fn apply_cant_be_regenerated_to_last_target_effect(effects: &mut Vec<EffectAst>) -> bool {
+pub(crate) fn apply_cant_be_regenerated_to_last_target_effect(
+    effects: &mut Vec<EffectAst>,
+) -> bool {
     let Some(previous_target) = effects.last().and_then(primary_target_from_effect) else {
         return false;
     };
@@ -501,6 +510,7 @@ fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
@@ -556,6 +566,7 @@ pub(crate) fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<Ta
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
@@ -632,6 +643,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
@@ -675,7 +687,10 @@ pub(crate) fn is_placeholder_damage_target(target: &TargetAst) -> bool {
     )
 }
 
-pub(crate) fn replace_placeholder_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {
+pub(crate) fn replace_placeholder_damage_target_in_effects(
+    effects: &mut [EffectAst],
+    target: &TargetAst,
+) {
     for effect in effects {
         replace_placeholder_damage_target(effect, target);
     }
@@ -707,6 +722,7 @@ pub(crate) fn replace_placeholder_damage_target(effect: &mut EffectAst, target: 
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
@@ -773,6 +789,7 @@ pub(crate) fn replace_unbound_x_in_damage_effect(
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
@@ -900,6 +917,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
@@ -984,6 +1002,7 @@ pub(crate) fn replace_it_damage_target(effect: &mut EffectAst, target: &TargetAs
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
@@ -1166,6 +1185,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }

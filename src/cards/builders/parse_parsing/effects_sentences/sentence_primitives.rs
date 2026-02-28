@@ -1,6 +1,7 @@
 use super::*;
 
-pub(crate) type SentencePrimitiveParser = fn(&[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
+pub(crate) type SentencePrimitiveParser =
+    fn(&[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
 pub(crate) struct SentencePrimitive {
     pub(crate) name: &'static str,
@@ -363,7 +364,9 @@ pub(crate) fn parse_sentence_exile_instead_of_graveyard(
     Ok(parse_exile_instead_of_graveyard_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
-pub(crate) fn parse_sentence_monstrosity(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_monstrosity(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(parse_monstrosity_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
@@ -1007,7 +1010,10 @@ pub(crate) fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -
     }
 }
 
-pub(crate) fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> Option<EffectAst> {
+pub(crate) fn clone_return_effect_with_subtype(
+    base: &EffectAst,
+    subtype: Subtype,
+) -> Option<EffectAst> {
     match base {
         EffectAst::ReturnToHand { target, random } => {
             let mut cloned_target = target.clone();
@@ -2479,7 +2485,9 @@ pub(crate) fn parse_sentence_take_extra_turn(
     Ok(parse_take_extra_turn_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
-pub(crate) fn parse_sentence_earthbend(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_earthbend(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(earthbend) = parse_earthbend_sentence(tokens)? else {
         return Ok(None);
     };
@@ -2501,11 +2509,15 @@ pub(crate) fn parse_sentence_earthbend(tokens: &[Token]) -> Result<Option<Vec<Ef
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_enchant(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_enchant(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(parse_enchant_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
-pub(crate) fn parse_sentence_cant_effect(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_cant_effect(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_cant_effect_sentence(tokens)
 }
 
@@ -2521,7 +2533,9 @@ pub(crate) fn parse_sentence_gain_ability_to_source(
     Ok(parse_gain_ability_to_source_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
-pub(crate) fn parse_sentence_gain_ability(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_gain_ability(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_gain_ability_sentence(tokens)
 }
 
@@ -2603,7 +2617,9 @@ pub(crate) fn parse_sentence_play_from_graveyard(
     Ok(parse_play_from_graveyard_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
-pub(crate) fn parse_sentence_look_at_hand(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_look_at_hand(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_look_at_hand_sentence(tokens)
 }
 
@@ -2685,7 +2701,9 @@ pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
     ]))
 }
 
-pub(crate) fn parse_sentence_vote_start(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_vote_start(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(parse_vote_start_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
@@ -2695,11 +2713,15 @@ pub(crate) fn parse_sentence_for_each_vote_clause(
     Ok(parse_for_each_vote_clause(tokens)?.map(|effect| vec![effect]))
 }
 
-pub(crate) fn parse_sentence_vote_extra(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_vote_extra(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(parse_vote_extra_sentence(tokens).map(|effect| vec![effect]))
 }
 
-pub(crate) fn parse_sentence_after_turn(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_after_turn(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     Ok(parse_after_turn_sentence(tokens)?.map(|effect| vec![effect]))
 }
 
@@ -2780,7 +2802,10 @@ pub(crate) fn parse_sentence_exile_multi_target(
 
     let mut first_target = match parse_target_phrase(&first_tokens) {
         Ok(target) => target,
-        Err(_) if !first_is_explicit_target && is_likely_named_or_source_reference_words(&first_words) => {
+        Err(_)
+            if !first_is_explicit_target
+                && is_likely_named_or_source_reference_words(&first_words) =>
+        {
             TargetAst::Source(span_from_tokens(&first_tokens))
         }
         Err(err) => return Err(err),
@@ -2891,7 +2916,10 @@ pub(crate) fn parse_sentence_destroy_multi_target(
     if clause_words.first() != Some(&"destroy") {
         return Ok(None);
     }
-    if clause_words.get(1).is_some_and(|word| matches!(*word, "all" | "each")) {
+    if clause_words
+        .get(1)
+        .is_some_and(|word| matches!(*word, "all" | "each"))
+    {
         return Ok(None);
     }
     if clause_words.contains(&"unless") || clause_words.contains(&"if") {
@@ -2903,9 +2931,9 @@ pub(crate) fn parse_sentence_destroy_multi_target(
         return Ok(None);
     }
 
-    let has_separator = target_tokens.iter().any(|token| {
-        token.is_word("and") || matches!(token, Token::Comma(_))
-    });
+    let has_separator = target_tokens
+        .iter()
+        .any(|token| token.is_word("and") || matches!(token, Token::Comma(_)));
     let has_repeated_up_to_one_targets = target_tokens
         .windows(4)
         .filter(|window| {
@@ -2943,7 +2971,10 @@ pub(crate) fn parse_sentence_destroy_multi_target(
         }
         let target = match parse_target_phrase(&segment) {
             Ok(target) => target,
-            Err(_) if !is_explicit_target && is_likely_named_or_source_reference_words(&segment_words) => {
+            Err(_)
+                if !is_explicit_target
+                    && is_likely_named_or_source_reference_words(&segment_words) =>
+            {
                 TargetAst::Source(span_from_tokens(&segment))
             }
             Err(err) => return Err(err),
@@ -2964,10 +2995,12 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     if clause_words.first() != Some(&"reveal") {
         return Ok(None);
     }
-    if clause_words
-        .iter()
-        .any(|word| matches!(*word, "then" | "if" | "unless" | "where" | "when" | "whenever"))
-    {
+    if clause_words.iter().any(|word| {
+        matches!(
+            *word,
+            "then" | "if" | "unless" | "where" | "when" | "whenever"
+        )
+    }) {
         return Ok(None);
     }
 
@@ -2977,7 +3010,9 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     if in_idx == 0 || in_idx + 2 >= tokens.len() {
         return Ok(None);
     }
-    if !tokens.get(in_idx + 1).is_some_and(|token| token.is_word("your"))
+    if !tokens
+        .get(in_idx + 1)
+        .is_some_and(|token| token.is_word("your"))
         || !tokens
             .get(in_idx + 2)
             .is_some_and(|token| token.is_word("hand") || token.is_word("hands"))
@@ -3250,7 +3285,9 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     Ok(Some(vec![unless]))
 }
 
-pub(crate) fn parse_sentence_unless_pays(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_sentence_unless_pays(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // Find "unless" in the token stream
     let unless_idx = match tokens.iter().position(|t| t.is_word("unless")) {
         Some(idx) => idx,
@@ -3545,17 +3582,7 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
         || clause_words.starts_with(&["you", "choose", "a", "nonland", "card", "from", "it"])
         || clause_words.starts_with(&["you", "choose", "a", "card", "from", "it"])
         || clause_words.starts_with(&[
-            "you",
-            "may",
-            "put",
-            "a",
-            "land",
-            "card",
-            "from",
-            "among",
-            "them",
-            "into",
-            "your",
+            "you", "may", "put", "a", "land", "card", "from", "among", "them", "into", "your",
             "hand",
         ])
         || clause_words.starts_with(&["stand", "and", "fight"])
@@ -3583,16 +3610,7 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
         || clause_words.starts_with(&["put", "that", "pile", "into", "your", "hand"])
         || clause_words.starts_with(&["cast", "that", "card", "for", "as", "long", "as"])
         || clause_words.starts_with(&[
-            "until",
-            "end",
-            "of",
-            "turn",
-            "this",
-            "creature",
-            "loses",
-            "prevent",
-            "all",
-            "damage",
+            "until", "end", "of", "turn", "this", "creature", "loses", "prevent", "all", "damage",
         ])
         || clause_words.starts_with(&[
             "until",
@@ -3611,61 +3629,23 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
             "and",
             "toughness",
         ])
-        || clause_words.starts_with(&["it", "becomes", "an", "angel", "in", "addition", "to", "its", "other", "types"])
         || clause_words.starts_with(&[
-            "for",
-            "each",
-            "1",
-            "damage",
-            "prevented",
-            "this",
-            "way",
+            "it", "becomes", "an", "angel", "in", "addition", "to", "its", "other", "types",
+        ])
+        || clause_words.starts_with(&["for", "each", "1", "damage", "prevented", "this", "way"])
+        || clause_words.starts_with(&[
+            "for", "each", "card", "less", "than", "two", "a", "player", "draws", "this", "way",
+        ])
+        || clause_words.starts_with(&["this", "deals", "4", "damage", "if", "there", "are"])
+        || clause_words.starts_with(&[
+            "this", "deals", "4", "damage", "instead", "if", "there", "are",
         ])
         || clause_words.starts_with(&[
-            "for",
-            "each",
-            "card",
-            "less",
-            "than",
-            "two",
-            "a",
-            "player",
-            "draws",
-            "this",
-            "way",
+            "that", "spell", "deals", "damage", "to", "each", "opponent", "equal", "to",
         ])
         || clause_words.starts_with(&[
-            "this",
-            "deals",
-            "4",
-            "damage",
-            "if",
-            "there",
-            "are",
+            "the", "next", "spell", "you", "cast", "this", "turn", "costs",
         ])
-        || clause_words.starts_with(&[
-            "this",
-            "deals",
-            "4",
-            "damage",
-            "instead",
-            "if",
-            "there",
-            "are",
-        ])
-        || clause_words.starts_with(&[
-            "that",
-            "spell",
-            "deals",
-            "damage",
-            "to",
-            "each",
-            "opponent",
-            "equal",
-            "to",
-        ])
-        || clause_words
-            .starts_with(&["the", "next", "spell", "you", "cast", "this", "turn", "costs"])
         || clause_words.starts_with(&[
             "there",
             "is",
@@ -3691,32 +3671,9 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
             "able",
         ])
         || clause_words.starts_with(&[
-            "all",
-            "damage",
-            "that",
-            "would",
-            "be",
-            "dealt",
-            "this",
-            "turn",
-            "to",
-            "target",
-            "creature",
-            "you",
-            "control",
-            "by",
-            "a",
-            "source",
-            "of",
-            "your",
-            "choice",
-            "is",
-            "dealt",
-            "to",
-            "another",
-            "target",
-            "creature",
-            "instead",
+            "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to", "target",
+            "creature", "you", "control", "by", "a", "source", "of", "your", "choice", "is",
+            "dealt", "to", "another", "target", "creature", "instead",
         ])
         || (clause_words.starts_with(&["it", "doesnt", "untap", "during"])
             && clause_words.contains(&"remains")

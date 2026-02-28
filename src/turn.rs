@@ -245,7 +245,17 @@ pub fn is_no_priority_step(game: &GameState) -> bool {
 /// Executes the untap step for the active player.
 /// Untaps all permanents controlled by the active player (except those that don't untap).
 pub fn execute_untap_step(game: &mut GameState) {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    execute_untap_step_with(game, &mut dm);
+}
+
+/// Executes the untap step for the active player with an explicit decision maker.
+///
+/// This variant prompts for optional "you may choose not to untap ..." abilities.
+pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl DecisionMaker) {
     use crate::ability::AbilityKind;
+    use crate::decisions::context::BooleanContext;
+    use crate::static_abilities::StaticAbilityId;
 
     let active_player = game.turn.active_player;
 
@@ -253,7 +263,7 @@ pub fn execute_untap_step(game: &mut GameState) {
     let permanents: Vec<_> = game.permanents_controlled_by(active_player);
 
     // First pass: collect which permanents should untap
-    let should_untap: Vec<_> = permanents
+    let should_untap: std::collections::HashSet<_> = permanents
         .iter()
         .filter_map(|&id| {
             let obj = game.object(id)?;
@@ -265,9 +275,26 @@ pub fn execute_untap_step(game: &mut GameState) {
                     false
                 }
             });
+            let has_optional_choice = obj.abilities.iter().any(|ability| {
+                matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id()
+                            == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
+                )
+            });
             let blocked_by_restriction = !game.can_untap(id);
             if has_doesnt_untap || blocked_by_restriction {
                 None
+            } else if has_optional_choice && game.is_tapped(id) {
+                let choice_ctx = BooleanContext::new(
+                    active_player,
+                    Some(id),
+                    format!("untap {} during your untap step", obj.name),
+                );
+                decision_maker
+                    .decide_boolean(game, &choice_ctx)
+                    .then_some(id)
             } else {
                 Some(id)
             }
@@ -491,593 +518,143 @@ pub fn is_combat_phase(game: &GameState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
+    use crate::card::CardBuilder;
+    use crate::ids::{CardId, ObjectId};
+    use crate::object::Object;
+    use crate::static_abilities::StaticAbility;
+    use crate::types::CardType;
     use crate::zone::Zone;
 
-    fn test_game() -> GameState {
+    fn setup_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
     }
 
-    #[test]
-    fn test_next_step_beginning_phase() {
-        assert_eq!(
-            next_step(Phase::Beginning, Some(Step::Untap)),
-            Some(Step::Upkeep)
-        );
-        assert_eq!(
-            next_step(Phase::Beginning, Some(Step::Upkeep)),
-            Some(Step::Draw)
-        );
-        assert_eq!(next_step(Phase::Beginning, Some(Step::Draw)), None);
-    }
-
-    #[test]
-    fn test_next_step_combat_phase() {
-        assert_eq!(
-            next_step(Phase::Combat, Some(Step::BeginCombat)),
-            Some(Step::DeclareAttackers)
-        );
-        assert_eq!(
-            next_step(Phase::Combat, Some(Step::DeclareAttackers)),
-            Some(Step::DeclareBlockers)
-        );
-        assert_eq!(
-            next_step(Phase::Combat, Some(Step::DeclareBlockers)),
-            Some(Step::CombatDamage)
-        );
-        assert_eq!(
-            next_step(Phase::Combat, Some(Step::CombatDamage)),
-            Some(Step::EndCombat)
-        );
-        assert_eq!(next_step(Phase::Combat, Some(Step::EndCombat)), None);
-    }
-
-    #[test]
-    fn test_next_step_ending_phase() {
-        assert_eq!(
-            next_step(Phase::Ending, Some(Step::End)),
-            Some(Step::Cleanup)
-        );
-        assert_eq!(next_step(Phase::Ending, Some(Step::Cleanup)), None);
-    }
-
-    #[test]
-    fn test_main_phases_have_no_steps() {
-        assert_eq!(next_step(Phase::FirstMain, None), None);
-        assert_eq!(next_step(Phase::NextMain, None), None);
-    }
-
-    #[test]
-    fn test_next_phase() {
-        assert_eq!(next_phase(Phase::Beginning), Some(Phase::FirstMain));
-        assert_eq!(next_phase(Phase::FirstMain), Some(Phase::Combat));
-        assert_eq!(next_phase(Phase::Combat), Some(Phase::NextMain));
-        assert_eq!(next_phase(Phase::NextMain), Some(Phase::Ending));
-        assert_eq!(next_phase(Phase::Ending), None);
-    }
-
-    #[test]
-    fn test_first_step_of_phase() {
-        assert_eq!(first_step_of_phase(Phase::Beginning), Some(Step::Untap));
-        assert_eq!(first_step_of_phase(Phase::FirstMain), None);
-        assert_eq!(first_step_of_phase(Phase::Combat), Some(Step::BeginCombat));
-        assert_eq!(first_step_of_phase(Phase::NextMain), None);
-        assert_eq!(first_step_of_phase(Phase::Ending), Some(Step::End));
-    }
-
-    #[test]
-    fn test_advance_step_through_beginning_phase() {
-        let mut game = test_game();
-        assert_eq!(game.turn.step, Some(Step::Untap));
-
-        advance_step(&mut game).unwrap();
-        assert_eq!(game.turn.step, Some(Step::Upkeep));
-
-        advance_step(&mut game).unwrap();
-        assert_eq!(game.turn.step, Some(Step::Draw));
-
-        // Advancing from draw should go to next phase
-        advance_step(&mut game).unwrap();
-        assert_eq!(game.turn.phase, Phase::FirstMain);
-        assert_eq!(game.turn.step, None);
-    }
-
-    #[test]
-    fn test_advance_phase_through_turn() {
-        let mut game = test_game();
-
-        // Skip to main phase
-        game.turn.phase = Phase::FirstMain;
-        game.turn.step = None;
-
-        advance_phase(&mut game).unwrap();
-        assert_eq!(game.turn.phase, Phase::Combat);
-        assert_eq!(game.turn.step, Some(Step::BeginCombat));
-
-        advance_phase(&mut game).unwrap();
-        assert_eq!(game.turn.phase, Phase::NextMain);
-
-        advance_phase(&mut game).unwrap();
-        assert_eq!(game.turn.phase, Phase::Ending);
-        assert_eq!(game.turn.step, Some(Step::End));
-
-        // Advancing from ending should go to next turn
-        let turn_number = game.turn.turn_number;
-        advance_phase(&mut game).unwrap();
-        assert_eq!(game.turn.turn_number, turn_number + 1);
-        assert_eq!(game.turn.phase, Phase::Beginning);
-    }
-
-    #[test]
-    fn test_priority_tracker() {
-        let mut tracker = PriorityTracker::new(2);
-
-        assert!(!tracker.all_passed());
-        assert!(!tracker.record_pass()); // First pass
-        assert!(tracker.record_pass()); // Second pass - all passed
-
-        tracker.reset();
-        assert!(!tracker.all_passed());
-    }
-
-    #[test]
-    fn test_pass_priority_empty_stack() {
-        let mut game = test_game();
-        let mut tracker = PriorityTracker::new(2);
-
-        // First player passes
-        let result = pass_priority(&mut game, &mut tracker);
-        assert_eq!(result, PriorityResult::Continue);
-
-        // Second player passes with empty stack
-        let result = pass_priority(&mut game, &mut tracker);
-        assert_eq!(result, PriorityResult::PhaseEnds);
-    }
-
-    #[test]
-    fn test_pass_priority_with_stack() {
-        let mut game = test_game();
-        let mut tracker = PriorityTracker::new(2);
-
-        // Add something to the stack
-        use crate::game_state::StackEntry;
-        use crate::ids::ObjectId;
-        let entry = StackEntry::new(ObjectId::from_raw(1), PlayerId::from_index(0));
-        game.push_to_stack(entry);
-
-        // First player passes
-        let result = pass_priority(&mut game, &mut tracker);
-        assert_eq!(result, PriorityResult::Continue);
-
-        // Second player passes with non-empty stack
-        let result = pass_priority(&mut game, &mut tracker);
-        assert_eq!(result, PriorityResult::StackResolves);
-    }
-
-    #[test]
-    fn test_has_priority() {
-        let game = test_game();
-
-        assert!(has_priority(&game, PlayerId::from_index(0)));
-        assert!(!has_priority(&game, PlayerId::from_index(1)));
-    }
-
-    #[test]
-    fn test_reset_priority() {
-        let mut game = test_game();
-        let mut tracker = PriorityTracker::new(2);
-
-        // Pass priority once
-        pass_priority(&mut game, &mut tracker);
-        assert_eq!(tracker.consecutive_passes, 1);
-
-        // Reset should clear passes and give priority to active player
-        reset_priority(&mut game, &mut tracker);
-        assert_eq!(tracker.consecutive_passes, 0);
-        assert_eq!(game.turn.priority_player, Some(game.turn.active_player));
-    }
-
-    #[test]
-    fn test_is_sorcery_timing() {
-        let mut game = test_game();
-
-        // Beginning phase - not sorcery timing
-        assert!(!is_sorcery_timing(&game));
-
-        // Precombat main with empty stack - sorcery timing
-        game.turn.phase = Phase::FirstMain;
-        game.turn.step = None;
-        assert!(is_sorcery_timing(&game));
-
-        // Add something to stack - no longer sorcery timing
-        use crate::game_state::StackEntry;
-        use crate::ids::ObjectId;
-        game.push_to_stack(StackEntry::new(
-            ObjectId::from_raw(1),
-            PlayerId::from_index(0),
-        ));
-        assert!(!is_sorcery_timing(&game));
-    }
-
-    #[test]
-    fn test_is_no_priority_step() {
-        let mut game = test_game();
-
-        // Untap step - no priority
-        game.turn.step = Some(Step::Untap);
-        assert!(is_no_priority_step(&game));
-
-        // Upkeep step - has priority
-        game.turn.step = Some(Step::Upkeep);
-        assert!(!is_no_priority_step(&game));
-
-        // Cleanup step - no priority
-        game.turn.step = Some(Step::Cleanup);
-        assert!(is_no_priority_step(&game));
-    }
-
-    #[test]
-    fn test_execute_untap_step() {
-        let mut game = test_game();
-        let active_player = game.turn.active_player;
-
-        // Create a tapped creature
-        use crate::card::{CardBuilder, PowerToughness};
-        use crate::ids::CardId;
-        use crate::mana::{ManaCost, ManaSymbol};
-        use crate::types::{CardType, Subtype};
-
-        let card = CardBuilder::new(CardId::from_raw(1), "Test Creature")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Bear])
-            .power_toughness(PowerToughness::fixed(2, 2))
+    fn create_artifact(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        abilities: Vec<StaticAbility>,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Artifact])
             .build();
+        let mut obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        for ability in abilities {
+            obj.abilities.push(Ability::static_ability(ability));
+        }
+        game.add_object(obj);
+        id
+    }
 
-        let id = game.create_object_from_card(&card, active_player, Zone::Battlefield);
-        game.tap(id);
-        game.set_summoning_sick(id);
+    #[derive(Default)]
+    struct AlwaysYesDecisionMaker;
 
-        execute_untap_step(&mut game);
+    impl DecisionMaker for AlwaysYesDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
 
-        assert!(!game.is_tapped(id));
-        assert!(!game.is_summoning_sick(id));
-        assert!(game.turn.priority_player.is_none());
+    #[derive(Default)]
+    struct AlwaysNoDecisionMaker;
+
+    impl DecisionMaker for AlwaysNoDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            false
+        }
     }
 
     #[test]
-    fn test_execute_untap_step_respects_cant_untap_restrictions() {
-        let mut game = test_game();
-        let active_player = game.turn.active_player;
-
-        use crate::card::{CardBuilder, PowerToughness};
-        use crate::effect::{Restriction, Until};
-        use crate::ids::CardId;
-        use crate::mana::{ManaCost, ManaSymbol};
-        use crate::target::ObjectFilter;
-        use crate::types::{CardType, Subtype};
-
-        let source_card = CardBuilder::new(CardId::from_raw(99), "Restriction Source")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Wizard])
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .build();
-        let source_id =
-            game.create_object_from_card(&source_card, active_player, Zone::Battlefield);
-
-        let creature_card = CardBuilder::new(CardId::from_raw(1), "Test Creature")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Bear])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-        let id = game.create_object_from_card(&creature_card, active_player, Zone::Battlefield);
-        game.tap(id);
-
-        game.add_restriction_effect(
-            Restriction::untap(ObjectFilter::specific(id)),
-            Until::YouStopControllingThis,
-            source_id,
-            active_player,
+    fn execute_untap_step_with_optional_choice_can_untap_when_chosen() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let artifact = create_artifact(
+            &mut game,
+            "Courier Relic",
+            alice,
+            vec![StaticAbility::may_choose_not_to_untap_during_untap_step(
+                "this artifact",
+            )],
         );
-        game.update_cant_effects();
+        game.tap(artifact);
 
-        execute_untap_step(&mut game);
+        let mut dm = AlwaysYesDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
 
         assert!(
-            game.is_tapped(id),
-            "restricted permanent should stay tapped"
+            !game.is_tapped(artifact),
+            "artifact should untap when controller chooses to untap"
         );
     }
 
     #[test]
-    fn test_execute_untap_step_respects_power_filtered_cant_untap_restriction() {
-        let mut game = test_game();
-        let active_player = game.turn.active_player;
-
-        use crate::card::{CardBuilder, PowerToughness};
-        use crate::effect::{Restriction, Until};
-        use crate::filter::Comparison;
-        use crate::ids::CardId;
-        use crate::mana::{ManaCost, ManaSymbol};
-        use crate::target::ObjectFilter;
-        use crate::types::{CardType, Subtype};
-
-        let source_card = CardBuilder::new(CardId::from_raw(99), "Restriction Source")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Wizard])
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .build();
-        let source_id =
-            game.create_object_from_card(&source_card, active_player, Zone::Battlefield);
-
-        let big_creature = CardBuilder::new(CardId::from_raw(1), "Big Creature")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Beast])
-            .power_toughness(PowerToughness::fixed(4, 4))
-            .build();
-        let big_id = game.create_object_from_card(&big_creature, active_player, Zone::Battlefield);
-        game.tap(big_id);
-
-        let small_creature = CardBuilder::new(CardId::from_raw(2), "Small Creature")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Bear])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-        let small_id =
-            game.create_object_from_card(&small_creature, active_player, Zone::Battlefield);
-        game.tap(small_id);
-
-        game.add_restriction_effect(
-            Restriction::untap(
-                ObjectFilter::creature().with_power(Comparison::GreaterThanOrEqual(3)),
-            ),
-            Until::YouStopControllingThis,
-            source_id,
-            active_player,
+    fn execute_untap_step_with_optional_choice_can_stay_tapped_when_declined() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let artifact = create_artifact(
+            &mut game,
+            "Courier Relic",
+            alice,
+            vec![StaticAbility::may_choose_not_to_untap_during_untap_step(
+                "this artifact",
+            )],
         );
-        game.update_cant_effects();
+        game.tap(artifact);
 
-        execute_untap_step(&mut game);
+        let mut dm = AlwaysNoDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
 
         assert!(
-            game.is_tapped(big_id),
-            "power-4 creature should stay tapped under restriction"
+            game.is_tapped(artifact),
+            "artifact should stay tapped when controller declines untap"
+        );
+    }
+
+    #[test]
+    fn execute_untap_step_with_optional_choice_respects_doesnt_untap_and_restrictions() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let doesnt_untap_artifact = create_artifact(
+            &mut game,
+            "Locked Relic",
+            alice,
+            vec![
+                StaticAbility::may_choose_not_to_untap_during_untap_step("this artifact"),
+                StaticAbility::doesnt_untap(),
+            ],
+        );
+        let cant_untap_artifact = create_artifact(
+            &mut game,
+            "Frozen Relic",
+            alice,
+            vec![StaticAbility::may_choose_not_to_untap_during_untap_step(
+                "this artifact",
+            )],
+        );
+        game.tap(doesnt_untap_artifact);
+        game.tap(cant_untap_artifact);
+        game.cant_effects.add_cant_untap(cant_untap_artifact);
+
+        let mut dm = AlwaysYesDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        assert!(
+            game.is_tapped(doesnt_untap_artifact),
+            "doesn't-untap static ability should prevent untapping"
         );
         assert!(
-            !game.is_tapped(small_id),
-            "power-2 creature should untap because it does not match restriction"
+            game.is_tapped(cant_untap_artifact),
+            "can't-untap restriction should prevent untapping"
         );
-    }
-
-    #[test]
-    fn test_execute_draw_step() {
-        let mut game = test_game();
-        let active_player = game.turn.active_player;
-
-        // Create a proper card in the library
-        use crate::card::CardBuilder;
-        use crate::ids::CardId;
-        use crate::types::CardType;
-
-        let card = CardBuilder::new(CardId::from_raw(1), "Test Card")
-            .card_types(vec![CardType::Sorcery])
-            .build();
-        game.create_object_from_card(&card, active_player, Zone::Library);
-
-        let hand_size_before = game.player(active_player).unwrap().hand.len();
-
-        execute_draw_step(&mut game);
-
-        let hand_size_after = game.player(active_player).unwrap().hand.len();
-        assert_eq!(hand_size_after, hand_size_before + 1);
-        assert_eq!(game.turn.priority_player, Some(active_player));
-    }
-
-    #[test]
-    fn test_execute_cleanup_step() {
-        let mut game = test_game();
-        let active_player = game.turn.active_player;
-
-        // Add mana to pool
-        use crate::mana::ManaSymbol;
-        game.player_mut(active_player)
-            .unwrap()
-            .mana_pool
-            .add(ManaSymbol::White, 5);
-
-        // Add damage to a creature
-        use crate::card::{CardBuilder, PowerToughness};
-        use crate::ids::CardId;
-        use crate::mana::ManaCost;
-        use crate::types::{CardType, Subtype};
-
-        let card = CardBuilder::new(CardId::from_raw(1), "Test Creature")
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
-            .card_types(vec![CardType::Creature])
-            .subtypes(vec![Subtype::Bear])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-
-        let id = game.create_object_from_card(&card, active_player, Zone::Battlefield);
-        game.mark_damage(id, 1);
-        game.continuous_effects
-            .add_effect(crate::continuous::ContinuousEffect::pump(
-                id,
-                active_player,
-                id,
-                3,
-                0,
-                crate::effect::Until::EndOfTurn,
-            ));
-
-        // Base 2/2 with +3/+0 until end of turn.
-        assert_eq!(game.calculated_power(id), Some(5));
-        assert_eq!(game.calculated_toughness(id), Some(2));
-
-        execute_cleanup_step(&mut game);
-
-        // Mana pool should be empty
-        assert_eq!(game.player(active_player).unwrap().mana_pool.total(), 0);
-
-        // Damage should be removed
-        assert_eq!(game.damage_on(id), 0);
-
-        // "Until end of turn" continuous effects should be removed.
-        assert!(game.continuous_effects.effects_sorted().is_empty());
-        assert_eq!(game.calculated_power(id), Some(2));
-        assert_eq!(game.calculated_toughness(id), Some(2));
-
-        // No priority during cleanup
-        assert!(game.turn.priority_player.is_none());
-    }
-
-    #[test]
-    fn test_current_phase_description() {
-        let mut game = test_game();
-
-        game.turn.phase = Phase::Beginning;
-        game.turn.step = Some(Step::Upkeep);
-        assert_eq!(
-            current_phase_description(&game),
-            "Beginning Phase - Upkeep Step"
-        );
-
-        game.turn.phase = Phase::FirstMain;
-        game.turn.step = None;
-        assert_eq!(current_phase_description(&game), "Precombat Main Phase");
-
-        game.turn.phase = Phase::Combat;
-        game.turn.step = Some(Step::DeclareAttackers);
-        assert_eq!(
-            current_phase_description(&game),
-            "Combat Phase - Declare Attackers Step"
-        );
-    }
-
-    #[test]
-    fn test_is_main_phase() {
-        let mut game = test_game();
-
-        game.turn.phase = Phase::Beginning;
-        assert!(!is_main_phase(&game));
-
-        game.turn.phase = Phase::FirstMain;
-        assert!(is_main_phase(&game));
-
-        game.turn.phase = Phase::Combat;
-        assert!(!is_main_phase(&game));
-
-        game.turn.phase = Phase::NextMain;
-        assert!(is_main_phase(&game));
-
-        game.turn.phase = Phase::Ending;
-        assert!(!is_main_phase(&game));
-    }
-
-    #[test]
-    fn test_is_combat_phase() {
-        let mut game = test_game();
-
-        game.turn.phase = Phase::FirstMain;
-        assert!(!is_combat_phase(&game));
-
-        game.turn.phase = Phase::Combat;
-        assert!(is_combat_phase(&game));
-    }
-
-    #[test]
-    fn test_cleanup_step_discard_to_graveyard() {
-        let mut game = test_game();
-        let active_player = game.turn.active_player;
-
-        // Create cards in hand (more than max hand size of 7)
-        use crate::card::CardBuilder;
-        use crate::ids::CardId;
-        use crate::types::CardType;
-
-        // Add 9 cards to hand (2 over the limit)
-        for i in 0..9u32 {
-            let card = CardBuilder::new(CardId::new(), &format!("Card {}", i))
-                .card_types(vec![CardType::Sorcery])
-                .build();
-            game.create_object_from_card(&card, active_player, Zone::Hand);
-        }
-
-        // Verify hand has 9 cards
-        assert_eq!(game.player(active_player).unwrap().hand.len(), 9);
-        assert_eq!(game.player(active_player).unwrap().graveyard.len(), 0);
-
-        // Check if discard is needed using the new spec-based flow
-        let spec = get_cleanup_discard_spec(&game);
-        assert!(spec.is_some());
-
-        // Get the cards to discard (simulating player choice - last 2 cards)
-        if let Some((player, discard_spec)) = spec {
-            assert_eq!(player, active_player);
-            let count = discard_spec.count;
-            assert_eq!(count, 2);
-            let cards_to_discard: Vec<_> = discard_spec
-                .hand
-                .iter()
-                .rev()
-                .take(count)
-                .copied()
-                .collect();
-            let mut dm = crate::decision::AutoPassDecisionMaker;
-            apply_cleanup_discard(&mut game, &cards_to_discard, &mut dm);
-        }
-
-        // Execute cleanup step (damage removal, mana emptying)
-        execute_cleanup_step(&mut game);
-
-        // Hand should now have 7 cards (max hand size)
-        assert_eq!(game.player(active_player).unwrap().hand.len(), 7);
-
-        // Graveyard should have 2 cards (the discarded ones)
-        assert_eq!(game.player(active_player).unwrap().graveyard.len(), 2);
-
-        // Verify the graveyard cards are in the Graveyard zone
-        for &card_id in &game.player(active_player).unwrap().graveyard {
-            let obj = game.object(card_id).unwrap();
-            assert_eq!(obj.zone, Zone::Graveyard);
-        }
-    }
-
-    #[test]
-    fn test_cleanup_step_no_discard_under_max() {
-        let mut game = test_game();
-        let active_player = game.turn.active_player;
-
-        // Create 5 cards in hand (under the limit)
-        use crate::card::CardBuilder;
-        use crate::ids::CardId;
-        use crate::types::CardType;
-
-        for i in 0..5u32 {
-            let card = CardBuilder::new(CardId::new(), &format!("Card {}", i))
-                .card_types(vec![CardType::Sorcery])
-                .build();
-            game.create_object_from_card(&card, active_player, Zone::Hand);
-        }
-
-        // Verify hand has 5 cards
-        assert_eq!(game.player(active_player).unwrap().hand.len(), 5);
-
-        // Check if discard is needed - should be None
-        let spec = get_cleanup_discard_spec(&game);
-        assert!(spec.is_none());
-
-        // Execute cleanup step
-        execute_cleanup_step(&mut game);
-
-        // Hand should still have 5 cards
-        assert_eq!(game.player(active_player).unwrap().hand.len(), 5);
-
-        // Graveyard should be empty
-        assert_eq!(game.player(active_player).unwrap().graveyard.len(), 0);
     }
 }

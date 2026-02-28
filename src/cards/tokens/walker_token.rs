@@ -1,9 +1,9 @@
 //! Walker token definition.
 
+use crate::card::PowerToughness;
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::color::ColorSet;
 use crate::ids::CardId;
-use crate::card::PowerToughness;
 use crate::types::{CardType, Subtype};
 
 /// Creates a Walker token.
@@ -31,6 +31,9 @@ mod tests {
         assert!(walker.card.is_token);
         assert!(walker.card.card_types.contains(&CardType::Creature));
         assert!(walker.card.subtypes.contains(&Subtype::Zombie));
-        assert_eq!(walker.card.power_toughness, Some(PowerToughness::fixed(2, 2)));
+        assert_eq!(
+            walker.card.power_toughness,
+            Some(PowerToughness::fixed(2, 2))
+        );
     }
 }

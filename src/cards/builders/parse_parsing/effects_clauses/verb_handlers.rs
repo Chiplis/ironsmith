@@ -74,7 +74,10 @@ pub(crate) fn parse_effect_with_verb(
     }
 }
 
-pub(crate) fn parse_look(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_look(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     fn parse_library_owner(words: &[&str]) -> Option<(PlayerAst, usize)> {
         if words.starts_with(&["your", "library"]) {
             return Some((PlayerAst::You, 2));
@@ -596,7 +599,9 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
     Ok(Some(EffectAst::DealDamage { amount, target }))
 }
 
-pub(crate) fn parse_deal_damage_equal_to_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_deal_damage_equal_to_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["damage", "equal", "to"]) {
         return Ok(None);
@@ -1082,7 +1087,10 @@ pub(crate) fn parse_move(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     Ok(EffectAst::MoveAllCounters { from, to })
 }
 
-pub(crate) fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_draw(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
     let mut parsed_that_many_minus_one = false;
     let mut parsed_that_many_plus_one = false;
@@ -1118,9 +1126,7 @@ pub(crate) fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Resul
     } else if let Some(value) = parse_draw_as_many_cards_value(tokens) {
         consumed_embedded_card_keyword = true;
         (value, tokens.len())
-    } else if tokens
-        .first()
-        .is_some_and(|token| token.is_word("another"))
+    } else if tokens.first().is_some_and(|token| token.is_word("another"))
         && tokens
             .get(1)
             .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
@@ -1139,9 +1145,7 @@ pub(crate) fn parse_draw(tokens: &[Token], subject: Option<SubjectAst>) -> Resul
         })?;
         consumed_embedded_card_keyword = true;
         (value, tokens.len())
-    } else if tokens
-        .first()
-        .is_some_and(|token| token.is_word("up"))
+    } else if tokens.first().is_some_and(|token| token.is_word("up"))
         && tokens.get(1).is_some_and(|token| token.is_word("to"))
     {
         let Some((amount, used_amount)) = parse_number(&tokens[2..]) else {
@@ -1281,7 +1285,16 @@ pub(crate) fn parse_draw_delayed_timing_words(words: &[&str]) -> Option<DelayedR
         ["at", "beginning", "of", "next", "turns", "upkeep"]
             | ["at", "beginning", "of", "the", "next", "turns", "upkeep"]
             | ["at", "the", "beginning", "of", "next", "turns", "upkeep"]
-            | ["at", "the", "beginning", "of", "the", "next", "turns", "upkeep"]
+            | [
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "turns",
+                "upkeep"
+            ]
     ) {
         return Some(DelayedReturnTimingAst::NextUpkeep(PlayerAst::Any));
     }
@@ -1309,7 +1322,9 @@ pub(crate) fn parse_draw_as_many_cards_value(tokens: &[Token]) -> Option<Value> 
     None
 }
 
-pub(crate) fn parse_draw_card_prefixed_count_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
+pub(crate) fn parse_draw_card_prefixed_count_value(
+    tokens: &[Token],
+) -> Result<Option<Value>, CardTextError> {
     if tokens.is_empty() {
         return Ok(None);
     }
@@ -1504,7 +1519,9 @@ fn parse_counter_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextEr
     parse_target_phrase(tokens)
 }
 
-fn parse_counter_ability_target_phrase(tokens: &[Token]) -> Result<Option<TargetAst>, CardTextError> {
+fn parse_counter_ability_target_phrase(
+    tokens: &[Token],
+) -> Result<Option<TargetAst>, CardTextError> {
     let clause_tokens = trim_commas(tokens);
     let clause_words = words(&clause_tokens);
     if !clause_words.contains(&"ability")
@@ -1515,8 +1532,12 @@ fn parse_counter_ability_target_phrase(tokens: &[Token]) -> Result<Option<Target
 
     let mut idx = 0usize;
     let mut target_count: Option<ChoiceCount> = None;
-    if clause_tokens.get(idx).is_some_and(|token| token.is_word("up"))
-        && clause_tokens.get(idx + 1).is_some_and(|token| token.is_word("to"))
+    if clause_tokens
+        .get(idx)
+        .is_some_and(|token| token.is_word("up"))
+        && clause_tokens
+            .get(idx + 1)
+            .is_some_and(|token| token.is_word("to"))
         && let Some((count, used)) = parse_number(&clause_tokens[idx + 2..])
     {
         target_count = Some(ChoiceCount::up_to(count as usize));
@@ -1599,7 +1620,10 @@ fn parse_counter_ability_target_phrase(tokens: &[Token]) -> Result<Option<Target
                 .get(idx + 3)
                 .is_some_and(|token| token.is_word("ability"))
         {
-            term_filters.push((ObjectFilter::activated_ability(), CounterTargetTerm::Ability));
+            term_filters.push((
+                ObjectFilter::activated_ability(),
+                CounterTargetTerm::Ability,
+            ));
             let mut triggered = ObjectFilter::ability();
             triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
             term_filters.push((triggered, CounterTargetTerm::Ability));
@@ -1621,7 +1645,10 @@ fn parse_counter_ability_target_phrase(tokens: &[Token]) -> Result<Option<Target
             let mut triggered = ObjectFilter::ability();
             triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
             term_filters.push((triggered, CounterTargetTerm::Ability));
-            term_filters.push((ObjectFilter::activated_ability(), CounterTargetTerm::Ability));
+            term_filters.push((
+                ObjectFilter::activated_ability(),
+                CounterTargetTerm::Ability,
+            ));
             idx += 4;
             continue;
         }
@@ -1631,7 +1658,10 @@ fn parse_counter_ability_target_phrase(tokens: &[Token]) -> Result<Option<Target
                 .get(idx + 1)
                 .is_some_and(|token| token.is_word("ability"))
         {
-            term_filters.push((ObjectFilter::activated_ability(), CounterTargetTerm::Ability));
+            term_filters.push((
+                ObjectFilter::activated_ability(),
+                CounterTargetTerm::Ability,
+            ));
             idx += 2;
             continue;
         }
@@ -1758,11 +1788,8 @@ fn parse_counter_ability_target_phrase(tokens: &[Token]) -> Result<Option<Target
                     idx += 1;
                     continue;
                 }
-                let parsed = parse_card_type(type_word).or_else(|| {
-                    type_word
-                        .strip_suffix('s')
-                        .and_then(parse_card_type)
-                });
+                let parsed = parse_card_type(type_word)
+                    .or_else(|| type_word.strip_suffix('s').and_then(parse_card_type));
                 let Some(card_type) = parsed else {
                     return Ok(None);
                 };
@@ -1888,7 +1915,10 @@ pub(crate) fn parse_counter_unless_additional_generic_value(
     Ok(Some(scale_value_multiplier(dynamic, multiplier)))
 }
 
-pub(crate) fn parse_reveal(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_reveal(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let player = match subject {
         Some(SubjectAst::Player(player)) => player,
         _ => PlayerAst::Implicit,
@@ -1933,8 +1963,8 @@ pub(crate) fn parse_reveal(tokens: &[Token], subject: Option<SubjectAst>) -> Res
             tag: TagKey::from(IT_TAG),
         });
     }
-    let reveals_card_this_way = (words.contains(&"card") || words.contains(&"cards"))
-        && words.ends_with(&["this", "way"]);
+    let reveals_card_this_way =
+        (words.contains(&"card") || words.contains(&"cards")) && words.ends_with(&["this", "way"]);
     if reveals_card_this_way {
         return Ok(EffectAst::RevealTagged {
             tag: TagKey::from(IT_TAG),
@@ -1965,8 +1995,8 @@ pub(crate) fn parse_reveal(tokens: &[Token], subject: Option<SubjectAst>) -> Res
 
     let has_card = words.contains(&"card") || words.contains(&"cards");
     let has_library = words.contains(&"library") || words.contains(&"libraries");
-    let explicit_top_card = words.as_slice() == ["top", "card"]
-        || words.as_slice() == ["the", "top", "card"];
+    let explicit_top_card =
+        words.as_slice() == ["top", "card"] || words.as_slice() == ["the", "top", "card"];
 
     if !has_card || (!has_library && !explicit_top_card) {
         return Err(CardTextError::ParseError(format!(
@@ -1978,7 +2008,10 @@ pub(crate) fn parse_reveal(tokens: &[Token], subject: Option<SubjectAst>) -> Res
     Ok(EffectAst::RevealTop { player })
 }
 
-pub(crate) fn parse_life_amount(tokens: &[Token], amount_kind: &str) -> Result<(Value, usize), CardTextError> {
+pub(crate) fn parse_life_amount(
+    tokens: &[Token],
+    amount_kind: &str,
+) -> Result<(Value, usize), CardTextError> {
     let clause_words = words(tokens);
     if clause_words == ["that", "much", "life"] {
         // "that much life" binds to the triggering event amount.
@@ -2015,7 +2048,9 @@ pub(crate) fn parse_life_equal_to_value(tokens: &[Token]) -> Result<Option<Value
         amount_words.as_slice(),
         ["equal", "to", "the", "life", "lost", "this", "way"]
             | ["equal", "to", "life", "lost", "this", "way"]
-            | ["equal", "to", "the", "amount", "of", "life", "lost", "this", "way"]
+            | [
+                "equal", "to", "the", "amount", "of", "life", "lost", "this", "way"
+            ]
             | ["equal", "to", "amount", "of", "life", "lost", "this", "way"]
     ) {
         return Ok(Some(Value::EventValue(EventValueSpec::LifeAmount)));
@@ -2325,7 +2360,9 @@ pub(crate) fn parse_gain_control(
     }
 }
 
-pub(crate) fn parse_control_duration(tokens: &[Token]) -> Result<ControlDurationAst, CardTextError> {
+pub(crate) fn parse_control_duration(
+    tokens: &[Token],
+) -> Result<ControlDurationAst, CardTextError> {
     if tokens.is_empty() {
         return Ok(ControlDurationAst::Forever);
     }
@@ -2547,10 +2584,17 @@ pub(crate) fn parse_put_into_hand(
     // "Put onto the battlefield under your control all creature cards ..."
     if tokens.first().is_some_and(|token| token.is_word("onto")) {
         let mut idx = 1usize;
-        while tokens.get(idx).and_then(Token::as_word).is_some_and(is_article) {
+        while tokens
+            .get(idx)
+            .and_then(Token::as_word)
+            .is_some_and(is_article)
+        {
             idx += 1;
         }
-        if !tokens.get(idx).is_some_and(|token| token.is_word("battlefield")) {
+        if !tokens
+            .get(idx)
+            .is_some_and(|token| token.is_word("battlefield"))
+        {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
                 clause_words.join(" ")
@@ -2613,7 +2657,10 @@ pub(crate) fn parse_put_into_hand(
             } else if after_to.len() >= 2
                 && after_to[0].is_word("that")
                 && after_to[1].as_word().is_some_and(|word| {
-                    matches!(word, "creature" | "permanent" | "object" | "aura" | "equipment")
+                    matches!(
+                        word,
+                        "creature" | "permanent" | "object" | "aura" | "equipment"
+                    )
                 })
             {
                 2usize

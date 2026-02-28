@@ -191,6 +191,37 @@ impl StaticAbilityKind for DoesntUntap {
     }
 }
 
+/// "You may choose not to untap ... during your untap step."
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MayChooseNotToUntapDuringUntapStep {
+    pub subject: String,
+}
+
+impl MayChooseNotToUntapDuringUntapStep {
+    pub fn new(subject: impl Into<String>) -> Self {
+        Self {
+            subject: subject.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for MayChooseNotToUntapDuringUntapStep {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MayChooseNotToUntapDuringUntapStep
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "You may choose not to untap {} during your untap step",
+            self.subject
+        )
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+}
+
 /// Enters the battlefield tapped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EntersTapped;
@@ -1452,8 +1483,8 @@ impl StaticAbilityKind for EnterTappedForFilter {
             && filter.tagged_constraints.is_empty()
             && filter.targets_object.is_none()
             && filter.targets_player.is_none()
-            && filter.custom_static_markers.is_empty()
-            && filter.excluded_custom_static_markers.is_empty()
+            && filter.ability_markers.is_empty()
+            && filter.excluded_ability_markers.is_empty()
             && !filter.noncommander;
 
         let has_all_permanent_types = {
@@ -2311,32 +2342,90 @@ impl StaticAbilityKind for PayLifeOrEnterTappedReplacement {
 }
 
 // =============================================================================
-// Custom Abilities
+// Placeholder / Marker Abilities
 // =============================================================================
 
-/// Custom static ability with a unique ID.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Custom {
-    pub custom_id: &'static str,
-    pub description: String,
+/// Non-semantic keyword-like marker preserved by parser/builder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeywordMarker {
+    pub marker: String,
 }
 
-impl Custom {
-    pub fn new(id: &'static str, description: String) -> Self {
+impl KeywordMarker {
+    pub fn new(marker: impl Into<String>) -> Self {
         Self {
-            custom_id: id,
-            description,
+            marker: marker.into(),
         }
     }
 }
 
-impl StaticAbilityKind for Custom {
+impl StaticAbilityKind for KeywordMarker {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::Custom
+        StaticAbilityId::KeywordMarker
     }
 
     fn display(&self) -> String {
-        self.description.clone()
+        self.marker.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+}
+
+/// Non-semantic static rule text placeholder preserved by parser/builder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleTextPlaceholder {
+    pub text: String,
+}
+
+impl RuleTextPlaceholder {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl StaticAbilityKind for RuleTextPlaceholder {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::RuleTextPlaceholder
+    }
+
+    fn display(&self) -> String {
+        self.text.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+}
+
+/// Parser fallback marker used in allow-unsupported mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedParserLine {
+    pub raw_line: String,
+    pub reason: String,
+}
+
+impl UnsupportedParserLine {
+    pub fn new(raw_line: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            raw_line: raw_line.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for UnsupportedParserLine {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::UnsupportedParserLine
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Unsupported parser line fallback: {} ({})",
+            self.raw_line.trim(),
+            self.reason
+        )
     }
 
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -2361,6 +2450,19 @@ mod tests {
         let ability = DoesntUntap;
         assert_eq!(ability.id(), StaticAbilityId::DoesntUntap);
         assert!(ability.affects_untap());
+    }
+
+    #[test]
+    fn test_may_choose_not_to_untap_during_untap_step() {
+        let ability = MayChooseNotToUntapDuringUntapStep::new("this artifact");
+        assert_eq!(
+            ability.id(),
+            StaticAbilityId::MayChooseNotToUntapDuringUntapStep
+        );
+        assert_eq!(
+            ability.display(),
+            "You may choose not to untap this artifact during your untap step"
+        );
     }
 
     #[test]
@@ -2442,7 +2544,8 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 
-        let ability = MaximumHandSizeSevenMinusYourGraveyardCardTypes::new(PlayerFilter::Opponent, 4);
+        let ability =
+            MaximumHandSizeSevenMinusYourGraveyardCardTypes::new(PlayerFilter::Opponent, 4);
         let source = ObjectId::from_raw(900);
 
         for (idx, card_type) in [
@@ -2509,10 +2612,27 @@ mod tests {
     }
 
     #[test]
-    fn test_custom() {
-        let ability = Custom::new("test_ability", "Test description".to_string());
-        assert_eq!(ability.id(), StaticAbilityId::Custom);
-        assert_eq!(ability.display(), "Test description");
+    fn test_keyword_marker() {
+        let ability = KeywordMarker::new("test marker");
+        assert_eq!(ability.id(), StaticAbilityId::KeywordMarker);
+        assert_eq!(ability.display(), "test marker");
+    }
+
+    #[test]
+    fn test_rule_text_placeholder() {
+        let ability = RuleTextPlaceholder::new("Test rule text.");
+        assert_eq!(ability.id(), StaticAbilityId::RuleTextPlaceholder);
+        assert_eq!(ability.display(), "Test rule text.");
+    }
+
+    #[test]
+    fn test_unsupported_parser_line() {
+        let ability = UnsupportedParserLine::new("Some unsupported line.", "ParseError(\"mock\")");
+        assert_eq!(ability.id(), StaticAbilityId::UnsupportedParserLine);
+        assert_eq!(
+            ability.display(),
+            "Unsupported parser line fallback: Some unsupported line. (ParseError(\"mock\"))"
+        );
     }
 
     #[test]

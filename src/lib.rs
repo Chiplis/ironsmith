@@ -163,8 +163,9 @@ pub use triggers::{
 pub use turn::{
     PriorityResult, PriorityTracker, TurnError, advance_phase, advance_step,
     current_phase_description, execute_cleanup_step, execute_draw_step, execute_untap_step,
-    first_step_of_phase, has_priority, is_combat_phase, is_main_phase, is_no_priority_step,
-    is_sorcery_timing, next_phase, next_step, pass_priority, priority_holder, reset_priority,
+    execute_untap_step_with, first_step_of_phase, has_priority, is_combat_phase, is_main_phase,
+    is_no_priority_step, is_sorcery_timing, next_phase, next_step, pass_priority, priority_holder,
+    reset_priority,
 };
 pub use turn_runner::{TurnAction, TurnRunner, TurnState as TurnRunnerState};
 

@@ -7,7 +7,9 @@ fn grants_protection_from_everything(ability: &StaticAbility) -> bool {
     )
 }
 
-pub(crate) fn parse_simple_ability_duration(words_after_verb: &[&str]) -> Option<(usize, usize, Until)> {
+pub(crate) fn parse_simple_ability_duration(
+    words_after_verb: &[&str],
+) -> Option<(usize, usize, Until)> {
     if let Some(idx) = words_after_verb
         .windows(4)
         .position(|window| window == ["until", "end", "of", "turn"])
@@ -38,11 +40,15 @@ pub(crate) fn parse_simple_ability_duration(words_after_verb: &[&str]) -> Option
     None
 }
 
-pub(crate) fn parse_simple_gain_ability_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_simple_gain_ability_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     parse_simple_ability_modifier_clause(tokens, false)
 }
 
-pub(crate) fn parse_simple_lose_ability_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_simple_lose_ability_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     parse_simple_ability_modifier_clause(tokens, true)
 }
 
@@ -143,8 +149,8 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     }
 
     let subject_words = words(&subject_tokens);
-    let is_pronoun_subject = implied_it_subject
-        || matches!(subject_words.as_slice(), ["it"] | ["they"] | ["them"]);
+    let is_pronoun_subject =
+        implied_it_subject || matches!(subject_words.as_slice(), ["it"] | ["they"] | ["them"]);
     if is_pronoun_subject {
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens));
         if losing {
@@ -201,7 +207,9 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     }))
 }
 
-pub(crate) fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_gain_ability_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let word_list = words(tokens);
     let looks_like_can_attack_no_defender = word_list
         .windows(2)
@@ -515,10 +523,8 @@ pub(crate) fn parse_gain_ability_sentence(tokens: &[Token]) -> Result<Option<Vec
         let has_protection_from_everything =
             abilities.iter().any(grants_protection_from_everything);
         if has_protection_from_everything {
-            let player_target = TargetAst::Player(
-                PlayerFilter::You,
-                span_from_tokens(&real_subject_tokens),
-            );
+            let player_target =
+                TargetAst::Player(PlayerFilter::You, span_from_tokens(&real_subject_tokens));
             effects.push(EffectAst::Cant {
                 restriction: crate::effect::Restriction::be_targeted_player(PlayerFilter::You),
                 duration: duration.clone(),

@@ -115,7 +115,9 @@ impl TriggerMatcher for AttacksYouTrigger {
             } else if let Some(stripped) = subject.strip_prefix("an ") {
                 subject = stripped.to_string();
             }
-            return format!("Whenever one or more {subject} attack you or a planeswalker you control");
+            return format!(
+                "Whenever one or more {subject} attack you or a planeswalker you control"
+            );
         }
         format!(
             "Whenever {} attacks you or a planeswalker you control",

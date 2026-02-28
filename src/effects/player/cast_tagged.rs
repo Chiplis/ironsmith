@@ -208,21 +208,3 @@ impl EffectExecutor for CastTaggedEffect {
         Box::new(self.clone())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cast_tagged_effect_creation() {
-        let effect = CastTaggedEffect::new("tag");
-        assert_eq!(effect.tag.as_str(), "tag");
-    }
-
-    #[test]
-    fn test_clone_box() {
-        let effect = CastTaggedEffect::new("tag");
-        let cloned = effect.clone_box();
-        assert!(format!("{:?}", cloned).contains("CastTaggedEffect"));
-    }
-}

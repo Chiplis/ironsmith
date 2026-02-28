@@ -99,6 +99,7 @@ pub enum StaticAbilityId {
     MycosynthLattice,
     TophFirstMetalbender,
     MarvinMurderousMimic,
+    SoulbondSharedBonus,
     AttachedAbilityGrant,
     ControlAttachedPermanent,
     GrantObjectAbilityForFilter,
@@ -147,6 +148,7 @@ pub enum StaticAbilityId {
     PreventAllDamageToSelfByCreatures,
     PreventDamageToSelfRemoveCounter,
     DoesntUntap,
+    MayChooseNotToUntapDuringUntapStep,
     EntersTapped,
     EntersTappedUnlessControlTwoOrMoreOtherLands,
     EntersTappedUnlessControlTwoOrFewerOtherLands,
@@ -186,8 +188,14 @@ pub enum StaticAbilityId {
     /// Used by shock lands (Godless Shrine, etc.).
     PayLifeOrEnterTappedReplacement,
 
-    /// Custom ability with a unique string ID.
-    Custom,
+    /// Unimplemented keyword-like marker text preserved from parser/builder.
+    KeywordMarker,
+
+    /// Unimplemented static rule text preserved from parser/builder.
+    RuleTextPlaceholder,
+
+    /// Parser fallback marker for unsupported lines in allow-unsupported mode.
+    UnsupportedParserLine,
 
     /// Unified grant ability that grants abilities or alternative casting methods
     /// to cards matching a filter in a specific zone.

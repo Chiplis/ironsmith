@@ -44,7 +44,10 @@ impl EffectExecutor for RemoveFromCombatEffect {
             result_policy,
             |game, _ctx, object_id| {
                 let removed = if let Some(combat) = game.combat.as_mut() {
-                    let was_attacking = combat.attackers.iter().any(|info| info.creature == object_id);
+                    let was_attacking = combat
+                        .attackers
+                        .iter()
+                        .any(|info| info.creature == object_id);
                     if !was_attacking {
                         false
                     } else {
@@ -117,7 +120,8 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 
-        let attacker = game.create_object_from_card(&creature_card(1, "Attacker"), alice, Zone::Battlefield);
+        let attacker =
+            game.create_object_from_card(&creature_card(1, "Attacker"), alice, Zone::Battlefield);
         let mut combat = crate::combat_state::CombatState::default();
         combat.attackers.push(AttackerInfo {
             creature: attacker,
@@ -133,7 +137,9 @@ mod tests {
 
         let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
         let effect = RemoveFromCombatEffect::with_spec(ChooseSpec::SpecificObject(attacker));
-        let outcome = effect.execute(&mut game, &mut ctx).expect("effect should resolve");
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
         assert_eq!(outcome.result, EffectResult::Count(1));
         assert!(
             !is_attacking(game.combat.as_ref().expect("combat"), attacker),
@@ -146,14 +152,19 @@ mod tests {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
 
-        let creature =
-            game.create_object_from_card(&creature_card(2, "Idle Creature"), alice, Zone::Battlefield);
+        let creature = game.create_object_from_card(
+            &creature_card(2, "Idle Creature"),
+            alice,
+            Zone::Battlefield,
+        );
         game.combat = Some(crate::combat_state::CombatState::default());
 
         let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
             .with_targets(vec![ResolvedTarget::Object(creature)]);
         let effect = RemoveFromCombatEffect::target(ChooseSpec::creature());
-        let outcome = effect.execute(&mut game, &mut ctx).expect("effect should resolve");
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
         assert_eq!(outcome.result, EffectResult::Resolved);
     }
 }

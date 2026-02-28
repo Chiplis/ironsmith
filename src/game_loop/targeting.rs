@@ -637,6 +637,10 @@ pub fn player_matches_filter_with_combat(
             // Target filters are resolved through targeting, not direct matching
             true
         }
+        PlayerFilter::Excluding { base, excluded } => {
+            player_matches_filter_with_combat(player_id, base, game, controller, combat)
+                && !player_matches_filter_with_combat(player_id, excluded, game, controller, combat)
+        }
         PlayerFilter::ControllerOf(_) | PlayerFilter::OwnerOf(_) => {
             // These require object resolution, not applicable for simple player matching
             false
@@ -837,4 +841,3 @@ fn validate_stack_entry_targets(
     let all_invalid = invalid_count == entry.targets.len();
     (valid_targets, all_invalid)
 }
-

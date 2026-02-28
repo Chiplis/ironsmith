@@ -108,9 +108,15 @@ mod tests {
         let source = create_creature(&mut game, "Source", alice);
         let target = create_creature(&mut game, "Target", bob);
 
-        let trigger = DealsDamageToTrigger::combat_only(ObjectFilter::creature(), ObjectFilter::creature());
+        let trigger =
+            DealsDamageToTrigger::combat_only(ObjectFilter::creature(), ObjectFilter::creature());
         let ctx = TriggerContext::for_source(source, alice, &game);
-        let event = TriggerEvent::new(DamageEvent::new(source, DamageTarget::Object(target), 2, true));
+        let event = TriggerEvent::new(DamageEvent::new(
+            source,
+            DamageTarget::Object(target),
+            2,
+            true,
+        ));
 
         assert!(trigger.matches(&event, &ctx));
     }
@@ -123,9 +129,15 @@ mod tests {
         let source = create_creature(&mut game, "Source", alice);
         let target = create_creature(&mut game, "Target", bob);
 
-        let trigger = DealsDamageToTrigger::combat_only(ObjectFilter::creature(), ObjectFilter::creature());
+        let trigger =
+            DealsDamageToTrigger::combat_only(ObjectFilter::creature(), ObjectFilter::creature());
         let ctx = TriggerContext::for_source(source, alice, &game);
-        let event = TriggerEvent::new(DamageEvent::new(source, DamageTarget::Object(target), 2, false));
+        let event = TriggerEvent::new(DamageEvent::new(
+            source,
+            DamageTarget::Object(target),
+            2,
+            false,
+        ));
 
         assert!(!trigger.matches(&event, &ctx));
     }

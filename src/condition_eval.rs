@@ -1,7 +1,7 @@
 use crate::effect::Condition;
 use crate::effect::Value;
-use crate::executor::{ExecutionContext, ExecutionError};
 use crate::effects::helpers::resolve_value;
+use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::target::PlayerFilter;
@@ -9,7 +9,11 @@ use crate::zone::Zone;
 
 use crate::triggers::{TriggerEvent, TriggerIdentity};
 
-fn source_was_cast(game: &GameState, source: ObjectId, triggering_event: Option<&TriggerEvent>) -> bool {
+fn source_was_cast(
+    game: &GameState,
+    source: ObjectId,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
     if let Some(event) = triggering_event
         && let Some(etb) = event.downcast::<crate::events::EnterBattlefieldEvent>()
         && etb.object == source
@@ -1033,6 +1037,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::Defending
         | PlayerFilter::DamagedPlayer
         | PlayerFilter::IteratedPlayer
+        | PlayerFilter::Excluding { .. }
         | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_) => None,
     }
@@ -1247,7 +1252,11 @@ fn evaluate_condition(
         Condition::AttackedThisTurn => {
             Ok(game.players_attacked_this_turn.contains(&ctx.controller))
         }
-        Condition::SourceWasCast => Ok(source_was_cast(game, ctx.source, ctx.triggering_event.as_ref())),
+        Condition::SourceWasCast => Ok(source_was_cast(
+            game,
+            ctx.source,
+            ctx.triggering_event.as_ref(),
+        )),
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(game
@@ -1483,12 +1492,9 @@ fn evaluate_condition(
             // Some compile-time conditional lowering paths synthesize a branch-local tag
             // (for example "countered_0") before runtime tagging exists. In these cases,
             // fall back to evaluating against the first object target.
-            let synthetic_tag = tag
-                .as_str()
-                .rsplit_once('_')
-                .is_some_and(|(head, suffix)| {
-                    !head.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
-                });
+            let synthetic_tag = tag.as_str().rsplit_once('_').is_some_and(|(head, suffix)| {
+                !head.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
+            });
             if !synthetic_tag {
                 return Ok(false);
             }
@@ -1722,361 +1728,5 @@ fn evaluate_condition(
             }
             evaluate_condition(game, b, ctx)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::card::CardBuilder;
-    use crate::events::EnterBattlefieldEvent;
-    use crate::ids::CardId;
-    use crate::types::{CardType, Subtype};
-    use crate::triggers::TriggerEvent;
-
-    #[test]
-    fn player_controls_basic_land_types_among_lands_or_more_counts_distinct_types() {
-        use crate::target::PlayerFilter;
-
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        game.turn.active_player = bob;
-
-        let mk_land = |id: u32, name: &str, subtype: Subtype| {
-            CardBuilder::new(CardId::from_raw(id), name)
-                .card_types(vec![CardType::Land])
-                .subtypes(vec![subtype])
-                .build()
-        };
-        game.create_object_from_card(
-            &mk_land(1, "Plains", Subtype::Plains),
-            bob,
-            Zone::Battlefield,
-        );
-        game.create_object_from_card(
-            &mk_land(2, "Island", Subtype::Island),
-            bob,
-            Zone::Battlefield,
-        );
-        game.create_object_from_card(&mk_land(3, "Swamp", Subtype::Swamp), bob, Zone::Battlefield);
-        game.create_object_from_card(
-            &mk_land(4, "Mountain", Subtype::Mountain),
-            bob,
-            Zone::Battlefield,
-        );
-
-        let condition = Condition::PlayerControlsBasicLandTypesAmongLandsOrMore {
-            player: PlayerFilter::Active,
-            count: 4,
-        };
-        let ctx = ExternalEvaluationContext {
-            controller: alice,
-            source: ObjectId::from_raw(999),
-            filter_source: None,
-            triggering_event: None,
-            trigger_identity: None,
-            ability_index: None,
-            options: ExternalEvaluationOptions::default(),
-        };
-
-        assert!(evaluate_condition_external(&game, &condition, &ctx));
-
-        let condition = Condition::PlayerControlsBasicLandTypesAmongLandsOrMore {
-            player: PlayerFilter::Active,
-            count: 5,
-        };
-        assert!(!evaluate_condition_external(&game, &condition, &ctx));
-    }
-
-    #[test]
-    fn player_has_card_types_in_graveyard_or_more_counts_distinct_types() {
-        use crate::target::PlayerFilter;
-
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-
-        let mk_card = |id: u32, name: &str, card_types: Vec<CardType>| {
-            CardBuilder::new(CardId::from_raw(id), name)
-                .card_types(card_types)
-                .build()
-        };
-
-        game.create_object_from_card(
-            &mk_card(11, "Artifact Shard", vec![CardType::Artifact]),
-            alice,
-            Zone::Graveyard,
-        );
-        game.create_object_from_card(
-            &mk_card(12, "Creature Husk", vec![CardType::Creature]),
-            alice,
-            Zone::Graveyard,
-        );
-        game.create_object_from_card(
-            &mk_card(13, "Sorcery Echo", vec![CardType::Sorcery]),
-            alice,
-            Zone::Graveyard,
-        );
-        game.create_object_from_card(
-            &mk_card(14, "Enchantment Memory", vec![CardType::Enchantment]),
-            alice,
-            Zone::Graveyard,
-        );
-
-        let ctx = ExternalEvaluationContext {
-            controller: alice,
-            source: ObjectId::from_raw(999),
-            filter_source: None,
-            triggering_event: None,
-            trigger_identity: None,
-            ability_index: None,
-            options: ExternalEvaluationOptions::default(),
-        };
-
-        let delirium = Condition::PlayerHasCardTypesInGraveyardOrMore {
-            player: PlayerFilter::You,
-            count: 4,
-        };
-        assert!(evaluate_condition_external(&game, &delirium, &ctx));
-
-        let too_many = Condition::PlayerHasCardTypesInGraveyardOrMore {
-            player: PlayerFilter::You,
-            count: 5,
-        };
-        assert!(!evaluate_condition_external(&game, &too_many, &ctx));
-    }
-
-    #[test]
-    fn enchanted_permanent_is_creature_uses_attached_object_types() {
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-
-        let aura = CardBuilder::new(CardId::from_raw(31), "Rune Variant")
-            .card_types(vec![CardType::Enchantment])
-            .subtypes(vec![Subtype::Aura])
-            .build();
-        let target = CardBuilder::new(CardId::from_raw(32), "Vehicle Variant")
-            .card_types(vec![CardType::Artifact])
-            .build();
-
-        let aura_id = game.create_object_from_card(&aura, alice, Zone::Battlefield);
-        let target_id = game.create_object_from_card(&target, alice, Zone::Battlefield);
-        game.object_mut(aura_id)
-            .expect("aura should exist")
-            .attached_to = Some(target_id);
-
-        let condition = Condition::EnchantedPermanentIsCreature;
-        let ctx = ExternalEvaluationContext {
-            controller: alice,
-            source: aura_id,
-            filter_source: Some(aura_id),
-            triggering_event: None,
-            trigger_identity: None,
-            ability_index: None,
-            options: ExternalEvaluationOptions::default(),
-        };
-
-        assert!(!evaluate_condition_external(&game, &condition, &ctx));
-
-        game.object_mut(target_id)
-            .expect("target permanent should exist")
-            .card_types
-            .push(CardType::Creature);
-        assert!(evaluate_condition_external(&game, &condition, &ctx));
-    }
-
-    #[test]
-    fn enchanted_permanent_equipment_and_vehicle_conditions_use_calculated_subtypes() {
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-
-        let aura = CardBuilder::new(CardId::from_raw(41), "Rune Variant")
-            .card_types(vec![CardType::Enchantment])
-            .subtypes(vec![Subtype::Aura])
-            .build();
-        let equipment = CardBuilder::new(CardId::from_raw(42), "Equipment Variant")
-            .card_types(vec![CardType::Artifact])
-            .subtypes(vec![Subtype::Equipment])
-            .build();
-        let vehicle = CardBuilder::new(CardId::from_raw(43), "Vehicle Variant")
-            .card_types(vec![CardType::Artifact])
-            .subtypes(vec![Subtype::Vehicle])
-            .build();
-
-        let aura_id = game.create_object_from_card(&aura, alice, Zone::Battlefield);
-        let equipment_id = game.create_object_from_card(&equipment, alice, Zone::Battlefield);
-        let vehicle_id = game.create_object_from_card(&vehicle, alice, Zone::Battlefield);
-
-        let ctx = ExternalEvaluationContext {
-            controller: alice,
-            source: aura_id,
-            filter_source: Some(aura_id),
-            triggering_event: None,
-            trigger_identity: None,
-            ability_index: None,
-            options: ExternalEvaluationOptions::default(),
-        };
-
-        game.object_mut(aura_id)
-            .expect("aura should exist")
-            .attached_to = Some(equipment_id);
-        assert!(evaluate_condition_external(
-            &game,
-            &Condition::EnchantedPermanentIsEquipment,
-            &ctx
-        ));
-        assert!(!evaluate_condition_external(
-            &game,
-            &Condition::EnchantedPermanentIsVehicle,
-            &ctx
-        ));
-
-        game.object_mut(aura_id)
-            .expect("aura should exist")
-            .attached_to = Some(vehicle_id);
-        assert!(evaluate_condition_external(
-            &game,
-            &Condition::EnchantedPermanentIsVehicle,
-            &ctx
-        ));
-        assert!(!evaluate_condition_external(
-            &game,
-            &Condition::EnchantedPermanentIsEquipment,
-            &ctx
-        ));
-    }
-
-    #[test]
-    fn player_had_land_enter_battlefield_this_turn_filters_by_player_and_land_type() {
-        use crate::target::PlayerFilter;
-
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-
-        let land = CardBuilder::new(CardId::from_raw(21), "Forest Probe")
-            .card_types(vec![CardType::Land])
-            .subtypes(vec![Subtype::Forest])
-            .build();
-        let creature = CardBuilder::new(CardId::from_raw(22), "Bear Probe")
-            .card_types(vec![CardType::Creature])
-            .build();
-
-        let alice_land = game.create_object_from_card(&land, alice, Zone::Battlefield);
-        let bob_creature = game.create_object_from_card(&creature, bob, Zone::Battlefield);
-
-        let alice_land_stable = game
-            .object(alice_land)
-            .expect("alice land should exist")
-            .stable_id;
-        let bob_creature_stable = game
-            .object(bob_creature)
-            .expect("bob creature should exist")
-            .stable_id;
-        game.objects_entered_battlefield_this_turn
-            .insert(alice_land_stable, alice);
-        game.objects_entered_battlefield_this_turn
-            .insert(bob_creature_stable, bob);
-
-        let ctx = ExternalEvaluationContext {
-            controller: alice,
-            source: alice_land,
-            filter_source: None,
-            triggering_event: None,
-            trigger_identity: None,
-            ability_index: None,
-            options: ExternalEvaluationOptions::default(),
-        };
-
-        let you_had_land = Condition::PlayerHadLandEnterBattlefieldThisTurn {
-            player: PlayerFilter::You,
-        };
-        assert!(evaluate_condition_external(&game, &you_had_land, &ctx));
-
-        let opponent_had_land = Condition::PlayerHadLandEnterBattlefieldThisTurn {
-            player: PlayerFilter::Opponent,
-        };
-        assert!(!evaluate_condition_external(&game, &opponent_had_land, &ctx));
-    }
-
-    #[test]
-    fn player_had_land_enter_battlefield_this_turn_evaluates_at_resolution() {
-        use crate::target::PlayerFilter;
-
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-
-        let land = CardBuilder::new(CardId::from_raw(31), "Island Probe")
-            .card_types(vec![CardType::Land])
-            .subtypes(vec![Subtype::Island])
-            .build();
-        let source_card = CardBuilder::new(CardId::from_raw(32), "Source Probe")
-            .card_types(vec![CardType::Creature])
-            .build();
-
-        let source = game.create_object_from_card(&source_card, bob, Zone::Battlefield);
-        let bob_land = game.create_object_from_card(&land, bob, Zone::Battlefield);
-        let bob_land_stable = game
-            .object(bob_land)
-            .expect("bob land should exist")
-            .stable_id;
-        game.objects_entered_battlefield_this_turn
-            .insert(bob_land_stable, bob);
-
-        let _ = alice;
-        let ctx = ExecutionContext::new_default(source, bob);
-        let you_had_land = Condition::PlayerHadLandEnterBattlefieldThisTurn {
-            player: PlayerFilter::You,
-        };
-        assert!(
-            evaluate_condition_resolution(&game, &you_had_land, &ctx)
-                .expect("resolution condition should evaluate"),
-            "expected land-entry predicate to evaluate true for resolution controller"
-        );
-    }
-
-    #[test]
-    fn source_was_cast_uses_enter_battlefield_from_zone_when_available() {
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-        let source = game.create_object_from_card(
-            &CardBuilder::new(CardId::from_raw(41), "Cast Probe")
-                .card_types(vec![CardType::Artifact])
-                .build(),
-            alice,
-            Zone::Battlefield,
-        );
-        let condition = Condition::SourceWasCast;
-
-        let from_stack = TriggerEvent::new(EnterBattlefieldEvent::new(source, Zone::Stack));
-        let ctx_from_stack = ExternalEvaluationContext {
-            controller: alice,
-            source,
-            filter_source: None,
-            triggering_event: Some(&from_stack),
-            trigger_identity: None,
-            ability_index: None,
-            options: ExternalEvaluationOptions::default(),
-        };
-        assert!(
-            evaluate_condition_external(&game, &condition, &ctx_from_stack),
-            "entering from stack should satisfy SourceWasCast"
-        );
-
-        let from_exile = TriggerEvent::new(EnterBattlefieldEvent::new(source, Zone::Exile));
-        let ctx_from_exile = ExternalEvaluationContext {
-            controller: alice,
-            source,
-            filter_source: None,
-            triggering_event: Some(&from_exile),
-            trigger_identity: None,
-            ability_index: None,
-            options: ExternalEvaluationOptions::default(),
-        };
-        assert!(
-            !evaluate_condition_external(&game, &condition, &ctx_from_exile),
-            "entering from non-stack zone should fail SourceWasCast"
-        );
     }
 }

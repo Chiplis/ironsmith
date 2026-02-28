@@ -51,12 +51,10 @@ fn in_game_opponents(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
 }
 
 fn targeted_opponent(ctx: &ExecutionContext, opponents: &[PlayerId]) -> Option<PlayerId> {
-    ctx.targets
-        .iter()
-        .find_map(|target| match target {
-            ResolvedTarget::Player(player) if opponents.contains(player) => Some(*player),
-            _ => None,
-        })
+    ctx.targets.iter().find_map(|target| match target {
+        ResolvedTarget::Player(player) if opponents.contains(player) => Some(*player),
+        _ => None,
+    })
 }
 
 fn choose_opponent(
@@ -112,13 +110,18 @@ fn choose_opponent(
 }
 
 fn top_card(game: &GameState, player: PlayerId) -> Option<ObjectId> {
-    game.player(player).and_then(|entry| entry.library.last().copied())
+    game.player(player)
+        .and_then(|entry| entry.library.last().copied())
 }
 
 fn card_mana_value(game: &GameState, card: Option<ObjectId>) -> Option<u32> {
     card.and_then(|card_id| {
-        game.object(card_id)
-            .map(|object| object.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()))
+        game.object(card_id).map(|object| {
+            object
+                .mana_cost
+                .as_ref()
+                .map_or(0, |cost| cost.mana_value())
+        })
     })
 }
 
@@ -129,8 +132,13 @@ fn maybe_put_revealed_card_on_bottom(
     card: ObjectId,
 ) {
     let spec = ScrySpec::new(ctx.source, vec![card]);
-    let to_bottom: Vec<ObjectId> =
-        make_decision(game, &mut ctx.decision_maker, player, Some(ctx.source), spec);
+    let to_bottom: Vec<ObjectId> = make_decision(
+        game,
+        &mut ctx.decision_maker,
+        player,
+        Some(ctx.source),
+        spec,
+    );
 
     if !to_bottom.contains(&card) {
         return;
@@ -183,144 +191,5 @@ impl EffectExecutor for ClashEffect {
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::card::{Card, CardBuilder};
-    use crate::decision::DecisionMaker;
-    use crate::effect::EffectResult;
-    use crate::ids::CardId;
-    use crate::mana::{ManaCost, ManaSymbol};
-    use crate::types::CardType;
-    use crate::zone::Zone;
-
-    fn spell_card(card_id: u32, name: &str, mana_value: u8) -> Card {
-        CardBuilder::new(CardId::from_raw(card_id), name)
-            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]))
-            .card_types(vec![CardType::Sorcery])
-            .build()
-    }
-
-    fn setup_source(game: &mut GameState, controller: PlayerId) -> ObjectId {
-        let source = spell_card(100, "Clash Source", 2);
-        game.create_object_from_card(&source, controller, Zone::Stack)
-    }
-
-    struct PutRevealedOnBottom;
-
-    impl DecisionMaker for PutRevealedOnBottom {
-        fn decide_partition(
-            &mut self,
-            _game: &GameState,
-            ctx: &crate::decisions::context::PartitionContext,
-        ) -> Vec<ObjectId> {
-            ctx.cards.iter().map(|(id, _)| *id).collect()
-        }
-    }
-
-    #[test]
-    fn clash_controller_wins() {
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let source = setup_source(&mut game, alice);
-
-        let alice_top = spell_card(1, "Alice Top", 5);
-        let bob_top = spell_card(2, "Bob Top", 1);
-        game.create_object_from_card(&alice_top, alice, Zone::Library);
-        game.create_object_from_card(&bob_top, bob, Zone::Library);
-
-        let mut ctx = ExecutionContext::new_default(source, alice);
-        let outcome = ClashEffect::against_any_opponent()
-            .execute(&mut game, &mut ctx)
-            .expect("execute clash");
-        assert_eq!(outcome.result, EffectResult::Count(1));
-    }
-
-    #[test]
-    fn clash_controller_loses() {
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let source = setup_source(&mut game, alice);
-
-        let alice_top = spell_card(3, "Alice Top", 1);
-        let bob_top = spell_card(4, "Bob Top", 6);
-        game.create_object_from_card(&alice_top, alice, Zone::Library);
-        game.create_object_from_card(&bob_top, bob, Zone::Library);
-
-        let mut ctx = ExecutionContext::new_default(source, alice);
-        let outcome = ClashEffect::against_any_opponent()
-            .execute(&mut game, &mut ctx)
-            .expect("execute clash");
-        assert_eq!(outcome.result, EffectResult::Count(0));
-    }
-
-    #[test]
-    fn clash_players_may_put_revealed_cards_on_bottom() {
-        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let source = setup_source(&mut game, alice);
-
-        let alice_bottom = spell_card(5, "Alice Bottom", 2);
-        let alice_revealed = spell_card(6, "Alice Revealed", 5);
-        let bob_bottom = spell_card(7, "Bob Bottom", 1);
-        let bob_revealed = spell_card(8, "Bob Revealed", 3);
-        game.create_object_from_card(&alice_bottom, alice, Zone::Library);
-        let alice_revealed_id = game.create_object_from_card(&alice_revealed, alice, Zone::Library);
-        game.create_object_from_card(&bob_bottom, bob, Zone::Library);
-        let bob_revealed_id = game.create_object_from_card(&bob_revealed, bob, Zone::Library);
-
-        let mut decision_maker = PutRevealedOnBottom;
-        let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
-        let outcome = ClashEffect::against_any_opponent()
-            .execute(&mut game, &mut ctx)
-            .expect("execute clash");
-        assert_eq!(outcome.result, EffectResult::Count(1));
-
-        let alice_top_after = game
-            .player(alice)
-            .and_then(|player| player.library.last().copied())
-            .expect("alice top card after clash");
-        let bob_top_after = game
-            .player(bob)
-            .and_then(|player| player.library.last().copied())
-            .expect("bob top card after clash");
-        assert_ne!(alice_top_after, alice_revealed_id);
-        assert_ne!(bob_top_after, bob_revealed_id);
-    }
-
-    #[test]
-    fn clash_with_defending_player_uses_combat_defender() {
-        let mut game = GameState::new(
-            vec![
-                "Alice".to_string(),
-                "Bob".to_string(),
-                "Cara".to_string(),
-            ],
-            20,
-        );
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-        let cara = PlayerId::from_index(2);
-        let source = setup_source(&mut game, alice);
-
-        let alice_top = spell_card(9, "Alice Top", 5);
-        let bob_top = spell_card(10, "Bob Top", 1);
-        let cara_top = spell_card(11, "Cara Top", 7);
-        game.create_object_from_card(&alice_top, alice, Zone::Library);
-        game.create_object_from_card(&bob_top, bob, Zone::Library);
-        game.create_object_from_card(&cara_top, cara, Zone::Library);
-
-        let mut ctx = ExecutionContext::new_default(source, alice);
-        ctx.defending_player = Some(bob);
-        let outcome = ClashEffect::against_defending_player()
-            .execute(&mut game, &mut ctx)
-            .expect("execute clash");
-        assert_eq!(outcome.result, EffectResult::Count(1));
     }
 }

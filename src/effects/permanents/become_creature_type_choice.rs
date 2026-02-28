@@ -314,7 +314,8 @@ mod tests {
         let alice = PlayerId::from_index(0);
 
         let creature_def = grizzly_bears();
-        let creature_id = game.create_object_from_definition(&creature_def, alice, Zone::Battlefield);
+        let creature_id =
+            game.create_object_from_definition(&creature_def, alice, Zone::Battlefield);
 
         let source = game.new_object_id();
         let mut dm = ChooseZombieDm;

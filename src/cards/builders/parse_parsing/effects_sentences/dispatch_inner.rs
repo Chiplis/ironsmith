@@ -90,7 +90,9 @@ pub(crate) fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, 
     Ok(effects)
 }
 
-pub(crate) fn parse_effect_sentence_inner(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
+pub(crate) fn parse_effect_sentence_inner(
+    tokens: &[Token],
+) -> Result<Vec<EffectAst>, CardTextError> {
     parser_trace("parse_effect_sentence:entry", tokens);
     let sentence_words = words(tokens);
     if let Some(effects) = parse_redirect_next_damage_sentence(tokens)? {
@@ -891,7 +893,22 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             words(tokens).join(" ")
         )));
     }
-    let trigger = parse_trigger_clause(&trigger_core_tokens)?;
+    let trigger_core_words = words(&trigger_core_tokens);
+    let trigger = if matches!(
+        trigger_core_words.as_slice(),
+        ["that", "creature", "is", "dealt", "damage"]
+            | ["that", "permanent", "is", "dealt", "damage"]
+    ) {
+        let mut filter = if trigger_core_words[1] == "creature" {
+            ObjectFilter::creature()
+        } else {
+            ObjectFilter::permanent()
+        };
+        filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+        TriggerSpec::IsDealtDamage(filter)
+    } else {
+        parse_trigger_clause(&trigger_core_tokens)?
+    };
     if matches!(trigger, TriggerSpec::Custom(_)) {
         return Err(CardTextError::ParseError(format!(
             "unsupported delayed trigger clause (clause: '{}')",
@@ -1294,29 +1311,31 @@ pub(crate) fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> Obj
             merged.excluded_static_abilities.push(*ability_id);
         }
     }
-    for marker in &specific.custom_static_markers {
+    for marker in &specific.ability_markers {
         if !merged
-            .custom_static_markers
+            .ability_markers
             .iter()
             .any(|value| value.eq_ignore_ascii_case(marker))
         {
-            merged.custom_static_markers.push(marker.clone());
+            merged.ability_markers.push(marker.clone());
         }
     }
-    for marker in &specific.excluded_custom_static_markers {
+    for marker in &specific.excluded_ability_markers {
         if !merged
-            .excluded_custom_static_markers
+            .excluded_ability_markers
             .iter()
             .any(|value| value.eq_ignore_ascii_case(marker))
         {
-            merged.excluded_custom_static_markers.push(marker.clone());
+            merged.excluded_ability_markers.push(marker.clone());
         }
     }
 
     merged
 }
 
-pub(crate) fn parse_monstrosity_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_monstrosity_sentence(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = words(tokens);
     if words.first().copied() != Some("monstrosity") {
         return Ok(None);
@@ -1442,7 +1461,9 @@ pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[Token]) -> bool
         || words[at_idx + 1..] == ["the", "end", "of", "combat"]
 }
 
-pub(crate) fn parse_take_extra_turn_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_take_extra_turn_sentence(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = words(tokens);
     if words.as_slice() == ["take", "an", "extra", "turn", "after", "this", "one"] {
         return Ok(Some(EffectAst::ExtraTurnAfterTurn {
@@ -1549,7 +1570,9 @@ pub(crate) fn strip_same_controller_reference(tokens: &[Token]) -> (Vec<Token>, 
     (cleaned, same_controller)
 }
 
-pub(crate) fn parse_same_name_fanout_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>, CardTextError> {
+pub(crate) fn parse_same_name_fanout_filter(
+    tokens: &[Token],
+) -> Result<Option<ObjectFilter>, CardTextError> {
     let Some((same_start, same_end)) = find_same_name_reference_span(tokens)? else {
         return Ok(None);
     };
@@ -2154,7 +2177,9 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
             return Ok(None);
         };
         if let EffectAst::GrantAbilitiesToTarget {
-            abilities, duration, ..
+            abilities,
+            duration,
+            ..
         } = first_effect
         {
             return Ok(Some(vec![
@@ -2517,7 +2542,9 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_look_at_hand_sentence(tokens: &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+pub(crate) fn parse_look_at_hand_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = words(tokens);
     if words.as_slice() == ["look", "at", "target", "players", "hand"]
         || words.as_slice() == ["look", "at", "target", "player", "hand"]
@@ -2756,7 +2783,9 @@ pub(crate) fn parse_double_target_power_sentence(
     }]))
 }
 
-pub(crate) fn parse_prevent_damage_sentence(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_prevent_damage_sentence(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = words(tokens);
     let prefix = ["prevent", "all", "combat", "damage"];
     if !words.starts_with(&prefix) {

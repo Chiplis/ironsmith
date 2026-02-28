@@ -169,7 +169,9 @@ pub(crate) fn is_mana_trigger_additional_clause_words(words: &[&str]) -> bool {
     has_whenever && has_tap && has_for_mana && has_add && has_additional
 }
 
-pub(crate) fn parse_has_base_power_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_has_base_power_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words_all = words(tokens);
     let Some(has_idx) = words_all
         .iter()
@@ -336,7 +338,9 @@ pub(crate) fn parse_has_base_power_toughness_clause(
     }))
 }
 
-pub(crate) fn parse_get_for_each_count_value(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
+pub(crate) fn parse_get_for_each_count_value(
+    tokens: &[Token],
+) -> Result<Option<Value>, CardTextError> {
     let mut for_each_idx = None;
     for idx in 0..tokens.len().saturating_sub(1) {
         if tokens[idx].is_word("for") && tokens[idx + 1].is_word("each") {
@@ -501,11 +505,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
             condition,
         ));
     }
-    if tail_words
-        == [
-            "and", "must", "be", "blocked", "this", "turn", "if", "able",
-        ]
-    {
+    if tail_words == ["and", "must", "be", "blocked", "this", "turn", "if", "able"] {
         return Ok((out_power, out_toughness, duration, condition));
     }
     if tail_words == ["and", "cant", "be", "blocked", "this", "turn"] {
@@ -562,6 +562,7 @@ pub(crate) fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
             | EffectAst::MayByTaggedController { effects, .. }
             | EffectAst::IfResult { effects, .. }
             | EffectAst::ForEachOpponent { effects }
+            | EffectAst::ForEachPlayersFiltered { effects, .. }
             | EffectAst::ForEachPlayer { effects }
             | EffectAst::ForEachTargetPlayers { effects, .. }
             | EffectAst::ForEachObject { effects, .. }
@@ -597,7 +598,9 @@ pub(crate) fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
     }
 }
 
-pub(crate) fn parse_for_each_opponent_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_for_each_opponent_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
     let mut clause_words = words(clause_tokens);
     if clause_words.first().copied() == Some("then") {
@@ -620,8 +623,25 @@ pub(crate) fn parse_for_each_opponent_clause(tokens: &[Token]) -> Result<Option<
         return Ok(None);
     };
 
-    let inner_tokens = trim_commas(&clause_tokens[start..]);
-    let inner_words = words(&inner_tokens);
+    let mut inner_tokens = trim_commas(&clause_tokens[start..]).to_vec();
+    let mut inner_words = words(&inner_tokens);
+    let mut iteration_filter = PlayerFilter::Opponent;
+    if inner_words.starts_with(&["other", "than", "defending", "player"]) {
+        let strip_start = token_index_for_word_index(&inner_tokens, 4).unwrap_or(inner_tokens.len());
+        inner_tokens = trim_commas(&inner_tokens[strip_start..]).to_vec();
+        inner_words = words(&inner_tokens);
+        iteration_filter = PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending);
+    }
+    let wrap_for_each = |effects: Vec<EffectAst>| {
+        if iteration_filter == PlayerFilter::Opponent {
+            EffectAst::ForEachOpponent { effects }
+        } else {
+            EffectAst::ForEachPlayersFiltered {
+                filter: iteration_filter.clone(),
+                effects,
+            }
+        }
+    };
     if inner_words.starts_with(&["who", "has", "less", "life", "than", "you"]) {
         let effect_start =
             token_index_for_word_index(&inner_tokens, 6).unwrap_or(inner_tokens.len());
@@ -642,15 +662,13 @@ pub(crate) fn parse_for_each_opponent_clause(tokens: &[Token]) -> Result<Option<
             parse_effect_chain(&effect_tokens)?
         };
         force_implicit_token_controller_you(&mut branch_effects);
-        return Ok(Some(EffectAst::ForEachOpponent {
-            effects: vec![EffectAst::Conditional {
-                predicate: PredicateAst::PlayerHasLessLifeThanYou {
-                    player: PlayerAst::That,
-                },
-                if_true: branch_effects,
-                if_false: Vec::new(),
-            }],
-        }));
+        return Ok(Some(wrap_for_each(vec![EffectAst::Conditional {
+            predicate: PredicateAst::PlayerHasLessLifeThanYou {
+                player: PlayerAst::That,
+            },
+            if_true: branch_effects,
+            if_false: Vec::new(),
+        }])));
     }
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
@@ -738,7 +756,7 @@ pub(crate) fn parse_for_each_opponent_clause(tokens: &[Token]) -> Result<Option<
     } else {
         parse_effect_chain(&inner_tokens)?
     };
-    Ok(Some(EffectAst::ForEachOpponent { effects }))
+    Ok(Some(wrap_for_each(effects)))
 }
 
 pub(crate) fn parse_for_each_target_players_clause(
@@ -857,7 +875,9 @@ pub(crate) fn parse_who_did_this_way_predicate(
     }))
 }
 
-pub(crate) fn parse_for_each_player_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_for_each_player_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause_tokens = tokens;
     let mut clause_words = words(clause_tokens);
     if clause_words.first().copied() == Some("then") {

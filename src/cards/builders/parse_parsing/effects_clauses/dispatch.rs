@@ -507,17 +507,18 @@ pub(crate) fn parse_become_clause(
     }
 
     // "<card type>[ ... ]" and "<card type> in addition to its/their other types"
-    let addition_tail_len = if become_words.ends_with(&["in", "addition", "to", "its", "other", "types"]) {
-        Some(6usize)
-    } else if become_words.ends_with(&["in", "addition", "to", "their", "other", "types"]) {
-        Some(6usize)
-    } else if become_words.ends_with(&["in", "addition", "to", "its", "other", "type"]) {
-        Some(6usize)
-    } else if become_words.ends_with(&["in", "addition", "to", "their", "other", "type"]) {
-        Some(6usize)
-    } else {
-        None
-    };
+    let addition_tail_len =
+        if become_words.ends_with(&["in", "addition", "to", "its", "other", "types"]) {
+            Some(6usize)
+        } else if become_words.ends_with(&["in", "addition", "to", "their", "other", "types"]) {
+            Some(6usize)
+        } else if become_words.ends_with(&["in", "addition", "to", "its", "other", "type"]) {
+            Some(6usize)
+        } else if become_words.ends_with(&["in", "addition", "to", "their", "other", "type"]) {
+            Some(6usize)
+        } else {
+            None
+        };
     let card_type_words = if let Some(tail_len) = addition_tail_len {
         &become_words[..become_words.len().saturating_sub(tail_len)]
     } else {
@@ -549,8 +550,8 @@ pub(crate) fn parse_become_clause(
         let mut subtypes = Vec::new();
         let mut all_subtypes = true;
         for word in card_type_words {
-            if let Some(subtype) =
-                parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+            if let Some(subtype) = parse_subtype_word(word)
+                .or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
             {
                 if !subtypes.contains(&subtype) {
                     subtypes.push(subtype);

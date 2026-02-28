@@ -49,6 +49,11 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::DamagedPlayer => "the damaged player".to_string(),
         PlayerFilter::Teammate => "a teammate".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
+        PlayerFilter::Excluding { base, excluded } => format!(
+            "{} other than {}",
+            strip_leading_article(&describe_player_filter(base)),
+            strip_leading_article(&describe_player_filter(excluded))
+        ),
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Target) => {
             "its controller".to_string()
         }
@@ -4369,8 +4374,8 @@ fn is_generic_owned_card_search_filter(filter: &ObjectFilter) -> bool {
         && filter.alternative_cast.is_none()
         && filter.static_abilities.is_empty()
         && filter.excluded_static_abilities.is_empty()
-        && filter.custom_static_markers.is_empty()
-        && filter.excluded_custom_static_markers.is_empty()
+        && filter.ability_markers.is_empty()
+        && filter.excluded_ability_markers.is_empty()
         && !filter.is_commander
         && !filter.noncommander
         && filter.tagged_constraints.is_empty()
@@ -5608,7 +5613,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
         ),
         Value::LifeGainedThisTurn(filter) => match filter {
             PlayerFilter::You => "the amount of life you gained this turn".to_string(),
-            PlayerFilter::Opponent => "the amount of life your opponents gained this turn".to_string(),
+            PlayerFilter::Opponent => {
+                "the amount of life your opponents gained this turn".to_string()
+            }
             _ => format!(
                 "the amount of life {} gained this turn",
                 describe_player_filter(filter)
@@ -6884,8 +6891,8 @@ fn describe_condition(condition: &Condition) -> String {
 	                    && filter.alternative_cast.is_none()
 	                    && filter.static_abilities.is_empty()
 	                    && filter.excluded_static_abilities.is_empty()
-	                    && filter.custom_static_markers.is_empty()
-	                    && filter.excluded_custom_static_markers.is_empty()
+	                    && filter.ability_markers.is_empty()
+	                    && filter.excluded_ability_markers.is_empty()
 	                    && !filter.is_commander
 	                    && !filter.noncommander
 	                    && filter.tagged_constraints.is_empty()

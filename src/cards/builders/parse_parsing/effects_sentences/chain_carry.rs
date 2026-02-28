@@ -1,6 +1,5 @@
 use super::*;
 
-
 pub(crate) fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
     let words = words(tokens);
     let starts_with_each_opponent =
@@ -262,7 +261,9 @@ pub(crate) fn collapse_for_each_player_it_tag_followups(effects: &mut Vec<Effect
     }
 }
 
-pub(crate) fn parse_effect_clause_with_trailing_if(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_effect_clause_with_trailing_if(
+    tokens: &[Token],
+) -> Result<EffectAst, CardTextError> {
     let Some(if_idx) = tokens.iter().rposition(|token| token.is_word("if")) else {
         return parse_effect_clause(tokens);
     };
@@ -454,7 +455,9 @@ pub(crate) fn collapse_token_copy_end_of_combat_exile_followup(
     }
 }
 
-pub(crate) fn expand_segments_with_comma_action_clauses(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
+pub(crate) fn expand_segments_with_comma_action_clauses(
+    segments: Vec<Vec<Token>>,
+) -> Vec<Vec<Token>> {
     let mut expanded = Vec::new();
 
     for segment in segments {
@@ -528,7 +531,9 @@ pub(crate) fn starts_like_create_fragment(tokens: &[Token]) -> bool {
     starts_like_count && words.iter().any(|word| matches!(*word, "token" | "tokens"))
 }
 
-pub(crate) fn expand_segments_with_multi_create_clauses(segments: Vec<Vec<Token>>) -> Vec<Vec<Token>> {
+pub(crate) fn expand_segments_with_multi_create_clauses(
+    segments: Vec<Vec<Token>>,
+) -> Vec<Vec<Token>> {
     let mut expanded = Vec::new();
 
     for segment in segments {
@@ -612,7 +617,10 @@ pub(crate) fn expand_segments_with_multi_create_clauses(segments: Vec<Vec<Token>
     expanded
 }
 
-pub(crate) fn expand_missing_verb_segment(previous: &[Token], segment: &[Token]) -> Option<Vec<Token>> {
+pub(crate) fn expand_missing_verb_segment(
+    previous: &[Token],
+    segment: &[Token],
+) -> Option<Vec<Token>> {
     let (verb, verb_idx) = find_verb(previous)?;
     match verb {
         Verb::Deal => {
@@ -1013,6 +1021,7 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
@@ -1221,7 +1230,9 @@ pub(crate) fn parse_retarget_clause(tokens: &[Token]) -> Result<Option<EffectAst
     Ok(None)
 }
 
-pub(crate) fn parse_choose_new_targets_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_choose_new_targets_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     let is_choose = clause_words.starts_with(&["choose", "new", "targets", "for"])
         || clause_words.starts_with(&["chooses", "new", "targets", "for"]);
@@ -1294,7 +1305,9 @@ pub(crate) fn parse_choose_new_targets_clause(tokens: &[Token]) -> Result<Option
     }))
 }
 
-pub(crate) fn parse_change_target_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_change_target_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.is_empty() || clause_words[0] != "change" {
         return Ok(None);
@@ -1317,7 +1330,9 @@ pub(crate) fn parse_change_target_clause(tokens: &[Token]) -> Result<Option<Effe
     parse_change_target_clause_inner(tokens)
 }
 
-pub(crate) fn parse_change_target_clause_inner(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_change_target_clause_inner(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     let (mode, after_of_idx) = if clause_words.starts_with(&["change", "the", "target", "of"]) {
         (RetargetModeAst::All, 4)
@@ -1743,7 +1758,9 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
     }))
 }
 
-pub(crate) fn parse_must_block_if_able_clause(tokens: &[Token]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_must_block_if_able_clause(
+    tokens: &[Token],
+) -> Result<Option<EffectAst>, CardTextError> {
     use crate::effect::Until;
 
     let clause_words = words(tokens);

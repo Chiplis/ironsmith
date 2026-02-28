@@ -953,7 +953,7 @@ impl SoulbondSharedBonus {
 
 impl StaticAbilityKind for SoulbondSharedBonus {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::Custom
+        StaticAbilityId::SoulbondSharedBonus
     }
 
     fn display(&self) -> String {

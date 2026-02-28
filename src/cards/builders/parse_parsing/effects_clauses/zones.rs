@@ -311,7 +311,16 @@ pub(crate) fn parse_delayed_return_timing_words(words: &[&str]) -> Option<Delaye
     if matches!(
         words,
         ["at", "beginning", "of", "your", "next", "end", "step"]
-            | ["at", "the", "beginning", "of", "your", "next", "end", "step"]
+            | [
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "your",
+                "next",
+                "end",
+                "step"
+            ]
     ) {
         return Some(DelayedReturnTimingAst::NextEndStep(PlayerFilter::You));
     }
@@ -423,8 +432,9 @@ pub(crate) fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError>
     }
 
     let destination_tokens = if destination_word_cutoff < destination_words_full.len() {
-        let token_cutoff = token_index_for_word_index(destination_tokens_full, destination_word_cutoff)
-            .unwrap_or(destination_tokens_full.len());
+        let token_cutoff =
+            token_index_for_word_index(destination_tokens_full, destination_word_cutoff)
+                .unwrap_or(destination_tokens_full.len());
         &destination_tokens_full[..token_cutoff]
     } else {
         destination_tokens_full
@@ -497,7 +507,8 @@ pub(crate) fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError>
             .windows(3)
             .any(|window| window == ["end", "of", "combat"])
         || destination_words_full.contains(&"end")
-            && (destination_words_full.contains(&"next") || destination_words_full.contains(&"step"));
+            && (destination_words_full.contains(&"next")
+                || destination_words_full.contains(&"step"));
     if delayed_timing.is_none() && has_delayed_timing_words {
         return Err(CardTextError::ParseError(format!(
             "unsupported delayed return timing clause (clause: '{}')",
@@ -742,7 +753,10 @@ pub(crate) fn parse_exchange(tokens: &[Token]) -> Result<EffectAst, CardTextErro
     })
 }
 
-pub(crate) fn parse_become(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_become(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let Some(SubjectAst::Player(player)) = subject else {
         return Err(CardTextError::ParseError(format!(
             "unsupported become clause (clause: '{}')",
@@ -812,7 +826,10 @@ pub(crate) fn parse_switch(tokens: &[Token]) -> Result<EffectAst, CardTextError>
     Ok(EffectAst::SwitchPowerToughness { target, duration })
 }
 
-pub(crate) fn parse_skip(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_skip(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
     let (player, words) = match subject {
         Some(SubjectAst::Player(player)) => (player, clause_words),
@@ -918,7 +935,10 @@ pub(crate) fn parse_regenerate(tokens: &[Token]) -> Result<EffectAst, CardTextEr
     Ok(EffectAst::Regenerate { target })
 }
 
-pub(crate) fn parse_mill(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_mill(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
     let starts_with_card_keyword = tokens
         .first()
@@ -1003,7 +1023,9 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[Token]) -> Option<
     Some(Value::Count(filter))
 }
 
-pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
+    tokens: &[Token],
+) -> Option<Value> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["equal", "to"]) {
         return None;
@@ -1052,15 +1074,25 @@ pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(tokens: &[Token]
     let clause_words = words(tokens);
     if matches!(
         clause_words.as_slice(),
-        ["equal", "to", "the", "number", "of", "opponents", "you", "have"]
-            | ["equal", "to", "number", "of", "opponents", "you", "have"]
+        [
+            "equal",
+            "to",
+            "the",
+            "number",
+            "of",
+            "opponents",
+            "you",
+            "have"
+        ] | ["equal", "to", "number", "of", "opponents", "you", "have"]
     ) {
         return Some(Value::CountPlayers(PlayerFilter::Opponent));
     }
     None
 }
 
-pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(tokens: &[Token]) -> Option<Value> {
+pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
+    tokens: &[Token],
+) -> Option<Value> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["equal", "to"]) {
         return None;
@@ -1188,7 +1220,10 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[Token]) -> Option<
     }
 }
 
-pub(crate) fn parse_get(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_get(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.contains(&"poison")
         && (clause_words.contains(&"counter") || clause_words.contains(&"counters"))
@@ -1207,10 +1242,7 @@ pub(crate) fn parse_get(tokens: &[Token], subject: Option<SubjectAst>) -> Result
                 .map(|(value, _)| value)
                 .unwrap_or(Value::Fixed(1))
         };
-        return Ok(EffectAst::PoisonCounters {
-            count,
-            player,
-        });
+        return Ok(EffectAst::PoisonCounters { count, player });
     }
 
     let energy_count = tokens.iter().filter(|token| token.is_word("e")).count();
@@ -1805,7 +1837,6 @@ fn parse_counter_type_from_descriptor_tokens(tokens: &[Token]) -> Option<Counter
     None
 }
 
-
 pub(crate) fn parse_remove(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if let Some(from_idx) = tokens.iter().position(|token| token.is_word("from")) {
         let tail_words = words(&tokens[from_idx + 1..]);
@@ -1952,7 +1983,9 @@ pub(crate) enum DelayedDestroyTimingAst {
     NextEndStep,
 }
 
-pub(crate) fn parse_delayed_destroy_timing_words(words: &[&str]) -> Option<DelayedDestroyTimingAst> {
+pub(crate) fn parse_delayed_destroy_timing_words(
+    words: &[&str],
+) -> Option<DelayedDestroyTimingAst> {
     if matches!(
         words,
         ["at", "end", "of", "combat"] | ["at", "the", "end", "of", "combat"]
@@ -2060,7 +2093,9 @@ pub(crate) fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError
         )));
     }
     if matches!(clause_words.first().copied(), Some("all" | "each")) {
-        if let Some(attached_idx) = core_tokens.iter().position(|token| token.is_word("attached"))
+        if let Some(attached_idx) = core_tokens
+            .iter()
+            .position(|token| token.is_word("attached"))
             && core_tokens
                 .get(attached_idx + 1)
                 .is_some_and(|token| token.is_word("to"))
@@ -2244,7 +2279,10 @@ pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception:
     }
 }
 
-pub(crate) fn parse_exile(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_exile(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
     let (tokens, face_down) = split_exile_face_down_suffix(tokens);
     let clause_words = words(tokens);
@@ -2540,7 +2578,10 @@ pub(crate) fn parse_target_player_graveyard_filter(tokens: &[Token]) -> Option<O
     None
 }
 
-pub(crate) fn apply_exile_subject_hand_owner_context(target: &mut TargetAst, subject: Option<SubjectAst>) {
+pub(crate) fn apply_exile_subject_hand_owner_context(
+    target: &mut TargetAst,
+    subject: Option<SubjectAst>,
+) {
     let Some(filter) = target_object_filter_mut(target) else {
         return;
     };
@@ -2550,7 +2591,10 @@ pub(crate) fn apply_exile_subject_hand_owner_context(target: &mut TargetAst, sub
     apply_exile_subject_owner_context(filter, subject);
 }
 
-pub(crate) fn apply_exile_subject_owner_context(filter: &mut ObjectFilter, subject: Option<SubjectAst>) {
+pub(crate) fn apply_exile_subject_owner_context(
+    filter: &mut ObjectFilter,
+    subject: Option<SubjectAst>,
+) {
     let Some(owner_filter) = exile_subject_owner_filter(subject) else {
         return;
     };
@@ -2575,7 +2619,10 @@ pub(crate) fn apply_exile_subject_owner_context(filter: &mut ObjectFilter, subje
     }
 }
 
-pub(crate) fn apply_shuffle_subject_graveyard_owner_context(target: &mut TargetAst, subject: SubjectAst) {
+pub(crate) fn apply_shuffle_subject_graveyard_owner_context(
+    target: &mut TargetAst,
+    subject: SubjectAst,
+) {
     let Some(filter) = target_object_filter_mut(target) else {
         return;
     };
@@ -2621,7 +2668,10 @@ pub(crate) fn target_object_filter_mut(target: &mut TargetAst) -> Option<&mut Ob
     }
 }
 
-pub(crate) fn merge_it_match_filter_into_target(target: &mut TargetAst, it_filter: &ObjectFilter) -> bool {
+pub(crate) fn merge_it_match_filter_into_target(
+    target: &mut TargetAst,
+    it_filter: &ObjectFilter,
+) -> bool {
     if let TargetAst::Tagged(tag, span) = target {
         let mut filter = ObjectFilter::default();
         filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -2677,7 +2727,10 @@ pub(crate) fn parse_untap(tokens: &[Token]) -> Result<EffectAst, CardTextError> 
     Ok(EffectAst::Untap { target })
 }
 
-pub(crate) fn parse_scry(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_scry(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let (count, _) = parse_value(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing scry count (clause: '{}')",
@@ -2712,7 +2765,10 @@ pub(crate) fn parse_surveil(
     Ok(EffectAst::Surveil { count, player })
 }
 
-pub(crate) fn parse_pay(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_pay(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let player = match subject {
         Some(SubjectAst::Player(player)) => player,
         _ => PlayerAst::Implicit,

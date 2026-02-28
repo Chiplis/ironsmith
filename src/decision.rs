@@ -554,12 +554,9 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                         }
                     }
 
-                    let granted_alternatives = game.grant_registry.granted_alternative_casts_for_card(
-                        game,
-                        card_id,
-                        from_zone,
-                        player,
-                    );
+                    let granted_alternatives = game
+                        .grant_registry
+                        .granted_alternative_casts_for_card(game, card_id, from_zone, player);
                     let base_alt_idx = card.alternative_casts.len();
                     for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
                         if can_cast_with_alternative(game, player, card, &granted_alt.method) {
@@ -585,9 +582,9 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
             continue;
         };
 
-        let play_from_grants = game
-            .grant_registry
-            .granted_play_from_for_card(game, card_id, Zone::Exile, player);
+        let play_from_grants =
+            game.grant_registry
+                .granted_play_from_for_card(game, card_id, Zone::Exile, player);
         for grant in play_from_grants {
             let from_zone = grant.zone;
 
@@ -1084,8 +1081,12 @@ pub fn calculate_effective_activation_total_cost(
     let mut costs = Vec::with_capacity(cost.costs().len());
     for component in cost.costs() {
         if let Some(mana_cost) = component.mana_cost_ref() {
-            let reduced =
-                calculate_effective_activation_mana_cost(game, activator, ability_source, mana_cost);
+            let reduced = calculate_effective_activation_mana_cost(
+                game,
+                activator,
+                ability_source,
+                mana_cost,
+            );
             costs.push(crate::costs::Cost::mana(reduced));
         } else {
             costs.push(component.clone());
@@ -1883,7 +1884,8 @@ fn apply_spell_cost_modifiers(
                 &reduction.condition,
                 chosen_targets,
             ) {
-                let amount = resolve_this_spell_cost_reduction_value(game, player, spell, reduction);
+                let amount =
+                    resolve_this_spell_cost_reduction_value(game, player, spell, reduction);
                 if amount > 0 {
                     total_reduction = total_reduction.saturating_add(amount);
                 }
@@ -6806,10 +6808,11 @@ mod tests {
             ]))
             .build();
         let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
-        let condition = crate::static_abilities::ThisSpellCostCondition::YouCastSpellsThisTurnOrMore {
-            count: 1,
-            card_types: vec![CardType::Instant, CardType::Sorcery],
-        };
+        let condition =
+            crate::static_abilities::ThisSpellCostCondition::YouCastSpellsThisTurnOrMore {
+                count: 1,
+                card_types: vec![CardType::Instant, CardType::Sorcery],
+            };
         let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
             Value::Fixed(2),
             condition,
@@ -6848,15 +6851,17 @@ mod tests {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
-        let spell_card = CardBuilder::new(CardId::from_raw(137), "Graveyard Cards Discount Variant")
-            .card_types(vec![CardType::Creature])
-            .mana_cost(ManaCost::from_pips(vec![
-                vec![ManaSymbol::Generic(8)],
-                vec![ManaSymbol::Black],
-            ]))
-            .build();
+        let spell_card =
+            CardBuilder::new(CardId::from_raw(137), "Graveyard Cards Discount Variant")
+                .card_types(vec![CardType::Creature])
+                .mana_cost(ManaCost::from_pips(vec![
+                    vec![ManaSymbol::Generic(8)],
+                    vec![ManaSymbol::Black],
+                ]))
+                .build();
         let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
-        let condition = crate::static_abilities::ThisSpellCostCondition::YouHaveCardsInYourGraveyardOrMore(9);
+        let condition =
+            crate::static_abilities::ThisSpellCostCondition::YouHaveCardsInYourGraveyardOrMore(9);
         let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
             Value::Fixed(3),
             condition,
@@ -7016,14 +7021,13 @@ mod tests {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
-        let spell_card =
-            CardBuilder::new(CardId::from_raw(142), "Creature Left Discount Variant")
-                .card_types(vec![CardType::Sorcery])
-                .mana_cost(ManaCost::from_pips(vec![
-                    vec![ManaSymbol::Generic(4)],
-                    vec![ManaSymbol::Green],
-                ]))
-                .build();
+        let spell_card = CardBuilder::new(CardId::from_raw(142), "Creature Left Discount Variant")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(4)],
+                vec![ManaSymbol::Green],
+            ]))
+            .build();
         let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
         let condition = crate::static_abilities::ThisSpellCostCondition::
             CreatureLeftBattlefieldUnderYourControlThisTurn;
@@ -7097,9 +7101,10 @@ mod tests {
             ]))
             .build();
         let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
-        let condition = crate::static_abilities::ThisSpellCostCondition::OnlyCreatureCardsInHandNamed(
-            "mothrider cavalry".to_string(),
-        );
+        let condition =
+            crate::static_abilities::ThisSpellCostCondition::OnlyCreatureCardsInHandNamed(
+                "mothrider cavalry".to_string(),
+            );
         let ability = StaticAbility::new(crate::static_abilities::ThisSpellCostReduction::new(
             Value::Fixed(2),
             condition,
@@ -7339,7 +7344,8 @@ mod tests {
                 ]))
                 .power_toughness(PowerToughness::fixed(5, 5))
                 .build();
-        let command_id = game.create_object_from_card(&commander_command_zone, alice, Zone::Command);
+        let command_id =
+            game.create_object_from_card(&commander_command_zone, alice, Zone::Command);
         game.set_as_commander(command_id, alice);
 
         let spell_card = CardBuilder::new(CardId::from_raw(50), "Commander Discount Variant")

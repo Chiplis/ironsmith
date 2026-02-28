@@ -10,5 +10,5 @@ mod investigate;
 mod lifecycle;
 
 pub use create_token::CreateTokenEffect;
-pub use create_token_copy::CreateTokenCopyEffect;
+pub use create_token_copy::{CopyAttackTargetMode, CreateTokenCopyEffect};
 pub use investigate::InvestigateEffect;

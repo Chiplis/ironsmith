@@ -42,13 +42,7 @@ impl EffectExecutor for LookAtTopCardsEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let top_cards: Vec<_> = player
-            .library
-            .iter()
-            .rev()
-            .take(count)
-            .copied()
-            .collect();
+        let top_cards: Vec<_> = player.library.iter().rev().take(count).copied().collect();
         if top_cards.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
@@ -107,7 +101,9 @@ mod tests {
 
         let mut ctx = ExecutionContext::new_default(source, alice);
         let effect = LookAtTopCardsEffect::new(PlayerFilter::You, 2, "looked");
-        let result = effect.execute(&mut game, &mut ctx).expect("execute look-at-top");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("execute look-at-top");
 
         assert_eq!(result.result, EffectResult::Count(2));
         assert_eq!(
@@ -127,7 +123,9 @@ mod tests {
 
         let mut ctx = ExecutionContext::new_default(source, alice).with_x(3);
         let effect = LookAtTopCardsEffect::new(PlayerFilter::You, Value::X, "looked_x");
-        let result = effect.execute(&mut game, &mut ctx).expect("execute look-at-top");
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("execute look-at-top");
 
         assert_eq!(result.result, EffectResult::Count(3));
         assert_eq!(

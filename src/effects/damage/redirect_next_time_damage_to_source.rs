@@ -29,7 +29,8 @@ impl ReplacementMatcher for DamageSourceToSpecificObjectMatcher {
         if event.event_kind() != EventKind::Damage {
             return false;
         }
-        let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event) else {
+        let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event)
+        else {
             return false;
         };
         if damage.target != DamageTarget::Object(self.target) {

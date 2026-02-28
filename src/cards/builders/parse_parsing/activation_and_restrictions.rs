@@ -1,6 +1,8 @@
 use super::*;
 
-pub(crate) fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+pub(crate) fn parse_activated_line(
+    tokens: &[Token],
+) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(colon_idx) = tokens
         .iter()
         .position(|token| matches!(token, Token::Colon(_)))
@@ -344,7 +346,9 @@ pub(crate) fn parse_activated_line(tokens: &[Token]) -> Result<Option<ParsedAbil
     }))
 }
 
-pub(crate) fn first_sacrifice_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
+pub(crate) fn first_sacrifice_cost_choice_tag(
+    mana_cost: &crate::cost::TotalCost,
+) -> Option<TagKey> {
     for cost in mana_cost.costs() {
         let Some(effect) = cost.effect_ref() else {
             continue;
@@ -632,7 +636,9 @@ pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
     }
 }
 
-pub(crate) fn parse_level_up_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+pub(crate) fn parse_level_up_line(
+    tokens: &[Token],
+) -> Result<Option<ParsedAbility>, CardTextError> {
     let words = words(tokens);
     if words.len() < 3 || words[0] != "level" || words[1] != "up" {
         return Ok(None);
@@ -779,7 +785,9 @@ pub(crate) fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbilit
     }))
 }
 
-pub(crate) fn parse_reinforce_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+pub(crate) fn parse_reinforce_line(
+    tokens: &[Token],
+) -> Result<Option<ParsedAbility>, CardTextError> {
     let words_all = words(tokens);
     if words_all.is_empty() {
         return Ok(None);
@@ -787,16 +795,20 @@ pub(crate) fn parse_reinforce_line(tokens: &[Token]) -> Result<Option<ParsedAbil
     if words_all.first().copied() != Some("reinforce") {
         return Ok(None);
     }
-    if words_all.iter().any(|word| *word == "has" || *word == "have") {
+    if words_all
+        .iter()
+        .any(|word| *word == "has" || *word == "have")
+    {
         return Ok(None);
     }
 
-    let (amount, used_amount) = parse_number(tokens.get(1..).unwrap_or_default()).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "reinforce line missing counter amount (clause: '{}')",
-            words_all.join(" ")
-        ))
-    })?;
+    let (amount, used_amount) =
+        parse_number(tokens.get(1..).unwrap_or_default()).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "reinforce line missing counter amount (clause: '{}')",
+                words_all.join(" ")
+            ))
+        })?;
 
     let cost_start = 1 + used_amount;
     if cost_start >= tokens.len() {
@@ -1016,7 +1028,9 @@ pub(crate) fn is_cycling_cost_word(word: &str) -> bool {
         })
 }
 
-pub(crate) fn parse_madness_line(tokens: &[Token]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+pub(crate) fn parse_madness_line(
+    tokens: &[Token],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     if !tokens.first().is_some_and(|token| token.is_word("madness")) {
         return Ok(None);
     }
@@ -1140,7 +1154,9 @@ pub(crate) fn parse_kicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>
     parse_optional_cost_keyword_line(tokens, "kicker", OptionalCost::kicker)
 }
 
-pub(crate) fn parse_multikicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_multikicker_line(
+    tokens: &[Token],
+) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "multikicker", OptionalCost::multikicker)
 }
 
@@ -1148,7 +1164,9 @@ pub(crate) fn parse_entwine_line(tokens: &[Token]) -> Result<Option<OptionalCost
     parse_optional_cost_keyword_line(tokens, "entwine", OptionalCost::entwine)
 }
 
-pub(crate) fn parse_morph_keyword_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
+pub(crate) fn parse_morph_keyword_line(
+    tokens: &[Token],
+) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(first_word) = tokens.first().and_then(Token::as_word) else {
         return Ok(None);
     };
@@ -1203,7 +1221,9 @@ pub(crate) fn parse_morph_keyword_line(tokens: &[Token]) -> Result<Option<Parsed
     }))
 }
 
-pub(crate) fn parse_escape_line(tokens: &[Token]) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+pub(crate) fn parse_escape_line(
+    tokens: &[Token],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
     if !tokens.first().is_some_and(|token| token.is_word("escape")) {
         return Ok(None);
     }
@@ -1288,7 +1308,9 @@ pub(crate) fn parse_escape_line(tokens: &[Token]) -> Result<Option<AlternativeCa
     }))
 }
 
-pub(crate) fn parse_cycling_search_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>, CardTextError> {
+pub(crate) fn parse_cycling_search_filter(
+    tokens: &[Token],
+) -> Result<Option<ObjectFilter>, CardTextError> {
     let words = words(tokens);
     if words.is_empty() {
         return Ok(None);
@@ -1487,7 +1509,9 @@ pub(crate) fn parse_equip_line(tokens: &[Token]) -> Result<Option<ParsedAbility>
     }))
 }
 
-pub(crate) fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<Effect>), CardTextError> {
+pub(crate) fn parse_activation_cost(
+    tokens: &[Token],
+) -> Result<(TotalCost, Vec<Effect>), CardTextError> {
     let mut mana_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let cost_effects = Vec::new();
     let mut explicit_costs = Vec::new();
@@ -1770,14 +1794,12 @@ pub(crate) fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<
                         ..Default::default()
                     })
                 };
-                explicit_costs.push(crate::costs::Cost::effect(
-                    Effect::discard_player_filtered(
-                        Value::Fixed(count as i32),
-                        PlayerFilter::You,
-                        true,
-                        card_filter,
-                    ),
-                ));
+                explicit_costs.push(crate::costs::Cost::effect(Effect::discard_player_filtered(
+                    Value::Fixed(count as i32),
+                    PlayerFilter::You,
+                    true,
+                    card_filter,
+                )));
             } else if card_types.len() > 1 {
                 explicit_costs.push(crate::costs::Cost::discard_types(count, card_types));
             } else if let Some(card_type) = card_types.first().copied() {
@@ -2266,11 +2288,7 @@ pub(crate) fn parse_activation_cost(tokens: &[Token]) -> Result<(TotalCost, Vec<
 fn parse_shard_style_mana_or_tap_cost(tokens: &[Token]) -> Option<(ManaSymbol, ManaSymbol)> {
     let words = words(tokens);
     let is_tap_word = |word: &str| matches!(word, "t" | "tap");
-    if words.len() != 5
-        || !is_tap_word(words[1])
-        || words[2] != "or"
-        || !is_tap_word(words[4])
-    {
+    if words.len() != 5 || !is_tap_word(words[1]) || words[2] != "or" || !is_tap_word(words[4]) {
         return None;
     }
 
@@ -2279,7 +2297,9 @@ fn parse_shard_style_mana_or_tap_cost(tokens: &[Token]) -> Option<(ManaSymbol, M
     Some((left, right))
 }
 
-pub(crate) fn parse_devotion_value_from_add_clause(tokens: &[Token]) -> Result<Option<Value>, CardTextError> {
+pub(crate) fn parse_devotion_value_from_add_clause(
+    tokens: &[Token],
+) -> Result<Option<Value>, CardTextError> {
     let words = words(tokens);
     let Some(devotion_idx) = words.iter().position(|word| *word == "devotion") else {
         return Ok(None);
@@ -2326,7 +2346,10 @@ pub(crate) fn parse_devotion_value_from_add_clause(tokens: &[Token]) -> Result<O
     Ok(Some(Value::Devotion { player, color }))
 }
 
-pub(crate) fn parse_devotion_player_from_words(words: &[&str], devotion_idx: usize) -> Option<PlayerFilter> {
+pub(crate) fn parse_devotion_player_from_words(
+    words: &[&str],
+    devotion_idx: usize,
+) -> Option<PlayerFilter> {
     if devotion_idx == 0 {
         return None;
     }
@@ -2539,7 +2562,9 @@ pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
     }
 }
 
-pub(crate) fn parse_enters_tapped_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_enters_tapped_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.is_empty() {
         return Ok(None);
@@ -2587,7 +2612,9 @@ pub(crate) fn parse_enters_tapped_line(tokens: &[Token]) -> Result<Option<Static
     Ok(None)
 }
 
-pub(crate) fn parse_cost_reduction_line(tokens: &[Token]) -> Result<Option<StaticAbility>, CardTextError> {
+pub(crate) fn parse_cost_reduction_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = words(tokens);
     let has_commander_cast_count_clause = line_words
         .windows(3)
@@ -2612,7 +2639,7 @@ pub(crate) fn parse_cost_reduction_line(tokens: &[Token]) -> Result<Option<Stati
         };
         let tail = line_words[6..].join(" ");
         let text = format!("This cost is reduced by {amount_text} {tail}");
-        return Ok(Some(StaticAbility::custom("cost_reduction_text", text)));
+        return Ok(Some(StaticAbility::rule_text_placeholder(text)));
     }
 
     if line_words.starts_with(&["activated", "abilities", "of"]) {
@@ -2775,7 +2802,9 @@ pub(crate) fn parse_source_must_be_blocked_if_able_line(
     Ok(None)
 }
 
-pub(crate) fn parse_cant_clauses(tokens: &[Token]) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+pub(crate) fn parse_cant_clauses(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     if find_negation_span(tokens).is_none() {
         return Ok(None);
     }
@@ -2983,9 +3012,7 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             .starts_with(&["this", "creature", "cant", "be", "blocked", "except", "by"])
         {
             7
-        } else if normalized
-            .starts_with(&["this", "cant", "be", "blocked", "except", "by"])
-        {
+        } else if normalized.starts_with(&["this", "cant", "be", "blocked", "except", "by"]) {
             6
         } else {
             5
@@ -3044,9 +3071,11 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             "defending",
             "player",
         ]) || normalized.starts_with(&["this", "cant", "attack", "unless", "defending", "player"]);
-    let cant_attack_unless_cast_creature_spell_tail =
-        normalized.ends_with(&["unless", "youve", "cast", "a", "creature", "spell", "this", "turn"])
-            || normalized.ends_with(&["unless", "youve", "cast", "creature", "spell", "this", "turn"]);
+    let cant_attack_unless_cast_creature_spell_tail = normalized.ends_with(&[
+        "unless", "youve", "cast", "a", "creature", "spell", "this", "turn",
+    ]) || normalized.ends_with(&[
+        "unless", "youve", "cast", "creature", "spell", "this", "turn",
+    ]);
     if cant_attack_unless_cast_creature_spell_tail
         && (normalized.starts_with(&["this", "creature", "cant", "attack"])
             || normalized.starts_with(&["this", "cant", "attack"]))
@@ -3436,37 +3465,36 @@ pub(crate) fn parse_negated_object_restriction_clause(
     };
     let subject_tokens = trim_commas(&tokens[..neg_start]);
 
-    let (filter, target, ability_scope) = if let Some(parsed) =
-        parse_activated_ability_subject(&subject_tokens)?
-    {
-        (parsed.filter, parsed.target, Some(parsed.scope))
-    } else if starts_with_target_indicator(&subject_tokens) {
-        let target = parse_target_phrase(&subject_tokens)?;
-        let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported target restriction subject (clause: '{}')",
-                words(tokens).join(" ")
-            ))
-        })?;
-        ensure_it_tagged_constraint(&mut filter);
-        (filter, Some(target), None)
-    } else if subject_tokens.is_empty() {
-        // Supports carried clauses like "... and can't be blocked this turn."
-        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
-        (
-            ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            Some(target),
-            None,
-        )
-    } else {
-        let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported subject in negated restriction clause (clause: '{}')",
-                words(tokens).join(" ")
-            )));
+    let (filter, target, ability_scope) =
+        if let Some(parsed) = parse_activated_ability_subject(&subject_tokens)? {
+            (parsed.filter, parsed.target, Some(parsed.scope))
+        } else if starts_with_target_indicator(&subject_tokens) {
+            let target = parse_target_phrase(&subject_tokens)?;
+            let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported target restriction subject (clause: '{}')",
+                    words(tokens).join(" ")
+                ))
+            })?;
+            ensure_it_tagged_constraint(&mut filter);
+            (filter, Some(target), None)
+        } else if subject_tokens.is_empty() {
+            // Supports carried clauses like "... and can't be blocked this turn."
+            let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+            (
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                Some(target),
+                None,
+            )
+        } else {
+            let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported subject in negated restriction clause (clause: '{}')",
+                    words(tokens).join(" ")
+                )));
+            };
+            (filter, None, None)
         };
-        (filter, None, None)
-    };
 
     let remainder_tokens = trim_commas(&tokens[neg_end..]);
     if remainder_tokens.is_empty() {
@@ -3563,9 +3591,19 @@ fn parse_activated_ability_subject(
 
     let subject_words = normalize_cant_words(tokens);
     let (owner_word_len, scope) = if subject_words.ends_with(&["activated", "abilities"]) {
-        (subject_words.len().saturating_sub(2), ActivatedAbilityScope::All)
-    } else if subject_words.ends_with(&["activated", "abilities", "with", "t", "in", "their", "costs"])
-    {
+        (
+            subject_words.len().saturating_sub(2),
+            ActivatedAbilityScope::All,
+        )
+    } else if subject_words.ends_with(&[
+        "activated",
+        "abilities",
+        "with",
+        "t",
+        "in",
+        "their",
+        "costs",
+    ]) {
         (
             subject_words.len().saturating_sub(7),
             ActivatedAbilityScope::TapCostOnly,
@@ -3583,9 +3621,7 @@ fn parse_activated_ability_subject(
     }
 
     let owner_words = words(&owner_tokens);
-    if owner_words.len() == 1
-        && matches!(owner_words[0], "it" | "its" | "them" | "their")
-    {
+    if owner_words.len() == 1 && matches!(owner_words[0], "it" | "its" | "them" | "their") {
         return Ok(Some(ParsedActivatedAbilitySubject {
             filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
             target: Some(TargetAst::Tagged(
@@ -3733,7 +3769,9 @@ pub(crate) fn find_negation_span(tokens: &[Token]) -> Option<(usize, usize)> {
     None
 }
 
-pub(crate) fn parse_subject_object_filter(tokens: &[Token]) -> Result<Option<ObjectFilter>, CardTextError> {
+pub(crate) fn parse_subject_object_filter(
+    tokens: &[Token],
+) -> Result<Option<ObjectFilter>, CardTextError> {
     if tokens.is_empty() {
         return Ok(None);
     }
@@ -4455,7 +4493,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         ["ingest"] => KeywordAction::Ingest,
         ["mentor"] => KeywordAction::Mentor,
         ["training"] => KeywordAction::Training,
-        ["myriad"] => KeywordAction::Marker("myriad"),
+        ["myriad"] => KeywordAction::Myriad,
         ["partner"] => KeywordAction::Partner,
         ["populate"] => KeywordAction::Marker("populate"),
         ["provoke"] => KeywordAction::Provoke,
@@ -4589,7 +4627,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                     "ingest" => return Some(KeywordAction::Ingest),
                     "mentor" => return Some(KeywordAction::Mentor),
                     "training" => return Some(KeywordAction::Training),
-                    "myriad" => return Some(KeywordAction::Marker("myriad")),
+                    "myriad" => return Some(KeywordAction::Myriad),
                     "partner" => return Some(KeywordAction::Partner),
                     "populate" => return Some(KeywordAction::Marker("populate")),
                     "provoke" => return Some(KeywordAction::Provoke),
@@ -6683,7 +6721,10 @@ pub(crate) fn parse_discard_trigger_card_filter(
     }
 }
 
-pub(crate) fn parse_subtype_list_enters_trigger_filter(tokens: &[Token], other: bool) -> Option<ObjectFilter> {
+pub(crate) fn parse_subtype_list_enters_trigger_filter(
+    tokens: &[Token],
+    other: bool,
+) -> Option<ObjectFilter> {
     let words = words(tokens);
     if words.is_empty() {
         return None;
@@ -7018,7 +7059,9 @@ pub(crate) fn has_second_spell_turn_pattern(words: &[&str]) -> bool {
         )
 }
 
-pub(crate) fn parse_spell_activity_trigger(tokens: &[Token]) -> Result<Option<TriggerSpec>, CardTextError> {
+pub(crate) fn parse_spell_activity_trigger(
+    tokens: &[Token],
+) -> Result<Option<TriggerSpec>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words.contains(&"spell") && !clause_words.contains(&"spells") {
         return Ok(None);
@@ -7386,7 +7429,10 @@ pub(crate) fn effect_creates_any_token(effect: &EffectAst) -> bool {
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachOpponent { effects } => effects.iter().any(effect_creates_any_token),
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. } => {
+            effects.iter().any(effect_creates_any_token)
+        }
         _ => false,
     }
 }
@@ -7409,6 +7455,7 @@ pub(crate) fn created_token_info_from_effect(effect: &EffectAst) -> Option<(Stri
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::MayByTaggedController { effects, .. }
@@ -7717,7 +7764,8 @@ pub(crate) fn append_token_reminder_to_effect(
         | EffectAst::ForEachTagged { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachOpponent { effects } => {
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. } => {
             append_token_reminder_to_effect(effects.last_mut(), reminder, reminder_words)
         }
         _ => false,
@@ -7880,10 +7928,7 @@ pub(crate) fn parse_you_choose_objects_clause(
     ) {
         count = ChoiceCount::exactly(value as usize);
         choose_words = choose_words[used..].to_vec();
-    } else if choose_words
-        .first()
-        .is_some_and(|word| is_article(word))
-    {
+    } else if choose_words.first().is_some_and(|word| is_article(word)) {
         choose_words = choose_words[1..].to_vec();
     }
 
@@ -7940,10 +7985,12 @@ pub(crate) fn parse_you_choose_objects_clause(
             .iter()
             .any(|constraint| constraint.tag.as_str() == IT_TAG)
         {
-            choose_filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
-                relation: TaggedOpbjectRelation::IsTaggedObject,
-            });
+            choose_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
         }
     }
     if matches!(
@@ -8116,15 +8163,16 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     let has_bottom_of_library = second_words
         .windows(4)
         .any(|window| window == ["bottom", "of", "your", "library"]);
-    if !has_chosen_type || !has_revealed_this_way || !has_into_your_hand || !has_bottom_of_library
-    {
+    if !has_chosen_type || !has_revealed_this_way || !has_into_your_hand || !has_bottom_of_library {
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::RevealTopChooseCardTypePutToHandRestBottom {
-        player: PlayerAst::You,
-        count,
-    }]))
+    Ok(Some(vec![
+        EffectAst::RevealTopChooseCardTypePutToHandRestBottom {
+            player: PlayerAst::You,
+            count,
+        },
+    ]))
 }
 
 pub(crate) fn parse_choose_creature_type_then_become_type(

@@ -434,24 +434,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let AbilityKind::Static(static_ability) = &ability.kind {
                 let id = static_ability.id();
-                if id == StaticAbilityId::Custom {
+                if id == StaticAbilityId::UnsupportedParserLine {
                     let display = static_ability.display();
-                    let display_lower = display.to_ascii_lowercase();
-                    if display_lower.starts_with("unsupported parser line fallback:") {
-                        cards_with_fallback.insert(card_input.name.clone());
-                        add_tally(
-                            &mut fallback_reasons,
-                            parse_fallback_reason(&display),
-                            &card_input.name,
-                        );
-                    } else {
-                        cards_with_unimplemented.insert(card_input.name.clone());
-                        add_tally(
-                            &mut unimplemented,
-                            canonical_mechanic_name(&display),
-                            &card_input.name,
-                        );
-                    }
+                    cards_with_fallback.insert(card_input.name.clone());
+                    add_tally(
+                        &mut fallback_reasons,
+                        parse_fallback_reason(&display),
+                        &card_input.name,
+                    );
+                } else if matches!(
+                    id,
+                    StaticAbilityId::KeywordMarker | StaticAbilityId::RuleTextPlaceholder
+                ) {
+                    let display = static_ability.display();
+                    cards_with_unimplemented.insert(card_input.name.clone());
+                    add_tally(
+                        &mut unimplemented,
+                        canonical_mechanic_name(&display),
+                        &card_input.name,
+                    );
                 } else if let Some(name) = static_keyword_name(id) {
                     add_tally(&mut implemented, name.to_string(), &card_input.name);
                 }

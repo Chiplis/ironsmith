@@ -220,11 +220,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut parsed_ok = 0usize;
     let mut parse_failed = 0usize;
     let mut parse_failure_examples: Vec<(String, String)> = Vec::new();
-    let mut cards_with_custom_static = 0usize;
+    let mut cards_with_placeholder_static = 0usize;
     let mut cards_with_unimplemented_trigger = 0usize;
     let mut cards_with_both = 0usize;
 
-    let mut custom_static_displays: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut placeholder_static_displays: HashMap<String, HashSet<String>> = HashMap::new();
     let mut unimplemented_trigger_descriptions: HashMap<String, HashSet<String>> = HashMap::new();
 
     for card_input in cards {
@@ -250,15 +250,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         parsed_ok += 1;
 
-        let mut has_custom_static = false;
+        let mut has_placeholder_static = false;
         let mut has_unimplemented_trigger = false;
         for ability in &def.abilities {
             match &ability.kind {
                 AbilityKind::Static(static_ability) => {
-                    if static_ability.id() == StaticAbilityId::Custom {
-                        has_custom_static = true;
+                    if matches!(
+                        static_ability.id(),
+                        StaticAbilityId::KeywordMarker
+                            | StaticAbilityId::RuleTextPlaceholder
+                            | StaticAbilityId::UnsupportedParserLine
+                    ) {
+                        has_placeholder_static = true;
                         add_tally(
-                            &mut custom_static_displays,
+                            &mut placeholder_static_displays,
                             static_ability.display().to_ascii_lowercase(),
                             &card_input.name,
                         );
@@ -279,13 +284,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        if has_custom_static {
-            cards_with_custom_static += 1;
+        if has_placeholder_static {
+            cards_with_placeholder_static += 1;
         }
         if has_unimplemented_trigger {
             cards_with_unimplemented_trigger += 1;
         }
-        if has_custom_static && has_unimplemented_trigger {
+        if has_placeholder_static && has_unimplemented_trigger {
             cards_with_both += 1;
         }
     }
@@ -300,17 +305,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  - {name}: {err}");
         }
     }
-    println!("- Cards with Custom static ability: {cards_with_custom_static}");
+    println!("- Cards with placeholder static ability: {cards_with_placeholder_static}");
     println!("- Cards with unimplemented triggers: {cards_with_unimplemented_trigger}");
     println!("- Cards with both: {cards_with_both}");
 
-    if !custom_static_displays.is_empty() {
-        let mut rows: Vec<(String, usize)> = custom_static_displays
+    if !placeholder_static_displays.is_empty() {
+        let mut rows: Vec<(String, usize)> = placeholder_static_displays
             .iter()
             .map(|(display, cards)| (display.clone(), cards.len()))
             .collect();
         rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        println!("Top Custom static ability displays:");
+        println!("Top placeholder static ability displays:");
         for (display, count) in rows.into_iter().take(args.top) {
             println!("  - {count} cards: {display}");
         }

@@ -6,8 +6,8 @@ use crate::effects::helpers::{normalize_object_selection, resolve_player_filter,
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilter;
 use crate::game_state::GameState;
-use crate::types::CardType;
 use crate::target::PlayerFilter;
+use crate::types::CardType;
 
 /// Effect that causes a player to discard cards.
 ///

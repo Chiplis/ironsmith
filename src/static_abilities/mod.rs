@@ -1065,6 +1065,10 @@ impl StaticAbility {
         Self::new(DoesntUntap)
     }
 
+    pub fn may_choose_not_to_untap_during_untap_step(subject: impl Into<String>) -> Self {
+        Self::new(MayChooseNotToUntapDuringUntapStep::new(subject))
+    }
+
     pub fn enters_tapped_ability() -> Self {
         Self::new(EntersTapped)
     }
@@ -1511,8 +1515,16 @@ impl StaticAbility {
         Self::new(PayLifeOrEnterTappedReplacement::new(life_cost))
     }
 
-    pub fn custom(id: &'static str, description: String) -> Self {
-        Self::new(Custom::new(id, description))
+    pub fn keyword_marker(marker: impl Into<String>) -> Self {
+        Self::new(KeywordMarker::new(marker))
+    }
+
+    pub fn rule_text_placeholder(text: impl Into<String>) -> Self {
+        Self::new(RuleTextPlaceholder::new(text))
+    }
+
+    pub fn unsupported_parser_line(raw_line: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self::new(UnsupportedParserLine::new(raw_line, reason))
     }
 
     pub fn cant_be_countered_ability() -> Self {

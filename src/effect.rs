@@ -2573,12 +2573,6 @@ impl Effect {
         Self::new(EvolveEffect::new())
     }
 
-    /// Create a training resolution effect for this source creature.
-    pub fn training_source() -> Self {
-        use crate::effects::TrainingEffect;
-        Self::new(TrainingEffect::new())
-    }
-
     /// Create a renown resolution effect for this source creature.
     pub fn renown_source(amount: u32) -> Self {
         use crate::effects::RenownEffect;

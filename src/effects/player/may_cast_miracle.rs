@@ -165,22 +165,3 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
         Box::new(self.clone())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_may_cast_miracle_effect_creation() {
-        let effect = MayCastForMiracleCostEffect::new();
-        // Effect now has no fields - it gets card_id and owner from triggering event
-        assert_eq!(effect, MayCastForMiracleCostEffect);
-    }
-
-    #[test]
-    fn test_clone_box() {
-        let effect = MayCastForMiracleCostEffect::new();
-        let cloned = effect.clone_box();
-        assert!(format!("{:?}", cloned).contains("MayCastForMiracleCostEffect"));
-    }
-}

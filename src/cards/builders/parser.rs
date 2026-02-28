@@ -260,13 +260,9 @@ pub(super) fn parse_text_with_annotations(
                             .unwrap_or(reason.as_str())
                             .trim()
                             .to_string();
-                        let marker = StaticAbility::custom(
-                            "unsupported_line",
-                            format!(
-                                "Unsupported parser line fallback: {} ({})",
-                                info.raw_line.trim(),
-                                short_reason
-                            ),
+                        let marker = StaticAbility::unsupported_parser_line(
+                            info.raw_line.trim(),
+                            short_reason,
                         );
                         LineAst::StaticAbility(marker)
                     }
@@ -833,6 +829,7 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Mentor => "Mentor".to_string(),
         KeywordAction::Skulk => "Skulk".to_string(),
         KeywordAction::Training => "Training".to_string(),
+        KeywordAction::Myriad => "Myriad".to_string(),
         KeywordAction::Riot => "Riot".to_string(),
         KeywordAction::Unleash => "Unleash".to_string(),
         KeywordAction::Renown(amount) => format!("Renown {amount}"),
@@ -1042,7 +1039,8 @@ fn apply_line_ast(
         }
         LineAst::StaticAbilities(abilities) => {
             for ability in abilities {
-                let mut compiled = Ability::static_ability(ability).with_text(info.raw_line.as_str());
+                let mut compiled =
+                    Ability::static_ability(ability).with_text(info.raw_line.as_str());
                 if let AbilityKind::Static(static_ability) = &compiled.kind
                     && static_ability.id()
                         == crate::static_abilities::StaticAbilityId::ConditionalSpellKeyword
@@ -1124,8 +1122,7 @@ fn apply_line_ast(
                 None
             };
 
-            let compiled = match compile_statement_effects_seeded(&effects, seed_last_object_tag)
-            {
+            let compiled = match compile_statement_effects_seeded(&effects, seed_last_object_tag) {
                 Ok(compiled) => compiled,
                 Err(err) if allow_unsupported => {
                     return Ok(push_unsupported_marker(
@@ -1336,13 +1333,9 @@ fn push_unsupported_marker(
     reason: String,
 ) -> CardDefinitionBuilder {
     builder.with_ability(
-        Ability::static_ability(StaticAbility::custom(
-            "unsupported_line",
-            format!(
-                "Unsupported parser line fallback: {} ({})",
-                raw_line.trim(),
-                reason
-            ),
+        Ability::static_ability(StaticAbility::unsupported_parser_line(
+            raw_line.trim(),
+            reason,
         ))
         .with_text(raw_line),
     )
@@ -1644,6 +1637,7 @@ fn replace_modal_header_x_in_effect_ast(
         | EffectAst::MayByTaggedController { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachTagged { effects, .. }

@@ -29,7 +29,11 @@ pub struct GrantPlayTaggedEffect {
 }
 
 impl GrantPlayTaggedEffect {
-    pub fn new(tag: impl Into<TagKey>, player: PlayerFilter, duration: GrantPlayTaggedDuration) -> Self {
+    pub fn new(
+        tag: impl Into<TagKey>,
+        player: PlayerFilter,
+        duration: GrantPlayTaggedDuration,
+    ) -> Self {
         Self {
             tag: tag.into(),
             player,
@@ -124,7 +128,8 @@ mod tests {
 
         let card = CardBuilder::new(CardId::from_raw(1), "Exiled Card").build();
         let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
-        let snapshot = ObjectSnapshot::from_object(game.object(exiled_id).expect("exiled card"), &game);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("exiled card"), &game);
 
         let mut tags = std::collections::HashMap::new();
         tags.insert(TagKey::from("it"), vec![snapshot]);
@@ -134,7 +139,9 @@ mod tests {
         let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
 
         let effect = GrantPlayTaggedEffect::until_your_next_turn("it", PlayerFilter::You);
-        let outcome = effect.execute(&mut game, &mut ctx).expect("effect should resolve");
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect should resolve");
         assert_eq!(outcome.result, EffectResult::Count(1));
         assert!(
             game.grant_registry
@@ -142,7 +149,11 @@ mod tests {
             "tagged card should be playable from exile"
         );
 
-        let grant = game.grant_registry.grants.first().expect("grant should exist");
+        let grant = game
+            .grant_registry
+            .grants
+            .first()
+            .expect("grant should exist");
         match grant.source {
             GrantSource::Effect {
                 expires_end_of_turn,

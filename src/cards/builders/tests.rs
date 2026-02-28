@@ -7,6 +7,7 @@ use crate::effects::{
 };
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, PlayerFilter};
+use crate::{ObjectId, PlayerId};
 
 #[test]
 fn test_creature_with_keywords() {
@@ -739,8 +740,9 @@ fn test_parse_activated_abilities_with_t_in_costs_cant_be_activated() {
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("activated abilities with {t} in their costs can't be activated")
-            || rendered
-                .contains("enchanted creatures activated abilities with t in their costs can't be activated")
+            || rendered.contains(
+                "enchanted creatures activated abilities with t in their costs can't be activated"
+            )
             || rendered.contains("activated abilities with t in their costs cant be activated"),
         "expected tap-cost activated-ability restriction text, got {rendered}"
     );
@@ -887,7 +889,9 @@ fn test_parse_characteristic_power_equal_number_of_creatures() {
 #[test]
 fn test_parse_characteristic_power_equal_greatest_mana_value() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dodgy Jalopy")
-        .parse_text("Dodgy Jalopy's power is equal to the greatest mana value among creatures you control.")
+        .parse_text(
+            "Dodgy Jalopy's power is equal to the greatest mana value among creatures you control.",
+        )
         .expect("parse characteristic power-only aggregate line");
 
     let static_ability = def
@@ -2016,8 +2020,9 @@ fn test_parse_cascade_keyword_line() {
         "expected cascade static ability id, got {debug}"
     );
     assert!(
-        !debug.contains("custom_id: \"cascade\""),
-        "expected cascade to compile without custom marker static abilities, got {debug}"
+        !debug.contains("staticabilityid::keywordmarker")
+            && !debug.contains("staticabilityid::ruletextplaceholder"),
+        "expected cascade to compile without placeholder static abilities, got {debug}"
     );
 }
 
@@ -2034,8 +2039,9 @@ fn test_parse_riot_keyword_line() {
         "expected riot to compile into a modal ETB trigger, got {abilities_debug}"
     );
     assert!(
-        !abilities_debug.contains("custom_id: \"riot\""),
-        "riot should not remain a custom marker ability, got {abilities_debug}"
+        !abilities_debug.contains("StaticAbilityId::KeywordMarker")
+            && !abilities_debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+        "riot should not remain a placeholder marker ability, got {abilities_debug}"
     );
 }
 
@@ -2057,8 +2063,9 @@ fn test_parse_unleash_keyword_line() {
         "expected unleash restriction ability, got {abilities_debug}"
     );
     assert!(
-        !abilities_debug.contains("custom_id: \"unleash\""),
-        "unleash should not remain a custom marker ability, got {abilities_debug}"
+        !abilities_debug.contains("StaticAbilityId::KeywordMarker")
+            && !abilities_debug.contains("StaticAbilityId::RuleTextPlaceholder"),
+        "unleash should not remain a placeholder marker ability, got {abilities_debug}"
     );
 }
 
@@ -2069,12 +2076,18 @@ fn test_parse_training_keyword_line() {
         .parse_text(
             "Training (Whenever this creature attacks with another creature with greater power, put a +1/+1 counter on this creature.)",
         )
-        .expect("training line should parse as marker keyword");
+        .expect("training line should parse as typed trigger");
 
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.contains("Training"),
-        "expected training marker in render output, got {rendered}"
+        rendered.contains(
+            "Whenever this creature attacks with another creature with greater power, put a +1/+1 counter on this creature"
+        ),
+        "expected canonical training trigger text in render output, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("EmitKeywordActionEffect"),
+        "training render should hide runtime keyword-action instrumentation, got {rendered}"
     );
 }
 
@@ -2140,7 +2153,7 @@ Unearth {U} ({U}: Return this card from your graveyard to the battlefield. It ga
     let debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
         !debug.contains("staticabilityid::custom") && !debug.contains("keyword_marker"),
-        "expected unearth to compile without custom marker static abilities, got {debug}"
+        "expected unearth to compile without placeholder marker static abilities, got {debug}"
     );
 }
 
@@ -2162,7 +2175,7 @@ fn test_parse_echo_keyword_line_with_mana_cost() {
     let debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
         !debug.contains("staticabilityid::custom") && !debug.contains("keyword_marker"),
-        "expected echo to compile without custom marker static abilities, got {debug}"
+        "expected echo to compile without placeholder marker static abilities, got {debug}"
     );
     assert!(
         debug.contains("counter_type: echo"),
@@ -2192,7 +2205,7 @@ fn test_parse_echo_keyword_line_with_non_mana_cost() {
     let debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
         !debug.contains("staticabilityid::custom") && !debug.contains("keyword_marker"),
-        "expected echo to compile without custom marker static abilities, got {debug}"
+        "expected echo to compile without placeholder marker static abilities, got {debug}"
     );
     assert!(
         debug.contains("counter_type: echo"),
@@ -6120,7 +6133,9 @@ fn parse_each_creature_opponents_control_blocks_this_turn_if_able() {
 #[test]
 fn parse_play_that_card_from_exile_this_turn_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Play From Exile Variant")
-        .parse_text("Exile target card from a graveyard. You may play that card from exile this turn.")
+        .parse_text(
+            "Exile target card from a graveyard. You may play that card from exile this turn.",
+        )
         .expect("play-that-card-from-exile clause should parse");
 
     let debug = format!("{:?}", def.spell_effect);
@@ -6270,6 +6285,23 @@ fn parse_choose_not_to_untap_artifact_line_as_static_ability() {
             .iter()
             .any(|display| display.contains("unsupported parser line fallback")),
         "expected real parser static ability, not unsupported fallback marker: {static_displays:?}"
+    );
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        static_ids.contains(&StaticAbilityId::MayChooseNotToUntapDuringUntapStep),
+        "expected typed optional-untap static ability, got {static_ids:?}"
+    );
+    assert!(
+        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "optional untap should not parse as placeholder static ability: {static_ids:?}"
     );
 }
 
@@ -8016,7 +8048,7 @@ fn parse_search_filter_artifact_with_mana_ability_or_basic_land() {
         "expected disjunctive search filter branches, got {abilities_debug}"
     );
     assert!(
-        abilities_debug.contains("custom_static_markers: [\"mana ability\"]")
+        abilities_debug.contains("ability_markers: [\"mana ability\"]")
             && abilities_debug.contains("supertypes: [Basic]")
             && abilities_debug.contains("card_types: [Land]"),
         "expected mana-ability and basic-land branch constraints, got {abilities_debug}"
@@ -8050,7 +8082,7 @@ fn parse_token_with_banding_keyword_modifier() {
     let effects = def.spell_effect.as_ref().expect("spell effects");
     let debug = format!("{effects:?}");
     assert!(
-        debug.contains("custom_id: \"banding\""),
+        debug.contains("KeywordMarker"),
         "expected created token to keep banding marker ability, got {debug}"
     );
 
@@ -8058,6 +8090,46 @@ fn parse_token_with_banding_keyword_modifier() {
     assert!(
         rendered.contains("token with banding"),
         "expected compiled text to include banding token modifier, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_myriad_keyword_as_typed_trigger_without_keyword_marker() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Conclave Evangelist Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Myriad")
+        .expect("myriad keyword should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ForPlayersEffect")
+            && debug.contains("MayEffect")
+            && debug.contains("CreateTokenCopyEffect")
+            && !debug.contains("MyriadTokenCopiesEffect"),
+        "expected composed myriad trigger effect, got {debug}"
+    );
+    assert!(
+        !debug.contains("StaticAbilityId::KeywordMarker"),
+        "myriad should not compile as keyword marker ability: {debug}"
+    );
+}
+
+#[test]
+fn parse_myriad_oracle_text_uses_composed_primitives() {
+    let text = "Whenever this creature attacks, for each opponent other than defending player, you may create a token that's a copy of this creature that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Myriad Oracle Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("myriad oracle text should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ForPlayersEffect")
+            && debug.contains("MayEffect")
+            && debug.contains("CreateTokenCopyEffect")
+            && !debug.contains("MyriadTokenCopiesEffect")
+            && !debug.contains("UnsupportedParserLine"),
+        "expected composed primitive path for oracle myriad text, got {debug}"
     );
 }
 
@@ -9922,6 +9994,162 @@ fn parse_delayed_destroy_at_next_end_step_parses() {
 }
 
 #[test]
+fn parse_arcbond_delayed_trigger_without_unsupported_fallback_in_allow_unsupported_mode() {
+    let previous_allow = std::env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED").ok();
+    unsafe {
+        std::env::set_var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED", "1");
+    }
+
+    let parsed = CardDefinitionBuilder::new(CardId::from_raw(1), "Arcbond Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose target creature. Whenever that creature is dealt damage this turn, it deals that much damage to each other creature and each player.",
+        );
+
+    if let Some(value) = previous_allow {
+        unsafe {
+            std::env::set_var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED", value);
+        }
+    } else {
+        unsafe {
+            std::env::remove_var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED");
+        }
+    }
+
+    let def = parsed.expect("arcbond delayed trigger should parse");
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        !abilities_debug.contains("UnsupportedParserLine"),
+        "arcbond parse should not rely on unsupported fallback marker: {abilities_debug}"
+    );
+
+    let spell_debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        spell_debug.contains("ScheduleDelayedTriggerEffect"),
+        "expected delayed trigger scheduling, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("target_tag: Some"),
+        "expected delayed trigger to track a tagged watched object, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("IsDealtDamageTrigger { target: Source }"),
+        "expected delayed trigger to watch damage dealt to the tagged object source, got {spell_debug}"
+    );
+}
+
+#[test]
+fn arcbond_delayed_trigger_deals_damage_to_each_other_creature_and_each_player() {
+    fn create_creature(
+        game: &mut crate::game_state::GameState,
+        name: &str,
+        controller: PlayerId,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = crate::card::CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(2)],
+                vec![ManaSymbol::Red],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let obj =
+            crate::object::Object::from_card(id, &card, controller, crate::zone::Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Arcbond Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose target creature. Whenever that creature is dealt damage this turn, it deals that much damage to each other creature and each player.",
+        )
+        .expect("arcbond delayed trigger should parse");
+    let spell_effects = def.spell_effect.clone().expect("spell effects");
+
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let chosen_creature = create_creature(&mut game, "Chosen", alice);
+    let other_creature_one = create_creature(&mut game, "Other One", bob);
+    let other_creature_two = create_creature(&mut game, "Other Two", charlie);
+
+    let spell_source = game.new_object_id();
+    let mut ctx =
+        crate::executor::ExecutionContext::new_default(spell_source, alice).with_targets(vec![
+            crate::executor::ResolvedTarget::Object(chosen_creature),
+        ]);
+    for effect in &spell_effects {
+        crate::executor::execute_effect(&mut game, effect, &mut ctx)
+            .expect("spell effect execution should succeed");
+    }
+
+    assert_eq!(
+        game.delayed_triggers.len(),
+        1,
+        "expected one delayed trigger"
+    );
+    assert_eq!(
+        game.delayed_triggers[0].target_objects,
+        vec![chosen_creature],
+        "expected delayed trigger watcher to be the chosen creature"
+    );
+
+    let damage_event = crate::triggers::TriggerEvent::new(crate::events::DamageEvent::new(
+        other_creature_one,
+        crate::game_event::DamageTarget::Object(chosen_creature),
+        3,
+        false,
+    ));
+    let delayed_entries = crate::triggers::check_delayed_triggers(&mut game, &damage_event);
+    assert_eq!(
+        delayed_entries.len(),
+        1,
+        "expected arcbond delayed trigger to fire once"
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in delayed_entries {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("put delayed trigger on stack");
+    assert_eq!(game.stack.len(), 1, "expected delayed trigger on stack");
+
+    crate::game_loop::resolve_stack_entry(&mut game).expect("resolve delayed trigger");
+
+    assert_eq!(
+        game.damage_on(other_creature_one),
+        3,
+        "first other creature should be dealt matching damage"
+    );
+    assert_eq!(
+        game.damage_on(other_creature_two),
+        3,
+        "second other creature should be dealt matching damage"
+    );
+    assert_eq!(
+        game.damage_on(chosen_creature),
+        0,
+        "chosen creature should not be in the 'each other creature' fanout"
+    );
+
+    assert_eq!(game.player(alice).expect("alice should exist").life, 17);
+    assert_eq!(game.player(bob).expect("bob should exist").life, 17);
+    assert_eq!(game.player(charlie).expect("charlie should exist").life, 17);
+}
+
+#[test]
 fn parse_counter_unless_or_mana_choice_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Thrull Wizard Variant")
         .parse_text("Counter target black spell unless that spell's controller pays {B} or {3}.")
@@ -11661,7 +11889,9 @@ fn parse_as_long_as_enchanted_permanent_is_a_creature_condition_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rune of Flight Variant")
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Aura])
-        .parse_text("Enchant permanent\nAs long as enchanted permanent is a creature, it has flying.")
+        .parse_text(
+            "Enchant permanent\nAs long as enchanted permanent is a creature, it has flying.",
+        )
         .expect("enchanted-permanent creature condition line should parse");
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();

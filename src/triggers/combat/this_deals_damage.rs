@@ -103,10 +103,7 @@ impl TriggerMatcher for ThisDealsDamageTrigger {
     }
 
     fn display(&self) -> String {
-        let amount = self
-            .amount
-            .as_ref()
-            .map(describe_comparison);
+        let amount = self.amount.as_ref().map(describe_comparison);
         let mut text = if self.combat_only {
             if let Some(amount) = amount {
                 format!("Whenever this permanent deals {amount} combat damage")

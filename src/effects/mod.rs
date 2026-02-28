@@ -92,8 +92,8 @@ pub use counters::{
 };
 pub use damage::{
     ClearDamageEffect, DealDamageEffect, PreventNextTimeDamageEffect, PreventNextTimeDamageSource,
-    PreventNextTimeDamageTarget, RedirectNextDamageToTargetEffect,
-    RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
+    PreventNextTimeDamageTarget, RedirectNextDamageToTargetEffect, RedirectNextTimeDamageSource,
+    RedirectNextTimeDamageToSourceEffect,
 };
 pub use delayed::{
     ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,
@@ -111,7 +111,7 @@ pub use permanents::{
     BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, CrewCostEffect, EarthbendEffect,
     EvolveEffect, FlipEffect, GrantObjectAbilityEffect, MonstrosityEffect, NinjutsuCostEffect,
     NinjutsuEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SoulbondPairEffect,
-    TapEffect, TrainingEffect, TransformEffect, UnearthEffect, UntapEffect,
+    TapEffect, TransformEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
     CascadeEffect, CastSourceEffect, CastTaggedEffect, ControlPlayerEffect, CreateEmblemEffect,
@@ -127,7 +127,9 @@ pub use stack::{
     ChooseNewTargetsEffect, CopySpellEffect, CounterEffect, NewTargetRestriction, RetargetMode,
     RetargetStackObjectEffect,
 };
-pub use tokens::{CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect};
+pub use tokens::{
+    CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect,
+};
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, ExileEffect,
     ExileFromHandAsCostEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect,

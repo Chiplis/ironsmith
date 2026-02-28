@@ -18,11 +18,17 @@ impl SoulbondPairEffect {
 
     fn source_is_valid(game: &GameState, source: ObjectId, controller: PlayerId) -> bool {
         game.object(source).is_some_and(|object| {
-            object.zone == Zone::Battlefield && object.is_creature() && object.controller == controller
+            object.zone == Zone::Battlefield
+                && object.is_creature()
+                && object.controller == controller
         })
     }
 
-    fn candidate_creatures(game: &GameState, source: ObjectId, controller: PlayerId) -> Vec<ObjectId> {
+    fn candidate_creatures(
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Vec<ObjectId> {
         game.battlefield
             .iter()
             .copied()
@@ -89,7 +95,9 @@ impl EffectExecutor for SoulbondPairEffect {
             return Ok(EffectOutcome::count(0));
         }
         if !game.object(partner).is_some_and(|object| {
-            object.zone == Zone::Battlefield && object.is_creature() && object.controller == ctx.controller
+            object.zone == Zone::Battlefield
+                && object.is_creature()
+                && object.controller == ctx.controller
         }) {
             return Ok(EffectOutcome::count(0));
         }

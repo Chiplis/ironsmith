@@ -271,7 +271,9 @@ pub(crate) fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (boo
     (has_sacrifice_reference, has_exile_reference)
 }
 
-pub(crate) fn trailing_create_at_next_end_step_clause(tail_words: &[&str]) -> Option<(usize, PlayerFilter)> {
+pub(crate) fn trailing_create_at_next_end_step_clause(
+    tail_words: &[&str],
+) -> Option<(usize, PlayerFilter)> {
     let suffixes: &[(&[&str], PlayerFilter)] = &[
         (
             &[
@@ -324,7 +326,9 @@ pub(crate) fn trailing_create_at_next_end_step_clause(tail_words: &[&str]) -> Op
     None
 }
 
-pub(crate) fn split_copy_source_tail_modifiers(source_tokens: &[Token]) -> (Vec<Token>, bool, bool) {
+pub(crate) fn split_copy_source_tail_modifiers(
+    source_tokens: &[Token],
+) -> (Vec<Token>, bool, bool) {
     let mut split_idx: Option<usize> = None;
     for idx in 0..source_tokens.len() {
         if !source_tokens[idx].is_word("and") {
@@ -361,7 +365,68 @@ pub(crate) fn split_copy_source_tail_modifiers(source_tokens: &[Token]) -> (Vec<
     (source_tokens, enters_tapped, enters_attacking)
 }
 
-pub(crate) fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
+pub(crate) fn split_copy_source_inline_combat_modifiers(
+    source_tokens: &[Token],
+) -> (Vec<Token>, bool, bool, Option<PlayerAst>) {
+    let source_words = words(source_tokens);
+    let modifier_start_word_idx = source_words
+        .iter()
+        .position(|word| *word == "thats")
+        .or_else(|| {
+            source_words
+                .windows(2)
+                .position(|window| window == ["that", "is"] || window == ["that", "are"])
+        });
+
+    let Some(modifier_start_word_idx) = modifier_start_word_idx else {
+        return (source_tokens.to_vec(), false, false, None);
+    };
+
+    let modifier_words = &source_words[modifier_start_word_idx..];
+    let enters_tapped = modifier_words.contains(&"tapped");
+    let enters_attacking = modifier_words.contains(&"attacking");
+    if !enters_tapped && !enters_attacking {
+        return (source_tokens.to_vec(), false, false, None);
+    }
+
+    let attack_target_player_or_planeswalker_controlled_by = modifier_words
+        .windows(7)
+        .any(|window| {
+            matches!(
+                window,
+                ["that", "player", "or", "a", "planeswalker", "they", "control"]
+                    | ["that", "player", "or", "planeswalker", "they", "control"]
+                    | ["that", "player", "or", "a", "planeswalker", "they", "controls"]
+                    | ["that", "player", "or", "planeswalker", "they", "controls"]
+                    | ["that", "player", "or", "a", "planeswalker", "their", "control"]
+                    | ["that", "player", "or", "planeswalker", "their", "control"]
+            )
+        })
+        .then_some(PlayerAst::That);
+
+    let Some(modifier_start_token_idx) =
+        token_index_for_word_index(source_tokens, modifier_start_word_idx)
+    else {
+        return (
+            source_tokens.to_vec(),
+            enters_tapped,
+            enters_attacking,
+            attack_target_player_or_planeswalker_controlled_by,
+        );
+    };
+    let source_tokens = trim_commas(&source_tokens[..modifier_start_token_idx]).to_vec();
+    (
+        source_tokens,
+        enters_tapped,
+        enters_attacking,
+        attack_target_player_or_planeswalker_controlled_by,
+    )
+}
+
+pub(crate) fn parse_create(
+    tokens: &[Token],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let player = match subject {
         Some(SubjectAst::Player(player)) => player,
         _ => PlayerAst::Implicit,
@@ -609,6 +674,7 @@ pub(crate) fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Res
             }) || tail_words.contains(&"haste");
             let mut enters_tapped = false;
             let mut enters_attacking = false;
+            let mut attack_target_player_or_planeswalker_controlled_by = None;
             let (sacrifice_at_next_end_step, exile_at_next_end_step) =
                 parse_next_end_step_token_delay_flags(&tail_words);
             if let Some(of_idx) = tail_tokens.iter().position(|token| token.is_word("of")) {
@@ -618,10 +684,17 @@ pub(crate) fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Res
                     .position(|token| matches!(token, Token::Comma(_)) || token.is_word("except"))
                     .unwrap_or(source_tokens.len());
                 let source_tokens = &source_tokens[..source_end];
-                let (source_tokens, parsed_tapped, parsed_attacking) =
+                let (source_tokens, tail_tapped, tail_attacking) =
                     split_copy_source_tail_modifiers(source_tokens);
-                enters_tapped = parsed_tapped;
-                enters_attacking = parsed_attacking;
+                let (
+                    source_tokens,
+                    inline_tapped,
+                    inline_attacking,
+                    inline_attack_target_player,
+                ) = split_copy_source_inline_combat_modifiers(&source_tokens);
+                enters_tapped = tail_tapped || inline_tapped;
+                enters_attacking = tail_attacking || inline_attacking;
+                attack_target_player_or_planeswalker_controlled_by = inline_attack_target_player;
                 if !source_tokens.is_empty() {
                     let source = parse_target_phrase(&source_tokens)?;
                     let references_iterated_object = target_references_it(&source);
@@ -631,6 +704,7 @@ pub(crate) fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Res
                         player,
                         enters_tapped,
                         enters_attacking,
+                        attack_target_player_or_planeswalker_controlled_by,
                         half_power_toughness_round_up: half_pt,
                         has_haste,
                         exile_at_end_of_combat: false,
@@ -658,6 +732,7 @@ pub(crate) fn parse_create(tokens: &[Token], subject: Option<SubjectAst>) -> Res
                 player,
                 enters_tapped,
                 enters_attacking,
+                attack_target_player_or_planeswalker_controlled_by,
                 half_power_toughness_round_up: half_pt,
                 has_haste,
                 exile_at_end_of_combat: false,
@@ -913,4 +988,3 @@ pub(crate) fn parse_investigate(tokens: &[Token]) -> Result<EffectAst, CardTextE
 
     Ok(EffectAst::Investigate { count })
 }
-

@@ -108,7 +108,9 @@ pub(crate) enum FilterKeywordConstraint {
     Marker(&'static str),
 }
 
-pub(crate) fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKeywordConstraint> {
+pub(crate) fn keyword_action_to_filter_constraint(
+    action: KeywordAction,
+) -> Option<FilterKeywordConstraint> {
     use FilterKeywordConstraint::{Marker, Static};
     let ability = match action {
         KeywordAction::Flying => Static(StaticAbilityId::Flying),
@@ -241,20 +243,18 @@ pub(crate) fn apply_filter_keyword_constraint(
         FilterKeywordConstraint::Marker(marker) => {
             if excluded {
                 if !filter
-                    .excluded_custom_static_markers
+                    .excluded_ability_markers
                     .iter()
                     .any(|value| value.eq_ignore_ascii_case(marker))
                 {
-                    filter
-                        .excluded_custom_static_markers
-                        .push(marker.to_string());
+                    filter.excluded_ability_markers.push(marker.to_string());
                 }
             } else if !filter
-                .custom_static_markers
+                .ability_markers
                 .iter()
                 .any(|value| value.eq_ignore_ascii_case(marker))
             {
-                filter.custom_static_markers.push(marker.to_string());
+                filter.ability_markers.push(marker.to_string());
             }
         }
     }

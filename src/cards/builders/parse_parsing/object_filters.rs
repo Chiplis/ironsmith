@@ -1,6 +1,9 @@
 use super::*;
 
-pub(crate) fn parse_object_filter(tokens: &[Token], other: bool) -> Result<ObjectFilter, CardTextError> {
+pub(crate) fn parse_object_filter(
+    tokens: &[Token],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
     let mut filter = ObjectFilter::default();
     if other {
         filter.other = true;
@@ -2019,16 +2022,19 @@ pub(crate) fn parse_object_filter(tokens: &[Token], other: bool) -> Result<Objec
     ];
 
     if saw_spell && saw_permanent {
-        let has_permanent_spell_phrase = all_words.windows(2).any(|window| {
-            window == ["permanent", "spell"] || window == ["permanent", "spells"]
-        });
+        let has_permanent_spell_phrase = all_words
+            .windows(2)
+            .any(|window| window == ["permanent", "spell"] || window == ["permanent", "spells"]);
         let has_standalone_permanent = all_words.iter().enumerate().any(|(idx, word)| {
             (*word == "permanent" || *word == "permanents")
                 && !matches!(all_words.get(idx + 1).copied(), Some("spell" | "spells"))
         });
         let has_standalone_spell = all_words.iter().enumerate().any(|(idx, word)| {
             (*word == "spell" || *word == "spells")
-                && !matches!(idx.checked_sub(1).and_then(|i| all_words.get(i)).copied(), Some("permanent"))
+                && !matches!(
+                    idx.checked_sub(1).and_then(|i| all_words.get(i)).copied(),
+                    Some("permanent")
+                )
         });
 
         if has_standalone_permanent || has_standalone_spell {
@@ -2050,7 +2056,8 @@ pub(crate) fn parse_object_filter(tokens: &[Token], other: bool) -> Result<Objec
             let mut permanent_filter = filter.clone();
             permanent_filter.any_of.clear();
             permanent_filter.zone = Some(Zone::Battlefield);
-            if permanent_filter.card_types.is_empty() && permanent_filter.all_card_types.is_empty() {
+            if permanent_filter.card_types.is_empty() && permanent_filter.all_card_types.is_empty()
+            {
                 permanent_filter.card_types = permanent_type_defaults.clone();
             }
 
@@ -2156,8 +2163,8 @@ pub(crate) fn parse_object_filter(tokens: &[Token], other: bool) -> Result<Objec
         || filter.alternative_cast.is_some()
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
-        || !filter.custom_static_markers.is_empty()
-        || !filter.excluded_custom_static_markers.is_empty()
+        || !filter.ability_markers.is_empty()
+        || !filter.excluded_ability_markers.is_empty()
         || !filter.tagged_constraints.is_empty()
         || filter.targets_player.is_some()
         || filter.targets_object.is_some()
@@ -2208,8 +2215,8 @@ pub(crate) fn parse_object_filter(tokens: &[Token], other: bool) -> Result<Objec
         || filter.alternative_cast.is_some()
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
-        || !filter.custom_static_markers.is_empty()
-        || !filter.excluded_custom_static_markers.is_empty()
+        || !filter.ability_markers.is_empty()
+        || !filter.excluded_ability_markers.is_empty()
         || filter.colors.is_some()
         || !filter.tagged_constraints.is_empty()
         || filter.targets_player.is_some()
@@ -2318,7 +2325,10 @@ pub(crate) fn spell_filter_has_identity(filter: &crate::ability::SpellFilter) ->
         || filter.alternative_cast.is_some()
 }
 
-pub(crate) fn merge_spell_filters(base: &mut crate::ability::SpellFilter, extra: crate::ability::SpellFilter) {
+pub(crate) fn merge_spell_filters(
+    base: &mut crate::ability::SpellFilter,
+    extra: crate::ability::SpellFilter,
+) {
     for card_type in extra.card_types {
         if !base.card_types.contains(&card_type) {
             base.card_types.push(card_type);

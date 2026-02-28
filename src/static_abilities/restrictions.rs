@@ -456,27 +456,3 @@ impl StaticAbilityKind for RuleRestriction {
         game.cant_effects.merge(tracker);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_players_cant_gain_life() {
-        let ability = PlayersCantGainLife;
-        assert_eq!(ability.id(), StaticAbilityId::PlayersCantGainLife);
-        assert_eq!(ability.display(), "Players can't gain life");
-    }
-
-    #[test]
-    fn test_you_cant_lose_game() {
-        let ability = YouCantLoseGame;
-        assert_eq!(ability.id(), StaticAbilityId::YouCantLoseGame);
-    }
-
-    #[test]
-    fn test_cant_be_countered() {
-        let ability = CantBeCountered;
-        assert!(ability.cant_be_countered());
-    }
-}

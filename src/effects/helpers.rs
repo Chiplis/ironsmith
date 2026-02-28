@@ -67,7 +67,10 @@ fn candidate_ids_for_zone(game: &GameState, zone: Option<Zone>) -> Vec<ObjectId>
     }
 }
 
-fn candidate_ids_for_filter(game: &GameState, filter: &crate::filter::ObjectFilter) -> Vec<ObjectId> {
+fn candidate_ids_for_filter(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+) -> Vec<ObjectId> {
     if let Some(zone) = filter.zone {
         return candidate_ids_for_zone(game, Some(zone));
     }
@@ -140,7 +143,11 @@ pub fn resolve_value(
                 .copied()
                 .filter_map(|id| game.object(id).map(|obj| (id, obj)))
                 .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
-                .map(|(id, obj)| game.calculated_power(id).or_else(|| obj.power()).unwrap_or(0))
+                .map(|(id, obj)| {
+                    game.calculated_power(id)
+                        .or_else(|| obj.power())
+                        .unwrap_or(0)
+                })
                 .sum();
             Ok(total)
         }
@@ -1023,6 +1030,14 @@ pub fn resolve_player_filter(
             }
             Err(ExecutionError::InvalidTarget)
         }
+        PlayerFilter::Excluding { .. } => {
+            let filter_ctx = ctx.filter_context(game);
+            let mut players = resolve_player_filter_to_list(game, spec, &filter_ctx, ctx)?;
+            players
+                .drain(..)
+                .next()
+                .ok_or_else(|| ExecutionError::UnresolvableValue("No matching players".to_string()))
+        }
         PlayerFilter::Specific(id) => Ok(*id),
         PlayerFilter::ControllerOf(object_ref) => resolve_controller_of(game, ctx, object_ref),
         PlayerFilter::OwnerOf(object_ref) => resolve_owner_of(game, ctx, object_ref),
@@ -1789,6 +1804,12 @@ fn resolve_player_filter_to_list(
             .iterated_player
             .map(|id| vec![id])
             .ok_or_else(|| ExecutionError::UnresolvableValue("IteratedPlayer not set".to_string())),
+        PlayerFilter::Excluding { base, excluded } => {
+            let mut base_players = resolve_player_filter_to_list(game, base, _filter_ctx, ctx)?;
+            let excluded_players = resolve_player_filter_to_list(game, excluded, _filter_ctx, ctx)?;
+            base_players.retain(|id| !excluded_players.contains(id));
+            Ok(base_players)
+        }
         PlayerFilter::ControllerOf(object_ref) => {
             Ok(vec![resolve_controller_of(game, ctx, object_ref)?])
         }

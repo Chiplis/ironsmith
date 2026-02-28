@@ -1,12 +1,15 @@
 //! Create token copy effect implementation.
 
+use crate::combat_state::{AttackTarget, AttackerInfo};
 use crate::card::PtValue;
 use crate::color::ColorSet;
+use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, EffectResult, Value};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_from_spec, resolve_value};
+use crate::effects::helpers::{resolve_objects_from_spec, resolve_player_filter, resolve_value};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::ids::PlayerId;
 use crate::object::Object;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -28,6 +31,7 @@ use super::lifecycle::{
 /// * `enters_tapped` - Whether the copy enters tapped
 /// * `has_haste` - Whether the copy has haste
 /// * `enters_attacking` - Whether the copy enters attacking
+/// * `attack_target_mode` - Optional custom attack-target selection when attacking
 /// * `exile_at_end_of_combat` - Whether to exile at end of combat
 ///
 /// # Example
@@ -53,6 +57,8 @@ pub struct CreateTokenCopyEffect {
     pub has_haste: bool,
     /// Whether the copy enters attacking.
     pub enters_attacking: bool,
+    /// Optional custom attack-target selection when entering attacking.
+    pub attack_target_mode: Option<CopyAttackTargetMode>,
     /// Whether to exile at end of combat.
     pub exile_at_end_of_combat: bool,
     /// Whether to sacrifice at the beginning of the next end step.
@@ -86,6 +92,13 @@ pub enum CopyPtAdjustment {
     HalfRoundUp,
 }
 
+/// Attack-target assignment mode for copied tokens entering attacking.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CopyAttackTargetMode {
+    /// Choose among the player and planeswalkers controlled by that player.
+    PlayerOrPlaneswalkerControlledBy(PlayerFilter),
+}
+
 impl CreateTokenCopyEffect {
     /// Create a new create token copy effect.
     pub fn new(target: ChooseSpec, count: impl Into<Value>, controller: PlayerFilter) -> Self {
@@ -96,6 +109,7 @@ impl CreateTokenCopyEffect {
             enters_tapped: false,
             has_haste: false,
             enters_attacking: false,
+            attack_target_mode: None,
             exile_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
             exile_at_next_end_step: false,
@@ -153,6 +167,25 @@ impl CreateTokenCopyEffect {
     /// Set whether the copy enters attacking.
     pub fn attacking(mut self, value: bool) -> Self {
         self.enters_attacking = value;
+        if !value {
+            self.attack_target_mode = None;
+        }
+        self
+    }
+
+    /// Set a custom attack-target assignment mode for copied tokens.
+    pub fn attack_target_mode(mut self, mode: CopyAttackTargetMode) -> Self {
+        self.enters_attacking = true;
+        self.attack_target_mode = Some(mode);
+        self
+    }
+
+    /// Enter attacking a chosen player or a planeswalker that player controls.
+    pub fn attacking_player_or_planeswalker_controlled_by(mut self, player: PlayerFilter) -> Self {
+        self.enters_attacking = true;
+        self.attack_target_mode = Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
+            player,
+        ));
         self
     }
 
@@ -233,6 +266,72 @@ impl CreateTokenCopyEffect {
         self.granted_static_abilities.push(ability);
         self
     }
+
+    fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<AttackTarget> {
+        let mut targets = Vec::new();
+        if game.player(player_id).is_some_and(|player| player.is_in_game()) {
+            targets.push(AttackTarget::Player(player_id));
+        }
+
+        for &object_id in &game.battlefield {
+            if let Some(object) = game.object(object_id)
+                && object.controller == player_id
+                && object.has_card_type(CardType::Planeswalker)
+            {
+                targets.push(AttackTarget::Planeswalker(object_id));
+            }
+        }
+
+        targets
+    }
+
+    fn choose_attack_target(
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        player_id: PlayerId,
+        targets: &[AttackTarget],
+    ) -> AttackTarget {
+        if targets.len() == 1 {
+            return targets[0].clone();
+        }
+
+        let player_name = game
+            .player(player_id)
+            .map(|player| player.name.clone())
+            .unwrap_or_else(|| "that player".to_string());
+        let options: Vec<SelectableOption> = targets
+            .iter()
+            .enumerate()
+            .map(|(index, target)| {
+                let description = match target {
+                    AttackTarget::Player(_) => format!("Attack {player_name}"),
+                    AttackTarget::Planeswalker(planeswalker_id) => {
+                        let walker_name = game
+                            .object(*planeswalker_id)
+                            .map(|object| object.name.clone())
+                            .unwrap_or_else(|| "a planeswalker".to_string());
+                        format!("Attack {walker_name} controlled by {player_name}")
+                    }
+                };
+                SelectableOption::new(index, description)
+            })
+            .collect();
+        let choice_ctx = SelectOptionsContext::new(
+            ctx.controller,
+            Some(ctx.source),
+            format!("Choose attack target for token copy attacking {player_name}"),
+            options,
+            1,
+            1,
+        );
+        let chosen = ctx.decision_maker.decide_options(game, &choice_ctx);
+        let index = chosen
+            .first()
+            .copied()
+            .filter(|selected| *selected < targets.len())
+            .unwrap_or(0);
+        targets[index].clone()
+    }
 }
 
 impl EffectExecutor for CreateTokenCopyEffect {
@@ -241,8 +340,7 @@ impl EffectExecutor for CreateTokenCopyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let controller_id =
-            crate::effects::helpers::resolve_player_filter(game, &self.controller, ctx)?;
+        let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
 
         // Resolve target from spec (supports tagged/spec-specific references)
@@ -269,13 +367,22 @@ impl EffectExecutor for CreateTokenCopyEffect {
         let Some(target_object) = target_object else {
             return Err(ExecutionError::ObjectNotFound(target_id));
         };
+        let configured_attack_player = match &self.attack_target_mode {
+            Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => {
+                Some(resolve_player_filter(game, player_filter, ctx)?)
+            }
+            None => None,
+        };
         let cleanup_options = TokenCleanupOptions::new(
             self.exile_at_end_of_combat,
             false,
             self.sacrifice_at_next_end_step,
             self.exile_at_next_end_step,
         );
-        let entry_options = TokenEntryOptions::new(self.enters_tapped, self.enters_attacking);
+        let entry_options = TokenEntryOptions::new(
+            self.enters_tapped,
+            self.enters_attacking && configured_attack_player.is_none(),
+        );
         let mut static_abilities_to_grant =
             Vec::with_capacity(self.granted_static_abilities.len() + usize::from(self.has_haste));
         if self.has_haste {
@@ -357,6 +464,19 @@ impl EffectExecutor for CreateTokenCopyEffect {
                 &mut events,
             )?;
 
+            if let Some(attack_player) = configured_attack_player {
+                let targets = Self::attack_targets_for_player(game, attack_player);
+                if !targets.is_empty() {
+                    let chosen_target = Self::choose_attack_target(game, ctx, attack_player, &targets);
+                    if let Some(combat) = game.combat.as_mut() {
+                        combat.attackers.push(AttackerInfo {
+                            creature: id,
+                            target: chosen_target,
+                        });
+                    }
+                }
+            }
+
             schedule_token_cleanup(game, ctx, id, controller_id, cleanup_options)?;
             grant_token_static_abilities(game, ctx, id, &static_abilities_to_grant)?;
         }
@@ -406,6 +526,16 @@ mod tests {
     fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
         let id = game.new_object_id();
         let card = make_creature_card(id.0 as u32, name);
+        let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    fn create_planeswalker(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Planeswalker])
+            .build();
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
@@ -616,6 +746,181 @@ mod tests {
             );
         } else {
             panic!("Expected Objects result");
+        }
+    }
+
+    #[test]
+    fn test_create_token_copy_attacks_chosen_planeswalker_of_iterated_player() {
+        use crate::combat_state::{AttackTarget, CombatState};
+        use crate::decision::DecisionMaker;
+
+        struct ChooseLastOptionDecisionMaker;
+        impl DecisionMaker for ChooseLastOptionDecisionMaker {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                vec![ctx.options.last().map(|option| option.index).unwrap_or(0)]
+            }
+        }
+
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let creature_id = create_creature(&mut game, "Goblin Guide", alice);
+        let source = create_creature(&mut game, "Source Attacker", alice);
+        let charlie_walker = create_planeswalker(&mut game, "Charlie Walker", charlie);
+        game.combat = Some(CombatState::default());
+
+        let mut dm = ChooseLastOptionDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+        ctx.iterated_player = Some(charlie);
+
+        let effect = CreateTokenCopyEffect::one(ChooseSpec::creature())
+            .attacking_player_or_planeswalker_controlled_by(PlayerFilter::IteratedPlayer);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        if let EffectResult::Objects(ids) = result.result {
+            let token_id = ids[0];
+            let combat = game.combat.as_ref().expect("Combat should still be active");
+            let token_attacker = combat
+                .attackers
+                .iter()
+                .find(|info| info.creature == token_id)
+                .expect("Token should be attacking");
+            assert_eq!(
+                token_attacker.target,
+                AttackTarget::Planeswalker(charlie_walker),
+                "Token should attack the chosen planeswalker"
+            );
+        } else {
+            panic!("Expected Objects result");
+        }
+        assert_ne!(bob, charlie, "sanity check");
+    }
+
+    #[test]
+    fn test_composed_myriad_effect_creates_for_each_other_opponent_and_exiles_at_eoc() {
+        use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
+        use crate::decision::DecisionMaker;
+        use crate::effect::Effect;
+        use crate::events::phase::EndOfCombatEvent;
+        use crate::executor::execute_effect;
+        use crate::triggers::TriggerEvent;
+
+        struct AlwaysYesDecisionMaker;
+        impl DecisionMaker for AlwaysYesDecisionMaker {
+            fn decide_boolean(
+                &mut self,
+                _game: &GameState,
+                _ctx: &crate::decisions::context::BooleanContext,
+            ) -> bool {
+                true
+            }
+        }
+
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Dana".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let dana = PlayerId::from_index(3);
+        let source = create_creature(&mut game, "Myriad Source", alice);
+        let other_attacker = create_creature(&mut game, "Other Attacker", alice);
+        game.combat = Some(CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: source,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: other_attacker,
+                    target: AttackTarget::Player(charlie),
+                },
+            ],
+            ..CombatState::default()
+        });
+
+        let composed_myriad = Effect::for_players(
+            PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending),
+            vec![Effect::may(vec![Effect::new(
+                CreateTokenCopyEffect::new(ChooseSpec::Source, 1, PlayerFilter::You)
+                    .enters_tapped(true)
+                    .attacking_player_or_planeswalker_controlled_by(PlayerFilter::IteratedPlayer)
+                    .exile_at_eoc(true),
+            )])],
+        );
+
+        let mut dm = AlwaysYesDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_defending_player(bob);
+        let outcome = execute_effect(&mut game, &composed_myriad, &mut ctx).unwrap();
+        assert!(
+            outcome.result.something_happened(),
+            "expected composed myriad effect to create at least one token"
+        );
+
+        let combat = game.combat.as_ref().expect("combat should exist");
+        let token_attackers: Vec<_> = combat
+            .attackers
+            .iter()
+            .filter_map(|info| {
+                (info.creature != source && info.creature != other_attacker)
+                    .then_some((info.creature, info.target.clone()))
+            })
+            .collect();
+        assert_eq!(token_attackers.len(), 2);
+
+        let mut attacked_players: Vec<_> = token_attackers
+            .iter()
+            .filter_map(|(_, target)| match target {
+                AttackTarget::Player(player) => Some(*player),
+                AttackTarget::Planeswalker(_) => None,
+            })
+            .collect();
+        attacked_players.sort();
+        assert_eq!(attacked_players, vec![charlie, dana]);
+
+        let token_ids: Vec<_> = token_attackers.iter().map(|(id, _)| *id).collect();
+        let cleanup_trigger_count = game
+            .delayed_triggers
+            .iter()
+            .filter(|delayed| {
+                delayed.trigger.display().contains("end of combat")
+                    && delayed.target_objects.len() == 1
+                    && token_ids.contains(&delayed.target_objects[0])
+            })
+            .count();
+        assert_eq!(cleanup_trigger_count, 2);
+
+        let mut trigger_queue = crate::triggers::TriggerQueue::new();
+        let event = TriggerEvent::new(EndOfCombatEvent::new());
+        for entry in crate::triggers::check_delayed_triggers(&mut game, &event) {
+            trigger_queue.add(entry);
+        }
+        crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("put delayed triggers on stack");
+        while !game.stack_is_empty() {
+            crate::game_loop::resolve_stack_entry(&mut game).expect("resolve delayed trigger");
+        }
+
+        for token_id in token_ids {
+            assert!(
+                !game.battlefield.contains(&token_id),
+                "myriad token should be exiled at end of combat"
+            );
         }
     }
 }

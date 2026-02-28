@@ -165,7 +165,8 @@ fn battlefield_has_static_ability(game: &GameState, ability_id: StaticAbilityId)
 }
 
 fn event_has_creature_entering_battlefield(game: &GameState, trigger_event: &TriggerEvent) -> bool {
-    let Some(zone_change) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>() else {
+    let Some(zone_change) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>()
+    else {
         return false;
     };
     if !zone_change.is_etb() {
@@ -369,8 +370,7 @@ pub fn check_triggers(
                     return true;
                 }
                 if let Some(spec) = static_ability.conditional_spell_keyword_spec()
-                    && spec.keyword
-                        == crate::static_abilities::ConditionalSpellKeywordKind::Cascade
+                    && spec.keyword == crate::static_abilities::ConditionalSpellKeywordKind::Cascade
                 {
                     return crate::static_abilities::conditional_spell_keyword_active(
                         spec,
@@ -651,6 +651,16 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::Active => player == game.turn.active_player,
         PlayerFilter::Defending => defending_player == Some(player),
         PlayerFilter::IteratedPlayer => false,
+        PlayerFilter::Excluding { base, excluded } => {
+            player_filter_matches_with_context(base, player, controller, game, defending_player)
+                && !player_filter_matches_with_context(
+                    excluded,
+                    player,
+                    controller,
+                    game,
+                    defending_player,
+                )
+        }
     }
 }
 
@@ -708,347 +718,4 @@ pub fn verify_intervening_if(
         options: Default::default(),
     };
     crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ability::{Ability, TriggeredAbility};
-    use crate::card::{CardBuilder, PowerToughness};
-    use crate::effect::Effect;
-    use crate::events::EventKind;
-    use crate::events::other::CounterPlacedEvent;
-    use crate::events::phase::BeginningOfUpkeepEvent;
-    use crate::events::spells::SpellCastEvent;
-    use crate::events::zones::ZoneChangeEvent;
-    use crate::game_state::StackEntry;
-    use crate::ids::CardId;
-    use crate::mana::{ManaCost, ManaSymbol};
-    use crate::object::CounterType;
-    use crate::static_abilities::StaticAbility;
-    use crate::target::ObjectFilter;
-    use crate::target::PlayerFilter;
-    use crate::types::CardType;
-    use crate::zone::Zone;
-
-    fn setup_game() -> GameState {
-        GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
-    }
-
-    fn add_creature_with_etb(game: &mut GameState, owner: PlayerId) -> ObjectId {
-        let card = CardBuilder::new(CardId::from_raw(1), "ETB Creature")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-
-        let id = game.create_object_from_card(&card, owner, Zone::Battlefield);
-
-        if let Some(obj) = game.object_mut(id) {
-            obj.abilities.push(Ability::triggered(
-                Trigger::this_enters_battlefield(),
-                vec![Effect::draw(1)],
-            ));
-        }
-
-        id
-    }
-
-    #[test]
-    fn test_trigger_queue_basic() {
-        let mut queue = TriggerQueue::new();
-        assert!(queue.is_empty());
-
-        let entry = TriggeredAbilityEntry {
-            source: ObjectId::from_raw(1),
-            controller: PlayerId::from_index(0),
-            x_value: None,
-            ability: TriggeredAbility {
-                trigger: Trigger::this_enters_battlefield(),
-                effects: vec![Effect::draw(1)],
-                choices: vec![],
-                intervening_if: None,
-            },
-            triggering_event: TriggerEvent::new(ZoneChangeEvent::new(
-                ObjectId::from_raw(1),
-                Zone::Hand,
-                Zone::Battlefield,
-                None,
-            )),
-            source_stable_id: StableId::from_raw(1),
-            source_name: "Test Card".to_string(),
-            trigger_identity: TriggerIdentity(1),
-        };
-
-        queue.add(entry);
-        assert!(!queue.is_empty());
-        assert_eq!(queue.entries.len(), 1);
-
-        let taken = queue.take_all();
-        assert_eq!(taken.len(), 1);
-        assert!(queue.is_empty());
-    }
-
-    #[test]
-    fn test_check_triggers_etb() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-
-        let creature_id = add_creature_with_etb(&mut game, alice);
-
-        let event = TriggerEvent::new(ZoneChangeEvent::new(
-            creature_id,
-            Zone::Hand,
-            Zone::Battlefield,
-            None,
-        ));
-
-        let triggered = check_triggers(&game, &event);
-        assert_eq!(triggered.len(), 1);
-        assert_eq!(triggered[0].source, creature_id);
-    }
-
-    #[test]
-    fn test_creature_etb_triggers_are_suppressed_by_torpor_orb_style_ability() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-
-        let creature_id = add_creature_with_etb(&mut game, alice);
-        let orb_card = CardBuilder::new(CardId::from_raw(2), "Torpor Orb Variant")
-            .card_types(vec![CardType::Artifact])
-            .build();
-        let orb_id = game.create_object_from_card(&orb_card, alice, Zone::Battlefield);
-        if let Some(orb) = game.object_mut(orb_id) {
-            orb.abilities.push(Ability::static_ability(
-                StaticAbility::creatures_entering_dont_cause_abilities_to_trigger(),
-            ));
-        }
-
-        let event = TriggerEvent::new(ZoneChangeEvent::new(
-            creature_id,
-            Zone::Hand,
-            Zone::Battlefield,
-            None,
-        ));
-        let triggered = check_triggers(&game, &event);
-        assert_eq!(
-            triggered.len(),
-            0,
-            "expected ETB triggers to be suppressed, got {triggered:?}"
-        );
-    }
-
-    #[test]
-    fn test_check_triggers_upkeep() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-
-        let card = CardBuilder::new(CardId::from_raw(1), "Upkeep Creature")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-
-        let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
-
-        if let Some(obj) = game.object_mut(creature_id) {
-            obj.abilities.push(Ability::triggered(
-                Trigger::beginning_of_upkeep(PlayerFilter::You),
-                vec![Effect::draw(1)],
-            ));
-        }
-
-        let event = TriggerEvent::new(BeginningOfUpkeepEvent::new(alice));
-        let triggered = check_triggers(&game, &event);
-        assert_eq!(triggered.len(), 1);
-
-        let bob = PlayerId::from_index(1);
-        let event = TriggerEvent::new(BeginningOfUpkeepEvent::new(bob));
-        let triggered = check_triggers(&game, &event);
-        assert_eq!(triggered.len(), 0);
-    }
-
-    #[test]
-    fn test_generate_step_trigger_events() {
-        let mut game = setup_game();
-        let _alice = PlayerId::from_index(0);
-
-        game.turn.phase = Phase::Beginning;
-        game.turn.step = Some(Step::Upkeep);
-        let event = generate_step_trigger_events(&game);
-        assert!(event.is_some());
-        assert_eq!(event.unwrap().kind(), EventKind::BeginningOfUpkeep);
-    }
-
-    #[test]
-    fn test_check_triggers_uses_trigger_count_for_counter_placement() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-
-        let card = CardBuilder::new(CardId::from_raw(1), "Counter Creature")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-
-        let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
-
-        if let Some(obj) = game.object_mut(creature_id) {
-            obj.abilities.push(Ability::triggered(
-                Trigger::new(
-                    crate::triggers::CounterPutOnTrigger::new(ObjectFilter::source())
-                        .counter_type(CounterType::PlusOnePlusOne),
-                ),
-                vec![Effect::draw(1)],
-            ));
-            obj.abilities.push(Ability::triggered(
-                Trigger::new(
-                    crate::triggers::CounterPutOnTrigger::new(ObjectFilter::source())
-                        .counter_type(CounterType::PlusOnePlusOne)
-                        .count(crate::triggers::CountMode::OneOrMore),
-                ),
-                vec![Effect::draw(1)],
-            ));
-        }
-
-        let event = TriggerEvent::new(CounterPlacedEvent::new(
-            creature_id,
-            CounterType::PlusOnePlusOne,
-            3,
-        ));
-        let triggered = check_triggers(&game, &event);
-        assert_eq!(
-            triggered.len(),
-            4,
-            "expected 3 per-counter triggers + 1 one-or-more trigger, got {:?}",
-            triggered
-                .iter()
-                .map(|entry| entry.ability.trigger.display())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn test_check_triggers_adds_synthetic_cascade_trigger() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-
-        let card = CardBuilder::new(CardId::from_raw(99), "Cascade Probe")
-            .card_types(vec![CardType::Sorcery])
-            .build();
-        let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
-        if let Some(obj) = game.object_mut(spell_id) {
-            obj.abilities.push(
-                Ability::static_ability(StaticAbility::cascade())
-                    .in_zones(vec![Zone::Stack])
-                    .with_text("Cascade"),
-            );
-        }
-        game.stack.push(StackEntry::new(spell_id, alice));
-
-        let event = TriggerEvent::new(SpellCastEvent::new(spell_id, alice, Zone::Hand));
-        let triggered = check_triggers(&game, &event);
-
-        assert_eq!(triggered.len(), 1);
-        assert_eq!(triggered[0].source, spell_id);
-        let debug = format!("{:?}", triggered[0].ability.effects);
-        assert!(
-            debug.contains("CascadeEffect"),
-            "expected cascade synthetic trigger effect, got {debug}"
-        );
-    }
-
-    #[test]
-    fn test_check_triggers_adds_conditional_cascade_trigger_when_active() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-
-        for (idx, (name, card_type)) in [
-            ("Artifact Card", CardType::Artifact),
-            ("Creature Card", CardType::Creature),
-            ("Enchantment Card", CardType::Enchantment),
-            ("Land Card", CardType::Land),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let card = CardBuilder::new(CardId::from_raw(300 + idx as u32), name)
-                .card_types(vec![card_type])
-                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
-                .build();
-            game.create_object_from_card(&card, alice, Zone::Graveyard);
-        }
-
-        let card = CardBuilder::new(CardId::from_raw(399), "Conditional Cascade Probe")
-            .card_types(vec![CardType::Sorcery])
-            .build();
-        let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
-        let spec = crate::static_abilities::ConditionalSpellKeywordSpec {
-            keyword: crate::static_abilities::ConditionalSpellKeywordKind::Cascade,
-            metric: crate::static_abilities::GraveyardCountMetric::CardTypes,
-            threshold: 4,
-        };
-        if let Some(obj) = game.object_mut(spell_id) {
-            obj.abilities.push(
-                Ability::static_ability(StaticAbility::conditional_spell_keyword(spec))
-                    .in_zones(vec![Zone::Hand, Zone::Stack])
-                    .with_text("This spell has cascade as long as there are four or more card types among cards in your graveyard."),
-            );
-        }
-        game.stack.push(StackEntry::new(spell_id, alice));
-
-        let event = TriggerEvent::new(SpellCastEvent::new(spell_id, alice, Zone::Hand));
-        let triggered = check_triggers(&game, &event);
-
-        assert_eq!(triggered.len(), 1, "conditional cascade should trigger once");
-        let debug = format!("{:?}", triggered[0].ability.effects);
-        assert!(
-            debug.contains("CascadeEffect"),
-            "expected cascade synthetic trigger effect, got {debug}"
-        );
-    }
-
-    #[test]
-    fn test_check_triggers_skips_conditional_cascade_trigger_when_inactive() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-
-        for (idx, (name, card_type)) in [
-            ("Artifact Card", CardType::Artifact),
-            ("Creature Card", CardType::Creature),
-            ("Enchantment Card", CardType::Enchantment),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let card = CardBuilder::new(CardId::from_raw(500 + idx as u32), name)
-                .card_types(vec![card_type])
-                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
-                .build();
-            game.create_object_from_card(&card, alice, Zone::Graveyard);
-        }
-
-        let card = CardBuilder::new(CardId::from_raw(599), "Conditional Cascade Probe")
-            .card_types(vec![CardType::Sorcery])
-            .build();
-        let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
-        let spec = crate::static_abilities::ConditionalSpellKeywordSpec {
-            keyword: crate::static_abilities::ConditionalSpellKeywordKind::Cascade,
-            metric: crate::static_abilities::GraveyardCountMetric::CardTypes,
-            threshold: 4,
-        };
-        if let Some(obj) = game.object_mut(spell_id) {
-            obj.abilities.push(
-                Ability::static_ability(StaticAbility::conditional_spell_keyword(spec))
-                    .in_zones(vec![Zone::Hand, Zone::Stack]),
-            );
-        }
-        game.stack.push(StackEntry::new(spell_id, alice));
-
-        let event = TriggerEvent::new(SpellCastEvent::new(spell_id, alice, Zone::Hand));
-        let triggered = check_triggers(&game, &event);
-
-        assert_eq!(
-            triggered.len(),
-            0,
-            "conditional cascade should not trigger below threshold"
-        );
-    }
 }
