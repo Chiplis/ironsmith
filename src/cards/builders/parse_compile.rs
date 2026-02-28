@@ -697,6 +697,7 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         | EffectAst::SetBasePowerToughness { target, .. }
         | EffectAst::BecomeBasePtCreature { target, .. }
         | EffectAst::AddCardTypes { target, .. }
+        | EffectAst::AddSubtypes { target, .. }
         | EffectAst::SetColors { target, .. }
         | EffectAst::MakeColorless { target, .. }
         | EffectAst::PumpForEach { target, .. }
@@ -1195,6 +1196,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         | EffectAst::SetBasePowerToughness { target, .. }
         | EffectAst::BecomeBasePtCreature { target, .. }
         | EffectAst::AddCardTypes { target, .. }
+        | EffectAst::AddSubtypes { target, .. }
         | EffectAst::SetColors { target, .. }
         | EffectAst::MakeColorless { target, .. }
         | EffectAst::PumpForEach { target, .. }
@@ -1726,6 +1728,7 @@ pub(crate) fn collect_tag_spans_from_effect(
         | EffectAst::SetBasePowerToughness { target, .. }
         | EffectAst::BecomeBasePtCreature { target, .. }
         | EffectAst::AddCardTypes { target, .. }
+        | EffectAst::AddSubtypes { target, .. }
         | EffectAst::SetColors { target, .. }
         | EffectAst::MakeColorless { target, .. }
         | EffectAst::PumpByLastEffect { target, .. }
@@ -5551,6 +5554,17 @@ pub(crate) fn compile_effect(
             Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
                 spec,
                 crate::continuous::Modification::AddCardTypes(card_types.clone()),
+                duration.clone(),
+            ))
+        }),
+        EffectAst::AddSubtypes {
+            target,
+            subtypes,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::AddSubtypes(subtypes.clone()),
                 duration.clone(),
             ))
         }),

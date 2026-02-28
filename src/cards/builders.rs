@@ -1236,6 +1236,11 @@ enum EffectAst {
         card_types: Vec<CardType>,
         duration: Until,
     },
+    AddSubtypes {
+        target: TargetAst,
+        subtypes: Vec<Subtype>,
+        duration: Until,
+    },
     SetColors {
         target: TargetAst,
         colors: ColorSet,
@@ -8445,6 +8450,40 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 && debug.contains("Creature")
                 && debug.contains("EndOfTurn"),
             "expected artifact-creature animation lowering, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_target_creature_becomes_vampire_in_addition_to_other_types_until_eot_spell_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Bloodline Variant")
+            .card_types(vec![CardType::Instant])
+            .parse_text(
+                "Target creature becomes a Vampire in addition to its other types until end of turn.",
+            )
+            .expect("subtype-addition animation clause should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("AddSubtypes")
+                && debug.contains("Vampire")
+                && debug.contains("EndOfTurn"),
+            "expected subtype-addition animation lowering, got {debug}"
+        );
+    }
+
+    #[test]
+    fn parse_target_land_becomes_island_until_end_of_turn_spell_line() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Twiddle Land Variant")
+            .card_types(vec![CardType::Instant])
+            .parse_text("Target land becomes an Island until end of turn.")
+            .expect("land subtype animation clause should parse");
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("AddSubtypes")
+                && debug.contains("Island")
+                && debug.contains("EndOfTurn"),
+            "expected land-subtype animation lowering, got {debug}"
         );
     }
 

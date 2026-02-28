@@ -545,6 +545,30 @@ pub(crate) fn parse_become_clause(
         }
     }
 
+    if !card_type_words.is_empty() {
+        let mut subtypes = Vec::new();
+        let mut all_subtypes = true;
+        for word in card_type_words {
+            if let Some(subtype) =
+                parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+            {
+                if !subtypes.contains(&subtype) {
+                    subtypes.push(subtype);
+                }
+            } else {
+                all_subtypes = false;
+                break;
+            }
+        }
+        if all_subtypes && !subtypes.is_empty() {
+            return Ok(EffectAst::AddSubtypes {
+                target,
+                subtypes,
+                duration,
+            });
+        }
+    }
+
     // "<color>" / "<color> and <color>" / "<color> and or <color>"
     let color_tokens = become_words
         .iter()
