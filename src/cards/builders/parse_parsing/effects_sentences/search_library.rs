@@ -1385,6 +1385,17 @@ pub(crate) fn parse_cant_effect_sentence(tokens: &[Token]) -> Result<Option<Vec<
     if find_negation_span(&clause_tokens).is_none() {
         return Ok(None);
     }
+    // Let chain-carry handle mixed clauses like
+    // "Tap that creature and it doesn't untap during its controller's next untap step."
+    // If conjunction appears before the first negation, this is likely not a pure
+    // cant-restriction sentence.
+    if let Some((neg_start, _)) = find_negation_span(&clause_tokens)
+        && clause_tokens[..neg_start]
+            .iter()
+            .any(|token| token.is_word("and"))
+    {
+        return Ok(None);
+    }
 
     let Some(restrictions) = parse_cant_restrictions(&clause_tokens)? else {
         return Err(CardTextError::ParseError(format!(

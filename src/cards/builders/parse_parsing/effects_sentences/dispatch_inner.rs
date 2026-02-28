@@ -483,7 +483,7 @@ pub(crate) fn parse_effect_sentence_inner(tokens: &[Token]) -> Result<Vec<Effect
     if let Some(effects) = run_sentence_primitives(tokens, POST_CONDITIONAL_SENTENCE_PRIMITIVES)? {
         return Ok(effects);
     }
-    if is_negated_untap_clause(&sentence_words) {
+    if is_negated_untap_clause(&sentence_words) && !sentence_words.contains(&"and") {
         return Err(CardTextError::ParseError(format!(
             "unsupported negated untap clause (clause: '{}')",
             sentence_words.join(" ")
@@ -2880,4 +2880,3 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
 
     Ok(Some(effects))
 }
-

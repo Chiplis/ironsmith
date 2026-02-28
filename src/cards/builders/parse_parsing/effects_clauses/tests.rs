@@ -202,6 +202,28 @@ use super::*;
     }
 
     #[test]
+    fn parse_tap_then_it_doesnt_untap_next_step_clause() {
+        let tokens = tokenize_line(
+            "Tap that creature and it doesn't untap during its controller's next untap step.",
+            0,
+        );
+        let effects = parse_effect_sentence(&tokens).expect("parse tap+untap-skip sentence");
+
+        assert!(effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::Tap { .. })));
+        assert!(effects.iter().any(|effect| {
+            matches!(
+                effect,
+                EffectAst::Cant {
+                    restriction: crate::effect::Restriction::Untap(_),
+                    duration: crate::effect::Until::ControllersNextUntapStep,
+                }
+            )
+        }));
+    }
+
+    #[test]
     fn parse_keyword_for_mirrodin_line() {
         let tokens = tokenize_line("For Mirrodin!", 0);
         let actions = parse_ability_line(&tokens).expect("expected keyword actions");

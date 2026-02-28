@@ -193,6 +193,18 @@ pub(crate) fn parse_effect_chain_inner(tokens: &[Token]) -> Result<Vec<EffectAst
             }
             continue;
         }
+        if let Some(segment_effects) = parse_cant_effect_sentence(&segment)? {
+            for mut effect in segment_effects {
+                if let Some(context) = carried_context {
+                    maybe_apply_carried_player_with_clause(&mut effect, context, &segment);
+                }
+                if let Some(context) = explicit_player_for_carry(&effect) {
+                    carried_context = Some(context);
+                }
+                effects.push(effect);
+            }
+            continue;
+        }
         let mut effect = parse_effect_clause_with_trailing_if(&segment)?;
         if let Some(context) = carried_context {
             maybe_apply_carried_player_with_clause(&mut effect, context, &segment);

@@ -10114,6 +10114,28 @@ fn render_attack_skip_untap_uses_controller_next_untap_step() {
 }
 
 #[test]
+fn parse_combat_damage_tap_then_doesnt_untap_sentence() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kashi Variant")
+        .parse_text(
+            "Whenever this creature deals combat damage to a creature, tap that creature and it doesn't untap during its controller's next untap step.",
+        )
+        .expect("combat-damage tap+untap-skip trigger should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("tap that creature") || rendered.contains("tap it"),
+        "expected tap follow-up wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("doesn't untap during its controller's next untap step")
+            || rendered.contains("doesnt untap during its controller's next untap step")
+            || rendered.contains("can't untap during its controller's next untap step")
+            || rendered.contains("cant untap during its controller's next untap step"),
+        "expected controller-next-untap-step wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_rejects_three_dog_aura_copy_attachment_clause() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Three Dog Variant")
         .parse_text(
