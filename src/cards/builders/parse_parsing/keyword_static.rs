@@ -7566,6 +7566,35 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
         return Ok(None);
     };
 
+    if words.get(idx..idx + 5) == Some(["maximum", "hand", "size", "is", "reduced"].as_slice()) {
+        idx += 5;
+        if words.get(idx) != Some(&"by") {
+            return Ok(None);
+        }
+        idx += 1;
+
+        let Some(amount_word) = words.get(idx) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing maximum-hand-size reduction amount (clause: '{}')",
+                words.join(" ")
+            )));
+        };
+        let Some(amount) = parse_named_number(amount_word) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported maximum-hand-size reduction amount '{}' (clause: '{}')",
+                amount_word,
+                words.join(" ")
+            )));
+        };
+        idx += 1;
+
+        if idx != words.len() {
+            return Ok(None);
+        }
+
+        return Ok(Some(StaticAbility::reduce_maximum_hand_size(player, amount)));
+    }
+
     if words.get(idx..idx + 4) == Some(["maximum", "hand", "size", "is"].as_slice()) {
         idx += 4;
         let Some(amount_word) = words.get(idx) else {
@@ -7597,38 +7626,7 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
             words.join(" "),
         )));
     }
-
-    if words.get(idx..idx + 5) != Some(["maximum", "hand", "size", "is", "reduced"].as_slice()) {
-        return Ok(None);
-    }
-    idx += 5;
-    if words.get(idx) != Some(&"by") {
-        return Ok(None);
-    }
-    idx += 1;
-
-    let Some(amount_word) = words.get(idx) else {
-        return Err(CardTextError::ParseError(format!(
-            "missing maximum-hand-size reduction amount (clause: '{}')",
-            words.join(" ")
-        )));
-    };
-    let Some(amount) = parse_named_number(amount_word) else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported maximum-hand-size reduction amount '{}' (clause: '{}')",
-            amount_word,
-            words.join(" ")
-        )));
-    };
-    idx += 1;
-
-    if idx != words.len() {
-        return Ok(None);
-    }
-
-    Ok(Some(StaticAbility::reduce_maximum_hand_size(
-        player, amount,
-    )))
+    Ok(None)
 }
 
 pub(crate) fn parse_library_of_leng_discard_replacement_line(
