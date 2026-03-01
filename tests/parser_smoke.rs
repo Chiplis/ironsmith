@@ -1,5 +1,3 @@
-#![cfg(feature = "parser-tests")]
-
 use ironsmith::{cards::CardDefinitionBuilder, ids::CardId, types::CardType};
 
 #[test]

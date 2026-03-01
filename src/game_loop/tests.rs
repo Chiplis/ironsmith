@@ -3227,6 +3227,146 @@ mod tests {
     }
 
     #[test]
+    fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
+        use crate::cards::CardDefinitionBuilder;
+        use crate::decision::compute_legal_actions;
+        use crate::mana::{ManaCost, ManaSymbol};
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let host_id = create_creature(&mut game, "Bestow Host", alice, 2, 2);
+        game.remove_summoning_sickness(host_id);
+
+        let bestow_def = CardDefinitionBuilder::new(CardId::new(), "Bestow Probe Runtime")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(2)],
+                vec![ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Enchantment, CardType::Creature])
+            .subtypes(vec![crate::types::Subtype::Spirit])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .parse_text("Bestow {0}\nLifelink\nEnchanted creature gets +1/+1 and has lifelink.")
+            .expect("bestow probe should parse");
+
+        let bestow_in_hand = game.create_object_from_definition(&bestow_def, alice, Zone::Hand);
+
+        let actions = compute_legal_actions(&game, alice);
+        let can_cast_bestow = actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Alternative(_),
+                } if *spell_id == bestow_in_hand
+            )
+        });
+        assert!(
+            can_cast_bestow,
+            "bestow cast option should be available from hand when a creature target exists"
+        );
+
+        let mut state = PriorityLoopState::new(game.players_in_game());
+        let mut trigger_queue = TriggerQueue::new();
+
+        let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: bestow_in_hand,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Alternative(0),
+        });
+        let progress =
+            apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+                .expect("bestow cast should start successfully");
+        assert!(
+            matches!(
+                progress,
+                GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::Targets(_)
+                )
+            ),
+            "bestow cast should require choosing an Aura target"
+        );
+
+        let stack_bestow_id = state
+            .pending_cast
+            .as_ref()
+            .map(|pending| pending.spell_id)
+            .expect("bestow cast should still be pending on stack");
+        let stack_bestow = game
+            .object(stack_bestow_id)
+            .expect("bestow spell should exist on stack");
+        assert!(
+            stack_bestow.subtypes.contains(&crate::types::Subtype::Aura),
+            "bestow cast should be an Aura spell on stack"
+        );
+        assert!(
+            !stack_bestow.card_types.contains(&CardType::Creature),
+            "bestow cast should not be a creature spell on stack"
+        );
+
+        let target_response = PriorityResponse::Targets(vec![Target::Object(host_id)]);
+        apply_priority_response(&mut game, &mut trigger_queue, &mut state, &target_response)
+            .expect("choosing bestow target should complete cast");
+
+        assert_eq!(game.stack.len(), 1, "bestow spell should be on stack");
+        resolve_stack_entry(&mut game).expect("bestow spell should resolve");
+
+        let bestowed_id = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|&id| {
+                game.object(id)
+                    .map(|obj| obj.name == "Bestow Probe Runtime")
+                    .unwrap_or(false)
+            })
+            .expect("bestowed permanent should be on battlefield");
+
+        let bestowed = game.object(bestowed_id).expect("bestowed permanent exists");
+        assert!(
+            bestowed.subtypes.contains(&crate::types::Subtype::Aura),
+            "bestowed permanent should enter as an Aura"
+        );
+        assert!(
+            !bestowed.card_types.contains(&CardType::Creature),
+            "bestowed permanent should not be a creature while attached"
+        );
+        assert_eq!(
+            bestowed.attached_to,
+            Some(host_id),
+            "bestowed permanent should be attached to the chosen creature"
+        );
+
+        game.move_object(host_id, Zone::Graveyard)
+            .expect("host creature should move to graveyard");
+        check_and_apply_sbas(&mut game, &mut trigger_queue)
+            .expect("state-based actions should process unattached bestow");
+
+        let reverted = game
+            .object(bestowed_id)
+            .expect("bestow permanent should remain on battlefield after host leaves");
+        assert_eq!(reverted.zone, Zone::Battlefield);
+        assert!(
+            reverted.card_types.contains(&CardType::Creature),
+            "bestow permanent should revert to creature form when unattached"
+        );
+        assert!(
+            !reverted.subtypes.contains(&crate::types::Subtype::Aura),
+            "bestow permanent should no longer be an Aura after reverting"
+        );
+        assert!(
+            reverted.attached_to.is_none(),
+            "reverted bestow permanent should no longer be attached"
+        );
+    }
+
+    #[test]
     fn test_rebound_exiles_on_resolution_and_schedules_next_upkeep_cast() {
         use crate::ability::Ability;
         use crate::cards::CardDefinition;

@@ -434,6 +434,7 @@ mod tests {
             keyword_payment_contributions_to_cast: vec![],
             cost_effects: vec![],
             max_saga_chapter: None,
+            bestow_cast_state: None,
         }
     }
 

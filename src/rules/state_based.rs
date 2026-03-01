@@ -41,6 +41,9 @@ pub enum StateBasedAction {
     /// An Aura is not attached to anything or is attached to an illegal permanent.
     AuraFallsOff(ObjectId),
 
+    /// A bestowed Aura is no longer legally attached and reverts to creature form.
+    BestowBecomesCreature(ObjectId),
+
     /// An Equipment or Fortification is attached to an illegal permanent.
     EquipmentFallsOff(ObjectId),
 
@@ -211,11 +214,19 @@ fn check_permanent_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
             && calculated_subtypes.contains(&Subtype::Aura)
         {
             if obj.attached_to.is_none() {
-                actions.push(StateBasedAction::AuraFallsOff(obj_id));
+                if obj.is_bestow_overlay_active() {
+                    actions.push(StateBasedAction::BestowBecomesCreature(obj_id));
+                } else {
+                    actions.push(StateBasedAction::AuraFallsOff(obj_id));
+                }
             } else if let Some(attached_id) = obj.attached_to {
                 // Check if attached permanent still exists
                 if game.object(attached_id).is_none() {
-                    actions.push(StateBasedAction::AuraFallsOff(obj_id));
+                    if obj.is_bestow_overlay_active() {
+                        actions.push(StateBasedAction::BestowBecomesCreature(obj_id));
+                    } else {
+                        actions.push(StateBasedAction::AuraFallsOff(obj_id));
+                    }
                 } else if let Some(effects) = obj.spell_effect.as_ref()
                     && let Some(spec) = effects.iter().filter_map(|e| e.0.get_target_spec()).next()
                 {
@@ -224,7 +235,11 @@ fn check_permanent_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
                     if !validate_target(game, &resolved, spec, &ctx)
                         || has_protection_from_source(game, attached_id, obj_id)
                     {
-                        actions.push(StateBasedAction::AuraFallsOff(obj_id));
+                        if obj.is_bestow_overlay_active() {
+                            actions.push(StateBasedAction::BestowBecomesCreature(obj_id));
+                        } else {
+                            actions.push(StateBasedAction::AuraFallsOff(obj_id));
+                        }
                     }
                 }
             }
@@ -652,6 +667,19 @@ fn apply_single_sba_with_snapshots(
 
         StateBasedAction::AuraFallsOff(obj_id) | StateBasedAction::EquipmentFallsOff(obj_id) => {
             game.move_object(obj_id, Zone::Graveyard);
+        }
+
+        StateBasedAction::BestowBecomesCreature(obj_id) => {
+            let attached_to = game.object(obj_id).and_then(|obj| obj.attached_to);
+            if let Some(parent_id) = attached_to
+                && let Some(parent) = game.object_mut(parent_id)
+            {
+                parent.attachments.retain(|id| *id != obj_id);
+            }
+            if let Some(obj) = game.object_mut(obj_id) {
+                obj.attached_to = None;
+                obj.end_bestow_cast_overlay();
+            }
         }
 
         StateBasedAction::CountersAnnihilate { permanent, count } => {

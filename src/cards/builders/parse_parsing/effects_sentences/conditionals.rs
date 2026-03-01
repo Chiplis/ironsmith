@@ -891,11 +891,14 @@ pub(crate) fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPred
         return Some(IfResultPredicate::DiesThisWay);
     }
 
-    if words.len() >= 2 && words[0] == "you" && (words[1] == "dont" || words[1] == "do") {
+    if words.len() >= 2
+        && words[0] == "you"
+        && (words[1] == "dont" || words[1] == "didnt" || words[1] == "do" || words[1] == "did")
+    {
         if words.len() >= 3 && words[2] == "not" {
             return Some(IfResultPredicate::DidNot);
         }
-        if words[1] == "dont" {
+        if words[1] == "dont" || words[1] == "didnt" {
             return Some(IfResultPredicate::DidNot);
         }
     }
@@ -905,11 +908,14 @@ pub(crate) fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPred
     if words.len() >= 3 && words[0] == "you" && words[1] == "can" && words[2] == "not" {
         return Some(IfResultPredicate::DidNot);
     }
-    if words.len() >= 2 && words[0] == "they" && (words[1] == "dont" || words[1] == "do") {
+    if words.len() >= 2
+        && words[0] == "they"
+        && (words[1] == "dont" || words[1] == "didnt" || words[1] == "do" || words[1] == "did")
+    {
         if words.len() >= 3 && words[2] == "not" {
             return Some(IfResultPredicate::DidNot);
         }
-        if words[1] == "dont" {
+        if words[1] == "dont" || words[1] == "didnt" {
             return Some(IfResultPredicate::DidNot);
         }
     }
@@ -1328,6 +1334,27 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
 
     if let Some((amount, symbol)) = parse_mana_spent_to_cast_predicate(&filtered) {
         return Ok(PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol });
+    }
+
+    if filtered.len() >= 5
+        && matches!(
+            filtered.as_slice(),
+            ["this", "permanent", "attached", "to", ..]
+                | ["that", "permanent", "attached", "to", ..]
+        )
+    {
+        let attached_tokens = filtered[4..]
+            .iter()
+            .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let mut filter = parse_object_filter(&attached_tokens, false)?;
+        if filter.card_types.is_empty() {
+            filter.card_types.push(CardType::Creature);
+        }
+        return Ok(PredicateAst::TaggedMatches(
+            TagKey::from("enchanted"),
+            filter,
+        ));
     }
 
     if filtered[0] == "its" {

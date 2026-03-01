@@ -326,6 +326,13 @@ fn format_alternative_method(
                 format!("{}, Exile {} cards from graveyard", cost_desc, exile_count),
             )
         }
+        AlternativeCastingMethod::Bestow { cost, cost_effects } => {
+            let mut parts = vec![format_mana_cost_simple(cost)];
+            for effect in cost_effects {
+                parts.push(format!("{:?}", effect));
+            }
+            ("Bestow".to_string(), parts.join(", "))
+        }
         AlternativeCastingMethod::Composed { .. } => {
             let mana_cost = method.mana_cost();
             let cost_effects = method.cost_effects();

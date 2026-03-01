@@ -316,6 +316,11 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         return Ok(LineAst::AlternativeCastingMethod(method));
     }
 
+    if let Some(method) = parse_bestow_line(&tokens)? {
+        parser_trace("parse_line:branch=bestow", &tokens);
+        return Ok(LineAst::AlternativeCastingMethod(method));
+    }
+
     if let Some(method) = parse_flashback_line(&tokens)? {
         parser_trace("parse_line:branch=flashback", &tokens);
         return Ok(LineAst::AlternativeCastingMethod(method));
@@ -642,6 +647,80 @@ pub(crate) fn parse_flashback_line(
     })?;
 
     Ok(Some(AlternativeCastingMethod::Flashback {
+        cost: mana_cost,
+        cost_effects,
+    }))
+}
+
+pub(crate) fn parse_bestow_line(
+    tokens: &[Token],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("bestow")) {
+        return Ok(None);
+    }
+
+    let words_all = words(tokens);
+    let (mana_cost_text, mana_word_count) =
+        leading_mana_symbols_to_oracle(&words_all[1..]).ok_or_else(|| {
+            CardTextError::ParseError("bestow keyword missing mana cost".to_string())
+        })?;
+    let mut mana_cost = parse_scryfall_mana_cost(&mana_cost_text).map_err(|err| {
+        CardTextError::ParseError(format!(
+            "invalid bestow mana cost '{mana_cost_text}': {err:?}"
+        ))
+    })?;
+    let mut cost_effects = Vec::new();
+
+    let mut consumed_mana_tokens = 0usize;
+    for token in tokens.iter().skip(1) {
+        let Some(word) = token.as_word() else {
+            break;
+        };
+        if parse_mana_symbol(word).is_ok() {
+            consumed_mana_tokens += 1;
+            continue;
+        }
+        break;
+    }
+    if consumed_mana_tokens == 0 {
+        consumed_mana_tokens = mana_word_count;
+    }
+    consumed_mana_tokens = consumed_mana_tokens.min(tokens.len().saturating_sub(1));
+
+    let mut cost_tokens = tokens
+        .get(1..1 + consumed_mana_tokens)
+        .unwrap_or_default()
+        .to_vec();
+    let tail_tokens = tokens.get(1 + consumed_mana_tokens..).unwrap_or_default();
+    if tail_tokens
+        .first()
+        .is_some_and(|token| matches!(token, Token::Comma(_)))
+    {
+        let clause_end = tail_tokens
+            .iter()
+            .position(|token| matches!(token, Token::Period(_)))
+            .unwrap_or(tail_tokens.len());
+        let clause_tokens = trim_commas(&tail_tokens[..clause_end]).to_vec();
+        let clause_words = words(&clause_tokens);
+        if !clause_words.is_empty() && clause_words[0] != "if" {
+            cost_tokens.extend(clause_tokens);
+        }
+    }
+
+    if let Ok((total_cost, mut parsed_cost_effects)) = parse_activation_cost(&cost_tokens) {
+        let (parsed_mana, mut extracted_cost_effects) =
+            alternative_cast_parts_from_total_cost(&total_cost);
+        if let Some(parsed_mana) = parsed_mana {
+            mana_cost = parsed_mana;
+        }
+        parsed_cost_effects.append(&mut extracted_cost_effects);
+        if !parsed_cost_effects.is_empty() {
+            parsed_cost_effects.shrink_to_fit();
+        }
+        cost_effects = parsed_cost_effects;
+    }
+
+    Ok(Some(AlternativeCastingMethod::Bestow {
         cost: mana_cost,
         cost_effects,
     }))

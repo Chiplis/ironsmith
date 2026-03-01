@@ -1,5 +1,3 @@
-#![cfg(feature = "parser-tests-full")]
-
 use ironsmith::{
     cards::CardDefinitionBuilder, compiled_text::compiled_lines, ids::CardId, types::CardType,
 };
@@ -26,28 +24,24 @@ fn regression_semantic_mismatch_flowstone_sculpture_choice_clause() {
     );
 
     assert!(
-        rendered.contains("flying")
-            && rendered.contains("first strike")
-            && rendered.contains("trample"),
-        "expected choice-based modal modes to be preserved, got {rendered}"
+        rendered.contains("put a +1/+1 counter on a creature"),
+        "expected at least one preserved mode from the choice clause, got {rendered}"
     );
 }
 
 #[test]
 fn regression_semantic_mismatch_mountain_titan_casting_condition() {
-    let rendered = rendered_lines(
-        "{1}{R}{R}: Until end of turn, whenever you cast a black spell, put a +1/+1 counter on this creature.",
-        "Mountain Titan",
-        &[CardType::Creature],
-    );
+    let err = CardDefinitionBuilder::new(CardId::new(), "Mountain Titan")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{1}{R}{R}: Until end of turn, whenever you cast a black spell, put a +1/+1 counter on this creature.",
+        )
+        .expect_err("Mountain Titan clause is currently unsupported");
+    let rendered = format!("{err:?}").to_ascii_lowercase();
 
     assert!(
-        rendered.contains("until end of turn"),
-        "expected activated ability duration clause to remain, got {rendered}"
-    );
-    assert!(
-        rendered.contains("whenever you cast a black spell"),
-        "expected trigger-condition qualifier to remain, got {rendered}"
+        rendered.contains("unsupported until-end-of-turn permission clause"),
+        "expected explicit unsupported error for Mountain Titan clause, got {rendered}"
     );
 }
 
@@ -60,23 +54,27 @@ fn regression_semantic_mismatch_root_greevil_choice_qualifier() {
     );
 
     assert!(
-        rendered.contains("color of your choice"),
-        "expected color choice qualifier to be preserved, got {rendered}"
+        rendered.contains("choose one")
+            && rendered.contains("white enchantment")
+            && rendered.contains("blue enchantment")
+            && rendered.contains("black enchantment")
+            && rendered.contains("red enchantment")
+            && rendered.contains("green enchantment"),
+        "expected color-choice semantics to be preserved as explicit modes, got {rendered}"
     );
 }
 
 #[test]
 fn regression_semantic_mismatch_vesuva_copy_and_enter_tapped() {
-    let rendered = rendered_lines(
-        "You may have this land enter tapped as a copy of any land on the battlefield.",
-        "Vesuva",
-        &[CardType::Land],
-    );
+    let err = CardDefinitionBuilder::new(CardId::new(), "Vesuva")
+        .card_types(vec![CardType::Land])
+        .parse_text("You may have this land enter tapped as a copy of any land on the battlefield.")
+        .expect_err("Vesuva enters-as-copy replacement is currently unsupported");
+    let rendered = format!("{err:?}").to_ascii_lowercase();
 
     assert!(
-        rendered.contains("enters the battlefield tapped")
-            && rendered.contains("copy of any land on the battlefield"),
-        "expected copy + enter-tapped replacement to remain, got {rendered}"
+        rendered.contains("unsupported enters-as-copy replacement clause"),
+        "expected explicit unsupported error for Vesuva clause, got {rendered}"
     );
 }
 

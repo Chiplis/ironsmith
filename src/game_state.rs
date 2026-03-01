@@ -1827,6 +1827,7 @@ impl GameState {
         if !(old_zone == Zone::Stack && new_zone == Zone::Battlefield) {
             new_object.keyword_payment_contributions_to_cast.clear();
             new_object.x_value = None;
+            new_object.bestow_cast_state = None;
         }
 
         // Set battlefield state for new permanents

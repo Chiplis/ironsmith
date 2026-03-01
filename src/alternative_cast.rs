@@ -67,6 +67,17 @@ pub enum AlternativeCastingMethod {
         /// The condition that must be met
         condition: TrapCondition,
     },
+
+    /// Bestow - cast this card as an Aura spell with enchant creature.
+    ///
+    /// This method is cast from hand and uses a dedicated bestow cost.
+    /// Some variants may carry additional non-mana cost effects.
+    Bestow {
+        /// The mana portion of the bestow cost.
+        cost: ManaCost,
+        /// Additional non-mana bestow costs (for variant templates).
+        cost_effects: Vec<Effect>,
+    },
 }
 
 /// Conditions for when a trap's alternative cost can be used.
@@ -97,7 +108,10 @@ impl AlternativeCastingMethod {
         match self {
             Self::Flashback { .. } | Self::JumpStart | Self::Escape { .. } => Zone::Graveyard,
             Self::Madness { .. } => Zone::Exile,
-            Self::Miracle { .. } | Self::Composed { .. } | Self::MindbreakTrap { .. } => Zone::Hand,
+            Self::Miracle { .. }
+            | Self::Composed { .. }
+            | Self::MindbreakTrap { .. }
+            | Self::Bestow { .. } => Zone::Hand,
         }
     }
 
@@ -120,6 +134,7 @@ impl AlternativeCastingMethod {
             Self::Miracle { cost } => Some(cost),
             Self::MindbreakTrap { cost, .. } => Some(cost),
             Self::Composed { mana_cost, .. } => mana_cost.as_ref(),
+            Self::Bestow { cost, .. } => Some(cost),
         }
     }
 
@@ -129,6 +144,7 @@ impl AlternativeCastingMethod {
         match self {
             Self::Flashback { cost_effects, .. } => cost_effects,
             Self::Composed { cost_effects, .. } => cost_effects,
+            Self::Bestow { cost_effects, .. } => cost_effects,
             _ => &[],
         }
     }
@@ -181,6 +197,7 @@ impl AlternativeCastingMethod {
             Self::Miracle { .. } => "Miracle",
             Self::Composed { name, .. } => name,
             Self::MindbreakTrap { name, .. } => name,
+            Self::Bestow { .. } => "Bestow",
         }
     }
 
@@ -255,6 +272,7 @@ impl AlternativeCastingMethod {
             }
             Self::Composed { .. } => AlternativeCastRequirements::default(),
             Self::MindbreakTrap { .. } => AlternativeCastRequirements::default(),
+            Self::Bestow { .. } => AlternativeCastRequirements::default(),
         }
     }
 
@@ -287,6 +305,11 @@ impl AlternativeCastingMethod {
             Self::Madness { cost } => Some(cost),
             _ => None,
         }
+    }
+
+    /// Returns true if this is a Bestow alternative casting method.
+    pub fn is_bestow(&self) -> bool {
+        matches!(self, Self::Bestow { .. })
     }
 }
 

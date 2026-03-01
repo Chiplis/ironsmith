@@ -1466,7 +1466,7 @@ fn apply_casting_method_choice_response(
     let from_zone = pending.from_zone;
 
     // Move spell to stack immediately per MTG rule 601.2a
-    let stack_id = propose_spell_cast(game, spell_id, from_zone, player)?;
+    let stack_id = propose_spell_cast(game, spell_id, from_zone, player, &casting_method)?;
 
     // Get the spell's mana cost and effects, considering casting method
     // Note: We use stack_id now since the spell has been moved to stack
@@ -1606,11 +1606,30 @@ fn propose_spell_cast(
     game: &mut GameState,
     spell_id: ObjectId,
     _from_zone: Zone,
-    _caster: PlayerId,
+    caster: PlayerId,
+    casting_method: &CastingMethod,
 ) -> Result<ObjectId, GameLoopError> {
     let new_id = game.move_object(spell_id, Zone::Stack).ok_or_else(|| {
         GameLoopError::InvalidState("Failed to move spell to stack during proposal".to_string())
     })?;
+
+    let cast_as_bestow = game.object(new_id).is_some_and(|obj| match casting_method {
+        CastingMethod::Alternative(idx) => obj
+            .alternative_casts
+            .get(*idx)
+            .is_some_and(crate::alternative_cast::AlternativeCastingMethod::is_bestow),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
+            .is_some_and(|method| method.is_bestow()),
+        _ => false,
+    });
+    if cast_as_bestow && let Some(obj) = game.object_mut(new_id) {
+        obj.apply_bestow_cast_overlay();
+    }
+
     Ok(new_id)
 }
 

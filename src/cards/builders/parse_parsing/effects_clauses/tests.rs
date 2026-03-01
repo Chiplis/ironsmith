@@ -783,6 +783,22 @@ fn parse_if_that_spell_is_countered_this_way_as_if_result_predicate() {
 }
 
 #[test]
+fn parse_if_you_didnt_create_token_this_way_as_if_result_predicate() {
+    let tokens = tokenize_line(
+        "If you didn't create a token this way, create a 1/1 green Insect creature token.",
+        0,
+    );
+    let effects = parse_effect_sentence(&tokens).expect("parse did-not-create token predicate");
+    assert!(effects.iter().any(|effect| matches!(
+        effect,
+        EffectAst::IfResult {
+            predicate: IfResultPredicate::DidNot,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn parse_predicate_that_player_has_cards_in_hand_or_more() {
     let tokens = tokenize_line("that player has seven or more cards in hand", 0);
     let predicate = parse_predicate(&tokens).expect("parse cards-in-hand predicate");
@@ -842,6 +858,61 @@ fn parse_predicate_its_your_turn() {
     let tokens = tokenize_line("its your turn", 0);
     let predicate = parse_predicate(&tokens).expect("parse your-turn predicate");
     assert!(matches!(predicate, PredicateAst::YourTurn));
+}
+
+#[test]
+fn parse_predicate_this_permanent_attached_to_creature_you_control() {
+    let tokens = tokenize_line("this permanent is attached to a creature you control", 0);
+    let predicate = parse_predicate(&tokens).expect("parse attached-to-creature predicate");
+    assert!(matches!(
+        predicate,
+        PredicateAst::TaggedMatches(tag, filter)
+            if tag.as_str() == "enchanted"
+                && filter.card_types.contains(&CardType::Creature)
+                && filter.controller == Some(PlayerFilter::You)
+    ));
+}
+
+#[test]
+fn parse_may_pay_clause_with_attached_trailing_if() {
+    let tokens = tokenize_line(
+        "you may pay {1}{G} if this permanent is attached to a creature you control",
+        0,
+    );
+    let effects = parse_effect_sentence(&tokens).expect("parse may-pay trailing-if clause");
+
+    let [EffectAst::MayByPlayer {
+        player,
+        effects: may_effects,
+    }] = effects.as_slice()
+    else {
+        panic!("expected may-by-player wrapper, got {effects:?}");
+    };
+    assert_eq!(*player, PlayerAst::You);
+
+    let [EffectAst::Conditional {
+        predicate,
+        if_true,
+        if_false,
+    }] = may_effects.as_slice()
+    else {
+        panic!("expected trailing-if conditional, got {may_effects:?}");
+    };
+
+    assert!(if_false.is_empty(), "expected no else branch, got {if_false:?}");
+    assert!(matches!(
+        predicate,
+        PredicateAst::TaggedMatches(tag, filter)
+            if tag.as_str() == "enchanted"
+                && filter.card_types.contains(&CardType::Creature)
+                && filter.controller == Some(PlayerFilter::You)
+    ));
+
+    let [EffectAst::PayMana { cost, player }] = if_true.as_slice() else {
+        panic!("expected pay-mana in conditional true branch, got {if_true:?}");
+    };
+    assert_eq!(cost.to_oracle(), "{1}{G}");
+    assert_eq!(*player, PlayerAst::You);
 }
 
 #[test]

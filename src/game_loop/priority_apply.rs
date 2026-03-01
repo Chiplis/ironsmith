@@ -324,7 +324,8 @@ pub fn apply_priority_response_with_dm(
 
             // Move spell to stack immediately per MTG rule 601.2a
             // This happens at the start of proposal, before any choices are made
-            let stack_id = propose_spell_cast(game, *spell_id, *from_zone, player)?;
+            let stack_id =
+                propose_spell_cast(game, *spell_id, *from_zone, player, casting_method)?;
 
             // Get the spell's mana cost and effects, considering casting method
             // Note: We use stack_id now since the spell has been moved to stack

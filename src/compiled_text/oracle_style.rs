@@ -3490,7 +3490,7 @@ mod normalize_sentence_surface_style_tests {
     }
 }
 
-#[cfg(all(test, feature = "parser-tests-full"))]
+#[cfg(test)]
 mod tests {
     use super::{
         compiled_lines, describe_additional_cost_effects, describe_for_each_filter,

@@ -1564,6 +1564,43 @@ pub fn can_cast_with_alternative_from_hand(
 
             true
         }
+        AlternativeCastingMethod::Bestow { cost, cost_effects } => {
+            if !game.can_cast_spells(player) {
+                return false;
+            }
+            if !game.can_cast_additional_spell_this_turn(player)
+                && game
+                    .spells_cast_this_turn
+                    .get(&player)
+                    .copied()
+                    .unwrap_or(0)
+                    >= 1
+            {
+                return false;
+            }
+
+            if !can_cast_with_cost(
+                game,
+                player,
+                spell,
+                spell_id,
+                Some(cost),
+                &AdditionalCastRequirements::default(),
+            ) {
+                return false;
+            }
+
+            for effect in cost_effects {
+                if effect.0.can_execute_as_cost(game, spell_id, player).is_err() {
+                    return false;
+                }
+            }
+
+            let bestow_spec = ChooseSpec::Object(crate::target::ObjectFilter::creature());
+            let bestow_targets =
+                crate::game_loop::compute_legal_targets(game, &bestow_spec, player, Some(spell_id));
+            !bestow_targets.is_empty()
+        }
         AlternativeCastingMethod::MindbreakTrap {
             cost, condition, ..
         } => {

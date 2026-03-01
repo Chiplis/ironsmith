@@ -75,6 +75,14 @@ pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
                     ));
                 }
             }
+            AlternativeCastingMethod::Bestow { cost, cost_effects } => {
+                if cost_effects.is_empty() {
+                    out.push(format!("Bestow {}", cost.to_oracle()));
+                } else {
+                    let extra = capitalize_first(&describe_alternative_cost_effects(cost_effects));
+                    out.push(format!("Bestow {}, {}", cost.to_oracle(), extra));
+                }
+            }
             other => {
                 if other.name().eq_ignore_ascii_case("Parsed alternative cost") {
                     if let Some(cost) = other.mana_cost() {

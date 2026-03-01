@@ -4,7 +4,7 @@ Source: `cargo run --quiet --bin audit_parsed_mechanics -- --cards /Users/chipli
 
 Generated: Tue Feb 17 22:34:12 -03 2026
 
-Scope: parse-success cards whose abilities are represented as `StaticAbilityId::Custom` markers (i.e., mechanics not backed by dedicated runtime/static implementation).
+Scope: parse-success cards whose abilities are represented as placeholder markers (`StaticAbilityId::KeywordMarker`, `StaticAbilityId::RuleTextPlaceholder`, or `StaticAbilityId::UnsupportedParserLine`) (i.e., mechanics not backed by dedicated runtime/static implementation).
 
 ## Summary
 

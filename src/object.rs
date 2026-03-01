@@ -199,6 +199,15 @@ pub enum ObjectKind {
     Emblem,
 }
 
+/// Stored copiable fields needed to end a bestow cast and restore creature form.
+#[derive(Debug, Clone)]
+pub struct BestowCastState {
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub aura_attach_filter: Option<crate::target::ObjectFilter>,
+    pub spell_effect: Option<Vec<crate::effect::Effect>>,
+}
+
 /// Runtime representation of a game object.
 /// Contains both copiable values (layer 1) and non-copiable state.
 #[derive(Debug, Clone)]
@@ -247,6 +256,8 @@ pub struct Object {
     pub spell_effect: Option<Vec<crate::effect::Effect>>,
     /// For Auras: what this card can enchant (used for non-target attachments)
     pub aura_attach_filter: Option<crate::target::ObjectFilter>,
+    /// Original copiable fields to restore if this permanent ends bestow.
+    pub bestow_cast_state: Option<BestowCastState>,
     /// Alternative casting methods (flashback, escape, etc.)
     pub alternative_casts: Vec<AlternativeCastingMethod>,
     /// Optional costs (kicker, buyback, etc.)
@@ -316,6 +327,7 @@ impl Object {
             attachments: Vec::new(),
             spell_effect: None,
             aura_attach_filter: None,
+            bestow_cast_state: None,
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -338,6 +350,7 @@ impl Object {
         obj.abilities = def.abilities.clone();
         obj.spell_effect = def.spell_effect.clone();
         obj.aura_attach_filter = def.aura_attach_filter.clone();
+        obj.bestow_cast_state = None;
         obj.alternative_casts = def.alternative_casts.clone();
         obj.optional_costs = def.optional_costs.clone();
         obj.max_saga_chapter = def.max_saga_chapter;
@@ -371,6 +384,7 @@ impl Object {
 
         self.spell_effect = def.spell_effect.clone();
         self.aura_attach_filter = def.aura_attach_filter.clone();
+        self.bestow_cast_state = None;
         self.alternative_casts = def.alternative_casts.clone();
         self.optional_costs = def.optional_costs.clone();
         self.max_saga_chapter = def.max_saga_chapter;
@@ -449,6 +463,7 @@ impl Object {
             attachments: Vec::new(),
             spell_effect: None,
             aura_attach_filter: None,
+            bestow_cast_state: None,
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -492,6 +507,7 @@ impl Object {
             // Note: spell_effect is copiable for spell copies
             spell_effect: source.spell_effect.clone(),
             aura_attach_filter: source.aura_attach_filter.clone(),
+            bestow_cast_state: source.bestow_cast_state.clone(),
             // Alternative casts are copiable (though tokens rarely use them)
             alternative_casts: source.alternative_casts.clone(),
             // Optional costs are copiable
@@ -550,6 +566,7 @@ impl Object {
             attachments: Vec::new(),
             spell_effect: None,
             aura_attach_filter: None,
+            bestow_cast_state: None,
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -579,6 +596,60 @@ impl Object {
         self.base_loyalty = source.base_loyalty;
         self.abilities = source.abilities.clone();
         self.aura_attach_filter = source.aura_attach_filter.clone();
+    }
+
+    /// Apply the temporary "cast with bestow" Aura overlay.
+    ///
+    /// This stores original copiable fields so state-based actions can restore
+    /// creature form when the permanent stops being attached.
+    pub fn apply_bestow_cast_overlay(&mut self) {
+        if self.bestow_cast_state.is_some() {
+            return;
+        }
+
+        self.bestow_cast_state = Some(BestowCastState {
+            card_types: self.card_types.clone(),
+            subtypes: self.subtypes.clone(),
+            aura_attach_filter: self.aura_attach_filter.clone(),
+            spell_effect: self.spell_effect.clone(),
+        });
+
+        let mut card_types = self.card_types.clone();
+        card_types.retain(|card_type| *card_type != CardType::Creature);
+        if !card_types.contains(&CardType::Enchantment) {
+            card_types.push(CardType::Enchantment);
+        }
+        self.card_types = card_types;
+
+        let mut subtypes = self.subtypes.clone();
+        subtypes.retain(|subtype| !subtype.is_creature_type() && *subtype != Subtype::Aura);
+        subtypes.push(Subtype::Aura);
+        self.subtypes = subtypes;
+
+        self.aura_attach_filter = Some(crate::target::ObjectFilter::creature());
+        if self.spell_effect.is_none() {
+            let target_spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                crate::target::ObjectFilter::creature(),
+            ));
+            self.spell_effect = Some(vec![crate::effect::Effect::attach_to(target_spec)]);
+        }
+    }
+
+    /// Returns true if this object is currently in the temporary bestow Aura form.
+    pub fn is_bestow_overlay_active(&self) -> bool {
+        self.bestow_cast_state.is_some()
+    }
+
+    /// End bestow Aura form and restore original copiable fields.
+    pub fn end_bestow_cast_overlay(&mut self) -> bool {
+        let Some(restore) = self.bestow_cast_state.take() else {
+            return false;
+        };
+        self.card_types = restore.card_types;
+        self.subtypes = restore.subtypes;
+        self.aura_attach_filter = restore.aura_attach_filter;
+        self.spell_effect = restore.spell_effect;
+        true
     }
 
     /// Returns the colors of this object.
@@ -941,6 +1012,7 @@ impl Object {
             attachments: Vec::new(),
             spell_effect: def.spell_effect.clone(),
             aura_attach_filter: def.aura_attach_filter.clone(),
+            bestow_cast_state: None,
             alternative_casts: def.alternative_casts.clone(),
             optional_costs: def.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),

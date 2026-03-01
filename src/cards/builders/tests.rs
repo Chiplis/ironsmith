@@ -2408,6 +2408,77 @@ fn test_parse_flashback_keyword_line() {
 }
 
 #[test]
+fn test_parse_bestow_keyword_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bestow Probe")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![Subtype::Insect])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("Bestow {3}{W}\nLifelink\nEnchanted creature gets +1/+1 and has lifelink.")
+        .expect("bestow keyword line should parse");
+
+    assert_eq!(def.alternative_casts.len(), 1);
+    match &def.alternative_casts[0] {
+        AlternativeCastingMethod::Bestow { cost, cost_effects } => {
+            assert_eq!(cost.to_oracle(), "{3}{W}");
+            assert!(
+                cost_effects.is_empty(),
+                "expected mana-only bestow cost for probe, got {cost_effects:?}"
+            );
+        }
+        other => panic!("expected bestow alternative cast, got {other:?}"),
+    }
+
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !static_ids.contains(&StaticAbilityId::KeywordMarker)
+            && !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder)
+            && !static_ids.contains(&StaticAbilityId::UnsupportedParserLine),
+        "bestow line should compile without placeholder static abilities, got {static_ids:?}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Bestow {3}{W}"),
+        "expected compiled text to include bestow line, got {rendered}"
+    );
+}
+
+#[test]
+fn test_parse_bestow_keyword_line_with_extra_cost_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bestow Extra Cost Probe")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![Subtype::Insect])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Bestow—{R}, Collect evidence 6.\nFlying\nEnchanted creature gets +2/+2 and has flying.",
+        )
+        .expect("bestow line with extra clause should parse");
+
+    assert_eq!(def.alternative_casts.len(), 1);
+    match &def.alternative_casts[0] {
+        AlternativeCastingMethod::Bestow { cost, .. } => {
+            assert_eq!(cost.to_oracle(), "{R}");
+        }
+        other => panic!("expected bestow alternative cast, got {other:?}"),
+    }
+
+    let debug = format!("{def:?}");
+    assert!(
+        !debug.contains("KeywordMarker")
+            && !debug.contains("RuleTextPlaceholder")
+            && !debug.contains("UnsupportedParserLine"),
+        "bestow extra-cost line should avoid placeholder fallback, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_buyback_keyword_line_compiles_to_optional_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Buyback Probe")
         .card_types(vec![CardType::Instant])

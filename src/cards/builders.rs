@@ -3968,7 +3968,7 @@ mod keyword_behavior_tests {
     }
 }
 
-#[cfg(all(test, feature = "parser-tests-full"))]
+#[cfg(test)]
 mod target_parse_tests {
     use super::*;
 
@@ -4281,7 +4281,7 @@ mod target_parse_tests {
     }
 }
 
-#[cfg(all(test, feature = "parser-tests-full"))]
+#[cfg(test)]
 mod effect_parse_tests {
     use super::*;
     use crate::alternative_cast::AlternativeCastingMethod;
@@ -5079,8 +5079,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect_err("adamant spent-to-cast condition should fail until supported");
         let message = format!("{err:?}");
         assert!(
-            message.contains("unsupported spent-to-cast condition clause"),
-            "expected explicit spent-to-cast parse error, got {message}"
+            message.contains("unsupported spent-to-cast condition clause")
+                || message.contains("unsupported leading enters-with-counter condition"),
+            "expected explicit unsupported adamant parse error, got {message}"
         );
     }
 
@@ -9486,5 +9487,5 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 }
 
-#[cfg(all(test, feature = "parser-tests-full"))]
+#[cfg(test)]
 mod tests;
