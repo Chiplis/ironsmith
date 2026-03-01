@@ -350,16 +350,11 @@ fn handle_pay_life_or_enter_tapped(
         InteractiveReplacementResponse::Accept => {
             // Player chose to pay life
             // Verify they can still pay
-            let can_pay = game
-                .player(controller)
-                .map(|p| p.life >= life_cost as i32)
-                .unwrap_or(false);
+            let can_pay = game.can_pay_life(controller, life_cost);
 
             if can_pay {
                 // Deduct life
-                if let Some(player) = game.player_mut(controller) {
-                    player.life -= life_cost as i32;
-                }
+                game.pay_life(controller, life_cost);
                 // Permanent enters untapped
                 InteractiveReplacementResult::enters_battlefield()
             } else {

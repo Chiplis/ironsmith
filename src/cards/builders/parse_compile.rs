@@ -6512,20 +6512,7 @@ pub(crate) fn eldrazi_scion_token_definition() -> CardDefinition {
 }
 
 pub(crate) fn parse_number_word(word: &str) -> Option<i32> {
-    match word {
-        "zero" => Some(0),
-        "one" => Some(1),
-        "two" => Some(2),
-        "three" => Some(3),
-        "four" => Some(4),
-        "five" => Some(5),
-        "six" => Some(6),
-        "seven" => Some(7),
-        "eight" => Some(8),
-        "nine" => Some(9),
-        "ten" => Some(10),
-        _ => word.parse::<i32>().ok(),
-    }
+    parse_number_word_i32(word)
 }
 
 pub(crate) fn parse_deals_damage_amount(words: &[&str]) -> Option<i32> {

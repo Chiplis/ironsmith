@@ -834,6 +834,10 @@ fn apply_modification_to_chars_for_dependency(
     _object: &crate::object::Object,
 ) {
     match modification {
+        Modification::CopyOf(_) => {}
+        Modification::ChangeController(new_controller) => {
+            chars.controller = *new_controller;
+        }
         Modification::AddCardTypes(types) => {
             for t in types {
                 if !chars.card_types.contains(t) {
@@ -924,6 +928,10 @@ fn apply_modification_to_chars_for_dependency(
         Modification::AddAbilityGeneric(ability) => {
             chars.abilities.push(ability.clone());
         }
+        Modification::SetAbilities(abilities) => {
+            chars.abilities = abilities.clone();
+        }
+        Modification::CopyActivatedAbilities { .. } => {}
         Modification::AddCombatDamageDrawAbility => {
             chars.abilities.push(crate::ability::Ability::triggered(
                 crate::triggers::Trigger::this_deals_combat_damage_to_player(),
@@ -966,7 +974,12 @@ fn apply_modification_to_chars_for_dependency(
         Modification::SwitchPowerToughness => {
             std::mem::swap(&mut chars.power, &mut chars.toughness);
         }
-        _ => {}
+        Modification::ChangeText { .. }
+        | Modification::SetName(_)
+        | Modification::CantBeBlocked
+        | Modification::CantAttack
+        | Modification::CantBlock
+        | Modification::DoesntUntap => {}
     }
 }
 

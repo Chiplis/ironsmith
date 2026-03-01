@@ -22,6 +22,17 @@ pub fn merge_cost_effects(cost: TotalCost, effects: Vec<Effect>) -> TotalCost {
     TotalCost::from_costs(merged)
 }
 
+/// Extract static abilities from a heterogeneous ability list.
+pub fn extract_static_abilities(abilities: &[Ability]) -> Vec<NewStaticAbility> {
+    abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// A complete ability definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ability {

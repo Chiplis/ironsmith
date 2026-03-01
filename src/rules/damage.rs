@@ -7,11 +7,9 @@
 //! - Wither (damage as -1/-1 counters to creatures)
 //! - Trample (excess damage goes to defending player)
 
-use crate::ability::AbilityKind;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::object::Object;
-use crate::static_abilities::StaticAbility;
 use crate::static_abilities::StaticAbilityId;
 
 /// The target of damage.
@@ -54,41 +52,12 @@ pub struct DamageResult {
     pub has_lifelink: bool,
 }
 
-/// Check if a source object has a static ability with the given ID.
-fn has_ability_id(source: &Object, ability_id: StaticAbilityId) -> bool {
-    source.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.id() == ability_id
-        } else {
-            false
-        }
-    })
-}
-
-fn get_static_abilities(source: &Object) -> Vec<StaticAbility> {
-    source
-        .abilities
-        .iter()
-        .filter_map(|a| {
-            if let AbilityKind::Static(s) = &a.kind {
-                Some(s.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 fn has_ability_id_with_game(
     source: &Object,
     game: &GameState,
     ability_id: StaticAbilityId,
 ) -> bool {
-    let abilities = game
-        .calculated_characteristics(source.id)
-        .map(|c| c.static_abilities)
-        .unwrap_or_else(|| get_static_abilities(source));
-    abilities.iter().any(|a| a.id() == ability_id)
+    game.object_has_static_ability_id(source.id, ability_id)
 }
 
 fn build_damage_result(
@@ -151,10 +120,10 @@ pub fn calculate_damage(
         return DamageResult::default();
     }
 
-    let has_deathtouch = has_ability_id(source, StaticAbilityId::Deathtouch);
-    let has_infect = has_ability_id(source, StaticAbilityId::Infect);
-    let has_wither = has_ability_id(source, StaticAbilityId::Wither);
-    let has_lifelink = has_ability_id(source, StaticAbilityId::Lifelink);
+    let has_deathtouch = source.has_static_ability_id(StaticAbilityId::Deathtouch);
+    let has_infect = source.has_static_ability_id(StaticAbilityId::Infect);
+    let has_wither = source.has_static_ability_id(StaticAbilityId::Wither);
+    let has_lifelink = source.has_static_ability_id(StaticAbilityId::Lifelink);
 
     build_damage_result(
         target,

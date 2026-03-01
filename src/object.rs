@@ -971,6 +971,30 @@ impl Object {
         self.level_granted_abilities().iter().any(|a| a == ability)
     }
 
+    /// Returns true if this object has a static ability with the given ID.
+    /// This includes abilities granted by level tiers.
+    pub fn has_static_ability_id(
+        &self,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        use crate::ability::AbilityKind;
+
+        let has_regular = self.abilities.iter().any(|ability| {
+            if let AbilityKind::Static(static_ability) = &ability.kind {
+                static_ability.id() == ability_id
+            } else {
+                false
+            }
+        });
+        if has_regular {
+            return true;
+        }
+
+        self.level_granted_abilities()
+            .iter()
+            .any(|ability| ability.id() == ability_id)
+    }
+
     /// Returns true if this object has indestructible.
     pub fn has_indestructible(&self) -> bool {
         self.has_static_ability(&crate::static_abilities::StaticAbility::indestructible())

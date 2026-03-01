@@ -156,17 +156,7 @@ fn describe_sacrifice_filter(filter: &ObjectFilter) -> String {
         let types: Vec<&str> = filter
             .card_types
             .iter()
-            .map(|t| match t {
-                CardType::Creature => "creature",
-                CardType::Artifact => "artifact",
-                CardType::Enchantment => "enchantment",
-                CardType::Land => "land",
-                CardType::Planeswalker => "planeswalker",
-                CardType::Instant => "instant",
-                CardType::Sorcery => "sorcery",
-                CardType::Battle => "battle",
-                CardType::Kindred => "kindred",
-            })
+            .map(|card_type| card_type.name())
             .collect();
         parts.push(Box::leak(types.join(" or ").into_boxed_str()));
     } else {
@@ -177,17 +167,7 @@ fn describe_sacrifice_filter(filter: &ObjectFilter) -> String {
 }
 
 fn card_type_name(card_type: CardType) -> &'static str {
-    match card_type {
-        CardType::Creature => "creature",
-        CardType::Artifact => "artifact",
-        CardType::Enchantment => "enchantment",
-        CardType::Land => "land",
-        CardType::Planeswalker => "planeswalker",
-        CardType::Instant => "instant",
-        CardType::Sorcery => "sorcery",
-        CardType::Battle => "battle",
-        CardType::Kindred => "kindred",
-    }
+    card_type.name()
 }
 
 fn format_discard_card_type_phrase(card_types: &[CardType]) -> String {

@@ -1707,8 +1707,7 @@ pub(crate) fn parse_object_filter(
             filter.excluded_colors = filter.excluded_colors.union(color);
             negated_word_indices.insert(idx + 1);
         }
-        if let Some(subtype) =
-            parse_subtype_word(next).or_else(|| next.strip_suffix('s').and_then(parse_subtype_word))
+        if let Some(subtype) = parse_subtype_flexible(next)
             && !filter.excluded_subtypes.contains(&subtype)
         {
             filter.excluded_subtypes.push(subtype);
@@ -1880,8 +1879,7 @@ pub(crate) fn parse_object_filter(
             }
         }
 
-        if let Some(subtype) =
-            parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+        if let Some(subtype) = parse_subtype_flexible(word)
         {
             if !filter.subtypes.contains(&subtype) {
                 filter.subtypes.push(subtype);
@@ -2259,8 +2257,7 @@ pub(crate) fn parse_spell_filter(tokens: &[Token]) -> ObjectFilter {
             filter.excluded_card_types.push(card_type);
         }
 
-        if let Some(subtype) =
-            parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+        if let Some(subtype) = parse_subtype_flexible(word)
             && !filter.subtypes.contains(&subtype)
         {
             filter.subtypes.push(subtype);

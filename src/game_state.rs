@@ -1540,6 +1540,42 @@ impl GameState {
         self.cant_effects.can_change_life_total(player)
     }
 
+    /// Returns true if a player can currently pay the given amount of life.
+    pub fn can_pay_life(&self, player: PlayerId, amount: u32) -> bool {
+        if amount == 0 {
+            return self.player(player).is_some();
+        }
+        self.can_change_life_total(player)
+            && self.player(player).is_some_and(|p| p.life >= amount as i32)
+    }
+
+    /// Makes a player lose life if their life total can change.
+    ///
+    /// Returns the amount of life actually lost.
+    pub fn lose_life(&mut self, player: PlayerId, amount: u32) -> u32 {
+        if amount == 0 || !self.can_change_life_total(player) {
+            return 0;
+        }
+        if let Some(p) = self.player_mut(player) {
+            p.lose_life(amount);
+            return amount;
+        }
+        0
+    }
+
+    /// Pays life as a cost.
+    ///
+    /// Returns true if the player could pay and life was deducted.
+    pub fn pay_life(&mut self, player: PlayerId, amount: u32) -> bool {
+        if amount == 0 {
+            return self.player(player).is_some();
+        }
+        if !self.can_pay_life(player, amount) {
+            return false;
+        }
+        self.lose_life(player, amount) == amount
+    }
+
     /// Can the player search their library?
     pub fn can_search_library(&self, player: PlayerId) -> bool {
         self.cant_effects.can_search_library(player)
@@ -2542,6 +2578,23 @@ impl GameState {
         self.calculated_characteristics(id)
             .map(|c| c.static_abilities.contains(ability))
             .unwrap_or(false)
+    }
+
+    /// Check if an object has a static ability with the given ID.
+    pub fn object_has_static_ability_id(
+        &self,
+        id: ObjectId,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
+        if let Some(chars) = self.calculated_characteristics(id) {
+            return chars
+                .static_abilities
+                .iter()
+                .any(|ability| ability.id() == ability_id);
+        }
+
+        self.object(id)
+            .is_some_and(|object| object.has_static_ability_id(ability_id))
     }
 
     /// Get the calculated subtypes of an object (with continuous effects applied).

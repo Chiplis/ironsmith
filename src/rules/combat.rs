@@ -5,7 +5,7 @@
 //! - Minimum blockers (menace)
 //! - Attack restrictions (defender, summoning sickness)
 
-use crate::ability::{AbilityKind, ProtectionFrom};
+use crate::ability::{ProtectionFrom, extract_static_abilities};
 use crate::color::Color;
 use crate::object::Object;
 use crate::static_abilities::StaticAbilityId;
@@ -25,63 +25,40 @@ pub enum EvasionType {
     Unblockable,
 }
 
-/// Check if an object has a static ability with the given ID.
-fn has_ability_id(object: &Object, ability_id: StaticAbilityId) -> bool {
-    object.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.id() == ability_id
-        } else {
-            false
-        }
-    })
-}
-
 fn has_ability_id_with_game(
     object: &Object,
     game: &crate::game_state::GameState,
     ability_id: StaticAbilityId,
 ) -> bool {
-    game.calculated_characteristics(object.id)
-        .map(|c| c.static_abilities)
-        .unwrap_or_else(|| get_static_abilities(object))
-        .iter()
-        .any(|a| a.id() == ability_id)
+    game.object_has_static_ability_id(object.id, ability_id)
 }
 
 /// Check if an object has any of the specified static abilities.
 #[allow(dead_code)]
 fn has_any_ability_id(object: &Object, ability_ids: &[StaticAbilityId]) -> bool {
-    ability_ids.iter().any(|id| has_ability_id(object, *id))
+    ability_ids
+        .iter()
+        .any(|ability_id| object.has_static_ability_id(*ability_id))
 }
 
 /// Check if a creature has an evasion ability.
 pub fn has_evasion(object: &Object, evasion: EvasionType) -> bool {
     match evasion {
-        EvasionType::Flying => has_ability_id(object, StaticAbilityId::Flying),
-        EvasionType::Shadow => has_ability_id(object, StaticAbilityId::Shadow),
-        EvasionType::Horsemanship => has_ability_id(object, StaticAbilityId::Horsemanship),
-        EvasionType::Fear => has_ability_id(object, StaticAbilityId::Fear),
-        EvasionType::Intimidate => has_ability_id(object, StaticAbilityId::Intimidate),
-        EvasionType::Skulk => has_ability_id(object, StaticAbilityId::Skulk),
-        EvasionType::Menace => has_ability_id(object, StaticAbilityId::Menace),
-        EvasionType::Unblockable => has_ability_id(object, StaticAbilityId::Unblockable),
+        EvasionType::Flying => object.has_static_ability_id(StaticAbilityId::Flying),
+        EvasionType::Shadow => object.has_static_ability_id(StaticAbilityId::Shadow),
+        EvasionType::Horsemanship => object.has_static_ability_id(StaticAbilityId::Horsemanship),
+        EvasionType::Fear => object.has_static_ability_id(StaticAbilityId::Fear),
+        EvasionType::Intimidate => object.has_static_ability_id(StaticAbilityId::Intimidate),
+        EvasionType::Skulk => object.has_static_ability_id(StaticAbilityId::Skulk),
+        EvasionType::Menace => object.has_static_ability_id(StaticAbilityId::Menace),
+        EvasionType::Unblockable => object.has_static_ability_id(StaticAbilityId::Unblockable),
     }
 }
 
 /// Extract static abilities from an object's base abilities.
 /// Used as a fallback when the object isn't in the game state's characteristics cache.
 fn get_static_abilities(object: &Object) -> Vec<crate::static_abilities::StaticAbility> {
-    object
-        .abilities
-        .iter()
-        .filter_map(|a| {
-            if let AbilityKind::Static(s) = &a.kind {
-                Some(s.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
+    extract_static_abilities(&object.abilities)
 }
 
 /// Check if a blocker can legally block an attacker.
@@ -348,7 +325,7 @@ fn protection_prevents_blocking(
 ///
 /// Most creatures require 1 blocker. Creatures with menace require 2.
 pub fn minimum_blockers(attacker: &Object) -> usize {
-    if has_ability_id(attacker, StaticAbilityId::Menace) {
+    if attacker.has_static_ability_id(StaticAbilityId::Menace) {
         2
     } else {
         1
@@ -472,7 +449,7 @@ pub fn can_attack_defending_player(
 ///
 /// Returns true for creatures with "must attack each turn if able" effects.
 pub fn must_attack(creature: &Object) -> bool {
-    has_ability_id(creature, StaticAbilityId::MustAttack)
+    creature.has_static_ability_id(StaticAbilityId::MustAttack)
 }
 
 /// Check if a creature must attack this turn if able, with continuous effects applied.
@@ -483,7 +460,7 @@ pub fn must_attack_with_game(creature: &Object, game: &crate::game_state::GameSt
 
 /// Check if a creature must block this turn if able.
 pub fn must_block(creature: &Object) -> bool {
-    has_ability_id(creature, StaticAbilityId::MustBlock)
+    creature.has_static_ability_id(StaticAbilityId::MustBlock)
 }
 
 /// Check if a creature must block this turn if able, with continuous effects applied.
@@ -493,7 +470,7 @@ pub fn must_block_with_game(creature: &Object, game: &crate::game_state::GameSta
 
 /// Check if a creature has vigilance (doesn't tap to attack).
 pub fn has_vigilance(creature: &Object) -> bool {
-    has_ability_id(creature, StaticAbilityId::Vigilance)
+    creature.has_static_ability_id(StaticAbilityId::Vigilance)
 }
 
 /// Check if a creature has vigilance (doesn't tap to attack), with continuous effects applied.
@@ -503,12 +480,12 @@ pub fn has_vigilance_with_game(creature: &Object, game: &crate::game_state::Game
 
 /// Check if a creature has first strike.
 pub fn has_first_strike(creature: &Object) -> bool {
-    has_ability_id(creature, StaticAbilityId::FirstStrike)
+    creature.has_static_ability_id(StaticAbilityId::FirstStrike)
 }
 
 /// Check if a creature has double strike.
 pub fn has_double_strike(creature: &Object) -> bool {
-    has_ability_id(creature, StaticAbilityId::DoubleStrike)
+    creature.has_static_ability_id(StaticAbilityId::DoubleStrike)
 }
 
 /// Check if a creature deals damage in the first strike damage step.

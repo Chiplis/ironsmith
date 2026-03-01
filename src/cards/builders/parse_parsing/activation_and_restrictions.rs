@@ -609,34 +609,7 @@ pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Opti
 }
 
 pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
-    if let Ok(value) = word.parse::<u32>() {
-        return Some(value);
-    }
-
-    match word {
-        "zero" => Some(0),
-        "a" | "an" | "one" => Some(1),
-        "two" => Some(2),
-        "three" => Some(3),
-        "four" => Some(4),
-        "five" => Some(5),
-        "six" => Some(6),
-        "seven" => Some(7),
-        "eight" => Some(8),
-        "nine" => Some(9),
-        "ten" => Some(10),
-        "eleven" => Some(11),
-        "twelve" => Some(12),
-        "thirteen" => Some(13),
-        "fourteen" => Some(14),
-        "fifteen" => Some(15),
-        "sixteen" => Some(16),
-        "seventeen" => Some(17),
-        "eighteen" => Some(18),
-        "nineteen" => Some(19),
-        "twenty" => Some(20),
-        _ => None,
-    }
+    parse_number_word_u32(word)
 }
 
 pub(crate) fn parse_level_up_line(
@@ -1336,8 +1309,7 @@ pub(crate) fn parse_cycling_search_filter(
         {
             filter.card_types.push(card_type);
         }
-        if let Some(subtype) =
-            parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+        if let Some(subtype) = parse_subtype_flexible(word)
             && !filter.subtypes.contains(&subtype)
         {
             filter.subtypes.push(subtype);
@@ -1367,8 +1339,7 @@ pub(crate) fn parse_cycling_search_filter(
             && !filter.card_types.contains(&card_type)
         {
             filter.card_types.push(card_type);
-        } else if let Some(subtype) =
-            parse_subtype_word(root).or_else(|| root.strip_suffix('s').and_then(parse_subtype_word))
+        } else if let Some(subtype) = parse_subtype_flexible(root)
         {
             if !filter.subtypes.contains(&subtype) {
                 filter.subtypes.push(subtype);
@@ -2529,8 +2500,7 @@ pub(crate) fn parse_activation_condition(tokens: &[Token]) -> Option<crate::Cond
 
     let mut subtypes = Vec::new();
     for word in line_words {
-        if let Some(subtype) =
-            parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+        if let Some(subtype) = parse_subtype_flexible(word)
             && !subtypes.contains(&subtype)
         {
             subtypes.push(subtype);
@@ -5534,24 +5504,17 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         ["protection", "from", "all", "color"] => KeywordAction::ProtectionFromAllColors,
         ["protection", "from", "colorless"] => KeywordAction::ProtectionFromColorless,
         ["protection", "from", "everything"] => KeywordAction::ProtectionFromEverything,
-        ["protection", "from", value] => match *value {
-            "white" => KeywordAction::ProtectionFrom(ColorSet::WHITE),
-            "blue" => KeywordAction::ProtectionFrom(ColorSet::BLUE),
-            "black" => KeywordAction::ProtectionFrom(ColorSet::BLACK),
-            "red" => KeywordAction::ProtectionFrom(ColorSet::RED),
-            "green" => KeywordAction::ProtectionFrom(ColorSet::GREEN),
-            _ => {
-                if let Some(card_type) = parse_card_type(value) {
-                    KeywordAction::ProtectionFromCardType(card_type)
-                } else if let Some(subtype) = parse_subtype_word(value)
-                    .or_else(|| value.strip_suffix('s').and_then(parse_subtype_word))
-                {
-                    KeywordAction::ProtectionFromSubtype(subtype)
-                } else {
-                    return None;
-                }
+        ["protection", "from", value] => {
+            if let Some(color) = parse_color(value) {
+                KeywordAction::ProtectionFrom(color)
+            } else if let Some(card_type) = parse_card_type(value) {
+                KeywordAction::ProtectionFromCardType(card_type)
+            } else if let Some(subtype) = parse_subtype_flexible(value) {
+                KeywordAction::ProtectionFromSubtype(subtype)
+            } else {
+                return None;
             }
-        },
+        }
         _ => {
             // "toxic N" needs exactly 2 words
             if words.len() == 2 && words[0] == "toxic" {
@@ -5640,22 +5603,17 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 }
                 if words.starts_with(&["protection", "from"]) && words.len() >= 3 {
                     let value = words[2];
-                    return match value {
-                        "white" => Some(KeywordAction::ProtectionFrom(ColorSet::WHITE)),
-                        "blue" => Some(KeywordAction::ProtectionFrom(ColorSet::BLUE)),
-                        "black" => Some(KeywordAction::ProtectionFrom(ColorSet::BLACK)),
-                        "red" => Some(KeywordAction::ProtectionFrom(ColorSet::RED)),
-                        "green" => Some(KeywordAction::ProtectionFrom(ColorSet::GREEN)),
-                        "everything" => Some(KeywordAction::ProtectionFromEverything),
-                        _ => parse_card_type(value)
+                    return if let Some(color) = parse_color(value) {
+                        Some(KeywordAction::ProtectionFrom(color))
+                    } else if value == "everything" {
+                        Some(KeywordAction::ProtectionFromEverything)
+                    } else {
+                        parse_card_type(value)
                             .map(KeywordAction::ProtectionFromCardType)
                             .or_else(|| {
-                                parse_subtype_word(value)
-                                    .or_else(|| {
-                                        value.strip_suffix('s').and_then(parse_subtype_word)
-                                    })
+                                parse_subtype_flexible(value)
                                     .map(KeywordAction::ProtectionFromSubtype)
-                            }),
+                            })
                     };
                 }
             }
@@ -7724,8 +7682,7 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter(
         if matches!(*word, "and" | "or") {
             continue;
         }
-        if let Some(subtype) =
-            parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
+        if let Some(subtype) = parse_subtype_flexible(word)
         {
             if !subtypes.contains(&subtype) {
                 subtypes.push(subtype);

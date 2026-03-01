@@ -26,14 +26,8 @@ fn describe_choose_from_filter(
 ) -> String {
     let type_word = if filter.card_types.len() == 1 {
         match filter.card_types[0] {
-            CardType::Creature => "creature",
-            CardType::Artifact => "artifact",
-            CardType::Enchantment => "enchantment",
-            CardType::Land => "land",
-            CardType::Planeswalker => "planeswalker",
-            CardType::Instant => "instant",
-            CardType::Sorcery => "sorcery",
-            _ => "permanent",
+            CardType::Battle | CardType::Kindred => "permanent",
+            card_type => card_type.name(),
         }
     } else if filter.card_types.is_empty() {
         "permanent"
@@ -42,7 +36,7 @@ fn describe_choose_from_filter(
         let types = filter
             .card_types
             .iter()
-            .map(|ct| format!("{ct:?}").to_lowercase())
+            .map(|card_type| card_type.name())
             .collect::<Vec<_>>()
             .join(" or ");
         let article = article_for_count(min, max);
@@ -51,8 +45,8 @@ fn describe_choose_from_filter(
 
     let mut parts = Vec::new();
     if !filter.excluded_card_types.is_empty() {
-        for ct in &filter.excluded_card_types {
-            parts.push(format!("non{}", format!("{ct:?}").to_lowercase()));
+        for card_type in &filter.excluded_card_types {
+            parts.push(format!("non{}", card_type.name()));
         }
     }
     if !filter.subtypes.is_empty() {

@@ -1185,17 +1185,38 @@ fn apply_mana_payment_response_activation(
         if let Some(ref cost) = pending.mana_cost_to_pay {
             let allow_any_color =
                 game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
+            let life_to_pay_preview = {
+                let Some(player) = game.player(pending.activator) else {
+                    return Err(GameLoopError::InvalidState(
+                        "Cannot pay mana cost - payer not found".to_string(),
+                    ));
+                };
+                let mut preview_pool = player.mana_pool.clone();
+                let (_, life_to_pay) =
+                    preview_pool.try_pay_tracking_life_with_any_color(cost, x_value, allow_any_color);
+                life_to_pay
+            };
+            if life_to_pay_preview > 0 && !game.can_pay_life(pending.activator, life_to_pay_preview)
+            {
+                return Err(GameLoopError::InvalidState(
+                    "Cannot pay mana cost - insufficient life for Phyrexian payment".to_string(),
+                ));
+            }
+            let mut life_to_pay = 0u32;
             if let Some(player) = game.player_mut(pending.activator) {
                 // Pay mana and track life for Phyrexian costs
-                let (_, life_to_pay) = player.mana_pool.try_pay_tracking_life_with_any_color(
+                let (_, paid_life) = player.mana_pool.try_pay_tracking_life_with_any_color(
                     cost,
                     x_value,
                     allow_any_color,
                 );
-                // Deduct life for Phyrexian mana that couldn't be paid with mana
-                if life_to_pay > 0 {
-                    player.life -= life_to_pay as i32;
-                }
+                life_to_pay = paid_life;
+            }
+            // Deduct life for Phyrexian mana that couldn't be paid with mana.
+            if life_to_pay > 0 && !game.pay_life(pending.activator, life_to_pay) {
+                return Err(GameLoopError::InvalidState(
+                    "Cannot pay mana cost - insufficient life for Phyrexian payment".to_string(),
+                ));
             }
         }
         pending.stage = ActivationStage::ReadyToFinalize;

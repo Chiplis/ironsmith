@@ -19,6 +19,28 @@ pub enum CardType {
     Kindred, // Formerly Tribal
 }
 
+impl CardType {
+    pub fn name(self) -> &'static str {
+        match self {
+            CardType::Land => "land",
+            CardType::Creature => "creature",
+            CardType::Artifact => "artifact",
+            CardType::Enchantment => "enchantment",
+            CardType::Planeswalker => "planeswalker",
+            CardType::Instant => "instant",
+            CardType::Sorcery => "sorcery",
+            CardType::Battle => "battle",
+            CardType::Kindred => "kindred",
+        }
+    }
+}
+
+impl std::fmt::Display for CardType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Subtype {
     // Basic land types

@@ -3805,17 +3805,7 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
 }
 
 fn describe_card_type_word(card_type: CardType) -> &'static str {
-    match card_type {
-        CardType::Artifact => "artifact",
-        CardType::Battle => "battle",
-        CardType::Creature => "creature",
-        CardType::Enchantment => "enchantment",
-        CardType::Instant => "instant",
-        CardType::Kindred => "kindred",
-        CardType::Land => "land",
-        CardType::Planeswalker => "planeswalker",
-        CardType::Sorcery => "sorcery",
-    }
+    card_type.name()
 }
 
 fn alternative_cast_matches_kind(

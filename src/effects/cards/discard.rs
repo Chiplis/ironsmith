@@ -83,17 +83,7 @@ impl DiscardEffect {
 }
 
 fn card_type_name(card_type: CardType) -> &'static str {
-    match card_type {
-        CardType::Creature => "creature",
-        CardType::Artifact => "artifact",
-        CardType::Enchantment => "enchantment",
-        CardType::Land => "land",
-        CardType::Planeswalker => "planeswalker",
-        CardType::Instant => "instant",
-        CardType::Sorcery => "sorcery",
-        CardType::Battle => "battle",
-        CardType::Kindred => "kindred",
-    }
+    card_type.name()
 }
 
 fn format_discard_card_type_phrase(card_types: &[CardType]) -> String {

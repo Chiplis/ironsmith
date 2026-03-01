@@ -42,7 +42,7 @@ impl CostPayer for LifePerCardInHandCost {
             .ok_or(CostPaymentError::PlayerNotFound)?;
 
         let needed = (player.hand.len() as u32).saturating_mul(self.per_card);
-        if player.life < (needed as i32) {
+        if !game.can_pay_life(ctx.payer, needed) {
             return Err(CostPaymentError::InsufficientLife);
         }
 
@@ -62,8 +62,8 @@ impl CostPayer for LifePerCardInHandCost {
             .map(|p| (p.hand.len() as u32).saturating_mul(self.per_card))
             .unwrap_or(0);
 
-        if let Some(player) = game.player_mut(ctx.payer) {
-            player.life -= needed as i32;
+        if !game.pay_life(ctx.payer, needed) {
+            return Err(CostPaymentError::InsufficientLife);
         }
 
         Ok(CostPaymentResult::Paid)
@@ -94,12 +94,11 @@ impl CostPayer for LifePerCardInHandCost {
 
 impl CostPayer for LifeCost {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
-        let player = game
-            .player(ctx.payer)
+        game.player(ctx.payer)
             .ok_or(CostPaymentError::PlayerNotFound)?;
 
-        // Check if player has enough life (can go to 0)
-        if player.life < (self.amount as i32) {
+        // Check if player can pay this life amount (including life-total lock effects).
+        if !game.can_pay_life(ctx.payer, self.amount) {
             return Err(CostPaymentError::InsufficientLife);
         }
 
@@ -115,8 +114,8 @@ impl CostPayer for LifeCost {
         self.can_pay(game, ctx)?;
 
         // Pay life
-        if let Some(player) = game.player_mut(ctx.payer) {
-            player.life -= self.amount as i32;
+        if !game.pay_life(ctx.payer, self.amount) {
+            return Err(CostPaymentError::InsufficientLife);
         }
 
         Ok(CostPaymentResult::Paid)

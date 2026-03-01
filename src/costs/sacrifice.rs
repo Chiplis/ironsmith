@@ -195,17 +195,7 @@ impl CostPayer for SacrificeCost {
                 .filter
                 .card_types
                 .iter()
-                .map(|t| match t {
-                    crate::types::CardType::Creature => "creature",
-                    crate::types::CardType::Artifact => "artifact",
-                    crate::types::CardType::Enchantment => "enchantment",
-                    crate::types::CardType::Land => "land",
-                    crate::types::CardType::Planeswalker => "planeswalker",
-                    crate::types::CardType::Instant => "instant",
-                    crate::types::CardType::Sorcery => "sorcery",
-                    crate::types::CardType::Battle => "battle",
-                    crate::types::CardType::Kindred => "kindred",
-                })
+                .map(|card_type| card_type.name())
                 .collect();
             parts.push(Box::leak(types.join(" or ").into_boxed_str()));
         } else {

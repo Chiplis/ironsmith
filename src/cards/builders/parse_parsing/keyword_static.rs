@@ -76,23 +76,15 @@ pub(crate) fn parse_protection_chain(tokens: &[Token]) -> Option<Vec<KeywordActi
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
         match value {
-            "white" => Some(KeywordAction::ProtectionFrom(ColorSet::WHITE)),
-            "blue" => Some(KeywordAction::ProtectionFrom(ColorSet::BLUE)),
-            "black" => Some(KeywordAction::ProtectionFrom(ColorSet::BLACK)),
-            "red" => Some(KeywordAction::ProtectionFrom(ColorSet::RED)),
-            "green" => Some(KeywordAction::ProtectionFrom(ColorSet::GREEN)),
             "colorless" => Some(KeywordAction::ProtectionFromColorless),
             "everything" => Some(KeywordAction::ProtectionFromEverything),
             "all" if matches!(words.get(idx + 2).copied(), Some("color") | Some("colors")) => {
                 Some(KeywordAction::ProtectionFromAllColors)
             }
-            _ => parse_card_type(value)
-                .map(KeywordAction::ProtectionFromCardType)
-                .or_else(|| {
-                    parse_subtype_word(value)
-                        .or_else(|| value.strip_suffix('s').and_then(parse_subtype_word))
-                        .map(KeywordAction::ProtectionFromSubtype)
-                }),
+            _ => parse_color(value)
+                .map(KeywordAction::ProtectionFrom)
+                .or_else(|| parse_card_type(value).map(KeywordAction::ProtectionFromCardType))
+                .or_else(|| parse_subtype_flexible(value).map(KeywordAction::ProtectionFromSubtype)),
         }
     };
 

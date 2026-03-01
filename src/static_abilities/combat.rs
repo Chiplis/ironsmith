@@ -308,17 +308,7 @@ pub struct CantBeBlockedAsLongAsDefendingPlayerControlsCardType {
 }
 
 fn unblockable_card_type_word(card_type: crate::types::CardType) -> &'static str {
-    match card_type {
-        crate::types::CardType::Artifact => "artifact",
-        crate::types::CardType::Battle => "battle",
-        crate::types::CardType::Creature => "creature",
-        crate::types::CardType::Enchantment => "enchantment",
-        crate::types::CardType::Land => "land",
-        crate::types::CardType::Planeswalker => "planeswalker",
-        crate::types::CardType::Instant => "instant",
-        crate::types::CardType::Sorcery => "sorcery",
-        crate::types::CardType::Kindred => "kindred",
-    }
+    card_type.name()
 }
 
 impl CantBeBlockedAsLongAsDefendingPlayerControlsCardType {

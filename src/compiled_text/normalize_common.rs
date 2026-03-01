@@ -217,17 +217,7 @@ fn describe_energy_payment_amount(value: &Value) -> String {
 }
 
 fn describe_card_type_word_local(card_type: CardType) -> &'static str {
-    match card_type {
-        CardType::Artifact => "artifact",
-        CardType::Battle => "battle",
-        CardType::Creature => "creature",
-        CardType::Enchantment => "enchantment",
-        CardType::Instant => "instant",
-        CardType::Kindred => "kindred",
-        CardType::Land => "land",
-        CardType::Planeswalker => "planeswalker",
-        CardType::Sorcery => "sorcery",
-    }
+    card_type.name()
 }
 
 fn describe_pt_value(value: crate::card::PtValue) -> String {

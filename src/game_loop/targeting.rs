@@ -627,7 +627,7 @@ pub fn compute_legal_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> Vec<Target> {
-    compute_legal_targets_with_tagged_objects(game, spec, caster, source_id, None)
+    crate::targeting::compute_legal_targets(game, spec, caster, source_id)
 }
 
 /// Compute legal targets for a given ChooseSpec with additional tagged-object context.
@@ -643,171 +643,13 @@ pub fn compute_legal_targets_with_tagged_objects(
         &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     >,
 ) -> Vec<Target> {
-    let mut filter_ctx = game.filter_context_for(caster, source_id);
-    if let Some(tagged_objects) = tagged_objects {
-        filter_ctx = filter_ctx.with_tagged_objects(tagged_objects);
-    }
-
-    match spec {
-        ChooseSpec::AnyTarget => {
-            let mut targets = Vec::new();
-            // All players
-            for player in &game.players {
-                if player.is_in_game() && game.can_target_player(player.id) {
-                    targets.push(Target::Player(player.id));
-                }
-            }
-            // All creatures and planeswalkers on battlefield
-            for &obj_id in &game.battlefield {
-                if let Some(obj) = game.object(obj_id)
-                    && (obj.has_card_type(crate::types::CardType::Creature)
-                        || obj.has_card_type(crate::types::CardType::Planeswalker))
-                {
-                    // Check hexproof/shroud - can't target if controlled by opponent
-                    // and has cant_be_targeted flag
-                    let is_untargetable = game.is_untargetable(obj_id);
-                    let is_controlled_by_caster = obj.controller == caster;
-                    if is_untargetable && !is_controlled_by_caster {
-                        continue;
-                    }
-
-                    targets.push(Target::Object(obj_id));
-                }
-            }
-            targets
-        }
-        ChooseSpec::PlayerOrPlaneswalker(filter) => {
-            let mut targets = Vec::new();
-            for player in &game.players {
-                if player.is_in_game()
-                    && game.can_target_player(player.id)
-                    && player_matches_filter(player.id, filter, game, caster)
-                {
-                    targets.push(Target::Player(player.id));
-                }
-            }
-            for &obj_id in &game.battlefield {
-                if let Some(obj) = game.object(obj_id)
-                    && obj.has_card_type(crate::types::CardType::Planeswalker)
-                {
-                    let is_untargetable = game.is_untargetable(obj_id);
-                    let is_controlled_by_caster = obj.controller == caster;
-                    if is_untargetable && !is_controlled_by_caster {
-                        continue;
-                    }
-                    targets.push(Target::Object(obj_id));
-                }
-            }
-            targets
-        }
-        ChooseSpec::AttackedPlayerOrPlaneswalker => Vec::new(),
-        ChooseSpec::Player(filter) => {
-            let mut targets = Vec::new();
-            for player in &game.players {
-                if player.is_in_game()
-                    && game.can_target_player(player.id)
-                    && player_matches_filter(player.id, filter, game, caster)
-                {
-                    targets.push(Target::Player(player.id));
-                }
-            }
-            targets
-        }
-        ChooseSpec::Object(filter) => {
-            let mut targets = Vec::new();
-            // Check battlefield objects
-            for &obj_id in &game.battlefield {
-                if let Some(obj) = game.object(obj_id)
-                    && filter.matches(obj, &filter_ctx, game)
-                {
-                    // Check if the object can be targeted (hexproof/shroud)
-                    // Hexproof only prevents opponents from targeting
-                    // Shroud prevents everyone from targeting
-                    let is_untargetable = game.is_untargetable(obj_id);
-                    let is_controlled_by_caster = obj.controller == caster;
-
-                    // If the object has shroud (can't be targeted by anyone), skip it
-                    // If the object has hexproof (tracked in cant_be_targeted) and
-                    // is controlled by an opponent, skip it
-                    // Note: This is simplified - full implementation would distinguish
-                    // hexproof (opponents only) from shroud (everyone)
-                    if is_untargetable && !is_controlled_by_caster {
-                        continue;
-                    }
-
-                    // Check if the target has protection from the source
-                    if let Some(source_id) = source_id
-                        && has_protection_from_source(game, obj_id, source_id)
-                    {
-                        continue;
-                    }
-
-                    targets.push(Target::Object(obj_id));
-                }
-            }
-            // Check stack for spells (for counterspells)
-            if filter.zone == Some(Zone::Stack) || filter.zone.is_none() {
-                for entry in &game.stack {
-                    if let Some(obj) = game.object(entry.object_id)
-                        && filter.matches(obj, &filter_ctx, game)
-                    {
-                        // Stack objects (spells) can have "can't be targeted" too
-                        // but it's less common
-                        targets.push(Target::Object(entry.object_id));
-                    }
-                }
-            }
-            // Check graveyard for cards (for Snapcaster Mage, etc.)
-            if filter.zone == Some(Zone::Graveyard) || filter.zone.is_none() {
-                for player in &game.players {
-                    for &obj_id in &player.graveyard {
-                        if let Some(obj) = game.object(obj_id)
-                            && filter.matches(obj, &filter_ctx, game)
-                        {
-                            targets.push(Target::Object(obj_id));
-                        }
-                    }
-                }
-            }
-            targets
-        }
-        // Target wrapper - recursively compute targets from inner spec
-        ChooseSpec::Target(inner) => compute_legal_targets_with_tagged_objects(
-            game,
-            inner,
-            caster,
-            source_id,
-            tagged_objects,
-        ),
-        // WithCount wrapper - recursively compute targets from inner spec
-        ChooseSpec::WithCount(inner, _) => compute_legal_targets_with_tagged_objects(
-            game,
-            inner,
-            caster,
-            source_id,
-            tagged_objects,
-        ),
-        // These don't require selection - they're resolved at execution time
-        ChooseSpec::Source
-        | ChooseSpec::SourceController
-        | ChooseSpec::SourceOwner
-        | ChooseSpec::SpecificObject(_)
-        | ChooseSpec::SpecificPlayer(_)
-        | ChooseSpec::Tagged(_)
-        | ChooseSpec::All(_)
-        | ChooseSpec::EachPlayer(_)
-        | ChooseSpec::Iterated => Vec::new(),
-    }
-}
-
-/// Check if a player matches a PlayerFilter.
-fn player_matches_filter(
-    player_id: PlayerId,
-    filter: &crate::target::PlayerFilter,
-    game: &GameState,
-    controller: PlayerId,
-) -> bool {
-    player_matches_filter_with_combat(player_id, filter, game, controller, None)
+    crate::targeting::compute_legal_targets_with_tagged_objects(
+        game,
+        spec,
+        caster,
+        source_id,
+        tagged_objects,
+    )
 }
 
 /// Check if a player matches a PlayerFilter with explicit combat context.
@@ -863,99 +705,7 @@ pub fn player_matches_filter_with_combat(
 /// - Blocking by creatures with that quality
 /// - Targeting by spells/abilities from sources with that quality
 fn has_protection_from_source(game: &GameState, target_id: ObjectId, source_id: ObjectId) -> bool {
-    use crate::ability::AbilityKind;
-    use crate::static_abilities::StaticAbility;
-
-    let Some(target) = game.object(target_id) else {
-        return false;
-    };
-    let Some(source) = game.object(source_id) else {
-        return false;
-    };
-
-    // Check target's abilities for protection
-    // Use calculated characteristics to account for effects like Humility
-    let target_abilities: Vec<StaticAbility> = game
-        .calculated_characteristics(target_id)
-        .map(|c| c.static_abilities)
-        .unwrap_or_else(|| {
-            target
-                .abilities
-                .iter()
-                .filter_map(|a| {
-                    if let AbilityKind::Static(sa) = &a.kind {
-                        Some(sa.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        });
-
-    for ability in target_abilities {
-        if ability.has_protection()
-            && let Some(protection_from) = ability.protection_from()
-            && source_matches_protection(source, protection_from, game)
-        {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Check if a source matches a protection quality.
-fn source_matches_protection(
-    source: &crate::object::Object,
-    protection: &crate::ability::ProtectionFrom,
-    game: &GameState,
-) -> bool {
-    use crate::ability::ProtectionFrom;
-
-    match protection {
-        ProtectionFrom::Color(colors) => {
-            // Check if source has any of the protected colors
-            let source_colors = game
-                .calculated_characteristics(source.id)
-                .map(|c| c.colors)
-                .unwrap_or_else(|| source.colors());
-            !source_colors.intersection(*colors).is_empty()
-        }
-        ProtectionFrom::AllColors => {
-            // Source must have at least one color
-            let source_colors = game
-                .calculated_characteristics(source.id)
-                .map(|c| c.colors)
-                .unwrap_or_else(|| source.colors());
-            !source_colors.is_empty()
-        }
-        ProtectionFrom::Creatures => {
-            // Check if source is a creature
-            source.has_card_type(crate::types::CardType::Creature)
-        }
-        ProtectionFrom::CardType(card_type) => {
-            // Check if source has the card type
-            source.has_card_type(*card_type)
-        }
-        ProtectionFrom::Permanents(filter) => {
-            // Check if source matches the filter
-            // Use a context for the filter matching
-            let ctx = crate::target::FilterContext::new(source.controller);
-            filter.matches(source, &ctx, game)
-        }
-        ProtectionFrom::Everything => {
-            // Protection from everything protects from all sources
-            true
-        }
-        ProtectionFrom::Colorless => {
-            // Check if source is colorless (has no colors)
-            let source_colors = game
-                .calculated_characteristics(source.id)
-                .map(|c| c.colors)
-                .unwrap_or_else(|| source.colors());
-            source_colors.is_empty()
-        }
-    }
+    crate::targeting::has_protection_from_source(game, target_id, source_id)
 }
 
 /// Validate targets for a stack entry that's about to resolve.

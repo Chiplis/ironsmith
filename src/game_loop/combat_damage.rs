@@ -168,18 +168,7 @@ pub fn execute_combat_damage_step(
         let applied = apply_damage_to_permanent(game, attacker_id, blocker_id, &damage_result);
 
         // Apply lifelink (through event processing)
-        if damage_result.has_lifelink && applied.total_damage_dealt > 0 {
-            let life_to_gain = crate::event_processor::process_life_gain_with_event(
-                game,
-                controller,
-                applied.total_damage_dealt,
-            );
-            if life_to_gain > 0
-                && let Some(player) = game.player_mut(controller)
-            {
-                player.gain_life(life_to_gain);
-            }
-        }
+        apply_combat_lifelink(game, controller, &damage_result, applied.total_damage_dealt);
 
         damage_events.push(CombatDamageEvent {
             source: blocker_id,
@@ -246,6 +235,25 @@ fn combat_damage_stat_for_creature(
     } else {
         game.calculated_power(creature.id)
             .or_else(|| creature.power())
+    }
+}
+
+fn apply_combat_lifelink(
+    game: &mut GameState,
+    controller: PlayerId,
+    damage_result: &DamageResult,
+    total_damage_dealt: u32,
+) {
+    if !damage_result.has_lifelink || total_damage_dealt == 0 {
+        return;
+    }
+
+    let life_to_gain =
+        crate::event_processor::process_life_gain_with_event(game, controller, total_damage_dealt);
+    if life_to_gain > 0
+        && let Some(player) = game.player_mut(controller)
+    {
+        player.gain_life(life_to_gain);
     }
 }
 
@@ -317,18 +325,7 @@ fn deal_damage_to_blockers(
         let applied = apply_damage_to_permanent(game, blocker_id, attacker_id, &damage_result);
 
         // Apply lifelink (through event processing)
-        if damage_result.has_lifelink && applied.total_damage_dealt > 0 {
-            let life_to_gain = crate::event_processor::process_life_gain_with_event(
-                game,
-                controller,
-                applied.total_damage_dealt,
-            );
-            if life_to_gain > 0
-                && let Some(player) = game.player_mut(controller)
-            {
-                player.gain_life(life_to_gain);
-            }
-        }
+        apply_combat_lifelink(game, controller, &damage_result, applied.total_damage_dealt);
 
         events.push(CombatDamageEvent {
             source: attacker_id,
@@ -344,18 +341,7 @@ fn deal_damage_to_blockers(
         let applied = apply_damage_to_player(game, player_id, attacker_id, &damage_result);
 
         // Apply lifelink (through event processing)
-        if damage_result.has_lifelink && applied.total_damage_dealt > 0 {
-            let life_to_gain = crate::event_processor::process_life_gain_with_event(
-                game,
-                controller,
-                applied.total_damage_dealt,
-            );
-            if life_to_gain > 0
-                && let Some(player) = game.player_mut(controller)
-            {
-                player.gain_life(life_to_gain);
-            }
-        }
+        apply_combat_lifelink(game, controller, &damage_result, applied.total_damage_dealt);
 
         events.push(CombatDamageEvent {
             source: attacker_id,
@@ -392,18 +378,7 @@ fn deal_damage_to_defender(
             let applied = apply_damage_to_player(game, *player_id, attacker_id, &damage_result);
 
             // Apply lifelink (through event processing)
-            if damage_result.has_lifelink && applied.total_damage_dealt > 0 {
-                let life_to_gain = crate::event_processor::process_life_gain_with_event(
-                    game,
-                    controller,
-                    applied.total_damage_dealt,
-                );
-                if life_to_gain > 0
-                    && let Some(player) = game.player_mut(controller)
-                {
-                    player.gain_life(life_to_gain);
-                }
-            }
+            apply_combat_lifelink(game, controller, &damage_result, applied.total_damage_dealt);
 
             Some(CombatDamageEvent {
                 source: attacker_id,
@@ -471,10 +446,8 @@ fn deal_damage_to_defender(
                                 if let Some(player) = game.player_mut(player_id) {
                                     player.poison_counters += assignment.amount;
                                 }
-                            } else if game.can_change_life_total(player_id)
-                                && let Some(player) = game.player_mut(player_id)
-                            {
-                                player.life -= assignment.amount as i32;
+                            } else {
+                                let _ = game.lose_life(player_id, assignment.amount);
                             }
                         }
                     }
@@ -482,18 +455,7 @@ fn deal_damage_to_defender(
             }
 
             // Apply lifelink (only if damage was dealt, through event processing)
-            if total_damage_dealt > 0 && damage_result.has_lifelink {
-                let life_to_gain = crate::event_processor::process_life_gain_with_event(
-                    game,
-                    controller,
-                    total_damage_dealt,
-                );
-                if life_to_gain > 0
-                    && let Some(player) = game.player_mut(controller)
-                {
-                    player.gain_life(life_to_gain);
-                }
-            }
+            apply_combat_lifelink(game, controller, &damage_result, total_damage_dealt);
 
             Some(CombatDamageEvent {
                 source: attacker_id,
@@ -571,10 +533,8 @@ fn apply_damage_to_permanent(
                     if let Some(player) = game.player_mut(player_id) {
                         player.poison_counters += assignment.amount;
                     }
-                } else if game.can_change_life_total(player_id)
-                    && let Some(player) = game.player_mut(player_id)
-                {
-                    player.life -= assignment.amount as i32;
+                } else {
+                    let _ = game.lose_life(player_id, assignment.amount);
                 }
             }
         }
@@ -633,14 +593,11 @@ fn apply_damage_to_player(
                     if let Some(player) = game.player_mut(target_player) {
                         player.poison_counters += assignment.amount;
                     }
-                } else if game.can_change_life_total(target_player)
-                    && let Some(player) = game.player_mut(target_player)
-                {
+                } else {
                     // Damage is still dealt even if life total cannot change; life loss tracks only actual life reduction.
-                    player.life -= assignment.amount as i32;
+                    let life_lost = game.lose_life(target_player, assignment.amount);
                     if target_player == player_id {
-                        life_lost_to_original =
-                            life_lost_to_original.saturating_add(assignment.amount);
+                        life_lost_to_original = life_lost_to_original.saturating_add(life_lost);
                     }
                 }
                 if target_player == player_id {

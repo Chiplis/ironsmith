@@ -1271,6 +1271,57 @@ fn violates_cast_limit(
         && spells_cast_this_turn_in_scope(game, player, scope) >= 1
 }
 
+fn is_sorcery_speed_spell(spell: &crate::object::Object) -> bool {
+    use crate::types::CardType;
+
+    spell.has_card_type(CardType::Sorcery)
+        || spell.has_card_type(CardType::Creature)
+        || spell.has_card_type(CardType::Artifact)
+        || spell.has_card_type(CardType::Enchantment)
+        || spell.has_card_type(CardType::Planeswalker)
+}
+
+fn spell_has_active_flash(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+) -> bool {
+    spell.abilities.iter().any(|a| {
+        if let crate::ability::AbilityKind::Static(s) = &a.kind {
+            if s.has_flash() {
+                return true;
+            }
+            if let Some(spec) = s.conditional_spell_keyword_spec()
+                && spec.keyword == crate::static_abilities::ConditionalSpellKeywordKind::Flash
+            {
+                return crate::static_abilities::conditional_spell_keyword_active(spec, game, player);
+            }
+        }
+        false
+    }) || game.grant_registry.card_has_granted_ability(
+        game,
+        spell_id,
+        Zone::Hand,
+        player,
+        &crate::static_abilities::StaticAbility::flash(),
+    )
+}
+
+fn has_valid_spell_timing(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+) -> bool {
+    if !is_sorcery_speed_spell(spell) || spell_has_active_flash(game, player, spell, spell_id) {
+        return true;
+    }
+
+    // Sorcery-speed spells require: active player, main phase, empty stack.
+    game.turn.active_player == player && crate::turn::is_sorcery_timing(game)
+}
+
 /// Check if a spell can be cast by a player using the given casting method.
 pub fn can_cast_spell(
     game: &GameState,
@@ -1308,47 +1359,8 @@ pub fn can_cast_spell(
         return false;
     }
 
-    // Check timing restrictions
-    let is_sorcery_speed = spell.has_card_type(CardType::Sorcery)
-        || spell.has_card_type(CardType::Creature)
-        || spell.has_card_type(CardType::Artifact)
-        || spell.has_card_type(CardType::Enchantment)
-        || spell.has_card_type(CardType::Planeswalker);
-
-    // Check if has flash (either intrinsically or granted)
-    let has_flash = spell.abilities.iter().any(|a| {
-        if let crate::ability::AbilityKind::Static(s) = &a.kind {
-            if s.has_flash() {
-                return true;
-            }
-            if let Some(spec) = s.conditional_spell_keyword_spec()
-                && spec.keyword == crate::static_abilities::ConditionalSpellKeywordKind::Flash
-            {
-                return crate::static_abilities::conditional_spell_keyword_active(
-                    spec, game, player,
-                );
-            }
-        }
-        false
-    }) || game.grant_registry.card_has_granted_ability(
-        game,
-        spell.id,
-        Zone::Hand,
-        player,
-        &crate::static_abilities::StaticAbility::flash(),
-    );
-
-    if is_sorcery_speed && !has_flash {
-        // Sorcery-speed spells require: active player, main phase, empty stack
-        if game.turn.active_player != player {
-            return false;
-        }
-        if !matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain) {
-            return false;
-        }
-        if !game.stack_is_empty() {
-            return false;
-        }
+    if !has_valid_spell_timing(game, player, spell, spell.id) {
+        return false;
     }
 
     // Determine which mana cost to check based on casting method.
@@ -1444,46 +1456,8 @@ fn can_cast_with_cost(
         return false;
     }
 
-    // Check timing restrictions
-    let is_sorcery_speed = spell.has_card_type(CardType::Sorcery)
-        || spell.has_card_type(CardType::Creature)
-        || spell.has_card_type(CardType::Artifact)
-        || spell.has_card_type(CardType::Enchantment)
-        || spell.has_card_type(CardType::Planeswalker);
-
-    // Check if has flash (either intrinsically or granted)
-    let has_flash = spell.abilities.iter().any(|a| {
-        if let crate::ability::AbilityKind::Static(s) = &a.kind {
-            if s.has_flash() {
-                return true;
-            }
-            if let Some(spec) = s.conditional_spell_keyword_spec()
-                && spec.keyword == crate::static_abilities::ConditionalSpellKeywordKind::Flash
-            {
-                return crate::static_abilities::conditional_spell_keyword_active(
-                    spec, game, player,
-                );
-            }
-        }
-        false
-    }) || game.grant_registry.card_has_granted_ability(
-        game,
-        spell_id,
-        Zone::Hand,
-        player,
-        &crate::static_abilities::StaticAbility::flash(),
-    );
-
-    if is_sorcery_speed && !has_flash {
-        if game.turn.active_player != player {
-            return false;
-        }
-        if !matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain) {
-            return false;
-        }
-        if !game.stack_is_empty() {
-            return false;
-        }
+    if !has_valid_spell_timing(game, player, spell, spell_id) {
+        return false;
     }
 
     // Check mana availability (using potential mana from untapped sources)

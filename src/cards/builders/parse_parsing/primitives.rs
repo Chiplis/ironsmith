@@ -27,19 +27,16 @@ pub(crate) fn parse_non_supertype(word: &str) -> Option<Supertype> {
 
 pub(crate) fn parse_non_color(word: &str) -> Option<ColorSet> {
     let rest = word.strip_prefix("non")?;
-    match rest {
-        "white" => Some(ColorSet::WHITE),
-        "blue" => Some(ColorSet::BLUE),
-        "black" => Some(ColorSet::BLACK),
-        "red" => Some(ColorSet::RED),
-        "green" => Some(ColorSet::GREEN),
-        _ => None,
-    }
+    parse_color(rest)
 }
 
 pub(crate) fn parse_non_subtype(word: &str) -> Option<Subtype> {
     let rest = word.strip_prefix("non")?;
-    parse_subtype_word(rest).or_else(|| rest.strip_suffix('s').and_then(parse_subtype_word))
+    parse_subtype_flexible(rest)
+}
+
+pub(crate) fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
+    parse_subtype_word(word).or_else(|| word.strip_suffix('s').and_then(parse_subtype_word))
 }
 
 pub(crate) fn is_outlaw_word(word: &str) -> bool {
@@ -76,6 +73,41 @@ pub(crate) fn parse_color(word: &str) -> Option<ColorSet> {
         "green" => Some(ColorSet::GREEN),
         _ => None,
     }
+}
+
+pub(crate) fn parse_number_word_i32(word: &str) -> Option<i32> {
+    if let Ok(value) = word.parse::<i32>() {
+        return Some(value);
+    }
+
+    match word {
+        "zero" => Some(0),
+        "a" | "an" | "one" => Some(1),
+        "two" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        "six" => Some(6),
+        "seven" => Some(7),
+        "eight" => Some(8),
+        "nine" => Some(9),
+        "ten" => Some(10),
+        "eleven" => Some(11),
+        "twelve" => Some(12),
+        "thirteen" => Some(13),
+        "fourteen" => Some(14),
+        "fifteen" => Some(15),
+        "sixteen" => Some(16),
+        "seventeen" => Some(17),
+        "eighteen" => Some(18),
+        "nineteen" => Some(19),
+        "twenty" => Some(20),
+        _ => None,
+    }
+}
+
+pub(crate) fn parse_number_word_u32(word: &str) -> Option<u32> {
+    parse_number_word_i32(word).and_then(|value| value.try_into().ok())
 }
 
 pub(crate) fn parse_zone_word(word: &str) -> Option<Zone> {

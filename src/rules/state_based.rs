@@ -3,7 +3,6 @@
 //! State-based actions are checked whenever a player would receive priority.
 //! They don't use the stack and happen simultaneously.
 
-use crate::ability::AbilityKind;
 use crate::effects::helpers::validate_target;
 use crate::executor::{ExecutionContext, ResolvedTarget};
 use crate::game_state::GameState;
@@ -75,25 +74,12 @@ pub enum LoseReason {
     CommanderDamage,
 }
 
-/// Check if an object has a static ability with the given ID.
-fn has_ability_id(object: &Object, ability_id: StaticAbilityId) -> bool {
-    object.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.id() == ability_id
-        } else {
-            false
-        }
-    })
-}
-
 fn has_ability_id_with_game(
     object: &Object,
     game: &GameState,
     ability_id: StaticAbilityId,
 ) -> bool {
-    game.calculated_characteristics(object.id)
-        .map(|c| c.static_abilities.iter().any(|a| a.id() == ability_id))
-        .unwrap_or_else(|| has_ability_id(object, ability_id))
+    game.object_has_static_ability_id(object.id, ability_id)
 }
 
 /// Check state-based actions and return a list of actions that need to be performed.

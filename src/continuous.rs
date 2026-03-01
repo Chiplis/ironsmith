@@ -5,11 +5,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ability::{Ability, AbilityKind};
+use crate::ability::{Ability, AbilityKind, extract_static_abilities};
 use crate::color::{Color, ColorSet};
 use crate::effect::{Until, Value};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::{CounterType, Object};
+use crate::object_query::candidate_ids_for_filter;
 use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype, Supertype};
@@ -974,6 +975,7 @@ fn calculate_with_layers_direct_internal(
                 objects,
                 &mut abilities_removed,
                 effect.controller,
+                effect.source,
                 object,
                 battlefield,
                 game,
@@ -1040,6 +1042,7 @@ fn calculate_with_layers_direct_internal(
                 objects,
                 &mut abilities_removed,
                 effect.controller,
+                effect.source,
                 object,
                 battlefield,
                 game,
@@ -1059,8 +1062,8 @@ fn effect_applies_to_direct(
     object: &Object,
     chars: &CalculatedCharacteristics,
     objects: &HashMap<ObjectId, Object>,
-    battlefield: &[ObjectId],
-    commanders: &HashSet<ObjectId>,
+    _battlefield: &[ObjectId],
+    _commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> bool {
     if let Some(condition) = &effect.condition {
@@ -1100,9 +1103,8 @@ fn effect_applies_to_direct(
             object,
             chars,
             effect.controller,
-            objects,
-            battlefield,
-            commanders,
+            effect.source,
+            game,
         ),
         EffectTarget::AttachedTo(source_id) => {
             // The effect applies to whatever permanent the source is attached to
@@ -1115,91 +1117,31 @@ fn effect_applies_to_direct(
     }
 }
 
-/// Check if an object matches a filter (direct version without CalculationContext).
-fn filter_matches_direct(
+/// Canonical filter matching for layer/dependency paths that need calculated characteristics
+/// without recursively requesting calculated P/T.
+fn filter_matches_with_characteristics(
     filter: &ObjectFilter,
     object: &Object,
     chars: &CalculatedCharacteristics,
+    game: &crate::game_state::GameState,
     effect_controller: PlayerId,
-    _objects: &HashMap<ObjectId, Object>,
-    _battlefield: &[ObjectId],
-    commanders: &HashSet<ObjectId>,
+    effect_source: ObjectId,
 ) -> bool {
-    // This matcher runs without tagged-object context. Fail closed for tag-aware
-    // filters so they never broaden into "all objects" accidentally.
-    if !filter.tagged_constraints.is_empty() {
-        return false;
-    }
+    let mut adjusted_object = object.clone();
+    adjusted_object.name = chars.name.clone();
+    adjusted_object.controller = chars.controller;
+    adjusted_object.card_types = chars.card_types.clone();
+    adjusted_object.subtypes = chars.subtypes.clone();
+    adjusted_object.supertypes = chars.supertypes.clone();
+    adjusted_object.color_override = Some(chars.colors);
 
-    // Check zone
-    if let Some(zone) = filter.zone
-        && object.zone != zone
-    {
-        return false;
-    }
+    let mut structural_filter = filter.clone();
+    structural_filter.power = None;
+    structural_filter.toughness = None;
+    structural_filter.power_relative_to_source = None;
 
-    // Check card types (using calculated types)
-    if !filter.card_types.is_empty()
-        && !filter
-            .card_types
-            .iter()
-            .any(|t| chars.card_types.contains(t))
-    {
-        return false;
-    }
-
-    // Check subtypes (using calculated subtypes)
-    if !filter.subtypes.is_empty() && !filter.subtypes.iter().any(|t| chars.subtypes.contains(t)) {
-        return false;
-    }
-    if filter
-        .excluded_subtypes
-        .iter()
-        .any(|t| chars.subtypes.contains(t))
-    {
-        return false;
-    }
-
-    // Check controller
-    if let Some(ref controller_filter) = filter.controller {
-        use crate::filter::PlayerFilter;
-        match controller_filter {
-            PlayerFilter::You => {
-                // "You" means the controller of the effect's source
-                if chars.controller != effect_controller {
-                    return false;
-                }
-            }
-            PlayerFilter::Opponent => {
-                // Opponent of the effect's controller
-                if chars.controller == effect_controller {
-                    return false;
-                }
-            }
-            PlayerFilter::Specific(player_id) => {
-                if chars.controller != *player_id {
-                    return false;
-                }
-            }
-            PlayerFilter::Any => {}
-            // Other variants not applicable in this context
-            _ => {}
-        }
-    }
-
-    // Check colors (using calculated colors)
-    if let Some(colors) = filter.colors
-        && chars.colors.intersection(colors).is_empty()
-    {
-        return false;
-    }
-
-    // Check excluded supertypes (e.g., nonbasic lands for Blood Moon)
-    if filter
-        .excluded_supertypes
-        .iter()
-        .any(|t| chars.supertypes.contains(t))
-    {
+    let filter_ctx = game.filter_context_for(effect_controller, Some(effect_source));
+    if !structural_filter.matches_non_recursive(&adjusted_object, &filter_ctx, game) {
         return false;
     }
 
@@ -1211,11 +1153,10 @@ fn filter_matches_direct(
                 object.power().map(|value| value - power_delta)
             }
         };
-        if let Some(power) = power {
-            if !power_cmp.satisfies(power) {
-                return false;
-            }
-        } else {
+        let Some(power) = power else {
+            return false;
+        };
+        if !power_cmp.satisfies(power) {
             return false;
         }
     }
@@ -1228,24 +1169,53 @@ fn filter_matches_direct(
                 object.toughness().map(|value| value - toughness_delta)
             }
         };
-        if let Some(toughness) = toughness {
-            if !toughness_cmp.satisfies(toughness) {
-                return false;
-            }
-        } else {
+        let Some(toughness) = toughness else {
+            return false;
+        };
+        if !toughness_cmp.satisfies(toughness) {
             return false;
         }
     }
 
-    // Check if must be a commander
-    if filter.is_commander
-        && !commanders.contains(&object.id)
-        && !commanders.contains(&object.stable_id.object_id())
-    {
-        return false;
+    if let Some(relation) = filter.power_relative_to_source {
+        let Some(candidate_power) = chars.power else {
+            return false;
+        };
+        let Some(source_obj) = game.object(effect_source) else {
+            return false;
+        };
+        let Some(source_power) = source_obj.power() else {
+            return false;
+        };
+        match relation {
+            crate::filter::SourcePowerRelation::LessThanSource => {
+                if candidate_power >= source_power {
+                    return false;
+                }
+            }
+        }
     }
 
     true
+}
+
+/// Check if an object matches a filter (direct version without CalculationContext).
+fn filter_matches_direct(
+    filter: &ObjectFilter,
+    object: &Object,
+    chars: &CalculatedCharacteristics,
+    effect_controller: PlayerId,
+    effect_source: ObjectId,
+    game: &crate::game_state::GameState,
+) -> bool {
+    filter_matches_with_characteristics(
+        filter,
+        object,
+        chars,
+        game,
+        effect_controller,
+        effect_source,
+    )
 }
 
 /// Apply a modification to calculated characteristics.
@@ -1255,6 +1225,7 @@ fn apply_modification_to_chars(
     objects: &HashMap<ObjectId, Object>,
     abilities_removed: &mut bool,
     effect_controller: PlayerId,
+    effect_source: ObjectId,
     object: &Object,
     battlefield: &[ObjectId],
     game: &crate::game_state::GameState,
@@ -1413,6 +1384,7 @@ fn apply_modification_to_chars(
                     &candidate_chars,
                     game,
                     effect_controller,
+                    effect_source,
                 ) {
                     continue;
                 }
@@ -1638,9 +1610,9 @@ fn resolve_value_direct(
                 tagged_objects: HashMap::new(),
             };
 
-            battlefield
+            candidate_ids_for_filter(game, filter)
                 .iter()
-                .filter_map(|&id| objects.get(&id))
+                .filter_map(|id| objects.get(id))
                 .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
                 .count() as i32
         }
@@ -1660,12 +1632,120 @@ fn resolve_value_direct(
                 tagged_objects: HashMap::new(),
             };
 
-            let count = battlefield
+            let count = candidate_ids_for_filter(game, filter)
                 .iter()
-                .filter_map(|&id| objects.get(&id))
+                .filter_map(|id| objects.get(id))
                 .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
                 .count() as i32;
             count * *multiplier
+        }
+        Value::BasicLandTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = FilterContext {
+                you: Some(controller),
+                source: Some(source),
+                caster: None,
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                target_players: Vec::new(),
+                tagged_objects: HashMap::new(),
+            };
+
+            let mut seen = HashSet::new();
+            for obj in candidate_ids_for_filter(game, filter)
+                .iter()
+                .filter_map(|id| objects.get(id))
+                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
+            {
+                for subtype in &obj.subtypes {
+                    if matches!(
+                        subtype,
+                        Subtype::Plains
+                            | Subtype::Island
+                            | Subtype::Swamp
+                            | Subtype::Mountain
+                            | Subtype::Forest
+                    ) {
+                        seen.insert(*subtype);
+                    }
+                }
+            }
+            seen.len() as i32
+        }
+        Value::ColorsAmong(filter) => {
+            let filter_ctx = FilterContext {
+                you: Some(controller),
+                source: Some(source),
+                caster: None,
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                target_players: Vec::new(),
+                tagged_objects: HashMap::new(),
+            };
+
+            let mut has_white = false;
+            let mut has_blue = false;
+            let mut has_black = false;
+            let mut has_red = false;
+            let mut has_green = false;
+
+            for obj in candidate_ids_for_filter(game, filter)
+                .iter()
+                .filter_map(|id| objects.get(id))
+                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
+            {
+                let colors = obj.colors();
+                has_white |= colors.contains(crate::color::Color::White);
+                has_blue |= colors.contains(crate::color::Color::Blue);
+                has_black |= colors.contains(crate::color::Color::Black);
+                has_red |= colors.contains(crate::color::Color::Red);
+                has_green |= colors.contains(crate::color::Color::Green);
+            }
+
+            (has_white as i32)
+                + (has_blue as i32)
+                + (has_black as i32)
+                + (has_red as i32)
+                + (has_green as i32)
+        }
+        Value::DistinctNames(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = FilterContext {
+                you: Some(controller),
+                source: Some(source),
+                caster: None,
+                active_player: None,
+                opponents: Vec::new(),
+                teammates: Vec::new(),
+                defending_player: None,
+                attacking_player: None,
+                your_commanders: Vec::new(),
+                iterated_player: None,
+                target_players: Vec::new(),
+                tagged_objects: HashMap::new(),
+            };
+
+            let mut seen = HashSet::new();
+            for obj in candidate_ids_for_filter(game, filter)
+                .iter()
+                .filter_map(|id| objects.get(id))
+                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
+            {
+                seen.insert(obj.name.as_str());
+            }
+            seen.len() as i32
         }
         Value::CreaturesDiedThisTurn => game.creatures_died_this_turn as i32,
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
@@ -1752,7 +1832,45 @@ fn resolve_value_direct(
             0
         }
 
-        _ => 0, // Other Value variants default to 0
+        Value::XTimes(_)
+        | Value::TotalPower(_)
+        | Value::TotalToughness(_)
+        | Value::TotalManaValue(_)
+        | Value::GreatestPower(_)
+        | Value::GreatestManaValue(_)
+        | Value::CountPlayers(_)
+        | Value::PartySize(_)
+        | Value::ManaValueOf(_)
+        | Value::LifeTotal(_)
+        | Value::HalfLifeTotalRoundedUp(_)
+        | Value::HalfLifeTotalRoundedDown(_)
+        | Value::CardsInHand(_)
+        | Value::LifeGainedThisTurn(_)
+        | Value::LifeLostThisTurn(_)
+        | Value::NoncombatDamageDealtToPlayersThisTurn(_)
+        | Value::MaxCardsDrawnThisTurn(_)
+        | Value::MaxCardsInHand(_)
+        | Value::CardsInGraveyard(_)
+        | Value::SpellsCastThisTurn(_)
+        | Value::SpellsCastBeforeThisTurn(_)
+        | Value::SpellsCastThisTurnMatching { .. }
+        | Value::CardTypesInGraveyard(_)
+        | Value::EffectValue(_)
+        | Value::EffectValueOffset(_, _)
+        | Value::EventValue(_)
+        | Value::EventValueOffset(_, _)
+        | Value::WasKicked
+        | Value::WasBoughtBack
+        | Value::WasEntwined
+        | Value::WasPaid(_)
+        | Value::WasPaidLabel(_)
+        | Value::TimesPaid(_)
+        | Value::TimesPaidLabel(_)
+        | Value::KickCount
+        | Value::MagicGamesLostToOpponentsSinceLastWin
+        | Value::CountersOnSource(_)
+        | Value::CountersOn(_, _)
+        | Value::TaggedCount => 0,
     }
 }
 
@@ -1959,6 +2077,75 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                         chars.static_abilities.push(ability.clone());
                     }
                 }
+                Modification::AddAbilityGeneric(ability) => {
+                    chars.abilities.push(ability.clone());
+                    if let AbilityKind::Static(static_ability) = &ability.kind
+                        && !chars.static_abilities.contains(static_ability)
+                    {
+                        chars.static_abilities.push(static_ability.clone());
+                    }
+                }
+                Modification::SetAbilities(abilities) => {
+                    chars.abilities = abilities.clone();
+                    chars.static_abilities = extract_static_abilities(abilities);
+                }
+                Modification::CopyActivatedAbilities {
+                    filter,
+                    counter,
+                    include_mana,
+                    exclude_source_name,
+                    exclude_source_id,
+                } => {
+                    use crate::ability::AbilityKind;
+                    use crate::static_ability_processor::get_all_continuous_effects;
+
+                    let effects = get_all_continuous_effects(ctx.game);
+                    for candidate in ctx.objects.values() {
+                        if *exclude_source_id && candidate.id == object.id {
+                            continue;
+                        }
+                        if *exclude_source_name && candidate.name == object.name {
+                            continue;
+                        }
+                        if let Some(counter_type) = counter
+                            && candidate.counters.get(counter_type).copied().unwrap_or(0) == 0
+                        {
+                            continue;
+                        }
+
+                        let Some(candidate_chars) = calculate_characteristics_with_effects_simple(
+                            candidate.id,
+                            ctx.objects,
+                            &effects,
+                            ctx.battlefield,
+                            &ctx.game.commanders,
+                            ctx.game,
+                        ) else {
+                            continue;
+                        };
+
+                        if !filter_matches_with_characteristics(
+                            filter,
+                            candidate,
+                            &candidate_chars,
+                            ctx.game,
+                            effect.controller,
+                            effect.source,
+                        ) {
+                            continue;
+                        }
+
+                        for ability in &candidate_chars.abilities {
+                            if !matches!(ability.kind, AbilityKind::Activated(_)) {
+                                continue;
+                            }
+                            if ability.is_mana_ability() && !*include_mana {
+                                continue;
+                            }
+                            chars.abilities.push(ability.clone());
+                        }
+                    }
+                }
                 Modification::AddCombatDamageDrawAbility => {
                     chars.abilities.push(Ability::triggered(
                         crate::triggers::Trigger::this_deals_combat_damage_to_player(),
@@ -1991,8 +2178,14 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     chars.static_abilities.push(StaticAbility::doesnt_untap());
                 }
 
-                // Layer 7: P/T changes are handled separately below
-                _ => {}
+                // Layer 7: P/T changes are handled separately below.
+                Modification::SetPower { .. }
+                | Modification::SetToughness { .. }
+                | Modification::SetPowerToughness { .. }
+                | Modification::ModifyPower(_)
+                | Modification::ModifyToughness(_)
+                | Modification::ModifyPowerToughness { .. }
+                | Modification::SwitchPowerToughness => {}
             }
         }
     }
@@ -2142,7 +2335,35 @@ fn apply_layer_7_effects(
             Modification::SwitchPowerToughness => {
                 std::mem::swap(&mut power, &mut toughness);
             }
-            _ => {}
+            Modification::CopyOf(_)
+            | Modification::ChangeController(_)
+            | Modification::ChangeText { .. }
+            | Modification::SetName(_)
+            | Modification::AddCardTypes(_)
+            | Modification::RemoveCardTypes(_)
+            | Modification::SetCardTypes(_)
+            | Modification::AddSubtypes(_)
+            | Modification::RemoveSubtypes(_)
+            | Modification::SetSubtypes(_)
+            | Modification::AddSupertypes(_)
+            | Modification::RemoveSupertypes(_)
+            | Modification::RemoveAllCreatureTypes
+            | Modification::AddColors(_)
+            | Modification::RemoveColors(_)
+            | Modification::SetColors(_)
+            | Modification::MakeColorless
+            | Modification::AddAbility(_)
+            | Modification::AddAbilityGeneric(_)
+            | Modification::SetAbilities(_)
+            | Modification::CopyActivatedAbilities { .. }
+            | Modification::AddCombatDamageDrawAbility
+            | Modification::RemoveAbility(_)
+            | Modification::RemoveAllAbilities
+            | Modification::RemoveAllAbilitiesExceptMana
+            | Modification::CantBeBlocked
+            | Modification::CantAttack
+            | Modification::CantBlock
+            | Modification::DoesntUntap => {}
         }
     }
 
@@ -2207,7 +2428,14 @@ fn effect_applies_to(
         }
         EffectTarget::Filter(filter) => {
             // Check if object matches filter
-            filter_matches(filter, object, chars, ctx)
+            filter_matches(
+                filter,
+                object,
+                chars,
+                ctx.game,
+                effect.controller,
+                effect.source,
+            )
         }
         EffectTarget::AttachedTo(source_id) => {
             // The effect applies to whatever permanent the source is attached to
@@ -2225,84 +2453,18 @@ fn filter_matches(
     filter: &ObjectFilter,
     object: &Object,
     chars: &CalculatedCharacteristics,
-    _ctx: &CalculationContext,
+    game: &crate::game_state::GameState,
+    effect_controller: PlayerId,
+    effect_source: ObjectId,
 ) -> bool {
-    // This matcher runs without tagged-object context. Fail closed for tag-aware
-    // filters so they never broaden into "all objects" accidentally.
-    if !filter.tagged_constraints.is_empty() {
-        return false;
-    }
-
-    // Check zone
-    if let Some(zone) = filter.zone
-        && object.zone != zone
-    {
-        return false;
-    }
-
-    // Check card types (using calculated types)
-    if !filter.card_types.is_empty()
-        && !filter
-            .card_types
-            .iter()
-            .any(|t| chars.card_types.contains(t))
-    {
-        return false;
-    }
-
-    // Check subtypes (using calculated subtypes)
-    // Note: For creature type filters, ANY matching subtype is enough
-    if !filter.subtypes.is_empty() && !filter.subtypes.iter().any(|t| chars.subtypes.contains(t)) {
-        return false;
-    }
-    if filter
-        .excluded_subtypes
-        .iter()
-        .any(|t| chars.subtypes.contains(t))
-    {
-        return false;
-    }
-
-    // Check controller
-    if let Some(ref controller_filter) = filter.controller {
-        use crate::filter::PlayerFilter;
-        match controller_filter {
-            PlayerFilter::You => {
-                // "You" means the controller of the effect's source
-                // For now, we can't easily determine this without more context
-                // This is a simplification
-            }
-            PlayerFilter::Opponent => {
-                // Similar issue
-            }
-            PlayerFilter::Specific(player_id) => {
-                if chars.controller != *player_id {
-                    return false;
-                }
-            }
-            PlayerFilter::Any => {}
-            // Other variants not applicable in this context
-            _ => {}
-        }
-    }
-
-    // Check colors (using calculated colors)
-    if let Some(colors) = filter.colors
-        && chars.colors.intersection(colors).is_empty()
-    {
-        return false;
-    }
-
-    // Check excluded supertypes (e.g., nonbasic lands for Blood Moon)
-    if filter
-        .excluded_supertypes
-        .iter()
-        .any(|t| chars.supertypes.contains(t))
-    {
-        return false;
-    }
-
-    true
+    filter_matches_with_characteristics(
+        filter,
+        object,
+        chars,
+        game,
+        effect_controller,
+        effect_source,
+    )
 }
 
 /// Check if an object matches a filter using calculated characteristics and a known controller.
@@ -2312,194 +2474,16 @@ fn filter_matches_with_controller(
     chars: &CalculatedCharacteristics,
     game: &crate::game_state::GameState,
     effect_controller: PlayerId,
+    effect_source: ObjectId,
 ) -> bool {
-    // This matcher runs without tagged-object context. Fail closed for tag-aware
-    // filters so they never broaden into "all objects" accidentally.
-    if !filter.tagged_constraints.is_empty() {
-        return false;
-    }
-
-    if let Some(zone) = filter.zone
-        && object.zone != zone
-    {
-        return false;
-    }
-
-    if !filter.card_types.is_empty()
-        && !filter
-            .card_types
-            .iter()
-            .any(|t| chars.card_types.contains(t))
-    {
-        return false;
-    }
-
-    if filter
-        .excluded_card_types
-        .iter()
-        .any(|t| chars.card_types.contains(t))
-    {
-        return false;
-    }
-
-    if !filter.subtypes.is_empty() && !filter.subtypes.iter().any(|t| chars.subtypes.contains(t)) {
-        return false;
-    }
-    if filter
-        .excluded_subtypes
-        .iter()
-        .any(|t| chars.subtypes.contains(t))
-    {
-        return false;
-    }
-
-    if !filter.supertypes.is_empty()
-        && !filter
-            .supertypes
-            .iter()
-            .any(|t| chars.supertypes.contains(t))
-    {
-        return false;
-    }
-    if filter
-        .excluded_supertypes
-        .iter()
-        .any(|t| chars.supertypes.contains(t))
-    {
-        return false;
-    }
-
-    if let Some(ref controller_filter) = filter.controller {
-        use crate::filter::PlayerFilter;
-        match controller_filter {
-            PlayerFilter::You => {
-                if chars.controller != effect_controller {
-                    return false;
-                }
-            }
-            PlayerFilter::Opponent => {
-                if chars.controller == effect_controller {
-                    return false;
-                }
-            }
-            PlayerFilter::Specific(player_id) => {
-                if chars.controller != *player_id {
-                    return false;
-                }
-            }
-            PlayerFilter::Any => {}
-            _ => {}
-        }
-    }
-
-    if let Some(colors) = filter.colors
-        && chars.colors.intersection(colors).is_empty()
-    {
-        return false;
-    }
-
-    if filter.colorless && !chars.colors.is_empty() {
-        return false;
-    }
-    if filter.multicolored && chars.colors.count() < 2 {
-        return false;
-    }
-
-    if filter.token && object.kind != crate::object::ObjectKind::Token {
-        return false;
-    }
-    if filter.nontoken && object.kind == crate::object::ObjectKind::Token {
-        return false;
-    }
-    if let Some(require_face_down) = filter.face_down
-        && game.is_face_down(object.id) != require_face_down
-    {
-        return false;
-    }
-
-    let is_tapped = game.is_tapped(object.id);
-    if filter.tapped && !is_tapped {
-        return false;
-    }
-    if filter.untapped && is_tapped {
-        return false;
-    }
-
-    if let Some(power_cmp) = &filter.power {
-        let power = match filter.power_reference {
-            crate::filter::PtReference::Effective => chars.power,
-            crate::filter::PtReference::Base => {
-                let (power_delta, _) = object.pt_counter_deltas();
-                object.power().map(|value| value - power_delta)
-            }
-        };
-        if let Some(power) = power {
-            if !power_cmp.satisfies(power) {
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
-    if let Some(toughness_cmp) = &filter.toughness {
-        let toughness = match filter.toughness_reference {
-            crate::filter::PtReference::Effective => chars.toughness,
-            crate::filter::PtReference::Base => {
-                let (_, toughness_delta) = object.pt_counter_deltas();
-                object.toughness().map(|value| value - toughness_delta)
-            }
-        };
-        if let Some(toughness) = toughness {
-            if !toughness_cmp.satisfies(toughness) {
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
-    if let Some(mv_cmp) = &filter.mana_value {
-        let mv = object
-            .mana_cost
-            .as_ref()
-            .map(|mc| mc.mana_value() as i32)
-            .unwrap_or(0);
-        if !mv_cmp.satisfies(mv) {
-            return false;
-        }
-    }
-
-    if filter.has_mana_cost {
-        match &object.mana_cost {
-            Some(mc) if !mc.is_empty() => {}
-            _ => return false,
-        }
-    }
-
-    if filter.no_x_in_cost
-        && let Some(mc) = &object.mana_cost
-        && mc.has_x()
-    {
-        return false;
-    }
-
-    if let Some(required_name) = &filter.name
-        && chars.name != *required_name
-    {
-        return false;
-    }
-    if let Some(excluded_name) = &filter.excluded_name
-        && chars.name == *excluded_name
-    {
-        return false;
-    }
-
-    if filter.is_commander && !game.is_commander(object.id) {
-        return false;
-    }
-
-    true
+    filter_matches_with_characteristics(
+        filter,
+        object,
+        chars,
+        game,
+        effect_controller,
+        effect_source,
+    )
 }
 
 /// Resolve a Value to an i32 for continuous effect calculations.
@@ -2545,9 +2529,9 @@ fn resolve_value_with_context(
                 tagged_objects: std::collections::HashMap::new(),
             };
 
-            ctx.battlefield
+            candidate_ids_for_filter(ctx.game, filter)
                 .iter()
-                .filter_map(|&id| ctx.objects.get(&id))
+                .filter_map(|id| ctx.objects.get(id))
                 .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, ctx.game))
                 .count() as i32
         }
@@ -2574,10 +2558,9 @@ fn resolve_value_with_context(
                 tagged_objects: std::collections::HashMap::new(),
             };
 
-            let count = ctx
-                .battlefield
+            let count = candidate_ids_for_filter(ctx.game, filter)
                 .iter()
-                .filter_map(|&id| ctx.objects.get(&id))
+                .filter_map(|id| ctx.objects.get(id))
                 .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, ctx.game))
                 .count() as i32;
             count * *multiplier
@@ -2607,10 +2590,9 @@ fn resolve_value_with_context(
             };
 
             let mut seen = HashSet::new();
-            for obj in ctx
-                .battlefield
+            for obj in candidate_ids_for_filter(ctx.game, filter)
                 .iter()
-                .filter_map(|&id| ctx.objects.get(&id))
+                .filter_map(|id| ctx.objects.get(id))
                 .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, ctx.game))
             {
                 for subtype in &obj.subtypes {
@@ -2656,10 +2638,9 @@ fn resolve_value_with_context(
             let mut has_red = false;
             let mut has_green = false;
 
-            for obj in ctx
-                .battlefield
+            for obj in candidate_ids_for_filter(ctx.game, filter)
                 .iter()
-                .filter_map(|&id| ctx.objects.get(&id))
+                .filter_map(|id| ctx.objects.get(id))
                 .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, ctx.game))
             {
                 let colors = obj.colors();
@@ -2701,10 +2682,9 @@ fn resolve_value_with_context(
             };
 
             let mut seen: HashSet<&str> = HashSet::new();
-            for obj in ctx
-                .battlefield
+            for obj in candidate_ids_for_filter(ctx.game, filter)
                 .iter()
-                .filter_map(|&id| ctx.objects.get(&id))
+                .filter_map(|id| ctx.objects.get(id))
                 .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, ctx.game))
             {
                 seen.insert(obj.name.as_str());
@@ -2891,20 +2871,6 @@ fn build_layer_baseline(
     }
 
     baseline
-}
-
-/// Extract static abilities from a list of abilities.
-fn extract_static_abilities(abilities: &[Ability]) -> Vec<StaticAbility> {
-    abilities
-        .iter()
-        .filter_map(|a| {
-            if let AbilityKind::Static(s) = &a.kind {
-                Some(s.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 /// Add abilities from ability-granting counters (deathtouch counter, flying counter, etc.).

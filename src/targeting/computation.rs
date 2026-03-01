@@ -3,11 +3,12 @@
 //! This module provides functions for computing legal targets
 //! for spells and abilities.
 
-use crate::ability::AbilityKind;
+use crate::ability::extract_static_abilities;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
-use crate::static_abilities::StaticAbility;
+use crate::object_query::candidate_ids_for_filter;
+use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -41,9 +42,11 @@ pub fn can_target_object(
         return TargetingResult::legal();
     };
 
-    // Check if target is on the battlefield
+    // Most targeting restrictions in this function apply only to permanents
+    // and stack objects. Cards in other zones are generally targetable unless
+    // constrained by the caller's filter.
     if target.zone != Zone::Battlefield && target.zone != Zone::Stack {
-        return TargetingResult::Invalid(TargetingInvalidReason::NotOnBattlefield);
+        return TargetingResult::legal();
     }
 
     // Get calculated abilities for the target (to account for effects like Humility)
@@ -176,20 +179,6 @@ pub fn source_matches_protection(
     }
 }
 
-/// Extract static abilities from a list of abilities.
-fn extract_static_abilities(abilities: &[crate::ability::Ability]) -> Vec<StaticAbility> {
-    abilities
-        .iter()
-        .filter_map(|a| {
-            if let AbilityKind::Static(s) = &a.kind {
-                Some(s.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 /// Compute all legal targets for a target specification.
 ///
 /// This is the main entry point for determining what can be targeted.
@@ -199,18 +188,38 @@ pub fn compute_legal_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> Vec<Target> {
+    compute_legal_targets_with_tagged_objects(game, spec, caster, source_id, None)
+}
+
+/// Compute legal targets with optional tagged-object filter context.
+///
+/// This is used by effects that target objects based on previously tagged objects
+/// (for example, "creatures that crewed it this turn").
+pub fn compute_legal_targets_with_tagged_objects(
+    game: &GameState,
+    spec: &ChooseSpec,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    tagged_objects: Option<&std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>>,
+) -> Vec<Target> {
     match spec {
         // Target wrapper - recursively compute targets from inner spec
-        ChooseSpec::Target(inner) => compute_legal_targets(game, inner, caster, source_id),
+        ChooseSpec::Target(inner) => {
+            compute_legal_targets_with_tagged_objects(game, inner, caster, source_id, tagged_objects)
+        }
         // WithCount wrapper - recursively compute targets from inner spec
-        ChooseSpec::WithCount(inner, _) => compute_legal_targets(game, inner, caster, source_id),
+        ChooseSpec::WithCount(inner, _) => {
+            compute_legal_targets_with_tagged_objects(game, inner, caster, source_id, tagged_objects)
+        }
         ChooseSpec::AnyTarget => compute_any_targets(game, caster, source_id),
         ChooseSpec::PlayerOrPlaneswalker(filter) => {
             compute_player_or_planeswalker_targets(game, filter, caster, source_id)
         }
         ChooseSpec::AttackedPlayerOrPlaneswalker => Vec::new(),
         ChooseSpec::Player(filter) => compute_player_targets(game, filter, caster),
-        ChooseSpec::Object(filter) => compute_object_targets(game, filter, caster, source_id),
+        ChooseSpec::Object(filter) => {
+            compute_object_targets(game, filter, caster, source_id, tagged_objects)
+        }
         // These don't require selection - they're resolved at execution time
         ChooseSpec::Source
         | ChooseSpec::SourceController
@@ -331,44 +340,41 @@ fn compute_object_targets(
     filter: &ObjectFilter,
     caster: PlayerId,
     source_id: Option<ObjectId>,
+    tagged_objects: Option<&std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>>,
 ) -> Vec<Target> {
     let mut targets = Vec::new();
 
     // Build filter context
-    let filter_ctx = game.filter_context_for(caster, source_id);
-
-    // Check battlefield
-    for &obj_id in &game.battlefield {
-        if let Some(obj) = game.object(obj_id) {
-            if !filter.matches(obj, &filter_ctx, game) {
-                continue;
-            }
-
-            // Check targeting legality
-            if let Some(src_id) = source_id {
-                match can_target_object(game, obj_id, src_id, caster) {
-                    TargetingResult::Legal { .. } => targets.push(Target::Object(obj_id)),
-                    TargetingResult::Invalid(_) => {}
-                }
-            } else {
-                // No source - check basic hexproof/shroud
-                let is_untargetable = game.is_untargetable(obj_id);
-                let is_controlled_by_caster = obj.controller == caster;
-                if !is_untargetable || is_controlled_by_caster {
-                    targets.push(Target::Object(obj_id));
-                }
-            }
-        }
+    let mut filter_ctx = game.filter_context_for(caster, source_id);
+    if let Some(tagged) = tagged_objects {
+        filter_ctx = filter_ctx.with_tagged_objects(tagged);
     }
 
-    // Check stack for spells (for counterspells)
-    if filter.zone == Some(Zone::Stack) || filter.zone.is_none() {
-        for entry in &game.stack {
-            if let Some(obj) = game.object(entry.object_id)
-                && filter.matches(obj, &filter_ctx, game)
-            {
-                targets.push(Target::Object(entry.object_id));
+    let candidate_ids = candidate_ids_for_filter(game, filter);
+    for object_id in candidate_ids {
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        if !filter.matches(object, &filter_ctx, game) {
+            continue;
+        }
+
+        if let Some(src_id) = source_id {
+            if can_target_object(game, object_id, src_id, caster).is_legal() {
+                targets.push(Target::Object(object_id));
             }
+            continue;
+        }
+
+        if object.zone != Zone::Battlefield && object.zone != Zone::Stack {
+            targets.push(Target::Object(object_id));
+            continue;
+        }
+
+        let is_untargetable = game.is_untargetable(object_id);
+        let is_controlled_by_caster = object.controller == caster;
+        if !is_untargetable || is_controlled_by_caster {
+            targets.push(Target::Object(object_id));
         }
     }
 

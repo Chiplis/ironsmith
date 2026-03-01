@@ -769,17 +769,7 @@ fn is_simple_nonland_permanent_you_control_filter(filter: &ObjectFilter) -> bool
 }
 
 fn card_type_name_singular(card_type: CardType) -> &'static str {
-    match card_type {
-        CardType::Land => "land",
-        CardType::Creature => "creature",
-        CardType::Artifact => "artifact",
-        CardType::Enchantment => "enchantment",
-        CardType::Planeswalker => "planeswalker",
-        CardType::Instant => "instant",
-        CardType::Sorcery => "sorcery",
-        CardType::Battle => "battle",
-        CardType::Kindred => "kindred",
-    }
+    card_type.name()
 }
 
 fn card_type_name_plural(card_type: CardType) -> &'static str {

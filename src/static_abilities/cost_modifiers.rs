@@ -58,17 +58,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
 }
 
 fn describe_card_type(card_type: CardType) -> &'static str {
-    match card_type {
-        CardType::Artifact => "artifact",
-        CardType::Battle => "battle",
-        CardType::Creature => "creature",
-        CardType::Enchantment => "enchantment",
-        CardType::Instant => "instant",
-        CardType::Land => "land",
-        CardType::Planeswalker => "planeswalker",
-        CardType::Sorcery => "sorcery",
-        CardType::Kindred => "kindred",
-    }
+    card_type.name()
 }
 
 fn describe_colors(colors: ColorSet) -> String {

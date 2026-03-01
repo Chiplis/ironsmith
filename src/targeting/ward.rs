@@ -211,14 +211,7 @@ fn pay_ward_cost(
             true
         }
         WardCost::Life(amount) => {
-            // Deduct life from the player
-            if let Some(player) = game.player_mut(payer)
-                && player.life >= *amount as i32
-            {
-                player.life -= *amount as i32;
-                return true;
-            }
-            false
+            game.pay_life(payer, *amount)
         }
         WardCost::Discard(count) => {
             let Some(player) = game.player(payer) else {
