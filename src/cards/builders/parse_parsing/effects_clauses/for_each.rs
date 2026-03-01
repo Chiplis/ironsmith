@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::effect_ast_traversal::for_each_nested_effects_mut;
 
 pub(crate) fn parse_for_each_object_subject(
     subject_tokens: &[Token],
@@ -557,43 +558,9 @@ pub(crate) fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
                     *player = PlayerAst::You;
                 }
             }
-            EffectAst::May { effects }
-            | EffectAst::MayByPlayer { effects, .. }
-            | EffectAst::MayByTaggedController { effects, .. }
-            | EffectAst::IfResult { effects, .. }
-            | EffectAst::ForEachOpponent { effects }
-            | EffectAst::ForEachPlayersFiltered { effects, .. }
-            | EffectAst::ForEachPlayer { effects }
-            | EffectAst::ForEachTargetPlayers { effects, .. }
-            | EffectAst::ForEachObject { effects, .. }
-            | EffectAst::ForEachTagged { effects, .. }
-            | EffectAst::ForEachOpponentDoesNot { effects }
-            | EffectAst::ForEachPlayerDoesNot { effects }
-            | EffectAst::ForEachOpponentDid { effects, .. }
-            | EffectAst::ForEachPlayerDid { effects, .. }
-            | EffectAst::ForEachTaggedPlayer { effects, .. }
-            | EffectAst::DelayedUntilNextEndStep { effects, .. }
-            | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-            | EffectAst::DelayedUntilEndOfCombat { effects }
-            | EffectAst::DelayedTriggerThisTurn { effects, .. }
-            | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-            | EffectAst::UnlessPays { effects, .. }
-            | EffectAst::VoteOption { effects, .. } => force_implicit_token_controller_you(effects),
-            EffectAst::UnlessAction {
-                effects,
-                alternative,
-                ..
-            } => {
-                force_implicit_token_controller_you(effects);
-                force_implicit_token_controller_you(alternative);
-            }
-            EffectAst::Conditional {
-                if_true, if_false, ..
-            } => {
-                force_implicit_token_controller_you(if_true);
-                force_implicit_token_controller_you(if_false);
-            }
-            _ => {}
+            _ => for_each_nested_effects_mut(effect, true, |nested| {
+                force_implicit_token_controller_you(nested);
+            }),
         }
     }
 }

@@ -1,4 +1,7 @@
 use super::*;
+use crate::cards::builders::effect_ast_traversal::{
+    for_each_nested_effects, for_each_nested_effects_mut,
+};
 
 pub(crate) fn parse_activated_line(
     tokens: &[Token],
@@ -8401,15 +8404,15 @@ pub(crate) fn effect_creates_any_token(effect: &EffectAst) -> bool {
         | EffectAst::CreateTokenWithMods { .. }
         | EffectAst::CreateTokenCopy { .. }
         | EffectAst::CreateTokenCopyFromSource { .. } => true,
-        EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. } => {
-            effects.iter().any(effect_creates_any_token)
+        _ => {
+            let mut found = false;
+            for_each_nested_effects(effect, false, |nested| {
+                if !found && nested.iter().any(effect_creates_any_token) {
+                    found = true;
+                }
+            });
+            found
         }
-        _ => false,
     }
 }
 
@@ -8426,33 +8429,15 @@ pub(crate) fn created_token_info_from_effect(effect: &EffectAst) -> Option<(Stri
     match effect {
         EffectAst::CreateToken { name, player, .. }
         | EffectAst::CreateTokenWithMods { name, player, .. } => Some((name.clone(), *player)),
-        EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects, .. }
-        | EffectAst::ForEachPlayerDoesNot { effects, .. }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => last_created_token_info(effects),
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => last_created_token_info(effects).or_else(|| last_created_token_info(alternative)),
-        _ => None,
+        _ => {
+            let mut found = None;
+            for_each_nested_effects(effect, true, |nested| {
+                if found.is_none() {
+                    found = last_created_token_info(nested);
+                }
+            });
+            found
+        }
     }
 }
 
@@ -8736,15 +8721,16 @@ pub(crate) fn append_token_reminder_to_effect(
             }
             true
         }
-        EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. } => {
-            append_token_reminder_to_effect(effects.last_mut(), reminder, reminder_words)
+        _ => {
+            let mut applied = false;
+            for_each_nested_effects_mut(effect, false, |nested| {
+                if !applied {
+                    applied =
+                        append_token_reminder_to_effect(nested.last_mut(), reminder, reminder_words);
+                }
+            });
+            applied
         }
-        _ => false,
     }
 }
 

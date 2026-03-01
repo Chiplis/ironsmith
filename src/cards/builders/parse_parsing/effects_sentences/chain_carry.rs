@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::effect_ast_traversal::for_each_nested_effects_mut;
 
 pub(crate) fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
     let words = words(tokens);
@@ -1020,55 +1021,11 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
                 *effect_player = player;
             }
         }
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::UnlessPays { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
-            for nested in effects {
-                bind_implicit_player_context(nested, player);
+        _ => for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                bind_implicit_player_context(nested_effect, player);
             }
-        }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => {
-            for nested in effects {
-                bind_implicit_player_context(nested, player);
-            }
-            for nested in alternative {
-                bind_implicit_player_context(nested, player);
-            }
-        }
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            for nested in if_true {
-                bind_implicit_player_context(nested, player);
-            }
-            for nested in if_false {
-                bind_implicit_player_context(nested, player);
-            }
-        }
-        _ => {}
+        }),
     }
 }
 

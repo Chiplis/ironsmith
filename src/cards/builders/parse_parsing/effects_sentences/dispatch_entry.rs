@@ -1,4 +1,7 @@
 use super::*;
+use crate::cards::builders::effect_ast_traversal::{
+    for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
+};
 
 pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
     let mut effects = Vec::new();
@@ -392,157 +395,6 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
 
     parser_trace("parse_effect_sentences:done", tokens);
     Ok(effects)
-}
-
-fn for_each_nested_effects(
-    effect: &EffectAst,
-    include_unless_action_alternative: bool,
-    mut visit: impl FnMut(&[EffectAst]),
-) {
-    match effect {
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            visit(if_true);
-            visit(if_false);
-        }
-        EffectAst::UnlessPays { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
-            visit(effects);
-        }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => {
-            visit(effects);
-            if include_unless_action_alternative {
-                visit(alternative);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn for_each_nested_effects_mut(
-    effect: &mut EffectAst,
-    include_unless_action_alternative: bool,
-    mut visit: impl FnMut(&mut [EffectAst]),
-) {
-    match effect {
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            visit(if_true);
-            visit(if_false);
-        }
-        EffectAst::UnlessPays { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
-            visit(effects);
-        }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => {
-            visit(effects);
-            if include_unless_action_alternative {
-                visit(alternative);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn try_for_each_nested_effects_mut<E>(
-    effect: &mut EffectAst,
-    include_unless_action_alternative: bool,
-    mut visit: impl FnMut(&mut [EffectAst]) -> Result<(), E>,
-) -> Result<(), E> {
-    match effect {
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            visit(if_true)?;
-            visit(if_false)?;
-        }
-        EffectAst::UnlessPays { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
-            visit(effects)?;
-        }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => {
-            visit(effects)?;
-            if include_unless_action_alternative {
-                visit(alternative)?;
-            }
-        }
-        _ => {}
-    }
-    Ok(())
 }
 
 pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[Token]) -> bool {
@@ -1232,6 +1084,16 @@ pub(crate) fn is_nonsemantic_restriction_sentence(tokens: &[Token]) -> bool {
     is_activate_only_restriction_sentence(tokens) || is_trigger_only_restriction_sentence(tokens)
 }
 
+fn token_copy_followup_container_effects_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+    match effect {
+        EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::MayByTaggedController { effects, .. }
+        | EffectAst::IfResult { effects, .. } => Some(effects),
+        _ => None,
+    }
+}
+
 pub(crate) fn try_apply_token_copy_followup(
     effects: &mut [EffectAst],
     sentence_effects: &[EffectAst],
@@ -1292,18 +1154,17 @@ pub(crate) fn try_apply_token_copy_followup(
             *exile_at_end_of_combat = true;
             Ok(true)
         }
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. } => {
+        _ => {
             if !exile_end_of_combat {
                 return Ok(false);
             }
-            if effects.is_empty() {
+            let Some(nested_effects) = token_copy_followup_container_effects_mut(last) else {
+                return Ok(false);
+            };
+            if nested_effects.is_empty() {
                 return Ok(false);
             }
-            try_apply_token_copy_followup(effects.as_mut_slice(), sentence_effects)
+            try_apply_token_copy_followup(nested_effects.as_mut_slice(), sentence_effects)
         }
-        _ => Ok(false),
     }
 }

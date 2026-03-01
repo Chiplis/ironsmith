@@ -34,6 +34,7 @@ use std::collections::HashMap;
 
 use super::CardDefinition;
 mod parser;
+mod effect_ast_traversal;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardTextError {

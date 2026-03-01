@@ -1,4 +1,5 @@
 use super::*;
+use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 
 pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
@@ -849,26 +850,6 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
         EffectAst::CreateToken { count, .. } | EffectAst::CreateTokenWithMods { count, .. } => {
             value_references_tag(count, tag)
         }
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::UnlessPays { effects, .. } => effects_reference_tag(effects, tag),
         EffectAst::ForEachObject { filter, effects } => {
             filter
                 .tagged_constraints
@@ -876,14 +857,18 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                 .any(|constraint| constraint.tag.as_str() == tag)
                 || effects_reference_tag(effects, tag)
         }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => effects_reference_tag(effects, tag) || effects_reference_tag(alternative, tag),
-        EffectAst::VoteOption { effects, .. } => effects_reference_tag(effects, tag),
         EffectAst::Cant { restriction, .. } => restriction_references_tag(restriction, tag),
-        _ => false,
+        _ => {
+            let mut references = false;
+            for_each_nested_effects(effect, true, |nested| {
+                if !references {
+                    references = nested
+                        .iter()
+                        .any(|nested_effect| effect_references_tag(nested_effect, tag));
+                }
+            });
+            references
+        }
     }
 }
 
@@ -1000,48 +985,15 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
         | EffectAst::CreateTokenWithMods { count: amount, .. } => {
             value_references_event_derived_amount(amount)
         }
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::UnlessPays { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
-            effects.iter().any(effect_references_event_derived_amount)
+        _ => {
+            let mut references = false;
+            for_each_nested_effects(effect, true, |nested| {
+                if !references {
+                    references = nested.iter().any(effect_references_event_derived_amount);
+                }
+            });
+            references
         }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => {
-            effects.iter().any(effect_references_event_derived_amount)
-                || alternative
-                    .iter()
-                    .any(effect_references_event_derived_amount)
-        }
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            if_true.iter().any(effect_references_event_derived_amount)
-                || if_false.iter().any(effect_references_event_derived_amount)
-        }
-        _ => false,
     }
 }
 
@@ -1099,36 +1051,9 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::ChooseObjects { player, .. } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            effects_reference_its_controller(if_true) || effects_reference_its_controller(if_false)
-        }
         EffectAst::MayByPlayer { player, effects } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
                 || effects_reference_its_controller(effects)
-        }
-        EffectAst::May { effects }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. } => {
-            effects_reference_its_controller(effects)
         }
         EffectAst::UnlessPays {
             effects, player, ..
@@ -1146,8 +1071,15 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
                 || effects_reference_its_controller(effects)
                 || effects_reference_its_controller(alternative)
         }
-        EffectAst::VoteOption { effects, .. } => effects_reference_its_controller(effects),
-        _ => false,
+        _ => {
+            let mut references = false;
+            for_each_nested_effects(effect, true, |nested| {
+                if !references {
+                    references = nested.iter().any(effect_references_its_controller);
+                }
+            });
+            references
+        }
     }
 }
 
@@ -1356,24 +1288,6 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         EffectAst::CreateToken { count, .. } | EffectAst::CreateTokenWithMods { count, .. } => {
             value_references_tag(count, IT_TAG)
         }
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::UnlessPays { effects, .. } => effects_reference_it_tag(effects),
         EffectAst::ForEachTagged { tag, effects } => {
             tag.as_str() == IT_TAG || effects_reference_it_tag(effects)
         }
@@ -1385,14 +1299,16 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 .any(|constraint| constraint.tag.as_str() == IT_TAG)
                 || effects_reference_it_tag(effects)
         }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => effects_reference_it_tag(effects) || effects_reference_it_tag(alternative),
-        EffectAst::VoteOption { effects, .. } => effects_reference_it_tag(effects),
         EffectAst::Cant { restriction, .. } => restriction_references_tag(restriction, IT_TAG),
-        _ => false,
+        _ => {
+            let mut references = false;
+            for_each_nested_effects(effect, true, |nested| {
+                if !references {
+                    references = nested.iter().any(effect_references_it_tag);
+                }
+            });
+            references
+        }
     }
 }
 
@@ -1807,46 +1723,9 @@ pub(crate) fn collect_tag_spans_from_effect(
             collect_tag_spans_from_target(to, annotations, ctx);
         }
         EffectAst::RemoveCountersAll { .. } => {}
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            collect_tag_spans_from_effects_with_context(if_true, annotations, ctx);
-            collect_tag_spans_from_effects_with_context(if_false, annotations, ctx);
-        }
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::UnlessPays { effects, .. } => {
-            collect_tag_spans_from_effects_with_context(effects, annotations, ctx);
-        }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => {
-            collect_tag_spans_from_effects_with_context(effects, annotations, ctx);
-            collect_tag_spans_from_effects_with_context(alternative, annotations, ctx);
-        }
-        EffectAst::VoteOption { effects, .. } => {
-            collect_tag_spans_from_effects_with_context(effects, annotations, ctx);
-        }
-        _ => {}
+        _ => for_each_nested_effects(effect, true, |nested| {
+            collect_tag_spans_from_effects_with_context(nested, annotations, ctx);
+        }),
     }
 }
 
@@ -2350,46 +2229,9 @@ pub(crate) fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]
                     *player = PlayerAst::You;
                 }
             }
-            EffectAst::May { effects }
-            | EffectAst::MayByPlayer { effects, .. }
-            | EffectAst::MayByTaggedController { effects, .. }
-            | EffectAst::IfResult { effects, .. }
-            | EffectAst::ForEachOpponent { effects }
-            | EffectAst::ForEachPlayersFiltered { effects, .. }
-            | EffectAst::ForEachPlayer { effects }
-            | EffectAst::ForEachTargetPlayers { effects, .. }
-            | EffectAst::ForEachObject { effects, .. }
-            | EffectAst::ForEachTagged { effects, .. }
-            | EffectAst::ForEachOpponentDoesNot { effects }
-            | EffectAst::ForEachPlayerDoesNot { effects }
-            | EffectAst::ForEachOpponentDid { effects, .. }
-            | EffectAst::ForEachPlayerDid { effects, .. }
-            | EffectAst::ForEachTaggedPlayer { effects, .. }
-            | EffectAst::DelayedUntilNextEndStep { effects, .. }
-            | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-            | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-            | EffectAst::DelayedUntilEndOfCombat { effects }
-            | EffectAst::DelayedTriggerThisTurn { effects, .. }
-            | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-            | EffectAst::UnlessPays { effects, .. }
-            | EffectAst::VoteOption { effects, .. } => {
-                force_implicit_vote_token_controller_you(effects);
-            }
-            EffectAst::UnlessAction {
-                effects,
-                alternative,
-                ..
-            } => {
-                force_implicit_vote_token_controller_you(effects);
-                force_implicit_vote_token_controller_you(alternative);
-            }
-            EffectAst::Conditional {
-                if_true, if_false, ..
-            } => {
-                force_implicit_vote_token_controller_you(if_true);
-                force_implicit_vote_token_controller_you(if_false);
-            }
-            _ => {}
+            _ => for_each_nested_effects_mut(effect, true, |nested| {
+                force_implicit_vote_token_controller_you(nested);
+            }),
         }
     }
 }

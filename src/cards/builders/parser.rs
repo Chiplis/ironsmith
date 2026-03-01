@@ -1,4 +1,5 @@
 use super::*;
+use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 
 #[derive(Clone)]
 struct ModalHeader {
@@ -1663,43 +1664,11 @@ fn replace_modal_header_x_in_effect_ast(
         EffectAst::SetBasePower { power, .. } => {
             replace_modal_header_x_in_value(power, replacement, clause)?;
         }
-        EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::UnlessPays { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
-            replace_modal_header_x_in_effects_ast(effects, replacement, clause)?;
+        _ => {
+            try_for_each_nested_effects_mut(effect, true, |nested| {
+                replace_modal_header_x_in_effects_ast(nested, replacement, clause)
+            })?;
         }
-        EffectAst::UnlessAction {
-            effects,
-            alternative,
-            ..
-        } => {
-            replace_modal_header_x_in_effects_ast(effects, replacement, clause)?;
-            replace_modal_header_x_in_effects_ast(alternative, replacement, clause)?;
-        }
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        } => {
-            replace_modal_header_x_in_effects_ast(if_true, replacement, clause)?;
-            replace_modal_header_x_in_effects_ast(if_false, replacement, clause)?;
-        }
-        _ => {}
     }
 
     Ok(())
