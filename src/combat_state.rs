@@ -273,6 +273,23 @@ fn max_creatures_can_block_each_combat(game: &GameState) -> Option<usize> {
         .min()
 }
 
+fn generic_mana_cost(amount: u32) -> crate::mana::ManaCost {
+    use crate::mana::ManaSymbol;
+
+    if amount == 0 {
+        return crate::mana::ManaCost::new();
+    }
+
+    let mut pips = Vec::new();
+    let mut remaining = amount;
+    while remaining > 0 {
+        let chunk = remaining.min(u8::MAX as u32) as u8;
+        pips.push(vec![ManaSymbol::Generic(chunk)]);
+        remaining -= chunk as u32;
+    }
+    crate::mana::ManaCost::from_pips(pips)
+}
+
 /// Declares attackers for combat.
 ///
 /// This function validates all attackers and taps those without vigilance.
@@ -292,6 +309,8 @@ pub fn declare_attackers(
     declarations: Vec<(ObjectId, AttackTarget)>,
 ) -> Result<(), CombatError> {
     let active_player = game.turn.active_player;
+    let declared_attackers: Vec<ObjectId> = declarations.iter().map(|(id, _)| *id).collect();
+    let mut additional_attack_mana_cost = 0u32;
 
     // First pass: validate all declarations
     let mut seen_attackers = std::collections::HashSet::new();
@@ -360,6 +379,44 @@ pub fn declare_attackers(
             return Err(CombatError::CreatureCannotAttack(*creature_id));
         }
 
+        let abilities = game
+            .calculated_characteristics(creature.id)
+            .map(|c| c.static_abilities)
+            .unwrap_or_else(|| {
+                creature
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        crate::ability::AbilityKind::Static(static_ability) => {
+                            Some(static_ability.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            });
+        for ability in &abilities {
+            if let Some(can_attack) = ability.can_attack_with_attacking_group(
+                game,
+                creature.id,
+                creature.controller,
+                &declared_attackers,
+            ) && !can_attack
+            {
+                return Err(CombatError::CreatureCannotAttack(*creature_id));
+            }
+            if let Some(can_pay) =
+                ability.can_pay_attack_cost(game, creature.id, creature.controller)
+                && !can_pay
+            {
+                return Err(CombatError::CreatureCannotAttack(*creature_id));
+            }
+            if let Some(cost) =
+                ability.generic_attack_mana_cost_for_source(game, creature.id, creature.controller)
+            {
+                additional_attack_mana_cost = additional_attack_mana_cost.saturating_add(cost);
+            }
+        }
+
         // Validate attack target
         match target {
             AttackTarget::Player(_) | AttackTarget::Planeswalker(_) => {}
@@ -373,6 +430,50 @@ pub fn declare_attackers(
             maximum: max_attackers,
             provided: declarations.len(),
         });
+    }
+
+    // Pay non-mana attacker costs from "can't attack unless ..." restrictions.
+    for (creature_id, _target) in &declarations {
+        let Some(creature) = game.object(*creature_id) else {
+            return Err(CombatError::NotOnBattlefield(*creature_id));
+        };
+        let creature_source = creature.id;
+        let creature_controller = creature.controller;
+        let abilities = game
+            .calculated_characteristics(creature_source)
+            .map(|c| c.static_abilities)
+            .unwrap_or_else(|| {
+                creature
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        crate::ability::AbilityKind::Static(static_ability) => {
+                            Some(static_ability.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            });
+        for ability in abilities {
+            if let Some(result) =
+                ability.pay_non_mana_attack_cost(game, creature_source, creature_controller)
+                && result.is_err()
+            {
+                return Err(CombatError::CreatureCannotAttack(*creature_id));
+            }
+        }
+    }
+
+    // Pay aggregated generic mana attacker costs after validation.
+    if additional_attack_mana_cost > 0
+        && let Some((first_attacker, _)) = declarations.first()
+    {
+        let mana_cost = generic_mana_cost(additional_attack_mana_cost);
+        if !game.can_pay_mana_cost(active_player, None, &mana_cost, 0)
+            || !game.try_pay_mana_cost(active_player, None, &mana_cost, 0)
+        {
+            return Err(CombatError::CreatureCannotAttack(*first_attacker));
+        }
     }
 
     // Second pass: apply declarations and tap attackers without vigilance
@@ -792,4 +893,252 @@ pub fn get_attacking_player(combat: &CombatState, game: &GameState) -> Option<Pl
         .first()
         .and_then(|info| game.object(info.creature))
         .map(|obj| obj.controller)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::card::{CardBuilder, PowerToughness, PtValue};
+    use crate::ids::CardId;
+    use crate::mana::ManaSymbol;
+    use crate::object::CounterType;
+    use crate::static_abilities::{CantAttackUnlessConditionSpec, StaticAbility};
+    use crate::types::{CardType, Subtype};
+    use crate::zone::Zone;
+
+    fn creature_card(name: &str, power: i32, toughness: i32) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::new(
+                PtValue::Fixed(power),
+                PtValue::Fixed(toughness),
+            ))
+            .build()
+    }
+
+    fn land_card(name: &str, subtype: Option<Subtype>) -> crate::card::Card {
+        let mut builder = CardBuilder::new(CardId::new(), name).card_types(vec![CardType::Land]);
+        if let Some(subtype) = subtype {
+            builder = builder.subtypes(vec![subtype]);
+        }
+        builder.build()
+    }
+
+    fn enchantment_card(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Enchantment])
+            .build()
+    }
+
+    #[test]
+    fn declare_attackers_rejects_at_least_two_other_creatures_attack_requirement() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let restricted = creature_card("Gang Source", 2, 2);
+        let buddy_one = creature_card("Buddy One", 2, 2);
+        let buddy_two = creature_card("Buddy Two", 2, 2);
+
+        let restricted_id = game.create_object_from_card(&restricted, alice, Zone::Battlefield);
+        let buddy_one_id = game.create_object_from_card(&buddy_one, alice, Zone::Battlefield);
+        let buddy_two_id = game.create_object_from_card(&buddy_two, alice, Zone::Battlefield);
+        game.object_mut(restricted_id)
+            .expect("restricted creature should exist")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::cant_attack_unless_condition(
+                    CantAttackUnlessConditionSpec::AtLeastNOtherCreaturesAttack(2),
+                    "Can't attack unless at least two other creatures attack",
+                ),
+            ));
+
+        game.remove_summoning_sickness(restricted_id);
+        game.remove_summoning_sickness(buddy_one_id);
+        game.remove_summoning_sickness(buddy_two_id);
+
+        let mut combat = CombatState::default();
+        let invalid = declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![
+                (restricted_id, AttackTarget::Player(bob)),
+                (buddy_one_id, AttackTarget::Player(bob)),
+            ],
+        );
+        assert_eq!(
+            invalid,
+            Err(CombatError::CreatureCannotAttack(restricted_id))
+        );
+
+        let valid = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![
+                (restricted_id, AttackTarget::Player(bob)),
+                (buddy_one_id, AttackTarget::Player(bob)),
+                (buddy_two_id, AttackTarget::Player(bob)),
+            ],
+        );
+        assert!(valid.is_ok(), "expected valid three-creature attack");
+    }
+
+    #[test]
+    fn declare_attackers_requires_and_pays_sacrifice_land_attack_cost() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker = creature_card("Exalted Dragon Variant", 5, 5);
+        let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+        game.object_mut(attacker_id)
+            .expect("attacker should exist")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::cant_attack_unless_condition(
+                    CantAttackUnlessConditionSpec::SacrificeLands {
+                        count: 1,
+                        subtype: None,
+                    },
+                    "Can't attack unless you sacrifice a land",
+                ),
+            ));
+        game.remove_summoning_sickness(attacker_id);
+
+        let without_land = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![(attacker_id, AttackTarget::Player(bob))],
+        );
+        assert_eq!(
+            without_land,
+            Err(CombatError::CreatureCannotAttack(attacker_id))
+        );
+
+        let land = land_card("Forest", Some(Subtype::Forest));
+        let _land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+        let with_land = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![(attacker_id, AttackTarget::Player(bob))],
+        );
+        assert!(
+            with_land.is_ok(),
+            "expected attack to succeed after paying cost"
+        );
+        let graveyard_count = game
+            .player(alice)
+            .expect("attacking player should exist")
+            .graveyard
+            .len();
+        assert_eq!(
+            graveyard_count, 1,
+            "expected one land sacrificed as attack cost"
+        );
+    }
+
+    #[test]
+    fn declare_attackers_requires_and_pays_return_enchantment_attack_cost() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker = creature_card("Floodtide Serpent Variant", 4, 4);
+        let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+        game.object_mut(attacker_id)
+            .expect("attacker should exist")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::cant_attack_unless_condition(
+                    CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand,
+                    "Can't attack unless you return an enchantment you control to its owner's hand",
+                ),
+            ));
+        game.remove_summoning_sickness(attacker_id);
+
+        let without_enchantment = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![(attacker_id, AttackTarget::Player(bob))],
+        );
+        assert_eq!(
+            without_enchantment,
+            Err(CombatError::CreatureCannotAttack(attacker_id))
+        );
+
+        let enchantment = enchantment_card("Seal of Return");
+        let _enchantment_id = game.create_object_from_card(&enchantment, alice, Zone::Battlefield);
+        let with_enchantment = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![(attacker_id, AttackTarget::Player(bob))],
+        );
+        assert!(
+            with_enchantment.is_ok(),
+            "expected attack to succeed after returning enchantment"
+        );
+        let hand_count = game
+            .player(alice)
+            .expect("attacking player should exist")
+            .hand
+            .len();
+        assert_eq!(
+            hand_count, 1,
+            "expected returned enchantment to be in attacker's hand"
+        );
+    }
+
+    #[test]
+    fn declare_attackers_requires_generic_mana_for_plus_one_plus_one_counter_attack_cost() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let attacker = creature_card("Phyrexian Marauder Variant", 0, 0);
+        let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+        {
+            let attacker_obj = game
+                .object_mut(attacker_id)
+                .expect("attacker should exist on battlefield");
+            attacker_obj.add_counters(CounterType::PlusOnePlusOne, 2);
+            attacker_obj.abilities.push(Ability::static_ability(
+                StaticAbility::cant_attack_unless_condition(
+                    CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt,
+                    "Can't attack unless you pay {1} for each +1/+1 counter on it",
+                ),
+            ));
+        }
+        game.remove_summoning_sickness(attacker_id);
+
+        let without_mana = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![(attacker_id, AttackTarget::Player(bob))],
+        );
+        assert_eq!(
+            without_mana,
+            Err(CombatError::CreatureCannotAttack(attacker_id))
+        );
+
+        game.player_mut(alice)
+            .expect("attacking player should exist")
+            .mana_pool
+            .add(ManaSymbol::Colorless, 2);
+        let with_mana = declare_attackers(
+            &mut game,
+            &mut CombatState::default(),
+            vec![(attacker_id, AttackTarget::Player(bob))],
+        );
+        assert!(
+            with_mana.is_ok(),
+            "expected attack to succeed after paying per-counter mana"
+        );
+        let remaining = game
+            .player(alice)
+            .expect("attacking player should exist")
+            .mana_pool
+            .total();
+        assert_eq!(remaining, 0, "expected mana attack cost to be paid");
+    }
 }

@@ -2631,6 +2631,29 @@ pub(crate) fn parse_cost_reduction_line(
         )));
     }
     if line_words.starts_with(&["this", "cost", "is", "reduced", "by"]) && line_words.len() > 6 {
+        let amount_tokens = trim_commas(&tokens[5..]);
+        let parsed_amount = parse_cost_modifier_amount(&amount_tokens);
+        let (amount_value, used) = parsed_amount.clone().unwrap_or((Value::Fixed(1), 0));
+        let amount_fixed = if let Value::Fixed(value) = amount_value {
+            value
+        } else {
+            1
+        };
+        let remaining_tokens = amount_tokens.get(used..).unwrap_or_default();
+        let remaining_words = words(remaining_tokens);
+        if remaining_words.contains(&"for")
+            && remaining_words.contains(&"each")
+            && let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)?
+        {
+            let reduction = scale_dynamic_cost_modifier_value(dynamic, amount_fixed);
+            return Ok(Some(StaticAbility::new(
+                crate::static_abilities::ThisSpellCostReduction::new(
+                    reduction,
+                    crate::static_abilities::ThisSpellCostCondition::Always,
+                ),
+            )));
+        }
+
         let amount_word = line_words[5];
         let amount_text = if amount_word.chars().all(|ch| ch.is_ascii_digit()) {
             format!("{{{amount_word}}}")
@@ -2748,6 +2771,26 @@ pub(crate) fn parse_cost_reduction_line(
     Ok(None)
 }
 
+pub(crate) fn scale_dynamic_cost_modifier_value(dynamic: Value, multiplier: i32) -> Value {
+    if multiplier <= 0 {
+        return Value::Fixed(0);
+    }
+    if multiplier == 1 {
+        return dynamic;
+    }
+    match dynamic {
+        Value::Count(filter) => Value::CountScaled(filter, multiplier),
+        Value::CountScaled(filter, factor) => Value::CountScaled(filter, factor * multiplier),
+        other => {
+            let mut scaled = other.clone();
+            for _ in 1..multiplier {
+                scaled = Value::Add(Box::new(scaled), Box::new(other.clone()));
+            }
+            scaled
+        }
+    }
+}
+
 pub(crate) fn parse_all_creatures_able_to_block_source_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2862,6 +2905,65 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
         .into_iter()
         .map(|word| if word == "cannot" { "cant" } else { word })
         .collect::<Vec<_>>();
+
+    if let Some(rest) = normalized.strip_prefix(&[
+        "creatures",
+        "cant",
+        "attack",
+        "you",
+        "unless",
+        "their",
+        "controller",
+        "pays",
+    ]) && rest.get(1..)
+        == Some(&[
+            "for",
+            "each",
+            "creature",
+            "they",
+            "control",
+            "thats",
+            "attacking",
+            "you",
+        ])
+    {
+        if let Ok(amount) = rest[0].parse::<u32>() {
+            return Ok(Some(
+                StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(amount),
+            ));
+        }
+    }
+
+    let is_collective_restraint_domain_attack_tax = normalized.starts_with(&[
+        "creatures",
+        "cant",
+        "attack",
+        "you",
+        "unless",
+        "their",
+        "controller",
+        "pays",
+        "x",
+        "for",
+        "each",
+        "creature",
+        "they",
+        "control",
+        "thats",
+        "attacking",
+        "you",
+    ]) && (normalized.ends_with(&[
+        "where", "x", "is", "the", "number", "of", "basic", "land", "types", "among", "lands",
+        "you", "control",
+    ]) || normalized.ends_with(&[
+        "where", "x", "is", "the", "number", "of", "basic", "land", "type", "among", "lands",
+        "you", "control",
+    ]));
+    if is_collective_restraint_domain_attack_tax {
+        return Ok(Some(
+            StaticAbility::cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control(),
+        ));
+    }
 
     let starts_with_cant_be_blocked_by = normalized
         .starts_with(&["this", "creature", "cant", "be", "blocked", "by"])
@@ -3076,6 +3178,24 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
     ]) || normalized.ends_with(&[
         "unless", "youve", "cast", "creature", "spell", "this", "turn",
     ]);
+    let cant_attack_unless_cast_noncreature_spell_tail = normalized.ends_with(&[
+        "unless",
+        "youve",
+        "cast",
+        "a",
+        "noncreature",
+        "spell",
+        "this",
+        "turn",
+    ]) || normalized.ends_with(&[
+        "unless",
+        "youve",
+        "cast",
+        "noncreature",
+        "spell",
+        "this",
+        "turn",
+    ]);
     if cant_attack_unless_cast_creature_spell_tail
         && (normalized.starts_with(&["this", "creature", "cant", "attack"])
             || normalized.starts_with(&["this", "cant", "attack"]))
@@ -3083,6 +3203,388 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
         return Ok(Some(
             StaticAbility::cant_attack_unless_controller_cast_creature_spell_this_turn(),
         ));
+    }
+    if cant_attack_unless_cast_noncreature_spell_tail
+        && (normalized.starts_with(&["this", "creature", "cant", "attack"])
+            || normalized.starts_with(&["this", "cant", "attack"]))
+    {
+        return Ok(Some(
+            StaticAbility::cant_attack_unless_controller_cast_noncreature_spell_this_turn(),
+        ));
+    }
+
+    let starts_with_this_cant_attack_unless = normalized
+        .starts_with(&["this", "creature", "cant", "attack", "unless"])
+        || normalized.starts_with(&["this", "cant", "attack", "unless"]);
+    if starts_with_this_cant_attack_unless {
+        let tail = if normalized.starts_with(&["this", "creature", "cant", "attack", "unless"]) {
+            &normalized[5..]
+        } else {
+            &normalized[4..]
+        };
+
+        let static_text = format!("Can't attack unless {}", tail.join(" "));
+        let static_with = |condition| {
+            Ok(Some(StaticAbility::cant_attack_unless_condition(
+                condition,
+                static_text.clone(),
+            )))
+        };
+
+        if tail
+            == [
+                "you",
+                "control",
+                "more",
+                "creatures",
+                "than",
+                "defending",
+                "player",
+            ]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlMoreCreaturesThanDefendingPlayer,
+            );
+        }
+        if tail
+            == [
+                "you",
+                "control",
+                "more",
+                "lands",
+                "than",
+                "defending",
+                "player",
+            ]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlMoreLandsThanDefendingPlayer,
+            );
+        }
+        if let [
+            "you",
+            "control",
+            "another",
+            "creature",
+            "with",
+            "power",
+            amount,
+            "or",
+            "greater",
+        ] = tail
+            && let Some(value) = parse_cardinal_u32(amount)
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlAnotherCreatureWithPowerAtLeast(
+                    value,
+                ),
+            );
+        }
+        if tail == ["you", "control", "another", "artifact"] {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlAnotherArtifact,
+            );
+        }
+        if tail == ["you", "control", "an", "artifact"] || tail == ["you", "control", "artifact"] {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlArtifact,
+            );
+        }
+        if tail == ["you", "control", "a", "knight", "or", "a", "soldier"]
+            || tail == ["you", "control", "knight", "or", "soldier"]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlKnightOrSoldier,
+            );
+        }
+        if let [
+            "you",
+            "control",
+            "a",
+            "creature",
+            "with",
+            "power",
+            amount,
+            "or",
+            "greater",
+        ] = tail
+            && let Some(value) = parse_cardinal_u32(amount)
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAtLeast(
+                    value,
+                ),
+            );
+        }
+        if tail == ["you", "control", "a", "1/1", "creature"]
+            || tail == ["you", "control", "1/1", "creature"]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAndToughness(
+                    1, 1,
+                ),
+            );
+        }
+        if tail == ["there", "is", "a", "mountain", "on", "the", "battlefield"]
+            || tail == ["there", "is", "a", "mountain", "on", "battlefield"]
+            || tail == ["there", "is", "mountain", "on", "battlefield"]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::ThereIsALandWithSubtypeOnBattlefield(
+                    Subtype::Mountain,
+                ),
+            );
+        }
+        if let [
+            "there",
+            "are",
+            amount,
+            "or",
+            "more",
+            "cards",
+            "in",
+            "your",
+            "graveyard",
+        ] = tail
+            && let Some(value) = parse_cardinal_u32(amount)
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::ThereAreCardsInYourGraveyardOrMore(
+                    value,
+                ),
+            );
+        }
+        if let [
+            "there",
+            "are",
+            amount,
+            "or",
+            "more",
+            "islands",
+            "on",
+            "the",
+            "battlefield",
+        ] = tail
+            && let Some(value) = parse_cardinal_u32(amount)
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::ThereAreLandsWithSubtypeOnBattlefieldOrMore {
+                    subtype: Subtype::Island,
+                    count: value,
+                },
+            );
+        }
+        if tail == ["defending", "player", "is", "poisoned"] {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned,
+            );
+        }
+        if let [
+            "defending",
+            "player",
+            "has",
+            amount,
+            "or",
+            "more",
+            "cards",
+            "in",
+            "their",
+            "graveyard",
+        ] = tail
+            && let Some(value) = parse_cardinal_u32(amount)
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerHasCardsInGraveyardOrMore(
+                    value,
+                ),
+            );
+        }
+        if tail
+            == [
+                "defending",
+                "player",
+                "controls",
+                "an",
+                "enchantment",
+                "or",
+                "an",
+                "enchanted",
+                "permanent",
+            ]
+            || tail
+                == [
+                    "defending",
+                    "player",
+                    "controls",
+                    "enchantment",
+                    "or",
+                    "enchanted",
+                    "permanent",
+                ]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerControlsEnchantmentOrEnchantedPermanent,
+            );
+        }
+        if tail == ["defending", "player", "controls", "a", "snow", "land"]
+            || tail == ["defending", "player", "controls", "snow", "land"]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerControlsSnowLand,
+            );
+        }
+        if tail
+            == [
+                "defending",
+                "player",
+                "controls",
+                "a",
+                "creature",
+                "with",
+                "flying",
+            ]
+            || tail
+                == [
+                    "defending",
+                    "player",
+                    "controls",
+                    "creature",
+                    "with",
+                    "flying",
+                ]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerControlsCreatureWithFlying,
+            );
+        }
+        if tail == ["defending", "player", "controls", "a", "blue", "permanent"]
+            || tail == ["defending", "player", "controls", "blue", "permanent"]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerControlsBluePermanent,
+            );
+        }
+        if tail == ["at", "least", "two", "other", "creatures", "attack"] {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::AtLeastNOtherCreaturesAttack(
+                    2,
+                ),
+            );
+        }
+        if tail
+            == [
+                "a", "creature", "with", "greater", "power", "also", "attacks",
+            ]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::CreatureWithGreaterPowerAlsoAttacks,
+            );
+        }
+        if tail == ["a", "black", "or", "green", "creature", "also", "attacks"] {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::BlackOrGreenCreatureAlsoAttacks,
+            );
+        }
+        if tail
+            == [
+                "an", "opponent", "has", "been", "dealt", "damage", "this", "turn",
+            ]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn,
+            );
+        }
+        if let ["you", "control", amount, "or", "more", "artifacts"] = tail
+            && let Some(value) = parse_cardinal_u32(amount)
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlArtifactsOrMore(
+                    value,
+                ),
+            );
+        }
+        if tail == ["you", "sacrifice", "a", "land"] || tail == ["you", "sacrifice", "land"] {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::SacrificeLands {
+                    count: 1,
+                    subtype: None,
+                },
+            );
+        }
+        if let ["you", "sacrifice", amount, "islands"] = tail
+            && let Some(value) = parse_cardinal_u32(amount)
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::SacrificeLands {
+                    count: value,
+                    subtype: Some(Subtype::Island),
+                },
+            );
+        }
+        if tail
+            == [
+                "you",
+                "return",
+                "an",
+                "enchantment",
+                "you",
+                "control",
+                "to",
+                "its",
+                "owners",
+                "hand",
+            ]
+            || tail
+                == [
+                    "you",
+                    "return",
+                    "enchantment",
+                    "you",
+                    "control",
+                    "to",
+                    "its",
+                    "owners",
+                    "hand",
+                ]
+            || tail
+                == [
+                    "you",
+                    "return",
+                    "an",
+                    "enchantment",
+                    "you",
+                    "control",
+                    "to",
+                    "its",
+                    "owner",
+                    "s",
+                    "hand",
+                ]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand,
+            );
+        }
+        if tail
+            == [
+                "you", "pay", "1", "for", "each", "+1/+1", "counter", "on", "it",
+            ]
+            || tail
+                == [
+                    "you", "pay", "1", "for", "each", "1/1", "counter", "on", "it",
+                ]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt,
+            );
+        }
+        if tail == ["defending", "player", "is", "the", "monarch"]
+            || tail == ["defending", "player", "is", "monarch"]
+        {
+            return static_with(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch,
+            );
+        }
     }
 
     if starts_with_cant_attack_unless_defending_player {
@@ -5403,7 +5905,11 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
         .iter()
         .position(|token| token.is_word("tap") || token.is_word("taps"))
     {
-        let subject_words = &words[..tap_idx];
+        let tap_word_idx = tokens[..tap_idx]
+            .iter()
+            .filter(|token| token.as_word().is_some())
+            .count();
+        let subject_words = &words[..tap_word_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
             let after_tap = &tokens[tap_idx + 1..];
             if let Some(for_idx) = after_tap.iter().position(|token| token.is_word("for"))

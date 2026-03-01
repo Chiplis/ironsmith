@@ -3913,6 +3913,59 @@ mod keyword_behavior_tests {
             "expected persist oracle text to compile with snapshot counter predicate, got {debug}"
         );
     }
+
+    #[test]
+    fn parse_self_enters_with_x_counters_is_typed_static() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Self ETB X Counter Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text("This creature enters with X +1/+1 counters on it.")
+            .expect("self etb x counters should parse");
+
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+            "expected typed enters-with-counters static ability, got {static_ids:?}"
+        );
+        assert!(
+            !static_ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+            "self etb x counters should not remain a placeholder static ability: {static_ids:?}"
+        );
+    }
+
+    #[test]
+    fn parse_self_enters_with_opponent_lost_life_is_typed_static() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Self ETB Opponent Lost Life Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "This creature enters with a +1/+1 counter on it if an opponent lost life this turn.",
+            )
+            .expect("self etb opponent-life-loss conditional should parse");
+
+        let static_ids: Vec<_> = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            static_ids
+                .contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+            "expected conditional enters-with-counters ability, got {static_ids:?}"
+        );
+        assert!(
+            !static_ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+            "self etb opponent-life-loss conditional should not remain placeholder fallback: {static_ids:?}"
+        );
+    }
 }
 
 #[cfg(all(test, feature = "parser-tests-full"))]
@@ -8272,28 +8325,29 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 let crate::ConditionExpr::And(left, right) = condition_expr else {
                     panic!("expected conjunction for mixed-controller cost condition");
                 };
-                let matches_clause =
-                    |expr: &crate::ConditionExpr,
-                     controller: crate::target::PlayerFilter,
-                     subtype: Subtype| {
-                        let crate::ConditionExpr::CountComparison {
-                            count, comparison, ..
-                        } = expr
-                        else {
-                            return false;
-                        };
-                        let crate::static_abilities::AnthemCountExpression::MatchingFilter(
-                            filter,
-                        ) = count
-                        else {
-                            return false;
-                        };
-                        *comparison == crate::effect::Comparison::GreaterThanOrEqual(1)
-                            && filter.controller == Some(controller)
-                            && filter.subtypes == vec![subtype]
+                let matches_clause = |expr: &crate::ConditionExpr,
+                                      controller: crate::target::PlayerFilter,
+                                      subtype: Subtype| {
+                    let crate::ConditionExpr::CountComparison {
+                        count, comparison, ..
+                    } = expr
+                    else {
+                        return false;
                     };
-                let left_is_opponent_mountain =
-                    matches_clause(left, crate::target::PlayerFilter::Opponent, Subtype::Mountain);
+                    let crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) =
+                        count
+                    else {
+                        return false;
+                    };
+                    *comparison == crate::effect::Comparison::GreaterThanOrEqual(1)
+                        && filter.controller == Some(controller)
+                        && filter.subtypes == vec![subtype]
+                };
+                let left_is_opponent_mountain = matches_clause(
+                    left,
+                    crate::target::PlayerFilter::Opponent,
+                    Subtype::Mountain,
+                );
                 let left_is_you_plains =
                     matches_clause(left, crate::target::PlayerFilter::You, Subtype::Plains);
                 let right_is_opponent_mountain = matches_clause(
@@ -8518,16 +8572,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                     if static_ability.id() == crate::static_abilities::StaticAbilityId::EnterWithCounters
             )
         });
-        let has_placeholder = def.abilities.iter().any(|ability| {
-            matches!(
-                &ability.kind,
-                AbilityKind::Static(static_ability)
-                    if static_ability.id() == crate::static_abilities::StaticAbilityId::RuleTextPlaceholder
-            )
-        });
         assert!(
-            has_etb_replacement || has_placeholder,
-            "expected self ETB replacement (or explicit placeholder while unsupported), got {:?}",
+            has_etb_replacement,
+            "expected self ETB replacement static ability, got {:?}",
             def.abilities
         );
     }

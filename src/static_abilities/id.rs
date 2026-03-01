@@ -69,7 +69,11 @@ pub enum StaticAbilityId {
     MustBlock,
     CantAttack,
     CantAttackUnlessControllerCastCreatureSpellThisTurn,
+    CantAttackUnlessControllerCastNonCreatureSpellThisTurn,
     CantAttackUnlessDefendingPlayerControlsLandSubtype,
+    CantAttackUnlessCondition,
+    CantAttackYouUnlessControllerPaysPerAttacker,
+    CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
     CantBlock,
     MayAssignDamageAsUnblocked,
     CreaturesAssignCombatDamageUsingToughness,
@@ -141,6 +145,8 @@ pub enum StaticAbilityId {
 
     // === Other abilities ===
     ChooseColorAsEnters,
+    ChooseBasicLandTypeAsEnters,
+    EnchantedLandIsChosenType,
     RedirectDamageToSource,
     PreventAllDamageDealtByThisPermanent,
     PreventAllDamageDealtToCreatures,
@@ -309,7 +315,11 @@ impl StaticAbilityId {
                 | MustBlock
                 | CantAttack
                 | CantAttackUnlessControllerCastCreatureSpellThisTurn
+                | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
                 | CantAttackUnlessDefendingPlayerControlsLandSubtype
+                | CantAttackUnlessCondition
+                | CantAttackYouUnlessControllerPaysPerAttacker
+                | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
                 | CantBlock
                 | MayAssignDamageAsUnblocked
                 | CreaturesAssignCombatDamageUsingToughness

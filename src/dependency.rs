@@ -1032,7 +1032,9 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::HalfLifeTotalRoundedDown(_)
         | Value::CardsInHand(_)
         | Value::LifeGainedThisTurn(_)
+        | Value::LifeLostThisTurn(_)
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)
+        | Value::MaxCardsDrawnThisTurn(_)
         | Value::MaxCardsInHand(_)
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)
@@ -1049,6 +1051,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::WasPaid(_)
         | Value::WasPaidLabel(_)
         | Value::TimesPaid(_)
+        | Value::MagicGamesLostToOpponentsSinceLastWin
         | Value::TaggedCount
         | Value::EventValue(_)
         | Value::EventValueOffset(_, _) => false,

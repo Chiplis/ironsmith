@@ -23,6 +23,21 @@ fn source_was_cast(
     game.spell_cast_order_this_turn.contains_key(&source)
 }
 
+fn player_has_card_in_hand_matching(
+    game: &GameState,
+    player: PlayerId,
+    filter: &crate::target::ObjectFilter,
+    filter_source: Option<ObjectId>,
+) -> bool {
+    let filter_ctx = game.filter_context_for(player, filter_source);
+    game.player(player).is_some_and(|state| {
+        state.hand.iter().any(|&card_id| {
+            game.object(card_id)
+                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+        })
+    })
+}
+
 /// Condition evaluation mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionEvaluationMode {
@@ -111,7 +126,41 @@ pub fn evaluate_condition_external(
         Condition::YourTurn => game.turn.active_player == ctx.controller,
         Condition::CreatureDiedThisTurn => game.creatures_died_this_turn > 0,
         Condition::CastSpellThisTurn => game.spells_cast_this_turn.values().any(|&count| count > 0),
+        Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+            let players: Vec<PlayerId> = match player {
+                PlayerFilter::You => vec![ctx.controller],
+                PlayerFilter::Opponent => filter_ctx.opponents.clone(),
+                PlayerFilter::Specific(id) => vec![*id],
+                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
+                PlayerFilter::NotYou => game
+                    .players
+                    .iter()
+                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let cast_count: u32 = players
+                .iter()
+                .map(|pid| game.spells_cast_this_turn.get(pid).copied().unwrap_or(0))
+                .sum();
+            cast_count >= *count
+        }
         Condition::AttackedThisTurn => game.players_attacked_this_turn.contains(&ctx.controller),
+        Condition::OpponentLostLifeThisTurn => {
+            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+            filter_ctx
+                .opponents
+                .iter()
+                .any(|opponent| game.life_lost_this_turn.get(opponent).copied().unwrap_or(0) > 0)
+        }
+        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {
+            game.permanents_left_battlefield_under_controller_this_turn
+                .get(&ctx.controller)
+                .copied()
+                .unwrap_or(0)
+                > 0
+        }
         Condition::SourceWasCast => source_was_cast(game, ctx.source, ctx.triggering_event),
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
@@ -150,6 +199,9 @@ pub fn evaluate_condition_external(
             game.player(player_id)
                 .map(|p| p.hand.len() as i32 <= *count)
                 .unwrap_or(false)
+        }
+        Condition::YouHaveCardInHandMatching(filter) => {
+            player_has_card_in_hand_matching(game, ctx.controller, filter, ctx.filter_source)
         }
         Condition::PlayerHasLessLifeThanYou { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
@@ -407,6 +459,34 @@ pub fn evaluate_condition_external(
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)),
         Condition::SourceIsSoulbondPaired => game.is_soulbond_paired(ctx.source),
+        Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return false;
+            };
+            let spent = if let Some(sym) = symbol {
+                source_obj.mana_spent_to_cast.amount(*sym)
+            } else {
+                source_obj.mana_spent_to_cast.total()
+            };
+            spent >= *amount
+        }
+        Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return false;
+            };
+            let spent = &source_obj.mana_spent_to_cast;
+            let distinct_colors = [
+                spent.white > 0,
+                spent.blue > 0,
+                spent.black > 0,
+                spent.red > 0,
+                spent.green > 0,
+            ]
+            .into_iter()
+            .filter(|present| *present)
+            .count() as u32;
+            distinct_colors >= *amount
+        }
 
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => game
             .player(*player)
@@ -449,7 +529,6 @@ pub fn evaluate_condition_external(
         | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures
         | Condition::TargetManaValueLteColorsSpentToCastThisSpell
-        | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::PlayerControls { .. }
         | Condition::PlayerControlsAtLeast { .. }
         | Condition::PlayerControlsExactly { .. }
@@ -883,10 +962,43 @@ fn evaluate_condition_simple(
             let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
             hand <= *count as usize
         }
+        Condition::YouHaveCardInHandMatching(filter) => {
+            player_has_card_in_hand_matching(game, controller, filter, Some(source))
+        }
         Condition::YourTurn => game.turn.active_player == controller,
         Condition::CreatureDiedThisTurn => game.creatures_died_this_turn > 0,
         Condition::CastSpellThisTurn => game.spells_cast_this_turn.values().any(|&count| count > 0),
+        Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
+            let filter_ctx = game.filter_context_for(controller, Some(source));
+            let players: Vec<PlayerId> = match player {
+                PlayerFilter::You => vec![controller],
+                PlayerFilter::Opponent => filter_ctx.opponents,
+                PlayerFilter::Specific(id) => vec![*id],
+                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
+                PlayerFilter::NotYou => game
+                    .players
+                    .iter()
+                    .filter_map(|p| (p.id != controller).then_some(p.id))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let cast_count: u32 = players
+                .iter()
+                .map(|pid| game.spells_cast_this_turn.get(pid).copied().unwrap_or(0))
+                .sum();
+            cast_count >= *count
+        }
         Condition::AttackedThisTurn => game.players_attacked_this_turn.contains(&controller),
+        Condition::OpponentLostLifeThisTurn => opponents
+            .iter()
+            .any(|opponent| game.life_lost_this_turn.get(opponent).copied().unwrap_or(0) > 0),
+        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {
+            game.permanents_left_battlefield_under_controller_this_turn
+                .get(&controller)
+                .copied()
+                .unwrap_or(0)
+                > 0
+        }
         Condition::SourceWasCast => source_was_cast(game, source, None),
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
@@ -938,6 +1050,23 @@ fn evaluate_condition_simple(
                 source_obj.mana_spent_to_cast.total()
             };
             spent >= *amount
+        }
+        Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
+            let Some(source_obj) = game.object(source) else {
+                return false;
+            };
+            let spent = &source_obj.mana_spent_to_cast;
+            let distinct_colors = [
+                spent.white > 0,
+                spent.blue > 0,
+                spent.black > 0,
+                spent.red > 0,
+                spent.green > 0,
+            ]
+            .into_iter()
+            .filter(|present| *present)
+            .count() as u32;
+            distinct_colors >= *amount
         }
         Condition::SourceHasNoCounter(counter_type) => game
             .object(source)
@@ -1240,6 +1369,12 @@ fn evaluate_condition(
             let hand_count = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
             Ok(hand_count <= *count as usize)
         }
+        Condition::YouHaveCardInHandMatching(filter) => Ok(player_has_card_in_hand_matching(
+            game,
+            ctx.controller,
+            filter,
+            Some(ctx.source),
+        )),
         Condition::YourTurn => Ok(game.turn.active_player == ctx.controller),
         Condition::CreatureDiedThisTurn => {
             // Check if any creature died this turn
@@ -1249,9 +1384,42 @@ fn evaluate_condition(
             // Check if any spell was cast this turn by anyone
             Ok(game.spells_cast_this_turn.values().any(|&count| count > 0))
         }
+        Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
+            let filter_ctx = ctx.filter_context(game);
+            let player_ids: Vec<PlayerId> = match player {
+                PlayerFilter::You => vec![ctx.controller],
+                PlayerFilter::Opponent => filter_ctx.opponents,
+                PlayerFilter::Specific(id) => vec![*id],
+                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
+                PlayerFilter::NotYou => game
+                    .players
+                    .iter()
+                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let cast_count: u32 = player_ids
+                .iter()
+                .map(|pid| game.spells_cast_this_turn.get(pid).copied().unwrap_or(0))
+                .sum();
+            Ok(cast_count >= *count)
+        }
         Condition::AttackedThisTurn => {
             Ok(game.players_attacked_this_turn.contains(&ctx.controller))
         }
+        Condition::OpponentLostLifeThisTurn => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            Ok(filter_ctx
+                .opponents
+                .iter()
+                .any(|opponent| game.life_lost_this_turn.get(opponent).copied().unwrap_or(0) > 0))
+        }
+        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => Ok(game
+            .permanents_left_battlefield_under_controller_this_turn
+            .get(&ctx.controller)
+            .copied()
+            .unwrap_or(0)
+            > 0),
         Condition::SourceWasCast => Ok(source_was_cast(
             game,
             ctx.source,
@@ -1554,6 +1722,23 @@ fn evaluate_condition(
                 source_obj.mana_spent_to_cast.total()
             };
             Ok(spent >= *amount)
+        }
+        Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return Ok(false);
+            };
+            let spent = &source_obj.mana_spent_to_cast;
+            let distinct_colors = [
+                spent.white > 0,
+                spent.blue > 0,
+                spent.black > 0,
+                spent.red > 0,
+                spent.green > 0,
+            ]
+            .into_iter()
+            .filter(|present| *present)
+            .count() as u32;
+            Ok(distinct_colors >= *amount)
         }
         Condition::FirstTimeThisTurn | Condition::MaxTimesEachTurn(_) => Ok(true),
         Condition::TriggeringObjectWasEnchanted => Ok(ctx

@@ -6464,6 +6464,53 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_legal_attackers_respects_graveyard_threshold_attack_restriction() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let threshold_card = CardBuilder::new(CardId::from_raw(903), "Threshold Raider Variant")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::new(
+                crate::card::PtValue::Fixed(3),
+                crate::card::PtValue::Fixed(2),
+            ))
+            .build();
+        let attacker_id = game.create_object_from_card(&threshold_card, alice, Zone::Battlefield);
+        game.object_mut(attacker_id)
+            .expect("threshold attacker exists")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::cant_attack_unless_condition(
+                    crate::static_abilities::CantAttackUnlessConditionSpec::ThereAreCardsInYourGraveyardOrMore(5),
+                    "Can't attack unless there are five or more cards in your graveyard",
+                ),
+            ));
+        game.remove_summoning_sickness(attacker_id);
+
+        game.refresh_continuous_state();
+        let options = compute_legal_attackers(&game, &CombatState::default());
+        assert!(
+            options.iter().all(|option| option.creature != attacker_id),
+            "attacker should not be legal before threshold is met"
+        );
+
+        for idx in 0..5 {
+            let filler =
+                CardBuilder::new(CardId::from_raw(1000 + idx), &format!("Filler {}", idx + 1))
+                    .card_types(vec![CardType::Creature])
+                    .build();
+            let _ = game.create_object_from_card(&filler, alice, Zone::Graveyard);
+        }
+
+        game.refresh_continuous_state();
+        let options = compute_legal_attackers(&game, &CombatState::default());
+        assert!(
+            options.iter().any(|option| option.creature == attacker_id),
+            "attacker should become legal after graveyard threshold is met"
+        );
+    }
+
+    #[test]
     fn test_compute_legal_blockers_respects_cant_block_alone_with_single_blocker() {
         use crate::cards::definitions::grizzly_bears;
         use crate::combat_state::AttackerInfo;
@@ -7513,7 +7560,9 @@ mod tests {
             crate::cards::CardDefinitionBuilder::new(CardId::from_raw(13000), "Sivvi Cast Probe")
                 .card_types(vec![CardType::Instant])
                 .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
-                .parse_text("Prevent all damage that would be dealt this turn to creatures you control.")
+                .parse_text(
+                    "Prevent all damage that would be dealt this turn to creatures you control.",
+                )
                 .expect("prevent-all damage line should parse as a non-targeted effect");
 
         let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);

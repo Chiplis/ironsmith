@@ -453,6 +453,18 @@ pub fn can_attack_defending_player(
         }
     }
 
+    for ability in &abilities {
+        if let Some(can_attack) = ability.can_attack_specific_defender(
+            game,
+            creature.id,
+            creature.controller,
+            defending_player,
+        ) && !can_attack
+        {
+            return false;
+        }
+    }
+
     true
 }
 
@@ -960,6 +972,55 @@ mod tests {
         island.subtypes = vec![crate::types::Subtype::Island];
         game.add_object(island);
 
+        assert!(can_attack_defending_player(&attacker, bob, &game));
+    }
+
+    #[test]
+    fn test_cant_attack_unless_defending_player_is_poisoned() {
+        let mut game = test_game_state();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Poison Seeker", 3, 2);
+        attacker.controller = alice;
+        add_ability(
+            &mut attacker,
+            StaticAbility::cant_attack_unless_condition(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned,
+                "Can't attack unless defending player is poisoned",
+            ),
+        );
+
+        assert!(!can_attack_defending_player(&attacker, bob, &game));
+        game.player_mut(bob)
+            .expect("defending player should exist")
+            .add_poison(1);
+        assert!(can_attack_defending_player(&attacker, bob, &game));
+    }
+
+    #[test]
+    fn test_cant_attack_unless_defending_player_is_the_monarch() {
+        let mut game = test_game_state();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let mut attacker = make_creature("Crown-Hunter Hireling Variant", 4, 4);
+        attacker.controller = alice;
+        add_ability(
+            &mut attacker,
+            StaticAbility::cant_attack_unless_condition(
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch,
+                "Can't attack unless defending player is the monarch",
+            ),
+        );
+
+        game.set_monarch(None);
+        assert!(!can_attack_defending_player(&attacker, bob, &game));
+
+        game.set_monarch(Some(alice));
+        assert!(!can_attack_defending_player(&attacker, bob, &game));
+
+        game.set_monarch(Some(bob));
         assert!(can_attack_defending_player(&attacker, bob, &game));
     }
 

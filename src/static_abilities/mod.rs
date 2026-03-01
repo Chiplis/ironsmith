@@ -198,6 +198,93 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
         None
     }
 
+    /// Defender-specific attack legality hook for "can't attack unless ...".
+    ///
+    /// Return:
+    /// - `Some(true)` if this ability allows attacking this defending player
+    /// - `Some(false)` if this ability forbids attacking this defending player
+    /// - `None` if this ability does not impose defender-specific attack legality
+    fn can_attack_specific_defender(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _defending_player: PlayerId,
+    ) -> Option<bool> {
+        None
+    }
+
+    /// Attacking-group legality hook for "can't attack unless ... also attacks" style clauses.
+    ///
+    /// Return:
+    /// - `Some(true)` if this source can attack with the provided attacker set
+    /// - `Some(false)` if this source cannot attack with the provided attacker set
+    /// - `None` if this ability does not depend on the full attacker set
+    fn can_attack_with_attacking_group(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _attacking_creatures: &[ObjectId],
+    ) -> Option<bool> {
+        None
+    }
+
+    /// Attack-cost payability hook for "can't attack unless you pay/sacrifice/return ..." clauses.
+    ///
+    /// Return:
+    /// - `Some(true)` if this source can currently pay this attack cost
+    /// - `Some(false)` if this source cannot currently pay this attack cost
+    /// - `None` if this ability does not impose an explicit attack cost
+    fn can_pay_attack_cost(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<bool> {
+        None
+    }
+
+    /// Generic mana contribution required to attack from this ability.
+    ///
+    /// Return `Some(n)` for explicit attack costs like "pay {1} for each ...";
+    /// return `None` when this ability does not add an attacker-paid mana component.
+    fn generic_attack_mana_cost_for_source(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<u32> {
+        None
+    }
+
+    /// Pays any non-mana attack cost imposed by this ability for the source.
+    ///
+    /// This is called only during attack declaration after legality checks pass.
+    /// Return:
+    /// - `Some(Ok(()))` when this ability imposes and successfully pays a non-mana attack cost
+    /// - `Some(Err(msg))` when paying that cost fails
+    /// - `None` when this ability has no non-mana attack payment
+    fn pay_non_mana_attack_cost(
+        &self,
+        _game: &mut GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<Result<(), String>> {
+        None
+    }
+
+    /// Returns the generic mana tax per attacking creature required to attack this ability's
+    /// controller directly.
+    fn generic_attack_tax_per_attacker_against_you(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<u32> {
+        None
+    }
+
     /// Returns required land subtype for "can't be blocked as long as defending player controls ...".
     fn required_defending_player_land_subtype_for_unblockable(
         &self,
@@ -294,6 +381,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync {
 
     /// Returns info for "as this enters, choose a color" abilities.
     fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
+        None
+    }
+
+    /// Returns info for "as this enters, choose a basic land type" abilities.
+    fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
         None
     }
 
@@ -492,6 +584,10 @@ pub struct ChooseColorAsEntersSpec {
     pub excluded: Option<crate::color::Color>,
 }
 
+/// Spec for "as this enters, choose a basic land type" abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ChooseBasicLandTypeAsEntersSpec;
+
 // Implement Clone for Box<dyn StaticAbilityKind>
 impl Clone for Box<dyn StaticAbilityKind> {
     fn clone(&self) -> Self {
@@ -526,6 +622,10 @@ impl StaticAbility {
 
     pub fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {
         self.0.color_choice_as_enters()
+    }
+
+    pub fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
+        self.0.basic_land_type_choice_as_enters()
     }
 
     pub fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
@@ -598,6 +698,66 @@ impl StaticAbility {
         &self,
     ) -> Option<crate::types::Subtype> {
         self.0.required_defending_player_land_subtype_for_attack()
+    }
+
+    pub fn can_attack_specific_defender(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        defending_player: PlayerId,
+    ) -> Option<bool> {
+        self.0
+            .can_attack_specific_defender(game, source, controller, defending_player)
+    }
+
+    pub fn can_attack_with_attacking_group(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacking_creatures: &[ObjectId],
+    ) -> Option<bool> {
+        self.0
+            .can_attack_with_attacking_group(game, source, controller, attacking_creatures)
+    }
+
+    pub fn generic_attack_tax_per_attacker_against_you(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<u32> {
+        self.0
+            .generic_attack_tax_per_attacker_against_you(game, source, controller)
+    }
+
+    pub fn can_pay_attack_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<bool> {
+        self.0.can_pay_attack_cost(game, source, controller)
+    }
+
+    pub fn generic_attack_mana_cost_for_source(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<u32> {
+        self.0
+            .generic_attack_mana_cost_for_source(game, source, controller)
+    }
+
+    pub fn pay_non_mana_attack_cost(
+        &self,
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<Result<(), String>> {
+        self.0.pay_non_mana_attack_cost(game, source, controller)
     }
 
     pub fn required_defending_player_land_subtype_for_unblockable(
@@ -965,6 +1125,10 @@ impl StaticAbility {
         Self::new(CantAttackUnlessControllerCastCreatureSpellThisTurn)
     }
 
+    pub fn cant_attack_unless_controller_cast_noncreature_spell_this_turn() -> Self {
+        Self::new(CantAttackUnlessControllerCastNonCreatureSpellThisTurn)
+    }
+
     pub fn cant_block() -> Self {
         Self::new(CantBlock)
     }
@@ -979,6 +1143,22 @@ impl StaticAbility {
         Self::new(CantAttackUnlessDefendingPlayerControlsLandSubtype::new(
             subtype,
         ))
+    }
+
+    pub fn cant_attack_unless_condition(
+        condition: CantAttackUnlessConditionSpec,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(CantAttackUnlessCondition::new(condition, display))
+    }
+
+    pub fn cant_attack_you_unless_controller_pays_per_attacker(amount: u32) -> Self {
+        Self::new(CantAttackYouUnlessControllerPaysPerAttacker::new(amount))
+    }
+
+    pub fn cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control()
+    -> Self {
+        Self::new(CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl)
     }
 
     pub fn must_block() -> Self {
@@ -1388,6 +1568,14 @@ impl StaticAbility {
 
     pub fn choose_color_as_enters(excluded: Option<crate::color::Color>, display: String) -> Self {
         Self::new(ChooseColorAsEnters::new(excluded, display))
+    }
+
+    pub fn choose_basic_land_type_as_enters(display: String) -> Self {
+        Self::new(ChooseBasicLandTypeAsEnters::new(display))
+    }
+
+    pub fn enchanted_land_is_chosen_type(display: String) -> Self {
+        Self::new(EnchantedLandIsChosenType::new(display))
     }
 
     pub fn redirect_damage_from_you_and_other_permanents_to_source() -> Self {

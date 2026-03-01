@@ -2246,6 +2246,53 @@ impl StaticAbilityKind for ControlAttachedPermanent {
     }
 }
 
+/// "Enchanted land is the chosen type."
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnchantedLandIsChosenType {
+    pub display: String,
+}
+
+impl EnchantedLandIsChosenType {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for EnchantedLandIsChosenType {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EnchantedLandIsChosenType
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_type) = game.chosen_basic_land_type(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::AttachedTo(source),
+                Modification::SetSubtypes(vec![chosen_type]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// Permanents matching a filter have an activated or triggered ability.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantObjectAbilityForFilter {

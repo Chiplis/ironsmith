@@ -2813,7 +2813,9 @@ fn resolve_value_with_context(
         | Value::HalfLifeTotalRoundedDown(_)
         | Value::CardsInHand(_)
         | Value::LifeGainedThisTurn(_)
+        | Value::LifeLostThisTurn(_)
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)
+        | Value::MaxCardsDrawnThisTurn(_)
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)
@@ -2829,6 +2831,7 @@ fn resolve_value_with_context(
         | Value::TimesPaidLabel(_)
         | Value::TimesPaid(_)
         | Value::KickCount
+        | Value::MagicGamesLostToOpponentsSinceLastWin
         | Value::TaggedCount
         | Value::EventValue(_)
         | Value::EventValueOffset(_, _) => 0,

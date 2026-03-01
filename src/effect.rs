@@ -599,8 +599,14 @@ pub enum Value {
     /// Total life gained this turn by players matching the filter.
     LifeGainedThisTurn(PlayerFilter),
 
+    /// Total life lost this turn by players matching the filter.
+    LifeLostThisTurn(PlayerFilter),
+
     /// Total noncombat damage dealt this turn to players matching the filter.
     NoncombatDamageDealtToPlayersThisTurn(PlayerFilter),
+
+    /// The greatest number of cards drawn this turn among players matching a filter.
+    MaxCardsDrawnThisTurn(PlayerFilter),
 
     /// The greatest number of cards in hand among players matching a filter.
     ///
@@ -691,6 +697,13 @@ pub enum Value {
     /// The number of times the kicker was paid.
     /// Convenience for multikicker cards.
     KickCount,
+
+    /// Number of Magic games you've lost to one of your opponents since
+    /// you last won a game against them.
+    ///
+    /// This is an out-of-game silver-border statistic and currently resolves
+    /// to 0 unless a host integrates match-history state.
+    MagicGamesLostToOpponentsSinceLastWin,
 
     /// The number of counters of a specific type on the source permanent.
     CountersOnSource(CounterType),
@@ -1537,6 +1550,12 @@ pub enum Condition {
     /// A specific player has N or fewer cards in hand.
     PlayerCardsInHandOrFewer { player: PlayerFilter, count: i32 },
 
+    /// You have a card in hand matching the filter.
+    ///
+    /// Used for reveal-optional ETB clauses where revealing from hand avoids
+    /// entering tapped.
+    YouHaveCardInHandMatching(ObjectFilter),
+
     /// It's your turn
     YourTurn,
 
@@ -1546,8 +1565,17 @@ pub enum Condition {
     /// You cast a spell this turn
     CastSpellThisTurn,
 
+    /// A specific player cast N or more spells this turn.
+    PlayerCastSpellsThisTurnOrMore { player: PlayerFilter, count: u32 },
+
     /// You attacked with one or more creatures this turn
     AttackedThisTurn,
+
+    /// An opponent lost life this turn.
+    OpponentLostLifeThisTurn,
+
+    /// A permanent left the battlefield under your control this turn.
+    PermanentLeftBattlefieldUnderYourControlThisTurn,
 
     /// This source object entered as a spell that was cast.
     SourceWasCast,
@@ -1621,6 +1649,9 @@ pub enum Condition {
         amount: u32,
         symbol: Option<ManaSymbol>,
     },
+
+    /// At least N distinct colors of mana were spent to cast this spell.
+    ColorsOfManaSpentToCastThisSpellOrMore(u32),
 
     /// You control your commander on the battlefield.
     /// Used for Commander-specific effects like Akroma's Will.

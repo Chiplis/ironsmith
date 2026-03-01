@@ -277,6 +277,12 @@ pub(crate) fn parse_static_ability_line(
     if let Some(ability) = parse_conditional_source_spell_keyword_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
+    if let Some(ability) = parse_choose_basic_land_type_as_enters_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
+    if let Some(ability) = parse_enchanted_land_is_chosen_type_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     if let Some(ability) = parse_static_text_marker_line(tokens) {
         return Ok(Some(vec![ability]));
     }
@@ -556,6 +562,9 @@ pub(crate) fn parse_static_ability_line(
         return Ok(Some(vec![ability]));
     }
     if let Some(ability) = parse_enters_with_additional_counter_for_filter_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
+    if let Some(ability) = parse_reveal_from_hand_or_enters_tapped_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
     if let Some(ability) = parse_conditional_enters_tapped_unless_line(tokens)? {
@@ -1444,6 +1453,80 @@ pub(crate) fn parse_damage_not_removed_cleanup_line(
         return Ok(Some(StaticAbility::damage_not_removed_during_cleanup()));
     }
     Ok(None)
+}
+
+pub(crate) fn parse_choose_basic_land_type_as_enters_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.len() < 8 || words[0] != "as" {
+        return Ok(None);
+    }
+
+    let mut idx = 1;
+    let display_subject = if words.get(idx) == Some(&"this") {
+        idx += 1;
+        if words.get(idx) == Some(&"aura") {
+            idx += 1;
+            "this Aura"
+        } else {
+            "this"
+        }
+    } else if words.get(idx) == Some(&"it") {
+        idx += 1;
+        "it"
+    } else {
+        return Ok(None);
+    };
+
+    if words.get(idx) != Some(&"enters") {
+        return Ok(None);
+    }
+    idx += 1;
+
+    if words.get(idx) == Some(&"the") && words.get(idx + 1) == Some(&"battlefield") {
+        idx += 2;
+    }
+
+    if words.get(idx) != Some(&"choose") {
+        return Ok(None);
+    }
+    idx += 1;
+
+    if words.get(idx) == Some(&"a") {
+        idx += 1;
+    }
+
+    if words.get(idx) != Some(&"basic")
+        || words.get(idx + 1) != Some(&"land")
+        || words.get(idx + 2) != Some(&"type")
+    {
+        return Ok(None);
+    }
+    idx += 3;
+
+    if idx != words.len() {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::choose_basic_land_type_as_enters(
+        format!("As {display_subject} enters, choose a basic land type."),
+    )))
+}
+
+pub(crate) fn parse_enchanted_land_is_chosen_type_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    let matches = words.as_slice() == ["enchanted", "land", "is", "the", "chosen", "type"]
+        || words.as_slice() == ["enchanted", "land", "is", "chosen", "type"];
+    if !matches {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::enchanted_land_is_chosen_type(
+        "Enchanted land is the chosen type.".to_string(),
+    )))
 }
 
 pub(crate) fn parse_choose_color_as_enters_line(
@@ -2865,10 +2948,17 @@ pub(crate) fn parse_spells_cost_modifier_line(
         // Wording like "{G} less for each green creature you control" is still a dynamic
         // reduction even though the printed amount is a colored symbol. Model as a generic
         // dynamic reduction so the clause remains playable.
+        let multiplier = parsed_amount
+            .as_ref()
+            .and_then(|(value, _)| match value {
+                Value::Fixed(value) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or(1);
         if parsed_mana_cost.is_some() {
             parsed_mana_cost = None;
         }
-        amount_value = dynamic_value;
+        amount_value = scale_dynamic_cost_modifier_value(dynamic_value, multiplier);
     } else if parsed_amount.is_none() && parsed_mana_cost.is_none() {
         return Err(CardTextError::ParseError(
             "missing cost modifier amount".to_string(),
@@ -6628,15 +6718,43 @@ pub(crate) fn parse_enters_tapped_with_counters_line(
 pub(crate) fn parse_enters_with_counters_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = words(tokens);
-    let enters_idx = words
+    let full_words = words(tokens);
+    let mut condition: Option<(crate::ConditionExpr, String)> = None;
+    let mut clause_tokens: Vec<Token> = tokens.to_vec();
+
+    // Support leading conditional form:
+    // "If <condition>, it enters with ..."
+    if clause_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if"))
+        && let Some(comma_idx) = clause_tokens
+            .iter()
+            .position(|token| matches!(token, Token::Comma(_)))
+    {
+        let condition_tokens = trim_commas(&clause_tokens[1..comma_idx]);
+        if !condition_tokens.is_empty() {
+            let parsed =
+                parse_enters_with_counter_condition_clause(&condition_tokens).ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported leading enters-with-counter condition (clause: '{}')",
+                        full_words.join(" ")
+                    ))
+                })?;
+            let display = words(&condition_tokens).join(" ");
+            condition = Some((parsed, display));
+            clause_tokens = trim_commas(&clause_tokens[comma_idx + 1..]);
+        }
+    }
+
+    let clause_words = words(&clause_tokens);
+    let enters_idx = clause_words
         .iter()
         .position(|word| *word == "enters")
         .unwrap_or(usize::MAX);
-    let Some(enter_token_idx) = token_index_for_word_index(tokens, enters_idx) else {
+    let Some(enter_token_idx) = token_index_for_word_index(&clause_tokens, enters_idx) else {
         return Ok(None);
     };
-    if tokens[..enter_token_idx].iter().any(|token| {
+    if clause_tokens[..enter_token_idx].iter().any(|token| {
         matches!(
             token,
             Token::Period(_) | Token::Colon(_) | Token::Semicolon(_)
@@ -6644,36 +6762,51 @@ pub(crate) fn parse_enters_with_counters_line(
     }) {
         return Ok(None);
     }
-    let subject_words = words.get(..enters_idx).unwrap_or_default();
-    if !is_source_reference_words(subject_words) {
+    let subject_words = clause_words.get(..enters_idx).unwrap_or_default();
+    let source_pronoun_subject = matches!(subject_words, ["it"] | ["its"]);
+    if !is_source_reference_words(subject_words) && !source_pronoun_subject {
         return Ok(None);
     }
-    if !words.contains(&"with")
-        || !words
+    if !clause_words.contains(&"with")
+        || !clause_words
             .iter()
             .any(|word| *word == "counter" || *word == "counters")
     {
         return Ok(None);
     }
 
-    let with_idx = tokens
+    let with_idx = clause_tokens
         .iter()
         .position(|token| token.is_word("with"))
         .ok_or_else(|| {
             CardTextError::ParseError("missing 'with' in enters-with-counters clause".to_string())
         })?;
-    let after_with = &tokens[with_idx + 1..];
-    let (mut count, used) = parse_value(after_with).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing counter count in self ETB counters (clause: '{}')",
-            words.join(" ")
-        ))
-    })?;
+    let after_with = &clause_tokens[with_idx + 1..];
+    let (mut count, used) = if after_with
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        && after_with
+            .get(1)
+            .is_some_and(|token| token.is_word("additional"))
+    {
+        if let Some((value, value_used)) = parse_value(&after_with[2..]) {
+            (value, 2 + value_used)
+        } else {
+            (Value::Fixed(1), 2)
+        }
+    } else {
+        parse_value(after_with).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing counter count in self ETB counters (clause: '{}')",
+                full_words.join(" ")
+            ))
+        })?
+    };
 
     let counter_type = parse_counter_type_from_tokens(&after_with[used..]).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported counter type for self ETB counters (clause: '{}')",
-            words.join(" ")
+            full_words.join(" ")
         ))
     })?;
 
@@ -6683,7 +6816,7 @@ pub(crate) fn parse_enters_with_counters_line(
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing counter keyword for self ETB counters (clause: '{}')",
-                words.join(" ")
+                full_words.join(" ")
             ))
         })?;
     let mut tail = &after_with[counter_idx + 1..];
@@ -6710,17 +6843,56 @@ pub(crate) fn parse_enters_with_counters_line(
     let tail_has_words = tail.iter().any(|token| token.as_word().is_some());
     if tail_has_words {
         let tail_words = tail.iter().filter_map(Token::as_word).collect::<Vec<_>>();
-        if tail_words.starts_with(&["if", "you", "attacked", "this", "turn"])
-            || tail_words.starts_with(&["if", "youve", "attacked", "this", "turn"])
-        {
-            return Ok(Some(StaticAbility::enters_with_counters_if_condition(
-                counter_type,
-                count,
-                crate::ConditionExpr::AttackedThisTurn,
-                "you attacked this turn".to_string(),
-            )));
-        }
-        if tail_words.starts_with(&["for", "each", "creature", "that", "died", "this", "turn"])
+        if tail_words.first().copied() == Some("if") {
+            let condition_tokens = trim_commas(&tail[1..]);
+            let parsed =
+                parse_enters_with_counter_condition_clause(&condition_tokens).ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported enters-with-counter condition (clause: '{}')",
+                        full_words.join(" ")
+                    ))
+                })?;
+            let display = words(&condition_tokens).join(" ");
+            condition = Some(combine_enters_with_counter_conditions(
+                condition,
+                (parsed, display),
+            ));
+        } else if tail_words.first().copied() == Some("unless") {
+            let condition_tokens = trim_commas(&tail[1..]);
+            let parsed =
+                parse_enters_with_counter_condition_clause(&condition_tokens).ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported enters-with-counter unless condition (clause: '{}')",
+                        full_words.join(" ")
+                    ))
+                })?;
+            let display = parse_unless_enters_with_counter_condition_display(&condition_tokens)
+                .unwrap_or_else(|| format!("not {}", words(&condition_tokens).join(" ")));
+            condition = Some(combine_enters_with_counter_conditions(
+                condition,
+                (crate::ConditionExpr::Not(Box::new(parsed)), display),
+            ));
+        } else if tail_words.starts_with(&["plus"]) {
+            let for_each_idx = tail
+                .windows(2)
+                .position(|window| window[0].is_word("for") && window[1].is_word("each"));
+            if let Some(for_each_idx) = for_each_idx {
+                let extra =
+                    parse_dynamic_cost_modifier_value(&tail[for_each_idx..])?.ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unsupported additional self ETB counter clause (clause: '{}')",
+                            full_words.join(" ")
+                        ))
+                    })?;
+                count = Value::Add(Box::new(count), Box::new(extra));
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported plus-self ETB counter clause (clause: '{}')",
+                    full_words.join(" ")
+                )));
+            }
+        } else if tail_words
+            .starts_with(&["for", "each", "creature", "that", "died", "this", "turn"])
             || tail_words.starts_with(&["for", "each", "creatures", "that", "died", "this", "turn"])
         {
             count = Value::CreaturesDiedThisTurn;
@@ -6745,20 +6917,359 @@ pub(crate) fn parse_enters_with_counters_line(
             "turn",
         ]) {
             count = Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You);
+        } else if tail_words.starts_with(&["for", "each", "time", "it", "was", "kicked"])
+            || tail_words.starts_with(&["for", "each", "time", "this", "spell", "was", "kicked"])
+        {
+            count = Value::KickCount;
+        } else if tail_words
+            == [
+                "for",
+                "each",
+                "magic",
+                "game",
+                "you",
+                "have",
+                "lost",
+                "to",
+                "one",
+                "of",
+                "your",
+                "opponents",
+                "since",
+                "you",
+                "last",
+                "won",
+                "a",
+                "game",
+                "against",
+                "them",
+            ]
+            || tail_words
+                == [
+                    "for",
+                    "each",
+                    "magic",
+                    "games",
+                    "you",
+                    "have",
+                    "lost",
+                    "to",
+                    "one",
+                    "of",
+                    "your",
+                    "opponents",
+                    "since",
+                    "you",
+                    "last",
+                    "won",
+                    "a",
+                    "game",
+                    "against",
+                    "them",
+                ]
+        {
+            count = Value::MagicGamesLostToOpponentsSinceLastWin;
+        } else if tail_words.starts_with(&["for", "each"]) {
+            count = parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported for-each self ETB counter clause (clause: '{}')",
+                    full_words.join(" ")
+                ))
+            })?;
+        } else if tail_words.starts_with(&["equal", "to"]) {
+            count = parse_enters_with_counter_equal_to_value_clause(&tail).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported equal-to self ETB counter clause (clause: '{}')",
+                    full_words.join(" ")
+                ))
+            })?;
         } else {
             count = parse_where_x_value_clause(&tail).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported trailing self ETB counter clause (clause: '{}')",
-                    words.join(" ")
+                    full_words.join(" ")
                 ))
             })?;
         }
+    }
+
+    if let Some((condition, display)) = condition {
+        return Ok(Some(StaticAbility::enters_with_counters_if_condition(
+            counter_type,
+            count,
+            condition,
+            display,
+        )));
     }
 
     Ok(Some(StaticAbility::enters_with_counters_value(
         counter_type,
         count,
     )))
+}
+
+fn combine_enters_with_counter_conditions(
+    existing: Option<(crate::ConditionExpr, String)>,
+    next: (crate::ConditionExpr, String),
+) -> (crate::ConditionExpr, String) {
+    match existing {
+        Some((existing_condition, existing_display)) => {
+            let combined_condition =
+                crate::ConditionExpr::And(Box::new(existing_condition), Box::new(next.0));
+            let combined_display =
+                match (existing_display.trim().is_empty(), next.1.trim().is_empty()) {
+                    (true, true) => String::new(),
+                    (false, true) => existing_display,
+                    (true, false) => next.1,
+                    (false, false) => format!("{} and {}", existing_display.trim(), next.1.trim()),
+                };
+            (combined_condition, combined_display)
+        }
+        None => next,
+    }
+}
+
+fn parse_unless_enters_with_counter_condition_display(tokens: &[Token]) -> Option<String> {
+    let condition_words = words(tokens);
+    if condition_words.len() >= 11
+        && condition_words.get(1).copied() == Some("or")
+        && condition_words.get(2).copied() == Some("more")
+        && matches!(condition_words.get(3).copied(), Some("color" | "colors"))
+        && condition_words.get(4).copied() == Some("of")
+        && condition_words.get(5).copied() == Some("mana")
+        && matches!(condition_words.get(6).copied(), Some("was" | "were"))
+        && condition_words.get(7).copied() == Some("spent")
+        && condition_words.get(8).copied() == Some("to")
+        && condition_words.get(9).copied() == Some("cast")
+        && (condition_words.get(10).copied() == Some("it")
+            || condition_words.get(10).copied() == Some("this"))
+    {
+        let amount = condition_words.first().copied().unwrap_or("1");
+        return Some(format!(
+            "fewer than {amount} colors of mana were spent to cast it"
+        ));
+    }
+    None
+}
+
+fn parse_enters_with_counter_condition_clause(tokens: &[Token]) -> Option<crate::ConditionExpr> {
+    let condition_tokens = trim_edge_punctuation(tokens);
+    let condition_words = words(&condition_tokens);
+    if condition_words.is_empty() {
+        return None;
+    }
+
+    if condition_words == ["you", "attacked", "this", "turn"]
+        || condition_words == ["youve", "attacked", "this", "turn"]
+    {
+        return Some(crate::ConditionExpr::AttackedThisTurn);
+    }
+    if condition_words == ["a", "creature", "died", "this", "turn"]
+        || condition_words == ["one", "or", "more", "creatures", "died", "this", "turn"]
+    {
+        return Some(crate::ConditionExpr::CreatureDiedThisTurn);
+    }
+    if condition_words == ["an", "opponent", "lost", "life", "this", "turn"]
+        || condition_words
+            == [
+                "one",
+                "or",
+                "more",
+                "opponents",
+                "lost",
+                "life",
+                "this",
+                "turn",
+            ]
+    {
+        return Some(crate::ConditionExpr::OpponentLostLifeThisTurn);
+    }
+    if condition_words
+        == [
+            "a",
+            "permanent",
+            "left",
+            "the",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn",
+        ]
+        || condition_words
+            == [
+                "one",
+                "or",
+                "more",
+                "permanents",
+                "left",
+                "the",
+                "battlefield",
+                "under",
+                "your",
+                "control",
+                "this",
+                "turn",
+            ]
+    {
+        return Some(crate::ConditionExpr::PermanentLeftBattlefieldUnderYourControlThisTurn);
+    }
+    if condition_words
+        == [
+            "it", "wasnt", "cast", "or", "no", "mana", "was", "spent", "to", "cast", "it",
+        ]
+    {
+        return Some(crate::ConditionExpr::Or(
+            Box::new(crate::ConditionExpr::Not(Box::new(
+                crate::ConditionExpr::SourceWasCast,
+            ))),
+            Box::new(crate::ConditionExpr::Not(Box::new(
+                crate::ConditionExpr::ManaSpentToCastThisSpellAtLeast {
+                    amount: 1,
+                    symbol: None,
+                },
+            ))),
+        ));
+    }
+
+    if condition_words.len() == 5
+        && condition_words[0] == "x"
+        && condition_words[1] == "is"
+        && condition_words[3] == "or"
+        && condition_words[4] == "more"
+    {
+        let amount_tokens = [Token::Word(
+            condition_words[2].to_string(),
+            TextSpan::synthetic(),
+        )];
+        if let Some((amount, _)) = parse_number(&amount_tokens) {
+            return Some(crate::ConditionExpr::XValueAtLeast(amount));
+        }
+    }
+
+    if condition_words.len() >= 7 {
+        let (count_word_idx, valid_prefix) = if condition_words.starts_with(&["youve", "cast"]) {
+            (2usize, true)
+        } else if condition_words.starts_with(&["you", "cast"]) {
+            (2usize, true)
+        } else if condition_words.starts_with(&["you", "have", "cast"]) {
+            (3usize, true)
+        } else {
+            (0usize, false)
+        };
+        if valid_prefix
+            && condition_words.get(count_word_idx + 1).copied() == Some("or")
+            && condition_words.get(count_word_idx + 2).copied() == Some("more")
+            && matches!(
+                condition_words.get(count_word_idx + 3).copied(),
+                Some("spell" | "spells")
+            )
+            && condition_words.get(count_word_idx + 4).copied() == Some("this")
+            && condition_words.get(count_word_idx + 5).copied() == Some("turn")
+        {
+            let amount_tokens = [Token::Word(
+                condition_words[count_word_idx].to_string(),
+                TextSpan::synthetic(),
+            )];
+            if let Some((amount, _)) = parse_number(&amount_tokens) {
+                return Some(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+                    player: PlayerFilter::You,
+                    count: amount,
+                });
+            }
+        }
+    }
+
+    if condition_words.len() >= 11
+        && condition_words.get(1).copied() == Some("or")
+        && condition_words.get(2).copied() == Some("more")
+        && matches!(condition_words.get(3).copied(), Some("color" | "colors"))
+        && condition_words.get(4).copied() == Some("of")
+        && condition_words.get(5).copied() == Some("mana")
+        && matches!(condition_words.get(6).copied(), Some("was" | "were"))
+        && condition_words.get(7).copied() == Some("spent")
+        && condition_words.get(8).copied() == Some("to")
+        && condition_words.get(9).copied() == Some("cast")
+        && (condition_words.get(10).copied() == Some("it")
+            || (condition_words.get(10).copied() == Some("this")
+                && condition_words.get(11).copied() == Some("spell")))
+    {
+        let amount_tokens = [Token::Word(
+            condition_words[0].to_string(),
+            TextSpan::synthetic(),
+        )];
+        if let Some((amount, _)) = parse_number(&amount_tokens) {
+            return Some(crate::ConditionExpr::ColorsOfManaSpentToCastThisSpellOrMore(amount));
+        }
+    }
+
+    // Cast-time reveal/control checks aren't yet tracked as structured state.
+    if condition_words.starts_with(&[
+        "you",
+        "revealed",
+        "a",
+        "dragon",
+        "card",
+        "or",
+        "controlled",
+        "a",
+        "dragon",
+        "as",
+        "you",
+        "cast",
+        "this",
+        "spell",
+    ]) {
+        return Some(crate::ConditionExpr::Unmodeled(condition_words.join(" ")));
+    }
+
+    parse_static_condition_clause(&condition_tokens).ok()
+}
+
+fn parse_enters_with_counter_equal_to_value_clause(tokens: &[Token]) -> Option<Value> {
+    let trimmed = trim_edge_punctuation(tokens);
+    let words_all = words(&trimmed);
+    if !words_all.starts_with(&["equal", "to"]) {
+        return None;
+    }
+
+    if trimmed.len() < 2 {
+        return None;
+    }
+
+    let mut where_tokens = Vec::with_capacity(trimmed.len() + 1);
+    where_tokens.push(Token::Word("where".to_string(), TextSpan::synthetic()));
+    where_tokens.push(Token::Word("x".to_string(), TextSpan::synthetic()));
+    where_tokens.push(Token::Word("is".to_string(), TextSpan::synthetic()));
+    where_tokens.extend_from_slice(&trimmed[2..]);
+
+    parse_where_x_value_clause(&where_tokens)
+        .or_else(|| parse_equal_to_greatest_cards_drawn_this_turn_value(&trimmed))
+        .or_else(|| parse_add_mana_equal_amount_value(&trimmed))
+        .or_else(|| parse_equal_to_aggregate_filter_value(&trimmed))
+        .or_else(|| parse_equal_to_number_of_filter_plus_or_minus_fixed_value(&trimmed))
+        .or_else(|| parse_equal_to_number_of_filter_value(&trimmed))
+        .or_else(|| parse_equal_to_number_of_opponents_you_have_value(&trimmed))
+        .or_else(|| parse_equal_to_number_of_counters_on_reference_value(&trimmed))
+}
+
+fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[Token]) -> Option<Value> {
+    let words_all = words(tokens);
+    if words_all
+        == [
+            "equal", "to", "the", "greatest", "number", "of", "cards", "an", "opponent", "has",
+            "drawn", "this", "turn",
+        ]
+        || words_all
+            == [
+                "equal", "to", "greatest", "number", "of", "cards", "an", "opponent", "has",
+                "drawn", "this", "turn",
+            ]
+    {
+        return Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent));
+    }
+    None
 }
 
 pub(crate) fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
@@ -6772,6 +7283,10 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[Token]) -> Option<Value> {
     }
 
     if let Some(value) = parse_where_x_life_gained_this_turn_value(tokens) {
+        return Some(value);
+    }
+
+    if let Some(value) = parse_where_x_life_lost_this_turn_value(tokens) {
         return Some(value);
     }
 
@@ -6880,6 +7395,56 @@ pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[Token]) -> Opt
         | Some(["amount", "of", "life", "you", "gained", "this", "turn"]) => {
             Some(Value::LifeGainedThisTurn(PlayerFilter::You))
         }
+        Some(
+            [
+                "the",
+                "amount",
+                "of",
+                "life",
+                "youve",
+                "gained",
+                "this",
+                "turn",
+            ],
+        )
+        | Some(["amount", "of", "life", "youve", "gained", "this", "turn"]) => {
+            Some(Value::LifeGainedThisTurn(PlayerFilter::You))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn parse_where_x_life_lost_this_turn_value(tokens: &[Token]) -> Option<Value> {
+    let words = words(tokens);
+    if !words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+    match words.get(3..) {
+        Some(
+            [
+                "the",
+                "total",
+                "life",
+                "lost",
+                "by",
+                "your",
+                "opponents",
+                "this",
+                "turn",
+            ],
+        )
+        | Some(
+            [
+                "total",
+                "life",
+                "lost",
+                "by",
+                "your",
+                "opponents",
+                "this",
+                "turn",
+            ],
+        ) => Some(Value::LifeLostThisTurn(PlayerFilter::Opponent)),
         _ => None,
     }
 }
@@ -7288,6 +7853,151 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
         filter.controller = Some(controller);
     }
     Ok(Some(StaticAbility::enters_tapped_for_filter(filter)))
+}
+
+pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["as", "this", "land", "enters"]) {
+        return Ok(None);
+    }
+    if !clause_words.contains(&"reveal")
+        || !clause_words.contains(&"from")
+        || !clause_words.contains(&"hand")
+    {
+        return Ok(None);
+    }
+
+    let Some(reveal_word_idx) = clause_words.iter().position(|word| *word == "reveal") else {
+        return Err(CardTextError::ParseError(format!(
+            "missing 'reveal' keyword in land ETB reveal clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    let Some(from_hand_word_idx) = (reveal_word_idx + 1..clause_words.len().saturating_sub(2))
+        .find(|idx| {
+            clause_words[*idx] == "from"
+                && clause_words[*idx + 1] == "your"
+                && clause_words[*idx + 2] == "hand"
+        })
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported reveal source in land ETB reveal clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    let Some(reveal_filter_start_token_idx) =
+        token_index_for_word_index(tokens, reveal_word_idx + 1)
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "missing reveal filter start in land ETB reveal clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    let Some(reveal_filter_end_token_idx) = token_index_for_word_index(tokens, from_hand_word_idx)
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "missing reveal filter end in land ETB reveal clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    let reveal_filter_tokens =
+        trim_edge_punctuation(&tokens[reveal_filter_start_token_idx..reveal_filter_end_token_idx]);
+    if reveal_filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing reveal filter in land ETB reveal clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    let reveal_filter = parse_object_filter(&reveal_filter_tokens, false)?;
+    let reveal_condition = crate::ConditionExpr::YouHaveCardInHandMatching(reveal_filter);
+
+    // Pattern A: "... If you don't, this land enters tapped."
+    if let Some(if_you_dont_idx) = clause_words
+        .windows(3)
+        .position(|window| window == ["if", "you", "dont"])
+    {
+        let trailing = &clause_words[if_you_dont_idx + 3..];
+        let valid_trailing = trailing.starts_with(&["this", "land", "enters", "tapped"])
+            || trailing.starts_with(&["this", "land", "enter", "tapped"])
+            || trailing.starts_with(&["it", "enters", "tapped"])
+            || trailing.starts_with(&["it", "enter", "tapped"])
+            || trailing.starts_with(&["it", "enters", "the", "battlefield", "tapped"])
+            || trailing.starts_with(&["it", "enter", "the", "battlefield", "tapped"]);
+        if !valid_trailing {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported land ETB reveal trailing clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        parser_trace("parse_static:land-reveal-or-enter-tapped:matched", tokens);
+        return Ok(Some(StaticAbility::enters_tapped_unless_condition(
+            reveal_condition,
+            clause_words.join(" "),
+        )));
+    }
+
+    // Pattern B: "... This land enters tapped unless you revealed ... this way or you control ..."
+    let Some(unless_idx) = clause_words.iter().position(|word| *word == "unless") else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported land ETB reveal clause (expected 'if you don't' or 'unless') (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    let before_unless = &clause_words[..unless_idx];
+    if !before_unless
+        .windows(2)
+        .any(|window| window == ["enters", "tapped"] || window == ["enter", "tapped"])
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported land ETB reveal unless-prefix (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let mut condition = reveal_condition;
+    if let Some(or_idx_rel) = clause_words[unless_idx + 1..]
+        .iter()
+        .position(|word| *word == "or")
+    {
+        let or_idx = unless_idx + 1 + or_idx_rel;
+        let Some(control_word_idx) = (or_idx + 1..clause_words.len())
+            .find(|idx| clause_words[*idx] == "control" || clause_words[*idx] == "controls")
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported land ETB reveal disjunction (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        let Some(control_filter_start_token_idx) =
+            token_index_for_word_index(tokens, control_word_idx + 1)
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "missing control filter in land ETB reveal clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        let control_filter_tokens =
+            trim_edge_punctuation(&tokens[control_filter_start_token_idx..]);
+        if control_filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing control filter in land ETB reveal clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let control_filter = parse_object_filter(&control_filter_tokens, false)?;
+        condition = crate::ConditionExpr::Or(
+            Box::new(condition),
+            Box::new(crate::ConditionExpr::YouControl(control_filter)),
+        );
+    }
+
+    parser_trace("parse_static:land-reveal-or-enter-tapped:matched", tokens);
+    Ok(Some(StaticAbility::enters_tapped_unless_condition(
+        condition,
+        clause_words.join(" "),
+    )))
 }
 
 pub(crate) fn parse_conditional_enters_tapped_unless_line(

@@ -71,6 +71,12 @@ fn queue_triggers_from_event(
             .entry(life_gain_event.player)
             .or_insert(0) += life_gain_event.amount;
     }
+    if let Some(life_loss_event) = event.downcast::<LifeLossEvent>() {
+        *game
+            .life_lost_this_turn
+            .entry(life_loss_event.player)
+            .or_insert(0) += life_loss_event.amount;
+    }
     if let Some(keyword_action_event) = event.downcast::<KeywordActionEvent>()
         && keyword_action_event.action == KeywordActionKind::CommitCrime
     {

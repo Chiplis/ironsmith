@@ -192,6 +192,257 @@ fn parse_line_look_top_card_any_time_is_rule_text_placeholder() {
 }
 
 #[test]
+fn parse_line_collective_restraint_domain_attack_tax_prefers_typed_static() {
+    let parsed = parse_line(
+        "Creatures can't attack you unless their controller pays {X} for each creature they control that's attacking you, where X is the number of basic land types among lands you control.",
+        0,
+    )
+    .expect("parse collective restraint domain attack tax line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(
+        ability.id(),
+        StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
+    );
+}
+
+#[test]
+fn parse_line_fixed_attack_tax_prefers_typed_static() {
+    let parsed = parse_line(
+        "Creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.",
+        0,
+    )
+    .expect("parse fixed attack tax line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(
+        ability.id(),
+        StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttacker
+    );
+}
+
+#[test]
+fn parse_line_cant_attack_unless_defending_player_controls_island_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless defending player controls an Island.",
+        0,
+    )
+    .expect("parse cant-attack-unless-defending-player-controls-island line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(
+        ability.id(),
+        StaticAbilityId::CantAttackUnlessDefendingPlayerControlsLandSubtype
+    );
+}
+
+#[test]
+fn parse_line_cant_attack_unless_cast_creature_spell_this_turn_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless you've cast a creature spell this turn.",
+        0,
+    )
+    .expect("parse cant-attack-unless-cast-creature-spell line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(
+        ability.id(),
+        StaticAbilityId::CantAttackUnlessControllerCastCreatureSpellThisTurn
+    );
+}
+
+#[test]
+fn parse_line_cant_attack_unless_cast_noncreature_spell_this_turn_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless you've cast a noncreature spell this turn.",
+        0,
+    )
+    .expect("parse cant-attack-unless-cast-noncreature-spell line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(
+        ability.id(),
+        StaticAbilityId::CantAttackUnlessControllerCastNonCreatureSpellThisTurn
+    );
+}
+
+#[test]
+fn parse_line_cant_attack_unless_control_more_creatures_than_defending_player_prefers_typed_static()
+{
+    let parsed = parse_line(
+        "This creature can't attack unless you control more creatures than defending player.",
+        0,
+    )
+    .expect("parse cant-attack-unless-control-more-creatures line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
+fn parse_line_cant_attack_unless_defending_player_is_poisoned_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless defending player is poisoned.",
+        0,
+    )
+    .expect("parse cant-attack-unless-defending-player-is-poisoned line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
+fn parse_line_cant_attack_unless_an_opponent_was_dealt_damage_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless an opponent has been dealt damage this turn.",
+        0,
+    )
+    .expect("parse cant-attack-unless-opponent-damaged line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
+fn parse_line_cant_attack_unless_black_or_green_creature_also_attacks_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless a black or green creature also attacks.",
+        0,
+    )
+    .expect("parse cant-attack-unless-black-or-green-creature-attacks line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
+fn parse_line_cant_attack_unless_sacrifice_a_land_prefers_typed_static() {
+    let parsed = parse_line("This creature can't attack unless you sacrifice a land.", 0)
+        .expect("parse cant-attack-unless-sacrifice-a-land line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
+fn parse_line_cant_attack_unless_sacrifice_two_islands_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless you sacrifice two islands.",
+        0,
+    )
+    .expect("parse cant-attack-unless-sacrifice-two-islands line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
+fn parse_line_cant_attack_unless_return_enchantment_to_owners_hand_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless you return an enchantment you control to its owner's hand.",
+        0,
+    )
+    .expect("parse cant-attack-unless-return-enchantment line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
+fn parse_line_cant_attack_unless_pay_for_each_plus_one_plus_one_counter_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless you pay {1} for each +1/+1 counter on it.",
+        0,
+    )
+    .expect("parse cant-attack-unless-pay-for-each-counter line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
+fn parse_line_cant_attack_unless_defending_player_is_the_monarch_prefers_typed_static() {
+    let parsed = parse_line(
+        "This creature can't attack unless defending player is the monarch.",
+        0,
+    )
+    .expect("parse cant-attack-unless-defending-player-is-the-monarch line");
+    let ability = match parsed {
+        LineAst::StaticAbility(ability) => ability,
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            abilities.pop().expect("single static ability")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    };
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
+}
+
+#[test]
 fn parse_attached_prevent_all_damage_dealt_by_enchanted_creature() {
     let tokens = tokenize_line(
         "Prevent all damage that would be dealt by enchanted creature.",

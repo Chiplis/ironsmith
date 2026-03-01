@@ -1096,6 +1096,93 @@ pub(crate) fn parse_sentence_draw_then_connive(
     parse_draw_then_connive_sentence(tokens)
 }
 
+pub(crate) fn parse_if_enters_with_additional_counter_sentence(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("if")) {
+        return Ok(None);
+    }
+
+    let Some(comma_idx) = tokens
+        .iter()
+        .position(|token| matches!(token, Token::Comma(_)))
+    else {
+        return Ok(None);
+    };
+    if comma_idx <= 1 || comma_idx + 1 >= tokens.len() {
+        return Ok(None);
+    }
+
+    let predicate_tokens = trim_commas(&tokens[1..comma_idx]);
+    let predicate_words: Vec<&str> = words(&predicate_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    let predicate_is_supported = predicate_words.as_slice()
+        == ["creature", "enters", "this", "way"]
+        || predicate_words.as_slice() == ["it", "enters", "as", "creature"];
+    if !predicate_is_supported {
+        return Ok(None);
+    }
+
+    let followup_tokens = trim_commas(&tokens[comma_idx + 1..]);
+    let followup_words = words(&followup_tokens);
+    if !followup_words.starts_with(&["it", "enters", "with"]) {
+        return Ok(None);
+    }
+
+    let Some(with_idx) = followup_tokens
+        .iter()
+        .position(|token| token.is_word("with"))
+    else {
+        return Ok(None);
+    };
+    if with_idx + 1 >= followup_tokens.len() {
+        return Ok(None);
+    }
+
+    let counter_clause_tokens = trim_commas(&followup_tokens[with_idx + 1..]);
+    let Some(on_idx) = counter_clause_tokens
+        .iter()
+        .rposition(|token| token.is_word("on"))
+    else {
+        return Ok(None);
+    };
+    if on_idx + 1 >= counter_clause_tokens.len() {
+        return Ok(None);
+    }
+
+    let on_target_words = words(&counter_clause_tokens[on_idx + 1..]);
+    if on_target_words != ["it"] {
+        return Ok(None);
+    }
+
+    let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
+    let descriptor_words = words(&descriptor_tokens);
+    if descriptor_tokens.is_empty() || !descriptor_words.contains(&"additional") {
+        return Ok(None);
+    }
+
+    let (count, counter_type) = parse_counter_descriptor(&descriptor_tokens)?;
+    let put_counter = EffectAst::PutCounters {
+        counter_type,
+        count: Value::Fixed(count as i32),
+        target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        target_count: None,
+        distributed: false,
+    };
+    let apply_only_if_creature = EffectAst::Conditional {
+        predicate: PredicateAst::ItMatches(ObjectFilter::creature()),
+        if_true: vec![put_counter],
+        if_false: Vec::new(),
+    };
+
+    Ok(Some(vec![EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: vec![apply_only_if_creature],
+    }]))
+}
+
 pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3691,6 +3778,10 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "fallback-mechanic-marker",
         parser: parse_sentence_fallback_mechanic_marker,
+    },
+    SentencePrimitive {
+        name: "if-enters-with-additional-counter",
+        parser: parse_if_enters_with_additional_counter_sentence,
     },
     SentencePrimitive {
         name: "put-multiple-counters-on-target",

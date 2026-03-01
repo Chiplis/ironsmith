@@ -15,6 +15,9 @@ struct Args {
     limit: Option<usize>,
     allow_unsupported: bool,
     json_out: Option<String>,
+    slice_mechanics: Vec<String>,
+    slice_fallback_reasons: Vec<String>,
+    fail_on_slice_hits: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +45,16 @@ struct JsonReport {
     implemented_mechanics: Vec<MechanicTally>,
     unimplemented_marker_mechanics: Vec<MechanicTally>,
     fallback_reasons: Vec<MechanicTally>,
+    slice: Option<SliceReport>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SliceReport {
+    mechanics: Vec<String>,
+    fallback_reasons: Vec<String>,
+    placeholder_count: usize,
+    unsupported_reason_count: usize,
+    affected_content_count: usize,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -49,6 +62,9 @@ fn parse_args() -> Result<Args, String> {
     let mut limit = None;
     let mut allow_unsupported = false;
     let mut json_out = None;
+    let mut slice_mechanics = Vec::<String>::new();
+    let mut slice_fallback_reasons = Vec::<String>::new();
+    let mut fail_on_slice_hits = false;
 
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -76,19 +92,48 @@ fn parse_args() -> Result<Args, String> {
                         .ok_or_else(|| "--json-out requires a path".to_string())?,
                 );
             }
+            "--slice-mechanic" => {
+                let raw = iter
+                    .next()
+                    .ok_or_else(|| "--slice-mechanic requires a value".to_string())?;
+                let normalized = canonical_mechanic_name(&raw);
+                if !normalized.is_empty() {
+                    slice_mechanics.push(normalized);
+                }
+            }
+            "--slice-fallback-reason" => {
+                let raw = iter
+                    .next()
+                    .ok_or_else(|| "--slice-fallback-reason requires a value".to_string())?;
+                let normalized = normalize_slice_reason_arg(&raw);
+                if !normalized.is_empty() {
+                    slice_fallback_reasons.push(normalized);
+                }
+            }
+            "--fail-on-slice-hits" => {
+                fail_on_slice_hits = true;
+            }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. supported: --cards <path> --limit <n> --allow-unsupported --json-out <path>"
+                    "unknown argument '{arg}'. supported: --cards <path> --limit <n> --allow-unsupported --json-out <path> --slice-mechanic <name> --slice-fallback-reason <reason> --fail-on-slice-hits"
                 ));
             }
         }
     }
+
+    slice_mechanics.sort();
+    slice_mechanics.dedup();
+    slice_fallback_reasons.sort();
+    slice_fallback_reasons.dedup();
 
     Ok(Args {
         cards_path,
         limit,
         allow_unsupported,
         json_out,
+        slice_mechanics,
+        slice_fallback_reasons,
+        fail_on_slice_hits,
     })
 }
 
@@ -348,8 +393,43 @@ fn parse_fallback_reason(display: &str) -> String {
     if reason.is_empty() {
         "unknown".to_string()
     } else {
-        reason.to_string()
+        normalize_fallback_reason(reason)
     }
+}
+
+fn normalize_fallback_reason(raw: &str) -> String {
+    normalize_spaces(raw.trim().trim_matches('"').trim_matches('\'')).to_ascii_lowercase()
+}
+
+fn normalize_slice_reason_arg(raw: &str) -> String {
+    let lower = raw.trim().to_ascii_lowercase();
+    if lower.starts_with("unsupported parser line fallback:") {
+        parse_fallback_reason(raw)
+    } else {
+        normalize_fallback_reason(raw)
+    }
+}
+
+fn matches_slice_filter(value: &str, filter: &str) -> bool {
+    if value == filter {
+        return true;
+    }
+    let Some(rest) = value.strip_prefix(filter) else {
+        return false;
+    };
+    rest.is_empty()
+        || rest.starts_with(' ')
+        || rest.starts_with('{')
+        || rest.starts_with('(')
+        || rest.starts_with(':')
+        || rest.starts_with('-')
+        || rest.starts_with('—')
+}
+
+fn matches_any_slice_filter(value: &str, filters: &HashSet<String>) -> bool {
+    filters
+        .iter()
+        .any(|filter| matches_slice_filter(value, filter))
 }
 
 fn add_tally(map: &mut HashMap<String, (usize, HashSet<String>)>, mechanic: String, card: &str) {
@@ -405,6 +485,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut implemented: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
     let mut unimplemented: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
     let mut fallback_reasons: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
+    let slice_mechanics: HashSet<String> = args.slice_mechanics.iter().cloned().collect();
+    let slice_fallback_reasons: HashSet<String> =
+        args.slice_fallback_reasons.iter().cloned().collect();
+    let slice_enabled = !slice_mechanics.is_empty() || !slice_fallback_reasons.is_empty();
+    let mut slice_placeholder_count = 0usize;
+    let mut slice_unsupported_reason_count = 0usize;
+    let mut slice_affected_cards = HashSet::<String>::new();
 
     for card in cards {
         if let Some(limit) = args.limit
@@ -436,23 +523,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let id = static_ability.id();
                 if id == StaticAbilityId::UnsupportedParserLine {
                     let display = static_ability.display();
+                    let reason = parse_fallback_reason(&display);
                     cards_with_fallback.insert(card_input.name.clone());
-                    add_tally(
-                        &mut fallback_reasons,
-                        parse_fallback_reason(&display),
-                        &card_input.name,
-                    );
+                    add_tally(&mut fallback_reasons, reason.clone(), &card_input.name);
+                    if matches_any_slice_filter(&reason, &slice_fallback_reasons) {
+                        slice_unsupported_reason_count += 1;
+                        slice_affected_cards.insert(card_input.name.clone());
+                    }
                 } else if matches!(
                     id,
                     StaticAbilityId::KeywordMarker | StaticAbilityId::RuleTextPlaceholder
                 ) {
                     let display = static_ability.display();
+                    let mechanic = canonical_mechanic_name(&display);
                     cards_with_unimplemented.insert(card_input.name.clone());
-                    add_tally(
-                        &mut unimplemented,
-                        canonical_mechanic_name(&display),
-                        &card_input.name,
-                    );
+                    add_tally(&mut unimplemented, mechanic.clone(), &card_input.name);
+                    if matches_any_slice_filter(&mechanic, &slice_mechanics) {
+                        slice_placeholder_count += 1;
+                        slice_affected_cards.insert(card_input.name.clone());
+                    }
                 } else if let Some(name) = static_keyword_name(id) {
                     add_tally(&mut implemented, name.to_string(), &card_input.name);
                 }
@@ -500,6 +589,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "- Unique unimplemented marker mechanics seen: {}",
         unimplemented_rows.len()
     );
+    if slice_enabled {
+        println!("- Slice placeholder count: {slice_placeholder_count}");
+        println!("- Slice unsupported-reason count: {slice_unsupported_reason_count}");
+        println!(
+            "- Slice affected content count: {}",
+            slice_affected_cards.len()
+        );
+    }
     println!();
 
     if !unimplemented_rows.is_empty() {
@@ -524,6 +621,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!();
     }
 
+    let slice_report = if slice_enabled {
+        Some(SliceReport {
+            mechanics: args.slice_mechanics.clone(),
+            fallback_reasons: args.slice_fallback_reasons.clone(),
+            placeholder_count: slice_placeholder_count,
+            unsupported_reason_count: slice_unsupported_reason_count,
+            affected_content_count: slice_affected_cards.len(),
+        })
+    } else {
+        None
+    };
+
     if let Some(path) = args.json_out {
         let report = JsonReport {
             cards_processed,
@@ -535,10 +644,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             implemented_mechanics: implemented_rows,
             unimplemented_marker_mechanics: unimplemented_rows,
             fallback_reasons: fallback_rows,
+            slice: slice_report,
         };
         let payload = serde_json::to_string_pretty(&report)?;
         fs::write(&path, payload)?;
         println!("Wrote JSON report to {path}");
+    }
+
+    if args.fail_on_slice_hits && slice_enabled {
+        let total_hits = slice_placeholder_count + slice_unsupported_reason_count;
+        if total_hits > 0 {
+            return Err(std::io::Error::other(format!(
+                "slice gate failed: {total_hits} hits ({slice_placeholder_count} placeholder + {slice_unsupported_reason_count} unsupported reason)"
+            ))
+            .into());
+        }
     }
 
     Ok(())

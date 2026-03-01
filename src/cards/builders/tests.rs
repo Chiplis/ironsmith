@@ -837,6 +837,203 @@ fn test_parse_choose_color_as_enters_for_nonland_subjects() {
 }
 
 #[test]
+fn test_parse_choose_basic_land_type_as_enters_for_aura() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Convincing Mirage Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text("As this aura enters, choose a basic land type.")
+        .expect("parse as this aura enters choose a basic land type");
+
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(ids.contains(&StaticAbilityId::ChooseBasicLandTypeAsEnters));
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "expected typed basic-land-type-as-enters static ability, got {ids:?}"
+    );
+}
+
+#[test]
+fn test_parse_enchanted_land_is_chosen_type_without_placeholder() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phantasmal Terrain Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant land.\nAs this aura enters, choose a basic land type.\nEnchanted land is the chosen type.",
+        )
+        .expect("parse chosen basic land type Aura lines");
+
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(ids.contains(&StaticAbilityId::ChooseBasicLandTypeAsEnters));
+    assert!(ids.contains(&StaticAbilityId::EnchantedLandIsChosenType));
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder)
+            && !ids.contains(&StaticAbilityId::UnsupportedParserLine),
+        "expected typed chosen-type Aura static abilities, got {ids:?}"
+    );
+}
+
+#[test]
+fn test_aura_chosen_basic_land_type_sets_enchanted_land_subtype() {
+    let aura_def = CardDefinitionBuilder::new(CardId::from_raw(1), "Convincing Mirage Variant")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant land.\nAs this aura enters, choose a basic land type.\nEnchanted land is the chosen type.",
+        )
+        .expect("parse chosen basic land type Aura");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let land_card = crate::card::CardBuilder::new(CardId::from_raw(2), "Test Forest")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let land_id = game.create_object_from_card(&land_card, alice, crate::zone::Zone::Battlefield);
+
+    let aura_id_in_hand =
+        game.create_object_from_definition(&aura_def, alice, crate::zone::Zone::Hand);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(
+            aura_id_in_hand,
+            crate::zone::Zone::Battlefield,
+            &mut dm,
+        )
+        .expect("aura should enter and attach to the available land");
+    let aura_id = result.new_id;
+
+    assert_eq!(
+        game.chosen_basic_land_type(aura_id),
+        Some(Subtype::Plains),
+        "select-first decision maker should choose Plains"
+    );
+    assert_eq!(
+        game.object(aura_id).and_then(|obj| obj.attached_to),
+        Some(land_id),
+        "aura should attach to the only legal land"
+    );
+
+    let land_chars = game
+        .calculated_characteristics(land_id)
+        .expect("land should have calculated characteristics");
+    assert!(
+        land_chars.subtypes.contains(&Subtype::Plains),
+        "enchanted land should become the chosen type"
+    );
+    assert!(
+        !land_chars.subtypes.contains(&Subtype::Forest),
+        "set-subtype effect should replace prior land subtypes"
+    );
+}
+
+#[test]
+fn test_parse_this_cost_is_reduced_by_basic_land_types_without_placeholder() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Draco Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(8)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .parse_text("This cost is reduced by {2} for each basic land type among lands you control.")
+        .expect("parse this-cost domain reduction line");
+
+    let mut has_typed_reduction = false;
+    for ability in &def.abilities {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        assert_ne!(
+            static_ability.id(),
+            StaticAbilityId::RuleTextPlaceholder,
+            "expected typed reduction, got placeholder static ability"
+        );
+        if static_ability.this_spell_cost_reduction().is_some() {
+            has_typed_reduction = true;
+        }
+    }
+    assert!(
+        has_typed_reduction,
+        "expected parsed this-spell cost reduction ability"
+    );
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let plains = crate::card::CardBuilder::new(CardId::from_raw(2), "Test Plains")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Plains])
+        .build();
+    game.create_object_from_card(&plains, alice, Zone::Battlefield);
+
+    let island = crate::card::CardBuilder::new(CardId::from_raw(3), "Test Island")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Island])
+        .build();
+    game.create_object_from_card(&island, alice, Zone::Battlefield);
+
+    let swamp = crate::card::CardBuilder::new(CardId::from_raw(4), "Test Swamp")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Swamp])
+        .build();
+    game.create_object_from_card(&swamp, alice, Zone::Battlefield);
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let spell = game.object(spell_id).expect("spell exists");
+    let base_cost = spell.mana_cost.as_ref().expect("spell has mana cost");
+    let effective = crate::decision::calculate_effective_mana_cost(&game, alice, spell, base_cost);
+
+    assert_eq!(
+        effective.to_oracle(),
+        "{2}{G}",
+        "expected {{2}} reduction per distinct basic land type among lands you control"
+    );
+}
+
+#[test]
+fn test_parse_basic_land_type_count_conditionals_for_you_control_tail() {
+    let exact = CardDefinitionBuilder::new(CardId::from_raw(1), "Exact Domain Condition")
+        .card_types(vec![CardType::Instant])
+        .parse_text("If there are five basic land types among lands you control, draw a card.")
+        .expect("parse exact basic-land-types conditional");
+    let exact_rendered = compiled_lines(&exact).join(" | ").to_ascii_lowercase();
+    assert!(
+        exact_rendered.contains("basic land type")
+            && exact_rendered.contains("among lands you control"),
+        "expected rendered exact conditional to mention basic land types among lands you control, got {exact_rendered}"
+    );
+
+    let at_least = CardDefinitionBuilder::new(CardId::from_raw(2), "Threshold Domain Condition")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "If there are three or more basic land types among lands you control, draw a card.",
+        )
+        .expect("parse threshold basic-land-types conditional");
+    let threshold_rendered = compiled_lines(&at_least).join(" | ").to_ascii_lowercase();
+    assert!(
+        threshold_rendered.contains("basic land type")
+            && threshold_rendered.contains("among lands you control"),
+        "expected rendered threshold conditional to mention basic land types among lands you control, got {threshold_rendered}"
+    );
+}
+
+#[test]
 fn test_parse_damage_equal_to_thiss_power() {
     CardDefinitionBuilder::new(CardId::from_raw(1), "Power Reference")
         .parse_text("This deals damage equal to this's power to any target.")
@@ -2973,15 +3170,124 @@ fn parse_enters_with_counter_if_you_attacked_this_turn_line() {
         })
         .collect();
     assert!(
-        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition)
-            || ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
         "expected conditional enters-with-counters ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "raid enters-with-counter should not fall back to placeholder static ability: {ids:?}"
     );
 
     let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("if you attacked this turn"),
         "expected raid condition text in rendered output, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_enters_with_x_plus_one_counters_line_is_typed_static() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Endless One Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature enters with X +1/+1 counters on it.")
+        .expect("x enters-with-counters clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "x enters-with-counters should not fall back to placeholder static ability: {ids:?}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_if_opponent_lost_life_is_typed_static() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Frilled Sparkshooter Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a +1/+1 counter on it if an opponent lost life this turn.",
+        )
+        .expect("opponent-life-loss conditional enters-with-counters should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+        "expected conditional enters-with-counters ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "opponent-life-loss conditional variant should not use placeholder fallback: {ids:?}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_if_creature_died_this_turn_is_typed_static() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Moldering Reclaimer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with two +1/+1 counters on it if a creature died this turn.",
+        )
+        .expect("creature-died conditional enters-with-counters should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+        "expected conditional enters-with-counters ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "creature-died conditional variant should not use placeholder fallback: {ids:?}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_if_permanent_left_under_your_control_is_typed_static() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fountainport Charmer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with two +1/+1 counters on it if a permanent left the battlefield under your control this turn.",
+        )
+        .expect("permanent-left conditional enters-with-counters should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+        "expected conditional enters-with-counters ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "permanent-left conditional variant should not use placeholder fallback: {ids:?}"
     );
 }
 
@@ -3014,6 +3320,472 @@ fn parse_enters_with_counter_for_each_color_of_mana_spent_to_cast_it_line() {
         debug.contains("ColorsOfManaSpentToCastThisSpell")
             || debug.contains("for each color of mana spent to cast it"),
         "expected spent-to-cast color value in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_for_each_time_it_was_kicked_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Apex Hawks Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature enters with a +1/+1 counter on it for each time it was kicked.")
+        .expect("for-each-time-kicked enters-with-counter clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "for-each-time-kicked variant should not use placeholder fallback: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("KickCount"),
+        "expected kick-count value in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_for_each_creature_card_in_your_graveyard_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Golgari Raiders Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a +1/+1 counter on it for each creature card in your graveyard.",
+        )
+        .expect("for-each-creature-card-in-graveyard enters-with-counter clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "graveyard-count enters-with-counter variant should not use placeholder fallback: {ids:?}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_equal_to_number_of_creature_cards_in_your_graveyard_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rhizome Lurcher Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a number of +1/+1 counters on it equal to the number of creature cards in your graveyard.",
+        )
+        .expect("equal-to-number-of-creature-cards enters-with-counter clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "equal-to-count enters-with-counter variant should not use placeholder fallback: {ids:?}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_if_you_control_creature_with_power_four_or_greater_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Frontier Mastodon Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a +1/+1 counter on it if you control a creature with power 4 or greater.",
+        )
+        .expect("control-power conditional enters-with-counter clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+        "expected conditional enters-with-counters ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "control-power conditional variant should not use placeholder fallback: {ids:?}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_for_each_other_creature_and_or_artifact_you_control_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Luxknight Breacher Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a +1/+1 counter on it for each other creature and/or artifact you control.",
+        )
+        .expect("for-each-other-creature-and-or-artifact enters-with-counter clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "for-each-other-creature-and-or-artifact variant should not use placeholder fallback: {ids:?}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_if_x_is_five_or_more_additional_x_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Apocalypse Hydra Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with X +1/+1 counters on it. If X is 5 or more, it enters with an additional X +1/+1 counters on it.",
+        )
+        .expect("x-threshold additional enters-with-counters clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected baseline enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+        "expected conditional additional enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "x-threshold additional enters-with-counters variant should not use placeholder fallback: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("XValueAtLeast(\n                                                            5,\n                                                        )")
+            || debug.contains("XValueAtLeast(5)"),
+        "expected X-threshold condition in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_where_x_is_total_life_lost_by_opponents_this_turn_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cryptborn Horror Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with X +1/+1 counters on it, where X is the total life lost by your opponents this turn.",
+        )
+        .expect("where-x-total-life-lost enters-with-counters clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "where-x-total-life-lost variant should not use placeholder fallback: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LifeLostThisTurn(\n                                                            Opponent,\n                                                        )")
+            || debug.contains("LifeLostThisTurn(Opponent)"),
+        "expected life-lost-this-turn value in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_unless_two_or_more_colors_of_mana_were_spent_to_cast_it_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Steel Exemplar Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with two +1/+1 counters on it unless two or more colors of mana were spent to cast it.",
+        )
+        .expect("unless-colors-spent enters-with-counters clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+        "expected conditional enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "unless-colors-spent variant should not use placeholder fallback: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ColorsOfManaSpentToCastThisSpellOrMore(\n                                                                    2,\n                                                                )")
+            || debug.contains("ColorsOfManaSpentToCastThisSpellOrMore(2)"),
+        "expected distinct-colors-spent condition in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_if_youve_cast_two_or_more_spells_this_turn_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Effortless Master Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with two +1/+1 counters on it if you've cast two or more spells this turn.",
+        )
+        .expect("cast-two-spells conditional enters-with-counters clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+        "expected conditional enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "cast-two-spells conditional variant should not use placeholder fallback: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayerCastSpellsThisTurnOrMore")
+            && (debug.contains("count: 2")
+                || debug.contains(
+                    "count:\n                                                                    2"
+                )),
+        "expected spells-cast-this-turn threshold condition in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_equal_to_greatest_number_of_cards_an_opponent_has_drawn_this_turn_line()
+ {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thought Sponge Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a number of +1/+1 counters on it equal to the greatest number of cards an opponent has drawn this turn.",
+        )
+        .expect("equal-to-greatest-cards-drawn enters-with-counters clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "equal-to-greatest-cards-drawn variant should not use placeholder fallback: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("MaxCardsDrawnThisTurn(\n                                                            Opponent,\n                                                        )")
+            || debug.contains("MaxCardsDrawnThisTurn(Opponent)"),
+        "expected max-cards-drawn-this-turn value in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_plus_additional_for_each_other_creature_you_control_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sheriff of Safe Passage Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a +1/+1 counter on it plus an additional +1/+1 counter on it for each other creature you control.",
+        )
+        .expect("plus-additional-for-each enters-with-counters clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "plus-additional-for-each variant should not use placeholder fallback: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("Add(") && debug.contains("other: true"),
+        "expected additive counter value with 'other creature' filter in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_for_each_magic_game_you_lost_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gus Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a +1/+1 counter on it for each Magic game you have lost to one of your opponents since you last won a game against them.",
+        )
+        .expect("match-history enters-with-counters clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+        "expected typed enters-with-counters static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&crate::static_abilities::StaticAbilityId::RuleTextPlaceholder),
+        "match-history variant should not use placeholder fallback: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("MagicGamesLostToOpponentsSinceLastWin"),
+        "expected dedicated match-history counter value in static ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_enters_with_counter_additional_x_if_threshold_direct_clause() {
+    let tokens = tokenize_line(
+        "it enters with an additional x +1/+1 counters on it if x is 5 or more",
+        0,
+    );
+    let parsed = crate::cards::builders::parse_enters_with_counters_line(&tokens)
+        .expect("direct additional-x clause should not error")
+        .expect("direct additional-x clause should parse as a static ability");
+
+    assert_eq!(
+        parsed.id(),
+        crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition,
+        "expected direct additional-x clause to compile to conditional enters-with-counters"
+    );
+}
+
+#[test]
+fn parse_as_this_land_enters_reveal_if_you_dont_enters_tapped_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Secluded Glen Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "As this land enters, you may reveal a Faerie card from your hand. If you don't, this land enters tapped.",
+        )
+        .expect("reveal-if-you-dont land ETB clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::EntersTappedUnlessCondition),
+        "expected generic enters-tapped-unless replacement, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "reveal-if-you-dont clause should not emit placeholder static ability: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("YouHaveCardInHandMatching"),
+        "expected hand-match condition in replacement ability, got {debug}"
+    );
+}
+
+#[test]
+fn parse_as_this_land_enters_reveal_unless_revealed_or_control_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Temple of the Dragon Queen Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "As this land enters, you may reveal a Dragon card from your hand. This land enters tapped unless you revealed a Dragon card this way or you control a Dragon.",
+        )
+        .expect("reveal-unless-or-control land ETB clause should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::EntersTappedUnlessCondition),
+        "expected generic enters-tapped-unless replacement, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "reveal-unless-or-control clause should not emit placeholder static ability: {ids:?}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("YouHaveCardInHandMatching") && debug.contains("YouControl"),
+        "expected OR condition combining hand-match and you-control checks, got {debug}"
     );
 }
 
@@ -6089,30 +6861,56 @@ fn parse_put_land_card_from_hand_onto_battlefield_clause() {
 }
 
 #[test]
-fn parse_recommission_text_fails_instead_of_static_counter_only() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Recommission Variant")
-            .parse_text(
-                "Return target artifact or creature card with mana value 3 or less from your graveyard to the battlefield. If a creature enters this way, it enters with an additional +1/+1 counter on it.",
-            )
-            .expect_err("unsupported mixed return+enters-with-counters clause should fail");
-    let message = format!("{err:?}");
+fn parse_recommission_text_parses_typed_counter_followup() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Recommission Variant")
+        .parse_text(
+            "Return target artifact or creature card with mana value 3 or less from your graveyard to the battlefield. If a creature enters this way, it enters with an additional +1/+1 counter on it.",
+        )
+        .expect("mixed return+enters-with-counters clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
     assert!(
-        !message.is_empty(),
-        "expected actionable parse error for mixed return/counter line"
+        debug.contains("IfEffect") && debug.contains("PutCountersEffect"),
+        "expected typed conditional put-counters followup, got {debug}"
+    );
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "recommission followup should not emit static placeholder fallback: {static_ids:?}"
     );
 }
 
 #[test]
-fn parse_teferis_time_twist_text_fails_instead_of_static_counter_only() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Teferi Time Twist Variant")
-            .parse_text(
-                "Exile target permanent you control. Return that card to the battlefield under its owner's control at the beginning of the next end step. If it enters as a creature, it enters with an additional +1/+1 counter on it.",
-            )
-            .expect_err("unsupported mixed exile/return+enters-with-counters clause should fail");
-    let message = format!("{err:?}");
+fn parse_teferis_time_twist_text_parses_typed_counter_followup() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Teferi Time Twist Variant")
+        .parse_text(
+            "Exile target permanent you control. Return that card to the battlefield under its owner's control at the beginning of the next end step. If it enters as a creature, it enters with an additional +1/+1 counter on it.",
+        )
+        .expect("mixed exile/return+enters-with-counters clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
     assert!(
-        !message.is_empty(),
-        "expected actionable parse error for mixed exile/return/counter line"
+        debug.contains("IfEffect") && debug.contains("PutCountersEffect"),
+        "expected typed delayed conditional put-counters followup, got {debug}"
+    );
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "time-twist followup should not emit static placeholder fallback: {static_ids:?}"
     );
 }
 
@@ -6464,11 +7262,15 @@ fn parse_cant_attack_unless_defending_player_controls_island_line() {
         .collect();
 
     assert!(
-            ids.contains(
-                &crate::static_abilities::StaticAbilityId::CantAttackUnlessDefendingPlayerControlsLandSubtype
-            ) || ids.contains(&StaticAbilityId::RuleTextPlaceholder),
-            "expected defending-player-land-subtype attack restriction, got {ids:?}"
-        );
+        ids.contains(
+            &crate::static_abilities::StaticAbilityId::CantAttackUnlessDefendingPlayerControlsLandSubtype
+        ),
+        "expected defending-player-land-subtype attack restriction, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "defending-player-land-subtype restriction should not emit rule text placeholders, got {ids:?}"
+    );
 
     let compiled = crate::compiled_text::compiled_lines(&def).join("\n");
     assert!(
@@ -6501,8 +7303,12 @@ fn parse_cant_attack_unless_youve_cast_creature_spell_this_turn_line() {
     assert!(
         ids.contains(
             &crate::static_abilities::StaticAbilityId::CantAttackUnlessControllerCastCreatureSpellThisTurn
-        ) || ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        ),
         "expected cast-creature-spell attack restriction, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "cast-creature-spell attack restriction should not emit rule text placeholders, got {ids:?}"
     );
 
     let compiled = crate::compiled_text::compiled_lines(&def).join("\n");
@@ -6514,6 +7320,305 @@ fn parse_cant_attack_unless_youve_cast_creature_spell_this_turn_line() {
                 .to_ascii_lowercase()
                 .contains("cant attack unless youve cast a creature spell this turn"),
         "expected compiled text to include cast-creature-spell condition, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_cant_attack_unless_youve_cast_noncreature_spell_this_turn_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mercurial Spelldancer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack unless you've cast a noncreature spell this turn.")
+        .expect("cant-attack-unless-youve-cast-noncreature-spell should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(
+            &crate::static_abilities::StaticAbilityId::CantAttackUnlessControllerCastNonCreatureSpellThisTurn
+        ),
+        "expected cast-noncreature-spell attack restriction, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "cast-noncreature-spell attack restriction should not emit rule text placeholders, got {ids:?}"
+    );
+
+    let compiled = crate::compiled_text::compiled_lines(&def).join("\n");
+    assert!(
+        compiled
+            .to_ascii_lowercase()
+            .contains("can't attack unless you've cast a noncreature spell this turn")
+            || compiled
+                .to_ascii_lowercase()
+                .contains("cant attack unless youve cast a noncreature spell this turn"),
+        "expected compiled text to include cast-noncreature-spell condition, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_cant_attack_unless_control_more_creatures_than_defending_player_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bog Hoodlums Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature can't attack unless you control more creatures than defending player.",
+        )
+        .expect("cant-attack-unless-control-more-creatures should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::CantAttackUnlessCondition),
+        "expected typed cant-attack-unless condition static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "control-more-creatures restriction should not emit placeholders, got {ids:?}"
+    );
+}
+
+#[test]
+fn parse_cant_attack_unless_defending_player_is_poisoned_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Skullsnatcher Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack unless defending player is poisoned.")
+        .expect("cant-attack-unless-defending-player-is-poisoned should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::CantAttackUnlessCondition),
+        "expected typed cant-attack-unless condition static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "defending-player-poisoned restriction should not emit placeholders, got {ids:?}"
+    );
+}
+
+#[test]
+fn parse_cant_attack_unless_black_or_green_creature_also_attacks_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Goblin War Drums Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack unless a black or green creature also attacks.")
+        .expect("cant-attack-unless-black-or-green-creature-also-attacks should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::CantAttackUnlessCondition),
+        "expected typed cant-attack-unless condition static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "also-attacks restriction should not emit placeholders, got {ids:?}"
+    );
+}
+
+#[test]
+fn parse_cant_attack_unless_sacrifice_a_land_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Exalted Dragon Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack unless you sacrifice a land.")
+        .expect("cant-attack-unless-sacrifice-land should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::CantAttackUnlessCondition),
+        "expected typed cant-attack-unless condition static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "sacrifice-land restriction should not emit placeholders, got {ids:?}"
+    );
+}
+
+#[test]
+fn parse_cant_attack_unless_sacrifice_two_islands_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Leviathan Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack unless you sacrifice two islands.")
+        .expect("cant-attack-unless-sacrifice-two-islands should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::CantAttackUnlessCondition),
+        "expected typed cant-attack-unless condition static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "sacrifice-two-islands restriction should not emit placeholders, got {ids:?}"
+    );
+}
+
+#[test]
+fn parse_cant_attack_unless_pay_per_plus_one_plus_one_counter_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Marauder Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack unless you pay {1} for each +1/+1 counter on it.")
+        .expect("cant-attack-unless-pay-per-counter should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::CantAttackUnlessCondition),
+        "expected typed cant-attack-unless condition static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "pay-per-counter restriction should not emit placeholders, got {ids:?}"
+    );
+}
+
+#[test]
+fn parse_cant_attack_unless_defending_player_is_the_monarch_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Crown-Hunter Hireling Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack unless defending player is the monarch.")
+        .expect("cant-attack-unless-defending-player-is-the-monarch should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::CantAttackUnlessCondition),
+        "expected typed cant-attack-unless condition static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "monarch restriction should not emit placeholders, got {ids:?}"
+    );
+}
+
+#[test]
+fn parse_collective_restraint_domain_attack_tax_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Collective Restraint Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Creatures can't attack you unless their controller pays {X} for each creature they control that's attacking you, where X is the number of basic land types among lands you control.",
+        )
+        .expect("collective restraint domain attack tax line should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(
+            &crate::static_abilities::StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
+        ),
+        "expected collective-restraint attack tax static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "collective-restraint line should not emit rule text placeholders, got {ids:?}"
+    );
+
+    let compiled = crate::compiled_text::compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains(
+            "unless their controller pays {x} for each creature they control thats attacking you"
+        ) || compiled.contains(
+            "unless their controller pays {x} for each creature they control that's attacking you"
+        ),
+        "expected compiled text to include collective-restraint tax clause, got {compiled}"
+    );
+    assert!(
+        compiled.contains("basic land types among lands you control"),
+        "expected compiled text to include domain clause, got {compiled}"
+    );
+}
+
+#[test]
+fn parse_fixed_attack_tax_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ghostly Prison Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.",
+        )
+        .expect("fixed attack tax line should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        ids.contains(
+            &crate::static_abilities::StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttacker
+        ),
+        "expected fixed attack-tax static ability, got {ids:?}"
+    );
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "fixed attack-tax line should not emit rule text placeholders, got {ids:?}"
     );
 }
 

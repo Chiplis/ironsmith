@@ -3,8 +3,8 @@
 //! This module contains static abilities that don't fit neatly into other categories.
 
 use super::{
-    ChooseColorAsEntersSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
-    GraveyardCountMetric, StaticAbilityId, StaticAbilityKind,
+    ChooseBasicLandTypeAsEntersSpec, ChooseColorAsEntersSpec, ConditionalSpellKeywordKind,
+    ConditionalSpellKeywordSpec, GraveyardCountMetric, StaticAbilityId, StaticAbilityKind,
 };
 use crate::ability::LevelAbility;
 use crate::color::Color;
@@ -1208,6 +1208,36 @@ impl StaticAbilityKind for ChooseColorAsEnters {
         Some(ChooseColorAsEntersSpec {
             excluded: self.excluded,
         })
+    }
+}
+
+/// "As this Aura enters, choose a basic land type."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChooseBasicLandTypeAsEnters {
+    pub display: String,
+}
+
+impl ChooseBasicLandTypeAsEnters {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for ChooseBasicLandTypeAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ChooseBasicLandTypeAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
+        Box::new(self.clone())
+    }
+
+    fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
+        Some(ChooseBasicLandTypeAsEntersSpec)
     }
 }
 
@@ -2753,6 +2783,64 @@ mod tests {
         assert!(
             !matcher.matches_event(&event, &ctx),
             "conditional enters-with-counters should not match when condition is false"
+        );
+    }
+
+    #[test]
+    fn test_enters_with_counters_if_condition_matches_when_opponent_lost_life() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source = ObjectId::from_raw(52);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.life_lost_this_turn.insert(bob, 2);
+
+        let ability = EntersWithCountersIfCondition::new(
+            CounterType::PlusOnePlusOne,
+            Value::Fixed(1),
+            Condition::OpponentLostLifeThisTurn,
+            "an opponent lost life this turn".to_string(),
+        );
+        let replacement = ability
+            .generate_replacement_effect(source, alice)
+            .expect("conditional enters-with-counters should create replacement");
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("conditional enters-with-counters replacement must have matcher");
+        let event = ZoneChangeEvent::new(source, Zone::Stack, Zone::Battlefield, None);
+        let ctx = EventContext::for_replacement_effect(alice, source, &game);
+        assert!(
+            matcher.matches_event(&event, &ctx),
+            "conditional enters-with-counters should match when an opponent lost life this turn"
+        );
+    }
+
+    #[test]
+    fn test_enters_with_counters_if_condition_matches_when_permanent_left_battlefield() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let source = ObjectId::from_raw(52);
+        let alice = PlayerId::from_index(0);
+        game.permanents_left_battlefield_under_controller_this_turn
+            .insert(alice, 1);
+
+        let ability = EntersWithCountersIfCondition::new(
+            CounterType::PlusOnePlusOne,
+            Value::Fixed(1),
+            Condition::PermanentLeftBattlefieldUnderYourControlThisTurn,
+            "a permanent left the battlefield under your control this turn".to_string(),
+        );
+        let replacement = ability
+            .generate_replacement_effect(source, alice)
+            .expect("conditional enters-with-counters should create replacement");
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("conditional enters-with-counters replacement must have matcher");
+        let event = ZoneChangeEvent::new(source, Zone::Stack, Zone::Battlefield, None);
+        let ctx = EventContext::for_replacement_effect(alice, source, &game);
+        assert!(
+            matcher.matches_event(&event, &ctx),
+            "conditional enters-with-counters should match when a permanent left under your control"
         );
     }
 

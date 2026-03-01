@@ -83,6 +83,18 @@ mod tests {
     }
 
     #[test]
+    fn test_queue_triggers_tracks_life_lost_this_turn() {
+        let mut game = setup_game();
+        let mut trigger_queue = TriggerQueue::new();
+        let bob = PlayerId::from_index(1);
+
+        let event = TriggerEvent::new(LifeLossEvent::from_effect(bob, 3));
+        queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+
+        assert_eq!(game.life_lost_this_turn.get(&bob), Some(&3));
+    }
+
+    #[test]
     fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
         let mut game = setup_game();
         let mut trigger_queue = TriggerQueue::new();

@@ -542,6 +542,16 @@ pub fn resolve_value(
             Ok(total as i32)
         }
 
+        Value::LifeLostThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let total: u32 = player_ids
+                .iter()
+                .map(|pid| game.life_lost_this_turn.get(pid).copied().unwrap_or(0))
+                .sum();
+            Ok(total as i32)
+        }
+
         Value::NoncombatDamageDealtToPlayersThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
@@ -571,6 +581,21 @@ pub fn resolve_value(
             Ok(max_count.ok_or_else(|| {
                 ExecutionError::UnresolvableValue(
                     "MaxCardsInHand requires a matching player".to_string(),
+                )
+            })?)
+        }
+
+        Value::MaxCardsDrawnThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let mut max_count: Option<i32> = None;
+            for pid in player_ids {
+                let count = game.cards_drawn_this_turn.get(&pid).copied().unwrap_or(0) as i32;
+                max_count = Some(max_count.map_or(count, |prev| prev.max(count)));
+            }
+            Ok(max_count.ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "MaxCardsDrawnThisTurn requires a matching player".to_string(),
                 )
             })?)
         }
@@ -676,6 +701,10 @@ pub fn resolve_value(
             .count();
             Ok(distinct_colors as i32)
         }
+
+        // Silver-border, out-of-game match-history stat ("Gus").
+        // The core engine does not currently track cross-game match history.
+        Value::MagicGamesLostToOpponentsSinceLastWin => Ok(0),
 
         Value::EffectValue(effect_id) => {
             let result = ctx

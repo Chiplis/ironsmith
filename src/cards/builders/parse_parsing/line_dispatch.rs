@@ -7,6 +7,8 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         .trim_start_matches(|c: char| !c.is_ascii_alphanumeric())
         .to_ascii_lowercase();
     let normalized = normalized.replace('\'', "").replace('’', "");
+    let normalized_without_braces = normalized.replace('{', "").replace('}', "");
+    let normalized_without_braces = normalized_without_braces.trim_end_matches('.');
     if normalized.contains("for each time")
         && normalized.contains("cast")
         && normalized.contains("commander")
@@ -79,25 +81,47 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
-    if normalized
-        .contains("if a creature enters this way, it enters with an additional +1/+1 counter on it")
-        && normalized.contains("return target artifact or creature card")
+    if (normalized.starts_with("this creature enters with")
+        || normalized.starts_with("this creature enters the battlefield with")
+        || normalized.starts_with("it enters with")
+        || normalized.starts_with("it enters the battlefield with"))
+        && normalized.contains("+1/+1 counter")
     {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported mixed return+enters-with-counters clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized
-        .contains("if it enters as a creature, it enters with an additional +1/+1 counter on it")
-        && normalized.contains("exile target permanent you control")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported mixed exile/return+enters-with-counters clause (line: '{}')",
-            line
-        )));
+        let tokens = tokenize_line(line, line_index);
+        if let Ok(Some(ability)) = parse_enters_with_counters_line(&tokens) {
+            parser_trace("parse_line:branch=self-etb-counters", &tokens);
+            return Ok(LineAst::StaticAbility(ability));
+        }
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
     }
     if normalized.starts_with("activate only") {
+        return Ok(LineAst::StaticAbility(
+            StaticAbility::rule_text_placeholder(line.trim().to_string()),
+        ));
+    }
+    let is_collective_restraint_domain_attack_tax = normalized_without_braces.starts_with(
+        "creatures cant attack you unless their controller pays x for each creature they control thats attacking you",
+    ) && normalized_without_braces.contains("where x is the number of basic land type");
+    let is_fixed_attack_tax_per_attacker = normalized_without_braces
+        .strip_prefix("creatures cant attack you unless their controller pays ")
+        .and_then(|rest| rest.strip_suffix(" for each creature they control thats attacking you"))
+        .is_some_and(|amount| !amount.is_empty() && amount.chars().all(|ch| ch.is_ascii_digit()));
+    let is_this_cant_attack_unless_clause = normalized
+        .starts_with("this creature cant attack unless")
+        || normalized.starts_with("this cant attack unless");
+    if is_this_cant_attack_unless_clause {
+        let tokens = tokenize_line(line, line_index);
+        if let Ok(Some(abilities)) = parse_static_ability_line(&tokens) {
+            parser_trace("parse_line:branch=this-cant-attack-unless-static", &tokens);
+            if abilities.len() == 1 {
+                return Ok(LineAst::StaticAbility(
+                    abilities.into_iter().next().expect("single static ability"),
+                ));
+            }
+            return Ok(LineAst::StaticAbilities(abilities));
+        }
         return Ok(LineAst::StaticAbility(
             StaticAbility::rule_text_placeholder(line.trim().to_string()),
         ));
@@ -121,15 +145,13 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         || normalized == "you may play lands and cast spells from the top of your library"
         || normalized == "play lands and cast spells from the top of your library"
         || normalized == "all mountains are plains"
-        || (normalized.starts_with("as this aura enters")
-            && normalized.contains("choose a basic land type"))
-        || normalized.starts_with("enchanted land is the chosen type")
-        || normalized.starts_with("enchanted land is chosen type")
         || normalized.starts_with("this effect cant reduce the mana in that cost to less than")
         || normalized.starts_with("this effect cant reduce the mana in those costs to less than")
         || normalized.starts_with("you may look at top card of your library any time")
         || normalized.starts_with("you may look at the top card of your library any time")
-        || normalized.starts_with("creatures cant attack you unless")
+        || (normalized.starts_with("creatures cant attack you unless")
+            && !is_collective_restraint_domain_attack_tax
+            && !is_fixed_attack_tax_per_attacker)
         || normalized.starts_with("this creature cant attack unless")
         || normalized.starts_with("this creature cant attack if")
         || normalized.starts_with("this creature cant block unless")
@@ -142,8 +164,6 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         || normalized.starts_with("as long as equipped creature is a human")
         || normalized
             .starts_with("while an opponent is choosing targets as part of casting a spell")
-        || normalized.starts_with("this creature enters with")
-            && normalized.contains("+1/+1 counter")
         || normalized.starts_with("it enters with") && normalized.contains("+1/+1 counter")
         || normalized.starts_with("enchanted creature gets -x/-x")
         || normalized
@@ -159,18 +179,6 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         return Ok(LineAst::StaticAbility(
             StaticAbility::rule_text_placeholder(line.trim().to_string()),
         ));
-    }
-    if normalized.starts_with("as this land enters")
-        && normalized.contains("reveal")
-        && normalized.contains("from your hand")
-    {
-        let mut abilities = vec![StaticAbility::rule_text_placeholder(
-            line.trim().to_string(),
-        )];
-        if normalized.contains("enters tapped") || normalized.contains("enter tapped") {
-            abilities.push(StaticAbility::enters_tapped_ability());
-        }
-        return Ok(LineAst::StaticAbilities(abilities));
     }
     if let Some((chapters, rest)) = parse_saga_chapter_prefix(&normalized) {
         let tokens = tokenize_line(rest, line_index);

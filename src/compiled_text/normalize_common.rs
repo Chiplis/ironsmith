@@ -5615,6 +5615,16 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_player_filter(filter)
             ),
         },
+        Value::LifeLostThisTurn(filter) => match filter {
+            PlayerFilter::You => "the total life you lost this turn".to_string(),
+            PlayerFilter::Opponent => {
+                "the total life your opponents lost this turn".to_string()
+            }
+            _ => format!(
+                "the total life {} lost this turn",
+                describe_player_filter(filter)
+            ),
+        },
         Value::NoncombatDamageDealtToPlayersThisTurn(filter) => match filter {
             PlayerFilter::You => {
                 "the total amount of noncombat damage dealt to you this turn".to_string()
@@ -5624,6 +5634,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
             _ => format!(
                 "the total amount of noncombat damage dealt to {} this turn",
+                describe_player_filter(filter)
+            ),
+        },
+        Value::MaxCardsDrawnThisTurn(filter) => match filter {
+            PlayerFilter::You => "the greatest number of cards you've drawn this turn".to_string(),
+            PlayerFilter::Opponent => {
+                "the greatest number of cards an opponent has drawn this turn".to_string()
+            }
+            PlayerFilter::Any => "the greatest number of cards a player has drawn this turn".to_string(),
+            _ => format!(
+                "the greatest number of cards {} has drawn this turn",
                 describe_player_filter(filter)
             ),
         },
@@ -5681,6 +5702,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
         ),
         Value::ColorsOfManaSpentToCastThisSpell => {
             "the number of colors of mana spent to cast this spell".to_string()
+        }
+        Value::MagicGamesLostToOpponentsSinceLastWin => {
+            "the number of Magic games you've lost to one of your opponents since you last won a game against them".to_string()
         }
         Value::EffectValue(_) => "X".to_string(),
         Value::EffectValueOffset(_, offset) => {
@@ -6727,10 +6751,30 @@ fn describe_condition(condition: &Condition) -> String {
                 count
             )
         }
+        Condition::YouHaveCardInHandMatching(filter) => {
+            let object_text = with_indefinite_article(&filter.description());
+            format!("you have {object_text} in hand")
+        }
         Condition::YourTurn => "it is your turn".to_string(),
         Condition::CreatureDiedThisTurn => "a creature died this turn".to_string(),
         Condition::CastSpellThisTurn => "a spell was cast this turn".to_string(),
+        Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
+            let subject = describe_player_filter(player);
+            let count_text = small_number_word(*count)
+                .map(str::to_string)
+                .unwrap_or_else(|| count.to_string());
+            format!(
+                "{} {} cast {} or more spells this turn",
+                subject,
+                player_verb(&subject, "have", "has"),
+                count_text
+            )
+        }
         Condition::AttackedThisTurn => "you attacked this turn".to_string(),
+        Condition::OpponentLostLifeThisTurn => "an opponent lost life this turn".to_string(),
+        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {
+            "a permanent left the battlefield under your control this turn".to_string()
+        }
         Condition::SourceWasCast => "you cast it".to_string(),
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             format!(
@@ -6798,6 +6842,12 @@ fn describe_condition(condition: &Condition) -> String {
             } else {
                 format!("at least {amount} mana was spent to cast this spell")
             }
+        }
+        Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
+            let amount_text = small_number_word(*amount)
+                .map(str::to_string)
+                .unwrap_or_else(|| amount.to_string());
+            format!("{} or more colors of mana were spent to cast this spell", amount_text)
         }
         Condition::YouControlCommander => "you control your commander".to_string(),
         Condition::TargetMatches(filter) => {

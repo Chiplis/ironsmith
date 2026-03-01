@@ -32,6 +32,60 @@ pub fn get_declare_attackers_decision(
     )
 }
 
+fn generic_mana_cost(amount: u32) -> crate::mana::ManaCost {
+    use crate::mana::ManaSymbol;
+
+    if amount == 0 {
+        return crate::mana::ManaCost::new();
+    }
+
+    let mut pips = Vec::new();
+    let mut remaining = amount;
+    while remaining > 0 {
+        let chunk = remaining.min(u8::MAX as u32) as u8;
+        pips.push(vec![ManaSymbol::Generic(chunk)]);
+        remaining -= chunk as u32;
+    }
+    crate::mana::ManaCost::from_pips(pips)
+}
+
+fn generic_attack_tax_per_attacker_against_player(game: &GameState, defending_player: PlayerId) -> u32 {
+    let mut tax = 0u32;
+
+    for &object_id in &game.battlefield {
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        if object.controller != defending_player {
+            continue;
+        }
+
+        let abilities = game
+            .calculated_characteristics(object_id)
+            .map(|c| c.static_abilities)
+            .unwrap_or_else(|| {
+                object
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            });
+
+        for ability in abilities {
+            if let Some(per_attacker_tax) =
+                ability.generic_attack_tax_per_attacker_against_you(game, object_id, defending_player)
+            {
+                tax = tax.saturating_add(per_attacker_tax);
+            }
+        }
+    }
+
+    tax
+}
+
 /// Apply attacker declarations to the combat state.
 pub fn apply_attacker_declarations(
     game: &mut GameState,
@@ -41,11 +95,12 @@ pub fn apply_attacker_declarations(
 ) -> Result<(), GameLoopError> {
     use crate::combat_state::AttackerInfo;
     use crate::triggers::AttackEventTarget;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     // Validate that all creatures with "must attack if able" are declared
     let legal_attackers = compute_legal_attackers(game, combat);
     let declared_creatures: HashSet<ObjectId> = declarations.iter().map(|d| d.creature).collect();
+    let attacking_creatures: Vec<ObjectId> = declarations.iter().map(|d| d.creature).collect();
 
     if declarations.len() == 1 && !game.can_attack_alone(declarations[0].creature) {
         return Err(ResponseError::InvalidAttackers(
@@ -60,13 +115,8 @@ pub fn apply_attacker_declarations(
         }
     }
 
-    // Clear any existing attackers
-    combat.attackers.clear();
-    if !declarations.is_empty() {
-        game.players_attacked_this_turn
-            .insert(game.turn.active_player);
-    }
-
+    let mut attackers_per_defending_player: HashMap<PlayerId, u32> = HashMap::new();
+    let mut additional_attack_mana_cost = 0u32;
     for decl in declarations {
         let Some(legal_option) = legal_attackers
             .iter()
@@ -83,7 +133,6 @@ pub fn apply_attacker_declarations(
             .into());
         }
 
-        // Validate the attacker
         let Some(creature) = game.object(decl.creature) else {
             return Err(ResponseError::InvalidAttackers(format!(
                 "Creature {:?} not found",
@@ -91,17 +140,137 @@ pub fn apply_attacker_declarations(
             ))
             .into());
         };
-
         if creature.controller != game.turn.active_player {
             return Err(ResponseError::InvalidAttackers(
                 "Can only attack with creatures you control".to_string(),
             )
             .into());
         }
-
         if !creature.is_creature() {
             return Err(ResponseError::InvalidAttackers("Not a creature".to_string()).into());
         }
+
+        let abilities = game
+            .calculated_characteristics(creature.id)
+            .map(|c| c.static_abilities)
+            .unwrap_or_else(|| {
+                creature
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            });
+        for ability in &abilities {
+            if let Some(can_attack) = ability.can_attack_with_attacking_group(
+                game,
+                creature.id,
+                creature.controller,
+                &attacking_creatures,
+            ) && !can_attack
+            {
+                return Err(ResponseError::InvalidAttackers(format!(
+                    "{}",
+                    ability.display()
+                ))
+                .into());
+            }
+            if let Some(can_pay) = ability.can_pay_attack_cost(game, creature.id, creature.controller)
+                && !can_pay
+            {
+                return Err(ResponseError::InvalidAttackers(format!(
+                    "{}",
+                    ability.display()
+                ))
+                .into());
+            }
+            if let Some(cost) =
+                ability.generic_attack_mana_cost_for_source(game, creature.id, creature.controller)
+            {
+                additional_attack_mana_cost = additional_attack_mana_cost.saturating_add(cost);
+            }
+        }
+
+        if let AttackTarget::Player(defending_player) = &decl.target {
+            *attackers_per_defending_player
+                .entry(*defending_player)
+                .or_default() += 1;
+        }
+    }
+
+    let total_attack_tax = attackers_per_defending_player
+        .into_iter()
+        .fold(0u32, |acc, (defending_player, attackers)| {
+            let per_attacker_tax =
+                generic_attack_tax_per_attacker_against_player(game, defending_player);
+            acc.saturating_add(per_attacker_tax.saturating_mul(attackers))
+        });
+    let total_generic_attack_mana_cost =
+        total_attack_tax.saturating_add(additional_attack_mana_cost);
+
+    for decl in declarations {
+        let Some(creature) = game.object(decl.creature) else {
+            return Err(
+                ResponseError::InvalidAttackers("Creature cannot attack".to_string()).into(),
+            );
+        };
+        let creature_source = creature.id;
+        let creature_controller = creature.controller;
+        let abilities = game
+            .calculated_characteristics(creature_source)
+            .map(|c| c.static_abilities)
+            .unwrap_or_else(|| {
+                creature
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            });
+        for ability in abilities {
+            if let Some(result) =
+                ability.pay_non_mana_attack_cost(game, creature_source, creature_controller)
+            {
+                if let Err(msg) = result {
+                    return Err(ResponseError::InvalidAttackers(msg).into());
+                }
+            }
+        }
+    }
+
+    if total_generic_attack_mana_cost > 0 {
+        let tax_cost = generic_mana_cost(total_generic_attack_mana_cost);
+        if !game.can_pay_mana_cost(game.turn.active_player, None, &tax_cost, 0) {
+            return Err(ResponseError::InvalidAttackers(format!(
+                "Cannot pay required attack cost of {{{total_generic_attack_mana_cost}}}"
+            ))
+            .into());
+        }
+        if !game.try_pay_mana_cost(game.turn.active_player, None, &tax_cost, 0) {
+            return Err(ResponseError::InvalidAttackers(format!(
+                "Failed to pay required attack cost of {{{total_generic_attack_mana_cost}}}"
+            ))
+            .into());
+        }
+    }
+
+    // Clear any existing attackers
+    combat.attackers.clear();
+    if !declarations.is_empty() {
+        game.players_attacked_this_turn
+            .insert(game.turn.active_player);
+    }
+
+    for decl in declarations {
+        let Some(creature) = game.object(decl.creature) else {
+            return Err(
+                ResponseError::InvalidAttackers("Creature cannot attack".to_string()).into(),
+            );
+        };
 
         // Add to combat state
         combat.attackers.push(AttackerInfo {
@@ -359,4 +528,3 @@ pub fn get_blocker_order_decision(
 
     Some(crate::decisions::context::DecisionContext::Order(ctx))
 }
-

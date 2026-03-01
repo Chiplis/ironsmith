@@ -6,6 +6,7 @@
 
 use crate::ability::{Ability, AbilityKind};
 use crate::card::{CardBuilder, PowerToughness};
+use crate::cards::builders::CardDefinitionBuilder;
 use crate::cards::definitions::{
     blood_moon, crusade, dauthi_slayer, grizzly_bears, high_market, humility, manascape_refractor,
     marvin_murderous_mimic, mycosynth_lattice, rex_cyber_hound, sol_ring, squirrel_nest,
@@ -2878,4 +2879,273 @@ fn test_goaded_creature_cant_attack_goader_when_other_player_available() {
         Err(GameLoopError::ResponseError(crate::decision::ResponseError::InvalidAttackers(_))) => {}
         other => panic!("expected InvalidAttackers for illegal goad target, got {other:?}"),
     }
+}
+
+#[test]
+fn test_collective_restraint_attack_tax_blocks_unpaid_attack() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let attacker_def = grizzly_bears();
+    let attacker_id = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_id);
+
+    let collective_restraint =
+        CardDefinitionBuilder::new(CardId::new(), "Collective Restraint Variant")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "Creatures can't attack you unless their controller pays {X} for each creature they control that's attacking you, where X is the number of basic land types among lands you control.",
+            )
+            .expect("collective restraint variant should parse");
+    let restraint_id =
+        game.create_object_from_definition(&collective_restraint, bob, Zone::Battlefield);
+
+    let plains = CardBuilder::new(CardId::new(), "Plains")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Plains])
+        .build();
+    game.create_object_from_card(&plains, bob, Zone::Battlefield);
+
+    let restraint_ability_ids: Vec<_> = game
+        .object(restraint_id)
+        .expect("collective restraint permanent should exist")
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        restraint_ability_ids.contains(
+            &crate::static_abilities::StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
+        ),
+        "collective restraint object should carry typed attack-tax static ability, got {restraint_ability_ids:?}"
+    );
+
+    let per_attacker_tax = game
+        .calculated_characteristics(restraint_id)
+        .expect("collective restraint should have calculated characteristics")
+        .static_abilities
+        .iter()
+        .filter_map(|ability| {
+            ability.generic_attack_tax_per_attacker_against_you(&game, restraint_id, bob)
+        })
+        .sum::<u32>();
+    assert_eq!(
+        per_attacker_tax, 1,
+        "expected one basic land type among lands controlled by defending player"
+    );
+
+    let declarations = vec![AttackerDeclaration {
+        creature: attacker_id,
+        target: AttackTarget::Player(bob),
+    }];
+    let mut combat = new_combat();
+    let mut trigger_queue = TriggerQueue::new();
+    let result =
+        apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations);
+
+    match result {
+        Err(GameLoopError::ResponseError(crate::decision::ResponseError::InvalidAttackers(
+            msg,
+        ))) => {
+            assert!(
+                msg.to_ascii_lowercase().contains("required attack cost"),
+                "expected attack-tax payment failure message, got {msg}"
+            );
+        }
+        other => panic!("expected attack-tax InvalidAttackers error, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_collective_restraint_attack_tax_scales_per_attacker_and_can_be_paid() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let attacker_def = grizzly_bears();
+    let attacker_a = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    let attacker_b = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_a);
+    game.remove_summoning_sickness(attacker_b);
+
+    let collective_restraint =
+        CardDefinitionBuilder::new(CardId::new(), "Collective Restraint Variant")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "Creatures can't attack you unless their controller pays {X} for each creature they control that's attacking you, where X is the number of basic land types among lands you control.",
+            )
+            .expect("collective restraint variant should parse");
+    let restraint_id =
+        game.create_object_from_definition(&collective_restraint, bob, Zone::Battlefield);
+
+    let plains = CardBuilder::new(CardId::new(), "Plains")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Plains])
+        .build();
+    let island = CardBuilder::new(CardId::new(), "Island")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Island])
+        .build();
+    game.create_object_from_card(&plains, bob, Zone::Battlefield);
+    game.create_object_from_card(&island, bob, Zone::Battlefield);
+
+    let per_attacker_tax = game
+        .calculated_characteristics(restraint_id)
+        .expect("collective restraint should have calculated characteristics")
+        .static_abilities
+        .iter()
+        .filter_map(|ability| {
+            ability.generic_attack_tax_per_attacker_against_you(&game, restraint_id, bob)
+        })
+        .sum::<u32>();
+    assert_eq!(
+        per_attacker_tax, 2,
+        "expected two basic land types among lands controlled by defending player"
+    );
+
+    game.player_mut(alice)
+        .expect("attacking player should exist")
+        .mana_pool
+        .add(crate::mana::ManaSymbol::Colorless, 4);
+
+    let declarations = vec![
+        AttackerDeclaration {
+            creature: attacker_a,
+            target: AttackTarget::Player(bob),
+        },
+        AttackerDeclaration {
+            creature: attacker_b,
+            target: AttackTarget::Player(bob),
+        },
+    ];
+    let mut combat = new_combat();
+    let mut trigger_queue = TriggerQueue::new();
+    let result =
+        apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations);
+    assert!(
+        result.is_ok(),
+        "expected attack declaration to succeed after paying collective-restraint tax: {result:?}"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("attacking player should still exist")
+            .mana_pool
+            .total(),
+        0,
+        "attack tax should consume all four generic mana (2 basic land types x 2 attackers)"
+    );
+}
+
+#[test]
+fn test_fixed_attack_tax_blocks_unpaid_attack() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let attacker_def = grizzly_bears();
+    let attacker_id = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_id);
+
+    let fixed_tax = CardDefinitionBuilder::new(CardId::new(), "Ghostly Prison Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.",
+        )
+        .expect("fixed attack-tax line should parse");
+    let fixed_tax_id = game.create_object_from_definition(&fixed_tax, bob, Zone::Battlefield);
+
+    let fixed_tax_ability_ids: Vec<_> = game
+        .object(fixed_tax_id)
+        .expect("fixed tax permanent should exist")
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        fixed_tax_ability_ids.contains(
+            &crate::static_abilities::StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttacker
+        ),
+        "fixed attack-tax object should carry typed static ability, got {fixed_tax_ability_ids:?}"
+    );
+
+    let declarations = vec![AttackerDeclaration {
+        creature: attacker_id,
+        target: AttackTarget::Player(bob),
+    }];
+    let mut combat = new_combat();
+    let mut trigger_queue = TriggerQueue::new();
+    let result =
+        apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations);
+
+    match result {
+        Err(GameLoopError::ResponseError(crate::decision::ResponseError::InvalidAttackers(
+            msg,
+        ))) => {
+            assert!(
+                msg.to_ascii_lowercase().contains("required attack cost"),
+                "expected attack-tax payment failure message, got {msg}"
+            );
+        }
+        other => panic!("expected attack-tax InvalidAttackers error, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_fixed_attack_tax_scales_per_attacker_and_can_be_paid() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let attacker_def = grizzly_bears();
+    let attacker_a = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    let attacker_b = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_a);
+    game.remove_summoning_sickness(attacker_b);
+
+    let fixed_tax = CardDefinitionBuilder::new(CardId::new(), "Ghostly Prison Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.",
+        )
+        .expect("fixed attack-tax line should parse");
+    game.create_object_from_definition(&fixed_tax, bob, Zone::Battlefield);
+
+    game.player_mut(alice)
+        .expect("attacking player should exist")
+        .mana_pool
+        .add(crate::mana::ManaSymbol::Colorless, 4);
+
+    let declarations = vec![
+        AttackerDeclaration {
+            creature: attacker_a,
+            target: AttackTarget::Player(bob),
+        },
+        AttackerDeclaration {
+            creature: attacker_b,
+            target: AttackTarget::Player(bob),
+        },
+    ];
+    let mut combat = new_combat();
+    let mut trigger_queue = TriggerQueue::new();
+    let result =
+        apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations);
+    assert!(
+        result.is_ok(),
+        "expected attack declaration to succeed after paying fixed attack tax: {result:?}"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("attacking player should still exist")
+            .mana_pool
+            .total(),
+        0,
+        "fixed attack tax should consume all four generic mana (2 tax x 2 attackers)"
+    );
 }

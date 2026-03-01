@@ -203,6 +203,31 @@ cargo run --quiet --bin audit_parsed_mechanics -- \
   --json-out /tmp/parsed_mechanics.json
 ```
 
+For slice-by-slice migration work, pass explicit family/reason filters to record baseline counts.
+`--slice-mechanic` and `--slice-fallback-reason` are prefix-style filters (for example `bestow` matches `bestow {3}{g}` and `unsupported trailing clause` matches `unsupported trailing clause: ...`):
+
+```bash
+cargo run --quiet --bin audit_parsed_mechanics -- \
+  --cards /Users/chiplis/ironsmith/cards.json \
+  --slice-mechanic "flashback" \
+  --slice-fallback-reason "unsupported trailing clause: where-x-total-life-lost" \
+  --json-out /tmp/parsed_mechanics_flashback_slice.json
+```
+
+Slice metrics (printed and serialized under `slice`) are:
+- `placeholder_count`
+- `unsupported_reason_count`
+- `affected_content_count`
+
+Use `--fail-on-slice-hits` in PR validation after migrating a slice:
+
+```bash
+cargo run --quiet --bin audit_parsed_mechanics -- \
+  --cards /Users/chiplis/ironsmith/cards.json \
+  --slice-mechanic "flashback" \
+  --fail-on-slice-hits
+```
+
 This identifies:
 - parse-success cards carrying unimplemented marker abilities,
 - parse-success fallback lines (if any path still emits them),

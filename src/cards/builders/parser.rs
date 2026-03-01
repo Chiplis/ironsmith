@@ -753,6 +753,37 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
             }
         }
     }
+
+    for marker in [". if ", ".if "] {
+        if let Some(idx) = lower.find(marker) {
+            let first = line[..=idx].trim();
+            let first_lower = first.to_ascii_lowercase();
+            let first_is_self_etb_counter_clause =
+                first_lower.contains(" enters with ") && first_lower.contains(" counter");
+            if !first_is_self_etb_counter_clause {
+                continue;
+            }
+
+            let second = line[idx + 1..].trim();
+            let second_lower = second.to_ascii_lowercase();
+            if second_lower.starts_with("if ")
+                && second_lower.contains(" enters with an additional ")
+            {
+                if !first.is_empty() && !second.is_empty() {
+                    if let Some(comma_idx) = second.find(',')
+                        && comma_idx > 3
+                    {
+                        let condition = second[3..comma_idx].trim();
+                        let rest = second[comma_idx + 1..].trim().trim_end_matches('.').trim();
+                        if !condition.is_empty() && !rest.is_empty() {
+                            return vec![first.to_string(), format!("{rest} if {condition}.")];
+                        }
+                    }
+                    return vec![first.to_string(), second.to_string()];
+                }
+            }
+        }
+    }
     vec![line.to_string()]
 }
 

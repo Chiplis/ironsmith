@@ -146,6 +146,21 @@ fn describe_counter_type(counter_type: CounterType) -> &'static str {
     }
 }
 
+fn scaled_basic_land_type_count(value: &Value) -> Option<(i32, &ObjectFilter)> {
+    match value {
+        Value::BasicLandTypesAmong(filter) => Some((1, filter)),
+        Value::Add(left, right) => {
+            let (left_factor, left_filter) = scaled_basic_land_type_count(left)?;
+            let (right_factor, right_filter) = scaled_basic_land_type_count(right)?;
+            if left_filter != right_filter {
+                return None;
+            }
+            Some((left_factor + right_factor, left_filter))
+        }
+        _ => None,
+    }
+}
+
 fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
     match amount {
         Value::Fixed(n) => (format!("{{{n}}}"), None),
@@ -154,6 +169,28 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{1}".to_string(),
             Some(format!("for each {}", filter.description())),
         ),
+        Value::CountScaled(filter, multiplier) => (
+            format!("{{{multiplier}}}"),
+            Some(format!("for each {}", filter.description())),
+        ),
+        Value::BasicLandTypesAmong(filter) => (
+            "{1}".to_string(),
+            Some(format!(
+                "for each basic land type among {}",
+                filter.description()
+            )),
+        ),
+        Value::Add(_, _) if scaled_basic_land_type_count(amount).is_some() => {
+            let (multiplier, filter) = scaled_basic_land_type_count(amount)
+                .expect("checked is_some above for scaled basic land type count");
+            (
+                format!("{{{multiplier}}}"),
+                Some(format!(
+                    "for each basic land type among {}",
+                    filter.description()
+                )),
+            )
+        }
         Value::TotalPower(filter) => (
             "{X}".to_string(),
             Some(format!(

@@ -1036,41 +1036,44 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
         }
     }
 
+    // "there are N basic land types among lands you control"
     // "there are N or more basic land types among lands that player controls"
-    if filtered.len() >= 13
-        && filtered[0] == "there"
-        && filtered[1] == "are"
-        && filtered.get(3).copied() == Some("or")
-        && filtered.get(4).copied() == Some("more")
-        && filtered.get(5).copied() == Some("basic")
-        && filtered.get(6).copied() == Some("land")
-        && matches!(filtered.get(7).copied(), Some("type" | "types"))
-        && filtered.get(8).copied() == Some("among")
-        && matches!(filtered.get(9).copied(), Some("land" | "lands"))
-    {
-        let Some(count) = parse_named_number(filtered[2]) else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported basic-land-types predicate count (predicate: '{}')",
-                filtered.join(" ")
-            )));
-        };
+    if filtered.len() >= 10 && filtered[0] == "there" && filtered[1] == "are" {
+        let mut idx = 2usize;
+        if let Some(count) = parse_named_number(filtered[idx]) {
+            idx += 1;
+            if filtered.get(idx).copied() == Some("or")
+                && filtered.get(idx + 1).copied() == Some("more")
+            {
+                idx += 2;
+            }
+            let looks_like_basic_land_type_clause = filtered.get(idx).copied() == Some("basic")
+                && filtered.get(idx + 1).copied() == Some("land")
+                && matches!(filtered.get(idx + 2).copied(), Some("type" | "types"))
+                && filtered.get(idx + 3).copied() == Some("among")
+                && matches!(filtered.get(idx + 4).copied(), Some("land" | "lands"));
+            if looks_like_basic_land_type_clause {
+                let tail = &filtered[idx + 5..];
+                let player = if tail == ["that", "player", "controls"]
+                    || tail == ["that", "player", "control"]
+                    || tail == ["that", "players", "controls"]
+                {
+                    PlayerAst::That
+                } else if tail == ["you", "control"] || tail == ["you", "controls"] {
+                    PlayerAst::You
+                } else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported basic-land-types predicate tail (predicate: '{}')",
+                        filtered.join(" ")
+                    )));
+                };
 
-        let tail = &filtered[10..];
-        let player = if tail == ["that", "player", "controls"]
-            || tail == ["that", "player", "control"]
-            || tail == ["that", "players", "controls"]
-        {
-            PlayerAst::That
-        } else if tail == ["you", "control"] || tail == ["you", "controls"] {
-            PlayerAst::You
-        } else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported basic-land-types predicate tail (predicate: '{}')",
-                filtered.join(" ")
-            )));
-        };
-
-        return Ok(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count });
+                return Ok(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
+                    player,
+                    count,
+                });
+            }
+        }
     }
 
     let parse_graveyard_card_types_subject = |words: &[&str]| -> Option<PlayerAst> {

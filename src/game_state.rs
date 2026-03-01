@@ -1027,6 +1027,8 @@ pub struct GameState {
     pub combat: Option<crate::combat_state::CombatState>,
     /// Whether the game is currently in night mode (day/night designation).
     pub is_night: bool,
+    /// Current monarch designation holder, if any.
+    pub monarch: Option<PlayerId>,
 
     /// Tracks activated abilities that have been used this turn.
     /// Used for OncePerTurn timing restrictions.
@@ -1083,6 +1085,9 @@ pub struct GameState {
     /// Number of creatures that left the battlefield this turn per controller.
     /// Reset at the start of each turn.
     pub creatures_left_battlefield_under_controller_this_turn: HashMap<PlayerId, u32>,
+    /// Number of permanents that left the battlefield this turn per controller.
+    /// Reset at the start of each turn.
+    pub permanents_left_battlefield_under_controller_this_turn: HashMap<PlayerId, u32>,
 
     /// Cards/tokens that were put into a graveyard from anywhere this turn.
     ///
@@ -1201,6 +1206,9 @@ pub struct GameState {
     /// Noncombat damage dealt to each player this turn.
     pub noncombat_damage_to_players_this_turn: HashMap<PlayerId, u32>,
 
+    /// Life lost by each player this turn.
+    pub life_lost_this_turn: HashMap<PlayerId, u32>,
+
     /// Life gained by each player this turn.
     pub life_gained_this_turn: HashMap<PlayerId, u32>,
 
@@ -1243,6 +1251,9 @@ pub struct GameState {
 
     /// Chosen colors for permanents ("as this enters, choose a color").
     pub chosen_colors: HashMap<ObjectId, crate::color::Color>,
+
+    /// Chosen basic land types for permanents ("as this Aura enters, choose a basic land type").
+    pub chosen_basic_land_types: HashMap<ObjectId, crate::types::Subtype>,
 
     /// Regeneration shields on permanents (expires at end of turn).
     pub regeneration_shields: HashMap<ObjectId, u32>,
@@ -1320,6 +1331,7 @@ impl GameState {
             pending_trigger_events: Vec::new(),
             combat: None,
             is_night: false,
+            monarch: None,
             activated_abilities_this_turn: HashSet::new(),
             chosen_modes_by_ability: HashMap::new(),
             chosen_modes_by_ability_this_turn: HashMap::new(),
@@ -1335,6 +1347,7 @@ impl GameState {
             creatures_died_this_turn: 0,
             creatures_died_under_controller_this_turn: HashMap::new(),
             creatures_left_battlefield_under_controller_this_turn: HashMap::new(),
+            permanents_left_battlefield_under_controller_this_turn: HashMap::new(),
             objects_put_into_graveyard_this_turn: HashSet::new(),
             objects_put_into_graveyard_from_battlefield_this_turn: HashSet::new(),
             triggers_fired_this_turn: HashMap::new(),
@@ -1361,6 +1374,7 @@ impl GameState {
             creature_damage_to_players_this_turn: HashMap::new(),
             damage_to_players_this_turn: HashMap::new(),
             noncombat_damage_to_players_this_turn: HashMap::new(),
+            life_lost_this_turn: HashMap::new(),
             life_gained_this_turn: HashMap::new(),
             creatures_damaged_by_this_turn: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
@@ -1373,6 +1387,7 @@ impl GameState {
             damage_marked: HashMap::new(),
             damage_persists: HashSet::new(),
             chosen_colors: HashMap::new(),
+            chosen_basic_land_types: HashMap::new(),
             regeneration_shields: HashMap::new(),
             monstrous: HashSet::new(),
             renowned: HashSet::new(),
@@ -1767,6 +1782,12 @@ impl GameState {
                 .entry(controller)
                 .or_insert(0) += 1;
         }
+        if old_zone == Zone::Battlefield && new_zone != Zone::Battlefield {
+            *self
+                .permanents_left_battlefield_under_controller_this_turn
+                .entry(controller)
+                .or_insert(0) += 1;
+        }
         if new_zone == Zone::Graveyard {
             self.objects_put_into_graveyard_this_turn
                 .insert(old_object.stable_id);
@@ -1960,6 +1981,37 @@ impl GameState {
                         );
                         let chosen_color = chosen.pop().unwrap_or(options[0]);
                         self.set_chosen_color(new_id, chosen_color);
+                    }
+                    if static_ability.basic_land_type_choice_as_enters().is_some() {
+                        let options = [
+                            crate::types::Subtype::Plains,
+                            crate::types::Subtype::Island,
+                            crate::types::Subtype::Swamp,
+                            crate::types::Subtype::Mountain,
+                            crate::types::Subtype::Forest,
+                        ];
+                        let display_options = options
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, subtype)| {
+                                crate::decisions::spec::DisplayOption::new(
+                                    idx,
+                                    format!("{subtype:?}"),
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        let choice_spec =
+                            crate::decisions::specs::ChoiceSpec::single(new_id, display_options);
+                        let mut chosen = crate::decisions::make_decision(
+                            self,
+                            decision_maker,
+                            controller,
+                            Some(new_id),
+                            choice_spec,
+                        );
+                        let chosen_idx =
+                            chosen.pop().filter(|idx| *idx < options.len()).unwrap_or(0);
+                        self.set_chosen_basic_land_type(new_id, options[chosen_idx]);
                     }
                 }
             }
@@ -2702,6 +2754,18 @@ impl GameState {
         }
     }
 
+    /// Set the current monarch designation holder.
+    ///
+    /// Use `None` to clear the designation.
+    pub fn set_monarch(&mut self, monarch: Option<PlayerId>) {
+        self.monarch = monarch;
+    }
+
+    /// Returns true if the given player is currently the monarch.
+    pub fn is_monarch(&self, player: PlayerId) -> bool {
+        self.monarch == Some(player)
+    }
+
     /// Returns all object IDs in a given zone.
     pub fn objects_in_zone(&self, zone: Zone) -> Vec<ObjectId> {
         self.objects
@@ -2842,6 +2906,8 @@ impl GameState {
         self.creatures_died_under_controller_this_turn.clear();
         self.creatures_left_battlefield_under_controller_this_turn
             .clear();
+        self.permanents_left_battlefield_under_controller_this_turn
+            .clear();
         self.objects_put_into_graveyard_this_turn.clear();
         self.objects_put_into_graveyard_from_battlefield_this_turn
             .clear();
@@ -2868,6 +2934,7 @@ impl GameState {
         self.creature_damage_to_players_this_turn.clear();
         self.damage_to_players_this_turn.clear();
         self.noncombat_damage_to_players_this_turn.clear();
+        self.life_lost_this_turn.clear();
         self.life_gained_this_turn.clear();
         self.creatures_damaged_by_this_turn.clear();
         self.combat_damage_player_batch_hits.clear();
@@ -3667,6 +3734,7 @@ impl GameState {
         self.phased_out.remove(&id);
         self.imprinted_cards.remove(&id);
         self.chosen_colors.remove(&id);
+        self.chosen_basic_land_types.remove(&id);
         self.chosen_modes_by_ability
             .retain(|(source, _), _| *source != id);
         self.chosen_modes_by_ability_this_turn
@@ -3743,6 +3811,22 @@ impl GameState {
     /// Get a chosen color for a permanent, if any.
     pub fn chosen_color(&self, permanent_id: ObjectId) -> Option<crate::color::Color> {
         self.chosen_colors.get(&permanent_id).copied()
+    }
+
+    // === Chosen basic land type helpers ===
+
+    /// Record a chosen basic land type for a permanent.
+    pub fn set_chosen_basic_land_type(
+        &mut self,
+        permanent_id: ObjectId,
+        subtype: crate::types::Subtype,
+    ) {
+        self.chosen_basic_land_types.insert(permanent_id, subtype);
+    }
+
+    /// Get a chosen basic land type for a permanent, if any.
+    pub fn chosen_basic_land_type(&self, permanent_id: ObjectId) -> Option<crate::types::Subtype> {
+        self.chosen_basic_land_types.get(&permanent_id).copied()
     }
 
     // === Imprint helpers ===
