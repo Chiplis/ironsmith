@@ -430,7 +430,9 @@ fn mana_ability_can_pay_pip(
         return false;
     }
 
-    // Check what mana this ability produces
+    // Check what mana this ability can produce.
+    let produced_symbols = mana_ability.inferred_mana_symbols(game, perm_id, obj.controller);
+
     let pip_has_colored = pip.iter().any(|s| {
         matches!(
             s,
@@ -442,7 +444,7 @@ fn mana_ability_can_pay_pip(
         )
     });
 
-    for produced in mana_ability.mana_symbols() {
+    for produced in &produced_symbols {
         for pip_symbol in pip {
             match (produced, pip_symbol) {
                 // Any mana can pay generic
@@ -919,8 +921,9 @@ fn apply_mana_payment_response_mana_ability(
         get_available_mana_abilities(game, pending.activator, decision_maker)
             .into_iter()
             .filter(|(perm_id, ability_index, _)| {
-                // Exclude the ability we're paying for
-                if *perm_id == pending.source && *ability_index == pending.ability_index {
+                // Exclude mana abilities on the same source while paying this
+                // source's own activation cost to prevent recursive payment loops.
+                if *perm_id == pending.source {
                     return false;
                 }
 
@@ -930,8 +933,10 @@ fn apply_mana_payment_response_mana_ability(
                     && let AbilityKind::Activated(mana_ability) = &ability.kind
                     && mana_ability.is_mana_ability()
                 {
+                    let produced =
+                        mana_ability.inferred_mana_symbols(game, *perm_id, pending.activator);
                     mana_can_help_pay_cost(
-                        mana_ability.mana_symbols(),
+                        &produced,
                         &pending.mana_cost,
                         game,
                         pending.activator,
@@ -2432,7 +2437,7 @@ fn apply_priority_action_with_dm(
 /// Returns true if this is a Priority decision with only PassPriority available.
 fn should_auto_pass_ctx(ctx: &crate::decisions::context::DecisionContext) -> bool {
     if let crate::decisions::context::DecisionContext::Priority(pctx) = ctx {
-        pctx.legal_actions.len() == 1 && matches!(pctx.legal_actions[0], LegalAction::PassPriority)
+        pctx.actions.len() == 1 && matches!(pctx.actions[0], LegalAction::PassPriority)
     } else {
         false
     }
@@ -2446,5 +2451,31 @@ fn get_priority_player_from_ctx(
         Some(pctx.player)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod priority_mana_tests {
+    use super::*;
+    use crate::cards::tokens::treasure_token_definition;
+    use crate::mana::ManaSymbol;
+    use crate::zone::Zone;
+
+    fn setup_game() -> GameState {
+        GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
+    }
+
+    #[test]
+    fn test_variable_mana_ability_can_pay_colored_pip() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let treasure = treasure_token_definition();
+        let treasure_id = game.create_object_from_definition(&treasure, alice, Zone::Battlefield);
+
+        assert!(
+            mana_ability_can_pay_pip(&game, treasure_id, 0, &[ManaSymbol::Black], false),
+            "Treasure should be considered able to pay a colored pip"
+        );
     }
 }

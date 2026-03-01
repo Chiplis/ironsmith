@@ -834,24 +834,14 @@ impl ProliferateContext {
 pub struct PriorityContext {
     /// The player with priority.
     pub player: PlayerId,
-    /// Legal actions available.
-    pub legal_actions: Vec<crate::decision::LegalAction>,
-    /// Commander actions available (accessed via 'C').
-    pub commander_actions: Vec<crate::decision::LegalAction>,
+    /// All legal actions available (including command-zone casts).
+    pub actions: Vec<crate::decision::LegalAction>,
 }
 
 impl PriorityContext {
     /// Create a new PriorityContext.
-    pub fn new(
-        player: PlayerId,
-        legal_actions: Vec<crate::decision::LegalAction>,
-        commander_actions: Vec<crate::decision::LegalAction>,
-    ) -> Self {
-        Self {
-            player,
-            legal_actions,
-            commander_actions,
-        }
+    pub fn new(player: PlayerId, actions: Vec<crate::decision::LegalAction>) -> Self {
+        Self { player, actions }
     }
 }
 

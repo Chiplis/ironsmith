@@ -609,19 +609,14 @@ impl DecisionSpec for ManaPaymentSpec {
 /// Specification for priority decisions.
 #[derive(Debug, Clone)]
 pub struct PrioritySpec {
-    /// Legal actions available.
-    pub legal_actions: Vec<LegalAction>,
-    /// Commander actions available (accessed via 'C').
-    pub commander_actions: Vec<LegalAction>,
+    /// All legal actions available (including command-zone casts).
+    pub actions: Vec<LegalAction>,
 }
 
 impl PrioritySpec {
     /// Create a new PrioritySpec.
-    pub fn new(legal_actions: Vec<LegalAction>, commander_actions: Vec<LegalAction>) -> Self {
-        Self {
-            legal_actions,
-            commander_actions,
-        }
+    pub fn new(actions: Vec<LegalAction>) -> Self {
+        Self { actions }
     }
 }
 
@@ -647,7 +642,7 @@ impl DecisionSpec for PrioritySpec {
         _game: &GameState,
     ) -> DecisionContext {
         let options: Vec<SelectableOption> = self
-            .legal_actions
+            .actions
             .iter()
             .enumerate()
             .map(|(i, action)| {
@@ -789,7 +784,7 @@ mod tests {
 
     #[test]
     fn test_priority_spec() {
-        let spec = PrioritySpec::new(vec![LegalAction::PassPriority], vec![]);
+        let spec = PrioritySpec::new(vec![LegalAction::PassPriority]);
 
         assert!(matches!(
             spec.default_response(FallbackStrategy::Decline),

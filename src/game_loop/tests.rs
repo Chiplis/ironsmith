@@ -1266,11 +1266,11 @@ mod tests {
                     self.index += 1;
                     return action.clone();
                 }
-                ctx.legal_actions
+                ctx.actions
                     .iter()
                     .find(|a| matches!(a, LegalAction::PassPriority))
                     .cloned()
-                    .unwrap_or_else(|| ctx.legal_actions[0].clone())
+                    .unwrap_or_else(|| ctx.actions[0].clone())
             }
 
             fn decide_number(

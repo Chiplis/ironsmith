@@ -1031,6 +1031,20 @@ pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<Lega
     actions
 }
 
+fn commander_action_indices(actions: &[LegalAction]) -> Vec<usize> {
+    actions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, action)| match action {
+            LegalAction::CastSpell {
+                from_zone: Zone::Command,
+                ..
+            } => Some(index),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Check if a player can pay an activated ability's cost.
 ///
 /// This is a thin wrapper around `can_pay_cost` that returns a bool
@@ -2462,9 +2476,10 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
                     });
 
                 if can_activate && condition_met {
-                    // Add the mana this ability would produce
-                    for mana in mana_ability.mana_symbols() {
-                        potential.add(*mana, 1);
+                    // Add the mana this ability could produce (fixed output, or
+                    // inferred from variable mana effects such as "any color").
+                    for mana in mana_ability.inferred_mana_symbols(game, perm_id, player) {
+                        potential.add(mana, 1);
                     }
                     // Only count one mana ability per permanent (can only tap once)
                     break;
@@ -3205,12 +3220,12 @@ pub trait DecisionMaker {
         ctx: &crate::decisions::context::PriorityContext,
     ) -> LegalAction {
         // Default: pass priority if possible, otherwise take first action
-        ctx.legal_actions
+        ctx.actions
             .iter()
             .find(|a| matches!(a, LegalAction::PassPriority))
             .cloned()
             .unwrap_or_else(|| {
-                ctx.legal_actions
+                ctx.actions
                     .first()
                     .cloned()
                     .unwrap_or(LegalAction::PassPriority)
@@ -4564,7 +4579,7 @@ impl DecisionMaker for NumericInputDecisionMaker {
             eprintln!(
                 "DEBUG: Priority[{}] = {} actions, input = {:?}",
                 self.index.saturating_sub(1),
-                ctx.legal_actions.len(),
+                ctx.actions.len(),
                 input
             );
         }
@@ -4576,21 +4591,22 @@ impl DecisionMaker for NumericInputDecisionMaker {
 
         // Check for commander action (C, c, C0, c0, C1, c1, etc.)
         let lower = trimmed.to_lowercase();
-        if lower == "c" && ctx.commander_actions.len() == 1 {
-            return ctx.commander_actions[0].clone();
+        let commander_indices = commander_action_indices(&ctx.actions);
+        if lower == "c" && commander_indices.len() == 1 {
+            return ctx.actions[commander_indices[0]].clone();
         }
         if lower.starts_with('c')
             && let Ok(idx) = lower[1..].parse::<usize>()
-            && idx < ctx.commander_actions.len()
+            && idx < commander_indices.len()
         {
-            return ctx.commander_actions[idx].clone();
+            return ctx.actions[commander_indices[idx]].clone();
         }
 
         // Parse as index
         if let Ok(idx) = trimmed.parse::<usize>()
-            && idx < ctx.legal_actions.len()
+            && idx < ctx.actions.len()
         {
-            return ctx.legal_actions[idx].clone();
+            return ctx.actions[idx].clone();
         }
 
         // Fallback to pass
@@ -4676,7 +4692,7 @@ impl DecisionMaker for CliDecisionMaker {
     ) -> LegalAction {
         display_game_state(game);
         println!("\n--- {} has priority ---", player_name(game, ctx.player));
-        prompt_priority_action(game, &ctx.legal_actions, &ctx.commander_actions)
+        prompt_priority_action(game, &ctx.actions)
     }
 
     fn decide_boolean(
@@ -5163,11 +5179,9 @@ fn format_cost_effects(cost_effects: &[crate::effect::Effect]) -> String {
 
 /// New version of prompt_priority_action that returns LegalAction directly
 /// (used by the new decide_priority method).
-fn prompt_priority_action(
-    game: &GameState,
-    actions: &[LegalAction],
-    commander_actions: &[LegalAction],
-) -> LegalAction {
+fn prompt_priority_action(game: &GameState, actions: &[LegalAction]) -> LegalAction {
+    let commander_indices = commander_action_indices(actions);
+
     // Format actions compactly
     let action_strs: Vec<String> = actions
         .iter()
@@ -5177,15 +5191,16 @@ fn prompt_priority_action(
     println!("Actions: {}", action_strs.join(" | "));
 
     // Display commander actions separately with 'C' prefix
-    if !commander_actions.is_empty() {
-        let commander_strs: Vec<String> = commander_actions
+    if !commander_indices.is_empty() {
+        let commander_strs: Vec<String> = commander_indices
             .iter()
             .enumerate()
-            .map(|(i, a)| {
-                if commander_actions.len() == 1 {
-                    format!("C:{}", format_action_short(game, a))
+            .map(|(i, action_index)| {
+                let action = &actions[*action_index];
+                if commander_indices.len() == 1 {
+                    format!("C:{}", format_action_short(game, action))
                 } else {
-                    format!("C{}:{}", i, format_action_short(game, a))
+                    format!("C{}:{}", i, format_action_short(game, action))
                 }
             })
             .collect();
@@ -5210,14 +5225,14 @@ fn prompt_priority_action(
 
         // Check for commander action (C, c, C0, c0, C1, c1, etc.)
         let lower = trimmed.to_lowercase();
-        if lower == "c" && commander_actions.len() == 1 {
-            return commander_actions[0].clone();
+        if lower == "c" && commander_indices.len() == 1 {
+            return actions[commander_indices[0]].clone();
         }
         if lower.starts_with('c')
             && let Ok(idx) = lower[1..].parse::<usize>()
-            && idx < commander_actions.len()
+            && idx < commander_indices.len()
         {
-            return commander_actions[idx].clone();
+            return actions[commander_indices[idx]].clone();
         }
 
         if let Ok(idx) = trimmed.parse::<usize>()
@@ -6338,6 +6353,8 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::color::ColorSet;
     use crate::effect::Value;
+    use crate::grant::Grantable;
+    use crate::grant_registry::GrantSource;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
@@ -7652,11 +7669,7 @@ mod tests {
         let game = setup_game();
         let mut dm = AutoPassDecisionMaker;
 
-        let ctx = PriorityContext::new(
-            PlayerId::from_index(0),
-            vec![LegalAction::PassPriority],
-            vec![],
-        );
+        let ctx = PriorityContext::new(PlayerId::from_index(0), vec![LegalAction::PassPriority]);
 
         let response = dm.decide_priority(&game, &ctx);
         assert!(matches!(response, LegalAction::PassPriority));
@@ -7678,7 +7691,7 @@ mod tests {
             },
         ];
 
-        let ctx = PriorityContext::new(PlayerId::from_index(0), legal_actions.clone(), vec![]);
+        let ctx = PriorityContext::new(PlayerId::from_index(0), legal_actions.clone());
 
         // "0" should select PassPriority
         assert!(matches!(
@@ -7687,17 +7700,84 @@ mod tests {
         ));
 
         // "1" should select PlayLand
-        let ctx2 = PriorityContext::new(PlayerId::from_index(0), legal_actions.clone(), vec![]);
+        let ctx2 = PriorityContext::new(PlayerId::from_index(0), legal_actions.clone());
         assert!(matches!(
             dm.decide_priority(&game, &ctx2),
             LegalAction::PlayLand { .. }
         ));
 
         // "" (empty) should default to PassPriority
-        let ctx3 = PriorityContext::new(PlayerId::from_index(0), legal_actions, vec![]);
+        let ctx3 = PriorityContext::new(PlayerId::from_index(0), legal_actions);
         assert!(matches!(
             dm.decide_priority(&game, &ctx3),
             LegalAction::PassPriority
+        ));
+    }
+
+    #[test]
+    fn test_numeric_input_priority_commander_shortcut_single() {
+        use crate::alternative_cast::CastingMethod;
+        use crate::decisions::context::PriorityContext;
+        use crate::zone::Zone;
+
+        let game = setup_game();
+        let mut dm = NumericInputDecisionMaker::from_strs(&["c"]);
+
+        let actions = vec![
+            LegalAction::PassPriority,
+            LegalAction::CastSpell {
+                spell_id: ObjectId::from_raw(100),
+                from_zone: Zone::Command,
+                casting_method: CastingMethod::Normal,
+            },
+        ];
+
+        let ctx = PriorityContext::new(PlayerId::from_index(0), actions);
+        assert!(matches!(
+            dm.decide_priority(&game, &ctx),
+            LegalAction::CastSpell {
+                from_zone: Zone::Command,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_numeric_input_priority_commander_shortcut_indexed() {
+        use crate::alternative_cast::CastingMethod;
+        use crate::decisions::context::PriorityContext;
+        use crate::zone::Zone;
+
+        let game = setup_game();
+        let mut dm = NumericInputDecisionMaker::from_strs(&["c1"]);
+
+        let actions = vec![
+            LegalAction::PassPriority,
+            LegalAction::CastSpell {
+                spell_id: ObjectId::from_raw(101),
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Normal,
+            },
+            LegalAction::CastSpell {
+                spell_id: ObjectId::from_raw(102),
+                from_zone: Zone::Command,
+                casting_method: CastingMethod::Normal,
+            },
+            LegalAction::CastSpell {
+                spell_id: ObjectId::from_raw(103),
+                from_zone: Zone::Command,
+                casting_method: CastingMethod::Normal,
+            },
+        ];
+
+        let ctx = PriorityContext::new(PlayerId::from_index(0), actions);
+        assert!(matches!(
+            dm.decide_priority(&game, &ctx),
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Command,
+                ..
+            } if spell_id == ObjectId::from_raw(103)
         ));
     }
 
@@ -8298,6 +8378,59 @@ mod tests {
         // max_x should be 1: pay {R} with Mountain, {X}=1 with Elves' green mana
         let max_x = potential.max_x_for_cost(&fireball_cost);
         assert_eq!(max_x, 1, "max_x should be 1 (2 total - 1 for R = 1 for X)");
+    }
+
+    #[test]
+    fn test_graveyard_play_from_actions_include_variable_mana_sources() {
+        use crate::cards::definitions::lightning_bolt;
+        use crate::cards::tokens::treasure_token_definition;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+
+        // Treasure's mana ability is effect-backed ("any color"), so this specifically
+        // verifies variable mana producers are considered in castability checks.
+        let treasure = treasure_token_definition();
+        game.create_object_from_definition(&treasure, alice, Zone::Battlefield);
+
+        let bolt = lightning_bolt();
+        let bolt_id = game.create_object_from_definition(&bolt, alice, Zone::Graveyard);
+
+        let source_id = game.new_object_id();
+        game.grant_registry.grant_to_filter(
+            ObjectFilter::nonland(),
+            Zone::Graveyard,
+            alice,
+            Grantable::play_from(),
+            GrantSource::Effect {
+                source_id,
+                expires_end_of_turn: game.turn.turn_number,
+            },
+        );
+
+        let actions = compute_legal_actions(&game, alice);
+        let can_cast_from_graveyard = actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Graveyard,
+                    casting_method: CastingMethod::PlayFrom {
+                        zone: Zone::Graveyard,
+                        ..
+                    },
+                    ..
+                } if *spell_id == bolt_id
+            )
+        });
+
+        assert!(
+            can_cast_from_graveyard,
+            "variable mana sources should allow castability inference for play-from-graveyard actions"
+        );
     }
 
     #[test]

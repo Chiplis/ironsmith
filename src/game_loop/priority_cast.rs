@@ -569,7 +569,11 @@ fn check_optional_costs_or_continue(
             format!("Choose optional costs for {}", spell_name),
             selectable_options,
             0,             // min - optional costs are optional
-            options.len(), // max - can select all
+            if options.iter().any(|opt| opt.repeatable) {
+                64
+            } else {
+                options.len()
+            },
         );
         Ok(GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::SelectOptions(ctx),
@@ -1217,8 +1221,10 @@ fn compute_mana_ability_payment_options(
     // Filter to only abilities that can help pay the cost
     let mut option_index = 0;
     for (perm_id, ability_index, description) in mana_abilities.iter() {
-        // Skip the ability we're trying to pay for to avoid infinite loop
-        if *perm_id == pending.source && *ability_index == pending.ability_index {
+        // Skip mana abilities on the same source while paying this source's mana
+        // activation cost. This avoids recursive "pay this ability with itself"
+        // option loops (e.g., duplicated variable-output mana abilities).
+        if *perm_id == pending.source {
             continue;
         }
 
@@ -1229,8 +1235,9 @@ fn compute_mana_ability_payment_options(
             && let AbilityKind::Activated(mana_ability) = &ability.kind
             && mana_ability.is_mana_ability()
         {
+            let produced = mana_ability.inferred_mana_symbols(game, *perm_id, player);
             mana_can_help_pay_cost(
-                mana_ability.mana_symbols(),
+                &produced,
                 &pending.mana_cost,
                 game,
                 player,
@@ -1398,7 +1405,11 @@ fn describe_mana_ability(kind: &crate::ability::AbilityKind) -> String {
                 _ => "mana",
             })
             .collect();
-        format!("Add {}", mana_strs.join(""))
+        if mana_strs.is_empty() {
+            "Add mana".to_string()
+        } else {
+            format!("Add {}", mana_strs.join(""))
+        }
     } else {
         "Add mana".to_string()
     }

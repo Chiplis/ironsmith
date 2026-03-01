@@ -84,15 +84,11 @@ pub fn advance_priority_with_dm(
     };
 
     // Compute legal actions for the priority player
-    let legal_actions = compute_legal_actions(game, priority_player);
-    let commander_actions = compute_commander_actions(game, priority_player);
+    let mut actions = compute_legal_actions(game, priority_player);
+    actions.extend(compute_commander_actions(game, priority_player));
 
     // Return decision for the player using the new context-based system
-    let ctx = crate::decisions::context::PriorityContext::new(
-        priority_player,
-        legal_actions,
-        commander_actions,
-    );
+    let ctx = crate::decisions::context::PriorityContext::new(priority_player, actions);
     Ok(GameProgress::NeedsDecisionCtx(
         crate::decisions::context::DecisionContext::Priority(ctx),
     ))

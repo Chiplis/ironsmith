@@ -119,7 +119,7 @@ fn protected_object_ids_for_decision(decision: Option<&DecisionContext>) -> Hash
 
     match decision {
         DecisionContext::Priority(priority) => {
-            for action in &priority.legal_actions {
+            for action in &priority.actions {
                 match action {
                     LegalAction::CastSpell { spell_id, .. } => {
                         ids.insert(*spell_id);
@@ -528,6 +528,8 @@ struct OptionView {
     index: usize,
     description: String,
     legal: bool,
+    repeatable: bool,
+    max_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -587,7 +589,6 @@ enum DecisionView {
     Priority {
         player: u8,
         actions: Vec<ActionView>,
-        commander_actions: Vec<ActionView>,
     },
     Number {
         player: u8,
@@ -653,11 +654,15 @@ impl DecisionView {
                         index: 1,
                         description: "Yes".to_string(),
                         legal: true,
+                        repeatable: false,
+                        max_count: Some(1),
                     },
                     OptionView {
                         index: 0,
                         description: "No".to_string(),
                         legal: true,
+                        repeatable: false,
+                        max_count: Some(1),
                     },
                 ],
                 source_name: resolve_source_name(boolean.source),
@@ -666,13 +671,7 @@ impl DecisionView {
             DecisionContext::Priority(priority) => DecisionView::Priority {
                 player: priority.player.0,
                 actions: priority
-                    .legal_actions
-                    .iter()
-                    .enumerate()
-                    .map(|(index, action)| build_action_view(game, index, action))
-                    .collect(),
-                commander_actions: priority
-                    .commander_actions
+                    .actions
                     .iter()
                     .enumerate()
                     .map(|(index, action)| build_action_view(game, index, action))
@@ -692,15 +691,30 @@ impl DecisionView {
                 description: options.description.clone(),
                 min: options.min,
                 max: options.max,
-                options: options
-                    .options
-                    .iter()
-                    .map(|opt| OptionView {
-                        index: opt.index,
-                        description: opt.description.clone(),
-                        legal: opt.legal,
-                    })
-                    .collect(),
+                options: {
+                    let is_optional_cost_choice = options
+                        .description
+                        .to_ascii_lowercase()
+                        .contains("optional cost");
+                    options
+                        .options
+                        .iter()
+                        .map(|opt| {
+                            let (repeatable, max_count) = if is_optional_cost_choice {
+                                optional_cost_selection_metadata(game, options.source, opt.index)
+                            } else {
+                                (false, None)
+                            };
+                            OptionView {
+                                index: opt.index,
+                                description: opt.description.clone(),
+                                legal: opt.legal,
+                                repeatable,
+                                max_count,
+                            }
+                        })
+                        .collect()
+                },
                 source_name: resolve_source_name(options.source),
                 reason: reason.clone(),
             },
@@ -717,6 +731,8 @@ impl DecisionView {
                         index: mode.index,
                         description: mode.description.clone(),
                         legal: mode.legal,
+                        repeatable: false,
+                        max_count: Some(1),
                     })
                     .collect(),
                 source_name: resolve_source_name(modes.source),
@@ -737,6 +753,8 @@ impl DecisionView {
                         index: opt.index,
                         description: opt.label.clone(),
                         legal: true,
+                        repeatable: false,
+                        max_count: Some(1),
                     })
                     .collect(),
                 source_name: resolve_source_name(hybrid.source),
@@ -744,25 +762,32 @@ impl DecisionView {
             },
             DecisionContext::Order(order) => DecisionView::SelectOptions {
                 player: order.player.0,
-                description: format!("{} (web UI keeps current order)", order.description),
-                min: 1,
-                max: 1,
-                options: vec![OptionView {
-                    index: 0,
-                    description: "Keep current order".to_string(),
-                    legal: true,
-                }],
+                description: order.description.clone(),
+                min: order.items.len(),
+                max: order.items.len(),
+                options: order
+                    .items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (_, name))| OptionView {
+                        index,
+                        description: name.clone(),
+                        legal: true,
+                        repeatable: false,
+                        max_count: Some(1),
+                    })
+                    .collect(),
                 source_name: resolve_source_name(order.source),
                 reason: reason.clone(),
             },
             DecisionContext::Distribute(distribute) => DecisionView::SelectOptions {
                 player: distribute.player.0,
                 description: format!(
-                    "{} (select recipients; remaining amount goes to first selected target)",
-                    distribute.description
+                    "{} (assign exactly {} total)",
+                    distribute.description, distribute.total
                 ),
                 min: 0,
-                max: distribute.targets.len(),
+                max: distribute.total as usize,
                 options: distribute
                     .targets
                     .iter()
@@ -771,6 +796,8 @@ impl DecisionView {
                         index,
                         description: target.name.clone(),
                         legal: true,
+                        repeatable: true,
+                        max_count: Some(distribute.total),
                     })
                     .collect(),
                 source_name: resolve_source_name(distribute.source),
@@ -778,6 +805,7 @@ impl DecisionView {
             },
             DecisionContext::Colors(colors) => {
                 let choices = colors_for_context(colors);
+                let repeatable_colors = !colors.same_color && colors.count > 1;
                 DecisionView::SelectOptions {
                     player: colors.player.0,
                     description: colors.description.clone(),
@@ -785,7 +813,7 @@ impl DecisionView {
                     max: if colors.same_color {
                         1
                     } else {
-                        choices.len().max(1)
+                        (colors.count as usize).max(1)
                     },
                     options: choices
                         .into_iter()
@@ -794,6 +822,8 @@ impl DecisionView {
                             index,
                             description: color_name(color).to_string(),
                             legal: true,
+                            repeatable: repeatable_colors,
+                            max_count: Some(if repeatable_colors { colors.count } else { 1 }),
                         })
                         .collect(),
                     source_name: resolve_source_name(colors.source),
@@ -807,7 +837,7 @@ impl DecisionView {
                     counters.max_total, counters.target_name
                 ),
                 min: 0,
-                max: counters.available_counters.len(),
+                max: counters.max_total as usize,
                 options: counters
                     .available_counters
                     .iter()
@@ -819,6 +849,8 @@ impl DecisionView {
                             split_camel_case(&format!("{counter_type:?}"))
                         ),
                         legal: *available > 0,
+                        repeatable: *available > 1,
+                        max_count: Some(*available),
                     })
                     .collect(),
                 source_name: resolve_source_name(counters.source),
@@ -857,12 +889,16 @@ impl DecisionView {
                         index,
                         description: format!("Permanent: {name}"),
                         legal: true,
+                        repeatable: false,
+                        max_count: Some(1),
                     })
                     .chain(proliferate.eligible_players.iter().enumerate().map(
                         |(offset, (_, name))| OptionView {
                             index: proliferate.eligible_permanents.len() + offset,
                             description: format!("Player: {name}"),
                             legal: true,
+                            repeatable: false,
+                            max_count: Some(1),
                         },
                     ))
                     .collect(),
@@ -1194,12 +1230,12 @@ impl DecisionMaker for WasmReplayDecisionMaker {
                 action
             }
             _ => ctx
-                .legal_actions
+                .actions
                 .iter()
                 .find(|action| matches!(action, LegalAction::PassPriority))
                 .cloned()
                 .unwrap_or_else(|| {
-                    ctx.legal_actions
+                    ctx.actions
                         .first()
                         .cloned()
                         .unwrap_or(LegalAction::PassPriority)
@@ -2301,10 +2337,11 @@ impl WasmGame {
                 Ok(ReplayDecisionAnswer::Options(option_indices))
             }
             (DecisionContext::Priority(priority), UiCommand::PriorityAction { action_index }) => {
-                let action = priority.legal_actions.get(action_index).ok_or_else(|| {
-                    JsValue::from_str(&format!("invalid priority action index: {action_index}"))
-                })?;
-                Ok(ReplayDecisionAnswer::Priority(action.clone()))
+                let action =
+                    resolve_priority_action_by_index(priority, action_index).ok_or_else(|| {
+                        JsValue::from_str(&format!("invalid priority action index: {action_index}"))
+                    })?;
+                Ok(ReplayDecisionAnswer::Priority(action))
             }
             (DecisionContext::SelectObjects(objects), UiCommand::SelectObjects { object_ids }) => {
                 let legal_ids: Vec<u64> = objects
@@ -2322,9 +2359,23 @@ impl WasmGame {
                 ))
             }
             (DecisionContext::Order(order), UiCommand::SelectOptions { option_indices }) => {
-                validate_option_selection(0, Some(1), &option_indices, &[0usize])?;
+                let legal: Vec<usize> = (0..order.items.len()).collect();
+                validate_option_selection(
+                    order.items.len(),
+                    Some(order.items.len()),
+                    &option_indices,
+                    &legal,
+                )?;
+                if unique_indices(&option_indices).len() != order.items.len() {
+                    return Err(JsValue::from_str(
+                        "ordering requires each option index exactly once",
+                    ));
+                }
                 Ok(ReplayDecisionAnswer::Order(
-                    order.items.iter().map(|(id, _)| *id).collect(),
+                    option_indices
+                        .into_iter()
+                        .filter_map(|index| order.items.get(index).map(|(id, _)| *id))
+                        .collect(),
                 ))
             }
             (
@@ -2334,7 +2385,7 @@ impl WasmGame {
                 let legal: Vec<usize> = (0..distribute.targets.len()).collect();
                 validate_option_selection(
                     0,
-                    Some(distribute.targets.len()),
+                    Some(distribute.total as usize),
                     &option_indices,
                     &legal,
                 )?;
@@ -2343,48 +2394,40 @@ impl WasmGame {
                     return Ok(ReplayDecisionAnswer::Distribute(Vec::new()));
                 }
 
-                let mut selected = unique_indices(&option_indices);
-                if selected.is_empty() {
-                    selected.push(0);
-                }
-                if distribute.min_per_target > 0 {
-                    let max_selectable = (distribute.total / distribute.min_per_target) as usize;
-                    if max_selectable == 0 {
-                        return Ok(ReplayDecisionAnswer::Distribute(Vec::new()));
-                    }
-                    if selected.len() > max_selectable {
-                        selected.truncate(max_selectable);
-                    }
-                    if selected.is_empty() {
-                        selected.push(0);
-                    }
+                let mut counts: HashMap<usize, u32> = HashMap::new();
+                for index in option_indices {
+                    *counts.entry(index).or_insert(0) += 1;
                 }
 
-                let mut allocations: Vec<(Target, u32)> = selected
-                    .into_iter()
-                    .filter_map(|index| {
-                        distribute
-                            .targets
-                            .get(index)
-                            .map(|target| (target.target, 0))
-                    })
-                    .collect();
-                if allocations.is_empty() {
-                    return Ok(ReplayDecisionAnswer::Distribute(Vec::new()));
+                let total_assigned: u32 = counts.values().sum();
+                if total_assigned != distribute.total {
+                    return Err(JsValue::from_str(&format!(
+                        "distribution must assign exactly {} total (got {})",
+                        distribute.total, total_assigned
+                    )));
                 }
 
-                let mut remaining = distribute.total;
-                for (_, amount) in &mut allocations {
-                    let grant = distribute.min_per_target.min(remaining);
-                    *amount = grant;
-                    remaining = remaining.saturating_sub(grant);
-                }
-                if remaining > 0
-                    && let Some((_, amount)) = allocations.first_mut()
+                if distribute.min_per_target > 0
+                    && counts
+                        .values()
+                        .any(|amount| *amount > 0 && *amount < distribute.min_per_target)
                 {
-                    *amount += remaining;
+                    return Err(JsValue::from_str(&format!(
+                        "each selected target must receive at least {}",
+                        distribute.min_per_target
+                    )));
                 }
-                allocations.retain(|(_, amount)| *amount > 0);
+
+                let mut allocations: Vec<(Target, u32)> = Vec::new();
+                for index in 0..distribute.targets.len() {
+                    let Some(amount) = counts.get(&index).copied() else {
+                        continue;
+                    };
+                    if amount == 0 {
+                        continue;
+                    }
+                    allocations.push((distribute.targets[index].target, amount));
+                }
                 Ok(ReplayDecisionAnswer::Distribute(allocations))
             }
             (DecisionContext::Colors(colors), UiCommand::SelectOptions { option_indices }) => {
@@ -2398,7 +2441,11 @@ impl WasmGame {
                     return Err(JsValue::from_str("no legal colors in colors decision"));
                 }
                 let legal: Vec<usize> = (0..choices.len()).collect();
-                let max = if colors.same_color { 1 } else { choices.len() };
+                let max = if colors.same_color {
+                    1
+                } else {
+                    colors.count as usize
+                };
                 validate_option_selection(1, Some(max), &option_indices, &legal)?;
 
                 if colors.same_color {
@@ -2414,7 +2461,9 @@ impl WasmGame {
                     ]));
                 }
 
-                let mut selected: Vec<crate::color::Color> = unique_indices(&option_indices)
+                let mut selected: Vec<crate::color::Color> = option_indices
+                    .iter()
+                    .copied()
                     .into_iter()
                     .filter_map(|index| choices.get(index).copied())
                     .collect();
@@ -2441,41 +2490,39 @@ impl WasmGame {
                     .collect();
                 validate_option_selection(
                     0,
-                    Some(counters.available_counters.len()),
+                    Some(counters.max_total as usize),
                     &option_indices,
                     &legal,
                 )?;
 
-                let mut remaining = counters.max_total;
-                let mut selected: Vec<(crate::object::CounterType, u32, u32)> = Vec::new();
-                for index in unique_indices(&option_indices) {
-                    if remaining == 0 {
-                        break;
-                    }
+                let mut counts: HashMap<usize, u32> = HashMap::new();
+                for index in option_indices {
+                    *counts.entry(index).or_insert(0) += 1;
+                }
+
+                let mut selected: Vec<(crate::object::CounterType, u32)> = Vec::new();
+                for index in 0..counters.available_counters.len() {
+                    let Some(chosen) = counts.get(&index).copied() else {
+                        continue;
+                    };
                     let Some((counter_type, available)) =
                         counters.available_counters.get(index).copied()
                     else {
                         continue;
                     };
-                    if available == 0 {
-                        continue;
+                    if chosen > available {
+                        return Err(JsValue::from_str(&format!(
+                            "cannot remove {} of counter {} (only {} available)",
+                            chosen,
+                            split_camel_case(&format!("{counter_type:?}")),
+                            available
+                        )));
                     }
-                    selected.push((counter_type, 1, available));
-                    remaining -= 1;
-                }
-                for (_, chosen, available) in &mut selected {
-                    if remaining == 0 {
-                        break;
+                    if chosen > 0 {
+                        selected.push((counter_type, chosen));
                     }
-                    let extra_capacity = available.saturating_sub(*chosen);
-                    let extra = extra_capacity.min(remaining);
-                    *chosen += extra;
-                    remaining -= extra;
                 }
-                let selected: Vec<(crate::object::CounterType, u32)> = selected
-                    .into_iter()
-                    .map(|(counter_type, chosen, _)| (counter_type, chosen))
-                    .collect();
+
                 Ok(ReplayDecisionAnswer::Counters(selected))
             }
             (DecisionContext::Partition(partition), UiCommand::SelectObjects { object_ids }) => {
@@ -2587,10 +2634,11 @@ impl WasmGame {
     ) -> Result<PriorityResponse, JsValue> {
         match (ctx, command) {
             (DecisionContext::Priority(priority), UiCommand::PriorityAction { action_index }) => {
-                let action = priority.legal_actions.get(action_index).ok_or_else(|| {
-                    JsValue::from_str(&format!("invalid priority action index: {action_index}"))
-                })?;
-                Ok(PriorityResponse::PriorityAction(action.clone()))
+                let action =
+                    resolve_priority_action_by_index(priority, action_index).ok_or_else(|| {
+                        JsValue::from_str(&format!("invalid priority action index: {action_index}"))
+                    })?;
+                Ok(PriorityResponse::PriorityAction(action))
             }
             (DecisionContext::Number(number), UiCommand::NumberChoice { value }) => {
                 if value < number.min || value > number.max {
@@ -2790,8 +2838,18 @@ impl WasmGame {
             .as_ref()
             .is_some_and(|pending| matches!(pending.stage, CastStage::ChoosingOptionalCosts))
         {
-            let choices: Vec<(usize, u32)> =
-                option_indices.into_iter().map(|index| (index, 1)).collect();
+            let mut counts: HashMap<usize, u32> = HashMap::new();
+            let mut order: Vec<usize> = Vec::new();
+            for index in option_indices {
+                if !counts.contains_key(&index) {
+                    order.push(index);
+                }
+                *counts.entry(index).or_insert(0) += 1;
+            }
+            let choices: Vec<(usize, u32)> = order
+                .into_iter()
+                .filter_map(|index| counts.get(&index).copied().map(|count| (index, count)))
+                .collect();
             return Ok(PriorityResponse::OptionalCosts(choices));
         }
         if self.priority_state.pending_mana_ability.is_some() {
@@ -3078,6 +3136,35 @@ fn object_name(game: &GameState, id: ObjectId) -> String {
     game.object(id)
         .map(|o| o.name.clone())
         .unwrap_or_else(|| format!("Object#{}", id.0))
+}
+
+fn optional_cost_selection_metadata(
+    game: &GameState,
+    source: Option<ObjectId>,
+    option_index: usize,
+) -> (bool, Option<u32>) {
+    let Some(source_id) = source else {
+        return (false, None);
+    };
+    let Some(obj) = game.object(source_id) else {
+        return (false, None);
+    };
+    let Some(optional_cost) = obj.optional_costs.get(option_index) else {
+        return (false, None);
+    };
+    if optional_cost.repeatable {
+        // Keep a practical cap for UI count inputs. Engine legality remains authoritative.
+        (true, Some(32))
+    } else {
+        (false, Some(1))
+    }
+}
+
+fn resolve_priority_action_by_index(
+    priority: &crate::decisions::context::PriorityContext,
+    action_index: usize,
+) -> Option<LegalAction> {
+    priority.actions.get(action_index).cloned()
 }
 
 /// Derive a short structured reason label from a DecisionContext.

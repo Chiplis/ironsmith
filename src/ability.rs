@@ -412,6 +412,48 @@ impl ActivatedAbility {
         self.mana_output.as_deref().unwrap_or(&[])
     }
 
+    /// Returns mana symbols this ability can produce for castability/payment inference.
+    ///
+    /// For fixed-output mana abilities this returns the fixed symbols.
+    /// For variable-output mana abilities (`mana_output = Some(vec![])`), this
+    /// best-effort infers producible symbols from mana effects.
+    pub fn inferred_mana_symbols(
+        &self,
+        game: &crate::game_state::GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Vec<ManaSymbol> {
+        let fixed = self.mana_symbols();
+        if !fixed.is_empty() {
+            return fixed.to_vec();
+        }
+
+        let mut inferred = Vec::new();
+        for effect in &self.effects {
+            let Some(symbols) = effect.producible_mana_symbols(game, source, controller) else {
+                continue;
+            };
+            for symbol in symbols {
+                if !matches!(
+                    symbol,
+                    ManaSymbol::White
+                        | ManaSymbol::Blue
+                        | ManaSymbol::Black
+                        | ManaSymbol::Red
+                        | ManaSymbol::Green
+                        | ManaSymbol::Colorless
+                ) {
+                    continue;
+                }
+                if !inferred.contains(&symbol) {
+                    inferred.push(symbol);
+                }
+            }
+        }
+
+        inferred
+    }
+
     /// Add targets to this ability.
     pub fn with_targets(mut self, targets: Vec<ChooseSpec>) -> Self {
         self.choices = targets;

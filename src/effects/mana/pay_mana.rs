@@ -207,7 +207,11 @@ fn describe_mana_ability(kind: &crate::ability::AbilityKind) -> String {
                 _ => "mana",
             })
             .collect();
-        format!("Add {}", produced.join(""))
+        if produced.is_empty() {
+            "Add mana".to_string()
+        } else {
+            format!("Add {}", produced.join(""))
+        }
     } else {
         "Add mana".to_string()
     }

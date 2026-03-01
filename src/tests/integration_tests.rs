@@ -547,7 +547,7 @@ impl DecisionMaker for ScriptedGameDecisionMaker {
     ) -> LegalAction {
         if let Some(action) = self.next_action() {
             if let Some(legal_action) =
-                self.action_to_legal_action(game, ctx.player, &action, &ctx.legal_actions)
+                self.action_to_legal_action(game, ctx.player, &action, &ctx.actions)
             {
                 return legal_action;
             }

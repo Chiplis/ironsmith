@@ -521,7 +521,7 @@ mod tests {
         impl DecisionMaker for TestDM {
             fn decide_priority(&mut self, game: &GameState, ctx: &PriorityContext) -> LegalAction {
                 // Find Mox Diamond cast action
-                for (i, action) in ctx.legal_actions.iter().enumerate() {
+                for (i, action) in ctx.actions.iter().enumerate() {
                     if let LegalAction::CastSpell { spell_id, .. } = action {
                         if let Some(obj) = game.object(*spell_id) {
                             if obj.name == "Mox Diamond" {

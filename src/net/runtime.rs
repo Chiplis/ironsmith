@@ -574,7 +574,6 @@ mod tests {
         let ctx = crate::decisions::context::PriorityContext::new(
             alice,
             compute_legal_actions(&game, alice),
-            Vec::new(),
         );
 
         let action = runtime.decide_priority(&game, &ctx);
@@ -635,7 +634,6 @@ mod tests {
         let ctx = crate::decisions::context::PriorityContext::new(
             alice,
             compute_legal_actions(&game, alice),
-            Vec::new(),
         );
 
         let _ = runtime.decide_priority(&game, &ctx);
