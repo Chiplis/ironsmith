@@ -6951,7 +6951,17 @@ pub(crate) fn parse_attack_trigger_subject_filter(
     if let Some(player) = trigger_subject_player_selector(subject_tokens) {
         return Ok(Some(attacking_filter_for_player(player)));
     }
-    parse_trigger_subject_filter(subject_tokens)
+    let Some(mut filter) = parse_trigger_subject_filter(subject_tokens)? else {
+        return Ok(None);
+    };
+
+    // Attack/combat-trigger subjects are creatures by default even when
+    // expressed only as a subtype ("a Sliver", "one or more Goblins", etc.).
+    if filter.card_types.is_empty() {
+        filter.card_types.push(crate::types::CardType::Creature);
+    }
+
+    Ok(Some(filter))
 }
 
 pub(crate) fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {

@@ -357,7 +357,11 @@ impl PlayerFilter {
             PlayerFilter::IteratedPlayer => "that player".to_string(),
             PlayerFilter::Target(inner) => format!("target {}", inner.description()),
             PlayerFilter::Excluding { base, excluded } => {
-                format!("{} other than {}", base.description(), excluded.description())
+                format!(
+                    "{} other than {}",
+                    base.description(),
+                    excluded.description()
+                )
             }
             PlayerFilter::ControllerOf(_) => "that object's controller".to_string(),
             PlayerFilter::OwnerOf(_) => "that object's owner".to_string(),

@@ -17,6 +17,86 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
+    if normalized.starts_with("sacrifice x lands")
+        && normalized.contains("you may play x additional lands this turn")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported verb-leading spell clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized.starts_with("choose target land")
+        && normalized.contains("create three tokens that are copies of it")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported choose-leading spell clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized.starts_with("you may put a land card from among them into your hand") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported put-from-among clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized.starts_with("it has \"this token gets +1/+1 for each card named")
+        && normalized.contains("in each graveyard")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported standalone token reminder clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized.contains("put one of them into your hand and the rest into your graveyard") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported multi-destination put clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized.starts_with("ninjutsu abilities you activate cost") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported marker keyword tail clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized.contains("copy of that aura attached to that creature") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported aura-copy attachment fanout clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized.contains("of defending players choice") {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported defending-players-choice clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized.starts_with("the first creature spell you cast each turn costs")
+        && normalized.contains("less to cast")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported first-spell cost modifier mechanic (line: '{}')",
+            line
+        )));
+    }
+    if normalized
+        .contains("if a creature enters this way, it enters with an additional +1/+1 counter on it")
+        && normalized.contains("return target artifact or creature card")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported mixed return+enters-with-counters clause (line: '{}')",
+            line
+        )));
+    }
+    if normalized
+        .contains("if it enters as a creature, it enters with an additional +1/+1 counter on it")
+        && normalized.contains("exile target permanent you control")
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported mixed exile/return+enters-with-counters clause (line: '{}')",
+            line
+        )));
+    }
     if normalized.starts_with("activate only") {
         return Ok(LineAst::StaticAbility(
             StaticAbility::rule_text_placeholder(line.trim().to_string()),
@@ -62,8 +142,9 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         || normalized.starts_with("as long as equipped creature is a human")
         || normalized
             .starts_with("while an opponent is choosing targets as part of casting a spell")
-        || normalized.contains("this creature enters with") && normalized.contains("+1/+1 counter")
-        || normalized.contains("it enters with") && normalized.contains("+1/+1 counter")
+        || normalized.starts_with("this creature enters with")
+            && normalized.contains("+1/+1 counter")
+        || normalized.starts_with("it enters with") && normalized.contains("+1/+1 counter")
         || normalized.starts_with("enchanted creature gets -x/-x")
         || normalized
             .starts_with("creatures with power less than this creatures power cant block it")
@@ -162,63 +243,19 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         ));
     }
 
-    if tokens.first().is_some_and(|token| token.is_word("you"))
-        && tokens.get(1).is_some_and(|token| token.is_word("may"))
-        && let Some(rather_idx) = tokens.iter().position(|token| token.is_word("rather"))
-    {
-        let rather_tail = words(tokens.get(rather_idx + 1..).unwrap_or_default());
-        let is_spell_cost_clause = rather_tail.starts_with(&["than", "pay", "this"])
-            && rather_tail.contains(&"mana")
-            && rather_tail.contains(&"cost")
-            && (rather_tail.contains(&"spell") || rather_tail.contains(&"spells"));
-        if is_spell_cost_clause {
-            let cost_clause_end = (rather_idx + 1..tokens.len())
-                .rfind(|idx| tokens[*idx].is_word("cost") || tokens[*idx].is_word("costs"))
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "alternative cost line missing terminal cost word (line: '{}')",
-                        line
-                    ))
-                })?;
-            let trailing_words = words(&tokens[cost_clause_end + 1..]);
-            let is_supported_trailing_spend_clause = trailing_words
-                .starts_with(&["spend", "only", "mana", "produced", "by"])
-                && trailing_words
-                    .iter()
-                    .any(|word| *word == "cast" || *word == "casting")
-                && trailing_words
-                    .iter()
-                    .any(|word| *word == "way" || *word == "spell");
-            if !trailing_words.is_empty() && !is_supported_trailing_spend_clause {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported trailing clause after alternative cost (line: '{}', trailing: '{}')",
-                    line,
-                    trailing_words.join(" ")
-                )));
-            }
-            let cost_tokens = tokens.get(2..rather_idx).unwrap_or_default();
-            if cost_tokens.is_empty() {
-                return Err(CardTextError::ParseError(
-                    "alternative cost line missing cost clause".to_string(),
-                ));
-            }
-            let (total_cost, mut cost_effects) = parse_activation_cost(cost_tokens)?;
-            let (mana_cost, mut total_cost_effects) =
-                alternative_cast_parts_from_total_cost(&total_cost);
-            cost_effects.append(&mut total_cost_effects);
-            // Keep cost effects stable for deterministic snapshots.
-            if !cost_effects.is_empty() {
-                cost_effects.shrink_to_fit();
-            }
-            parser_trace("parse_line:branch=alternative-cost", cost_tokens);
-            return Ok(LineAst::AlternativeCastingMethod(
-                AlternativeCastingMethod::alternative_cost(
-                    "Parsed alternative cost",
-                    mana_cost,
-                    cost_effects,
-                ),
-            ));
-        }
+    if let Some(method) = parse_if_conditional_alternative_cost_line(&tokens, line)? {
+        parser_trace("parse_line:branch=if-conditional-alternative-cost", &tokens);
+        return Ok(LineAst::AlternativeCastingMethod(method));
+    }
+
+    if let Some(method) = parse_self_free_cast_alternative_cost_line(&tokens) {
+        parser_trace("parse_line:branch=self-free-cast-alternative-cost", &tokens);
+        return Ok(LineAst::AlternativeCastingMethod(method));
+    }
+
+    if let Some(method) = parse_you_may_rather_than_spell_cost_line(&tokens, line)? {
+        parser_trace("parse_line:branch=alternative-cost", &tokens);
+        return Ok(LineAst::AlternativeCastingMethod(method));
     }
 
     if let Some(ability) = parse_equip_line(&tokens)? {
@@ -600,4 +637,133 @@ pub(crate) fn parse_flashback_line(
         cost: mana_cost,
         cost_effects,
     }))
+}
+
+fn is_self_free_cast_clause(words: &[&str]) -> bool {
+    words
+        == [
+            "you", "may", "cast", "this", "spell", "without", "paying", "its", "mana", "cost",
+        ]
+        || words
+            == [
+                "you", "may", "cast", "this", "spell", "without", "paying", "this", "spells",
+                "mana", "cost",
+            ]
+}
+
+pub(crate) fn parse_self_free_cast_alternative_cost_line(
+    tokens: &[Token],
+) -> Option<AlternativeCastingMethod> {
+    let clause_words = words(tokens);
+    if !is_self_free_cast_clause(&clause_words) {
+        return None;
+    }
+    Some(AlternativeCastingMethod::alternative_cost(
+        "Parsed alternative cost",
+        None,
+        Vec::new(),
+    ))
+}
+
+pub(crate) fn parse_you_may_rather_than_spell_cost_line(
+    tokens: &[Token],
+    line: &str,
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !(tokens.first().is_some_and(|token| token.is_word("you"))
+        && tokens.get(1).is_some_and(|token| token.is_word("may")))
+    {
+        return Ok(None);
+    }
+    let Some(rather_idx) = tokens.iter().position(|token| token.is_word("rather")) else {
+        return Ok(None);
+    };
+    let rather_tail = words(tokens.get(rather_idx + 1..).unwrap_or_default());
+    let is_spell_cost_clause = rather_tail.starts_with(&["than", "pay", "this"])
+        && rather_tail.contains(&"mana")
+        && rather_tail.contains(&"cost")
+        && (rather_tail.contains(&"spell") || rather_tail.contains(&"spells"));
+    if !is_spell_cost_clause {
+        return Ok(None);
+    }
+    let cost_clause_end = (rather_idx + 1..tokens.len())
+        .rfind(|idx| tokens[*idx].is_word("cost") || tokens[*idx].is_word("costs"))
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "alternative cost line missing terminal cost word (line: '{}')",
+                line
+            ))
+        })?;
+    let trailing_words = words(&tokens[cost_clause_end + 1..]);
+    if !trailing_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing clause after alternative cost (line: '{}', trailing: '{}')",
+            line,
+            trailing_words.join(" ")
+        )));
+    }
+    let cost_tokens = tokens.get(2..rather_idx).unwrap_or_default();
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "alternative cost line missing cost clause".to_string(),
+        ));
+    }
+    let (total_cost, mut cost_effects) = parse_activation_cost(cost_tokens)?;
+    let (mana_cost, mut total_cost_effects) = alternative_cast_parts_from_total_cost(&total_cost);
+    cost_effects.append(&mut total_cost_effects);
+    // Keep cost effects stable for deterministic snapshots.
+    if !cost_effects.is_empty() {
+        cost_effects.shrink_to_fit();
+    }
+    Ok(Some(AlternativeCastingMethod::alternative_cost(
+        "Parsed alternative cost",
+        mana_cost,
+        cost_effects,
+    )))
+}
+
+pub(crate) fn parse_if_conditional_alternative_cost_line(
+    tokens: &[Token],
+    line: &str,
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["if"]) {
+        return Ok(None);
+    }
+
+    let Some(comma_idx) = tokens
+        .iter()
+        .position(|token| matches!(token, Token::Comma(_)))
+    else {
+        return Ok(None);
+    };
+    let condition_tokens = trim_commas(&tokens[1..comma_idx]);
+    let tail_tokens = trim_commas(tokens.get(comma_idx + 1..).unwrap_or_default());
+    let tail_words = words(&tail_tokens);
+    if !is_self_free_cast_clause(&tail_words)
+        && parse_you_may_rather_than_spell_cost_line(&tail_tokens, line)?.is_none()
+    {
+        return Ok(None);
+    }
+    let Some(condition) = parse_this_spell_cost_condition(&condition_tokens) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported this-spell cost condition (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+
+    if is_self_free_cast_clause(&tail_words) {
+        return Ok(Some(
+            AlternativeCastingMethod::alternative_cost_with_condition(
+                "Parsed alternative cost",
+                None,
+                Vec::new(),
+                condition,
+            ),
+        ));
+    }
+
+    let Some(method) = parse_you_may_rather_than_spell_cost_line(&tail_tokens, line)? else {
+        return Ok(None);
+    };
+    Ok(Some(method.with_cast_condition(condition)))
 }

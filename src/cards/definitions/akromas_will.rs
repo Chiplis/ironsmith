@@ -921,7 +921,6 @@ mod tests {
     #[test]
     fn test_replay_akromas_will_double_strike_combat() {
         use crate::ids::PlayerId;
-        use crate::static_abilities::StaticAbility;
         use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test_full_turn};
 
         // Test that double strike actually causes damage twice in combat.
@@ -971,11 +970,9 @@ mod tests {
             .find(|obj| obj.name == "Grizzly Bears")
             .expect("Grizzly Bears should be on battlefield");
 
-        // Verify Grizzly Bears has double strike from Akroma's Will
-        assert!(
-            game.object_has_ability(bears.id, &StaticAbility::double_strike()),
-            "Creature should have double strike"
-        );
+        // This helper runs through cleanup, so temporary "until end of turn" abilities
+        // from Akroma's Will are already gone by the time we inspect final state.
+        // Validate combat output (life total) rather than post-cleanup ability presence.
 
         // Verify player controls a commander
         assert!(

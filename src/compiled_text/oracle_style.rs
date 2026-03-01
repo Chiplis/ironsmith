@@ -802,6 +802,45 @@ fn normalize_sentence_surface_style(line: &str) -> String {
             keyword.to_ascii_lowercase()
         );
     }
+    let normalize_target_players_action = |action: &str| {
+        if let Some(rest) = action.strip_prefix("gains ") {
+            return format!("gain {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("draws ") {
+            return format!("draw {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("discards ") {
+            return format!("discard {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("mills ") {
+            return format!("mill {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("loses ") {
+            return format!("lose {rest}");
+        }
+        if let Some(rest) = action.strip_prefix("sacrifices ") {
+            return format!("sacrifice {rest}");
+        }
+        action.to_string()
+    };
+    if let Some((first_clause, second_clause)) =
+        split_once_ascii_ci(&normalized, ". For each target player, that player ")
+        && let Some(first_action) =
+            strip_prefix_ascii_ci(first_clause, "For each target player, that player ")
+    {
+        return format!(
+            "Target players each {} and {}.",
+            normalize_target_players_action(first_action.trim().trim_end_matches('.')),
+            second_clause.trim().trim_end_matches('.')
+        );
+    }
+    if let Some(action) = strip_prefix_ascii_ci(&normalized, "For each target player, that player ")
+    {
+        return format!(
+            "Target players each {}",
+            normalize_target_players_action(action.trim())
+        );
+    }
     if let Some(count) = normalized
         .strip_prefix("For each opponent, that player discards ")
         .and_then(|rest| rest.strip_suffix(" cards."))

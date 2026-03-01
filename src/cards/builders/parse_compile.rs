@@ -5467,8 +5467,8 @@ pub(crate) fn compile_effect(
             }
             if let Some(attack_player) = attack_target_player_or_planeswalker_controlled_by {
                 let attack_player_filter = resolve_non_target_player_filter(*attack_player, ctx)?;
-                effect = effect
-                    .attacking_player_or_planeswalker_controlled_by(attack_player_filter);
+                effect =
+                    effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter);
             }
             if *half_power_toughness_round_up {
                 effect = effect.half_power_toughness_round_up();
@@ -5566,8 +5566,8 @@ pub(crate) fn compile_effect(
             }
             if let Some(attack_player) = attack_target_player_or_planeswalker_controlled_by {
                 let attack_player_filter = resolve_non_target_player_filter(*attack_player, ctx)?;
-                effect = effect
-                    .attacking_player_or_planeswalker_controlled_by(attack_player_filter);
+                effect =
+                    effect.attacking_player_or_planeswalker_controlled_by(attack_player_filter);
             }
             if *half_power_toughness_round_up {
                 effect = effect.half_power_toughness_round_up();

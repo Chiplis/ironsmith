@@ -364,14 +364,14 @@ pub fn apply_priority_response_with_dm(
                         crate::decision::resolve_play_from_alternative_method(
                             game, player, obj, *zone, *idx,
                         )
-                        .and_then(|method| {
+                        .map(|method| {
                             if !method.cost_effects().is_empty() {
                                 method.mana_cost().cloned()
                             } else {
                                 method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
                             }
                         })
-                        .or_else(|| obj.mana_cost.clone())
+                        .unwrap_or_else(|| obj.mana_cost.clone())
                     }
                 };
                 (cost, obj.spell_effect.clone().unwrap_or_default())

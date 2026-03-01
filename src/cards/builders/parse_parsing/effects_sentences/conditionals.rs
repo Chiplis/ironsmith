@@ -986,18 +986,18 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
     }
 
     let raw_words = words(tokens);
-    let triggering_object_had_no_counter_prefix_len =
-        if raw_words.starts_with(&["it", "had", "no"]) {
-            Some(3)
-        } else if raw_words.starts_with(&["this", "creature", "had", "no"])
-            || raw_words.starts_with(&["that", "creature", "had", "no"])
-            || raw_words.starts_with(&["this", "permanent", "had", "no"])
-            || raw_words.starts_with(&["that", "permanent", "had", "no"])
-        {
-            Some(4)
-        } else {
-            None
-        };
+    let triggering_object_had_no_counter_prefix_len = if raw_words.starts_with(&["it", "had", "no"])
+    {
+        Some(3)
+    } else if raw_words.starts_with(&["this", "creature", "had", "no"])
+        || raw_words.starts_with(&["that", "creature", "had", "no"])
+        || raw_words.starts_with(&["this", "permanent", "had", "no"])
+        || raw_words.starts_with(&["that", "permanent", "had", "no"])
+    {
+        Some(4)
+    } else {
+        None
+    };
     if let Some(prefix_len) = triggering_object_had_no_counter_prefix_len
         && raw_words.len() >= prefix_len + 4
         && let Some(counter_type) = parse_counter_type_word(raw_words[prefix_len])

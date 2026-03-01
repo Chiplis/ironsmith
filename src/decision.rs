@@ -1518,6 +1518,17 @@ pub fn can_cast_with_alternative_from_hand(
 
     match method {
         method if method.uses_composed_cost_effects() => {
+            if let Some(condition) = method.cast_condition()
+                && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+                    game,
+                    spell_id,
+                    condition,
+                    &[],
+                )
+            {
+                return false;
+            }
+
             let mana_cost = method.mana_cost();
             // Check mana cost if present
             if let Some(mana) = mana_cost

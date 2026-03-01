@@ -18,6 +18,7 @@ pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
                 let name = method.name();
                 let mana_cost = method.mana_cost();
                 let cost_effects = method.cost_effects();
+                let cast_condition = method.cast_condition();
                 let mut parts = Vec::new();
                 if let Some(cost) = mana_cost {
                     parts.push(format!("pay {}", cost.to_oracle()));
@@ -33,6 +34,12 @@ pub fn compiled_lines(def: &CardDefinition) -> Vec<String> {
                 let mut line = format!("You may {clause} rather than pay this spell's mana cost");
                 if !name.is_empty() {
                     line.push_str(&format!(" ({name})"));
+                }
+                if let Some(condition) = cast_condition
+                    && let Some(condition_text) =
+                        crate::static_abilities::describe_this_spell_cost_condition(condition)
+                {
+                    line = format!("If {condition_text}, {}", lowercase_first(&line));
                 }
                 out.push(line);
             }
@@ -755,4 +762,3 @@ fn normalize_rendered_line_for_card(def: &CardDefinition, line: &str) -> String 
     }
     normalize_body(line)
 }
-

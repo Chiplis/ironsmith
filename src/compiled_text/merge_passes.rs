@@ -402,9 +402,16 @@ fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<String> {
             }
             let left_rest = normalize_keyword_predicate_case(left_raw);
             let right_rest = normalize_keyword_predicate_case(right_raw);
-            merged.push(format!(
-                "{left_subject} {left_verb} {left_rest} and {right_verb} {right_rest}"
-            ));
+            if is_trait(left_verb)
+                && is_trait(right_verb)
+                && left_verb.eq_ignore_ascii_case(right_verb)
+            {
+                merged.push(format!("{left_subject} {left_verb} {left_rest} and {right_rest}"));
+            } else {
+                merged.push(format!(
+                    "{left_subject} {left_verb} {left_rest} and {right_verb} {right_rest}"
+                ));
+            }
             idx += 2;
             continue;
         }
@@ -851,4 +858,3 @@ fn is_keyword_style_line(line: &str) -> bool {
     .iter()
     .any(|prefix| lower.starts_with(prefix))
 }
-

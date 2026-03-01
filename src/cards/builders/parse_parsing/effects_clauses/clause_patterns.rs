@@ -640,27 +640,34 @@ pub(crate) fn parse_prevent_all_damage_clause(
     tokens: &[Token],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
-    let prefix = [
+    let prefix_target_then_duration = [
         "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
     ];
-    if !clause_words.starts_with(&prefix) {
+    let prefix_duration_then_target = [
+        "prevent", "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to",
+    ];
+    if !clause_words.starts_with(&prefix_target_then_duration)
+        && !clause_words.starts_with(&prefix_duration_then_target)
+    {
         return Ok(None);
     }
-    if clause_words.len() <= prefix.len() + 1 {
-        return Err(CardTextError::ParseError(format!(
-            "missing prevent-all damage target (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-
-    if clause_words[clause_words.len().saturating_sub(2)..] != ["this", "turn"] {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported prevent-all damage duration (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-
-    let target_words = &clause_words[prefix.len()..clause_words.len() - 2];
+    let target_words = if clause_words.starts_with(&prefix_duration_then_target) {
+        &clause_words[prefix_duration_then_target.len()..]
+    } else {
+        if clause_words.len() <= prefix_target_then_duration.len() + 1 {
+            return Err(CardTextError::ParseError(format!(
+                "missing prevent-all damage target (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        if clause_words[clause_words.len().saturating_sub(2)..] != ["this", "turn"] {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported prevent-all damage duration (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        &clause_words[prefix_target_then_duration.len()..clause_words.len() - 2]
+    };
     if target_words.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing prevent-all damage target (clause: '{}')",
@@ -1162,7 +1169,10 @@ pub(crate) fn parse_keyword_mechanic_clause(
     }
 
     if clause_words.first() == Some(&"amass") {
-        return Ok(Some(EffectAst::OpenAttraction));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported amass mechanic (clause: '{}')",
+            clause_words.join(" ")
+        )));
     }
 
     if clause_words.starts_with(&["open", "an", "attraction"])

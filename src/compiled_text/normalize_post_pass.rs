@@ -640,6 +640,20 @@ fn normalize_each_opponent_life_exchange_clause(loss: &str, gain: &str) -> Optio
 fn normalize_known_low_tail_phrase(text: &str) -> String {
     let trimmed = text.trim();
 
+    if let Some((prefix, rest)) =
+        split_once_ascii_ci(trimmed, ", for each opponent, that player loses ")
+        && let Some((loss, gain)) = split_once_ascii_ci(rest, " and you gain ")
+        && let Some(normalized) = normalize_each_opponent_life_exchange_clause(loss, gain)
+    {
+        return format!("{prefix}, {normalized}");
+    }
+    if let Some(rest) = strip_prefix_ascii_ci(trimmed, "For each opponent, that player loses ")
+        && let Some((loss, gain)) = split_once_ascii_ci(rest, " and you gain ")
+        && let Some(normalized) = normalize_each_opponent_life_exchange_clause(loss, gain)
+    {
+        return capitalize_first(&normalized);
+    }
+
     if let Some((left, right)) = split_once_ascii_ci(trimmed, ". ")
         && let Some(cards) = strip_prefix_ascii_ci(left.trim(), "Each player returns each ")
             .and_then(|tail| {
@@ -1146,6 +1160,15 @@ fn rewrite_return_with_counters_on_it_sequence(text: &str) -> Option<String> {
         if is_return && base_clause == "Return target card from your graveyard to the battlefield" {
             base_clause =
                 "Return target permanent card from your graveyard to the battlefield".to_string();
+        }
+        if base_clause.eq_ignore_ascii_case(
+            "At the beginning of the next end step, return it to the battlefield",
+        ) && idx > 0
+            && clauses[idx - 1].to_ascii_lowercase().contains("exile ")
+        {
+            base_clause =
+                "At the beginning of the next end step, return that card to the battlefield under its owner's control"
+                    .to_string();
         }
 
         let merged = format!(
@@ -3862,4 +3885,3 @@ fn merge_static_legendary_gets_then_has_block(
     let merged = format!("{subject} is legendary, gets {gets_tail}, and {verb} {keyword_list}.");
     Some((merged, idx - start_idx))
 }
-

@@ -678,7 +678,7 @@ pub enum ThisSpellCostCondition {
     CreatureIsAttackingYou,
 }
 
-fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) -> Option<String> {
+pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) -> Option<String> {
     match condition {
         ThisSpellCostCondition::Always => None,
         ThisSpellCostCondition::YourTurn => Some("it's your turn".to_string()),

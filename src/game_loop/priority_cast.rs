@@ -611,14 +611,14 @@ fn get_spell_mana_cost(
         } => crate::decision::resolve_play_from_alternative_method(
             game, caster, obj, *zone, *idx,
         )
-        .and_then(|method| {
+        .map(|method| {
             if !method.cost_effects().is_empty() {
                 method.mana_cost().cloned()
             } else {
                 method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
             }
         })
-        .or_else(|| obj.mana_cost.clone()),
+        .unwrap_or_else(|| obj.mana_cost.clone()),
     }
 }
 
@@ -891,14 +891,14 @@ fn continue_to_mana_payment(
             } => crate::decision::resolve_play_from_alternative_method(
                 game, pending.caster, obj, *zone, *idx,
             )
-            .and_then(|method| {
+            .map(|method| {
                 if !method.cost_effects().is_empty() {
                     method.mana_cost().cloned()
                 } else {
                     method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
                 }
             })
-            .or_else(|| obj.mana_cost.clone()),
+            .unwrap_or_else(|| obj.mana_cost.clone()),
         };
 
         // Apply cost reductions (affinity, delve, convoke, improvise)

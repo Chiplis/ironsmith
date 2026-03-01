@@ -49,6 +49,12 @@ pub enum AlternativeCastingMethod {
         mana_cost: Option<ManaCost>,
         /// Non-mana cost effects (pay life, exile cards, etc.)
         cost_effects: Vec<Effect>,
+        /// Optional cast-time condition for this alternative cost.
+        ///
+        /// Used for lines like:
+        /// "If an opponent controls a Mountain and you control a Plains,
+        /// you may cast this spell without paying its mana cost."
+        condition: Option<crate::static_abilities::ThisSpellCostCondition>,
     },
 
     /// Trap - cast for alternative (usually free) cost when a condition is met.
@@ -127,6 +133,31 @@ impl AlternativeCastingMethod {
         }
     }
 
+    /// Returns the cast-time condition for this alternative casting method, if any.
+    pub fn cast_condition(&self) -> Option<&crate::static_abilities::ThisSpellCostCondition> {
+        match self {
+            Self::Composed { condition, .. } => condition.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Attach a cast-time condition to a composed alternative cast method.
+    ///
+    /// Non-composed methods are returned unchanged.
+    pub fn with_cast_condition(
+        mut self,
+        condition: crate::static_abilities::ThisSpellCostCondition,
+    ) -> Self {
+        if let Self::Composed {
+            condition: existing_condition,
+            ..
+        } = &mut self
+        {
+            *existing_condition = Some(condition);
+        }
+        self
+    }
+
     /// Returns the exile from hand requirements, if any.
     ///
     /// This checks the cost_effects for ExileFromHandAsCostEffect and returns
@@ -185,6 +216,22 @@ impl AlternativeCastingMethod {
             name,
             mana_cost,
             cost_effects,
+            condition: None,
+        }
+    }
+
+    /// Create a composed alternative cast method with an explicit cast-time condition.
+    pub fn alternative_cost_with_condition(
+        name: &'static str,
+        mana_cost: Option<ManaCost>,
+        cost_effects: Vec<Effect>,
+        condition: crate::static_abilities::ThisSpellCostCondition,
+    ) -> Self {
+        Self::Composed {
+            name,
+            mana_cost,
+            cost_effects,
+            condition: Some(condition),
         }
     }
 

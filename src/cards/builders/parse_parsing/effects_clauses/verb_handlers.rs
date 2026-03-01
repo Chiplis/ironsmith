@@ -1459,7 +1459,11 @@ pub(crate) fn parse_counter(tokens: &[Token]) -> Result<EffectAst, CardTextError
                 {
                     life = Some(amount);
                 } else {
-                    parser_trace("parse_counter:ignored-trailing-unless-payment", tokens);
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
+                        words(tokens).join(" "),
+                        trailing_words.join(" ")
+                    )));
                 }
             } else if let Some(value) =
                 parse_counter_unless_additional_generic_value(&trailing_tokens)?
@@ -1472,13 +1476,25 @@ pub(crate) fn parse_counter(tokens: &[Token]) -> Result<EffectAst, CardTextError
                             Some(scale_value_multiplier(dynamic, *multiplier as i32));
                         mana.clear();
                     } else {
-                        parser_trace("parse_counter:ignored-trailing-unless-payment", tokens);
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
+                            words(tokens).join(" "),
+                            trailing_words.join(" ")
+                        )));
                     }
                 } else {
-                    parser_trace("parse_counter:ignored-trailing-unless-payment", tokens);
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
+                        words(tokens).join(" "),
+                        trailing_words.join(" ")
+                    )));
                 }
             } else if !trailing_words.is_empty() {
-                parser_trace("parse_counter:ignored-trailing-unless-payment", tokens);
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
+                    words(tokens).join(" "),
+                    trailing_words.join(" ")
+                )));
             }
         }
 

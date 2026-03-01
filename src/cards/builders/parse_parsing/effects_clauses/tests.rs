@@ -1396,10 +1396,11 @@ fn parse_trigger_clause_filtered_source_deals_combat_damage_to_creature() {
     match trigger {
         TriggerSpec::DealsCombatDamageTo { source, target } => {
             assert!(source.card_types.contains(&CardType::Creature));
+            let source_description = source.description();
             assert!(
-                source.description().contains("sliver"),
+                source_description.to_ascii_lowercase().contains("sliver"),
                 "expected sliver source filter, got {}",
-                source.description()
+                source_description
             );
             assert!(target.card_types.contains(&CardType::Creature));
         }

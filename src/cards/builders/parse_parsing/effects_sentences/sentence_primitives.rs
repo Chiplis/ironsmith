@@ -3681,7 +3681,10 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
     if !is_match {
         return Ok(None);
     }
-    Ok(Some(vec![EffectAst::OpenAttraction]))
+    Err(CardTextError::ParseError(format!(
+        "unsupported mechanic marker clause (clause: '{}')",
+        clause_words.join(" ")
+    )))
 }
 
 pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[

@@ -5147,13 +5147,7 @@ fn describe_search_selection_with_cards(selection: &str) -> String {
             return format!("any number of {rest} cards");
         }
     }
-    // Prefer "demon card" over "a demon card" for stability in compiled text comparisons.
-    // Multi-word selections keep an indefinite article for readability ("a basic land card").
-    if selection.split_whitespace().count() == 1 {
-        format!("{selection} card")
-    } else {
-        format!("{} card", with_indefinite_article(selection))
-    }
+    format!("{} card", with_indefinite_article(selection))
 }
 
 fn normalize_search_you_own_clause(text: &str) -> Option<String> {

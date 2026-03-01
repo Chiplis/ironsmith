@@ -627,7 +627,8 @@ pub(crate) fn parse_for_each_opponent_clause(
     let mut inner_words = words(&inner_tokens);
     let mut iteration_filter = PlayerFilter::Opponent;
     if inner_words.starts_with(&["other", "than", "defending", "player"]) {
-        let strip_start = token_index_for_word_index(&inner_tokens, 4).unwrap_or(inner_tokens.len());
+        let strip_start =
+            token_index_for_word_index(&inner_tokens, 4).unwrap_or(inner_tokens.len());
         inner_tokens = trim_commas(&inner_tokens[strip_start..]).to_vec();
         inner_words = words(&inner_tokens);
         iteration_filter = PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending);

@@ -1456,13 +1456,17 @@ pub(crate) fn parse_unless_pays_clause(
     };
 
     let mut mana = Vec::new();
-    for token in tokens[pays_idx + 1..].iter() {
+    let mut trailing_start: Option<usize> = None;
+    for (offset, token) in tokens[pays_idx + 1..].iter().enumerate() {
         let Some(word) = token.as_word() else {
             continue;
         };
         match parse_mana_symbol(word) {
             Ok(symbol) => mana.push(symbol),
-            Err(_) => break,
+            Err(_) => {
+                trailing_start = Some(pays_idx + 1 + offset);
+                break;
+            }
         }
     }
 
@@ -1471,6 +1475,18 @@ pub(crate) fn parse_unless_pays_clause(
             "missing mana cost (clause: '{}')",
             words(tokens).join(" ")
         )));
+    }
+
+    if let Some(start) = trailing_start {
+        let trailing_tokens = trim_commas(&tokens[start..]);
+        let trailing_words = words(&trailing_tokens);
+        if !trailing_words.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing unless-payment clause (clause: '{}', trailing: '{}')",
+                words(tokens).join(" "),
+                trailing_words.join(" ")
+            )));
+        }
     }
 
     Ok((player, mana))

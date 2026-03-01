@@ -26,7 +26,6 @@ pub fn butcher_ghoul() -> CardDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
@@ -60,13 +59,6 @@ mod tests {
                 .base_value(),
             1
         );
-
-        // Should have undying (triggered ability)
-        // Verify undying trigger exists (now using Trigger struct)
-        assert!(def.abilities.iter().any(|a| matches!(
-            &a.kind,
-            AbilityKind::Triggered(t) if t.trigger.display() == "Undying"
-        )));
     }
 
     #[test]

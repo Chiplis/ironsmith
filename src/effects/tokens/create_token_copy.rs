@@ -1,8 +1,8 @@
 //! Create token copy effect implementation.
 
-use crate::combat_state::{AttackTarget, AttackerInfo};
 use crate::card::PtValue;
 use crate::color::ColorSet;
+use crate::combat_state::{AttackTarget, AttackerInfo};
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, EffectResult, Value};
 use crate::effects::EffectExecutor;
@@ -269,7 +269,10 @@ impl CreateTokenCopyEffect {
 
     fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<AttackTarget> {
         let mut targets = Vec::new();
-        if game.player(player_id).is_some_and(|player| player.is_in_game()) {
+        if game
+            .player(player_id)
+            .is_some_and(|player| player.is_in_game())
+        {
             targets.push(AttackTarget::Player(player_id));
         }
 
@@ -467,7 +470,8 @@ impl EffectExecutor for CreateTokenCopyEffect {
             if let Some(attack_player) = configured_attack_player {
                 let targets = Self::attack_targets_for_player(game, attack_player);
                 if !targets.is_empty() {
-                    let chosen_target = Self::choose_attack_target(game, ctx, attack_player, &targets);
+                    let chosen_target =
+                        Self::choose_attack_target(game, ctx, attack_player, &targets);
                     if let Some(combat) = game.combat.as_mut() {
                         combat.attackers.push(AttackerInfo {
                             creature: id,
@@ -766,7 +770,11 @@ mod tests {
         }
 
         let mut game = GameState::new(
-            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
             20,
         );
         let alice = PlayerId::from_index(0);

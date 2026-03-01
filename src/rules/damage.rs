@@ -320,13 +320,7 @@ pub fn distribute_trample_damage(
             0
         };
 
-        let is_last = idx + 1 == blockers.len();
-        let damage_to_blocker = if !has_trample && is_last {
-            // Without trample, all damage must be assigned among the blockers.
-            remaining_damage
-        } else {
-            remaining_damage.min(lethal)
-        };
+        let damage_to_blocker = remaining_damage.min(lethal);
         let is_lethal = damage_to_blocker >= lethal && lethal > 0;
 
         distribution.push((damage_to_blocker, is_lethal));

@@ -394,11 +394,34 @@ pub(crate) fn split_copy_source_inline_combat_modifiers(
         .any(|window| {
             matches!(
                 window,
-                ["that", "player", "or", "a", "planeswalker", "they", "control"]
-                    | ["that", "player", "or", "planeswalker", "they", "control"]
-                    | ["that", "player", "or", "a", "planeswalker", "they", "controls"]
+                [
+                    "that",
+                    "player",
+                    "or",
+                    "a",
+                    "planeswalker",
+                    "they",
+                    "control"
+                ] | ["that", "player", "or", "planeswalker", "they", "control"]
+                    | [
+                        "that",
+                        "player",
+                        "or",
+                        "a",
+                        "planeswalker",
+                        "they",
+                        "controls"
+                    ]
                     | ["that", "player", "or", "planeswalker", "they", "controls"]
-                    | ["that", "player", "or", "a", "planeswalker", "their", "control"]
+                    | [
+                        "that",
+                        "player",
+                        "or",
+                        "a",
+                        "planeswalker",
+                        "their",
+                        "control"
+                    ]
                     | ["that", "player", "or", "planeswalker", "their", "control"]
             )
         })
@@ -686,12 +709,8 @@ pub(crate) fn parse_create(
                 let source_tokens = &source_tokens[..source_end];
                 let (source_tokens, tail_tapped, tail_attacking) =
                     split_copy_source_tail_modifiers(source_tokens);
-                let (
-                    source_tokens,
-                    inline_tapped,
-                    inline_attacking,
-                    inline_attack_target_player,
-                ) = split_copy_source_inline_combat_modifiers(&source_tokens);
+                let (source_tokens, inline_tapped, inline_attacking, inline_attack_target_player) =
+                    split_copy_source_inline_combat_modifiers(&source_tokens);
                 enters_tapped = tail_tapped || inline_tapped;
                 enters_attacking = tail_attacking || inline_attacking;
                 attack_target_player_or_planeswalker_controlled_by = inline_attack_target_player;

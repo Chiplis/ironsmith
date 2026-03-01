@@ -201,8 +201,14 @@ impl CardRegistry {
             .map(|name| normalize_card_lookup_name(name))
             .collect::<std::collections::HashSet<_>>();
 
+        generated_registry::register_generated_parser_cards_if_name(self, |name| {
+            requested_name_keys.contains(&normalize_card_lookup_name(name))
+        });
+
         #[cfg(test)]
         {
+            // In test builds, prefer handwritten definitions for overlapping cards.
+            // Generated parser cards are still loaded above for all non-handwritten names.
             let requested_keys = requested_names
                 .iter()
                 .map(|name| normalize_card_constructor_key(name))
@@ -214,10 +220,6 @@ impl CardRegistry {
                         .is_some_and(|stripped| requested_keys.contains(stripped))
             });
         }
-
-        generated_registry::register_generated_parser_cards_if_name(self, |name| {
-            requested_name_keys.contains(&normalize_card_lookup_name(name))
-        });
     }
 
     /// Ensure every generated parser definition is loaded into this registry.

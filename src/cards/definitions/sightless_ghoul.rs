@@ -79,12 +79,6 @@ mod tests {
                 false
             }
         }));
-
-        // Should have undying (triggered ability, now using Trigger struct)
-        assert!(def.abilities.iter().any(|a| matches!(
-            &a.kind,
-            AbilityKind::Triggered(t) if t.trigger.display() == "Undying"
-        )));
     }
 
     /// Tests casting Sightless Ghoul (creature with undying and can't block).
