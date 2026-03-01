@@ -881,25 +881,32 @@ fn parse_may_pay_clause_with_attached_trailing_if() {
     );
     let effects = parse_effect_sentence(&tokens).expect("parse may-pay trailing-if clause");
 
-    let [EffectAst::MayByPlayer {
-        player,
-        effects: may_effects,
-    }] = effects.as_slice()
+    let [
+        EffectAst::MayByPlayer {
+            player,
+            effects: may_effects,
+        },
+    ] = effects.as_slice()
     else {
         panic!("expected may-by-player wrapper, got {effects:?}");
     };
     assert_eq!(*player, PlayerAst::You);
 
-    let [EffectAst::Conditional {
-        predicate,
-        if_true,
-        if_false,
-    }] = may_effects.as_slice()
+    let [
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = may_effects.as_slice()
     else {
         panic!("expected trailing-if conditional, got {may_effects:?}");
     };
 
-    assert!(if_false.is_empty(), "expected no else branch, got {if_false:?}");
+    assert!(
+        if_false.is_empty(),
+        "expected no else branch, got {if_false:?}"
+    );
     assert!(matches!(
         predicate,
         PredicateAst::TaggedMatches(tag, filter)

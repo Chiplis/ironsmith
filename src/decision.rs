@@ -1591,7 +1591,11 @@ pub fn can_cast_with_alternative_from_hand(
             }
 
             for effect in cost_effects {
-                if effect.0.can_execute_as_cost(game, spell_id, player).is_err() {
+                if effect
+                    .0
+                    .can_execute_as_cost(game, spell_id, player)
+                    .is_err()
+                {
                     return false;
                 }
             }

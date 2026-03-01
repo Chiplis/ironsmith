@@ -660,10 +660,8 @@ pub(crate) fn parse_bestow_line(
     }
 
     let words_all = words(tokens);
-    let (mana_cost_text, mana_word_count) =
-        leading_mana_symbols_to_oracle(&words_all[1..]).ok_or_else(|| {
-            CardTextError::ParseError("bestow keyword missing mana cost".to_string())
-        })?;
+    let (mana_cost_text, mana_word_count) = leading_mana_symbols_to_oracle(&words_all[1..])
+        .ok_or_else(|| CardTextError::ParseError("bestow keyword missing mana cost".to_string()))?;
     let mut mana_cost = parse_scryfall_mana_cost(&mana_cost_text).map_err(|err| {
         CardTextError::ParseError(format!(
             "invalid bestow mana cost '{mana_cost_text}': {err:?}"

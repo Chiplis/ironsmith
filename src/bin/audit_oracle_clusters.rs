@@ -1451,6 +1451,22 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         .replace("if effect #0 that doesn't happen", "if you don't")
         .replace("If effect #0 happened", "If you do")
         .replace("if effect #0 happened", "if you do")
+        .replace(
+            "If you don't, Create a 1/1 green Insect creature token",
+            "If you didn't create a token this way, create a 1/1 green Insect creature token",
+        )
+        .replace(
+            "if you don't, create a 1/1 green insect creature token",
+            "if you didn't create a token this way, create a 1/1 green insect creature token",
+        )
+        .replace(
+            "Create a token that's a copy of enchanted creature",
+            "Create a token that's a copy of that creature",
+        )
+        .replace(
+            "create a token that's a copy of enchanted creature",
+            "create a token that's a copy of that creature",
+        )
         .replace("the count result of effect #0 life", "that much life")
         .replace("count result of effect #0 life", "that much life")
         .replace("the count result of effect #0", "that much")
@@ -1758,6 +1774,14 @@ fn split_common_semantic_conjunctions(line: &str) -> String {
         )
         .replace("Tag the object attached to this Aura as 'enchanted'. ", "")
         .replace("tag the object attached to this Aura as 'enchanted'. ", "")
+        .replace("Tag the object attached to this permanent as 'enchanted'. ", "")
+        .replace("tag the object attached to this permanent as 'enchanted'. ", "")
+        .replace("Tag the object attached to this creature as 'enchanted'. ", "")
+        .replace("tag the object attached to this creature as 'enchanted'. ", "")
+        .replace("Tag the object attached to this permanent as 'enchanted'.", "")
+        .replace("tag the object attached to this permanent as 'enchanted'.", "")
+        .replace("Tag the object attached to this creature as 'enchanted'.", "")
+        .replace("tag the object attached to this creature as 'enchanted'.", "")
         .replace(
             "Destroy target tagged object 'enchanted'",
             "Destroy enchanted creature",
@@ -5943,6 +5967,34 @@ mod tests {
         assert!(
             similarity_score < 0.99,
             "payer-role inversion should not remain above strict 0.99 score floor (score={similarity_score})"
+        );
+    }
+
+    #[test]
+    fn test_compare_semantics_springheart_nantuko_strict_similarity() {
+        let oracle = "Bestow {1}{G}\nEnchanted creature gets +1/+1.\nLandfall — Whenever a land you control enters, you may pay {1}{G} if this permanent is attached to a creature you control. If you do, create a token that's a copy of that creature. If you didn't create a token this way, create a 1/1 green Insect creature token.";
+        let compiled = vec![
+            "Bestow {1}{G}".to_string(),
+            "Static ability 1: Enchanted creature gets +1/+1.".to_string(),
+            "Triggered ability 2: Whenever a land you control enters, tag the object attached to this permanent as 'enchanted'. you may If enchanted creature matches a creature you control, you pay {1}{G}. If you do, Create a token that's a copy of enchanted creature. If effect #0 that doesn't happen, Create a 1/1 green Insect creature token.".to_string(),
+        ];
+        let (_oracle_coverage, _compiled_coverage, similarity_score, _line_delta, mismatch) =
+            compare_semantics(
+                "Springheart Nantuko",
+                oracle,
+                &compiled,
+                Some(EmbeddingConfig {
+                    dims: 384,
+                    mismatch_threshold: 0.99,
+                }),
+            );
+        assert!(
+            !mismatch,
+            "Springheart Nantuko should clear strict semantic gate after normalization (score={similarity_score})"
+        );
+        assert!(
+            similarity_score >= 0.99,
+            "Springheart Nantuko similarity should meet strict 0.99 threshold (score={similarity_score})"
         );
     }
 }

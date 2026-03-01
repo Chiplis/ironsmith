@@ -304,8 +304,10 @@ pub(crate) fn parse_effect_clause_with_trailing_if(
 }
 
 fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
-    matches!(predicate, PredicateAst::ManaSpentToCastThisSpellAtLeast { .. })
-        || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == "enchanted")
+    matches!(
+        predicate,
+        PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+    ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == "enchanted")
 }
 
 pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
