@@ -3,8 +3,10 @@
 use crate::effect::{EffectOutcome, EffectResult};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_from_spec;
+use crate::event_processor::{EventOutcome, process_zone_change};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
@@ -39,6 +41,30 @@ impl ReturnFromGraveyardToHandEffect {
     /// Create an effect targeting any card in a graveyard.
     pub fn any_card() -> Self {
         Self::new(ChooseSpec::card_in_zone(Zone::Graveyard), false)
+    }
+
+    fn return_object(
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        object_id: ObjectId,
+    ) -> Option<ObjectId> {
+        let Some(obj) = game.object(object_id) else {
+            return None;
+        };
+        if obj.zone != Zone::Graveyard {
+            return None;
+        }
+
+        match process_zone_change(
+            game,
+            object_id,
+            Zone::Graveyard,
+            Zone::Hand,
+            &mut ctx.decision_maker,
+        ) {
+            EventOutcome::Proceed(final_zone) => game.move_object(object_id, final_zone),
+            EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => None,
+        }
     }
 }
 
@@ -86,7 +112,7 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
 
             candidates.shuffle(&mut rand::rng());
             for id in candidates.into_iter().take(requested) {
-                if let Some(new_id) = game.move_object(id, Zone::Hand) {
+                if let Some(new_id) = Self::return_object(game, ctx, id) {
                     returned.push(new_id);
                 }
             }
@@ -100,13 +126,7 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
             Err(_) => return Ok(EffectOutcome::from_result(EffectResult::TargetInvalid)),
         };
         for target_id in resolved_targets {
-            let Some(obj) = game.object(target_id) else {
-                continue;
-            };
-            if obj.zone != Zone::Graveyard {
-                continue;
-            }
-            if let Some(new_id) = game.move_object(target_id, Zone::Hand) {
+            if let Some(new_id) = Self::return_object(game, ctx, target_id) {
                 returned.push(new_id);
             }
         }
@@ -151,9 +171,11 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::zones::matchers::WouldGoToHandMatcher;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
     use crate::snapshot::ObjectSnapshot;
     use crate::types::CardType;
 
@@ -201,5 +223,34 @@ mod tests {
         assert_eq!(ids.len(), 1);
         assert!(game.players[0].hand.contains(&ids[0]));
         assert!(game.players[0].graveyard.is_empty());
+    }
+
+    #[test]
+    fn test_return_from_graveyard_to_hand_respects_replacement_effects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let creature_id = create_creature_in_graveyard(&mut game, "Reassembling Skeleton", alice);
+
+        game.replacement_effects
+            .add_resolution_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                WouldGoToHandMatcher::you(),
+                ReplacementAction::ChangeDestination(Zone::Exile),
+            ));
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect =
+            ReturnFromGraveyardToHandEffect::new(ChooseSpec::SpecificObject(creature_id), false);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let EffectResult::Objects(ids) = result.result else {
+            panic!("Expected Objects result");
+        };
+        assert_eq!(ids.len(), 1);
+        assert!(game.players[0].hand.is_empty());
+        assert!(game.players[0].graveyard.is_empty());
+        assert!(game.exile.contains(&ids[0]));
     }
 }

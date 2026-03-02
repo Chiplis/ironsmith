@@ -1631,7 +1631,7 @@ fn apply_sacrifice_target_response(
 }
 
 /// Apply a card/object choice response for a pending spell cast cost.
-fn apply_card_to_exile_response(
+fn apply_card_cost_choice_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     state: &mut PriorityLoopState,
@@ -2392,14 +2392,23 @@ fn apply_decision_context_with_dm<D: DecisionMaker>(
                 GameLoopError::InvalidState("No object selected for required choice".to_string())
             })?;
 
-            if state.pending_activation.is_some() {
+            if state
+                .pending_activation
+                .as_ref()
+                .is_some_and(|pending| {
+                    matches!(
+                        pending.stage,
+                        ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost
+                    )
+                })
+            {
                 apply_sacrifice_target_response(game, trigger_queue, state, chosen, decision_maker)
             } else if state
                 .pending_cast
                 .as_ref()
                 .is_some_and(|pending| matches!(pending.stage, CastStage::ChoosingCardCost))
             {
-                apply_card_to_exile_response(game, trigger_queue, state, chosen, decision_maker)
+                apply_card_cost_choice_response(game, trigger_queue, state, chosen, decision_maker)
             } else {
                 Err(GameLoopError::InvalidState(
                     "Unsupported SelectObjects decision in priority loop".to_string(),

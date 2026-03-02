@@ -152,6 +152,68 @@ pub enum ActivationCardCostChoice {
     },
 }
 
+/// Expand a cost processing mode into pending card/object-choice steps.
+///
+/// Returns `true` when the mode produced one-or-more card/object selections.
+pub(crate) fn append_card_choice_costs_from_processing_mode(
+    mode: &crate::costs::CostProcessingMode,
+    out: &mut Vec<ActivationCardCostChoice>,
+) -> bool {
+    use crate::costs::CostProcessingMode;
+
+    let description = mode.display();
+    let before_len = out.len();
+    match mode {
+        CostProcessingMode::DiscardCards { count, card_types } => {
+            for _ in 0..*count {
+                out.push(ActivationCardCostChoice::Discard {
+                    card_types: card_types.clone(),
+                    description: description.clone(),
+                });
+            }
+        }
+        CostProcessingMode::ExileFromHand {
+            count,
+            color_filter,
+        } => {
+            for _ in 0..*count {
+                out.push(ActivationCardCostChoice::ExileFromHand {
+                    color_filter: *color_filter,
+                    description: description.clone(),
+                });
+            }
+        }
+        CostProcessingMode::ExileFromGraveyard { count, card_type } => {
+            for _ in 0..*count {
+                out.push(ActivationCardCostChoice::ExileFromGraveyard {
+                    card_type: *card_type,
+                    description: description.clone(),
+                });
+            }
+        }
+        CostProcessingMode::RevealFromHand { count, card_type } => {
+            for _ in 0..*count {
+                out.push(ActivationCardCostChoice::RevealFromHand {
+                    card_type: *card_type,
+                    description: description.clone(),
+                });
+            }
+        }
+        CostProcessingMode::ReturnToHandTarget { filter } => {
+            out.push(ActivationCardCostChoice::ReturnToHand {
+                filter: filter.clone(),
+                description,
+            });
+        }
+        CostProcessingMode::Immediate
+        | CostProcessingMode::InlineWithTriggers
+        | CostProcessingMode::ManaPayment { .. }
+        | CostProcessingMode::SacrificeTarget { .. } => {}
+    }
+
+    out.len() > before_len
+}
+
 /// An activated ability being activated that needs decisions.
 #[derive(Debug, Clone)]
 pub struct PendingActivation {

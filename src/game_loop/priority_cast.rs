@@ -1649,62 +1649,10 @@ fn collect_non_mana_spell_costs(
 fn collect_cast_card_choice_costs(
     non_mana_costs: &[crate::costs::Cost],
 ) -> Vec<ActivationCardCostChoice> {
-    use crate::costs::CostProcessingMode;
-
     let mut card_choice_costs = Vec::new();
     for cost_component in non_mana_costs {
-        match cost_component.processing_mode() {
-            CostProcessingMode::DiscardCards { count, card_types } => {
-                let description = cost_component.processing_mode().display();
-                for _ in 0..count {
-                    card_choice_costs.push(ActivationCardCostChoice::Discard {
-                        card_types: card_types.clone(),
-                        description: description.clone(),
-                    });
-                }
-            }
-            CostProcessingMode::ExileFromHand {
-                count,
-                color_filter,
-            } => {
-                let description = cost_component.processing_mode().display();
-                for _ in 0..count {
-                    card_choice_costs.push(ActivationCardCostChoice::ExileFromHand {
-                        color_filter,
-                        description: description.clone(),
-                    });
-                }
-            }
-            CostProcessingMode::ExileFromGraveyard { count, card_type } => {
-                let description = cost_component.processing_mode().display();
-                for _ in 0..count {
-                    card_choice_costs.push(ActivationCardCostChoice::ExileFromGraveyard {
-                        card_type,
-                        description: description.clone(),
-                    });
-                }
-            }
-            CostProcessingMode::RevealFromHand { count, card_type } => {
-                let description = cost_component.processing_mode().display();
-                for _ in 0..count {
-                    card_choice_costs.push(ActivationCardCostChoice::RevealFromHand {
-                        card_type,
-                        description: description.clone(),
-                    });
-                }
-            }
-            CostProcessingMode::ReturnToHandTarget { filter } => {
-                let description = cost_component.processing_mode().display();
-                card_choice_costs.push(ActivationCardCostChoice::ReturnToHand {
-                    filter,
-                    description,
-                });
-            }
-            CostProcessingMode::Immediate
-            | CostProcessingMode::ManaPayment { .. }
-            | CostProcessingMode::SacrificeTarget { .. }
-            | CostProcessingMode::InlineWithTriggers => {}
-        }
+        let mode = cost_component.processing_mode();
+        append_card_choice_costs_from_processing_mode(&mode, &mut card_choice_costs);
     }
 
     card_choice_costs

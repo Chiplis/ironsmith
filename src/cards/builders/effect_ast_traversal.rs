@@ -1,5 +1,69 @@
 use super::EffectAst;
 
+// Keep the list of wrapper variants with `effects: Vec<EffectAst>` in one place.
+// This avoids drift between immutable/mutable/fallible traversal helpers.
+macro_rules! nested_effects_variants {
+    ($effects:ident) => {
+        EffectAst::UnlessPays {
+            effects: $effects, ..
+        }
+            | EffectAst::May { effects: $effects }
+            | EffectAst::MayByPlayer {
+                effects: $effects, ..
+            }
+            | EffectAst::MayByTaggedController {
+                effects: $effects, ..
+            }
+            | EffectAst::IfResult {
+                effects: $effects, ..
+            }
+            | EffectAst::ForEachOpponent { effects: $effects }
+            | EffectAst::ForEachPlayersFiltered {
+                effects: $effects, ..
+            }
+            | EffectAst::ForEachPlayer { effects: $effects }
+            | EffectAst::ForEachTargetPlayers {
+                effects: $effects, ..
+            }
+            | EffectAst::ForEachObject {
+                effects: $effects, ..
+            }
+            | EffectAst::ForEachTagged {
+                effects: $effects, ..
+            }
+            | EffectAst::ForEachOpponentDoesNot { effects: $effects }
+            | EffectAst::ForEachPlayerDoesNot { effects: $effects }
+            | EffectAst::ForEachOpponentDid {
+                effects: $effects, ..
+            }
+            | EffectAst::ForEachPlayerDid {
+                effects: $effects, ..
+            }
+            | EffectAst::ForEachTaggedPlayer {
+                effects: $effects, ..
+            }
+            | EffectAst::DelayedUntilNextEndStep {
+                effects: $effects, ..
+            }
+            | EffectAst::DelayedUntilNextUpkeep {
+                effects: $effects, ..
+            }
+            | EffectAst::DelayedUntilEndStepOfExtraTurn {
+                effects: $effects, ..
+            }
+            | EffectAst::DelayedUntilEndOfCombat { effects: $effects }
+            | EffectAst::DelayedTriggerThisTurn {
+                effects: $effects, ..
+            }
+            | EffectAst::DelayedWhenLastObjectDiesThisTurn {
+                effects: $effects, ..
+            }
+            | EffectAst::VoteOption {
+                effects: $effects, ..
+            }
+    };
+}
+
 pub(super) fn for_each_nested_effects(
     effect: &EffectAst,
     include_unless_action_alternative: bool,
@@ -12,29 +76,7 @@ pub(super) fn for_each_nested_effects(
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::UnlessPays { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
+        nested_effects_variants!(effects) => {
             visit(effects);
         }
         EffectAst::UnlessAction {
@@ -63,29 +105,7 @@ pub(super) fn for_each_nested_effects_mut(
             visit(if_true);
             visit(if_false);
         }
-        EffectAst::UnlessPays { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
+        nested_effects_variants!(effects) => {
             visit(effects);
         }
         EffectAst::UnlessAction {
@@ -114,29 +134,7 @@ pub(super) fn try_for_each_nested_effects_mut<E>(
             visit(if_true)?;
             visit(if_false)?;
         }
-        EffectAst::UnlessPays { effects, .. }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::MayByTaggedController { effects, .. }
-        | EffectAst::IfResult { effects, .. }
-        | EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachTargetPlayers { effects, .. }
-        | EffectAst::ForEachObject { effects, .. }
-        | EffectAst::ForEachTagged { effects, .. }
-        | EffectAst::ForEachOpponentDoesNot { effects }
-        | EffectAst::ForEachPlayerDoesNot { effects }
-        | EffectAst::ForEachOpponentDid { effects, .. }
-        | EffectAst::ForEachPlayerDid { effects, .. }
-        | EffectAst::ForEachTaggedPlayer { effects, .. }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
-        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-        | EffectAst::DelayedUntilEndOfCombat { effects }
-        | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-        | EffectAst::VoteOption { effects, .. } => {
+        nested_effects_variants!(effects) => {
             visit(effects)?;
         }
         EffectAst::UnlessAction {

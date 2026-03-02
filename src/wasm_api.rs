@@ -2779,10 +2779,18 @@ impl WasmGame {
                 let chosen = object_ids.first().copied().ok_or_else(|| {
                     JsValue::from_str("select_objects requires one chosen object")
                 })?;
-                if self.priority_state.pending_activation.is_some() {
-                    Ok(PriorityResponse::SacrificeTarget(ObjectId::from_raw(
-                        chosen,
-                    )))
+                if let Some(pending) = self.priority_state.pending_activation.as_ref() {
+                    match pending.stage {
+                        ActivationStage::ChoosingSacrifice => {
+                            Ok(PriorityResponse::SacrificeTarget(ObjectId::from_raw(chosen)))
+                        }
+                        ActivationStage::ChoosingCardCost => {
+                            Ok(PriorityResponse::CardCostChoice(ObjectId::from_raw(chosen)))
+                        }
+                        _ => Err(JsValue::from_str(
+                            "SelectObjects received while activation is not in an object-cost stage",
+                        )),
+                    }
                 } else if self
                     .priority_state
                     .pending_cast

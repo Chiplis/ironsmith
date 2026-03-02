@@ -165,13 +165,27 @@ pub fn apply_priority_response_with_dm(
 
     // Handle card/object selection for a pending cast card-cost choice.
     if let PriorityResponse::CardCostChoice(card_id) = response {
-        return apply_card_to_exile_response(
-            game,
-            trigger_queue,
-            state,
-            *card_id,
-            &mut *decision_maker,
-        );
+        if state.pending_cast.is_some() {
+            return apply_card_cost_choice_response(
+                game,
+                trigger_queue,
+                state,
+                *card_id,
+                &mut *decision_maker,
+            );
+        }
+        if state.pending_activation.is_some() {
+            return apply_sacrifice_target_response(
+                game,
+                trigger_queue,
+                state,
+                *card_id,
+                &mut *decision_maker,
+            );
+        }
+        return Err(GameLoopError::InvalidState(
+            "CardCostChoice response but no pending cast or activation".to_string(),
+        ));
     }
 
     // Handle hybrid/Phyrexian mana choice for a pending cast (per MTG rule 601.2b)
@@ -593,8 +607,12 @@ pub fn apply_priority_response_with_dm(
 
             for cost_component in cost.costs() {
                 use crate::costs::CostProcessingMode;
+                let mode = cost_component.processing_mode();
+                if append_card_choice_costs_from_processing_mode(&mode, &mut card_choice_costs) {
+                    continue;
+                }
 
-                match cost_component.processing_mode() {
+                match mode {
                     CostProcessingMode::InlineWithTriggers => {
                         // Sacrifice self - handle inline for trigger detection
                         if game.object(*source).is_some() {
@@ -625,10 +643,10 @@ pub fn apply_priority_response_with_dm(
                         // Save mana cost for later payment through mana payment UI
                         mana_cost_to_pay = Some(cost);
                     }
-                    CostProcessingMode::SacrificeTarget { filter } => {
+                    CostProcessingMode::SacrificeTarget { ref filter } => {
                         // Collect sacrifice costs that need target selection
-                        let desc = cost_component.processing_mode().display();
-                        sacrifice_costs.push((filter, desc));
+                        let desc = mode.display();
+                        sacrifice_costs.push((filter.clone(), desc));
                     }
                     CostProcessingMode::Immediate => {
                         // Immediate costs (tap, untap, life, remove counters, etc.)
@@ -653,52 +671,13 @@ pub fn apply_priority_response_with_dm(
                             }
                         }
                     }
-                    CostProcessingMode::DiscardCards { count, card_types } => {
-                        let description = cost_component.processing_mode().display();
-                        for _ in 0..count {
-                            card_choice_costs.push(ActivationCardCostChoice::Discard {
-                                card_types: card_types.clone(),
-                                description: description.clone(),
-                            });
-                        }
-                    }
-                    CostProcessingMode::ExileFromHand {
-                        count,
-                        color_filter,
-                    } => {
-                        let description = cost_component.processing_mode().display();
-                        for _ in 0..count {
-                            card_choice_costs.push(ActivationCardCostChoice::ExileFromHand {
-                                color_filter: color_filter.clone(),
-                                description: description.clone(),
-                            });
-                        }
-                    }
-                    CostProcessingMode::ExileFromGraveyard { count, card_type } => {
-                        let description = cost_component.processing_mode().display();
-                        for _ in 0..count {
-                            card_choice_costs.push(ActivationCardCostChoice::ExileFromGraveyard {
-                                card_type,
-                                description: description.clone(),
-                            });
-                        }
-                    }
-                    CostProcessingMode::RevealFromHand { count, card_type } => {
-                        let description = cost_component.processing_mode().display();
-                        for _ in 0..count {
-                            card_choice_costs.push(ActivationCardCostChoice::RevealFromHand {
-                                card_type,
-                                description: description.clone(),
-                            });
-                        }
-                    }
-                    CostProcessingMode::ReturnToHandTarget { filter } => {
-                        let description = cost_component.processing_mode().display();
-                        card_choice_costs.push(ActivationCardCostChoice::ReturnToHand {
-                            filter,
-                            description,
-                        });
-                    }
+                    CostProcessingMode::DiscardCards { .. }
+                    | CostProcessingMode::ExileFromHand { .. }
+                    | CostProcessingMode::ExileFromGraveyard { .. }
+                    | CostProcessingMode::RevealFromHand { .. }
+                    | CostProcessingMode::ReturnToHandTarget { .. } => unreachable!(
+                        "card/object choice costs are handled before the primary activation-cost match"
+                    ),
                 }
             }
             drain_pending_trigger_events(game, trigger_queue);
