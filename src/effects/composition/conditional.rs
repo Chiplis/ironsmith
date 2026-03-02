@@ -56,6 +56,10 @@ impl ConditionalEffect {
 }
 
 impl EffectExecutor for ConditionalEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

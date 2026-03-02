@@ -49,6 +49,10 @@ impl ForEachTaggedEffect {
 }
 
 impl EffectExecutor for ForEachTaggedEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -146,6 +150,10 @@ impl ForEachControllerOfTaggedEffect {
 }
 
 impl EffectExecutor for ForEachControllerOfTaggedEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -224,6 +232,10 @@ impl ForEachTaggedPlayerEffect {
 }
 
 impl EffectExecutor for ForEachTaggedPlayerEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

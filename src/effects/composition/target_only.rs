@@ -22,6 +22,10 @@ impl TargetOnlyEffect {
 }
 
 impl EffectExecutor for TargetOnlyEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

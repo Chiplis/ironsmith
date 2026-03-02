@@ -80,6 +80,10 @@ impl UnlessActionEffect {
 }
 
 impl EffectExecutor for UnlessActionEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

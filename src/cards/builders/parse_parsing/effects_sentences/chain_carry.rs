@@ -779,7 +779,16 @@ pub(crate) fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
 
 pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: CarryContext) {
     match carried_context {
-        CarryContext::Player(carried_player) => match effect {
+        CarryContext::Player(carried_player) => {
+            // When carrying an explicit target player/opponent into an implicit clause,
+            // bind to the previously selected target ("that player") instead of creating
+            // a fresh explicit target. This preserves shared-target semantics for chains
+            // like "Target player mills..., draws..., and loses...".
+            let carried_player = match carried_player {
+                PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
+                other => other,
+            };
+            match effect {
             EffectAst::Draw { player, .. }
             | EffectAst::DiscardHand { player }
             | EffectAst::Discard { player, .. }
@@ -798,7 +807,8 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
                 }
             }
             _ => {}
-        },
+        }
+        }
         CarryContext::ForEachPlayer => {
             if effect_uses_implicit_player(effect) {
                 let wrapped = effect.clone();

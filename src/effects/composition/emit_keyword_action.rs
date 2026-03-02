@@ -24,6 +24,10 @@ impl EmitKeywordActionEffect {
 }
 
 impl EffectExecutor for EmitKeywordActionEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         _game: &mut GameState,

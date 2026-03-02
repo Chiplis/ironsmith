@@ -98,6 +98,10 @@ fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
 }
 
 impl EffectExecutor for UnlessPaysEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

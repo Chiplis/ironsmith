@@ -66,6 +66,7 @@ pub use protection::*;
 pub use restrictions::*;
 
 pub(crate) use continuous::resolve_anthem_count_expression;
+use std::sync::Arc;
 
 use crate::continuous::ContinuousEffect;
 use crate::game_state::GameState;
@@ -615,7 +616,7 @@ impl Clone for Box<dyn StaticAbilityKind> {
 /// This provides a convenient way to work with static abilities as values
 /// while maintaining the flexibility of trait objects.
 #[derive(Debug, Clone)]
-pub struct StaticAbility(pub Box<dyn StaticAbilityKind>);
+pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>);
 
 impl PartialEq for StaticAbility {
     fn eq(&self, other: &Self) -> bool {
@@ -627,7 +628,7 @@ impl PartialEq for StaticAbility {
 impl StaticAbility {
     /// Create a new StaticAbility from any StaticAbilityKind implementation.
     pub fn new<K: StaticAbilityKind + 'static>(kind: K) -> Self {
-        StaticAbility(Box::new(kind))
+        StaticAbility(Arc::new(kind))
     }
 
     /// Get the ability's unique identifier.

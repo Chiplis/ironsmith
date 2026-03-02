@@ -58,6 +58,10 @@ impl TaggedEffect {
 }
 
 impl EffectExecutor for TaggedEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -132,6 +136,10 @@ impl TagAllEffect {
 }
 
 impl EffectExecutor for TagAllEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

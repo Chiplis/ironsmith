@@ -455,6 +455,35 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_target_specs_target_player_chain_uses_single_shared_target() {
+        use crate::cards::CardDefinitionBuilder;
+
+        let def = CardDefinitionBuilder::new(CardId::new(), "Atrocious Experiment Variant")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text("Target player mills two cards, draws two cards, and loses 2 life.")
+            .expect("target-player mill/draw/lose chain should parse");
+
+        let effects = def.spell_effect.expect("expected spell effects");
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let requirements = extract_target_requirements(&game, &effects, alice, None);
+        assert_eq!(
+            requirements.len(),
+            1,
+            "expected exactly one shared target requirement, got {:?}",
+            requirements
+        );
+        assert_eq!(requirements[0].min_targets, 1);
+        assert_eq!(requirements[0].max_targets, Some(1));
+        assert_eq!(
+            requirements[0].legal_targets.len(),
+            2,
+            "expected both players to be legal targets in a two-player game"
+        );
+    }
+
+    #[test]
     fn test_spell_has_legal_targets_any_number_with_no_targets() {
         let game = setup_game();
         let alice = PlayerId::from_index(0);

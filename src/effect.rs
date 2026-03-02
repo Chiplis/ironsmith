@@ -24,6 +24,7 @@ use crate::object::CounterType;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
 use crate::zone::Zone;
+use std::sync::Arc;
 
 // ============================================================================
 // Effect Identity and Results
@@ -1370,11 +1371,11 @@ impl From<u32> for Value {
 /// Use the helper constructors (e.g., `Effect::draw()`, `Effect::damage()`) to
 /// create effects rather than constructing directly.
 #[derive(Debug)]
-pub struct Effect(pub Box<dyn EffectExecutor>);
+pub struct Effect(pub Arc<dyn EffectExecutor>);
 
 impl Clone for Effect {
     fn clone(&self) -> Self {
-        Effect(self.0.clone_box())
+        Effect(Arc::clone(&self.0))
     }
 }
 
@@ -1391,7 +1392,7 @@ impl PartialEq for Effect {
 impl Effect {
     /// Create a new effect from an EffectExecutor implementation.
     pub fn new<E: EffectExecutor + 'static>(executor: E) -> Self {
-        Effect(Box::new(executor))
+        Effect(Arc::new(executor))
     }
 
     /// Attempt to downcast this effect to a concrete executor type.

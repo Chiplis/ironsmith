@@ -89,17 +89,18 @@ use crate::filter::ObjectFilter;
 use crate::mana::ManaCost;
 use crate::object::CounterType;
 use crate::types::CardType;
+use std::sync::Arc;
 
 /// A wrapper around a boxed CostPayer trait object.
 ///
 /// This provides a convenient way to work with costs as values while
 /// maintaining the flexibility of trait objects.
 #[derive(Debug)]
-pub struct Cost(pub Box<dyn CostPayer>);
+pub struct Cost(pub Arc<dyn CostPayer>);
 
 impl Clone for Cost {
     fn clone(&self) -> Self {
-        Cost(self.0.clone_box())
+        Cost(Arc::clone(&self.0))
     }
 }
 
@@ -114,7 +115,7 @@ impl PartialEq for Cost {
 impl Cost {
     /// Create a new Cost from any CostPayer implementation.
     pub fn new<C: CostPayer + 'static>(payer: C) -> Self {
-        Cost(Box::new(payer))
+        Cost(Arc::new(payer))
     }
 
     // ========================================================================

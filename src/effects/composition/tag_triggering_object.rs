@@ -22,6 +22,10 @@ impl TagTriggeringObjectEffect {
 }
 
 impl EffectExecutor for TagTriggeringObjectEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

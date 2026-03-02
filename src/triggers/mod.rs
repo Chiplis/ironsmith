@@ -81,17 +81,18 @@ pub use zone_changes::*;
 use crate::events::EventKind;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
+use std::sync::Arc;
 
 /// Wrapper around a boxed TriggerMatcher for ergonomic usage.
 ///
 /// This struct provides factory methods for creating common trigger types
 /// and implements the TriggerMatcher trait by delegating to the inner matcher.
 #[derive(Debug)]
-pub struct Trigger(pub Box<dyn TriggerMatcher>);
+pub struct Trigger(pub Arc<dyn TriggerMatcher>);
 
 impl Clone for Trigger {
     fn clone(&self) -> Self {
-        Self(self.0.clone_box())
+        Self(Arc::clone(&self.0))
     }
 }
 
@@ -104,7 +105,7 @@ impl PartialEq for Trigger {
 impl Trigger {
     /// Create a new Trigger wrapping a TriggerMatcher implementation.
     pub fn new<T: TriggerMatcher + 'static>(matcher: T) -> Self {
-        Self(Box::new(matcher))
+        Self(Arc::new(matcher))
     }
 
     /// Check if this trigger matches a game event.

@@ -35,6 +35,10 @@ impl OrTrigger {
 }
 
 impl TriggerMatcher for OrTrigger {
+    fn clone_box(&self) -> Box<dyn TriggerMatcher> {
+        Box::new(self.clone())
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         self.triggers.iter().any(|t| t.matches(event, ctx))
     }

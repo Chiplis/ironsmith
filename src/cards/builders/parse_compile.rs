@@ -6005,7 +6005,14 @@ where
     } else {
         build_other(filter)
     };
-    Ok((vec![effect], choices))
+    let mut effects = Vec::new();
+    for choice in &choices {
+        effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+            choice.clone(),
+        )));
+    }
+    effects.push(effect);
+    Ok((effects, choices))
 }
 
 pub(crate) fn compile_player_effect_from_filter<Builder>(
@@ -6019,7 +6026,14 @@ where
 {
     let (filter, choices) =
         resolve_effect_player_filter(player, ctx, allow_target, allow_target, true)?;
-    Ok((vec![build(filter)], choices))
+    let mut effects = Vec::new();
+    for choice in &choices {
+        effects.push(Effect::new(crate::effects::TargetOnlyEffect::new(
+            choice.clone(),
+        )));
+    }
+    effects.push(build(filter));
+    Ok((effects, choices))
 }
 
 pub(crate) fn is_you_player_filter(filter: &PlayerFilter) -> bool {

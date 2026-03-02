@@ -21,6 +21,10 @@ impl ExploreEffect {
 }
 
 impl EffectExecutor for ExploreEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         _game: &mut GameState,
@@ -42,6 +46,10 @@ impl OpenAttractionEffect {
 }
 
 impl EffectExecutor for OpenAttractionEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         _game: &mut GameState,
@@ -61,6 +69,10 @@ impl ManifestDreadEffect {
 }
 
 impl EffectExecutor for ManifestDreadEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         _game: &mut GameState,
@@ -82,6 +94,10 @@ impl BolsterEffect {
 }
 
 impl EffectExecutor for BolsterEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         _game: &mut GameState,
@@ -103,6 +119,10 @@ impl SupportEffect {
 }
 
 impl EffectExecutor for SupportEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         _game: &mut GameState,
@@ -124,6 +144,10 @@ impl AdaptEffect {
 }
 
 impl EffectExecutor for AdaptEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         _game: &mut GameState,
@@ -143,6 +167,10 @@ impl CounterAbilityEffect {
 }
 
 impl EffectExecutor for CounterAbilityEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
     fn execute(
         &self,
         _game: &mut GameState,
