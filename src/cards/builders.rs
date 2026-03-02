@@ -43,7 +43,7 @@ pub enum CardTextError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum KeywordAction {
+pub(crate) enum KeywordAction {
     Flying,
     Menace,
     Hexproof,
@@ -169,7 +169,7 @@ impl TextSpan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Token {
+pub(crate) enum Token {
     Word(String, TextSpan),
     Comma(TextSpan),
     Period(TextSpan),
@@ -201,7 +201,7 @@ impl Token {
 }
 
 #[derive(Debug, Clone)]
-enum LineAst {
+pub(crate) enum LineAst {
     Abilities(Vec<KeywordAction>),
     StaticAbility(StaticAbility),
     StaticAbilities(Vec<StaticAbility>),
@@ -225,19 +225,19 @@ enum LineAst {
 }
 
 #[derive(Debug, Clone)]
-struct AdditionalCostChoiceOptionAst {
+pub(crate) struct AdditionalCostChoiceOptionAst {
     description: String,
     effects: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
-struct ParsedAbility {
+pub(crate) struct ParsedAbility {
     ability: Ability,
     effects_ast: Option<Vec<EffectAst>>,
 }
 
 #[derive(Debug, Clone)]
-enum TriggerSpec {
+pub(crate) enum TriggerSpec {
     ThisAttacks,
     ThisAttacksAndIsntBlocked,
     ThisAttacksWhileSaddled,
@@ -380,14 +380,14 @@ enum TriggerSpec {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum DamageBySpec {
+pub(crate) enum DamageBySpec {
     ThisCreature,
     EquippedCreature,
     EnchantedCreature,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlayerAst {
+pub(crate) enum PlayerAst {
     You,
     Any,
     Defending,
@@ -402,14 +402,14 @@ enum PlayerAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReturnControllerAst {
+pub(crate) enum ReturnControllerAst {
     Preserve,
     Owner,
     You,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum TargetAst {
+pub(crate) enum TargetAst {
     Source(Option<TextSpan>),
     AnyTarget(Option<TextSpan>),
     PlayerOrPlaneswalker(PlayerFilter, Option<TextSpan>),
@@ -422,12 +422,12 @@ enum TargetAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ObjectRefAst {
+pub(crate) enum ObjectRefAst {
     It,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum PredicateAst {
+pub(crate) enum PredicateAst {
     ItIsLandCard,
     ItMatches(ObjectFilter),
     TaggedMatches(TagKey, ObjectFilter),
@@ -531,7 +531,7 @@ enum PredicateAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ControlDurationAst {
+pub(crate) enum ControlDurationAst {
     UntilEndOfTurn,
     DuringNextTurn,
     AsLongAsYouControlSource,
@@ -539,44 +539,45 @@ enum ControlDurationAst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SharedTypeConstraintAst {
+pub(crate) enum SharedTypeConstraintAst {
     CardType,
     PermanentType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum NewTargetRestrictionAst {
+#[allow(dead_code)]
+pub(crate) enum NewTargetRestrictionAst {
     Player(PlayerAst),
     Object(ObjectFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum RetargetModeAst {
+pub(crate) enum RetargetModeAst {
     All,
     OneToFixed { target: TargetAst },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum PreventNextTimeDamageSourceAst {
+pub(crate) enum PreventNextTimeDamageSourceAst {
     Choice,
     Filter(ObjectFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum PreventNextTimeDamageTargetAst {
+pub(crate) enum PreventNextTimeDamageTargetAst {
     AnyTarget,
     You,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClashOpponentAst {
+pub(crate) enum ClashOpponentAst {
     Opponent,
     TargetOpponent,
     DefendingPlayer,
 }
 
 #[derive(Debug, Clone)]
-enum EffectAst {
+pub(crate) enum EffectAst {
     DealDamage {
         amount: Value,
         target: TargetAst,
@@ -744,6 +745,7 @@ enum EffectAst {
     Adapt {
         amount: u32,
     },
+    #[allow(dead_code)]
     CounterActivatedOrTriggeredAbility,
     AddMana {
         mana: Vec<ManaSymbol>,
@@ -1392,7 +1394,7 @@ impl ParseAnnotations {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum IfResultPredicate {
+pub(crate) enum IfResultPredicate {
     Did,
     DidNot,
     DiesThisWay,

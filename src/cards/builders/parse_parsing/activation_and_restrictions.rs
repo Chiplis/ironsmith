@@ -8763,7 +8763,7 @@ pub(crate) fn parse_you_choose_objects_clause(
                 clause_words.join(" ")
             ))
         })?;
-    let mut choose_object_tokens = trim_commas(&tokens[choose_word_token_idx + 1..]);
+    let choose_object_tokens = trim_commas(&tokens[choose_word_token_idx + 1..]);
     if choose_object_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing chosen object after choose clause (clause: '{}')",

@@ -2209,7 +2209,7 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line(
         .position(|token| token.is_word("costs"))
         .ok_or_else(|| CardTextError::ParseError("missing costs keyword".to_string()))?;
     let amount_tokens = tail_tokens.get(costs_idx + 1..).unwrap_or_default();
-    let (parsed_amount, mut parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
+    let (parsed_amount, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
     let (amount_value, used) = parsed_amount
         .clone()
         .unwrap_or_else(|| (Value::Fixed(0), 0));

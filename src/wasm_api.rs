@@ -2424,7 +2424,7 @@ impl WasmGame {
         pending_ctx: DecisionContext,
         command: UiCommand,
     ) -> Result<JsValue, JsValue> {
-        let runner = self.runner.as_mut().ok_or_else(|| {
+        let _runner = self.runner.as_mut().ok_or_else(|| {
             // Restore decision on structural error so UI can retry.
             self.pending_decision = Some(pending_ctx.clone());
             self.runner_pending_decision = true;
