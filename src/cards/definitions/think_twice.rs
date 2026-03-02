@@ -50,9 +50,12 @@ mod tests {
         assert_eq!(card.alternative_casts.len(), 1);
 
         // Check flashback cost is {2}{U}
-        if let crate::alternative_cast::AlternativeCastingMethod::Flashback { cost, .. } =
+        if let crate::alternative_cast::AlternativeCastingMethod::Flashback { total_cost, .. } =
             &card.alternative_casts[0]
         {
+            let cost = total_cost
+                .mana_cost()
+                .expect("Flashback should include a mana component");
             assert_eq!(cost.mana_value(), 3);
         } else {
             panic!("Expected Flashback alternative casting method");

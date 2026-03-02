@@ -150,6 +150,7 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
                 crew_contributors: vec![],
                 saddle_contributors: vec![],
                 chosen_modes: None,
+                tagged_objects: std::collections::HashMap::new(),
             };
 
             game.push_to_stack(stack_entry);

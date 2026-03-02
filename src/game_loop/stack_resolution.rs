@@ -72,6 +72,9 @@ fn resolve_stack_entry_full(
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
+    if !entry.tagged_objects.is_empty() {
+        ctx = ctx.with_tagged_objects(entry.tagged_objects.clone());
+    }
     // Pass pre-chosen modes from casting (per MTG rule 601.2b)
     if let Some(ref modes) = entry.chosen_modes {
         ctx = ctx.with_chosen_modes(Some(modes.clone()));

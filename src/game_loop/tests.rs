@@ -2769,6 +2769,174 @@ mod tests {
     }
 
     #[test]
+    fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
+        use crate::decision::LegalAction;
+        use crate::mana::{ManaCost, ManaSymbol};
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let registry = crate::cards::CardRegistry::with_builtin_cards_for_names(["Bosh, Iron Golem"]);
+        let bosh_def = registry
+            .get("Bosh, Iron Golem")
+            .expect("Bosh, Iron Golem should be present in registry");
+
+        let bosh_id = game.create_object_from_definition(bosh_def, alice, Zone::Battlefield);
+        let sacrificial_artifact = CardBuilder::new(CardId::new(), "Calibration Relic")
+            .card_types(vec![CardType::Artifact])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .build();
+        let relic_id = game.create_object_from_card(&sacrificial_artifact, alice, Zone::Battlefield);
+
+        if let Some(player) = game.player_mut(alice) {
+            player.mana_pool.add(ManaSymbol::Red, 4);
+        }
+
+        let ability_index = game
+            .object(bosh_id)
+            .expect("Bosh should exist")
+            .abilities
+            .iter()
+            .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+            .expect("Bosh should have an activated ability");
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut state = PriorityLoopState::new(game.players_in_game());
+        let mut dm = AutoPassDecisionMaker;
+
+        let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source: bosh_id,
+            ability_index,
+        });
+        apply_priority_response_with_dm(&mut game, &mut trigger_queue, &mut state, &activate, &mut dm)
+            .expect("activation should start");
+
+        let choose_sacrifice = PriorityResponse::SacrificeTarget(relic_id);
+        apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &choose_sacrifice,
+            &mut dm,
+        )
+        .expect("should choose sacrifice target");
+
+        let choose_target = PriorityResponse::Targets(vec![Target::Player(bob)]);
+        apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &choose_target,
+            &mut dm,
+        )
+        .expect("should choose damage target");
+
+        assert_eq!(game.stack.len(), 1, "Bosh ability should be on stack");
+
+        resolve_stack_entry(&mut game).expect("Bosh ability should resolve");
+
+        assert_eq!(
+            game.player(bob).expect("Bob exists").life,
+            18,
+            "Bosh should deal damage equal to the sacrificed artifact's mana value (2)"
+        );
+    }
+
+    #[test]
+    fn test_yawgmoth_proliferate_activation_prompts_discard_choice() {
+        use crate::decision::{GameProgress, LegalAction};
+        use crate::mana::ManaSymbol;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let registry =
+            crate::cards::CardRegistry::with_builtin_cards_for_names(["Yawgmoth, Thran Physician"]);
+        let yawgmoth_def = registry
+            .get("Yawgmoth, Thran Physician")
+            .expect("Yawgmoth, Thran Physician should be present in registry");
+        let yawgmoth_id = game.create_object_from_definition(yawgmoth_def, alice, Zone::Battlefield);
+
+        let discard_one = CardBuilder::new(CardId::new(), "Discard One")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let discard_two = CardBuilder::new(CardId::new(), "Discard Two")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let hand_card_one = game.create_object_from_card(&discard_one, alice, Zone::Hand);
+        let hand_card_two = game.create_object_from_card(&discard_two, alice, Zone::Hand);
+
+        if let Some(player) = game.player_mut(alice) {
+            player.mana_pool.add(ManaSymbol::Black, 2);
+        }
+
+        let proliferate_ability_index = game
+            .object(yawgmoth_id)
+            .expect("Yawgmoth should exist")
+            .abilities
+            .iter()
+            .position(|ability| {
+                if let AbilityKind::Activated(activated) = &ability.kind {
+                    activated.mana_cost.mana_cost().is_some()
+                        && activated.mana_cost.costs().iter().any(|cost| cost.is_discard())
+                } else {
+                    false
+                }
+            })
+            .expect("Yawgmoth should have proliferate ability with discard cost");
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut state = PriorityLoopState::new(game.players_in_game());
+        let mut dm = AutoPassDecisionMaker;
+
+        let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source: yawgmoth_id,
+            ability_index: proliferate_ability_index,
+        });
+        let progress =
+            apply_priority_response_with_dm(&mut game, &mut trigger_queue, &mut state, &activate, &mut dm)
+                .expect("activation should start");
+
+        let objects_ctx = match progress {
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectObjects(
+                ctx,
+            )) => ctx,
+            other => panic!(
+                "expected SelectObjects discard decision for proliferate activation, got {:?}",
+                other
+            ),
+        };
+
+        assert!(
+            objects_ctx.description.to_lowercase().contains("discard"),
+            "discard cost activation should prompt discard selection, got description: {}",
+            objects_ctx.description
+        );
+        assert_eq!(objects_ctx.min, 1);
+        assert_eq!(objects_ctx.max, Some(1));
+        let candidate_ids: Vec<ObjectId> = objects_ctx.candidates.iter().map(|c| c.id).collect();
+        assert!(
+            candidate_ids.contains(&hand_card_one),
+            "first hand card should be selectable for discard cost"
+        );
+        assert!(
+            candidate_ids.contains(&hand_card_two),
+            "second hand card should be selectable for discard cost"
+        );
+    }
+
+    #[test]
     fn test_cleanup_discard_no_decision_when_under_limit() {
         use crate::turn::get_cleanup_discard_spec;
 

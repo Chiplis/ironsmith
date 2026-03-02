@@ -2,6 +2,20 @@
 ///
 /// The decision maker is used for ETB replacement effects that require player input
 /// (like Mox Diamond asking whether to discard a land).
+fn next_sacrifice_cost_tag_index(
+    tags: &std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+) -> usize {
+    tags.keys()
+        .filter_map(|tag| {
+            tag.as_str()
+                .strip_prefix("sacrifice_cost_")
+                .and_then(|suffix| suffix.parse::<usize>().ok())
+                .map(|idx| idx + 1)
+        })
+        .max()
+        .unwrap_or(0)
+}
+
 pub fn apply_priority_response_with_dm(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -149,8 +163,8 @@ pub fn apply_priority_response_with_dm(
         );
     }
 
-    // Handle card to exile selection for a pending cast with alternative cost
-    if let PriorityResponse::CardToExile(card_id) = response {
+    // Handle card/object selection for a pending cast card-cost choice.
+    if let PriorityResponse::CardCostChoice(card_id) = response {
         return apply_card_to_exile_response(
             game,
             trigger_queue,
@@ -334,9 +348,9 @@ pub fn apply_priority_response_with_dm(
                     CastingMethod::Normal => obj.mana_cost.clone(),
                     CastingMethod::Alternative(idx) => {
                         if let Some(method) = obj.alternative_casts.get(*idx) {
-                            // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                            // For other methods (flashback, etc.), fall back to spell's cost.
-                            if !method.cost_effects().is_empty() {
+                            // Methods with a modeled TotalCost can explicitly set "no mana cost" (None).
+                            // Methods without TotalCost fall back to the spell's printed mana cost.
+                            if method.total_cost().is_some() {
                                 method.mana_cost().cloned()
                             } else {
                                 method
@@ -366,7 +380,7 @@ pub fn apply_priority_response_with_dm(
                             game, player, obj, *zone, *idx,
                         )
                         .map(|method| {
-                            if !method.cost_effects().is_empty() {
+                            if method.total_cost().is_some() {
                                 method.mana_cost().cloned()
                             } else {
                                 method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
@@ -413,7 +427,8 @@ pub fn apply_priority_response_with_dm(
                     mana_spent_to_cast: ManaPool::default(),
                     mana_cost_to_pay: None,
                     remaining_mana_pips: Vec::new(),
-                    cards_to_exile: Vec::new(),
+                    pre_chosen_card_cost_objects: Vec::new(),
+                    remaining_card_choice_costs: Vec::new(),
                     chosen_modes: None,
                     hybrid_choices: Vec::new(),
                     pending_hybrid_pips: Vec::new(),
@@ -453,7 +468,8 @@ pub fn apply_priority_response_with_dm(
                     mana_spent_to_cast: ManaPool::default(),
                     mana_cost_to_pay: None,
                     remaining_mana_pips: Vec::new(),
-                    cards_to_exile: Vec::new(),
+                    pre_chosen_card_cost_objects: Vec::new(),
+                    remaining_card_choice_costs: Vec::new(),
                     chosen_modes: None,
                     hybrid_choices: Vec::new(),
                     pending_hybrid_pips: Vec::new(),
@@ -570,6 +586,7 @@ pub fn apply_priority_response_with_dm(
             // Pay immediate costs and collect costs that need choices
             let mut mana_cost_to_pay: Option<crate::mana::ManaCost> = None;
             let mut sacrifice_costs: Vec<(ObjectFilter, String)> = Vec::new();
+            let mut card_choice_costs: Vec<ActivationCardCostChoice> = Vec::new();
             let mut payment_trace: Vec<CostStep> = Vec::new();
 
             let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker);
@@ -615,20 +632,72 @@ pub fn apply_priority_response_with_dm(
                     }
                     CostProcessingMode::Immediate => {
                         // Immediate costs (tap, untap, life, remove counters, etc.)
-                        if cost_component.pay(game, &mut cost_ctx).is_err() {
-                            // Cost payment failed - shouldn't happen if can_pay was checked
-                        } else {
-                            record_immediate_cost_payment(
-                                &mut payment_trace,
-                                cost_component,
-                                *source,
-                            );
+                        match cost_component.pay(game, &mut cost_ctx).map_err(|err| {
+                            GameLoopError::InvalidState(format!(
+                                "Failed to pay immediate activation cost: {err:?}"
+                            ))
+                        })? {
+                            crate::costs::CostPaymentResult::Paid => {
+                                record_immediate_cost_payment(
+                                    &mut payment_trace,
+                                    cost_component,
+                                    *source,
+                                );
+                            }
+                            crate::costs::CostPaymentResult::NeedsChoice(description) => {
+                                return Err(GameLoopError::InvalidState(format!(
+                                    "Immediate cost unexpectedly requires choice: {} ({})",
+                                    cost_component.display(),
+                                    description
+                                )));
+                            }
                         }
                     }
-                    CostProcessingMode::DiscardCards { .. }
-                    | CostProcessingMode::ExileFromHand { .. } => {
-                        // Legacy no-op: activation costs using discard/exile-from-hand are
-                        // represented as cost_effects and handled in the cost-effect path.
+                    CostProcessingMode::DiscardCards { count, card_types } => {
+                        let description = cost_component.processing_mode().display();
+                        for _ in 0..count {
+                            card_choice_costs.push(ActivationCardCostChoice::Discard {
+                                card_types: card_types.clone(),
+                                description: description.clone(),
+                            });
+                        }
+                    }
+                    CostProcessingMode::ExileFromHand {
+                        count,
+                        color_filter,
+                    } => {
+                        let description = cost_component.processing_mode().display();
+                        for _ in 0..count {
+                            card_choice_costs.push(ActivationCardCostChoice::ExileFromHand {
+                                color_filter: color_filter.clone(),
+                                description: description.clone(),
+                            });
+                        }
+                    }
+                    CostProcessingMode::ExileFromGraveyard { count, card_type } => {
+                        let description = cost_component.processing_mode().display();
+                        for _ in 0..count {
+                            card_choice_costs.push(ActivationCardCostChoice::ExileFromGraveyard {
+                                card_type,
+                                description: description.clone(),
+                            });
+                        }
+                    }
+                    CostProcessingMode::RevealFromHand { count, card_type } => {
+                        let description = cost_component.processing_mode().display();
+                        for _ in 0..count {
+                            card_choice_costs.push(ActivationCardCostChoice::RevealFromHand {
+                                card_type,
+                                description: description.clone(),
+                            });
+                        }
+                    }
+                    CostProcessingMode::ReturnToHandTarget { filter } => {
+                        let description = cost_component.processing_mode().display();
+                        card_choice_costs.push(ActivationCardCostChoice::ReturnToHand {
+                            filter,
+                            description,
+                        });
                     }
                 }
             }
@@ -654,16 +723,20 @@ pub fn apply_priority_response_with_dm(
             // Create pending activation if there are choices to make
             if has_x
                 || !sacrifice_costs.is_empty()
+                || !card_choice_costs.is_empty()
                 || has_hybrid_pips
                 || !target_requirements.is_empty()
                 || mana_cost_to_pay.is_some()
             {
                 // Determine starting stage (per MTG rule 602.2b, follows 601.2b-h order)
-                // Order: X value → Sacrifice → Hybrid/Phyrexian announcement → Targets → Mana payment
+                // Order: X value → Sacrifice → Hand card cost choices → Hybrid/Phyrexian
+                // announcement → Targets → Mana payment
                 let stage = if has_x {
                     ActivationStage::ChoosingX
                 } else if !sacrifice_costs.is_empty() {
                     ActivationStage::ChoosingSacrifice
+                } else if !card_choice_costs.is_empty() {
+                    ActivationStage::ChoosingCardCost
                 } else if has_hybrid_pips {
                     ActivationStage::AnnouncingCost
                 } else if !target_requirements.is_empty() {
@@ -684,6 +757,11 @@ pub fn apply_priority_response_with_dm(
                     payment_trace,
                     remaining_mana_pips: Vec::new(), // Populated when entering PayingMana stage
                     remaining_sacrifice_costs: sacrifice_costs,
+                    remaining_card_choice_costs: card_choice_costs,
+                    tagged_objects: cost_ctx.tagged_objects.clone(),
+                    next_sacrifice_cost_tag_index: next_sacrifice_cost_tag_index(
+                        &cost_ctx.tagged_objects,
+                    ),
                     is_once_per_turn: is_turn_capped,
                     source_stable_id,
                     source_name,
@@ -702,7 +780,8 @@ pub fn apply_priority_response_with_dm(
 
                 let entry = StackEntry::ability(*source, player, effects.to_vec())
                     .with_source_info(source_stable_id, source_name)
-                    .with_source_snapshot(source_snapshot);
+                    .with_source_snapshot(source_snapshot)
+                    .with_tagged_objects(cost_ctx.tagged_objects.clone());
                 game.push_to_stack(entry);
                 queue_ability_activated_event(
                     game,
@@ -1105,9 +1184,12 @@ fn apply_x_value_response(
         pending.x_value = Some(x_value as usize);
 
         // Move to next stage (per MTG rule 602.2b, follows 601.2b-h order)
-        // After X: Sacrifice → Hybrid/Phyrexian announcement → Targets → Mana payment
+        // After X: Sacrifice → Hand card cost choices → Hybrid/Phyrexian announcement
+        // → Targets → Mana payment
         if !pending.remaining_sacrifice_costs.is_empty() {
             pending.stage = ActivationStage::ChoosingSacrifice;
+        } else if !pending.remaining_card_choice_costs.is_empty() {
+            pending.stage = ActivationStage::ChoosingCardCost;
         } else if !pending.pending_hybrid_pips.is_empty() {
             // Hybrid pips were populated at activation start
             pending.stage = ActivationStage::AnnouncingCost;

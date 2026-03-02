@@ -1626,8 +1626,8 @@ fn test_parse_additional_cost_tap_two_untapped_creatures_and_or_lands() {
         )
         .expect("parse tap-two additional cost");
 
-    let tap = def
-        .cost_effects
+    let additional_cost_effects = def.additional_cost_effects();
+    let tap = additional_cost_effects
         .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::TapEffect>())
         .expect("expected tap cost effect");
@@ -1665,8 +1665,8 @@ fn test_parse_additional_cost_tap_four_untapped_artifacts_creatures_or_lands() {
         )
         .expect("parse tap-four additional cost");
 
-    let tap = def
-        .cost_effects
+    let additional_cost_effects = def.additional_cost_effects();
+    let tap = additional_cost_effects
         .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::TapEffect>())
         .expect("expected tap cost effect");
@@ -2485,8 +2485,12 @@ fn test_parse_flashback_keyword_line() {
 
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
-        AlternativeCastingMethod::Flashback { cost, cost_effects } => {
+        AlternativeCastingMethod::Flashback { total_cost } => {
+            let cost = total_cost
+                .mana_cost()
+                .expect("flashback should include mana cost");
             assert_eq!(cost.to_oracle(), "{1}{U}");
+            let cost_effects = def.alternative_casts[0].cost_effects();
             assert!(
                 cost_effects.is_empty(),
                 "expected flashback test probe to have no extra cost effects, got {cost_effects:?}"
@@ -2507,8 +2511,12 @@ fn test_parse_bestow_keyword_line() {
 
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
-        AlternativeCastingMethod::Bestow { cost, cost_effects } => {
+        AlternativeCastingMethod::Bestow { total_cost } => {
+            let cost = total_cost
+                .mana_cost()
+                .expect("bestow should include mana cost");
             assert_eq!(cost.to_oracle(), "{3}{W}");
+            let cost_effects = def.alternative_casts[0].cost_effects();
             assert!(
                 cost_effects.is_empty(),
                 "expected mana-only bestow cost for probe, got {cost_effects:?}"
@@ -2552,7 +2560,10 @@ fn test_parse_bestow_keyword_line_with_extra_cost_clause() {
 
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
-        AlternativeCastingMethod::Bestow { cost, .. } => {
+        AlternativeCastingMethod::Bestow { total_cost } => {
+            let cost = total_cost
+                .mana_cost()
+                .expect("bestow should include mana cost");
             assert_eq!(cost.to_oracle(), "{R}");
         }
         other => panic!("expected bestow alternative cast, got {other:?}"),

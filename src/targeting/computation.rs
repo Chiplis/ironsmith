@@ -389,6 +389,7 @@ mod tests {
     use crate::color::{Color, ColorSet};
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::static_abilities::StaticAbility;
 
     fn create_test_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)

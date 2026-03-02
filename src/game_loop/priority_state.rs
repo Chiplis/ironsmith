@@ -11,7 +11,7 @@
 /// 4. ChoosingOptionalCosts (601.2b) - Announce additional costs (kicker, buyback)
 /// 5. AnnouncingCost (601.2b) - Announce hybrid/Phyrexian mana choices
 /// 6. ChoosingTargets (601.2c) - Choose targets
-/// 7. ChoosingExileFromHand - Select cards for alternative costs
+/// 7. ChoosingCardCost - Select cards/objects for non-mana costs
 /// 8. PayingMana (601.2g-h) - Activate mana abilities and pay costs
 /// 9. ReadyToFinalize (601.2i) - Spell becomes cast
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,8 +31,8 @@ pub enum CastStage {
     AnnouncingCost,
     /// Need to choose targets.
     ChoosingTargets,
-    /// Need to choose cards to exile from hand (for alternative costs like Force of Will).
-    ChoosingExileFromHand,
+    /// Need to choose cards/objects for non-mana costs (discard, exile-from-hand, etc.).
+    ChoosingCardCost,
     /// Need to pay mana costs (player can activate mana abilities).
     PayingMana,
     /// Ready to finalize (mana has been paid and spell becomes cast).
@@ -82,8 +82,12 @@ pub struct PendingCast {
     /// Remaining mana pips to pay (pip-by-pip payment flow).
     /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
     pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
-    /// Cards chosen to exile from hand as part of alternative costs.
-    pub cards_to_exile: Vec<ObjectId>,
+    /// Cards chosen in advance for non-mana card costs.
+    ///
+    /// Currently consumed by cost payers through CostContext::pre_chosen_cards.
+    pub pre_chosen_card_cost_objects: Vec<ObjectId>,
+    /// Pending card/object cost choices that must be selected before paying mana.
+    pub remaining_card_choice_costs: Vec<ActivationCardCostChoice>,
     /// Pre-chosen modes for modal spells (per MTG rule 601.2b).
     /// Set during ChoosingModes stage, used during resolution.
     pub chosen_modes: Option<Vec<usize>>,
@@ -106,6 +110,8 @@ pub enum ActivationStage {
     ChoosingX,
     /// Need to choose sacrifice targets.
     ChoosingSacrifice,
+    /// Need to choose cards in hand for discard/exile-from-hand costs.
+    ChoosingCardCost,
     /// Need to announce hybrid/Phyrexian mana payment choices (per MTG rule 601.2b via 602.2b).
     AnnouncingCost,
     /// Need to choose ability targets.
@@ -114,6 +120,36 @@ pub enum ActivationStage {
     PayingMana,
     /// Ready to finalize (costs paid, ability goes on stack).
     ReadyToFinalize,
+}
+
+/// Pending card-in-hand choice required by an activated ability cost.
+#[derive(Debug, Clone)]
+pub enum ActivationCardCostChoice {
+    /// Choose a card to discard from hand.
+    Discard {
+        card_types: Vec<CardType>,
+        description: String,
+    },
+    /// Choose a card to exile from hand.
+    ExileFromHand {
+        color_filter: Option<crate::color::ColorSet>,
+        description: String,
+    },
+    /// Choose a card to exile from graveyard.
+    ExileFromGraveyard {
+        card_type: Option<CardType>,
+        description: String,
+    },
+    /// Choose a card to reveal from hand.
+    RevealFromHand {
+        card_type: Option<CardType>,
+        description: String,
+    },
+    /// Choose a permanent to return to hand.
+    ReturnToHand {
+        filter: ObjectFilter,
+        description: String,
+    },
 }
 
 /// An activated ability being activated that needs decisions.
@@ -142,6 +178,15 @@ pub struct PendingActivation {
     pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
     /// Remaining sacrifice costs to pay: (filter, description).
     pub remaining_sacrifice_costs: Vec<(ObjectFilter, String)>,
+    /// Remaining card-in-hand choice costs to pay.
+    pub remaining_card_choice_costs: Vec<ActivationCardCostChoice>,
+    /// Tagged object snapshots captured while paying activation costs.
+    ///
+    /// This preserves cost-time references such as `sacrifice_cost_0` for
+    /// later resolution-time value lookups.
+    pub tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    /// Next `sacrifice_cost_{N}` tag index to assign for choose-and-sacrifice costs.
+    pub next_sacrifice_cost_tag_index: usize,
     /// Whether this ability is once per turn (needs recording).
     pub is_once_per_turn: bool,
     /// Stable instance ID of the source (persists across zone changes).
@@ -245,4 +290,3 @@ impl PriorityLoopState {
         reset_priority(game, &mut self.tracker);
     }
 }
-

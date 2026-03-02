@@ -281,6 +281,7 @@ mod tests {
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],
             saddle_contributors: vec![],
+            tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
         });
 
@@ -349,6 +350,7 @@ mod tests {
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],
             saddle_contributors: vec![],
+            tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
         });
 
@@ -416,6 +418,7 @@ mod tests {
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],
             saddle_contributors: vec![],
+            tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
         });
 
@@ -476,6 +479,7 @@ mod tests {
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],
             saddle_contributors: vec![],
+            tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
         });
 

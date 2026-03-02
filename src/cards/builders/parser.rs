@@ -998,8 +998,13 @@ fn latest_tagged_reference_tag_in_effect(effect: &Effect) -> Option<String> {
     None
 }
 
-fn latest_cost_choice_tag(cost_effects: &[Effect]) -> Option<String> {
-    for effect in cost_effects.iter().rev() {
+fn latest_cost_choice_tag(additional_cost: &TotalCost) -> Option<String> {
+    for effect in additional_cost
+        .costs()
+        .iter()
+        .rev()
+        .filter_map(|component| component.effect_ref())
+    {
         if let Some(tag) = latest_choose_objects_tag_in_effect(effect)
             .or_else(|| latest_tagged_reference_tag_in_effect(effect))
         {
@@ -1144,7 +1149,7 @@ fn apply_line_ast(
             let seed_last_object_tag = if effects_reference_it_tag(&effects)
                 || effects_reference_its_controller(&effects)
             {
-                latest_cost_choice_tag(&builder.cost_effects).or_else(|| {
+                latest_cost_choice_tag(&builder.additional_cost).or_else(|| {
                     builder
                         .spell_effect
                         .as_ref()
@@ -1233,7 +1238,10 @@ fn apply_line_ast(
                 Err(err) => return Err(err),
             };
 
-            builder.cost_effects.extend(compiled);
+            builder.additional_cost = crate::ability::merge_cost_effects(
+                builder.additional_cost,
+                compiled,
+            );
         }
         LineAst::OptionalCost(cost) => {
             builder = builder.optional_cost(cost);
@@ -1285,7 +1293,10 @@ fn apply_line_ast(
                     effects: compiled,
                 });
             }
-            builder.cost_effects.push(Effect::choose_one(modes));
+            builder.additional_cost = crate::ability::merge_cost_effects(
+                builder.additional_cost,
+                vec![Effect::choose_one(modes)],
+            );
         }
         LineAst::AlternativeCastingMethod(method) => {
             builder.alternative_casts.push(method);

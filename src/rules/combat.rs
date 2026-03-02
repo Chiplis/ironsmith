@@ -582,7 +582,7 @@ mod tests {
             mana_spent_to_cast: crate::player::ManaPool::default(),
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],
-            cost_effects: vec![],
+            additional_cost: crate::cost::TotalCost::free(),
             max_saga_chapter: None,
             bestow_cast_state: None,
         }

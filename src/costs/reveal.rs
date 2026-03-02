@@ -3,6 +3,7 @@
 use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::types::CardType;
 
 /// A reveal cards from hand cost.
@@ -86,6 +87,35 @@ impl CostPayer for RevealFromHandCost {
         // Verify we can still pay
         self.can_pay(game, ctx)?;
 
+        // If cards were pre-selected by the game loop, validate and consume them.
+        if !ctx.pre_chosen_cards.is_empty() {
+            if ctx.pre_chosen_cards.len() < self.count as usize {
+                return Err(CostPaymentError::InsufficientCardsToReveal);
+            }
+
+            let cards_to_reveal: Vec<ObjectId> =
+                ctx.pre_chosen_cards.drain(..self.count as usize).collect();
+            let hand = game
+                .player(ctx.payer)
+                .ok_or(CostPaymentError::PlayerNotFound)?
+                .hand
+                .clone();
+
+            for card_id in cards_to_reveal {
+                if card_id == ctx.source || !hand.contains(&card_id) {
+                    return Err(CostPaymentError::InsufficientCardsToReveal);
+                }
+                if let Some(ct) = self.card_type
+                    && !game.object(card_id).is_some_and(|obj| obj.has_card_type(ct))
+                {
+                    return Err(CostPaymentError::InsufficientCardsToReveal);
+                }
+                // Revealing is informational only in this engine model.
+            }
+
+            return Ok(CostPaymentResult::Paid);
+        }
+
         // The actual reveal choice happens in the game loop
         Ok(CostPaymentResult::NeedsChoice(self.display()))
     }
@@ -103,6 +133,13 @@ impl CostPayer for RevealFromHandCost {
             format!("Reveal a {} from your hand", type_str)
         } else {
             format!("Reveal {} {}s from your hand", self.count, type_str)
+        }
+    }
+
+    fn processing_mode(&self) -> crate::costs::CostProcessingMode {
+        crate::costs::CostProcessingMode::RevealFromHand {
+            count: self.count,
+            card_type: self.card_type,
         }
     }
 }

@@ -560,8 +560,7 @@ mod tests {
             Zone::Graveyard,
             player,
             AlternativeCastingMethod::Flashback {
-                cost: ManaCost::new(),
-                cost_effects: Vec::new(),
+                total_cost: crate::cost::TotalCost::mana(ManaCost::new()),
             },
             GrantSource::Effect {
                 source_id,

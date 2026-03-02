@@ -633,22 +633,16 @@ pub(crate) fn parse_flashback_line(
         ));
     }
 
-    let (total_cost, mut cost_effects) = parse_activation_cost(&tokens[cost_start..])?;
-    let (mana_cost, mut extracted_cost_effects) =
-        alternative_cast_parts_from_total_cost(&total_cost);
-    cost_effects.append(&mut extracted_cost_effects);
-    // Keep cost effects stable for deterministic snapshots.
-    if !cost_effects.is_empty() {
-        cost_effects.shrink_to_fit();
+    let (parsed_cost, cost_effects) = parse_activation_cost(&tokens[cost_start..])?;
+    let total_cost = crate::ability::merge_cost_effects(parsed_cost, cost_effects);
+    if total_cost.mana_cost().is_none() {
+        return Err(CardTextError::ParseError(
+            "flashback keyword missing mana symbols".to_string(),
+        ));
     }
 
-    let mana_cost = mana_cost.ok_or_else(|| {
-        CardTextError::ParseError("flashback keyword missing mana symbols".to_string())
-    })?;
-
     Ok(Some(AlternativeCastingMethod::Flashback {
-        cost: mana_cost,
-        cost_effects,
+        total_cost,
     }))
 }
 
@@ -662,12 +656,12 @@ pub(crate) fn parse_bestow_line(
     let words_all = words(tokens);
     let (mana_cost_text, mana_word_count) = leading_mana_symbols_to_oracle(&words_all[1..])
         .ok_or_else(|| CardTextError::ParseError("bestow keyword missing mana cost".to_string()))?;
-    let mut mana_cost = parse_scryfall_mana_cost(&mana_cost_text).map_err(|err| {
+    let mana_cost = parse_scryfall_mana_cost(&mana_cost_text).map_err(|err| {
         CardTextError::ParseError(format!(
             "invalid bestow mana cost '{mana_cost_text}': {err:?}"
         ))
     })?;
-    let mut cost_effects = Vec::new();
+    let mut total_cost = TotalCost::mana(mana_cost.clone());
 
     let mut consumed_mana_tokens = 0usize;
     for token in tokens.iter().skip(1) {
@@ -705,22 +699,17 @@ pub(crate) fn parse_bestow_line(
         }
     }
 
-    if let Ok((total_cost, mut parsed_cost_effects)) = parse_activation_cost(&cost_tokens) {
-        let (parsed_mana, mut extracted_cost_effects) =
-            alternative_cast_parts_from_total_cost(&total_cost);
-        if let Some(parsed_mana) = parsed_mana {
-            mana_cost = parsed_mana;
+    if let Ok((parsed_total_cost, parsed_cost_effects)) = parse_activation_cost(&cost_tokens) {
+        total_cost = crate::ability::merge_cost_effects(parsed_total_cost, parsed_cost_effects);
+        if total_cost.mana_cost().is_none() {
+            let mut components = total_cost.costs().to_vec();
+            components.insert(0, crate::costs::Cost::mana(mana_cost));
+            total_cost = TotalCost::from_costs(components);
         }
-        parsed_cost_effects.append(&mut extracted_cost_effects);
-        if !parsed_cost_effects.is_empty() {
-            parsed_cost_effects.shrink_to_fit();
-        }
-        cost_effects = parsed_cost_effects;
     }
 
     Ok(Some(AlternativeCastingMethod::Bestow {
-        cost: mana_cost,
-        cost_effects,
+        total_cost,
     }))
 }
 
@@ -792,18 +781,13 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
             "alternative cost line missing cost clause".to_string(),
         ));
     }
-    let (total_cost, mut cost_effects) = parse_activation_cost(cost_tokens)?;
-    let (mana_cost, mut total_cost_effects) = alternative_cast_parts_from_total_cost(&total_cost);
-    cost_effects.append(&mut total_cost_effects);
-    // Keep cost effects stable for deterministic snapshots.
-    if !cost_effects.is_empty() {
-        cost_effects.shrink_to_fit();
-    }
-    Ok(Some(AlternativeCastingMethod::alternative_cost(
-        "Parsed alternative cost",
-        mana_cost,
-        cost_effects,
-    )))
+    let (parsed_cost, cost_effects) = parse_activation_cost(cost_tokens)?;
+    let total_cost = crate::ability::merge_cost_effects(parsed_cost, cost_effects);
+    Ok(Some(AlternativeCastingMethod::Composed {
+        name: "Parsed alternative cost",
+        total_cost,
+        condition: None,
+    }))
 }
 
 pub(crate) fn parse_if_conditional_alternative_cost_line(

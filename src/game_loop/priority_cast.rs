@@ -104,15 +104,17 @@ fn cost_effects_for_casting_method(
         CastingMethod::Alternative(idx) => spell
             .alternative_casts
             .get(*idx)
-            .map(|method| method.cost_effects().to_vec())
+            .map(|method| method.cost_effects())
             .unwrap_or_default(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
             zone,
             ..
-        } => crate::decision::resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
-            .map(|method| method.cost_effects().to_vec())
-            .unwrap_or_default(),
+        } => {
+            crate::decision::resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+                .map(|method| method.cost_effects())
+                .unwrap_or_default()
+        }
         _ => Vec::new(),
     }
 }
@@ -266,7 +268,7 @@ fn compute_spell_cast_x_bounds(
     let pay_has_x = mana_cost_to_pay.is_some_and(|cost| cost.has_x());
 
     let mut cost_effects = cost_effects_for_casting_method(game, caster, spell, casting_method);
-    cost_effects.extend(spell.cost_effects.iter().cloned());
+    cost_effects.extend(spell.additional_cost_effects());
 
     let effects_need_x = cost_effects.iter().any(effect_references_x_for_cost);
     let needs_x = printed_has_x || pay_has_x || effects_need_x;
@@ -299,8 +301,11 @@ fn format_alternative_method(
     use crate::alternative_cast::AlternativeCastingMethod;
 
     match method {
-        AlternativeCastingMethod::Flashback { cost, .. } => {
-            let cost_desc = format_mana_cost_simple(cost);
+        AlternativeCastingMethod::Flashback { .. } => {
+            let cost_desc = method
+                .mana_cost()
+                .map(format_mana_cost_simple)
+                .unwrap_or_else(|| "0".to_string());
             ("Flashback".to_string(), cost_desc)
         }
         AlternativeCastingMethod::JumpStart => {
@@ -326,8 +331,12 @@ fn format_alternative_method(
                 format!("{}, Exile {} cards from graveyard", cost_desc, exile_count),
             )
         }
-        AlternativeCastingMethod::Bestow { cost, cost_effects } => {
-            let mut parts = vec![format_mana_cost_simple(cost)];
+        AlternativeCastingMethod::Bestow { .. } => {
+            let mut parts = Vec::new();
+            if let Some(mana) = method.mana_cost() {
+                parts.push(format_mana_cost_simple(mana));
+            }
+            let cost_effects = method.cost_effects();
             for effect in cost_effects {
                 parts.push(format!("{:?}", effect));
             }
@@ -584,7 +593,7 @@ fn check_optional_costs_or_continue(
             Some(source),
             format!("Choose optional costs for {}", spell_name),
             selectable_options,
-            0,             // min - optional costs are optional
+            0, // min - optional costs are optional
             if options.iter().any(|opt| opt.repeatable) {
                 64
             } else {
@@ -611,9 +620,9 @@ fn get_spell_mana_cost(
         CastingMethod::Normal => obj.mana_cost.clone(),
         CastingMethod::Alternative(idx) => {
             if let Some(method) = obj.alternative_casts.get(*idx) {
-                // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                // For other methods (flashback, etc.), fall back to spell's cost.
-                if !method.cost_effects().is_empty() {
+                // Methods with a modeled TotalCost can explicitly set "no mana cost" (None).
+                // Methods without TotalCost fall back to the spell's printed mana cost.
+                if method.total_cost().is_some() {
                     method.mana_cost().cloned()
                 } else {
                     method
@@ -635,17 +644,18 @@ fn get_spell_mana_cost(
             use_alternative: Some(idx),
             zone,
             ..
-        } => crate::decision::resolve_play_from_alternative_method(
-            game, caster, obj, *zone, *idx,
-        )
-        .map(|method| {
-            if !method.cost_effects().is_empty() {
-                method.mana_cost().cloned()
-            } else {
-                method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
-            }
-        })
-        .unwrap_or_else(|| obj.mana_cost.clone()),
+        } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
+            .map(|method| {
+                if method.total_cost().is_some() {
+                    method.mana_cost().cloned()
+                } else {
+                    method
+                        .mana_cost()
+                        .cloned()
+                        .or_else(|| obj.mana_cost.clone())
+                }
+            })
+            .unwrap_or_else(|| obj.mana_cost.clone()),
     }
 }
 
@@ -678,8 +688,12 @@ fn continue_to_targeting_or_finalize(
     // Per MTG 601.2b: Check for hybrid/Phyrexian pips that need announcement BEFORE targets
     // Skip if we already have hybrid choices (coming back from AnnouncingCost stage)
     if pending.hybrid_choices.is_empty()
-        && let Some(mana_cost) =
-            get_spell_mana_cost(game, pending.spell_id, pending.caster, &pending.casting_method)
+        && let Some(mana_cost) = get_spell_mana_cost(
+            game,
+            pending.spell_id,
+            pending.caster,
+            &pending.casting_method,
+        )
     {
         let pips_to_announce = get_pips_requiring_announcement(&mana_cost);
         if !pips_to_announce.is_empty() {
@@ -891,9 +905,9 @@ fn continue_to_mana_payment(
             CastingMethod::Normal => obj.mana_cost.clone(),
             CastingMethod::Alternative(idx) => {
                 if let Some(method) = obj.alternative_casts.get(*idx) {
-                    // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                    // For other methods (flashback, etc.), fall back to spell's cost.
-                    if !method.cost_effects().is_empty() {
+                    // Methods with a modeled TotalCost can explicitly set "no mana cost" (None).
+                    // Methods without TotalCost fall back to the spell's printed mana cost.
+                    if method.total_cost().is_some() {
                         method.mana_cost().cloned()
                     } else {
                         method
@@ -916,13 +930,20 @@ fn continue_to_mana_payment(
                 zone,
                 ..
             } => crate::decision::resolve_play_from_alternative_method(
-                game, pending.caster, obj, *zone, *idx,
+                game,
+                pending.caster,
+                obj,
+                *zone,
+                *idx,
             )
             .map(|method| {
-                if !method.cost_effects().is_empty() {
+                if method.total_cost().is_some() {
                     method.mana_cost().cloned()
                 } else {
-                    method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
+                    method
+                        .mana_cost()
+                        .cloned()
+                        .or_else(|| obj.mana_cost.clone())
                 }
             })
             .unwrap_or_else(|| obj.mana_cost.clone()),
@@ -944,115 +965,52 @@ fn continue_to_mana_payment(
 
     pending.mana_cost_to_pay = effective_cost.clone();
 
-    // Check for ExileFromHand costs that need player choice
-    let exile_from_hand_choice_needed =
-        if let CastingMethod::Alternative(idx) = &pending.casting_method {
-            if let Some(obj) = game.object(pending.spell_id) {
-                if let Some(method) = obj.alternative_casts.get(*idx) {
-                    // Check for exile from hand requirement in cost_effects
-                    if let Some((count, color_filter)) = method.exile_from_hand_requirement() {
-                        // Check if there are multiple legal cards to choose from
-                        if let Some(player) = game.player(pending.caster) {
-                            let matching_cards: Vec<ObjectId> = player
-                                .hand
-                                .iter()
-                                .filter(|&&card_id| {
-                                    if card_id == pending.spell_id {
-                                        return false;
-                                    }
-                                    if let Some(filter) = color_filter {
-                                        if let Some(card) = game.object(card_id) {
-                                            let card_colors = card.colors();
-                                            !card_colors.intersection(filter).is_empty()
-                                        } else {
-                                            false
-                                        }
-                                    } else {
-                                        true
-                                    }
-                                })
-                                .copied()
-                                .collect();
-                            // Need choice if there are more cards than required
-                            matching_cards.len() > count as usize
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        };
+    if pending.remaining_card_choice_costs.is_empty()
+        && pending.pre_chosen_card_cost_objects.is_empty()
+    {
+        let non_mana_costs = collect_non_mana_spell_costs(
+            game,
+            pending.spell_id,
+            pending.caster,
+            &pending.casting_method,
+            &pending.optional_costs_paid,
+        );
+        pending.remaining_card_choice_costs = collect_cast_card_choice_costs(&non_mana_costs);
+    }
 
-    // If we need to choose cards to exile, prompt for that first
-    if exile_from_hand_choice_needed && pending.cards_to_exile.is_empty() {
-        // Find the legal cards to exile
-        let legal_cards = if let CastingMethod::Alternative(idx) = &pending.casting_method {
-            if let Some(obj) = game.object(pending.spell_id) {
-                if let Some(method) = obj.alternative_casts.get(*idx) {
-                    if let Some((_, color_filter)) = method.exile_from_hand_requirement() {
-                        let mut cards = Vec::new();
-                        if let Some(player) = game.player(pending.caster) {
-                            for &card_id in &player.hand {
-                                if card_id == pending.spell_id {
-                                    continue;
-                                }
-                                let matches = if let Some(filter) = color_filter {
-                                    if let Some(card) = game.object(card_id) {
-                                        let card_colors = card.colors();
-                                        !card_colors.intersection(filter).is_empty()
-                                    } else {
-                                        false
-                                    }
-                                } else {
-                                    true
-                                };
-                                if matches {
-                                    cards.push(card_id);
-                                }
-                            }
-                        }
-                        cards
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    Vec::new()
-                }
-            } else {
-                Vec::new()
-            }
-        } else {
-            Vec::new()
-        };
+    if let Some(next_cost) = pending.remaining_card_choice_costs.first().cloned() {
+        let (description, legal_cards) = card_cost_choice_description_and_candidates(
+            game,
+            pending.caster,
+            pending.spell_id,
+            &next_cost,
+            &pending.pre_chosen_card_cost_objects,
+        );
+        if legal_cards.is_empty() {
+            return Err(GameLoopError::InvalidState(
+                "No valid cards available for spell cost choice".to_string(),
+            ));
+        }
 
-        pending.stage = CastStage::ChoosingExileFromHand;
+        pending.stage = CastStage::ChoosingCardCost;
         let player = pending.caster;
         let source = pending.spell_id;
         state.pending_cast = Some(pending);
 
-        // Convert to SelectObjectsContext for card to exile selection
         let candidates: Vec<crate::decisions::context::SelectableObject> = legal_cards
             .iter()
             .map(|&id| {
                 let name = game
                     .object(id)
                     .map(|o| o.name.clone())
-                    .unwrap_or_else(|| format!("Card #{}", id.0));
+                    .unwrap_or_else(|| format!("Object #{}", id.0));
                 crate::decisions::context::SelectableObject::new(id, name)
             })
             .collect();
         let ctx = crate::decisions::context::SelectObjectsContext::new(
             player,
             Some(source),
-            "Exile a blue card from your hand",
+            description,
             candidates,
             1,
             Some(1),
@@ -1105,7 +1063,7 @@ fn continue_spell_cast_mana_payment(
             pending.casting_method,
             pending.optional_costs_paid,
             pending.chosen_modes,
-            pending.cards_to_exile,
+            pending.pre_chosen_card_cost_objects,
             mana_spent_to_cast,
             pending.keyword_payment_contributions,
             &mut pending.payment_trace,
@@ -1168,6 +1126,8 @@ fn continue_spell_cast_mana_payment(
             trigger_queue,
             player_id,
             Some(source),
+            &pip,
+            allow_any_color,
             &action,
             &mut *decision_maker,
             &mut pending.payment_trace,
@@ -1252,13 +1212,7 @@ fn compute_mana_ability_payment_options(
             && mana_ability.is_mana_ability()
         {
             let produced = mana_ability.inferred_mana_symbols(game, *perm_id, player);
-            mana_can_help_pay_cost(
-                &produced,
-                &pending.mana_cost,
-                game,
-                player,
-                allow_any_color,
-            )
+            mana_can_help_pay_cost(&produced, &pending.mana_cost, game, player, allow_any_color)
         } else {
             // If we can't determine, include it
             true
@@ -1460,6 +1414,302 @@ fn get_legal_sacrifice_targets(
         .collect()
 }
 
+/// Get legal cards in hand that can be discarded for a cost.
+fn get_legal_discard_cards(
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    card_types: &[crate::types::CardType],
+) -> Vec<ObjectId> {
+    game.player(player)
+        .map(|p| {
+            p.hand
+                .iter()
+                .copied()
+                .filter(|&card_id| {
+                    if card_id == source {
+                        return false;
+                    }
+                    game.object(card_id).is_some_and(|obj| {
+                        card_types.is_empty()
+                            || card_types
+                                .iter()
+                                .any(|card_type| obj.card_types.contains(card_type))
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Get legal cards in hand that can be exiled for a cost.
+fn get_legal_exile_from_hand_cards(
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    color_filter: Option<crate::color::ColorSet>,
+) -> Vec<ObjectId> {
+    game.player(player)
+        .map(|p| {
+            p.hand
+                .iter()
+                .copied()
+                .filter(|&card_id| {
+                    if card_id == source {
+                        return false;
+                    }
+                    game.object(card_id).is_some_and(|obj| {
+                        if let Some(required_colors) = color_filter {
+                            !obj.colors().intersection(required_colors).is_empty()
+                        } else {
+                            true
+                        }
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Get legal cards in graveyard that can be exiled for a cost.
+fn get_legal_exile_from_graveyard_cards(
+    game: &GameState,
+    player: PlayerId,
+    card_type: Option<crate::types::CardType>,
+) -> Vec<ObjectId> {
+    game.player(player)
+        .map(|p| {
+            p.graveyard
+                .iter()
+                .copied()
+                .filter(|&card_id| {
+                    if let Some(ct) = card_type {
+                        game.object(card_id).is_some_and(|obj| obj.has_card_type(ct))
+                    } else {
+                        true
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Get legal cards in hand that can be revealed for a cost.
+fn get_legal_reveal_from_hand_cards(
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    card_type: Option<crate::types::CardType>,
+) -> Vec<ObjectId> {
+    game.player(player)
+        .map(|p| {
+            p.hand
+                .iter()
+                .copied()
+                .filter(|&card_id| {
+                    if card_id == source {
+                        return false;
+                    }
+                    if let Some(ct) = card_type {
+                        game.object(card_id).is_some_and(|obj| obj.has_card_type(ct))
+                    } else {
+                        true
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Get legal permanents that can be returned to hand for a cost.
+fn get_legal_return_to_hand_targets(
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    filter: &ObjectFilter,
+) -> Vec<ObjectId> {
+    let ctx = FilterContext {
+        you: Some(player),
+        source: Some(source),
+        ..Default::default()
+    };
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|&id| {
+            game.object(id)
+                .is_some_and(|obj| filter.matches(obj, &ctx, game))
+        })
+        .collect()
+}
+
+fn card_cost_choice_description_and_candidates(
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    card_choice_cost: &ActivationCardCostChoice,
+    already_chosen: &[ObjectId],
+) -> (String, Vec<ObjectId>) {
+    let (description, mut candidates) = match card_choice_cost {
+        ActivationCardCostChoice::Discard {
+            card_types,
+            description,
+        } => (
+            format!("Choose a card to discard: {}", description),
+            get_legal_discard_cards(game, player, source, card_types),
+        ),
+        ActivationCardCostChoice::ExileFromHand {
+            color_filter,
+            description,
+        } => (
+            format!("Choose a card to exile: {}", description),
+            get_legal_exile_from_hand_cards(game, player, source, *color_filter),
+        ),
+        ActivationCardCostChoice::ExileFromGraveyard {
+            card_type,
+            description,
+        } => (
+            format!("Choose a card to exile from your graveyard: {}", description),
+            get_legal_exile_from_graveyard_cards(game, player, *card_type),
+        ),
+        ActivationCardCostChoice::RevealFromHand {
+            card_type,
+            description,
+        } => (
+            format!("Choose a card to reveal: {}", description),
+            get_legal_reveal_from_hand_cards(game, player, source, *card_type),
+        ),
+        ActivationCardCostChoice::ReturnToHand {
+            filter,
+            description,
+        } => (
+            format!("Choose a permanent to return: {}", description),
+            get_legal_return_to_hand_targets(game, player, source, filter),
+        ),
+    };
+    candidates.retain(|id| !already_chosen.contains(id));
+    (description, candidates)
+}
+
+fn collect_non_mana_spell_costs(
+    game: &GameState,
+    spell_id: ObjectId,
+    caster: PlayerId,
+    casting_method: &CastingMethod,
+    optional_costs_paid: &OptionalCostsPaid,
+) -> Vec<crate::costs::Cost> {
+    let mut non_mana_costs: Vec<crate::costs::Cost> = Vec::new();
+    let extend_non_mana = |out: &mut Vec<crate::costs::Cost>, total: &crate::cost::TotalCost| {
+        out.extend(
+            total
+                .costs()
+                .iter()
+                .filter(|component| component.mana_cost_ref().is_none())
+                .cloned(),
+        );
+    };
+
+    if let Some(obj) = game.object(spell_id) {
+        let alternative_additional_cost = match casting_method {
+            CastingMethod::Normal => crate::cost::TotalCost::free(),
+            CastingMethod::Alternative(idx) => obj
+                .alternative_casts
+                .get(*idx)
+                .and_then(|method| method.total_cost())
+                .cloned()
+                .unwrap_or_else(crate::cost::TotalCost::free),
+            CastingMethod::GrantedEscape { .. } => crate::cost::TotalCost::free(),
+            CastingMethod::GrantedFlashback => crate::cost::TotalCost::free(),
+            CastingMethod::PlayFrom {
+                use_alternative: None,
+                ..
+            } => crate::cost::TotalCost::free(),
+            CastingMethod::PlayFrom {
+                use_alternative: Some(idx),
+                zone,
+                ..
+            } => crate::decision::resolve_play_from_alternative_method(game, caster, obj, *zone, *idx)
+                .and_then(|method| method.total_cost().cloned())
+                .unwrap_or_else(crate::cost::TotalCost::free),
+        };
+
+        extend_non_mana(&mut non_mana_costs, &alternative_additional_cost);
+        extend_non_mana(&mut non_mana_costs, &obj.additional_cost);
+        for (idx, optional_cost) in obj.optional_costs.iter().enumerate() {
+            let times = optional_costs_paid.times_paid(idx);
+            for _ in 0..times {
+                extend_non_mana(&mut non_mana_costs, &optional_cost.cost);
+            }
+        }
+    }
+
+    non_mana_costs
+}
+
+fn collect_cast_card_choice_costs(
+    non_mana_costs: &[crate::costs::Cost],
+) -> Vec<ActivationCardCostChoice> {
+    use crate::costs::CostProcessingMode;
+
+    let mut card_choice_costs = Vec::new();
+    for cost_component in non_mana_costs {
+        match cost_component.processing_mode() {
+            CostProcessingMode::DiscardCards { count, card_types } => {
+                let description = cost_component.processing_mode().display();
+                for _ in 0..count {
+                    card_choice_costs.push(ActivationCardCostChoice::Discard {
+                        card_types: card_types.clone(),
+                        description: description.clone(),
+                    });
+                }
+            }
+            CostProcessingMode::ExileFromHand {
+                count,
+                color_filter,
+            } => {
+                let description = cost_component.processing_mode().display();
+                for _ in 0..count {
+                    card_choice_costs.push(ActivationCardCostChoice::ExileFromHand {
+                        color_filter,
+                        description: description.clone(),
+                    });
+                }
+            }
+            CostProcessingMode::ExileFromGraveyard { count, card_type } => {
+                let description = cost_component.processing_mode().display();
+                for _ in 0..count {
+                    card_choice_costs.push(ActivationCardCostChoice::ExileFromGraveyard {
+                        card_type,
+                        description: description.clone(),
+                    });
+                }
+            }
+            CostProcessingMode::RevealFromHand { count, card_type } => {
+                let description = cost_component.processing_mode().display();
+                for _ in 0..count {
+                    card_choice_costs.push(ActivationCardCostChoice::RevealFromHand {
+                        card_type,
+                        description: description.clone(),
+                    });
+                }
+            }
+            CostProcessingMode::ReturnToHandTarget { filter } => {
+                let description = cost_component.processing_mode().display();
+                card_choice_costs.push(ActivationCardCostChoice::ReturnToHand {
+                    filter,
+                    description,
+                });
+            }
+            CostProcessingMode::Immediate
+            | CostProcessingMode::ManaPayment { .. }
+            | CostProcessingMode::SacrificeTarget { .. }
+            | CostProcessingMode::InlineWithTriggers => {}
+        }
+    }
+
+    card_choice_costs
+}
+
 /// Continue the activation process based on current stage.
 fn continue_activation(
     game: &mut GameState,
@@ -1468,9 +1718,9 @@ fn continue_activation(
     mut pending: PendingActivation,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    // No re-validation needed: costs have already been paid (tap, sacrifice, exile,
-    // etc.) and all ability data is captured in the PendingActivation. Per MTG rule
-    // 602.2, once activation begins and costs are paid, it completes.
+    // Activation legality has already been checked and ability data is captured in
+    // PendingActivation. Immediate costs are already paid; choice-based costs are
+    // handled by the stage machine below.
 
     match pending.stage {
         ActivationStage::ChoosingX => {
@@ -1536,8 +1786,19 @@ fn continue_activation(
                     crate::decisions::context::DecisionContext::SelectObjects(ctx),
                 ))
             } else {
-                // No more sacrifice costs - recompute target requirements with current game state
-                // This ensures sacrificed creatures are no longer in the legal targets list
+                if !pending.remaining_card_choice_costs.is_empty() {
+                    pending.stage = ActivationStage::ChoosingCardCost;
+                    return continue_activation(
+                        game,
+                        trigger_queue,
+                        state,
+                        pending,
+                        decision_maker,
+                    );
+                }
+
+                // No more object-choice costs - recompute target requirements with current game state.
+                // This ensures zone-changing costs are reflected in legal targets.
                 pending.remaining_requirements = extract_target_requirements(
                     game,
                     &pending.effects,
@@ -1565,6 +1826,84 @@ fn continue_activation(
                 }
 
                 // Move to next stage
+                if !pending.remaining_requirements.is_empty() {
+                    pending.stage = ActivationStage::ChoosingTargets;
+                } else if pending.mana_cost_to_pay.is_some() {
+                    pending.stage = ActivationStage::PayingMana;
+                } else {
+                    pending.stage = ActivationStage::ReadyToFinalize;
+                }
+                continue_activation(game, trigger_queue, state, pending, decision_maker)
+            }
+        }
+        ActivationStage::ChoosingCardCost => {
+            if let Some(card_choice_cost) = pending.remaining_card_choice_costs.first().cloned() {
+                let (description, legal_cards) = card_cost_choice_description_and_candidates(
+                    game,
+                    pending.activator,
+                    pending.source,
+                    &card_choice_cost,
+                    &[],
+                );
+
+                if legal_cards.is_empty() {
+                    return Err(GameLoopError::InvalidState(
+                        "No valid cards available for activation cost choice".to_string(),
+                    ));
+                }
+
+                let player = pending.activator;
+                let source = pending.source;
+                state.pending_activation = Some(pending);
+
+                let candidates: Vec<crate::decisions::context::SelectableObject> = legal_cards
+                    .iter()
+                    .map(|&id| {
+                        let name = game
+                            .object(id)
+                            .map(|o| o.name.clone())
+                            .unwrap_or_else(|| format!("Card #{}", id.0));
+                        crate::decisions::context::SelectableObject::new(id, name)
+                    })
+                    .collect();
+                let ctx = crate::decisions::context::SelectObjectsContext::new(
+                    player,
+                    Some(source),
+                    description,
+                    candidates,
+                    1,
+                    Some(1),
+                );
+                Ok(GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::SelectObjects(ctx),
+                ))
+            } else {
+                // No more object-choice costs - recompute target requirements with current game state.
+                pending.remaining_requirements = extract_target_requirements(
+                    game,
+                    &pending.effects,
+                    pending.activator,
+                    Some(pending.source),
+                );
+
+                // Per MTG rule 602.2b (which references 601.2b), check for hybrid/Phyrexian pips.
+                if pending.hybrid_choices.is_empty()
+                    && let Some(ref mana_cost) = pending.mana_cost_to_pay
+                {
+                    let pips_to_announce = get_pips_requiring_announcement(mana_cost);
+                    if !pips_to_announce.is_empty() {
+                        pending.pending_hybrid_pips = pips_to_announce;
+                        pending.stage = ActivationStage::AnnouncingCost;
+                        return continue_activation(
+                            game,
+                            trigger_queue,
+                            state,
+                            pending,
+                            decision_maker,
+                        );
+                    }
+                }
+
                 if !pending.remaining_requirements.is_empty() {
                     pending.stage = ActivationStage::ChoosingTargets;
                 } else if pending.mana_cost_to_pay.is_some() {
@@ -1746,6 +2085,8 @@ fn continue_activation(
                     trigger_queue,
                     player_id,
                     Some(source),
+                    &pip,
+                    allow_any_color,
                     &action,
                     &mut *decision_maker,
                     &mut pending.payment_trace,
@@ -1793,7 +2134,8 @@ fn continue_activation(
             let mut entry =
                 StackEntry::ability(pending.source, pending.activator, pending.effects.clone())
                     .with_source_info(pending.source_stable_id, pending.source_name.clone())
-                    .with_source_snapshot(pending.source_snapshot.clone());
+                    .with_source_snapshot(pending.source_snapshot.clone())
+                    .with_tagged_objects(pending.tagged_objects.clone());
             entry.targets = pending.chosen_targets.clone();
 
             // Pass X value to stack entry so it's available during resolution

@@ -466,6 +466,54 @@ fn mana_ability_can_pay_pip(
     false
 }
 
+fn pip_mana_color_restriction(
+    pip: &[crate::mana::ManaSymbol],
+    allow_any_color: bool,
+) -> Option<Vec<crate::color::Color>> {
+    use crate::color::Color;
+    use crate::mana::ManaSymbol;
+
+    if allow_any_color {
+        return None;
+    }
+
+    let mut colors = Vec::new();
+    let mut has_non_colored_mana_alternative = false;
+
+    for symbol in pip {
+        match symbol {
+            ManaSymbol::White => colors.push(Color::White),
+            ManaSymbol::Blue => colors.push(Color::Blue),
+            ManaSymbol::Black => colors.push(Color::Black),
+            ManaSymbol::Red => colors.push(Color::Red),
+            ManaSymbol::Green => colors.push(Color::Green),
+            ManaSymbol::Colorless | ManaSymbol::Generic(_) | ManaSymbol::Snow => {
+                has_non_colored_mana_alternative = true;
+            }
+            ManaSymbol::Life(_) | ManaSymbol::X => {}
+        }
+    }
+
+    if has_non_colored_mana_alternative {
+        return None;
+    }
+
+    colors.sort_unstable_by_key(|color| match color {
+        Color::White => 0u8,
+        Color::Blue => 1u8,
+        Color::Black => 2u8,
+        Color::Red => 3u8,
+        Color::Green => 4u8,
+    });
+    colors.dedup();
+
+    if colors.is_empty() {
+        None
+    } else {
+        Some(colors)
+    }
+}
+
 #[cfg(feature = "net")]
 fn record_pip_payment_action(trace: &mut Vec<CostStep>, action: &ManaPipPaymentAction) {
     match action {
@@ -603,6 +651,8 @@ fn execute_pip_payment_action(
     trigger_queue: &mut TriggerQueue,
     player: PlayerId,
     source: Option<ObjectId>,
+    pip: &[crate::mana::ManaSymbol],
+    allow_any_color: bool,
     action: &ManaPipPaymentAction,
     decision_maker: &mut impl DecisionMaker,
     payment_trace: &mut Vec<CostStep>,
@@ -630,11 +680,13 @@ fn execute_pip_payment_action(
             ability_index,
         } => {
             // Activate the mana ability - this just generates mana, doesn't pay the pip
-            crate::special_actions::perform_activate_mana_ability(
+            let mana_color_restriction = pip_mana_color_restriction(pip, allow_any_color);
+            crate::special_actions::perform_activate_mana_ability_restricted_colors(
                 game,
                 player,
                 *source_id,
                 *ability_index,
+                mana_color_restriction,
                 decision_maker,
             )?;
             record_pip_payment_action(payment_trace, action);
@@ -1192,8 +1244,11 @@ fn apply_mana_payment_response_activation(
                     ));
                 };
                 let mut preview_pool = player.mana_pool.clone();
-                let (_, life_to_pay) =
-                    preview_pool.try_pay_tracking_life_with_any_color(cost, x_value, allow_any_color);
+                let (_, life_to_pay) = preview_pool.try_pay_tracking_life_with_any_color(
+                    cost,
+                    x_value,
+                    allow_any_color,
+                );
                 life_to_pay
             };
             if life_to_pay_preview > 0 && !game.can_pay_life(pending.activator, life_to_pay_preview)
@@ -1272,6 +1327,8 @@ fn apply_pip_payment_response_activation(
         trigger_queue,
         pending.activator,
         Some(pending.source),
+        &pip,
+        allow_any_color,
         action,
         &mut *decision_maker,
         &mut pending.payment_trace,
@@ -1337,6 +1394,8 @@ fn apply_pip_payment_response_cast(
         trigger_queue,
         pending.caster,
         Some(pending.spell_id),
+        &pip,
+        allow_any_color,
         action,
         &mut *decision_maker,
         &mut pending.payment_trace,
@@ -1355,7 +1414,7 @@ fn apply_pip_payment_response_cast(
     continue_spell_cast_mana_payment(game, trigger_queue, state, pending, decision_maker)
 }
 
-/// Apply a sacrifice target response for a pending activation.
+/// Apply an object-selection response for a pending activation.
 fn apply_sacrifice_target_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -1364,129 +1423,259 @@ fn apply_sacrifice_target_response(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let mut pending = state.pending_activation.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending activation for sacrifice response".to_string())
+        GameLoopError::InvalidState("No pending activation for object-choice response".to_string())
     })?;
 
-    // Sacrifice the chosen permanent
-    if game.object(target_id).is_some() {
-        let snapshot = game
-            .object(target_id)
-            .map(|obj| ObjectSnapshot::from_object(obj, game));
-        let sacrificing_player = snapshot
-            .as_ref()
-            .map(|snap| snap.controller)
-            .or(Some(pending.activator));
-        game.move_object(target_id, Zone::Graveyard);
-        game.queue_trigger_event(TriggerEvent::new(
-            SacrificeEvent::new(target_id, Some(pending.source))
-                .with_snapshot(snapshot, sacrificing_player),
-        ));
+    match pending.stage {
+        ActivationStage::ChoosingSacrifice => {
+            // Sacrifice the chosen permanent
+            if game.object(target_id).is_some() {
+                let snapshot = game
+                    .object(target_id)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game));
+                if let Some(snapshot) = snapshot.clone() {
+                    let tag = format!("sacrifice_cost_{}", pending.next_sacrifice_cost_tag_index);
+                    pending
+                        .tagged_objects
+                        .entry(crate::tag::TagKey::from(tag))
+                        .or_default()
+                        .push(snapshot);
+                    pending.next_sacrifice_cost_tag_index += 1;
+                }
+                let sacrificing_player = snapshot
+                    .as_ref()
+                    .map(|snap| snap.controller)
+                    .or(Some(pending.activator));
+                game.move_object(target_id, Zone::Graveyard);
+                game.queue_trigger_event(TriggerEvent::new(
+                    SacrificeEvent::new(target_id, Some(pending.source))
+                        .with_snapshot(snapshot, sacrificing_player),
+                ));
 
-        #[cfg(feature = "net")]
-        {
-            // Record sacrifice payment for deterministic trace
-            pending
-                .payment_trace
-                .push(CostStep::Payment(CostPayment::Sacrifice {
-                    objects: vec![GameObjectId(target_id.0)],
-                }));
+                #[cfg(feature = "net")]
+                {
+                    // Record sacrifice payment for deterministic trace
+                    pending
+                        .payment_trace
+                        .push(CostStep::Payment(CostPayment::Sacrifice {
+                            objects: vec![GameObjectId(target_id.0)],
+                        }));
+                }
+                drain_pending_trigger_events(game, trigger_queue);
+            }
+
+            // Remove the satisfied sacrifice cost
+            if !pending.remaining_sacrifice_costs.is_empty() {
+                pending.remaining_sacrifice_costs.remove(0);
+            }
         }
-        drain_pending_trigger_events(game, trigger_queue);
-    }
+        ActivationStage::ChoosingCardCost => {
+            let next_cost = pending
+                .remaining_card_choice_costs
+                .first()
+                .cloned()
+                .ok_or_else(|| {
+                    GameLoopError::InvalidState(
+                        "No pending card choice cost for activation".to_string(),
+                    )
+                })?;
 
-    // Remove the satisfied sacrifice cost
-    if !pending.remaining_sacrifice_costs.is_empty() {
-        pending.remaining_sacrifice_costs.remove(0);
+            match next_cost {
+                ActivationCardCostChoice::Discard { card_types, .. } => {
+                    let legal_cards = get_legal_discard_cards(
+                        game,
+                        pending.activator,
+                        pending.source,
+                        &card_types,
+                    );
+                    if !legal_cards.contains(&target_id) {
+                        return Err(GameLoopError::InvalidState(
+                            "Selected card is not a legal discard cost choice".to_string(),
+                        ));
+                    }
+
+                    let cause = EventCause::from_cost(pending.source, pending.activator);
+                    let result = crate::event_processor::execute_discard(
+                        game,
+                        target_id,
+                        pending.activator,
+                        cause,
+                        false,
+                        decision_maker,
+                    );
+                    if result.prevented {
+                        return Err(GameLoopError::InvalidState(
+                            "Discard cost was prevented".to_string(),
+                        ));
+                    }
+
+                    #[cfg(feature = "net")]
+                    {
+                        pending
+                            .payment_trace
+                            .push(CostStep::Payment(CostPayment::Discard {
+                                objects: vec![GameObjectId(target_id.0)],
+                            }));
+                    }
+                    drain_pending_trigger_events(game, trigger_queue);
+                }
+                ActivationCardCostChoice::ExileFromHand { color_filter, .. } => {
+                    let legal_cards = get_legal_exile_from_hand_cards(
+                        game,
+                        pending.activator,
+                        pending.source,
+                        color_filter,
+                    );
+                    if !legal_cards.contains(&target_id) {
+                        return Err(GameLoopError::InvalidState(
+                            "Selected card is not a legal exile-from-hand cost choice".to_string(),
+                        ));
+                    }
+
+                    game.move_object(target_id, Zone::Exile);
+
+                    #[cfg(feature = "net")]
+                    {
+                        pending
+                            .payment_trace
+                            .push(CostStep::Payment(CostPayment::Exile {
+                                objects: vec![GameObjectId(target_id.0)],
+                                from_zone: ZoneCode::Hand,
+                            }));
+                    }
+                    drain_pending_trigger_events(game, trigger_queue);
+                }
+                ActivationCardCostChoice::ExileFromGraveyard { card_type, .. } => {
+                    let legal_cards =
+                        get_legal_exile_from_graveyard_cards(game, pending.activator, card_type);
+                    if !legal_cards.contains(&target_id) {
+                        return Err(GameLoopError::InvalidState(
+                            "Selected card is not a legal graveyard exile cost choice".to_string(),
+                        ));
+                    }
+
+                    game.move_object(target_id, Zone::Exile);
+
+                    #[cfg(feature = "net")]
+                    {
+                        pending
+                            .payment_trace
+                            .push(CostStep::Payment(CostPayment::Exile {
+                                objects: vec![GameObjectId(target_id.0)],
+                                from_zone: ZoneCode::Graveyard,
+                            }));
+                    }
+                    drain_pending_trigger_events(game, trigger_queue);
+                }
+                ActivationCardCostChoice::RevealFromHand { card_type, .. } => {
+                    let legal_cards = get_legal_reveal_from_hand_cards(
+                        game,
+                        pending.activator,
+                        pending.source,
+                        card_type,
+                    );
+                    if !legal_cards.contains(&target_id) {
+                        return Err(GameLoopError::InvalidState(
+                            "Selected card is not a legal reveal cost choice".to_string(),
+                        ));
+                    }
+
+                    #[cfg(feature = "net")]
+                    {
+                        pending
+                            .payment_trace
+                            .push(CostStep::Payment(CostPayment::Reveal {
+                                objects: vec![GameObjectId(target_id.0)],
+                            }));
+                    }
+                }
+                ActivationCardCostChoice::ReturnToHand { filter, .. } => {
+                    let legal_targets = get_legal_return_to_hand_targets(
+                        game,
+                        pending.activator,
+                        pending.source,
+                        &filter,
+                    );
+                    if !legal_targets.contains(&target_id) {
+                        return Err(GameLoopError::InvalidState(
+                            "Selected permanent is not a legal return-to-hand cost choice"
+                                .to_string(),
+                        ));
+                    }
+
+                    game.move_object(target_id, Zone::Hand);
+
+                    #[cfg(feature = "net")]
+                    {
+                        pending
+                            .payment_trace
+                            .push(CostStep::Payment(CostPayment::ReturnToHand {
+                                objects: vec![GameObjectId(target_id.0)],
+                            }));
+                    }
+                    drain_pending_trigger_events(game, trigger_queue);
+                }
+            }
+
+            pending.remaining_card_choice_costs.remove(0);
+        }
+        _ => {
+            return Err(GameLoopError::InvalidState(
+                "Object-choice response outside activation object-cost stages".to_string(),
+            ));
+        }
     }
 
     // Continue activation process
     continue_activation(game, trigger_queue, state, pending, decision_maker)
 }
 
-/// Apply a card to exile response for a pending spell cast with alternative cost.
+/// Apply a card/object choice response for a pending spell cast cost.
 fn apply_card_to_exile_response(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     state: &mut PriorityLoopState,
-    card_id: ObjectId,
+    chosen_id: ObjectId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let mut pending = state.pending_cast.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending cast for card to exile response".to_string())
+        GameLoopError::InvalidState("No pending cast for card-cost response".to_string())
     })?;
 
-    // Add the chosen card to the exile list
-    pending.cards_to_exile.push(card_id);
+    let next_cost = pending
+        .remaining_card_choice_costs
+        .first()
+        .cloned()
+        .ok_or_else(|| {
+            GameLoopError::InvalidState("No pending card choice cost for spell cast".to_string())
+        })?;
+    let (_, legal_objects) = card_cost_choice_description_and_candidates(
+        game,
+        pending.caster,
+        pending.spell_id,
+        &next_cost,
+        &pending.pre_chosen_card_cost_objects,
+    );
+    if !legal_objects.contains(&chosen_id) {
+        return Err(GameLoopError::InvalidState(
+            "Selected object is not a legal spell cost choice".to_string(),
+        ));
+    }
 
-    // Continue with mana payment (or finalize if no mana needed)
-    // We need to re-run the logic from continue_to_mana_payment
-    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets;
+    // Store pre-selected objects in order; cost payers consume them during finalize.
+    pending.pre_chosen_card_cost_objects.push(chosen_id);
+    pending.remaining_card_choice_costs.remove(0);
 
-    // Compute the effective mana cost for this spell
-    let effective_cost = if let Some(obj) = game.object(pending.spell_id) {
-        let base_cost = match &pending.casting_method {
-            CastingMethod::Normal => obj.mana_cost.clone(),
-            CastingMethod::Alternative(idx) => {
-                if let Some(method) = obj.alternative_casts.get(*idx) {
-                    // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                    // For other methods (flashback, etc.), fall back to spell's cost.
-                    if !method.cost_effects().is_empty() {
-                        method.mana_cost().cloned()
-                    } else {
-                        method
-                            .mana_cost()
-                            .cloned()
-                            .or_else(|| obj.mana_cost.clone())
-                    }
-                } else {
-                    obj.mana_cost.clone()
-                }
-            }
-            CastingMethod::GrantedEscape { .. } => obj.mana_cost.clone(),
-            CastingMethod::GrantedFlashback => obj.mana_cost.clone(),
-            CastingMethod::PlayFrom {
-                use_alternative: None,
-                ..
-            } => obj.mana_cost.clone(),
-            CastingMethod::PlayFrom {
-                use_alternative: Some(idx),
-                zone,
-                ..
-            } => {
-                crate::decision::resolve_play_from_alternative_method(
-                    game,
-                    pending.caster,
-                    obj,
-                    *zone,
-                    *idx,
-                )
-                .map(|method| {
-                    if !method.cost_effects().is_empty() {
-                        method.mana_cost().cloned()
-                    } else {
-                        method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
-                    }
-                })
-                .unwrap_or_else(|| obj.mana_cost.clone())
-            }
-        };
-        base_cost.map(|bc| {
-            calculate_effective_mana_cost_for_payment_with_chosen_targets(
-                game,
-                pending.caster,
-                obj,
-                &bc,
-                &pending.chosen_targets,
-            )
-        })
-    } else {
-        None
-    };
-
-    pending.mana_cost_to_pay = effective_cost.clone();
-    pending.stage = CastStage::PayingMana;
-
-    continue_spell_cast_mana_payment(game, trigger_queue, state, pending, decision_maker)
+    // Re-enter the cast flow from the card-cost stage.
+    let chosen_targets = pending.chosen_targets.clone();
+    continue_to_mana_payment(
+        game,
+        trigger_queue,
+        state,
+        pending,
+        chosen_targets,
+        decision_maker,
+    )
 }
 
 /// Apply a casting method choice response for a pending spell with multiple methods.
@@ -1525,9 +1714,9 @@ fn apply_casting_method_choice_response(
             CastingMethod::Normal => obj.mana_cost.clone(),
             CastingMethod::Alternative(idx) => {
                 if let Some(method) = obj.alternative_casts.get(*idx) {
-                    // For composed alternative methods (with cost effects), use mana_cost directly (even if None).
-                    // For other methods (flashback, etc.), fall back to spell's cost.
-                    if !method.cost_effects().is_empty() {
+                    // Methods with a modeled TotalCost can explicitly set "no mana cost" (None).
+                    // Methods without TotalCost fall back to the spell's printed mana cost.
+                    if method.total_cost().is_some() {
                         method.mana_cost().cloned()
                     } else {
                         method
@@ -1549,19 +1738,20 @@ fn apply_casting_method_choice_response(
                 use_alternative: Some(idx),
                 zone,
                 ..
-            } => {
-                crate::decision::resolve_play_from_alternative_method(
-                    game, player, obj, *zone, *idx,
-                )
-                .map(|method| {
-                    if !method.cost_effects().is_empty() {
-                        method.mana_cost().cloned()
-                    } else {
-                        method.mana_cost().cloned().or_else(|| obj.mana_cost.clone())
-                    }
-                })
-                .unwrap_or_else(|| obj.mana_cost.clone())
-            }
+            } => crate::decision::resolve_play_from_alternative_method(
+                game, player, obj, *zone, *idx,
+            )
+            .map(|method| {
+                if method.total_cost().is_some() {
+                    method.mana_cost().cloned()
+                } else {
+                    method
+                        .mana_cost()
+                        .cloned()
+                        .or_else(|| obj.mana_cost.clone())
+                }
+            })
+            .unwrap_or_else(|| obj.mana_cost.clone()),
         };
         (cost, obj.spell_effect.clone().unwrap_or_default())
     } else {
@@ -1595,7 +1785,8 @@ fn apply_casting_method_choice_response(
             mana_spent_to_cast: ManaPool::default(),
             mana_cost_to_pay: None,
             remaining_mana_pips: Vec::new(),
-            cards_to_exile: Vec::new(),
+            pre_chosen_card_cost_objects: Vec::new(),
+            remaining_card_choice_costs: Vec::new(),
             chosen_modes: None,
             hybrid_choices: Vec::new(),
             pending_hybrid_pips: Vec::new(),
@@ -1634,7 +1825,8 @@ fn apply_casting_method_choice_response(
             mana_spent_to_cast: ManaPool::default(),
             mana_cost_to_pay: None,
             remaining_mana_pips: Vec::new(),
-            cards_to_exile: Vec::new(),
+            pre_chosen_card_cost_objects: Vec::new(),
+            remaining_card_choice_costs: Vec::new(),
             chosen_modes: None,
             hybrid_choices: Vec::new(),
             pending_hybrid_pips: Vec::new(),
@@ -1721,7 +1913,7 @@ fn finalize_spell_cast(
     casting_method: CastingMethod,
     optional_costs_paid: OptionalCostsPaid,
     chosen_modes: Option<Vec<usize>>,
-    pre_chosen_exile_cards: Vec<ObjectId>,
+    pre_chosen_card_cost_objects: Vec<ObjectId>,
     mut mana_spent_to_cast: ManaPool,
     keyword_payment_contributions: Vec<KeywordPaymentContribution>,
     payment_trace: &mut Vec<CostStep>,
@@ -1732,200 +1924,81 @@ fn finalize_spell_cast(
     use crate::decision::calculate_effective_mana_cost_with_chosen_targets;
     #[cfg(not(feature = "net"))]
     let _ = payment_trace;
+    let mut stack_entry_tagged_objects: std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<ObjectSnapshot>,
+    > = std::collections::HashMap::new();
 
-    // Get the mana cost, alternative cost effects, and exile count based on casting method
-    let (base_mana_cost, alternative_cost_effects, granted_escape_exile_count) =
+    // Get the mana cost, alternative additional cost, and exile count based on casting method.
+    let (base_mana_cost, alternative_additional_cost, granted_escape_exile_count) =
         if let Some(obj) = game.object(spell_id) {
             match &casting_method {
-                CastingMethod::Normal => (obj.mana_cost.clone(), Vec::new(), None),
+                CastingMethod::Normal => {
+                    (obj.mana_cost.clone(), crate::cost::TotalCost::free(), None)
+                }
                 CastingMethod::Alternative(idx) => {
                     if let Some(method) = obj.alternative_casts.get(*idx) {
-                        let cost_effects = method.cost_effects().to_vec();
-                        if !cost_effects.is_empty() {
-                            // Composed alternative method (Force of Will style) - uses cost_effects.
-                            let mana = method.mana_cost().cloned();
-                            (mana, cost_effects, None)
+                        if let Some(total_cost) = method.total_cost() {
+                            (total_cost.mana_cost().cloned(), total_cost.clone(), None)
                         } else {
-                            // Other alternative methods (flashback, escape, etc.) - uses mana cost only
+                            // Methods without modeled total_cost fall back to printed mana cost.
                             let mana = method
                                 .mana_cost()
                                 .cloned()
                                 .or_else(|| obj.mana_cost.clone());
-                            (mana, Vec::new(), None)
+                            (mana, crate::cost::TotalCost::free(), None)
                         }
                     } else {
-                        (obj.mana_cost.clone(), Vec::new(), None)
+                        (obj.mana_cost.clone(), crate::cost::TotalCost::free(), None)
                     }
                 }
-                CastingMethod::GrantedEscape { exile_count, .. } => {
-                    (obj.mana_cost.clone(), Vec::new(), Some(*exile_count))
+                CastingMethod::GrantedEscape { exile_count, .. } => (
+                    obj.mana_cost.clone(),
+                    crate::cost::TotalCost::free(),
+                    Some(*exile_count),
+                ),
+                CastingMethod::GrantedFlashback => {
+                    (obj.mana_cost.clone(), crate::cost::TotalCost::free(), None)
                 }
-                CastingMethod::GrantedFlashback => (obj.mana_cost.clone(), Vec::new(), None),
                 CastingMethod::PlayFrom {
                     use_alternative: None,
                     ..
                 } => {
                     // Yawgmoth's Will normal cost
-                    (obj.mana_cost.clone(), Vec::new(), None)
+                    (obj.mana_cost.clone(), crate::cost::TotalCost::free(), None)
                 }
                 CastingMethod::PlayFrom {
                     use_alternative: Some(idx),
                     zone,
                     ..
-                } => {
-                    crate::decision::resolve_play_from_alternative_method(
-                        game, caster, obj, *zone, *idx,
-                    )
-                    .map(|method| {
-                        let cost_effects = method.cost_effects().to_vec();
-                        if !cost_effects.is_empty() {
-                            (method.mana_cost().cloned(), cost_effects, None)
-                        } else {
-                            (
-                                method.mana_cost().cloned().or_else(|| obj.mana_cost.clone()),
-                                Vec::new(),
-                                None,
-                            )
-                        }
-                    })
-                    .unwrap_or_else(|| (obj.mana_cost.clone(), Vec::new(), None))
-                }
+                } => crate::decision::resolve_play_from_alternative_method(
+                    game, caster, obj, *zone, *idx,
+                )
+                .map(|method| {
+                    if let Some(total_cost) = method.total_cost() {
+                        (total_cost.mana_cost().cloned(), total_cost.clone(), None)
+                    } else {
+                        (
+                            method
+                                .mana_cost()
+                                .cloned()
+                                .or_else(|| obj.mana_cost.clone()),
+                            crate::cost::TotalCost::free(),
+                            None,
+                        )
+                    }
+                })
+                .unwrap_or_else(|| (obj.mana_cost.clone(), crate::cost::TotalCost::free(), None)),
             }
         } else {
-            (None, Vec::new(), None)
+            (None, crate::cost::TotalCost::free(), None)
         };
-
-    // Execute alternative cost effects (Force of Will style) if present
-    if !alternative_cost_effects.is_empty() {
-        // Build pre-chosen cards for ExileFromHand cost effects if not already provided
-        let cards_for_exile = if !pre_chosen_exile_cards.is_empty() {
-            pre_chosen_exile_cards.clone()
-        } else {
-            // Auto-select: find matching cards for any exile from hand cost effects
-            let mut auto_selected = Vec::new();
-            for effect in &alternative_cost_effects {
-                if let Some((count, color_filter)) = effect.0.exile_from_hand_cost_info()
-                    && let Some(player) = game.player(caster)
-                {
-                    let matching_cards: Vec<ObjectId> = player
-                        .hand
-                        .iter()
-                        .filter(|&&card_id| {
-                            if card_id == spell_id {
-                                return false;
-                            }
-                            // Don't include cards already selected
-                            if auto_selected.contains(&card_id) {
-                                return false;
-                            }
-                            if let Some(filter) = color_filter {
-                                if let Some(card) = game.object(card_id) {
-                                    let card_colors = card.colors();
-                                    !card_colors.intersection(filter).is_empty()
-                                } else {
-                                    false
-                                }
-                            } else {
-                                true
-                            }
-                        })
-                        .take(count as usize)
-                        .copied()
-                        .collect();
-                    auto_selected.extend(matching_cards);
-                }
-            }
-            auto_selected
-        };
-
-        #[cfg(feature = "net")]
-        {
-            // Record deterministic cost payments for alternative cost effects
-            let mut exile_cursor = 0usize;
-            for effect in &alternative_cost_effects {
-                let mut recorded = false;
-
-                if let Some(amount) = effect.0.pay_life_amount() {
-                    payment_trace.push(CostStep::Payment(CostPayment::Life { amount }));
-                    recorded = true;
-                }
-
-                if effect.0.is_tap_source_cost() {
-                    payment_trace.push(CostStep::Payment(CostPayment::Tap {
-                        objects: vec![GameObjectId(spell_id.0)],
-                    }));
-                    recorded = true;
-                }
-
-                if effect.0.is_sacrifice_source_cost() {
-                    payment_trace.push(CostStep::Payment(CostPayment::Sacrifice {
-                        objects: vec![GameObjectId(spell_id.0)],
-                    }));
-                    recorded = true;
-                }
-
-                if let Some((count, _)) = effect.0.exile_from_hand_cost_info() {
-                    let end = (exile_cursor + count as usize).min(cards_for_exile.len());
-                    let slice = &cards_for_exile[exile_cursor..end];
-                    if !slice.is_empty() {
-                        payment_trace.push(CostStep::Payment(CostPayment::Exile {
-                            objects: slice.iter().map(|id| GameObjectId(id.0)).collect(),
-                            from_zone: ZoneCode::Hand,
-                        }));
-                        recorded = true;
-                    }
-                    exile_cursor = end;
-                }
-
-                if !recorded {
-                    if let Some(desc) = effect.0.cost_description() {
-                        payment_trace.push(CostStep::Payment(CostPayment::Other {
-                            tag: 1,
-                            data: desc.into_bytes(),
-                        }));
-                    }
-                }
-            }
-        }
-
-        // Execute all cost effects with EventCause::from_cost for proper trigger handling
-        let mut ctx = ExecutionContext::new(spell_id, caster, decision_maker)
-            .with_cause(EventCause::from_cost(spell_id, caster));
-        if let Some(x) = x_value {
-            ctx = ctx.with_x(x);
-        }
-        // Note: cards_for_exile contains pre-selected cards for exile from hand costs.
-        // The effect will auto-select the same cards when executed.
-        let _ = cards_for_exile; // Silence unused variable warning
-
-        let mut emitted_events = Vec::new();
-        for effect in &alternative_cost_effects {
-            let outcome = execute_effect(game, effect, &mut ctx).map_err(|err| {
-                GameLoopError::InvalidState(format!(
-                    "Failed to execute alternative cost effect: {err:?}"
-                ))
-            })?;
-            if outcome.result.is_failure() {
-                return Err(GameLoopError::InvalidState(format!(
-                    "Alternative cost effect failed: {:?}",
-                    outcome.result
-                )));
-            }
-            emitted_events.extend(outcome.events);
-        }
-        queue_triggers_for_events(game, trigger_queue, emitted_events);
-        drain_pending_trigger_events(game, trigger_queue);
-    }
 
     // Calculate effective cost and Delve exile count
     let (effective_cost, delve_exile_count) = if let Some(ref base_cost) = base_mana_cost {
         if let Some(obj) = game.object(spell_id) {
             let eff_cost = calculate_effective_mana_cost_with_chosen_targets(
-                game,
-                caster,
-                obj,
-                base_cost,
-                &targets,
+                game, caster, obj, base_cost, &targets,
             );
             let delve_count = crate::decision::calculate_delve_exile_count_with_targets(
                 game,
@@ -2031,68 +2104,55 @@ fn finalize_spell_cast(
         }
     }
 
-    // Execute cost effects (new unified cost model)
-    // Cost effects use EventCause::from_cost to enable triggers on cost-related events
-    let cost_effects = game
-        .object(spell_id)
-        .map(|o| o.cost_effects.clone())
-        .unwrap_or_default();
-    if !cost_effects.is_empty() {
-        #[cfg(feature = "net")]
-        {
-            for effect in &cost_effects {
-                let mut recorded = false;
-
-                if let Some(amount) = effect.0.pay_life_amount() {
-                    payment_trace.push(CostStep::Payment(CostPayment::Life { amount }));
-                    recorded = true;
-                }
-
-                if effect.0.is_tap_source_cost() {
-                    payment_trace.push(CostStep::Payment(CostPayment::Tap {
-                        objects: vec![GameObjectId(spell_id.0)],
-                    }));
-                    recorded = true;
-                }
-
-                if effect.0.is_sacrifice_source_cost() {
-                    payment_trace.push(CostStep::Payment(CostPayment::Sacrifice {
-                        objects: vec![GameObjectId(spell_id.0)],
-                    }));
-                    recorded = true;
-                }
-
-                if !recorded {
-                    if let Some(desc) = effect.0.cost_description() {
-                        payment_trace.push(CostStep::Payment(CostPayment::Other {
-                            tag: 2,
-                            data: desc.into_bytes(),
-                        }));
-                    }
-                }
+    // Pay all non-mana components through the unified cost path:
+    // - alternative method TotalCost non-mana parts
+    // - spell additional_cost non-mana parts
+    // - chosen optional costs non-mana parts
+    let mut non_mana_costs: Vec<crate::costs::Cost> = Vec::new();
+    let extend_non_mana = |out: &mut Vec<crate::costs::Cost>, total: &crate::cost::TotalCost| {
+        out.extend(
+            total
+                .costs()
+                .iter()
+                .filter(|component| component.mana_cost_ref().is_none())
+                .cloned(),
+        );
+    };
+    extend_non_mana(&mut non_mana_costs, &alternative_additional_cost);
+    if let Some(obj) = game.object(spell_id) {
+        extend_non_mana(&mut non_mana_costs, &obj.additional_cost);
+        for (idx, optional_cost) in obj.optional_costs.iter().enumerate() {
+            let times = optional_costs_paid.times_paid(idx);
+            for _ in 0..times {
+                extend_non_mana(&mut non_mana_costs, &optional_cost.cost);
             }
         }
+    }
 
-        let mut ctx = ExecutionContext::new(spell_id, caster, decision_maker)
-            .with_cause(EventCause::from_cost(spell_id, caster));
+    if !non_mana_costs.is_empty() {
+        let mut cost_ctx = crate::costs::CostContext::new(spell_id, caster, decision_maker)
+            .with_pre_chosen_cards(pre_chosen_card_cost_objects);
         if let Some(x) = x_value {
-            ctx = ctx.with_x(x);
+            cost_ctx.x_value = Some(x);
         }
-        let mut emitted_events = Vec::new();
-        for effect in &cost_effects {
-            let outcome = execute_effect(game, effect, &mut ctx).map_err(|err| {
-                GameLoopError::InvalidState(format!("Failed to execute cost effect: {err:?}"))
-            })?;
-            if outcome.result.is_failure() {
-                return Err(GameLoopError::InvalidState(format!(
-                    "Cost effect failed: {:?}",
-                    outcome.result
-                )));
-            }
-            emitted_events.extend(outcome.events);
+
+        for cost in &non_mana_costs {
+            record_immediate_cost_payment(payment_trace, cost, spell_id);
+            crate::special_actions::pay_cost_component_with_choice(game, cost, &mut cost_ctx)
+                .map_err(|err| {
+                    GameLoopError::InvalidState(format!(
+                        "Failed to pay spell cost component: {err:?}"
+                    ))
+                })?;
         }
-        queue_triggers_for_events(game, trigger_queue, emitted_events);
         drain_pending_trigger_events(game, trigger_queue);
+
+        for (tag, snapshots) in cost_ctx.tagged_objects.into_iter() {
+            stack_entry_tagged_objects
+                .entry(tag)
+                .or_default()
+                .extend(snapshots);
+        }
     }
 
     // Spell was already moved to stack during proposal (601.2a compliant).
@@ -2109,6 +2169,7 @@ fn finalize_spell_cast(
         .with_casting_method(casting_method)
         .with_optional_costs_paid(optional_costs_paid)
         .with_chosen_modes(chosen_modes)
+        .with_tagged_objects(stack_entry_tagged_objects)
         .with_keyword_payment_contributions(keyword_payment_contributions);
     if let Some(x) = x_value {
         entry = entry.with_x(x);
@@ -2336,7 +2397,7 @@ fn apply_decision_context_with_dm<D: DecisionMaker>(
             } else if state
                 .pending_cast
                 .as_ref()
-                .is_some_and(|pending| matches!(pending.stage, CastStage::ChoosingExileFromHand))
+                .is_some_and(|pending| matches!(pending.stage, CastStage::ChoosingCardCost))
             {
                 apply_card_to_exile_response(game, trigger_queue, state, chosen, decision_maker)
             } else {
@@ -2503,6 +2564,8 @@ fn get_priority_player_from_ctx(
 mod priority_mana_tests {
     use super::*;
     use crate::cards::tokens::treasure_token_definition;
+    use crate::color::Color;
+    use crate::decision::DecisionMaker;
     use crate::mana::ManaSymbol;
     use crate::zone::Zone;
 
@@ -2521,6 +2584,65 @@ mod priority_mana_tests {
         assert!(
             mana_ability_can_pay_pip(&game, treasure_id, 0, &[ManaSymbol::Black], false),
             "Treasure should be considered able to pay a colored pip"
+        );
+    }
+
+    #[test]
+    fn test_pip_payment_mana_ability_restricts_any_color_choice() {
+        struct AlwaysRedDecisionMaker;
+        impl DecisionMaker for AlwaysRedDecisionMaker {
+            fn decide_colors(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::ColorsContext,
+            ) -> Vec<Color> {
+                vec![Color::Red; ctx.count as usize]
+            }
+        }
+
+        let mut game = setup_game();
+        let mut trigger_queue = TriggerQueue::new();
+        let alice = PlayerId::from_index(0);
+        let mut dm = AlwaysRedDecisionMaker;
+
+        let treasure = treasure_token_definition();
+        let treasure_id = game.create_object_from_definition(&treasure, alice, Zone::Battlefield);
+
+        let action = ManaPipPaymentAction::ActivateManaAbility {
+            source_id: treasure_id,
+            ability_index: 0,
+        };
+        let mut payment_trace = Vec::new();
+        let black_pip = vec![ManaSymbol::Black];
+
+        let pip_paid = execute_pip_payment_action(
+            &mut game,
+            &mut trigger_queue,
+            alice,
+            None,
+            &black_pip,
+            false,
+            &action,
+            &mut dm,
+            &mut payment_trace,
+            None,
+        )
+        .expect("mana ability activation during pip payment should succeed");
+
+        assert!(
+            !pip_paid,
+            "activating mana ability should generate mana before pip is paid"
+        );
+
+        let pool = &game.player(alice).expect("alice exists").mana_pool;
+        assert_eq!(
+            pool.black, 1,
+            "mana should be restricted to current pip color"
+        );
+        assert_eq!(pool.red, 0, "disallowed color should not be produced");
+        assert!(
+            !game.battlefield.contains(&treasure_id),
+            "treasure should be sacrificed as part of activation cost"
         );
     }
 }

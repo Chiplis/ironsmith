@@ -323,7 +323,9 @@ pub(crate) fn parse_activated_line(
     if effects_ast.is_empty() {
         return Ok(None);
     }
-    let seed_tag = last_exile_cost_choice_tag(&mana_cost).map(|tag| tag.as_str().to_string());
+    let seed_tag = first_sacrifice_cost_choice_tag(&mana_cost)
+        .or_else(|| last_exile_cost_choice_tag(&mana_cost))
+        .map(|tag| tag.as_str().to_string());
     let (effects, choices) = compile_trigger_effects_seeded(None, &effects_ast, seed_tag)?;
     let mana_cost = crate::ability::merge_cost_effects(mana_cost, cost_effects);
 

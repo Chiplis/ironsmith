@@ -1890,7 +1890,7 @@ impl WasmGame {
         // can consistently represent without hitting unsupported cast branches.
         if !def.alternative_casts.is_empty()
             || !def.optional_costs.is_empty()
-            || !def.cost_effects.is_empty()
+            || !def.additional_cost_effects().is_empty()
             || def.max_saga_chapter.is_some()
             || def.name().contains("//")
         {
@@ -2787,11 +2787,9 @@ impl WasmGame {
                     .priority_state
                     .pending_cast
                     .as_ref()
-                    .is_some_and(|pending| {
-                        matches!(pending.stage, CastStage::ChoosingExileFromHand)
-                    })
+                    .is_some_and(|pending| matches!(pending.stage, CastStage::ChoosingCardCost))
                 {
-                    Ok(PriorityResponse::CardToExile(ObjectId::from_raw(chosen)))
+                    Ok(PriorityResponse::CardCostChoice(ObjectId::from_raw(chosen)))
                 } else {
                     Err(JsValue::from_str(
                         "unsupported SelectObjects context in priority flow",

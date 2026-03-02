@@ -129,6 +129,37 @@ impl CostPayer for ExileFromGraveyardCost {
         // Verify we can still pay
         self.can_pay(game, ctx)?;
 
+        // If cards were pre-selected by the game loop, consume them directly.
+        if !ctx.pre_chosen_cards.is_empty() {
+            if ctx.pre_chosen_cards.len() < self.count as usize {
+                return Err(CostPaymentError::InsufficientCardsInGraveyard);
+            }
+
+            let cards_to_exile: Vec<ObjectId> =
+                ctx.pre_chosen_cards.drain(..self.count as usize).collect();
+
+            let graveyard = game
+                .player(ctx.payer)
+                .ok_or(CostPaymentError::PlayerNotFound)?
+                .graveyard
+                .clone();
+            for card_id in &cards_to_exile {
+                if !graveyard.contains(card_id) {
+                    return Err(CostPaymentError::InsufficientCardsInGraveyard);
+                }
+                if let Some(ct) = self.card_type
+                    && !game.object(*card_id).is_some_and(|obj| obj.has_card_type(ct))
+                {
+                    return Err(CostPaymentError::InsufficientCardsInGraveyard);
+                }
+            }
+
+            for card_id in cards_to_exile {
+                game.move_object(card_id, Zone::Exile);
+            }
+            return Ok(CostPaymentResult::Paid);
+        }
+
         // The actual choice happens in the game loop
         Ok(CostPaymentResult::NeedsChoice(self.display()))
     }
@@ -146,6 +177,13 @@ impl CostPayer for ExileFromGraveyardCost {
             format!("Exile a {} from your graveyard", type_str)
         } else {
             format!("Exile {} {}s from your graveyard", self.count, type_str)
+        }
+    }
+
+    fn processing_mode(&self) -> crate::costs::CostProcessingMode {
+        crate::costs::CostProcessingMode::ExileFromGraveyard {
+            count: self.count,
+            card_type: self.card_type,
         }
     }
 }

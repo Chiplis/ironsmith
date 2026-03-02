@@ -90,8 +90,57 @@ impl CostPayer for DiscardCost {
         game: &mut GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError> {
+        use crate::event_processor::execute_discard;
+        use crate::events::cause::EventCause;
+
         // Verify we can still pay
         self.can_pay(game, ctx)?;
+
+        // If cards were pre-selected by the game loop, consume them directly.
+        if !ctx.pre_chosen_cards.is_empty() {
+            if ctx.pre_chosen_cards.len() < self.count as usize {
+                return Err(CostPaymentError::InsufficientCardsInHand);
+            }
+
+            let cards_to_discard: Vec<crate::ids::ObjectId> =
+                ctx.pre_chosen_cards.drain(..self.count as usize).collect();
+            let hand = game
+                .player(ctx.payer)
+                .ok_or(CostPaymentError::PlayerNotFound)?
+                .hand
+                .clone();
+
+            for card_id in &cards_to_discard {
+                if *card_id == ctx.source || !hand.contains(card_id) {
+                    return Err(CostPaymentError::InsufficientCardsInHand);
+                }
+                if !self.card_types.is_empty()
+                    && !game
+                        .object(*card_id)
+                        .is_some_and(|obj| self.card_types.iter().any(|ct| obj.has_card_type(*ct)))
+                {
+                    return Err(CostPaymentError::InsufficientCardsInHand);
+                }
+            }
+
+            let cause = EventCause::from_cost(ctx.source, ctx.payer);
+            for card_id in cards_to_discard {
+                let result = execute_discard(
+                    game,
+                    card_id,
+                    ctx.payer,
+                    cause.clone(),
+                    false,
+                    ctx.decision_maker,
+                );
+                if result.prevented {
+                    return Err(CostPaymentError::Other(
+                        "Discard cost was prevented".to_string(),
+                    ));
+                }
+            }
+            return Ok(CostPaymentResult::Paid);
+        }
 
         // The actual discard choice happens in the game loop
         Ok(CostPaymentResult::NeedsChoice(self.display()))

@@ -73,12 +73,10 @@ mod tests {
         // 1. Pay 1 life
         // 2. Choose a blue card from hand
         // 3. Exile the chosen card
-        if let AlternativeCastingMethod::Composed {
-            mana_cost,
-            cost_effects,
-            ..
-        } = alt
+        if let AlternativeCastingMethod::Composed { total_cost, .. } = alt
         {
+            let mana_cost = total_cost.mana_cost();
+            let cost_effects = alt.cost_effects();
             assert!(
                 mana_cost.is_none(),
                 "Alternative cost should have no mana cost"

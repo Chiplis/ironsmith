@@ -4,7 +4,7 @@ use crate::ability::Ability;
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::card::{Card, PtValue};
 use crate::color::ColorSet;
-use crate::cost::{OptionalCost, OptionalCostsPaid};
+use crate::cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 use crate::ids::{CardId, ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
 use crate::player::ManaPool;
@@ -274,8 +274,8 @@ pub struct Object {
     /// as a spell (e.g., Convoke/Improvise). Used by later resolution-time references like
     /// "each creature that convoked it".
     pub keyword_payment_contributions_to_cast: Vec<crate::decision::KeywordPaymentContribution>,
-    /// Cost effects (new unified model) - effects executed as part of paying costs.
-    pub cost_effects: Vec<crate::effect::Effect>,
+    /// Additional non-printed costs paid while casting this object as a spell.
+    pub additional_cost: TotalCost,
 
     // === Saga fields ===
     /// For sagas: the maximum chapter number (typically 3)
@@ -295,6 +295,15 @@ pub struct Object {
 }
 
 impl Object {
+    /// Returns non-mana additional cost components represented as effects.
+    pub fn additional_cost_effects(&self) -> Vec<crate::effect::Effect> {
+        self.additional_cost
+            .costs()
+            .iter()
+            .filter_map(|component| component.effect_ref().cloned())
+            .collect()
+    }
+
     /// Creates a new object from a card definition.
     pub fn from_card(id: ObjectId, card: &Card, owner: PlayerId, zone: Zone) -> Self {
         let (base_power, base_toughness) = card
@@ -334,7 +343,7 @@ impl Object {
             mana_spent_to_cast: ManaPool::default(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
-            cost_effects: Vec::new(),
+            additional_cost: TotalCost::free(),
             max_saga_chapter: None,
         }
     }
@@ -354,7 +363,7 @@ impl Object {
         obj.alternative_casts = def.alternative_casts.clone();
         obj.optional_costs = def.optional_costs.clone();
         obj.max_saga_chapter = def.max_saga_chapter;
-        obj.cost_effects = def.cost_effects.clone();
+        obj.additional_cost = def.additional_cost.clone();
         obj
     }
 
@@ -388,7 +397,7 @@ impl Object {
         self.alternative_casts = def.alternative_casts.clone();
         self.optional_costs = def.optional_costs.clone();
         self.max_saga_chapter = def.max_saga_chapter;
-        self.cost_effects = def.cost_effects.clone();
+        self.additional_cost = def.additional_cost.clone();
     }
 
     /// Reconstructs a CardDefinition from this object's fields.
@@ -422,7 +431,7 @@ impl Object {
             alternative_casts: self.alternative_casts.clone(),
             optional_costs: self.optional_costs.clone(),
             max_saga_chapter: self.max_saga_chapter,
-            cost_effects: self.cost_effects.clone(),
+            additional_cost: self.additional_cost.clone(),
         }
     }
 
@@ -470,7 +479,7 @@ impl Object {
             mana_spent_to_cast: ManaPool::default(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
-            cost_effects: Vec::new(),
+            additional_cost: TotalCost::free(),
             max_saga_chapter: None,
         }
     }
@@ -519,7 +528,7 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             // Cost effects are copiable
-            cost_effects: source.cost_effects.clone(),
+            additional_cost: source.additional_cost.clone(),
             // Saga fields - copiable (a token copy of a saga is also a saga)
             max_saga_chapter: source.max_saga_chapter,
         };
@@ -573,7 +582,7 @@ impl Object {
             mana_spent_to_cast: ManaPool::default(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
-            cost_effects: Vec::new(),
+            additional_cost: TotalCost::free(),
             max_saga_chapter: None,
         }
     }
@@ -1043,7 +1052,7 @@ impl Object {
             mana_spent_to_cast: ManaPool::default(),
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
-            cost_effects: def.cost_effects.clone(),
+            additional_cost: def.additional_cost.clone(),
             max_saga_chapter: def.max_saga_chapter,
         }
     }

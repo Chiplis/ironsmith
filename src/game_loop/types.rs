@@ -41,7 +41,7 @@ pub enum PriorityResponse {
     ManaPayment(usize),
     ManaPipPayment(usize),
     SacrificeTarget(ObjectId),
-    CardToExile(ObjectId),
+    CardCostChoice(ObjectId),
     HybridChoice(usize),
     CastingMethodChoice(usize),
     ReplacementChoice(usize),
@@ -86,4 +86,3 @@ impl std::fmt::Display for GameLoopError {
 }
 
 impl std::error::Error for GameLoopError {}
-

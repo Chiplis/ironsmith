@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+use crate::color::Color;
 use crate::cost::OptionalCostsPaid;
 use crate::decision::DecisionMaker;
 use crate::effect::{Effect, EffectId, EffectOutcome, EffectResult, Value};
@@ -141,6 +142,8 @@ pub struct ExecutionContext<'a> {
     /// This enables replacement effects to match based on what caused an event
     /// (e.g., Library of Leng only applies to effect-caused discards, not cost-based).
     pub cause: EventCause,
+    /// Optional color restriction for mana-choice decisions in this execution.
+    pub mana_color_restriction: Option<Vec<Color>>,
 }
 
 impl std::fmt::Debug for ExecutionContext<'_> {
@@ -168,6 +171,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             )
             .field("triggering_event", &self.triggering_event)
             .field("cause", &self.cause)
+            .field("mana_color_restriction", &self.mana_color_restriction)
             .finish()
     }
 }
@@ -198,6 +202,7 @@ impl<'a> ExecutionContext<'a> {
             triggering_event: None,
             chosen_modes: None,
             cause: EventCause::default(),
+            mana_color_restriction: None,
         }
     }
 
@@ -233,6 +238,7 @@ impl<'a> ExecutionContext<'a> {
             triggering_event: None,
             chosen_modes: None,
             cause: EventCause::default(),
+            mana_color_restriction: None,
         }
     }
 
@@ -258,7 +264,14 @@ impl<'a> ExecutionContext<'a> {
             triggering_event: self.triggering_event,
             chosen_modes: self.chosen_modes,
             cause: self.cause,
+            mana_color_restriction: self.mana_color_restriction,
         }
+    }
+
+    /// Restrict mana color choices for effects executed in this context.
+    pub fn with_mana_color_restriction(mut self, restriction: Option<Vec<Color>>) -> Self {
+        self.mana_color_restriction = restriction;
+        self
     }
 
     /// Snapshot all object targets for "last known information".

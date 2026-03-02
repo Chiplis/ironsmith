@@ -49,6 +49,28 @@ pub enum CostProcessingMode {
         color_filter: Option<ColorSet>,
     },
 
+    /// Cost requires selecting cards to exile from graveyard.
+    ExileFromGraveyard {
+        /// Number of cards to exile.
+        count: u32,
+        /// Optional card type restriction.
+        card_type: Option<CardType>,
+    },
+
+    /// Cost requires selecting cards to reveal from hand.
+    RevealFromHand {
+        /// Number of cards to reveal.
+        count: u32,
+        /// Optional card type restriction.
+        card_type: Option<CardType>,
+    },
+
+    /// Cost requires selecting a permanent to return to hand.
+    ReturnToHandTarget {
+        /// Filter for which permanents can be returned.
+        filter: ObjectFilter,
+    },
+
     /// Cost must be handled inline with trigger detection.
     /// Used for sacrifice self - the game loop needs to detect dies/LTB triggers.
     InlineWithTriggers,
@@ -93,6 +115,35 @@ impl CostProcessingMode {
                 }
             }
 
+            CostProcessingMode::ExileFromGraveyard { count, card_type } => {
+                let type_str = card_type
+                    .map(|ct| ct.card_phrase().to_string())
+                    .unwrap_or_else(|| "card".to_string());
+                if *count == 1 {
+                    format!("Exile a {} from your graveyard", type_str)
+                } else {
+                    format!("Exile {} {}s from your graveyard", count, type_str)
+                }
+            }
+
+            CostProcessingMode::RevealFromHand { count, card_type } => {
+                let type_str = card_type
+                    .map(|ct| ct.card_phrase().to_string())
+                    .unwrap_or_else(|| "card".to_string());
+                if *count == 1 {
+                    format!("Reveal a {} from your hand", type_str)
+                } else {
+                    format!("Reveal {} {}s from your hand", count, type_str)
+                }
+            }
+
+            CostProcessingMode::ReturnToHandTarget { filter } => {
+                format!(
+                    "Return a {} you control to its owner's hand",
+                    describe_permanent_filter(filter)
+                )
+            }
+
             CostProcessingMode::InlineWithTriggers => "Sacrifice self".to_string(),
         }
     }
@@ -106,6 +157,9 @@ impl CostProcessingMode {
             CostProcessingMode::SacrificeTarget { .. } => true,
             CostProcessingMode::DiscardCards { .. } => true,
             CostProcessingMode::ExileFromHand { .. } => true,
+            CostProcessingMode::ExileFromGraveyard { .. } => true,
+            CostProcessingMode::RevealFromHand { .. } => true,
+            CostProcessingMode::ReturnToHandTarget { .. } => true,
         }
     }
 
@@ -164,6 +218,35 @@ fn describe_sacrifice_filter(filter: &ObjectFilter) -> String {
     }
 
     format!("Sacrifice a {}", parts.join(" "))
+}
+
+fn describe_permanent_filter(filter: &ObjectFilter) -> String {
+    let mut parts = Vec::new();
+
+    if filter.other {
+        parts.push("another");
+    }
+
+    if filter.nontoken {
+        parts.push("nontoken");
+    }
+
+    if filter.token {
+        parts.push("token");
+    }
+
+    if !filter.card_types.is_empty() {
+        let types: Vec<&str> = filter
+            .card_types
+            .iter()
+            .map(|card_type| card_type.name())
+            .collect();
+        parts.push(Box::leak(types.join(" or ").into_boxed_str()));
+    } else {
+        parts.push("permanent");
+    }
+
+    parts.join(" ")
 }
 
 fn card_type_name(card_type: CardType) -> &'static str {

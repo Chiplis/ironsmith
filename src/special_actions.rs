@@ -687,6 +687,24 @@ pub fn perform_activate_mana_ability(
     ability_index: usize,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
+    perform_activate_mana_ability_restricted_colors(
+        game,
+        player,
+        permanent_id,
+        ability_index,
+        None,
+        decision_maker,
+    )
+}
+
+pub fn perform_activate_mana_ability_restricted_colors(
+    game: &mut GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    ability_index: usize,
+    mana_color_restriction: Option<Vec<crate::color::Color>>,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) -> Result<(), ActionError> {
     use crate::executor::ExecutionContext;
 
     // Get the mana ability details
@@ -728,7 +746,8 @@ pub fn perform_activate_mana_ability(
 
         // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
         if !effects.is_empty() {
-            let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker);
+            let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker)
+                .with_mana_color_restriction(mana_color_restriction.clone());
             if let Some(x) = x_value_from_costs {
                 effect_ctx = effect_ctx.with_x(x);
             }
@@ -901,6 +920,101 @@ fn resolve_cost_choice(
                 )),
             }
         }
+        CostProcessingMode::ExileFromGraveyard { count, card_type } => {
+            let candidates = legal_exile_from_graveyard_cards(game, ctx.payer, card_type);
+            let required = count as usize;
+            if candidates.len() < required {
+                return Err(CostPaymentError::InsufficientCardsInGraveyard);
+            }
+
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                format!(
+                    "Choose {} card{} to exile from your graveyard",
+                    required,
+                    if required == 1 { "" } else { "s" }
+                ),
+                candidates.clone(),
+                required,
+                Some(required),
+            );
+            let chosen: Vec<ObjectId> =
+                make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
+            let to_exile = normalize_selection(chosen, &candidates, required);
+            if to_exile.len() != required {
+                return Err(CostPaymentError::InsufficientCardsInGraveyard);
+            }
+
+            ctx.pre_chosen_cards.extend(to_exile);
+            match cost.pay(game, ctx)? {
+                CostPaymentResult::Paid => Ok(()),
+                CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
+                    "Exile-from-graveyard cost still needs choice after preselection".to_string(),
+                )),
+            }
+        }
+        CostProcessingMode::RevealFromHand { count, card_type } => {
+            let candidates = legal_reveal_cards(game, ctx.payer, ctx.source, card_type);
+            let required = count as usize;
+            if candidates.len() < required {
+                return Err(CostPaymentError::InsufficientCardsToReveal);
+            }
+
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                format!(
+                    "Choose {} card{} to reveal from your hand",
+                    required,
+                    if required == 1 { "" } else { "s" }
+                ),
+                candidates.clone(),
+                required,
+                Some(required),
+            );
+            let chosen: Vec<ObjectId> =
+                make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
+            let to_reveal = normalize_selection(chosen, &candidates, required);
+            if to_reveal.len() != required {
+                return Err(CostPaymentError::InsufficientCardsToReveal);
+            }
+
+            ctx.pre_chosen_cards.extend(to_reveal);
+            match cost.pay(game, ctx)? {
+                CostPaymentResult::Paid => Ok(()),
+                CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
+                    "Reveal cost still needs choice after preselection".to_string(),
+                )),
+            }
+        }
+        CostProcessingMode::ReturnToHandTarget { filter } => {
+            let candidates = legal_return_targets(game, ctx.payer, ctx.source, &filter);
+            if candidates.is_empty() {
+                return Err(CostPaymentError::NoValidReturnTarget);
+            }
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                format!(
+                    "Choose {} to return to hand",
+                    describe_permanent_filter(&filter)
+                ),
+                candidates.clone(),
+                1,
+                Some(1),
+            );
+            let chosen: Vec<ObjectId> =
+                make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
+            let Some(target) = normalize_selection(chosen, &candidates, 1).first().copied() else {
+                return Err(CostPaymentError::NoValidReturnTarget);
+            };
+
+            ctx.pre_chosen_cards.push(target);
+            match cost.pay(game, ctx)? {
+                CostPaymentResult::Paid => Ok(()),
+                CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
+                    "Return-to-hand cost still needs choice after preselection".to_string(),
+                )),
+            }
+        }
         CostProcessingMode::ManaPayment { .. }
         | CostProcessingMode::Immediate
         | CostProcessingMode::InlineWithTriggers => Err(CostPaymentError::Other(
@@ -983,6 +1097,73 @@ fn legal_exile_cards(
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn legal_exile_from_graveyard_cards(
+    game: &GameState,
+    payer: PlayerId,
+    card_type: Option<crate::types::CardType>,
+) -> Vec<ObjectId> {
+    game.player(payer)
+        .map(|p| {
+            p.graveyard
+                .iter()
+                .copied()
+                .filter(|&card_id| {
+                    if let Some(ct) = card_type {
+                        return game.object(card_id).is_some_and(|obj| obj.has_card_type(ct));
+                    }
+                    true
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn legal_reveal_cards(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    card_type: Option<crate::types::CardType>,
+) -> Vec<ObjectId> {
+    game.player(payer)
+        .map(|p| {
+            p.hand
+                .iter()
+                .copied()
+                .filter(|&card_id| {
+                    if card_id == source {
+                        return false;
+                    }
+                    if let Some(ct) = card_type {
+                        return game.object(card_id).is_some_and(|obj| obj.has_card_type(ct));
+                    }
+                    true
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn legal_return_targets(
+    game: &GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    filter: &ObjectFilter,
+) -> Vec<ObjectId> {
+    let ctx = FilterContext {
+        you: Some(payer),
+        source: Some(source),
+        ..Default::default()
+    };
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|&id| {
+            game.object(id)
+                .is_some_and(|obj| filter.matches(obj, &ctx, game))
+        })
+        .collect()
 }
 
 fn normalize_selection(

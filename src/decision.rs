@@ -1616,7 +1616,7 @@ pub fn can_cast_with_alternative_from_hand(
 
             true
         }
-        AlternativeCastingMethod::Bestow { cost, cost_effects } => {
+        AlternativeCastingMethod::Bestow { total_cost } => {
             if !game.can_cast_spells(player) {
                 return false;
             }
@@ -1631,6 +1631,10 @@ pub fn can_cast_with_alternative_from_hand(
                 }
             }
 
+            let Some(cost) = total_cost.mana_cost() else {
+                return false;
+            };
+
             if !can_cast_with_cost(
                 game,
                 player,
@@ -1642,6 +1646,7 @@ pub fn can_cast_with_alternative_from_hand(
                 return false;
             }
 
+            let cost_effects = method.cost_effects();
             for effect in cost_effects {
                 if effect
                     .0
@@ -1737,52 +1742,27 @@ fn can_pay_cost_with_spell_exclusion(
 ) -> bool {
     use crate::costs::CostProcessingMode;
 
-    let Some(player_obj) = game.player(player) else {
+    let source = spell_to_exclude.or_else(|| {
+        game.player(player)
+            .and_then(|p| p.hand.first().copied().or_else(|| p.graveyard.first().copied()))
+    });
+    let Some(source) = source else {
         return false;
     };
 
+    let mut dm = crate::decision::CliDecisionMaker;
+    let ctx = crate::costs::CostContext::new(source, player, &mut dm);
+
     match cost.processing_mode() {
-        CostProcessingMode::Immediate => {
-            // For immediate costs like life payment, check via the cost's can_pay
-            if let Some(life_amount) = cost.life_amount() {
-                player_obj.life > life_amount as i32
-            } else {
-                // For other immediate costs (tap, untap, etc.), assume payable
-                true
-            }
-        }
-        CostProcessingMode::ExileFromHand {
-            count,
-            color_filter,
-        } => {
-            // Check if player has enough cards in hand matching the color filter
-            // Exclude the spell being cast from the count
-            let matching_cards = player_obj
-                .hand
-                .iter()
-                .filter(|&&card_id| {
-                    // Exclude the spell being cast
-                    if spell_to_exclude == Some(card_id) {
-                        return false;
-                    }
-                    // Check color filter if specified
-                    if let Some(required_colors) = color_filter {
-                        if let Some(card) = game.object(card_id) {
-                            let card_colors = card.colors();
-                            // Card must have at least one of the required colors
-                            !card_colors.intersection(required_colors).is_empty()
-                        } else {
-                            false
-                        }
-                    } else {
-                        true
-                    }
-                })
-                .count();
-            matching_cards >= count as usize
-        }
-        // For other processing modes, assume payable
-        _ => true,
+        CostProcessingMode::ManaPayment { .. } => cost.can_potentially_pay(game, &ctx).is_ok(),
+        CostProcessingMode::Immediate
+        | CostProcessingMode::InlineWithTriggers
+        | CostProcessingMode::SacrificeTarget { .. }
+        | CostProcessingMode::DiscardCards { .. }
+        | CostProcessingMode::ExileFromHand { .. }
+        | CostProcessingMode::ExileFromGraveyard { .. }
+        | CostProcessingMode::RevealFromHand { .. }
+        | CostProcessingMode::ReturnToHandTarget { .. } => cost.can_pay(game, &ctx).is_ok(),
     }
 }
 
@@ -5282,7 +5262,7 @@ fn format_action_short(game: &GameState, action: &LegalAction) -> String {
                             let cost_effects = alt_method.cost_effects();
                             let cost_desc = if !cost_effects.is_empty() {
                                 // For composed methods (like Force of Will), show the cost effects
-                                let effects_desc = format_cost_effects(cost_effects);
+                                let effects_desc = format_cost_effects(&cost_effects);
                                 if let Some(mana) = alt_method.mana_cost() {
                                     // Has both mana and cost effects
                                     format!(
@@ -5325,7 +5305,7 @@ fn format_action_short(game: &GameState, action: &LegalAction) -> String {
                         if let Some(alt_method) = obj.alternative_casts.get(*idx) {
                             let cost_effects = alt_method.cost_effects();
                             let cost_desc = if !cost_effects.is_empty() {
-                                let effects_desc = format_cost_effects(cost_effects);
+                                let effects_desc = format_cost_effects(&cost_effects);
                                 if let Some(mana) = alt_method.mana_cost() {
                                     format!(
                                         "{}, {}",

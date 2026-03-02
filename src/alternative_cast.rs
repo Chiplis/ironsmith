@@ -6,18 +6,88 @@
 //! - The cost to pay (usually different from the normal mana cost)
 //! - What happens after the spell resolves (usually exile)
 
+use crate::cost::TotalCost;
 use crate::effect::Effect;
 use crate::mana::ManaCost;
 use crate::zone::Zone;
+
+fn cost_component_to_effect(component: &crate::costs::Cost) -> Option<Effect> {
+    if let Some(effect) = component.effect_ref() {
+        return Some(effect.clone());
+    }
+    if let Some(amount) = component.life_amount() {
+        return Some(Effect::pay_life(amount));
+    }
+    if let Some((count, color_filter)) = component.exile_from_hand_details() {
+        return Some(Effect::exile_from_hand_as_cost(count, color_filter));
+    }
+    if component.is_sacrifice_self() {
+        return Some(Effect::sacrifice_source());
+    }
+    if component.requires_tap() {
+        return Some(Effect::tap_source());
+    }
+    if component.is_discard() {
+        let (count, card_types) = match component.processing_mode() {
+            crate::costs::CostProcessingMode::DiscardCards { count, card_types } => {
+                (count, card_types)
+            }
+            _ => {
+                let (count, card_type) = component.discard_details().unwrap_or((1, None));
+                (count, card_type.into_iter().collect())
+            }
+        };
+        let card_filter = if card_types.is_empty() {
+            None
+        } else {
+            Some(crate::filter::ObjectFilter {
+                card_types,
+                ..Default::default()
+            })
+        };
+        return Some(Effect::discard_player_filtered(
+            crate::effect::Value::Fixed(count as i32),
+            crate::target::PlayerFilter::You,
+            false,
+            card_filter,
+        ));
+    }
+    None
+}
+
+fn effect_cost_component(effect: Effect) -> crate::costs::Cost {
+    if let Some(amount) = effect.0.pay_life_amount() {
+        return crate::costs::Cost::life(amount);
+    }
+    if let Some((count, color_filter)) = effect.0.exile_from_hand_cost_info() {
+        return crate::costs::Cost::exile_from_hand(count, color_filter);
+    }
+    if effect.0.is_sacrifice_source_cost() {
+        return crate::costs::Cost::sacrifice_self();
+    }
+    if effect.0.is_tap_source_cost() {
+        return crate::costs::Cost::tap();
+    }
+    crate::costs::Cost::effect(effect)
+}
+
+fn compose_total_cost(mana_cost: Option<ManaCost>, cost_effects: Vec<Effect>) -> TotalCost {
+    let mut components = if let Some(mana_cost) = mana_cost {
+        vec![crate::costs::Cost::mana(mana_cost)]
+    } else {
+        Vec::new()
+    };
+    components.extend(cost_effects.into_iter().map(effect_cost_component));
+    TotalCost::from_costs(components)
+}
 
 /// Methods for casting a spell other than from hand for normal cost.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AlternativeCastingMethod {
     /// Flashback - cast from graveyard for alternative cost, exile after
     Flashback {
-        cost: ManaCost,
-        /// Non-mana additional costs paid as part of casting with flashback.
-        cost_effects: Vec<Effect>,
+        /// Full payment for this casting method.
+        total_cost: TotalCost,
     },
 
     /// Jump-start - cast from graveyard, discard a card as additional cost, exile after
@@ -40,15 +110,12 @@ pub enum AlternativeCastingMethod {
     /// additional non-mana cost effects composed through the effect system.
     /// Used for cards like Force of Will ("pay 1 life, exile a blue card").
     ///
-    /// The mana_cost field holds the mana portion (if any), while cost_effects
-    /// holds non-mana costs that execute through the effect system.
+    /// The total_cost field contains mana and non-mana components.
     Composed {
         /// The name shown to the player (e.g., "Force of Will's alternative cost")
         name: &'static str,
-        /// The mana portion of the alternative cost (None = no mana cost)
-        mana_cost: Option<ManaCost>,
-        /// Non-mana cost effects (pay life, exile cards, etc.)
-        cost_effects: Vec<Effect>,
+        /// Full payment for this casting method.
+        total_cost: TotalCost,
         /// Optional cast-time condition for this alternative cost.
         ///
         /// Used for lines like:
@@ -73,10 +140,8 @@ pub enum AlternativeCastingMethod {
     /// This method is cast from hand and uses a dedicated bestow cost.
     /// Some variants may carry additional non-mana cost effects.
     Bestow {
-        /// The mana portion of the bestow cost.
-        cost: ManaCost,
-        /// Additional non-mana bestow costs (for variant templates).
-        cost_effects: Vec<Effect>,
+        /// Full payment for this casting method.
+        total_cost: TotalCost,
     },
 }
 
@@ -127,25 +192,44 @@ impl AlternativeCastingMethod {
     /// Returns None for methods that use the card's normal mana cost (Jump-start, granted Escape).
     pub fn mana_cost(&self) -> Option<&ManaCost> {
         match self {
-            Self::Flashback { cost, .. } => Some(cost),
+            Self::Flashback { total_cost } => total_cost.mana_cost(),
             Self::JumpStart => None, // Uses normal mana cost
             Self::Escape { cost, .. } => cost.as_ref(), // None means use normal mana cost
             Self::Madness { cost } => Some(cost),
             Self::Miracle { cost } => Some(cost),
             Self::MindbreakTrap { cost, .. } => Some(cost),
-            Self::Composed { mana_cost, .. } => mana_cost.as_ref(),
-            Self::Bestow { cost, .. } => Some(cost),
+            Self::Composed { total_cost, .. } => total_cost.mana_cost(),
+            Self::Bestow { total_cost } => total_cost.mana_cost(),
         }
     }
 
     /// Returns the cost effects for this alternative casting method.
     /// These are non-mana costs that execute through the effect system.
-    pub fn cost_effects(&self) -> &[Effect] {
+    pub fn cost_effects(&self) -> Vec<Effect> {
+        fn effect_components(total_cost: &TotalCost) -> Vec<Effect> {
+            total_cost
+                .costs()
+                .iter()
+                .filter(|component| component.mana_cost_ref().is_none())
+                .filter_map(cost_component_to_effect)
+                .collect()
+        }
+
         match self {
-            Self::Flashback { cost_effects, .. } => cost_effects,
-            Self::Composed { cost_effects, .. } => cost_effects,
-            Self::Bestow { cost_effects, .. } => cost_effects,
-            _ => &[],
+            Self::Flashback { total_cost } => effect_components(total_cost),
+            Self::Composed { total_cost, .. } => effect_components(total_cost),
+            Self::Bestow { total_cost } => effect_components(total_cost),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Returns the full TotalCost for this alternative casting method, if modeled directly.
+    pub fn total_cost(&self) -> Option<&TotalCost> {
+        match self {
+            Self::Flashback { total_cost } => Some(total_cost),
+            Self::Composed { total_cost, .. } => Some(total_cost),
+            Self::Bestow { total_cost } => Some(total_cost),
+            _ => None,
         }
     }
 
@@ -179,6 +263,13 @@ impl AlternativeCastingMethod {
     /// This checks the cost_effects for ExileFromHandAsCostEffect and returns
     /// the (count, color_filter) if found.
     pub fn exile_from_hand_requirement(&self) -> Option<(u32, Option<crate::color::ColorSet>)> {
+        if let Some(total_cost) = self.total_cost() {
+            for component in total_cost.costs() {
+                if let Some(info) = component.exile_from_hand_details() {
+                    return Some(info);
+                }
+            }
+        }
         for effect in self.cost_effects() {
             if let Some(info) = effect.0.exile_from_hand_cost_info() {
                 return Some(info);
@@ -231,8 +322,7 @@ impl AlternativeCastingMethod {
     ) -> Self {
         Self::Composed {
             name,
-            mana_cost,
-            cost_effects,
+            total_cost: compose_total_cost(mana_cost, cost_effects),
             condition: None,
         }
     }
@@ -246,8 +336,7 @@ impl AlternativeCastingMethod {
     ) -> Self {
         Self::Composed {
             name,
-            mana_cost,
-            cost_effects,
+            total_cost: compose_total_cost(mana_cost, cost_effects),
             condition: Some(condition),
         }
     }
@@ -256,7 +345,7 @@ impl AlternativeCastingMethod {
     ///
     /// This captures non-mana requirements expressed outside the base mana cost, such as
     /// graveyard exile counts or hand discard counts. Additional costs like life payment,
-    /// card choice, etc. remain composed in `cost_effects()`.
+    /// card choice, etc. remain represented in `total_cost()`.
     pub fn requirements(&self) -> AlternativeCastRequirements {
         match self {
             Self::JumpStart => AlternativeCastRequirements {
@@ -365,8 +454,10 @@ mod tests {
     #[test]
     fn test_flashback_properties() {
         let flashback = AlternativeCastingMethod::Flashback {
-            cost: ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Blue]]),
-            cost_effects: Vec::new(),
+            total_cost: TotalCost::mana(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(2)],
+                vec![ManaSymbol::Blue],
+            ])),
         };
 
         assert_eq!(flashback.cast_from_zone(), Zone::Graveyard);

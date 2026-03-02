@@ -22,11 +22,25 @@ pub(crate) fn choose_mana_colors(
         return Vec::new();
     }
 
-    let fallback = available_colors
+    let effective_available = match (available_colors, ctx.mana_color_restriction.as_deref()) {
+        (Some(effect_colors), Some(ctx_colors)) => Some(
+            effect_colors
+                .iter()
+                .copied()
+                .filter(|color| ctx_colors.contains(color))
+                .collect::<Vec<_>>(),
+        ),
+        (Some(effect_colors), None) => Some(effect_colors.to_vec()),
+        (None, Some(ctx_colors)) => Some(ctx_colors.to_vec()),
+        (None, None) => None,
+    };
+
+    let fallback = effective_available
+        .as_deref()
         .and_then(|colors| colors.first().copied())
         .unwrap_or(default_color);
 
-    let spec = if let Some(colors) = available_colors {
+    let spec = if let Some(colors) = effective_available.as_deref() {
         if colors.is_empty() {
             return vec![fallback; count as usize];
         }
@@ -43,7 +57,7 @@ pub(crate) fn choose_mana_colors(
         spec,
     );
 
-    if let Some(available) = available_colors {
+    if let Some(available) = effective_available.as_deref() {
         chosen.retain(|color| available.contains(color));
     }
 

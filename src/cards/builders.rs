@@ -1427,8 +1427,8 @@ pub struct CardDefinitionBuilder {
     /// For sagas: the maximum chapter number
     max_saga_chapter: Option<u32>,
 
-    /// Cost effects (new unified model) - effects that are executed as part of paying costs.
-    cost_effects: Vec<Effect>,
+    /// Additional non-printed costs paid while casting this spell.
+    additional_cost: TotalCost,
 
     /// For Auras: what this card can enchant (used for non-target attachments)
     aura_attach_filter: Option<ObjectFilter>,
@@ -1527,7 +1527,7 @@ impl CardDefinitionBuilder {
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
             max_saga_chapter: None,
-            cost_effects: Vec::new(),
+            additional_cost: TotalCost::free(),
             aura_attach_filter: None,
             haunt_delayed_effects: None,
         }
@@ -1790,7 +1790,7 @@ impl CardDefinitionBuilder {
 
         let parse_builder = self.clone();
         let mut parse_builder = parse_builder;
-        parse_builder.cost_effects.clear();
+        parse_builder.additional_cost = TotalCost::free();
         parse_builder.parse_text(combined)
     }
 
@@ -1802,7 +1802,7 @@ impl CardDefinitionBuilder {
         // Treat the text box as authoritative: drop any previously added abilities if parsing succeeds.
         let mut parse_builder = self.clone();
         parse_builder.abilities.clear();
-        parse_builder.cost_effects.clear();
+        parse_builder.additional_cost = TotalCost::free();
         parse_builder.parse_text(combined)
     }
 
@@ -3484,8 +3484,7 @@ impl CardDefinitionBuilder {
     pub fn flashback(mut self, cost: ManaCost) -> Self {
         self.alternative_casts
             .push(AlternativeCastingMethod::Flashback {
-                cost,
-                cost_effects: Vec::new(),
+                total_cost: TotalCost::mana(cost),
             });
         self
     }
@@ -3603,7 +3602,13 @@ impl CardDefinitionBuilder {
     /// Cost effects are executed as part of paying costs, with `EventCause::from_cost()`.
     /// This enables triggers like "Whenever a creature is sacrificed to pay a cost".
     pub fn cost_effects(mut self, effects: Vec<Effect>) -> Self {
-        self.cost_effects = effects;
+        self.additional_cost = crate::ability::merge_cost_effects(TotalCost::free(), effects);
+        self
+    }
+
+    /// Set additional spell cost as a `TotalCost`.
+    pub fn additional_cost(mut self, additional_cost: TotalCost) -> Self {
+        self.additional_cost = additional_cost;
         self
     }
 
@@ -3748,7 +3753,7 @@ impl CardDefinitionBuilder {
             alternative_casts: self.alternative_casts,
             optional_costs: self.optional_costs,
             max_saga_chapter: self.max_saga_chapter,
-            cost_effects: self.cost_effects,
+            additional_cost: self.additional_cost,
         }
     }
 }
@@ -8246,11 +8251,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert_eq!(def.alternative_casts.len(), 1);
         let alt = &def.alternative_casts[0];
         match alt {
-            AlternativeCastingMethod::Composed {
-                mana_cost,
-                cost_effects,
-                ..
-            } => {
+            AlternativeCastingMethod::Composed { total_cost, .. } => {
+                let mana_cost = total_cost.mana_cost();
+                let cost_effects = alt.cost_effects();
                 assert!(mana_cost.is_none(), "fireblast alt cost should be no mana");
                 let has_sacrifice = cost_effects
                     .iter()
@@ -8286,8 +8289,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert_eq!(def.alternative_casts.len(), 1);
         let alt = &def.alternative_casts[0];
         match alt {
-            AlternativeCastingMethod::Composed { mana_cost, .. } => {
-                let mana = mana_cost.as_ref().expect("expected mana alt cost");
+            AlternativeCastingMethod::Composed { total_cost, .. } => {
+                let mana = total_cost.mana_cost().expect("expected mana alt cost");
                 assert_eq!(mana.to_oracle(), "{0}");
             }
             other => panic!("expected Composed, got {other:?}"),
@@ -8303,13 +8306,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("conditional self free-cast alternative cost should parse");
 
         assert_eq!(def.alternative_casts.len(), 1);
-        match &def.alternative_casts[0] {
+        let alt = &def.alternative_casts[0];
+        match alt {
             AlternativeCastingMethod::Composed {
-                mana_cost,
-                cost_effects,
+                total_cost,
                 condition,
                 ..
             } => {
+                let mana_cost = total_cost.mana_cost();
+                let cost_effects = alt.cost_effects();
                 assert!(
                     mana_cost.is_none(),
                     "conditional self free-cast should not require mana"
@@ -8384,12 +8389,13 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("conditional rather-than alternative cost should parse");
 
         assert_eq!(def.alternative_casts.len(), 1);
-        match &def.alternative_casts[0] {
+        let alt = &def.alternative_casts[0];
+        match alt {
             AlternativeCastingMethod::Composed {
-                cost_effects,
                 condition,
                 ..
             } => {
+                let cost_effects = alt.cost_effects();
                 assert!(
                     !cost_effects.is_empty(),
                     "expected non-mana cost effects in conditional rather-than alternative cost"
@@ -8410,13 +8416,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("self free-cast alternative cost should parse");
 
         assert_eq!(def.alternative_casts.len(), 1);
-        match &def.alternative_casts[0] {
+        let alt = &def.alternative_casts[0];
+        match alt {
             AlternativeCastingMethod::Composed {
-                mana_cost,
-                cost_effects,
+                total_cost,
                 condition,
                 ..
             } => {
+                let mana_cost = total_cost.mana_cost();
+                let cost_effects = alt.cost_effects();
                 assert!(
                     mana_cost.is_none(),
                     "self free-cast should not require mana"

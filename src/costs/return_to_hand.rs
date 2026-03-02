@@ -135,6 +135,17 @@ impl CostPayer for ReturnToHandCost {
         // Verify we can still pay
         self.can_pay(game, ctx)?;
 
+        // If target is pre-selected, consume it directly.
+        if let Some(target_id) = ctx.pre_chosen_cards.first().copied() {
+            let valid_targets = self.get_valid_targets(game, ctx.payer, ctx.source);
+            if !valid_targets.contains(&target_id) {
+                return Err(CostPaymentError::NoValidReturnTarget);
+            }
+            ctx.pre_chosen_cards.remove(0);
+            game.move_object(target_id, Zone::Hand);
+            return Ok(CostPaymentResult::Paid);
+        }
+
         // The actual choice happens in the game loop
         Ok(CostPaymentResult::NeedsChoice(self.display()))
     }
@@ -174,5 +185,11 @@ impl CostPayer for ReturnToHandCost {
             "Return a {} you control to its owner's hand",
             parts.join(" ")
         )
+    }
+
+    fn processing_mode(&self) -> crate::costs::CostProcessingMode {
+        crate::costs::CostProcessingMode::ReturnToHandTarget {
+            filter: self.filter.clone(),
+        }
     }
 }

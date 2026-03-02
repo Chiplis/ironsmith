@@ -870,6 +870,10 @@ pub struct StackEntry {
     ///
     /// Used to populate runtime tags for filters like "each creature that saddled it this turn".
     pub saddle_contributors: Vec<ObjectId>,
+    /// Tagged object snapshots preserved from cost payment and targeting flows.
+    ///
+    /// This supports resolution-time references like `sacrifice_cost_0`.
+    pub tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
 /// A mana ability granted to a player until end of turn.
@@ -905,6 +909,7 @@ impl StackEntry {
             keyword_payment_contributions: Vec::new(),
             crew_contributors: Vec::new(),
             saddle_contributors: Vec::new(),
+            tagged_objects: std::collections::HashMap::new(),
         }
     }
 
@@ -934,6 +939,7 @@ impl StackEntry {
             keyword_payment_contributions: Vec::new(),
             crew_contributors: Vec::new(),
             saddle_contributors: Vec::new(),
+            tagged_objects: std::collections::HashMap::new(),
         }
     }
 
@@ -1017,6 +1023,15 @@ impl StackEntry {
         contributions: Vec<KeywordPaymentContribution>,
     ) -> Self {
         self.keyword_payment_contributions = contributions;
+        self
+    }
+
+    /// Carry tagged object snapshots into stack resolution context.
+    pub fn with_tagged_objects(
+        mut self,
+        tagged: std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    ) -> Self {
+        self.tagged_objects = tagged;
         self
     }
 }

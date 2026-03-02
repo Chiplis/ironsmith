@@ -4219,8 +4219,7 @@ mod tests {
             .expect("stack spell should exist")
             .alternative_casts
             .push(AlternativeCastingMethod::Flashback {
-                cost: ManaCost::default(),
-                cost_effects: Vec::new(),
+                total_cost: crate::cost::TotalCost::mana(ManaCost::default()),
             });
         game.push_to_stack(
             crate::game_state::StackEntry::new(stack_id, alice)

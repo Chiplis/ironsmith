@@ -23,7 +23,7 @@ mod generated_registry {
 use crate::ability::{Ability, AbilityKind};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::card::Card;
-use crate::cost::OptionalCost;
+use crate::cost::{OptionalCost, TotalCost};
 use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::static_abilities::StaticAbilityId;
@@ -58,9 +58,11 @@ pub struct CardDefinition {
     /// For sagas: the maximum chapter number (typically 3)
     pub max_saga_chapter: Option<u32>,
 
-    /// Cost effects (new unified model) - effects that are executed as part of paying costs.
-    /// These run with `EventCause::from_cost()` and enable triggers on cost-related events.
-    pub cost_effects: Vec<Effect>,
+    /// Additional non-printed costs paid while casting this spell.
+    ///
+    /// This is modeled as a full `TotalCost` so non-mana components can be paid
+    /// through the unified cost pipeline.
+    pub additional_cost: TotalCost,
 }
 
 impl CardDefinition {
@@ -74,7 +76,7 @@ impl CardDefinition {
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
             max_saga_chapter: None,
-            cost_effects: Vec::new(),
+            additional_cost: TotalCost::free(),
         }
     }
 
@@ -88,7 +90,7 @@ impl CardDefinition {
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
             max_saga_chapter: None,
-            cost_effects: Vec::new(),
+            additional_cost: TotalCost::free(),
         }
     }
 
@@ -102,7 +104,7 @@ impl CardDefinition {
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
             max_saga_chapter: None,
-            cost_effects: Vec::new(),
+            additional_cost: TotalCost::free(),
         }
     }
 
@@ -116,7 +118,7 @@ impl CardDefinition {
             alternative_casts: Vec::new(),
             optional_costs: Vec::new(),
             max_saga_chapter: None,
-            cost_effects: Vec::new(),
+            additional_cost: TotalCost::free(),
         }
     }
 
@@ -142,6 +144,15 @@ impl CardDefinition {
             || self.card.is_enchantment()
             || self.card.is_land()
             || self.card.is_planeswalker()
+    }
+
+    /// Returns non-mana additional cost components represented as effects.
+    pub fn additional_cost_effects(&self) -> Vec<Effect> {
+        self.additional_cost
+            .costs()
+            .iter()
+            .filter_map(|component| component.effect_ref().cloned())
+            .collect()
     }
 }
 
@@ -324,6 +335,7 @@ impl CardRegistry {
         maybe_register!(blood_celebrant);
         maybe_register!(blood_artist);
         maybe_register!(bloodstained_mire);
+        maybe_register!(bosh_iron_golem);
         maybe_register!(braids_arisen_nightmare);
         maybe_register!(brightclimb_pathway);
         maybe_register!(grimclimb_pathway);

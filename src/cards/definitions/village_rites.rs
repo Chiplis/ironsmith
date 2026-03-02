@@ -47,21 +47,22 @@ mod tests {
     #[test]
     fn test_village_rites_has_cost_effects() {
         let def = village_rites();
+        let cost_effects = def.additional_cost_effects();
         assert_eq!(
-            def.cost_effects.len(),
+            cost_effects.len(),
             2,
             "Should have 2 cost effects (choose + sacrifice)"
         );
 
         // First effect should be ChooseObjectsEffect
-        let debug_str_0 = format!("{:?}", &def.cost_effects[0]);
+        let debug_str_0 = format!("{:?}", &cost_effects[0]);
         assert!(
             debug_str_0.contains("ChooseObjectsEffect"),
             "First cost effect should be choose"
         );
 
         // Second effect should be SacrificeEffect
-        let debug_str_1 = format!("{:?}", &def.cost_effects[1]);
+        let debug_str_1 = format!("{:?}", &cost_effects[1]);
         assert!(
             debug_str_1.contains("SacrificeEffect"),
             "Second cost effect should be sacrifice"

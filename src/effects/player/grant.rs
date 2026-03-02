@@ -150,8 +150,7 @@ impl EffectExecutor for GrantEffect {
                     Zone::Graveyard,
                     owner,
                     AlternativeCastingMethod::Flashback {
-                        cost: flashback_cost,
-                        cost_effects: Vec::new(),
+                        total_cost: crate::cost::TotalCost::mana(flashback_cost),
                     },
                     grant_source,
                 );
