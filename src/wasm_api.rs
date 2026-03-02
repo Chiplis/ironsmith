@@ -262,10 +262,21 @@ struct PermanentSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct ManaPoolSnapshot {
+    white: u32,
+    blue: u32,
+    black: u32,
+    red: u32,
+    green: u32,
+    colorless: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct PlayerSnapshot {
     id: u8,
     name: String,
     life: i32,
+    mana_pool: ManaPoolSnapshot,
     can_view_hand: bool,
     hand_size: usize,
     library_size: usize,
@@ -414,6 +425,14 @@ impl GameSnapshot {
                     id: p.id.0,
                     name: p.name.clone(),
                     life: p.life,
+                    mana_pool: ManaPoolSnapshot {
+                        white: p.mana_pool.white,
+                        blue: p.mana_pool.blue,
+                        black: p.mana_pool.black,
+                        red: p.mana_pool.red,
+                        green: p.mana_pool.green,
+                        colorless: p.mana_pool.colorless,
+                    },
                     hand_size: p.hand.len(),
                     library_size: p.library.len(),
                     graveyard_size: p.graveyard.len(),
