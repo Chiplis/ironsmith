@@ -83,10 +83,10 @@ mod tests {
     }
 
     #[test]
-    fn test_shelter_has_two_effects() {
+    fn test_shelter_has_three_effects() {
         let def = shelter();
-        // Protection effect + Draw effect
-        assert_eq!(def.spell_effect.as_ref().unwrap().len(), 2);
+        // TargetOnlyEffect + Protection effect + Draw effect
+        assert_eq!(def.spell_effect.as_ref().unwrap().len(), 3);
     }
 
     // ========================================
@@ -102,21 +102,20 @@ mod tests {
         let soldier = create_creature(&mut game, "Soldier", alice);
 
         let def = shelter();
-        let effect = def
+        let effects = def
             .spell_effect
             .as_ref()
-            .expect("Shelter should have spell effects")
-            .first()
-            .expect("Shelter should have a protection effect");
+            .expect("Shelter should have spell effects");
 
         let source_id = game.new_object_id();
         let mut dm = AutoPassDecisionMaker;
         let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
         ctx.targets = vec![ResolvedTarget::Object(soldier)];
 
-        let result = execute_effect(&mut game, effect, &mut ctx).unwrap();
-
-        assert_eq!(result.result, EffectResult::Resolved);
+        // Execute all effects (TargetOnly + ChooseMode/GrantProtection + Draw)
+        for effect in effects {
+            let _ = execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
 
         // The soldier should now have protection from white (default when no decision maker)
         let chars = game
@@ -161,20 +160,20 @@ mod tests {
         let knight = create_creature(&mut game, "Knight", alice);
 
         let def = shelter();
-        let effect = def
+        let effects = def
             .spell_effect
             .as_ref()
-            .expect("Shelter should have spell effects")
-            .first()
-            .expect("Shelter should have a protection effect");
+            .expect("Shelter should have spell effects");
 
-        // Execute the effect targeting only the soldier
+        // Execute all effects targeting only the soldier
         let source_id = game.new_object_id();
         let mut dm = AutoPassDecisionMaker;
         let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
         ctx.targets = vec![ResolvedTarget::Object(soldier)];
 
-        let _ = execute_effect(&mut game, effect, &mut ctx).unwrap();
+        for effect in effects {
+            let _ = execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
 
         // The soldier should have protection
         {

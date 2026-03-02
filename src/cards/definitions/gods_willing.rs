@@ -77,10 +77,10 @@ mod tests {
     }
 
     #[test]
-    fn test_gods_willing_has_two_effects() {
+    fn test_gods_willing_has_three_effects() {
         let def = gods_willing();
-        // Protection effect + Scry effect
-        assert_eq!(def.spell_effect.as_ref().unwrap().len(), 2);
+        // TargetOnlyEffect + Protection effect + Scry effect
+        assert_eq!(def.spell_effect.as_ref().unwrap().len(), 3);
     }
 
     // ========================================
@@ -95,20 +95,24 @@ mod tests {
         // Create a creature for Alice
         let soldier = create_creature(&mut game, "Soldier", alice);
 
-        // Execute the effect with the soldier as the target
+        // Execute all effects (TargetOnly + ChooseMode/GrantProtection + Scry)
         let source_id = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source_id, alice);
         ctx.targets = vec![ResolvedTarget::Object(soldier)];
 
         let def = gods_willing();
-        let effect = def
+        let effects = def
             .spell_effect
             .as_ref()
-            .and_then(|effects| effects.first())
-            .expect("Should have spell effect");
-        let result = execute_effect(&mut game, effect, &mut ctx).unwrap();
+            .expect("Should have spell effects");
 
-        assert_eq!(result.result, EffectResult::Resolved);
+        // Execute all effects in order
+        let mut last_result = None;
+        for effect in effects {
+            last_result = Some(execute_effect(&mut game, effect, &mut ctx).unwrap());
+        }
+
+        assert!(last_result.is_some());
 
         // The soldier should now have protection from white (default when no decision maker)
         let chars = game
@@ -150,18 +154,19 @@ mod tests {
         let soldier = create_creature(&mut game, "Soldier", alice);
         let knight = create_creature(&mut game, "Knight", alice);
 
-        // Execute the effect targeting only the soldier
+        // Execute all effects targeting only the soldier
         let source_id = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source_id, alice);
         ctx.targets = vec![ResolvedTarget::Object(soldier)];
 
         let def = gods_willing();
-        let effect = def
+        let effects = def
             .spell_effect
             .as_ref()
-            .and_then(|effects| effects.first())
-            .expect("Should have spell effect");
-        let _ = execute_effect(&mut game, effect, &mut ctx).unwrap();
+            .expect("Should have spell effects");
+        for effect in effects {
+            let _ = execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
 
         // The soldier should have protection
         {

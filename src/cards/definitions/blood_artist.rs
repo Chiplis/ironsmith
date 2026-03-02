@@ -142,11 +142,12 @@ mod tests {
     }
 
     #[test]
-    fn test_trigger_has_two_effects() {
+    fn test_trigger_has_three_effects() {
         let def = blood_artist();
         let ability = &def.abilities[0];
         if let AbilityKind::Triggered(triggered) = &ability.kind {
-            assert_eq!(triggered.effects.len(), 2);
+            // TargetOnlyEffect + LoseLifeEffect + GainLifeEffect
+            assert_eq!(triggered.effects.len(), 3);
         } else {
             panic!("Expected triggered ability");
         }
@@ -350,14 +351,14 @@ mod tests {
             panic!("Expected triggered ability");
         };
 
-        // Execute the first effect (target player loses 1 life)
-        // Set up execution context with Bob as the target
+        // Execute the second effect (target player loses 1 life)
+        // effects[0] = TargetOnlyEffect, effects[1] = LoseLifeEffect
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
         ctx.targets
             .push(crate::executor::ResolvedTarget::Player(bob));
 
         let starting_life = game.player(bob).unwrap().life;
-        let result = effects[0].0.execute(&mut game, &mut ctx);
+        let result = effects[1].0.execute(&mut game, &mut ctx);
 
         assert!(result.is_ok());
         assert_eq!(
@@ -385,13 +386,14 @@ mod tests {
             panic!("Expected triggered ability");
         };
 
-        // Execute the second effect (you gain 1 life)
+        // Execute the third effect (you gain 1 life)
+        // effects[0] = TargetOnlyEffect, effects[1] = LoseLifeEffect, effects[2] = GainLifeEffect
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
         ctx.targets
             .push(crate::executor::ResolvedTarget::Player(bob));
 
         let starting_life = game.player(alice).unwrap().life;
-        let result = effects[1].0.execute(&mut game, &mut ctx);
+        let result = effects[2].0.execute(&mut game, &mut ctx);
 
         assert!(result.is_ok());
         assert_eq!(

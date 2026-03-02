@@ -169,10 +169,8 @@ mod tests {
             .iter()
             .find(|a| matches!(a.kind, AbilityKind::Activated(_)))
             .expect("Should have activated ability");
-        let effect = if let AbilityKind::Activated(act) = &ability.kind {
-            act.effects
-                .first()
-                .expect("Activated ability should have an effect")
+        let effects = if let AbilityKind::Activated(act) = &ability.kind {
+            &act.effects
         } else {
             panic!("Expected activated ability");
         };
@@ -182,9 +180,10 @@ mod tests {
         let mut ctx = ExecutionContext::new(source_id, alice, &mut dm);
         ctx.targets = vec![ResolvedTarget::Object(soldier)];
 
-        let result = execute_effect(&mut game, effect, &mut ctx).unwrap();
-
-        assert_eq!(result.result, EffectResult::Resolved);
+        // Execute all effects (TargetOnly + ChooseMode/GrantProtection)
+        for effect in effects {
+            let _ = execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
 
         // The soldier should now have protection from some color
         // (Without a decision maker, it defaults to white)

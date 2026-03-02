@@ -44,8 +44,9 @@ mod tests {
         // The spell effect should target two creatures
         assert!(def.spell_effect.is_some());
         let effects = def.spell_effect.as_ref().unwrap();
-        assert_eq!(effects.len(), 1);
-        let debug_str = format!("{:?}", &effects[0]);
+        // TargetOnlyEffect + MoveAllCountersEffect
+        assert_eq!(effects.len(), 2);
+        let debug_str = format!("{:?}", &effects[1]);
         assert!(debug_str.contains("Counters"));
     }
 }
