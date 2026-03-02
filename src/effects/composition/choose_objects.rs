@@ -216,18 +216,18 @@ impl EffectExecutor for ChooseObjectsEffect {
                 }
             }
             Zone::Library => {
+                let owner_ids: Vec<_> = if let Some(owner_filter) = &self.filter.owner {
+                    game.players
+                        .iter()
+                        .map(|player| player.id)
+                        .filter(|player_id| {
+                            owner_filter.matches_player(*player_id, &filter_ctx)
+                        })
+                        .collect()
+                } else {
+                    vec![chooser_id]
+                };
                 if self.top_only {
-                    let owner_ids: Vec<_> = if let Some(owner_filter) = &self.filter.owner {
-                        game.players
-                            .iter()
-                            .map(|player| player.id)
-                            .filter(|player_id| {
-                                owner_filter.matches_player(*player_id, &filter_ctx)
-                            })
-                            .collect()
-                    } else {
-                        vec![chooser_id]
-                    };
                     owner_ids
                         .into_iter()
                         .filter_map(|owner_id| game.player(owner_id))
@@ -247,9 +247,11 @@ impl EffectExecutor for ChooseObjectsEffect {
                         .map(|_| 1usize)
                         .unwrap_or(0usize)
                 } else {
-                    game.objects_in_zone(search_zone)
+                    owner_ids
                         .into_iter()
-                        .filter_map(|id| game.object(id))
+                        .filter_map(|owner_id| game.player(owner_id))
+                        .flat_map(|player| player.library.iter())
+                        .filter_map(|&id| game.object(id))
                         .filter(|obj| {
                             if self.filter.other && obj.id == source {
                                 return false;

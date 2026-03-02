@@ -182,8 +182,8 @@ fn collect_candidates(
             }
         }
         Zone::Library => {
+            let owner_ids = library_candidate_players(effect, game, &filter_ctx, chooser_id);
             if effect.top_only {
-                let owner_ids = library_candidate_players(effect, game, &filter_ctx, chooser_id);
                 let mut top_match = None;
                 for owner_id in owner_ids {
                     let Some(player) = game.player(owner_id) else {
@@ -202,9 +202,11 @@ fn collect_candidates(
                 }
                 top_match.map(|id| vec![id]).unwrap_or_default()
             } else {
-                game.objects_in_zone(search_zone)
-                    .into_iter()
-                    .filter_map(|id| game.object(id).map(|obj| (id, obj)))
+                owner_ids
+                    .iter()
+                    .filter_map(|owner_id| game.player(*owner_id))
+                    .flat_map(|player| player.library.iter())
+                    .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
                     .filter(|(_, obj)| effect.filter.matches(obj, &filter_ctx, game))
                     .map(|(id, _)| id)
                     .collect()
@@ -586,5 +588,32 @@ mod tests {
         assert_eq!(chosen.len(), 2);
         assert!(chosen.contains(&card_a));
         assert!(chosen.contains(&card_b));
+    }
+
+    #[test]
+    fn test_library_search_only_searches_choosers_library() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        // Put creatures in both libraries
+        let alice_card = create_library_card(&mut game, "Alice Creature", alice);
+        let _bob_card = create_library_card(&mut game, "Bob Creature", bob);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        // Search library for creature cards (like Buried Alive)
+        let filter = ObjectFilter::default().with_type(CardType::Creature);
+        let effect = ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "found")
+            .in_zone(Zone::Library)
+            .as_search();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("choose resolves");
+
+        let EffectResult::Objects(chosen) = outcome.result else {
+            panic!("expected object selection result");
+        };
+        // Should only find Alice's creature, not Bob's
+        assert_eq!(chosen.len(), 1);
+        assert_eq!(chosen[0], alice_card, "should only search chooser's library");
     }
 }

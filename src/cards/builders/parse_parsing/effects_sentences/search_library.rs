@@ -139,10 +139,10 @@ pub(crate) fn parse_search_library_sentence(
     }
 
     let mut subject_tokens = &tokens[..search_idx];
-    if subject_tokens
+    let sentence_has_direct_may = subject_tokens
         .last()
-        .is_some_and(|token| token.is_word("may"))
-    {
+        .is_some_and(|token| token.is_word("may"));
+    if sentence_has_direct_may {
         subject_tokens = &subject_tokens[..subject_tokens.len().saturating_sub(1)];
     }
     let mut leading_effects = Vec::new();
@@ -782,6 +782,14 @@ pub(crate) fn parse_search_library_sentence(
                 );
             }
         }
+    }
+
+    if sentence_has_direct_may {
+        effects = vec![if matches!(player, PlayerAst::You | PlayerAst::Implicit) {
+            EffectAst::May { effects }
+        } else {
+            EffectAst::MayByPlayer { player, effects }
+        }];
     }
 
     if !leading_effects.is_empty() {

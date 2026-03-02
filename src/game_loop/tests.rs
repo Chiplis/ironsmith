@@ -7036,6 +7036,126 @@ mod tests {
         assert!(moved_to_hand, "One of the Plains should have moved to hand");
     }
 
+    #[test]
+    fn test_silverglade_elemental_may_search_puts_forest_onto_battlefield() {
+        use crate::ability::AbilityKind;
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::cards::builders::CardDefinitionBuilder;
+        use crate::cards::definitions::basic_forest;
+        use crate::decision::DecisionMaker;
+        use crate::executor::ExecutionContext;
+        use crate::ids::{CardId, ObjectId};
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::types::CardType;
+
+        struct ChooseForestDecisionMaker;
+        impl DecisionMaker for ChooseForestDecisionMaker {
+            fn decide_boolean(
+                &mut self,
+                _game: &GameState,
+                _ctx: &crate::decisions::context::BooleanContext,
+            ) -> bool {
+                true
+            }
+
+            fn decide_objects(
+                &mut self,
+                game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .find(|candidate| {
+                        game.object(candidate.id)
+                            .map(|obj| obj.name == "Forest")
+                            .unwrap_or(false)
+                    })
+                    .map(|candidate| vec![candidate.id])
+                    .unwrap_or_default()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        // Build Silverglade from parser text to exercise the exact parse/compile path.
+        let silverglade = CardDefinitionBuilder::new(CardId::new(), "Silverglade Elemental")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Green],
+            ]))
+            .power_toughness(PowerToughness::fixed(3, 4))
+            .parse_text(
+                "When this creature enters, you may search your library for a Forest card, put that card onto the battlefield, then shuffle.",
+            )
+            .expect("silverglade text should parse");
+
+        let silverglade_id =
+            game.create_object_from_definition(&silverglade, alice, Zone::Battlefield);
+
+        let filler = CardBuilder::new(CardId::new(), "Filler")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&filler, alice, Zone::Library);
+        let forest = basic_forest();
+        let forest_library_id = game.create_object_from_definition(&forest, alice, Zone::Library);
+
+        let triggered = silverglade
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("silverglade should have ETB trigger");
+        assert!(
+            !triggered.effects.is_empty(),
+            "silverglade trigger should have effects"
+        );
+        let rendered_effect = format!("{:?}", triggered.effects[0]);
+        assert!(
+            rendered_effect.contains("MayEffect"),
+            "search clause should preserve explicit may choice: {rendered_effect}"
+        );
+
+        let battlefield_before = game.battlefield.len();
+        let library_before = game.player(alice).map(|p| p.library.len()).unwrap_or(0);
+
+        let mut dm = ChooseForestDecisionMaker;
+        let mut ctx =
+            ExecutionContext::new_default(silverglade_id, alice).with_decision_maker(&mut dm);
+        let outcome =
+            execute_effect(&mut game, &triggered.effects[0], &mut ctx).expect("effect resolves");
+
+        assert!(
+            !matches!(outcome.result, crate::effect::EffectResult::Count(0)),
+            "search should select and move a Forest"
+        );
+        assert_eq!(
+            game.battlefield.len(),
+            battlefield_before + 1,
+            "forest should be added to battlefield"
+        );
+        assert_eq!(
+            game.player(alice).map(|p| p.library.len()).unwrap_or(0),
+            library_before - 1,
+            "library should have one fewer card after moving forest"
+        );
+        assert!(
+            game.object(forest_library_id).is_none(),
+            "moved card should become a new object id"
+        );
+        let forest_on_battlefield = game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .map(|obj| obj.name == "Forest" && obj.owner == alice)
+                .unwrap_or(false)
+        });
+        assert!(forest_on_battlefield, "forest should be on battlefield");
+    }
+
     // ============================================================================
     // Saga Integration Tests
     // ============================================================================

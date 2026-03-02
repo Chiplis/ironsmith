@@ -326,6 +326,13 @@ fn compute_player_targets(
     filter: &PlayerFilter,
     controller: PlayerId,
 ) -> Vec<Target> {
+    // Unwrap Target wrapper — during legal target computation we want to know
+    // which players *could be* targeted, not which are already targeted.
+    let filter = match filter {
+        PlayerFilter::Target(inner) => inner.as_ref(),
+        other => other,
+    };
+
     let filter_ctx = crate::target::FilterContext::new(controller)
         .with_opponents(
             game.players
