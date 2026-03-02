@@ -6093,7 +6093,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
         // into oracle-like rendered rules text.
         return String::new();
     }
-    format!("{effect:?}")
+    "Unsupported effect".to_string()
 }
 
 fn describe_activation_timing_clause(timing: &ActivationTiming) -> Option<&'static str> {

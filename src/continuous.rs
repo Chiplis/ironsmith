@@ -1564,295 +1564,14 @@ fn resolve_value_direct(
     controller: PlayerId,
     game: &crate::game_state::GameState,
 ) -> i32 {
-    use crate::target::FilterContext;
-
-    match value {
-        Value::Fixed(n) => *n,
-        Value::Add(left, right) => {
-            resolve_value_direct(left, objects, battlefield, source, controller, game)
-                + resolve_value_direct(right, objects, battlefield, source, controller, game)
-        }
-
-        Value::X => 0, // X is 0 unless specified
-
-        Value::Count(filter) => {
-            let filter_ctx = FilterContext {
-                you: Some(controller),
-                source: Some(source),
-                caster: None,
-                active_player: None,
-                opponents: Vec::new(),
-                teammates: Vec::new(),
-                defending_player: None,
-                attacking_player: None,
-                your_commanders: Vec::new(),
-                iterated_player: None,
-                target_players: Vec::new(),
-                tagged_objects: HashMap::new(),
-            };
-
-            candidate_ids_for_filter(game, filter)
-                .iter()
-                .filter_map(|id| objects.get(id))
-                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
-                .count() as i32
-        }
-        Value::CountScaled(filter, multiplier) => {
-            let filter_ctx = FilterContext {
-                you: Some(controller),
-                source: Some(source),
-                caster: None,
-                active_player: None,
-                opponents: Vec::new(),
-                teammates: Vec::new(),
-                defending_player: None,
-                attacking_player: None,
-                your_commanders: Vec::new(),
-                iterated_player: None,
-                target_players: Vec::new(),
-                tagged_objects: HashMap::new(),
-            };
-
-            let count = candidate_ids_for_filter(game, filter)
-                .iter()
-                .filter_map(|id| objects.get(id))
-                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
-                .count() as i32;
-            count * *multiplier
-        }
-        Value::BasicLandTypesAmong(filter) => {
-            use std::collections::HashSet;
-
-            let filter_ctx = FilterContext {
-                you: Some(controller),
-                source: Some(source),
-                caster: None,
-                active_player: None,
-                opponents: Vec::new(),
-                teammates: Vec::new(),
-                defending_player: None,
-                attacking_player: None,
-                your_commanders: Vec::new(),
-                iterated_player: None,
-                target_players: Vec::new(),
-                tagged_objects: HashMap::new(),
-            };
-
-            let mut seen = HashSet::new();
-            for obj in candidate_ids_for_filter(game, filter)
-                .iter()
-                .filter_map(|id| objects.get(id))
-                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
-            {
-                for subtype in &obj.subtypes {
-                    if matches!(
-                        subtype,
-                        Subtype::Plains
-                            | Subtype::Island
-                            | Subtype::Swamp
-                            | Subtype::Mountain
-                            | Subtype::Forest
-                    ) {
-                        seen.insert(*subtype);
-                    }
-                }
-            }
-            seen.len() as i32
-        }
-        Value::ColorsAmong(filter) => {
-            let filter_ctx = FilterContext {
-                you: Some(controller),
-                source: Some(source),
-                caster: None,
-                active_player: None,
-                opponents: Vec::new(),
-                teammates: Vec::new(),
-                defending_player: None,
-                attacking_player: None,
-                your_commanders: Vec::new(),
-                iterated_player: None,
-                target_players: Vec::new(),
-                tagged_objects: HashMap::new(),
-            };
-
-            let mut has_white = false;
-            let mut has_blue = false;
-            let mut has_black = false;
-            let mut has_red = false;
-            let mut has_green = false;
-
-            for obj in candidate_ids_for_filter(game, filter)
-                .iter()
-                .filter_map(|id| objects.get(id))
-                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
-            {
-                let colors = obj.colors();
-                has_white |= colors.contains(crate::color::Color::White);
-                has_blue |= colors.contains(crate::color::Color::Blue);
-                has_black |= colors.contains(crate::color::Color::Black);
-                has_red |= colors.contains(crate::color::Color::Red);
-                has_green |= colors.contains(crate::color::Color::Green);
-            }
-
-            (has_white as i32)
-                + (has_blue as i32)
-                + (has_black as i32)
-                + (has_red as i32)
-                + (has_green as i32)
-        }
-        Value::DistinctNames(filter) => {
-            use std::collections::HashSet;
-
-            let filter_ctx = FilterContext {
-                you: Some(controller),
-                source: Some(source),
-                caster: None,
-                active_player: None,
-                opponents: Vec::new(),
-                teammates: Vec::new(),
-                defending_player: None,
-                attacking_player: None,
-                your_commanders: Vec::new(),
-                iterated_player: None,
-                target_players: Vec::new(),
-                tagged_objects: HashMap::new(),
-            };
-
-            let mut seen = HashSet::new();
-            for obj in candidate_ids_for_filter(game, filter)
-                .iter()
-                .filter_map(|id| objects.get(id))
-                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
-            {
-                seen.insert(obj.name.as_str());
-            }
-            seen.len() as i32
-        }
-        Value::CreaturesDiedThisTurn => game.creatures_died_this_turn as i32,
-        Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
-            let filter_ctx = FilterContext {
-                you: Some(controller),
-                source: Some(source),
-                caster: None,
-                active_player: None,
-                opponents: Vec::new(),
-                teammates: Vec::new(),
-                defending_player: None,
-                attacking_player: None,
-                your_commanders: Vec::new(),
-                iterated_player: None,
-                target_players: Vec::new(),
-                tagged_objects: HashMap::new(),
-            };
-            let mut total = 0i32;
-            for player in game.players.iter().filter(|p| p.is_in_game()) {
-                if !player_filter.matches_player(player.id, &filter_ctx) {
-                    continue;
-                }
-                total += game
-                    .creatures_died_under_controller_this_turn
-                    .get(&player.id)
-                    .copied()
-                    .unwrap_or(0) as i32;
-            }
-            total
-        }
-
-        Value::SourcePower => objects
-            .get(&source)
-            .and_then(|o| o.base_power.as_ref())
-            .map(|p| p.base_value())
-            .unwrap_or(0),
-
-        Value::SourceToughness => objects
-            .get(&source)
-            .and_then(|o| o.base_toughness.as_ref())
-            .map(|t| t.base_value())
-            .unwrap_or(0),
-
-        Value::Devotion { player, color } => {
-            let owner = match player {
-                crate::target::PlayerFilter::You => Some(controller),
-                crate::target::PlayerFilter::Opponent => game
-                    .players
-                    .iter()
-                    .find(|p| p.id != controller && p.is_in_game())
-                    .map(|p| p.id),
-                _ => None,
-            };
-            owner
-                .map(|pid| game.devotion_to_color(pid, *color) as i32)
-                .unwrap_or(0)
-        }
-
-        Value::ColorsOfManaSpentToCastThisSpell => objects
-            .get(&source)
-            .map(|obj| {
-                let spent = &obj.mana_spent_to_cast;
-                [
-                    spent.white > 0,
-                    spent.blue > 0,
-                    spent.black > 0,
-                    spent.red > 0,
-                    spent.green > 0,
-                ]
-                .into_iter()
-                .filter(|present| *present)
-                .count() as i32
-            })
-            .unwrap_or(0),
-
-        Value::PowerOf(_target_spec) => {
-            // PowerOf requires target resolution which isn't available here
-            // In the layer system, these values should have been resolved during spell resolution
-            0
-        }
-
-        Value::ToughnessOf(_target_spec) => {
-            // ToughnessOf requires target resolution which isn't available here
-            0
-        }
-
-        Value::XTimes(_)
-        | Value::TotalPower(_)
-        | Value::TotalToughness(_)
-        | Value::TotalManaValue(_)
-        | Value::GreatestPower(_)
-        | Value::GreatestManaValue(_)
-        | Value::CountPlayers(_)
-        | Value::PartySize(_)
-        | Value::ManaValueOf(_)
-        | Value::LifeTotal(_)
-        | Value::HalfLifeTotalRoundedUp(_)
-        | Value::HalfLifeTotalRoundedDown(_)
-        | Value::CardsInHand(_)
-        | Value::LifeGainedThisTurn(_)
-        | Value::LifeLostThisTurn(_)
-        | Value::NoncombatDamageDealtToPlayersThisTurn(_)
-        | Value::MaxCardsDrawnThisTurn(_)
-        | Value::MaxCardsInHand(_)
-        | Value::CardsInGraveyard(_)
-        | Value::SpellsCastThisTurn(_)
-        | Value::SpellsCastBeforeThisTurn(_)
-        | Value::SpellsCastThisTurnMatching { .. }
-        | Value::CardTypesInGraveyard(_)
-        | Value::EffectValue(_)
-        | Value::EffectValueOffset(_, _)
-        | Value::EventValue(_)
-        | Value::EventValueOffset(_, _)
-        | Value::WasKicked
-        | Value::WasBoughtBack
-        | Value::WasEntwined
-        | Value::WasPaid(_)
-        | Value::WasPaidLabel(_)
-        | Value::TimesPaid(_)
-        | Value::TimesPaidLabel(_)
-        | Value::KickCount
-        | Value::MagicGamesLostToOpponentsSinceLastWin
-        | Value::CountersOnSource(_)
-        | Value::CountersOn(_, _)
-        | Value::TaggedCount => 0,
-    }
+    let empty_effects = ContinuousEffectManager::new();
+    let ctx = CalculationContext {
+        objects,
+        effects: &empty_effects,
+        battlefield,
+        game,
+    };
+    resolve_value_with_context(value, &ctx, source, controller)
 }
 
 /// Apply all layers to calculate final characteristics.
@@ -2279,18 +1998,38 @@ fn apply_layer_7_effects(
 
         match &effect.modification {
             Modification::SetPower { value, .. } => {
-                power = Some(resolve_value_with_context(value, ctx, effect.source));
+                power = Some(resolve_value_with_context(
+                    value,
+                    ctx,
+                    effect.source,
+                    effect.controller,
+                ));
             }
             Modification::SetToughness { value, .. } => {
-                toughness = Some(resolve_value_with_context(value, ctx, effect.source));
+                toughness = Some(resolve_value_with_context(
+                    value,
+                    ctx,
+                    effect.source,
+                    effect.controller,
+                ));
             }
             Modification::SetPowerToughness {
                 power: p,
                 toughness: t,
                 ..
             } => {
-                power = Some(resolve_value_with_context(p, ctx, effect.source));
-                toughness = Some(resolve_value_with_context(t, ctx, effect.source));
+                power = Some(resolve_value_with_context(
+                    p,
+                    ctx,
+                    effect.source,
+                    effect.controller,
+                ));
+                toughness = Some(resolve_value_with_context(
+                    t,
+                    ctx,
+                    effect.source,
+                    effect.controller,
+                ));
             }
             Modification::ModifyPower(delta) => {
                 if let Some(ref mut p) = power {
@@ -2437,26 +2176,20 @@ fn resolve_value_with_context(
     value: &Value,
     ctx: &CalculationContext<'_>,
     source: ObjectId,
+    controller: PlayerId,
 ) -> i32 {
     use crate::target::FilterContext;
 
     match value {
         Value::Fixed(n) => *n,
         Value::Add(left, right) => {
-            resolve_value_with_context(left, ctx, source)
-                + resolve_value_with_context(right, ctx, source)
+            resolve_value_with_context(left, ctx, source, controller)
+                + resolve_value_with_context(right, ctx, source, controller)
         }
 
         Value::X => 0, // X is 0 unless specified (resolved at cast time, not layer time)
 
         Value::Count(filter) => {
-            // Build a minimal filter context for the source's controller
-            let controller = ctx
-                .objects
-                .get(&source)
-                .map(|o| o.controller)
-                .unwrap_or(crate::ids::PlayerId::from_index(0));
-
             let filter_ctx = FilterContext {
                 you: Some(controller),
                 source: Some(source),
@@ -2479,13 +2212,6 @@ fn resolve_value_with_context(
                 .count() as i32
         }
         Value::CountScaled(filter, multiplier) => {
-            // Build a minimal filter context for the source's controller
-            let controller = ctx
-                .objects
-                .get(&source)
-                .map(|o| o.controller)
-                .unwrap_or(crate::ids::PlayerId::from_index(0));
-
             let filter_ctx = FilterContext {
                 you: Some(controller),
                 source: Some(source),
@@ -2510,12 +2236,6 @@ fn resolve_value_with_context(
         }
         Value::BasicLandTypesAmong(filter) => {
             use std::collections::HashSet;
-
-            let controller = ctx
-                .objects
-                .get(&source)
-                .map(|o| o.controller)
-                .unwrap_or(crate::ids::PlayerId::from_index(0));
 
             let filter_ctx = FilterContext {
                 you: Some(controller),
@@ -2554,12 +2274,6 @@ fn resolve_value_with_context(
             seen.len() as i32
         }
         Value::ColorsAmong(filter) => {
-            let controller = ctx
-                .objects
-                .get(&source)
-                .map(|o| o.controller)
-                .unwrap_or(crate::ids::PlayerId::from_index(0));
-
             let filter_ctx = FilterContext {
                 you: Some(controller),
                 source: Some(source),
@@ -2603,12 +2317,6 @@ fn resolve_value_with_context(
         Value::DistinctNames(filter) => {
             use std::collections::HashSet;
 
-            let controller = ctx
-                .objects
-                .get(&source)
-                .map(|o| o.controller)
-                .unwrap_or(crate::ids::PlayerId::from_index(0));
-
             let filter_ctx = FilterContext {
                 you: Some(controller),
                 source: Some(source),
@@ -2636,11 +2344,6 @@ fn resolve_value_with_context(
         }
         Value::CreaturesDiedThisTurn => ctx.game.creatures_died_this_turn as i32,
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
-            let controller = ctx
-                .objects
-                .get(&source)
-                .map(|o| o.controller)
-                .unwrap_or(crate::ids::PlayerId::from_index(0));
             let filter_ctx = FilterContext {
                 you: Some(controller),
                 source: Some(source),
@@ -2689,12 +2392,6 @@ fn resolve_value_with_context(
             .unwrap_or(0),
 
         Value::MaxCardsInHand(player_filter) => {
-            let controller = ctx
-                .objects
-                .get(&source)
-                .map(|o| o.controller)
-                .unwrap_or(crate::ids::PlayerId::from_index(0));
-
             let players: Vec<crate::ids::PlayerId> = match player_filter {
                 crate::target::PlayerFilter::You => vec![controller],
                 crate::target::PlayerFilter::Any => ctx

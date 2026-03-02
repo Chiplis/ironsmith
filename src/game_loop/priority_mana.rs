@@ -642,7 +642,7 @@ fn execute_pip_payment_action(
         }
         ManaPipPaymentAction::PayLife(amount) => {
             if let Some(player_obj) = game.player_mut(player) {
-                player_obj.life -= *amount as i32;
+                player_obj.lose_life(*amount);
             }
             record_pip_payment_action(payment_trace, action);
             Ok(true) // Pip was paid

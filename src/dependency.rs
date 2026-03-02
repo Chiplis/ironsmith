@@ -415,27 +415,16 @@ fn evaluate_value(
     objects: &HashMap<ObjectId, crate::object::Object>,
     game: &GameState,
 ) -> ValueEval {
+    let source_chars = baseline.get(&source);
+    if let Some(scalar) = evaluate_source_scalar_value(
+        value,
+        source_chars.and_then(|chars| chars.power),
+        source_chars.and_then(|chars| chars.toughness),
+    ) {
+        return ValueEval::Scalar(scalar);
+    }
+
     match value {
-        Value::Fixed(n) => ValueEval::Scalar(*n),
-        Value::Add(left, right) => {
-            match (
-                evaluate_value(left, source, effect_controller, baseline, objects, game),
-                evaluate_value(right, source, effect_controller, baseline, objects, game),
-            ) {
-                (ValueEval::Scalar(a), ValueEval::Scalar(b)) => ValueEval::Scalar(a + b),
-                _ => ValueEval::Unknown,
-            }
-        }
-        Value::SourcePower => baseline
-            .get(&source)
-            .and_then(|c| c.power)
-            .map(ValueEval::Scalar)
-            .unwrap_or(ValueEval::Unknown),
-        Value::SourceToughness => baseline
-            .get(&source)
-            .and_then(|c| c.toughness)
-            .map(ValueEval::Scalar)
-            .unwrap_or(ValueEval::Unknown),
         Value::Count(filter) => {
             let count = baseline
                 .iter()
@@ -548,6 +537,23 @@ fn evaluate_value(
             ValueEval::Set(values)
         }
         _ => ValueEval::Unknown,
+    }
+}
+
+fn evaluate_source_scalar_value(
+    value: &Value,
+    source_power: Option<i32>,
+    source_toughness: Option<i32>,
+) -> Option<i32> {
+    match value {
+        Value::Fixed(n) => Some(*n),
+        Value::Add(left, right) => Some(
+            evaluate_source_scalar_value(left, source_power, source_toughness)?
+                + evaluate_source_scalar_value(right, source_power, source_toughness)?,
+        ),
+        Value::SourcePower => source_power,
+        Value::SourceToughness => source_toughness,
+        _ => None,
     }
 }
 
@@ -1009,25 +1015,9 @@ fn apply_modification_to_chars_for_dependency(
 }
 
 fn evaluate_value_simple(value: &Value, chars: &CalculatedCharacteristics) -> ValueEval {
-    match value {
-        Value::Fixed(n) => ValueEval::Scalar(*n),
-        Value::Add(left, right) => match (
-            evaluate_value_simple(left, chars),
-            evaluate_value_simple(right, chars),
-        ) {
-            (ValueEval::Scalar(a), ValueEval::Scalar(b)) => ValueEval::Scalar(a + b),
-            _ => ValueEval::Unknown,
-        },
-        Value::SourcePower => chars
-            .power
-            .map(ValueEval::Scalar)
-            .unwrap_or(ValueEval::Unknown),
-        Value::SourceToughness => chars
-            .toughness
-            .map(ValueEval::Scalar)
-            .unwrap_or(ValueEval::Unknown),
-        _ => ValueEval::Unknown,
-    }
+    evaluate_source_scalar_value(value, chars.power, chars.toughness)
+        .map(ValueEval::Scalar)
+        .unwrap_or(ValueEval::Unknown)
 }
 
 /// Check if a Value references power or toughness of objects.
