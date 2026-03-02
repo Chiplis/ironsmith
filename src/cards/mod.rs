@@ -242,6 +242,25 @@ impl CardRegistry {
         generated_registry::register_generated_parser_cards(self);
     }
 
+    /// Number of generated registry parse entries available for chunked preload.
+    pub fn generated_parser_entry_count() -> usize {
+        generated_registry::generated_parser_entry_count()
+    }
+
+    /// Generated parser card names without forcing all definitions to parse/register.
+    pub fn generated_parser_card_names() -> Vec<String> {
+        generated_registry::generated_parser_card_names()
+    }
+
+    /// Incrementally parse/register generated cards and return the next cursor position.
+    pub fn preload_generated_cards_chunk(&mut self, cursor: usize, chunk_size: usize) -> usize {
+        #[cfg(test)]
+        {
+            self.register_builtin_handwritten_cards_if(|_| true);
+        }
+        generated_registry::register_generated_parser_cards_chunk(self, cursor, chunk_size)
+    }
+
     /// Create a card registry with only the requested hand-written cards plus generated parser cards.
     #[cfg(test)]
     pub fn with_builtin_cards_for_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {

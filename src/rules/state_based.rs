@@ -79,8 +79,15 @@ pub enum LoseReason {
 /// This should be called whenever a player would receive priority.
 /// State-based actions happen simultaneously.
 pub fn check_state_based_actions(game: &GameState) -> Vec<StateBasedAction> {
-    let mut actions = Vec::new();
     let all_effects = game.all_continuous_effects();
+    check_state_based_actions_with_effects(game, &all_effects)
+}
+
+fn check_state_based_actions_with_effects(
+    game: &GameState,
+    all_effects: &[crate::continuous::ContinuousEffect],
+) -> Vec<StateBasedAction> {
+    let mut actions = Vec::new();
 
     // Check player state-based actions
     check_player_sbas(game, &mut actions);
@@ -477,13 +484,12 @@ pub fn apply_state_based_actions_with(
     game: &mut GameState,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> bool {
-    let actions = check_state_based_actions(game);
+    let all_effects = game.all_continuous_effects();
+    let actions = check_state_based_actions_with_effects(game, &all_effects);
 
     if actions.is_empty() {
         return false;
     }
-
-    let all_effects = game.all_continuous_effects();
 
     // Per Rule 704.7, pre-capture snapshots for all dying creatures BEFORE
     // any state-based actions are applied. This ensures LKI is derived from

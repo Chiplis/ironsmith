@@ -3,7 +3,6 @@ cards.json
 /target
 .idea
 parse_report*
-/web
 /docs
 scripts/
 /reports

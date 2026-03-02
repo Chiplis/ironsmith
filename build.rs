@@ -23,7 +23,16 @@ fn main() {
     if env::var_os("CARGO_FEATURE_GENERATED_REGISTRY").is_none() {
         let stub = r#"
 pub const GENERATED_PARSER_CARD_SOURCE_COUNT: usize = 0;
+pub fn generated_parser_entry_count() -> usize { 0 }
+pub fn generated_parser_card_names() -> Vec<String> { Vec::new() }
 pub fn register_generated_parser_cards(_registry: &mut crate::cards::CardRegistry) {}
+pub fn register_generated_parser_cards_chunk(
+    _registry: &mut crate::cards::CardRegistry,
+    cursor: usize,
+    _chunk_size: usize,
+) -> usize {
+    cursor
+}
 pub fn register_generated_parser_cards_if_name<F>(
     _registry: &mut crate::cards::CardRegistry,
     _include_name: F,

@@ -1457,6 +1457,7 @@ impl DecisionMaker for WasmReplayDecisionMaker {
 pub struct WasmGame {
     game: GameState,
     registry: CardRegistry,
+    registry_preload_cursor: usize,
     trigger_queue: TriggerQueue,
     priority_state: PriorityLoopState,
     pending_decision: Option<DecisionContext>,
@@ -1474,6 +1475,14 @@ pub struct WasmGame {
     runner_pending_decision: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct RegistryPreloadStatus {
+    loaded: usize,
+    cursor: usize,
+    total: usize,
+    done: bool,
+}
+
 #[wasm_bindgen(start)]
 pub fn wasm_start() {
     console_error_panic_hook::set_once();
@@ -1489,6 +1498,7 @@ impl WasmGame {
         Self {
             game: GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20),
             registry: CardRegistry::new(),
+            registry_preload_cursor: 0,
             trigger_queue: TriggerQueue::new(),
             priority_state,
             pending_decision: None,
@@ -1553,6 +1563,33 @@ impl WasmGame {
     #[wasm_bindgen(js_name = registrySize)]
     pub fn registry_size(&self) -> usize {
         self.registry.len()
+    }
+
+    /// Incremental generated-registry preload status.
+    #[wasm_bindgen(js_name = preloadRegistryStatus)]
+    pub fn preload_registry_status(&self) -> Result<JsValue, JsValue> {
+        let total = CardRegistry::generated_parser_entry_count();
+        let cursor = self.registry_preload_cursor.min(total);
+        let status = RegistryPreloadStatus {
+            loaded: self.registry.len(),
+            cursor,
+            total,
+            done: cursor >= total,
+        };
+        serde_wasm_bindgen::to_value(&status)
+            .map_err(|e| JsValue::from_str(&format!("preloadRegistryStatus encode failed: {e}")))
+    }
+
+    /// Parse/register the next batch of generated cards for startup warmup.
+    #[wasm_bindgen(js_name = preloadRegistryChunk)]
+    pub fn preload_registry_chunk(&mut self, chunk_size: usize) -> Result<JsValue, JsValue> {
+        let total = CardRegistry::generated_parser_entry_count();
+        if self.registry_preload_cursor < total {
+            self.registry_preload_cursor = self
+                .registry
+                .preload_generated_cards_chunk(self.registry_preload_cursor, chunk_size);
+        }
+        self.preload_registry_status()
     }
 
     /// Return a detailed, human-readable object snapshot for inspector UI.
@@ -1954,23 +1991,40 @@ impl WasmGame {
         let spells_needed = deck_size - land_count;
         let mut rng = StdRng::seed_from_u64(self.next_deck_seed());
 
-        if self.registry.is_empty() {
-            self.registry.ensure_all_generated_cards_loaded();
+        // Keep demo setup JIT-friendly: only parse/register cards as they are sampled.
+        let mut candidate_names = CardRegistry::generated_parser_card_names();
+        candidate_names.shuffle(&mut rng);
+        self.registry
+            .ensure_cards_loaded(["Plains", "Island", "Swamp", "Mountain", "Forest"]);
+
+        let mut strict_spell_pool: Vec<String> = Vec::new();
+        let mut fallback_spell_pool: Vec<String> = Vec::new();
+        let mut strict_seen: HashSet<String> = HashSet::new();
+        let mut fallback_seen: HashSet<String> = HashSet::new();
+
+        for candidate in candidate_names {
+            self.registry.ensure_cards_loaded([candidate.as_str()]);
+            let Some(def) = self.registry.get(candidate.as_str()) else {
+                continue;
+            };
+            let canonical = def.name().to_string();
+            let key = canonical.to_lowercase();
+            if Self::is_strict_demo_spell_candidate(def) {
+                if strict_seen.insert(key) {
+                    strict_spell_pool.push(canonical);
+                }
+                if strict_spell_pool.len() >= spells_needed {
+                    break;
+                }
+            } else if Self::is_fallback_demo_spell_candidate(def) && fallback_seen.insert(key) {
+                fallback_spell_pool.push(canonical);
+            }
         }
 
-        let mut strict_spell_pool: Vec<_> = self
-            .registry
-            .all()
-            .filter(|def| Self::is_strict_demo_spell_candidate(def))
-            .collect();
-
-        let mut spell_pool: Vec<_> = if strict_spell_pool.is_empty() {
-            self.registry
-                .all()
-                .filter(|def| Self::is_fallback_demo_spell_candidate(def))
-                .collect()
+        let mut spell_pool: Vec<String> = if strict_spell_pool.is_empty() {
+            fallback_spell_pool
         } else {
-            std::mem::take(&mut strict_spell_pool)
+            strict_spell_pool
         };
 
         if spell_pool.is_empty() {
@@ -1987,14 +2041,14 @@ impl WasmGame {
                 spell_pool
                     .iter()
                     .take(spells_needed)
-                    .map(|def| def.name().to_string()),
+                    .cloned(),
             );
         } else {
             // If pool is smaller than requested spells, wrap and keep shuffling for variety.
             while spells.len() < spells_needed {
                 spell_pool.shuffle(&mut rng);
-                for def in &spell_pool {
-                    spells.push(def.name().to_string());
+                for card_name in &spell_pool {
+                    spells.push(card_name.clone());
                     if spells.len() >= spells_needed {
                         break;
                     }
