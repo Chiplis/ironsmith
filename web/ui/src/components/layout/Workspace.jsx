@@ -1,5 +1,4 @@
 import { useState } from "react";
-import LeftRail from "@/components/left-rail/LeftRail";
 import TableCore from "@/components/board/TableCore";
 import RightRail from "@/components/right-rail/RightRail";
 
@@ -11,10 +10,15 @@ export default function Workspace({ zoneView, deckLoadingMode, onLoadDecks, onCa
     <section
       className="grid gap-2 min-h-0 h-full"
       style={{
-        gridTemplateColumns: "15vw minmax(0,1fr) clamp(286px,23vw,390px)",
+        gridTemplateColumns: "clamp(286px,23vw,390px) minmax(0,1fr)",
       }}
     >
-      <LeftRail />
+      <RightRail
+        inspectorOpen={inspectorOpen}
+        setInspectorOpen={setInspectorOpen}
+        selectedObjectId={selectedObjectId}
+        onInspect={setSelectedObjectId}
+      />
       <TableCore
         selectedObjectId={selectedObjectId}
         onInspect={setSelectedObjectId}
@@ -22,12 +26,6 @@ export default function Workspace({ zoneView, deckLoadingMode, onLoadDecks, onCa
         deckLoadingMode={deckLoadingMode}
         onLoadDecks={onLoadDecks}
         onCancelDeckLoading={onCancelDeckLoading}
-      />
-      <RightRail
-        inspectorOpen={inspectorOpen}
-        setInspectorOpen={setInspectorOpen}
-        selectedObjectId={selectedObjectId}
-        onInspect={setSelectedObjectId}
       />
     </section>
   );

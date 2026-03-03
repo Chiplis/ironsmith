@@ -1793,7 +1793,48 @@ impl WasmGame {
                 player_id,
                 crate::zone::Zone::Command,
             );
-            let object_id = self.game.move_object(temp_id, zone).unwrap_or(temp_id);
+            let object_id = if zone == crate::zone::Zone::Battlefield {
+                let mut dm = crate::decision::SelectFirstDecisionMaker;
+                let Some(result) = self.game.move_object_with_etb_processing_with_dm(
+                    temp_id,
+                    crate::zone::Zone::Battlefield,
+                    &mut dm,
+                ) else {
+                    self.game.remove_object(temp_id);
+                    return Err(JsValue::from_str(
+                        "battlefield entry was prevented by replacement effect",
+                    ));
+                };
+
+                let entered_id = result.new_id;
+                let entered_tapped = result.enters_tapped;
+                let entered_battlefield = self
+                    .game
+                    .object(entered_id)
+                    .is_some_and(|obj| obj.zone == crate::zone::Zone::Battlefield);
+                if entered_battlefield {
+                    let event = if entered_tapped {
+                        crate::triggers::TriggerEvent::new(
+                            crate::events::EnterBattlefieldEvent::tapped(
+                                entered_id,
+                                crate::zone::Zone::Command,
+                            ),
+                        )
+                    } else {
+                        crate::triggers::TriggerEvent::new(
+                            crate::events::EnterBattlefieldEvent::new(
+                                entered_id,
+                                crate::zone::Zone::Command,
+                            ),
+                        )
+                    };
+                    self.game.queue_trigger_event(event);
+                }
+
+                entered_id
+            } else {
+                self.game.move_object(temp_id, zone).unwrap_or(temp_id)
+            };
             crate::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
             self.recompute_ui_decision()?;
             Ok(object_id.0)
@@ -4190,12 +4231,13 @@ fn convert_and_validate_targets(
 
 #[cfg(test)]
 mod tests {
-    use super::build_object_details_snapshot;
+    use super::{WasmGame, build_object_details_snapshot};
     use crate::cards::definitions::grizzly_bears;
     use crate::continuous::ContinuousEffect;
     use crate::effect::Until;
     use crate::game_state::GameState;
-    use crate::ids::PlayerId;
+    use crate::ids::{ObjectId, PlayerId};
+    use crate::object::CounterType;
     use crate::zone::Zone;
 
     #[test]
@@ -4220,5 +4262,39 @@ mod tests {
             build_object_details_snapshot(&game, bears_id).expect("expected object details");
         assert_eq!(details.power, Some(5));
         assert_eq!(details.toughness, Some(2));
+    }
+
+    #[test]
+    fn add_card_to_zone_battlefield_applies_etb_replacement_effects() {
+        let mut wasm = WasmGame::new();
+
+        let _tayam_id = wasm
+            .add_card_to_zone(
+                0,
+                "Tayam, Luminous Enigma".to_string(),
+                "battlefield".to_string(),
+                true,
+            )
+            .expect("should add Tayam to battlefield");
+        wasm.game.refresh_continuous_state();
+
+        let entered_id = wasm
+            .add_card_to_zone(
+                0,
+                "Grizzly Bears".to_string(),
+                "battlefield".to_string(),
+                false,
+            )
+            .expect("should add Grizzly Bears to battlefield with ETB processing");
+
+        let entered = wasm
+            .game
+            .object(ObjectId::from_raw(entered_id))
+            .expect("entered permanent should exist");
+        assert_eq!(
+            entered.counters.get(&CounterType::Vigilance).copied(),
+            Some(1),
+            "addCardToZone battlefield path should apply Tayam ETB replacement counter"
+        );
     }
 }
