@@ -52,6 +52,22 @@ fn parse_look_top_x_cards_of_library() {
 }
 
 #[test]
+fn parse_target_phrase_top_two_cards_of_your_library_preserves_count() {
+    let tokens = tokenize_line("the top two cards of your library", 0);
+    let target = parse_target_phrase(&tokens).expect("parse top-two target");
+
+    let TargetAst::WithCount(inner, count) = target else {
+        panic!("expected counted target");
+    };
+    assert_eq!(count, ChoiceCount::exactly(2));
+
+    let TargetAst::Object(filter, _, _) = *inner else {
+        panic!("expected object target");
+    };
+    assert_eq!(filter.zone, Some(Zone::Library));
+}
+
+#[test]
 fn parse_deal_damage_equal_to_each_opponent_wraps_for_each_opponent() {
     let tokens = tokenize_line(
         "deals damage equal to the number of cards in your hand to each opponent",

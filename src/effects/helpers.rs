@@ -11,6 +11,7 @@ use crate::events::DamageEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
 use crate::events::life::LifeGainEvent;
 use crate::events::life::LifeLossEvent;
+use crate::events::other::{CounterPlacedEvent, MarkersChangedEvent};
 use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_event::DamageTarget;
 use crate::game_state::GameState;
@@ -688,8 +689,15 @@ pub fn resolve_value(
             if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
                 return Ok(damage_event.amount as i32);
             }
+            if let Some(markers_event) = triggering_event.downcast::<MarkersChangedEvent>() {
+                return Ok(markers_event.amount as i32);
+            }
+            if let Some(counter_event) = triggering_event.downcast::<CounterPlacedEvent>() {
+                return Ok(counter_event.amount as i32);
+            }
             Err(ExecutionError::UnresolvableValue(
-                "EventValue(Amount) requires a life gain/loss or damage event".to_string(),
+                "EventValue(Amount) requires a life gain/loss, damage, or marker-change event"
+                    .to_string(),
             ))
         }
 
@@ -722,9 +730,14 @@ pub fn resolve_value(
                 life_gain_event.amount as i32
             } else if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
                 damage_event.amount as i32
+            } else if let Some(markers_event) = triggering_event.downcast::<MarkersChangedEvent>() {
+                markers_event.amount as i32
+            } else if let Some(counter_event) = triggering_event.downcast::<CounterPlacedEvent>() {
+                counter_event.amount as i32
             } else {
                 return Err(ExecutionError::UnresolvableValue(
-                    "EventValue(Amount) requires a life gain/loss or damage event".to_string(),
+                    "EventValue(Amount) requires a life gain/loss, damage, or marker-change event"
+                        .to_string(),
                 ));
             };
             Ok(base + *offset)

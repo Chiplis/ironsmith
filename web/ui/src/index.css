@@ -132,15 +132,20 @@
 
 /* ---- Game Card ---- */
 .game-card {
-  @apply relative border font-bold select-none overflow-hidden cursor-default;
-  border-color: #61758d;
+  @apply relative font-bold select-none overflow-hidden cursor-default;
+  border: none;
+  border-radius: 6px;
   font-size: 16px;
   line-height: 1.2;
   color: #d8e8ff;
   background:
     linear-gradient(180deg, rgba(13, 20, 30, 0.92), rgba(7, 12, 18, 0.94)),
     repeating-linear-gradient(145deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 6px);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+  box-shadow:
+    0 2px 6px rgba(0,0,0,0.45),
+    0 6px 16px rgba(0,0,0,0.3),
+    inset 0 0 8px 2px rgba(0,0,0,0.3),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
   transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 
@@ -154,7 +159,11 @@
 .game-card:hover {
   transform: scale(1.04) translateY(-2px);
   z-index: 5;
-  border-color: #8aa4c0;
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.5),
+    0 10px 28px rgba(0,0,0,0.35),
+    inset 0 0 8px 2px rgba(0,0,0,0.3),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
 }
 
 .game-card.tapped:hover {
@@ -162,39 +171,265 @@
   opacity: 0.88;
 }
 
-/* Card states */
-.game-card.playable {
-  border-color: rgba(88, 214, 166, 0.88);
-  box-shadow: 0 0 0 1px rgba(88, 214, 166, 0.32) inset;
+/* Card states — diffused neon glows (animated pulse, no solid border) */
+.game-card.glow-land {
+  box-shadow:
+    0 0 8px 2px rgba(88, 214, 166, 0.45),
+    0 0 18px 5px rgba(88, 214, 166, 0.2),
+    inset 0 0 6px 2px rgba(88, 214, 166, 0.22);
   cursor: grab;
+  animation: glow-pulse-land 2s ease-in-out infinite;
+}
+
+.game-card.glow-spell {
+  box-shadow:
+    0 0 8px 2px rgba(100, 169, 255, 0.45),
+    0 0 18px 5px rgba(100, 169, 255, 0.2),
+    inset 0 0 6px 2px rgba(100, 169, 255, 0.22);
+  cursor: grab;
+  animation: glow-pulse-spell 2s ease-in-out infinite;
+}
+
+.game-card.glow-mana {
+  box-shadow:
+    0 0 8px 2px rgba(180, 220, 80, 0.45),
+    0 0 18px 5px rgba(180, 220, 80, 0.2),
+    inset 0 0 6px 2px rgba(180, 220, 80, 0.22);
+  cursor: pointer;
+  animation: glow-pulse-mana 2s ease-in-out infinite;
+}
+
+.game-card.glow-ability {
+  box-shadow:
+    0 0 8px 2px rgba(247, 160, 64, 0.45),
+    0 0 18px 5px rgba(247, 160, 64, 0.2),
+    inset 0 0 6px 2px rgba(247, 160, 64, 0.22);
+  cursor: pointer;
+  animation: glow-pulse-ability 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse-land {
+  0%, 100% {
+    box-shadow:
+      0 0 8px 2px rgba(88, 214, 166, 0.45),
+      0 0 18px 5px rgba(88, 214, 166, 0.2),
+      inset 0 0 6px 2px rgba(88, 214, 166, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 14px 4px rgba(88, 214, 166, 0.6),
+      0 0 28px 8px rgba(88, 214, 166, 0.3),
+      inset 0 0 8px 3px rgba(88, 214, 166, 0.32);
+  }
+}
+
+@keyframes glow-pulse-spell {
+  0%, 100% {
+    box-shadow:
+      0 0 8px 2px rgba(100, 169, 255, 0.45),
+      0 0 18px 5px rgba(100, 169, 255, 0.2),
+      inset 0 0 6px 2px rgba(100, 169, 255, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 14px 4px rgba(100, 169, 255, 0.6),
+      0 0 28px 8px rgba(100, 169, 255, 0.3),
+      inset 0 0 8px 3px rgba(100, 169, 255, 0.32);
+  }
+}
+
+@keyframes glow-pulse-mana {
+  0%, 100% {
+    box-shadow:
+      0 0 8px 2px rgba(180, 220, 80, 0.45),
+      0 0 18px 5px rgba(180, 220, 80, 0.2),
+      inset 0 0 6px 2px rgba(180, 220, 80, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 14px 4px rgba(180, 220, 80, 0.6),
+      0 0 28px 8px rgba(180, 220, 80, 0.3),
+      inset 0 0 8px 3px rgba(180, 220, 80, 0.32);
+  }
+}
+
+@keyframes glow-pulse-ability {
+  0%, 100% {
+    box-shadow:
+      0 0 8px 2px rgba(247, 160, 64, 0.45),
+      0 0 18px 5px rgba(247, 160, 64, 0.2),
+      inset 0 0 6px 2px rgba(247, 160, 64, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 14px 4px rgba(247, 160, 64, 0.6),
+      0 0 28px 8px rgba(247, 160, 64, 0.3),
+      inset 0 0 8px 3px rgba(247, 160, 64, 0.32);
+  }
+}
+
+.game-card.glow-extra {
+  box-shadow:
+    0 0 8px 2px rgba(174, 118, 255, 0.45),
+    0 0 18px 5px rgba(174, 118, 255, 0.2),
+    inset 0 0 6px 2px rgba(174, 118, 255, 0.22);
+  cursor: grab;
+  animation: glow-pulse-extra 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse-extra {
+  0%, 100% {
+    box-shadow:
+      0 0 8px 2px rgba(174, 118, 255, 0.45),
+      0 0 18px 5px rgba(174, 118, 255, 0.2),
+      inset 0 0 6px 2px rgba(174, 118, 255, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 14px 4px rgba(174, 118, 255, 0.6),
+      0 0 28px 8px rgba(174, 118, 255, 0.3),
+      inset 0 0 8px 3px rgba(174, 118, 255, 0.32);
+  }
+}
+
+/* Hover / hovered amplification — intensify the card's own glow color */
+.game-card.glow-land:hover,
+.game-card.glow-land.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(88, 214, 166, 0.7),
+    0 0 36px 12px rgba(88, 214, 166, 0.35),
+    inset 0 0 10px 4px rgba(88, 214, 166, 0.4) !important;
+}
+
+.game-card.glow-spell:hover,
+.game-card.glow-spell.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(100, 169, 255, 0.7),
+    0 0 36px 12px rgba(100, 169, 255, 0.35),
+    inset 0 0 10px 4px rgba(100, 169, 255, 0.4) !important;
+}
+
+.game-card.glow-mana:hover,
+.game-card.glow-mana.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(180, 220, 80, 0.7),
+    0 0 36px 12px rgba(180, 220, 80, 0.35),
+    inset 0 0 10px 4px rgba(180, 220, 80, 0.4) !important;
+}
+
+.game-card.glow-ability:hover,
+.game-card.glow-ability.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(247, 160, 64, 0.7),
+    0 0 36px 12px rgba(247, 160, 64, 0.35),
+    inset 0 0 10px 4px rgba(247, 160, 64, 0.4) !important;
+}
+
+.game-card.glow-extra:hover,
+.game-card.glow-extra.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(174, 118, 255, 0.7),
+    0 0 36px 12px rgba(174, 118, 255, 0.35),
+    inset 0 0 10px 4px rgba(174, 118, 255, 0.4) !important;
+}
+
+.game-card.playable:hover,
+.game-card.playable.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(88, 214, 166, 0.7),
+    0 0 36px 12px rgba(88, 214, 166, 0.35),
+    inset 0 0 10px 4px rgba(88, 214, 166, 0.4) !important;
+}
+
+.game-card.actionable:hover,
+.game-card.actionable.hovered {
+  box-shadow:
+    0 0 18px 6px rgba(102, 170, 255, 0.65),
+    0 0 36px 12px rgba(102, 170, 255, 0.3),
+    inset 0 0 10px 4px rgba(102, 170, 255, 0.35) !important;
+}
+
+.game-card.target-legal:hover,
+.game-card.target-legal.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(240, 206, 97, 0.7),
+    0 0 36px 12px rgba(240, 206, 97, 0.35),
+    inset 0 0 10px 4px rgba(240, 206, 97, 0.4) !important;
+}
+
+.game-card.attack-candidate:hover,
+.game-card.attack-candidate.hovered,
+.game-card.blocker-candidate:hover,
+.game-card.blocker-candidate.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(174, 118, 255, 0.7),
+    0 0 36px 12px rgba(174, 118, 255, 0.35),
+    inset 0 0 10px 4px rgba(174, 118, 255, 0.4) !important;
+}
+
+/* Fallback for cards with no specific glow class */
+.game-card.hovered {
+  box-shadow:
+    0 0 14px 4px rgba(200, 216, 240, 0.45),
+    0 0 28px 8px rgba(200, 216, 240, 0.2),
+    inset 0 0 8px 3px rgba(200, 216, 240, 0.25) !important;
+}
+
+.game-card.playable {
+  box-shadow:
+    0 0 8px 2px rgba(88, 214, 166, 0.45),
+    0 0 18px 5px rgba(88, 214, 166, 0.2),
+    inset 0 0 6px 2px rgba(88, 214, 166, 0.22);
+  cursor: grab;
+  animation: glow-pulse-land 2s ease-in-out infinite;
 }
 
 .game-card.actionable {
-  border-color: rgba(102, 170, 255, 0.95);
-  box-shadow: 0 0 0 1px rgba(102, 170, 255, 0.34) inset;
+  box-shadow:
+    0 0 8px 2px rgba(102, 170, 255, 0.45),
+    0 0 18px 5px rgba(102, 170, 255, 0.2),
+    inset 0 0 6px 2px rgba(102, 170, 255, 0.22);
 }
 
 .game-card.target-legal {
-  border-color: rgba(240, 206, 97, 0.95) !important;
-  box-shadow: 0 0 0 1px rgba(240, 206, 97, 0.35) inset;
+  box-shadow:
+    0 0 10px 3px rgba(240, 206, 97, 0.5),
+    0 0 22px 6px rgba(240, 206, 97, 0.22),
+    inset 0 0 6px 2px rgba(240, 206, 97, 0.25) !important;
+  animation: glow-pulse-target 2s ease-in-out infinite;
 }
 
 .game-card.attack-candidate,
 .game-card.blocker-candidate {
-  border-color: rgba(174, 118, 255, 0.95) !important;
-  box-shadow: 0 0 0 1px rgba(174, 118, 255, 0.34) inset;
+  box-shadow:
+    0 0 8px 2px rgba(174, 118, 255, 0.45),
+    0 0 18px 5px rgba(174, 118, 255, 0.2),
+    inset 0 0 6px 2px rgba(174, 118, 255, 0.22) !important;
+  animation: glow-pulse-combat 2s ease-in-out infinite;
 }
 
 .game-card.attack-selected,
 .game-card.blocker-selected {
-  border-color: rgba(218, 164, 255, 0.98) !important;
-  box-shadow: 0 0 0 2px rgba(218, 164, 255, 0.38);
+  box-shadow:
+    0 0 12px 3px rgba(218, 164, 255, 0.55),
+    0 0 24px 7px rgba(218, 164, 255, 0.25),
+    inset 0 0 7px 2px rgba(218, 164, 255, 0.28) !important;
 }
 
 .game-card.attack-active,
 .game-card.blocker-attacker-active {
   transform: translateY(-3px);
-  box-shadow: 0 0 0 2px rgba(174, 118, 255, 0.42);
+  box-shadow:
+    0 0 10px 3px rgba(174, 118, 255, 0.55),
+    0 0 24px 7px rgba(174, 118, 255, 0.25);
 }
 
 .game-card.tapped {
@@ -203,26 +438,52 @@
 }
 
 .game-card.selected {
-  border-color: rgba(88, 214, 166, 0.95);
-  box-shadow: 0 0 0 2px rgba(88, 214, 166, 0.38);
+  box-shadow:
+    0 0 10px 3px rgba(88, 214, 166, 0.55),
+    0 0 24px 7px rgba(88, 214, 166, 0.25);
   transform: translateY(-4px);
 }
 
 .game-card.inspected {
-  border-color: rgba(100, 169, 255, 0.88);
-  box-shadow: 0 0 0 1px rgba(100, 169, 255, 0.35) inset;
+  box-shadow:
+    0 0 8px 2px rgba(240, 206, 97, 0.5),
+    0 0 18px 5px rgba(240, 206, 97, 0.22),
+    inset 0 0 6px 2px rgba(240, 206, 97, 0.2);
+  animation: glow-pulse-inspected 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse-inspected {
+  0%, 100% {
+    box-shadow:
+      0 0 8px 2px rgba(240, 206, 97, 0.5),
+      0 0 18px 5px rgba(240, 206, 97, 0.22),
+      inset 0 0 6px 2px rgba(240, 206, 97, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 10px 3px rgba(240, 206, 97, 0.6),
+      0 0 22px 6px rgba(240, 206, 97, 0.28),
+      inset 0 0 8px 3px rgba(240, 206, 97, 0.25);
+  }
+}
+
+.game-card.inspected:hover,
+.game-card.inspected.hovered {
+  animation: none !important;
+  box-shadow:
+    0 0 18px 6px rgba(240, 206, 97, 0.7),
+    0 0 36px 12px rgba(240, 206, 97, 0.35),
+    inset 0 0 10px 4px rgba(240, 206, 97, 0.4) !important;
 }
 
 /* ---- Panel backgrounds ---- */
 .panel-gradient {
   background: linear-gradient(180deg, #0e151f, #0b1017);
-  border: 1px solid var(--game-line);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.46);
 }
 
 .rail-gradient {
   background: linear-gradient(180deg, #0d131b, #090f16);
-  border: 1px solid var(--game-line);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.46);
 }
 
@@ -272,8 +533,241 @@
 }
 
 .board-zone-bg {
-  border: 1px solid #3a4e64;
   background: linear-gradient(180deg, rgba(18, 28, 40, 0.88), rgba(14, 20, 30, 0.72));
+}
+
+/* ---- Card Enter / Bump ---- */
+.game-card.card-enter {
+  animation: card-enter 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.game-card.card-bumped {
+  animation: card-bumped 350ms ease-out both;
+}
+
+@keyframes card-enter {
+  0% {
+    transform: scale(0.2) rotate(-6deg);
+    opacity: 0;
+    filter: brightness(1.8);
+  }
+  50% {
+    transform: scale(1.14) rotate(1.5deg);
+    opacity: 1;
+    filter: brightness(1.2);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+@keyframes card-bumped {
+  0% {
+    transform: scale(1) translate(0, 0);
+  }
+  30% {
+    transform: scale(0.92) translate(var(--bump-x, 0px), var(--bump-y, -3px));
+  }
+  60% {
+    transform: scale(1.03) translate(0, 0);
+  }
+  100% {
+    transform: scale(1) translate(0, 0);
+  }
+}
+
+/* ---- Drag & Drop ---- */
+.game-card.dragging {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: brightness(0.8);
+}
+
+@keyframes cast-particle {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--cast-tx), var(--cast-ty)) scale(0.3);
+    opacity: 0;
+  }
+}
+
+@keyframes cast-flash {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* ---- Combat Buttons ---- */
+.combat-btn {
+  border-radius: 9999px !important;
+  box-shadow:
+    0 0 8px 2px rgba(174, 118, 255, 0.35),
+    0 0 16px 4px rgba(174, 118, 255, 0.15),
+    inset 0 0 6px 2px rgba(174, 118, 255, 0.12);
+  animation: glow-pulse-combat-btn 2.5s ease-in-out infinite;
+  transition: box-shadow 150ms ease, transform 150ms ease, background 150ms ease;
+}
+
+.combat-btn:hover {
+  animation: none !important;
+  box-shadow:
+    0 0 16px 5px rgba(174, 118, 255, 0.65),
+    0 0 32px 10px rgba(174, 118, 255, 0.3),
+    inset 0 0 8px 3px rgba(174, 118, 255, 0.25) !important;
+  background: rgba(174, 118, 255, 0.1) !important;
+  transform: scale(1.04);
+}
+
+.combat-btn.combat-active {
+  box-shadow:
+    0 0 12px 4px rgba(174, 118, 255, 0.6),
+    0 0 24px 8px rgba(174, 118, 255, 0.3),
+    inset 0 0 8px 3px rgba(174, 118, 255, 0.25);
+  background: rgba(174, 118, 255, 0.1);
+}
+
+.combat-btn.combat-active:hover {
+  box-shadow:
+    0 0 20px 7px rgba(174, 118, 255, 0.75),
+    0 0 40px 14px rgba(174, 118, 255, 0.35),
+    inset 0 0 10px 4px rgba(174, 118, 255, 0.3) !important;
+  background: rgba(174, 118, 255, 0.15) !important;
+}
+
+@keyframes glow-pulse-combat-btn {
+  0%, 100% {
+    box-shadow:
+      0 0 8px 2px rgba(174, 118, 255, 0.35),
+      0 0 16px 4px rgba(174, 118, 255, 0.15),
+      inset 0 0 6px 2px rgba(174, 118, 255, 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 12px 3px rgba(174, 118, 255, 0.5),
+      0 0 22px 6px rgba(174, 118, 255, 0.22),
+      inset 0 0 7px 2px rgba(174, 118, 255, 0.18);
+  }
+}
+
+/* ---- Decision Cancel ---- */
+@keyframes cancel-flash {
+  0% {
+    background: radial-gradient(ellipse at center, rgba(247,105,105,0.25) 0%, transparent 70%);
+    opacity: 1;
+  }
+  50% {
+    background: radial-gradient(ellipse at center, rgba(247,105,105,0.18) 0%, transparent 80%);
+    opacity: 0.8;
+  }
+  100% {
+    background: radial-gradient(ellipse at center, rgba(247,105,105,0) 0%, transparent 100%);
+    opacity: 0;
+  }
+}
+
+@keyframes cancel-slide-out {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-20px) scale(0.96);
+  }
+}
+
+/* ---- Combat Arrows ---- */
+@keyframes draw-arrow {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes glow-pulse-target {
+  0%, 100% {
+    box-shadow:
+      0 0 8px 2px rgba(240, 206, 97, 0.4),
+      0 0 18px 4px rgba(240, 206, 97, 0.18),
+      inset 0 0 5px 1px rgba(240, 206, 97, 0.2) !important;
+  }
+  50% {
+    box-shadow:
+      0 0 12px 4px rgba(240, 206, 97, 0.55),
+      0 0 26px 8px rgba(240, 206, 97, 0.3),
+      inset 0 0 7px 2px rgba(240, 206, 97, 0.3) !important;
+  }
+}
+
+@keyframes glow-pulse-combat {
+  0%, 100% {
+    box-shadow:
+      0 0 6px 1px rgba(174, 118, 255, 0.35),
+      0 0 14px 3px rgba(174, 118, 255, 0.15),
+      inset 0 0 4px 1px rgba(174, 118, 255, 0.18) !important;
+  }
+  50% {
+    box-shadow:
+      0 0 10px 3px rgba(174, 118, 255, 0.5),
+      0 0 22px 6px rgba(174, 118, 255, 0.25),
+      inset 0 0 6px 2px rgba(174, 118, 255, 0.28) !important;
+  }
+}
+
+/* ---- Neon Checkbox ---- */
+[data-slot="checkbox"] {
+  border-color: rgba(100, 169, 255, 0.35) !important;
+  background: rgba(10, 17, 28, 0.8) !important;
+  box-shadow: 0 0 4px rgba(100, 169, 255, 0.1);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+[data-slot="checkbox"]:hover {
+  border-color: rgba(100, 169, 255, 0.6) !important;
+  box-shadow: 0 0 6px rgba(100, 169, 255, 0.2);
+}
+
+[data-slot="checkbox"][data-state="checked"] {
+  border-color: rgba(100, 169, 255, 0.9) !important;
+  background: rgba(100, 169, 255, 0.15) !important;
+  box-shadow:
+    0 0 6px 1px rgba(100, 169, 255, 0.35),
+    0 0 12px 2px rgba(100, 169, 255, 0.15);
+  color: #64a9ff !important;
+}
+
+/* ---- Pass Priority Button ---- */
+.pass-priority-btn {
+  animation: glow-pulse-pass 2.5s ease-in-out infinite;
+}
+
+.pass-priority-btn:hover {
+  animation: none !important;
+  color: #0b1017 !important;
+  background: var(--pass-text) !important;
+  border-color: var(--pass-text) !important;
+  box-shadow:
+    0 0 16px 5px var(--pass-glow),
+    0 0 32px 10px var(--pass-glow-outer) !important;
+  transform: scale(1.02);
+}
+
+@keyframes glow-pulse-pass {
+  0%, 100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.15);
+  }
 }
 
 /* ---- Scrollbar ---- */

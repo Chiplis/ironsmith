@@ -1976,6 +1976,52 @@ fn test_parse_trigger_a_plus_one_counter_put_on_this_creature() {
 }
 
 #[test]
+fn test_parse_trigger_you_put_one_or_more_minus_one_counters_on_a_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Trigger You Put Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Whenever you put one or more -1/-1 counters on a creature, draw a card.")
+        .expect("parse active-voice one-or-more counter placement trigger");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        !debug.contains("unimplemented_trigger"),
+        "counter placement trigger should not fall back to custom trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("CounterPutOnTrigger")
+            && debug.contains("count_mode: OneOrMore")
+            && debug.contains("counter_type: Some(MinusOneMinusOne)")
+            && debug.contains("source_controller: Some(You)"),
+        "expected typed active-voice counter placement trigger, got {debug}"
+    );
+}
+
+#[test]
+fn test_parse_nest_of_scarabs_style_trigger_and_token_amount() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nest of Scarabs Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever you put one or more -1/-1 counters on a creature, create that many 1/1 black Insect creature tokens.",
+        )
+        .expect("parse Nest of Scarabs style trigger");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("CounterPutOnTrigger")
+            && debug.contains("source_controller: Some(")
+            && debug.contains("MinusOneMinusOne"),
+        "expected typed counter trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("EventValue")
+            && debug.contains("Amount")
+            && debug.contains("Insect"),
+        "expected token creation to use trigger event amount, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_unknown_non_source_subject_fails() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Unknown Subject Probe")
         .card_types(vec![CardType::Enchantment])
@@ -13629,6 +13675,22 @@ fn parse_exile_top_x_until_end_of_your_next_turn_may_play_those_cards() {
     assert!(
         spell_debug.contains("grantplaytaggedeffect"),
         "expected tagged play grant effect in spell text, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_wrenns_resolve_exiles_top_two_cards() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wrenn's Resolve")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile the top two cards of your library. Until the end of your next turn, you may play those cards.",
+        )
+        .expect("wrenn's resolve style clause should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("top two cards") || rendered.contains("top 2 cards"),
+        "expected top-two exile rendering, got {rendered}"
     );
 }
 

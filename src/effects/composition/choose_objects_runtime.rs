@@ -128,6 +128,7 @@ fn collect_candidates(
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     let filter_ctx = ctx.filter_context(game);
     let search_zone = effect.filter.zone.unwrap_or(effect.zone);
+    let top_only_limit = effect.top_only_selection_limit(ctx.x_value);
 
     let candidates = match search_zone {
         Zone::Battlefield => game
@@ -153,23 +154,30 @@ fn collect_candidates(
             let owner_ids = graveyard_candidate_players(effect, game, &filter_ctx, chooser_id);
 
             if effect.top_only {
-                let mut top_match = None;
+                let mut top_matches = Vec::new();
                 for owner_id in owner_ids {
+                    if top_matches.len() >= top_only_limit {
+                        break;
+                    }
                     let Some(player) = game.player(owner_id) else {
                         continue;
                     };
-                    if let Some((id, _)) = player
+                    for (id, obj) in player
                         .graveyard
                         .iter()
                         .rev()
                         .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                        .find(|(_, obj)| effect.filter.matches(obj, &filter_ctx, game))
                     {
-                        top_match = Some(id);
-                        break;
+                        if !effect.filter.matches(obj, &filter_ctx, game) {
+                            continue;
+                        }
+                        top_matches.push(id);
+                        if top_matches.len() >= top_only_limit {
+                            break;
+                        }
                     }
                 }
-                top_match.map(|id| vec![id]).unwrap_or_default()
+                top_matches
             } else {
                 owner_ids
                     .iter()
@@ -184,23 +192,30 @@ fn collect_candidates(
         Zone::Library => {
             let owner_ids = library_candidate_players(effect, game, &filter_ctx, chooser_id);
             if effect.top_only {
-                let mut top_match = None;
+                let mut top_matches = Vec::new();
                 for owner_id in owner_ids {
+                    if top_matches.len() >= top_only_limit {
+                        break;
+                    }
                     let Some(player) = game.player(owner_id) else {
                         continue;
                     };
-                    if let Some((id, _)) = player
+                    for (id, obj) in player
                         .library
                         .iter()
                         .rev()
                         .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                        .find(|(_, obj)| effect.filter.matches(obj, &filter_ctx, game))
                     {
-                        top_match = Some(id);
-                        break;
+                        if !effect.filter.matches(obj, &filter_ctx, game) {
+                            continue;
+                        }
+                        top_matches.push(id);
+                        if top_matches.len() >= top_only_limit {
+                            break;
+                        }
                     }
                 }
-                top_match.map(|id| vec![id]).unwrap_or_default()
+                top_matches
             } else {
                 owner_ids
                     .iter()
@@ -536,6 +551,37 @@ mod tests {
             panic!("expected object selection result");
         };
         assert_eq!(chosen, vec![top], "expected top library card to be chosen");
+    }
+
+    #[test]
+    fn test_top_only_library_selects_top_two_matching_cards() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bottom = create_library_card(&mut game, "Bottom Card", alice);
+        let middle = create_library_card(&mut game, "Middle Card", alice);
+        let top = create_library_card(&mut game, "Top Card", alice);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let filter = ObjectFilter::default()
+            .in_zone(Zone::Library)
+            .owned_by(PlayerFilter::You);
+        let effect = ChooseObjectsEffect::new(filter, 2, PlayerFilter::You, "chosen").top_only();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("choose resolves");
+
+        let EffectResult::Objects(chosen) = outcome.result else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(chosen.len(), 2, "expected exactly two chosen cards");
+        assert!(chosen.contains(&top), "expected top card to be chosen");
+        assert!(
+            chosen.contains(&middle),
+            "expected second-from-top card to be chosen"
+        );
+        assert!(
+            !chosen.contains(&bottom),
+            "bottom library card should not be chosen"
+        );
     }
 
     #[test]

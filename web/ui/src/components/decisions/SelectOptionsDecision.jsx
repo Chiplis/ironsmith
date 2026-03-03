@@ -1,9 +1,68 @@
 import { useState, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
+import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ChevronUp, ChevronDown } from "lucide-react";
+import { SymbolText } from "@/lib/mana-symbols";
+
+function OptionButton({ opt, canAct, onClick, isHighlighted, onMouseEnter, onMouseLeave }) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={
+        "h-auto min-h-7 py-1 text-[13px] justify-start px-2 whitespace-normal text-left text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.1)] hover:shadow-[0_0_8px_rgba(100,169,255,0.15)]" +
+        (isHighlighted ? " text-foreground bg-[rgba(240,206,97,0.08)] shadow-[0_0_10px_rgba(240,206,97,0.25)]" : "")
+      }
+      disabled={!canAct || !opt.legal}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      <SymbolText text={opt.description} />
+    </Button>
+  );
+}
+
+function SubmitButton({ canAct, disabled, onClick, children }) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="group h-auto min-h-7 py-1.5 text-[14px] font-bold justify-start px-3 whitespace-normal text-left transition-all duration-200 shrink-0"
+      style={{
+        color: "#8ec4ff",
+        border: "1px solid rgba(142,196,255,0.35)",
+        boxShadow: "0 0 6px 1px rgba(142,196,255,0.2), 0 0 14px 3px rgba(142,196,255,0.08)",
+      }}
+      disabled={!canAct || disabled}
+      onClick={onClick}
+    >
+      <span className="inline-block transition-transform duration-200 group-hover:translate-x-0.5">
+        {children}
+      </span>
+    </Button>
+  );
+}
+
+function SectionHeader({ text }) {
+  return (
+    <h4 className="text-[12px] uppercase tracking-wider text-[#8ec4ff] font-bold px-1 py-0.5 m-0">
+      {text}
+    </h4>
+  );
+}
+
+function Description({ text }) {
+  if (!text) return null;
+  return (
+    <div className="text-[13px] text-muted-foreground px-1 leading-snug">
+      <SymbolText text={text} />
+    </div>
+  );
+}
 
 export default function SelectOptionsDecision({ decision, canAct }) {
   const reason = (decision.reason || "").toLowerCase();
@@ -18,7 +77,6 @@ export default function SelectOptionsDecision({ decision, canAct }) {
   if (decision.counter_type || reason.includes("counter")) {
     return <CountersDecision decision={decision} canAct={canAct} />;
   }
-  // Route to RepeatableDecision if any individual option is repeatable.
   const hasRepeatableOption = (decision.options || []).some((opt) => opt.repeatable);
   if (decision.repeatable || hasRepeatableOption) {
     return <RepeatableDecision decision={decision} canAct={canAct} />;
@@ -36,36 +94,40 @@ export default function SelectOptionsDecision({ decision, canAct }) {
 
 function SingleSelectDecision({ decision, canAct }) {
   const { dispatch } = useGame();
+  const { hoveredObjectId, hoverCard, clearHover } = useHover();
   const options = decision.options || [];
 
   return (
     <div className="flex flex-col gap-1">
-      {decision.description && (
-        <div className="text-[16px] text-muted-foreground mb-1">{decision.description}</div>
-      )}
-      {options.map((opt) => (
-        <Button
-          key={opt.index}
-          variant="outline"
-          size="sm"
-          className="h-7 text-[14px] justify-start px-2 whitespace-normal text-left"
-          disabled={!canAct || !opt.legal}
-          onClick={() =>
-            dispatch(
-              { type: "select_options", option_indices: [opt.index] },
-              opt.description
-            )
-          }
-        >
-          {opt.description}
-        </Button>
-      ))}
+      <Description text={decision.description} />
+      <div className="flex flex-col gap-0.5">
+        {options.map((opt) => {
+          const objId = opt.object_id != null ? String(opt.object_id) : null;
+          return (
+            <OptionButton
+              key={opt.index}
+              opt={opt}
+              canAct={canAct}
+              isHighlighted={objId != null && hoveredObjectId === objId}
+              onClick={() =>
+                dispatch(
+                  { type: "select_options", option_indices: [opt.index] },
+                  opt.description
+                )
+              }
+              onMouseEnter={() => objId && hoverCard(objId)}
+              onMouseLeave={clearHover}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 function MultiSelectDecision({ decision, canAct }) {
   const { dispatch } = useGame();
+  const { hoveredObjectId, hoverCard, clearHover } = useHover();
   const options = decision.options || [];
   const [selected, setSelected] = useState(new Set());
   const min = decision.min ?? 0;
@@ -81,36 +143,39 @@ function MultiSelectDecision({ decision, canAct }) {
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      {decision.description && (
-        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
-      )}
-      <div className="text-[14px] text-muted-foreground">
-        Select {min === max ? min : `${min}-${max}`}
+    <div className="flex flex-col gap-1">
+      <Description text={decision.description} />
+      <SectionHeader text={`Select ${min === max ? min : `${min}–${max}`}`} />
+      <div className="flex flex-col gap-0.5">
+        {options.map((opt) => {
+          const objId = opt.object_id != null ? String(opt.object_id) : null;
+          const isHighlighted = objId != null && hoveredObjectId === objId;
+          const isSelected = selected.has(opt.index);
+          return (
+            <label
+              key={opt.index}
+              className={`flex items-center gap-2 text-[13px] py-1 px-2 rounded-sm cursor-pointer transition-all ${
+                opt.legal ? "text-muted-foreground hover:text-foreground hover:bg-[rgba(100,169,255,0.1)] hover:shadow-[0_0_8px_rgba(100,169,255,0.15)]" : "opacity-50"
+              } ${isSelected ? "text-foreground bg-[rgba(100,169,255,0.08)] shadow-[0_0_6px_rgba(100,169,255,0.2)]" : ""}${
+                isHighlighted ? " text-foreground bg-[rgba(240,206,97,0.08)] shadow-[0_0_10px_rgba(240,206,97,0.25)]" : ""
+              }`}
+              onMouseEnter={() => objId && hoverCard(objId)}
+              onMouseLeave={clearHover}
+            >
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => opt.legal && toggle(opt.index)}
+                disabled={!canAct || !opt.legal}
+                className="h-3.5 w-3.5"
+              />
+              <SymbolText text={opt.description} />
+            </label>
+          );
+        })}
       </div>
-      <div className="flex flex-col gap-1">
-        {options.map((opt) => (
-          <label
-            key={opt.index}
-            className={`flex items-center gap-2 text-[14px] p-1 border rounded-sm cursor-pointer ${
-              opt.legal ? "border-game-line-2 hover:border-game-line" : "opacity-50"
-            } ${selected.has(opt.index) ? "border-primary bg-primary/10" : ""}`}
-          >
-            <Checkbox
-              checked={selected.has(opt.index)}
-              onCheckedChange={() => opt.legal && toggle(opt.index)}
-              disabled={!canAct || !opt.legal}
-              className="h-3.5 w-3.5"
-            />
-            {opt.description}
-          </label>
-        ))}
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-[14px]"
-        disabled={!canAct || selected.size < min || selected.size > max}
+      <SubmitButton
+        canAct={canAct}
+        disabled={selected.size < min || selected.size > max}
         onClick={() =>
           dispatch(
             { type: "select_options", option_indices: Array.from(selected) },
@@ -119,7 +184,7 @@ function MultiSelectDecision({ decision, canAct }) {
         }
       >
         Submit ({selected.size})
-      </Button>
+      </SubmitButton>
     </div>
   );
 }
@@ -142,17 +207,17 @@ function OrderingDecision({ decision, canAct }) {
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      {decision.description && (
-        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
-      )}
-      <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
+      <Description text={decision.description} />
+      <SectionHeader text="Order" />
+      <div className="flex flex-col gap-0.5">
         {order.map((optIndex, pos) => {
           const opt = options.find((o) => o.index === optIndex);
           if (!opt) return null;
           return (
-            <div key={optIndex} className="flex items-center gap-1.5 text-[14px] p-1 border border-game-line-2 rounded-sm">
-              <span className="flex-1">{pos + 1}. {opt.description}</span>
+            <div key={optIndex} className="flex items-center gap-1.5 text-[13px] py-1 px-2 rounded-sm text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]">
+              <span className="text-[11px] text-[#8ec4ff] font-bold w-4 text-center shrink-0">{pos + 1}</span>
+              <span className="flex-1 min-w-0"><SymbolText text={opt.description} /></span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -175,17 +240,14 @@ function OrderingDecision({ decision, canAct }) {
           );
         })}
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-[14px]"
-        disabled={!canAct}
+      <SubmitButton
+        canAct={canAct}
         onClick={() =>
           dispatch({ type: "select_options", option_indices: order.slice() }, "Order submitted")
         }
       >
         Submit Order
-      </Button>
+      </SubmitButton>
     </div>
   );
 }
@@ -211,20 +273,16 @@ function DistributeDecision({ decision, canAct }) {
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      {decision.description && (
-        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
-      )}
-      <div className="text-[14px] text-muted-foreground">
-        Distribute {total} total
-      </div>
-      <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
+      <Description text={decision.description} />
+      <SectionHeader text={`Distribute ${total} total`} />
+      <div className="flex flex-col gap-0.5">
         {options.map((opt) => (
-          <label key={opt.index} className="flex items-center gap-2 text-[14px] p-1 border border-game-line-2 rounded-sm">
-            <span className="flex-1">{opt.description}</span>
+          <label key={opt.index} className="flex items-center gap-2 text-[13px] py-1 px-2 rounded-sm text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]">
+            <span className="flex-1 min-w-0"><SymbolText text={opt.description} /></span>
             <Input
               type="number"
-              className="h-6 w-14 text-[14px] bg-transparent text-center"
+              className="h-6 w-16 text-[13px] bg-transparent text-center"
               min={0}
               max={Number(opt.max_count ?? total)}
               value={counts[opt.index] || 0}
@@ -236,11 +294,9 @@ function DistributeDecision({ decision, canAct }) {
           </label>
         ))}
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-[14px]"
-        disabled={!canAct || assigned !== total}
+      <SubmitButton
+        canAct={canAct}
+        disabled={assigned !== total}
         onClick={() => {
           if (assigned !== total) {
             setStatus(`Must assign exactly ${total} (currently ${assigned})`, true);
@@ -253,7 +309,7 @@ function DistributeDecision({ decision, canAct }) {
         }}
       >
         Submit ({assigned}/{total})
-      </Button>
+      </SubmitButton>
     </div>
   );
 }
@@ -279,17 +335,16 @@ function CountersDecision({ decision, canAct }) {
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      {decision.description && (
-        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
-      )}
-      <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
+      <Description text={decision.description} />
+      <SectionHeader text="Counters" />
+      <div className="flex flex-col gap-0.5">
         {options.map((opt) => (
-          <label key={opt.index} className="flex items-center gap-2 text-[14px] p-1 border border-game-line-2 rounded-sm">
-            <span className="flex-1">{opt.description}</span>
+          <label key={opt.index} className="flex items-center gap-2 text-[13px] py-1 px-2 rounded-sm text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]">
+            <span className="flex-1 min-w-0"><SymbolText text={opt.description} /></span>
             <Input
               type="number"
-              className="h-6 w-14 text-[14px] bg-transparent text-center"
+              className="h-6 w-16 text-[13px] bg-transparent text-center"
               min={0}
               max={Number(opt.max_count ?? maxTotal)}
               value={counts[opt.index] || 0}
@@ -301,11 +356,9 @@ function CountersDecision({ decision, canAct }) {
           </label>
         ))}
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-[14px]"
-        disabled={!canAct || total > maxTotal}
+      <SubmitButton
+        canAct={canAct}
+        disabled={total > maxTotal}
         onClick={() =>
           dispatch(
             { type: "select_options", option_indices: expandOptionCounts(counts) },
@@ -314,7 +367,7 @@ function CountersDecision({ decision, canAct }) {
         }
       >
         Submit Counters ({total}/{maxTotal})
-      </Button>
+      </SubmitButton>
     </div>
   );
 }
@@ -340,17 +393,16 @@ function RepeatableDecision({ decision, canAct }) {
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      {decision.description && (
-        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
-      )}
-      <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
+      <Description text={decision.description} />
+      <SectionHeader text="Repeat" />
+      <div className="flex flex-col gap-0.5">
         {options.map((opt) => (
-          <label key={opt.index} className="flex items-center gap-2 text-[14px] p-1 border border-game-line-2 rounded-sm">
-            <span className="flex-1">{opt.description}</span>
+          <label key={opt.index} className="flex items-center gap-2 text-[13px] py-1 px-2 rounded-sm text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]">
+            <span className="flex-1 min-w-0"><SymbolText text={opt.description} /></span>
             <Input
               type="number"
-              className="h-6 w-14 text-[14px] bg-transparent text-center"
+              className="h-6 w-16 text-[13px] bg-transparent text-center"
               min={0}
               max={Number(opt.max_count ?? maxTotal)}
               value={counts[opt.index] || 0}
@@ -362,11 +414,9 @@ function RepeatableDecision({ decision, canAct }) {
           </label>
         ))}
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-[14px]"
-        disabled={!canAct || total < (decision.min || 0) || total > maxTotal}
+      <SubmitButton
+        canAct={canAct}
+        disabled={total < (decision.min || 0) || total > maxTotal}
         onClick={() =>
           dispatch(
             { type: "select_options", option_indices: expandOptionCounts(counts) },
@@ -375,7 +425,7 @@ function RepeatableDecision({ decision, canAct }) {
         }
       >
         Submit ({total})
-      </Button>
+      </SubmitButton>
     </div>
   );
 }

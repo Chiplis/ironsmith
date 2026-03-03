@@ -2,7 +2,6 @@ import { useGame } from "@/context/GameContext";
 import OpponentZone from "./OpponentZone";
 import MyZone from "./MyZone";
 import PhaseTrack from "./PhaseTrack";
-import HandZone from "./HandZone";
 import DeckLoadingView from "./DeckLoadingView";
 
 export default function TableCore({ selectedObjectId, onInspect, zoneView, deckLoadingMode, onLoadDecks, onCancelDeckLoading }) {
@@ -21,11 +20,10 @@ export default function TableCore({ selectedObjectId, onInspect, zoneView, deckL
   const opponents = ordered.filter((p) => p.id !== me.id);
 
   return (
-    <main className="table-gradient rounded grid gap-1.5 p-1.5 min-h-0 overflow-hidden" style={{ gridTemplateRows: "1.7fr 1fr auto auto" }}>
+    <main className="table-gradient rounded grid gap-1.5 p-1.5 min-h-0 overflow-hidden" data-drop-zone style={{ gridTemplateRows: "1.7fr 1fr auto" }}>
       <OpponentZone opponents={opponents} selectedObjectId={selectedObjectId} onInspect={onInspect} zoneView={zoneView} />
       <MyZone player={me} selectedObjectId={selectedObjectId} onInspect={onInspect} zoneView={zoneView} />
       <PhaseTrack />
-      <HandZone player={me} selectedObjectId={selectedObjectId} onInspect={onInspect} />
     </main>
   );
 }

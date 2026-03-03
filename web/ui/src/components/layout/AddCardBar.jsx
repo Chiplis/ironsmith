@@ -115,6 +115,14 @@ export default function AddCardBar({ zoneView, setZoneView }) {
       <Badge variant="secondary" className="text-[13px] uppercase">
         Step {formatStep(state?.step)}
       </Badge>
+      <Badge variant="secondary" className="text-[13px] uppercase">
+        Active {(() => { const p = (state?.players || []).find(p => p.id === state?.active_player); return p?.name || "-"; })()}
+      </Badge>
+      {state?.priority_player != null && (() => { const p = (state?.players || []).find(p => p.id === state?.priority_player); return p ? (
+        <Badge variant="secondary" className="text-[13px] uppercase">
+          Priority {p.name}
+        </Badge>
+      ) : null; })()}
 
       <div className="flex-1" />
 

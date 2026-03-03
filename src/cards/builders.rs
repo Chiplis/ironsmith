@@ -330,6 +330,7 @@ pub(crate) enum TriggerSpec {
     CounterPutOn {
         filter: ObjectFilter,
         counter_type: Option<CounterType>,
+        source_controller: Option<PlayerFilter>,
         one_or_more: bool,
     },
     DiesCreatureDealtDamageByThisTurn {

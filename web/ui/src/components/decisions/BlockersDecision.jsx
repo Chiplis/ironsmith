@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
+import { useCombatArrows } from "@/context/CombatArrowContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Swords } from "lucide-react";
@@ -37,13 +38,13 @@ function pivotToBlockerCentric(attackerOptions) {
 
 export default function BlockersDecision({ decision, canAct }) {
   const { dispatch } = useGame();
+  const { updateArrows, clearArrows, setCombatMode } = useCombatArrows();
   const attackerOptions = decision.blocker_options || [];
   const blockerOptions = useMemo(
     () => pivotToBlockerCentric(attackerOptions),
     [attackerOptions]
   );
-  // declarations: array of { blocker, blocking } — can have multiple entries
-  // per blocker if it can block multiple attackers
+
   const [declarations, setDeclarations] = useState([]);
 
   const getBlockerDeclarations = (blockerId) =>
@@ -54,27 +55,76 @@ export default function BlockersDecision({ decision, canAct }) {
       (d) => d.blocker === Number(blockerId) && d.blocking === Number(attackerId)
     );
 
-  const toggleBlocker = (blockerId, attackerId) => {
+  const toggleBlocker = useCallback((blockerId, attackerId) => {
     blockerId = Number(blockerId);
     attackerId = Number(attackerId);
-    if (isBlockingAttacker(blockerId, attackerId)) {
-      // Remove this specific assignment
+    if (declarations.some((d) => d.blocker === blockerId && d.blocking === attackerId)) {
       setDeclarations((prev) =>
         prev.filter((d) => !(d.blocker === blockerId && d.blocking === attackerId))
       );
     } else {
-      // For single-block creatures, replace existing assignment; for multi-block, add
       setDeclarations((prev) => [
         ...prev.filter((d) => d.blocker !== blockerId),
         { blocker: blockerId, blocking: attackerId },
       ]);
     }
-  };
+  }, [declarations]);
+
+  // Handle drop from battlefield drag — blocker dragged to attacker
+  const handleDrop = useCallback((fromId, x, y) => {
+    const opt = blockerOptions.find((o) => o.blocker === Number(fromId));
+    if (!opt) return;
+
+    const el = document.elementFromPoint(x, y);
+    if (!el) return;
+
+    const cardEl = el.closest("[data-object-id]");
+    if (!cardEl) return;
+
+    const targetId = Number(cardEl.dataset.objectId);
+    const validAttacker = opt.valid_attackers.find((a) => a.attacker === targetId);
+    if (validAttacker) {
+      toggleBlocker(Number(fromId), targetId);
+    }
+  }, [blockerOptions, toggleBlocker]);
+
+  // Register combat mode for battlefield interaction
+  useEffect(() => {
+    if (!canAct) {
+      setCombatMode(null);
+      return;
+    }
+    const candidateIds = new Set(blockerOptions.map((o) => o.blocker));
+    setCombatMode({
+      mode: "blockers",
+      candidates: candidateIds,
+      color: "#ae76ff",
+      onDrop: handleDrop,
+      onClick: null, // clicks handled via buttons
+    });
+    return () => setCombatMode(null);
+  }, [canAct, blockerOptions, handleDrop, setCombatMode]);
+
+  // Update combat arrows when declarations change
+  useEffect(() => {
+    const arrowData = declarations.map((d) => ({
+      fromId: d.blocker,
+      toId: d.blocking,
+      toPlayerId: null,
+      color: "#ae76ff",
+      key: `blk-${d.blocker}-${d.blocking}`,
+    }));
+    updateArrows(arrowData);
+  }, [declarations, updateArrows]);
+
+  useEffect(() => clearArrows, [clearArrows]);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-[16px] text-muted-foreground">Declare blockers</div>
-      <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2 overflow-visible">
+      <div className="text-[13px] text-muted-foreground">
+        Declare blockers — drag creatures to attackers
+      </div>
+      <div className="flex flex-wrap gap-2 overflow-visible py-1 -mx-1 px-1">
         {blockerOptions.map((opt) => {
           const blockerId = opt.blocker;
           const name = opt.name;
@@ -82,14 +132,14 @@ export default function BlockersDecision({ decision, canAct }) {
           const validAttackers = opt.valid_attackers || [];
 
           return (
-            <div key={blockerId} className="border border-game-line-2 p-1 rounded-sm">
+            <div key={blockerId} className="flex flex-col gap-1 overflow-visible">
               <div className={cn(
-                "text-[14px] font-bold mb-0.5",
-                currentDecls.length > 0 && "text-[rgba(174,118,255,0.95)]"
+                "text-[14px] font-bold mb-0.5 px-1",
+                currentDecls.length > 0 ? "text-[rgba(174,118,255,0.95)]" : "text-muted-foreground"
               )}>
                 {name}
               </div>
-              <div className="flex flex-wrap gap-0.5">
+              <div className="flex flex-wrap gap-1 overflow-visible">
                 {validAttackers.map((attacker) => {
                   const attackerId = Number(attacker.attacker);
                   const attackerName = attacker.name;
@@ -97,16 +147,16 @@ export default function BlockersDecision({ decision, canAct }) {
                   return (
                     <Button
                       key={attackerId}
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       className={cn(
-                        "h-5 text-[13px] px-1.5",
-                        blocking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]"
+                        "combat-btn h-5 text-[12px] px-2 text-muted-foreground",
+                        blocking && "combat-active text-[rgba(174,118,255,0.95)]"
                       )}
                       disabled={!canAct}
                       onClick={() => toggleBlocker(blockerId, attackerId)}
                     >
-                      {blocking ? <Swords className="size-3.5 inline mr-1" /> : ""}Block {attackerName}
+                      {blocking ? <Swords className="size-3.5 inline mr-1" /> : ""}{attackerName}
                     </Button>
                   );
                 })}
@@ -116,9 +166,9 @@ export default function BlockersDecision({ decision, canAct }) {
         })}
       </div>
       <Button
-        variant="outline"
+        variant="ghost"
         size="sm"
-        className="h-7 text-[14px]"
+        className="combat-btn combat-active h-7 text-[14px] px-4 text-[rgba(174,118,255,0.95)] self-start"
         disabled={!canAct}
         onClick={() =>
           dispatch(

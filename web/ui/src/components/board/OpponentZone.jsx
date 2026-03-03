@@ -21,19 +21,19 @@ function ZoneCountChips({ player }) {
 
   return (
     <div className="flex flex-wrap gap-1 text-[11px] text-[#a8bfdd]">
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Library">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Library">
         Lib <span className="font-bold text-[#d6e6fb]">{player.library_size}</span>
       </span>
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Hand">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Hand">
         Hand <span className="font-bold text-[#d6e6fb]">{player.hand_size}</span>
       </span>
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Graveyard">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Graveyard">
         GY <span className="font-bold text-[#d6e6fb]">{player.graveyard_size}</span>
       </span>
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Exile">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Exile">
         Exl <span className="font-bold text-[#d6e6fb]">{exileCards.length}</span>
       </span>
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Battlefield">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Battlefield">
         BF <span className="font-bold text-[#d6e6fb]">{battlefieldCount}</span>
       </span>
     </div>
@@ -67,11 +67,19 @@ function OpponentSlot({ player, selectedObjectId, onInspect, zoneView }) {
   const zoneName = zoneView === "battlefield" ? "" : ` — ${zoneView.charAt(0).toUpperCase() + zoneView.slice(1)}`;
 
   return (
-    <div className="border border-[#2b3e55] bg-gradient-to-b from-[#101826] to-[#0a121d] p-1.5 grid gap-1.5 min-h-0 h-full" style={{ gridTemplateRows: "auto minmax(0,1fr)", alignContent: "stretch" }}>
+    <div className="bg-gradient-to-b from-[#101826] to-[#0a121d] rounded p-1.5 grid gap-1.5 min-h-0 h-full" style={{ gridTemplateRows: "auto minmax(0,1fr)", alignContent: "stretch" }}>
       <div>
         <div className="flex items-center gap-2">
-          <span className="text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums">{player.life}</span>
-          <span className="text-[16px] text-[#a4bdd7] uppercase tracking-wider font-bold">
+          <span
+            className="text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums px-1 py-0.5 rounded"
+            data-player-target={player.index ?? player.id}
+          >
+            {player.life}
+          </span>
+          <span
+            className="text-[16px] text-[#a4bdd7] uppercase tracking-wider font-bold"
+            data-player-target={player.index ?? player.id}
+          >
             {player.name}
             {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
           </span>

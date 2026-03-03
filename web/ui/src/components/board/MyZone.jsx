@@ -23,19 +23,19 @@ function ZoneCountChips({ player }) {
 
   return (
     <div className="flex flex-wrap gap-1 text-[11px] text-[#a8bfdd]">
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Library">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Library">
         Lib <span className="font-bold text-[#d6e6fb]">{player.library_size}</span>
       </span>
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Hand">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Hand">
         Hand <span className="font-bold text-[#d6e6fb]">{player.hand_size}</span>
       </span>
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Graveyard">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Graveyard">
         GY <span className="font-bold text-[#d6e6fb]">{player.graveyard_size}</span>
       </span>
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Exile">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Exile">
         Exl <span className="font-bold text-[#d6e6fb]">{exileCards.length}</span>
       </span>
-      <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Battlefield">
+      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Battlefield">
         BF <span className="font-bold text-[#d6e6fb]">{battlefieldCount}</span>
       </span>
     </div>

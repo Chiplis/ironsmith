@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import useNewCards from "@/hooks/useNewCards";
 import StackCard from "@/components/cards/StackCard";
 
 export default function StackPanel({ onInspect }) {
@@ -7,10 +9,12 @@ export default function StackPanel({ onInspect }) {
   const objects = state?.stack_objects || [];
   const previews = state?.stack_preview || [];
   const hasContent = objects.length > 0 || previews.length > 0;
+  const stackIds = useMemo(() => objects.map((e) => e.id), [objects]);
+  const { newIds } = useNewCards(stackIds);
 
   return (
-    <section className={`min-h-0 p-2 flex flex-col gap-1.5 overflow-hidden ${hasContent ? "flex-1" : "shrink-0"}`}>
-      <h4 className="m-0 text-[#8ec4ff] uppercase tracking-widest text-[16px] font-bold shrink-0">
+    <section className="h-full p-2 flex flex-col gap-1.5 overflow-hidden">
+      <h4 className="m-0 text-[#8ec4ff] uppercase tracking-widest text-[14px] font-bold shrink-0">
         Stack{hasContent ? ` (${objects.length || previews.length})` : ""}
       </h4>
       {hasContent && (
@@ -18,12 +22,12 @@ export default function StackPanel({ onInspect }) {
           <div className="grid gap-1.5 pr-0.5">
             {objects.length > 0
               ? objects.map((entry) => (
-                  <StackCard key={entry.id} entry={entry} onClick={onInspect} />
+                  <StackCard key={entry.id} entry={entry} isNew={newIds.has(entry.id)} onClick={onInspect} />
                 ))
               : previews.map((name, i) => (
                   <div
                     key={i}
-                    className="game-card w-full min-w-0 min-h-[60px] text-[14px] border-[#80a8d7] bg-gradient-to-b from-[#132237] to-[#0d1726] p-1.5"
+                    className="game-card w-full min-w-0 min-h-[60px] text-[14px] bg-gradient-to-b from-[#132237] to-[#0d1726] p-1.5"
                   >
                     <span className="relative z-2 leading-[1.12] text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">{name}</span>
                   </div>
@@ -31,9 +35,14 @@ export default function StackPanel({ onInspect }) {
           </div>
         </ScrollArea>
       )}
+      {!hasContent && (
+        <div className="text-muted-foreground text-[13px] italic px-1 flex-1">
+          Empty
+        </div>
+      )}
       {status.msg && (
         <div
-          className="text-[14px] shrink-0 px-1 py-0.5 break-words relative"
+          className="text-[13px] shrink-0 px-1 py-0.5 break-words relative"
           style={{ color: status.isError ? "#ffb5c5" : "#d5e4f8" }}
         >
           {status.msg}

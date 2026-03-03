@@ -391,8 +391,17 @@ fn snapshot_matches_filter(
         return false;
     }
 
-    if filter.other && ctx.filter_ctx.source == Some(snapshot.object_id) {
-        return false;
+    if filter.other {
+        // Zone changes create a new ObjectId (rule 400.7), so "another" checks
+        // must exclude both direct ID matches and same stable object instances.
+        if snapshot.object_id == ctx.source_id {
+            return false;
+        }
+        if let Some(source) = ctx.game.object(ctx.source_id)
+            && source.stable_id == snapshot.stable_id
+        {
+            return false;
+        }
     }
 
     true
@@ -516,9 +525,10 @@ impl TriggerMatcher for ZoneChangeTrigger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
     use crate::events::cause::EventCause;
     use crate::game_state::GameState;
-    use crate::ids::{ObjectId, PlayerId};
+    use crate::ids::{CardId, ObjectId, PlayerId, StableId};
     use crate::snapshot::ObjectSnapshot;
     use crate::types::CardType;
 
@@ -640,6 +650,39 @@ mod tests {
             Some(make_creature_snapshot(creature_id, alice, "Bear")),
         ));
         assert!(trigger.matches(&from_graveyard, &ctx));
+    }
+
+    #[test]
+    fn test_etb_other_filter_excludes_same_stable_object_after_zone_change() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let old_id = ObjectId::from_raw(41);
+        let new_id = ObjectId::from_raw(42);
+
+        let card = CardBuilder::new(CardId::from_raw(9001), "Soul Warden Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let mut source = crate::object::Object::from_card(new_id, &card, alice, Zone::Battlefield);
+        source.stable_id = StableId::from(old_id);
+        game.add_object(source);
+
+        let mut snapshot = make_creature_snapshot(old_id, alice, "Soul Warden Probe");
+        snapshot.stable_id = StableId::from(old_id);
+        let event = TriggerEvent::new(ZoneChangeEvent::new(
+            new_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            Some(snapshot),
+        ));
+
+        let trigger = ZoneChangeTrigger::enters_battlefield(ObjectFilter::creature().other());
+        let ctx = TriggerContext::for_source(new_id, alice, &game);
+
+        assert!(
+            !trigger.matches(&event, &ctx),
+            "expected 'another creature ETB' to exclude the source across zone-change IDs"
+        );
     }
 
     #[test]

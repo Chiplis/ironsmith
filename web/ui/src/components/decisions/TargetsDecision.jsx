@@ -94,6 +94,7 @@ export default function TargetsDecision({ decision, canAct }) {
         <div className="text-[16px] text-muted-foreground">{decision.context}</div>
       )}
 
+      <div className={requirements.length > 1 ? "grid grid-cols-2 gap-2" : ""}>
       {requirements.map((req, reqIdx) => {
         const isActive = reqIdx === currentReqIdx && !allDone;
         const reqSelections = selectionsByReq[reqIdx] || [];
@@ -105,8 +106,8 @@ export default function TargetsDecision({ decision, canAct }) {
           <div
             key={reqIdx}
             className={cn(
-              "border p-1.5 rounded-sm",
-              isActive ? "border-primary" : "border-game-line-2"
+              "p-1.5 rounded-sm",
+              isActive && "bg-[rgba(100,169,255,0.05)]"
             )}
           >
             <div className="text-[14px] text-muted-foreground mb-1">
@@ -128,9 +129,9 @@ export default function TargetsDecision({ decision, canAct }) {
                   return (
                     <Button
                       key={selIdx}
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      className="h-5 text-[13px] px-1.5 border-primary bg-primary/10"
+                      className="h-5 text-[13px] px-1.5 text-primary bg-primary/10 shadow-[0_0_6px_rgba(100,169,255,0.2)]"
                       disabled={!canAct}
                       onClick={() => handleRemoveTarget(reqIdx, selIdx)}
                     >
@@ -142,7 +143,7 @@ export default function TargetsDecision({ decision, canAct }) {
             )}
 
             {isActive && (
-              <div className="flex flex-col gap-0.5">
+              <div className="flex flex-wrap gap-1">
                 {(req.legal_targets || []).map((target, tIdx) => {
                   const label =
                     target.kind === "player"
@@ -151,9 +152,9 @@ export default function TargetsDecision({ decision, canAct }) {
                   return (
                     <Button
                       key={tIdx}
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      className="h-6 text-[14px] justify-start px-2"
+                      className="h-6 text-[14px] justify-start px-2 text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.1)]"
                       disabled={!canAct}
                       onClick={() => handleSelectTarget(target)}
                     >
@@ -178,11 +179,12 @@ export default function TargetsDecision({ decision, canAct }) {
           </div>
         );
       })}
+      </div>
 
       <Button
-        variant="outline"
+        variant="ghost"
         size="sm"
-        className="h-7 text-[14px]"
+        className="h-7 text-[14px] text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.1)] hover:shadow-[0_0_8px_rgba(100,169,255,0.15)]"
         disabled={!canAct || !canSubmit}
         onClick={handleSubmit}
       >

@@ -65,7 +65,7 @@ pub struct ChooseObjectsEffect {
     pub is_search: bool,
     /// Whether chosen cards should be revealed.
     pub reveal: bool,
-    /// Restrict selection to only the top-most matching object in ordered zones.
+    /// Restrict selection to top-most matching objects in ordered zones.
     pub top_only: bool,
 }
 
@@ -114,10 +114,24 @@ impl ChooseObjectsEffect {
         self
     }
 
-    /// Restrict selection to the top-most matching object in ordered zones.
+    /// Restrict selection to top-most matching objects in ordered zones.
     pub fn top_only(mut self) -> Self {
         self.top_only = true;
         self
+    }
+
+    /// Number of top-most matches considered when `top_only` is set.
+    pub(crate) fn top_only_selection_limit(&self, x_value: Option<u32>) -> usize {
+        if !self.top_only {
+            return usize::MAX;
+        }
+        if self.count.dynamic_x {
+            return x_value
+                .and_then(|x| usize::try_from(x).ok())
+                .filter(|x| *x > 0)
+                .unwrap_or(1);
+        }
+        self.count.max.unwrap_or(self.count.min).max(1)
     }
 }
 
@@ -150,8 +164,9 @@ impl EffectExecutor for ChooseObjectsEffect {
 
         // Find candidates based on the zone - check the filter's zone if set
         let search_zone = self.filter.zone.unwrap_or(self.zone);
+        let top_only_limit = self.top_only_selection_limit(None);
 
-        let mut candidate_count = match search_zone {
+        let candidate_count = match search_zone {
             Zone::Battlefield => game
                 .battlefield
                 .iter()
@@ -190,14 +205,14 @@ impl EffectExecutor for ChooseObjectsEffect {
                             .iter()
                             .rev()
                             .filter_map(|&id| game.object(id))
-                            .find(|obj| {
+                            .filter(|obj| {
                                 if self.filter.other && obj.id == source {
                                     return false;
                                 }
                                 self.filter.matches(obj, &filter_ctx, game)
                             })
-                            .map(|_| 1usize)
-                            .unwrap_or(0usize)
+                            .take(top_only_limit)
+                            .count()
                     } else {
                         player
                             .graveyard
@@ -226,24 +241,29 @@ impl EffectExecutor for ChooseObjectsEffect {
                     vec![chooser_id]
                 };
                 if self.top_only {
-                    owner_ids
-                        .into_iter()
-                        .filter_map(|owner_id| game.player(owner_id))
-                        .find_map(|player| {
-                            player
-                                .library
-                                .iter()
-                                .rev()
-                                .filter_map(|&id| game.object(id))
-                                .find(|obj| {
-                                    if self.filter.other && obj.id == source {
-                                        return false;
-                                    }
-                                    self.filter.matches(obj, &filter_ctx, game)
-                                })
-                        })
-                        .map(|_| 1usize)
-                        .unwrap_or(0usize)
+                    let mut total = 0usize;
+                    'owners: for owner_id in owner_ids {
+                        let Some(player) = game.player(owner_id) else {
+                            continue;
+                        };
+                        for obj in player
+                            .library
+                            .iter()
+                            .rev()
+                            .filter_map(|&id| game.object(id))
+                        {
+                            if self.filter.other && obj.id == source {
+                                continue;
+                            }
+                            if self.filter.matches(obj, &filter_ctx, game) {
+                                total += 1;
+                                if total >= top_only_limit {
+                                    break 'owners;
+                                }
+                            }
+                        }
+                    }
+                    total
                 } else {
                     owner_ids
                         .into_iter()
@@ -273,10 +293,6 @@ impl EffectExecutor for ChooseObjectsEffect {
                     .count()
             }
         };
-
-        if self.top_only && candidate_count > 1 {
-            candidate_count = 1;
-        }
 
         if candidate_count < self.count.min {
             return Err(CostValidationError::Other(format!(

@@ -10,7 +10,7 @@ export default function ManaPool({ pool }) {
     return (
       <span
         key={key}
-        className="inline-flex items-center gap-0.5 border border-[#2a3e56] bg-[#0b121b] rounded-full px-1 py-px"
+        className="inline-flex items-center gap-0.5 bg-[#0b121b] rounded-full px-1 py-px"
         title={`${safeAmount} ${label} mana in pool`}
       >
         <img

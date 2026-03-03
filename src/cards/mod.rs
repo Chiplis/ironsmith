@@ -413,6 +413,7 @@ impl CardRegistry {
         maybe_register!(manascape_refractor);
         maybe_register!(squirrel_nest);
         maybe_register!(mycosynth_lattice);
+        maybe_register!(nest_of_scarabs);
         maybe_register!(toph_the_first_metalbender);
         maybe_register!(marneus_calgar);
         maybe_register!(marvin_murderous_mimic);

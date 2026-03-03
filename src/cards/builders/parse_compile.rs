@@ -94,11 +94,15 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::CounterPutOn {
             filter,
             counter_type,
+            source_controller,
             one_or_more,
         } => {
             let mut trigger = crate::triggers::CounterPutOnTrigger::new(filter);
             if let Some(counter_type) = counter_type {
                 trigger = trigger.counter_type(counter_type);
+            }
+            if let Some(source_controller) = source_controller {
+                trigger = trigger.source_controller(source_controller);
             }
             if one_or_more {
                 trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
@@ -322,7 +326,8 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::DealsCombatDamageTo { .. }
             | TriggerSpec::ThisDealsCombatDamageToPlayer
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
-            | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. } => true,
+            | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+            | TriggerSpec::CounterPutOn { .. } => true,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec)
                     && trigger_supports_event_value(right, spec)
@@ -2463,7 +2468,8 @@ pub(crate) fn lower_counted_non_target_exile_target(
 
     prelude.push(Effect::new(
         crate::effects::ChooseObjectsEffect::new(resolved_filter, count, chooser, tag_key.clone())
-            .in_zone(choice_zone),
+            .in_zone(choice_zone)
+            .top_only(),
     ));
     prelude.push(Effect::new(
         crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(tag_key))

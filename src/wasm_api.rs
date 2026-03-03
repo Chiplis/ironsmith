@@ -294,6 +294,8 @@ struct PlayerSnapshot {
 struct HandCardSnapshot {
     id: u64,
     name: String,
+    mana_cost: Option<String>,
+    power_toughness: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -385,9 +387,18 @@ impl GameSnapshot {
                             .rev()
                             .take(12)
                             .filter_map(|id| game.object(*id))
-                            .map(|o| HandCardSnapshot {
-                                id: o.id.0,
-                                name: o.name.clone(),
+                            .map(|o| {
+                                let mana_cost = o.mana_cost.as_ref().map(|mc| mc.to_oracle());
+                                let power_toughness = match (o.power(), o.toughness()) {
+                                    (Some(p), Some(t)) => Some(format!("{p}/{t}")),
+                                    _ => None,
+                                };
+                                HandCardSnapshot {
+                                    id: o.id.0,
+                                    name: o.name.clone(),
+                                    mana_cost,
+                                    power_toughness,
+                                }
                             })
                             .collect()
                     } else {

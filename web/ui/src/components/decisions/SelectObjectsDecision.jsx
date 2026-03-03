@@ -27,9 +27,9 @@ export default function SelectObjectsDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-2">
       <Button
-        variant="outline"
+        variant="ghost"
         size="sm"
-        className="h-auto min-h-7 py-1.5 text-[14px] px-3 border-[#69c769]/50 text-[#69c769] hover:bg-[#69c769]/10 hover:text-[#69c769]"
+        className="h-auto min-h-7 py-1.5 text-[14px] px-3 text-[#69c769]/60 hover:text-[#69c769] hover:bg-[#69c769]/10 hover:shadow-[0_0_8px_rgba(105,199,105,0.15)] transition-all"
         disabled={!canAct || !canSubmit}
         onClick={() =>
           dispatch(
@@ -46,16 +46,16 @@ export default function SelectObjectsDecision({ decision, canAct }) {
       <div className="text-[14px] text-muted-foreground">
         Select {min === max ? min : `${min}-${max}`} object(s)
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-2 gap-1">
         {candidates.map((c) => (
           <label
             key={c.id}
-            className={`flex items-center gap-2 text-[14px] p-1 border rounded-sm cursor-pointer transition-colors ${
+            className={`flex items-center gap-2 text-[14px] p-1 rounded-sm cursor-pointer transition-all ${
               c.legal
                 ? selected.has(c.id)
-                  ? "border-primary bg-primary/10"
-                  : "border-game-line-2 hover:border-game-line"
-                : "border-game-line-2 opacity-50 cursor-not-allowed"
+                  ? "text-foreground bg-primary/10 shadow-[0_0_6px_rgba(100,169,255,0.2)]"
+                  : "text-muted-foreground hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]"
+                : "opacity-50 cursor-not-allowed"
             }`}
           >
             <Checkbox

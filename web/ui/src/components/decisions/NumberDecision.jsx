@@ -18,7 +18,7 @@ export default function NumberDecision({ decision, canAct }) {
       <div className="flex items-center gap-2">
         <Input
           type="number"
-          className="h-7 w-20 text-[16px] bg-transparent"
+          className="h-7 w-28 text-[16px] bg-transparent"
           min={decision.min ?? 0}
           max={decision.max ?? 999}
           value={value}
@@ -30,9 +30,9 @@ export default function NumberDecision({ decision, canAct }) {
         </span>
       </div>
       <Button
-        variant="outline"
+        variant="ghost"
         size="sm"
-        className="h-7 text-[14px]"
+        className="h-7 text-[14px] text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.1)] hover:shadow-[0_0_8px_rgba(100,169,255,0.15)]"
         disabled={!canAct}
         onClick={() =>
           dispatch({ type: "number_choice", value }, `Chose ${value}`)

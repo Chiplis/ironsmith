@@ -7276,6 +7276,66 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
         }
     }
 
+    if let Some(put_word_idx) = words.iter().position(|word| *word == "put") {
+        let subject_words = &words[..put_word_idx];
+        if let Some(source_controller) = parse_trigger_subject_player_filter(subject_words)
+            && let Some(counter_word_idx) = words
+                .iter()
+                .position(|word| *word == "counter" || *word == "counters")
+            && counter_word_idx > put_word_idx
+            && matches!(
+                words.get(counter_word_idx + 1).copied(),
+                Some("on") | Some("onto")
+            )
+        {
+            let descriptor_word_start = put_word_idx + 1;
+            let descriptor_token_start = token_index_for_word_index(tokens, descriptor_word_start)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "missing counter descriptor in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+            let descriptor_token_end =
+                token_index_for_word_index(tokens, counter_word_idx).unwrap_or(tokens.len());
+            let descriptor_span = &tokens[descriptor_token_start..descriptor_token_end];
+            let one_or_more = has_leading_one_or_more(descriptor_span);
+            let counter_descriptor_tokens =
+                &tokens[descriptor_token_start..(descriptor_token_end + 1)];
+            let counter_type = parse_counter_type_from_tokens(counter_descriptor_tokens);
+
+            let object_word_start = counter_word_idx + 2;
+            let object_token_start = token_index_for_word_index(tokens, object_word_start)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "missing counter recipient in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+            let object_tokens = trim_commas(&tokens[object_token_start..]);
+            let object_tokens = strip_leading_articles(&object_tokens);
+            if object_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing counter recipient in trigger clause (clause: '{}')",
+                    words.join(" ")
+                )));
+            }
+            let filter = parse_object_filter(&object_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported counter recipient filter in trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+
+            return Ok(TriggerSpec::CounterPutOn {
+                filter,
+                counter_type,
+                source_controller: Some(source_controller),
+                one_or_more,
+            });
+        }
+    }
+
     if let Some(counter_word_idx) = words
         .iter()
         .position(|word| *word == "counter" || *word == "counters")
@@ -7292,9 +7352,8 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
         let one_or_more = words.starts_with(&["one", "or", "more"]);
         let descriptor_token_end =
             token_index_for_word_index(tokens, counter_word_idx).unwrap_or(tokens.len());
-        let descriptor_tokens =
-            strip_leading_articles(strip_leading_one_or_more(&tokens[..descriptor_token_end]));
-        let counter_type = parse_counter_type_from_tokens(&descriptor_tokens);
+        let counter_descriptor_tokens = &tokens[..(descriptor_token_end + 1)];
+        let counter_type = parse_counter_type_from_tokens(counter_descriptor_tokens);
 
         let object_word_start = counter_word_idx + 4;
         let object_token_start =
@@ -7322,6 +7381,7 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
         return Ok(TriggerSpec::CounterPutOn {
             filter,
             counter_type,
+            source_controller: None,
             one_or_more,
         });
     }

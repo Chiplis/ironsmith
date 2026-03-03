@@ -1,13 +1,13 @@
 import { scryfallImageUrl } from "@/lib/scryfall";
 
-export default function StackCard({ entry, onClick }) {
+export default function StackCard({ entry, isNew = false, onClick }) {
   const name = entry.name || `Object#${entry.id}`;
   const artUrl = scryfallImageUrl(name, "art_crop");
   const scryfallUrl = scryfallImageUrl(name);
 
   return (
     <div
-      className="game-card w-full min-w-0 min-h-[80px] text-[14px] border-[#80a8d7] bg-gradient-to-b from-[#132237] to-[#0d1726] cursor-pointer flex flex-col"
+      className={`game-card w-full min-w-0 min-h-[80px] text-[14px] bg-gradient-to-b from-[#132237] to-[#0d1726] cursor-pointer flex flex-col${isNew ? " card-enter" : ""}`}
       data-object-id={entry.id}
       data-card-name={name}
       onClick={() => onClick?.(entry.id)}
@@ -41,7 +41,7 @@ export default function StackCard({ entry, onClick }) {
 
       {scryfallUrl && (
         <a
-          className="absolute top-1 right-1 border border-[#4e6f93] bg-[#0a1118] text-[#9ec3ea] no-underline uppercase text-[12px] tracking-wide px-1 py-px rounded-sm leading-tight z-2 opacity-0 hover:opacity-100 transition-opacity"
+          className="absolute top-1 right-1 bg-[#0a1118] text-[#9ec3ea] no-underline uppercase text-[12px] tracking-wide px-1 py-px rounded-sm leading-tight z-2 opacity-0 hover:opacity-100 transition-opacity"
           href={scryfallUrl}
           target="_blank"
           rel="noopener noreferrer"
