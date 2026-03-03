@@ -14,7 +14,7 @@ export default function DecisionPanel() {
     : null;
 
   const metaText = decision
-    ? `${decisionPlayer?.name || "?"} \u2022 ${decision.kind}`
+    ? `${decisionPlayer?.name || "?"} · ${decision.kind}`
     : "No pending decision";
 
   return (

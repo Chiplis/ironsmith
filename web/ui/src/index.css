@@ -148,7 +148,18 @@
   content: "";
   @apply absolute inset-0 pointer-events-none;
   z-index: 1;
-  background: linear-gradient(180deg, rgba(4, 8, 14, 0.22), rgba(4, 8, 14, 0.7));
+  background: linear-gradient(180deg, rgba(4, 8, 14, 0.08), rgba(4, 8, 14, 0.45));
+}
+
+.game-card:hover {
+  transform: scale(1.04) translateY(-2px);
+  z-index: 5;
+  border-color: #8aa4c0;
+}
+
+.game-card.tapped:hover {
+  transform: rotate(8deg) translateX(4px) scale(1.04);
+  opacity: 0.88;
 }
 
 /* Card states */

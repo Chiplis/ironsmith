@@ -458,6 +458,7 @@ impl GameSnapshot {
                 let obj = game.object(entry.object_id);
                 let name = obj
                     .map(|o| o.name.clone())
+                    .or_else(|| entry.source_name.clone())
                     .unwrap_or_else(|| format!("Object#{}", entry.object_id.0));
                 if entry.is_ability {
                     let ability_kind = if entry.triggering_event.is_some() {

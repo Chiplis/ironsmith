@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { X, ArrowRight } from "lucide-react";
 
 export default function TargetsDecision({ decision, canAct }) {
   const { dispatch } = useGame();
@@ -133,7 +134,7 @@ export default function TargetsDecision({ decision, canAct }) {
                       disabled={!canAct}
                       onClick={() => handleRemoveTarget(reqIdx, selIdx)}
                     >
-                      {label} \u2715
+                      {label} <X className="size-3 inline" />
                     </Button>
                   );
                 })}
@@ -169,7 +170,7 @@ export default function TargetsDecision({ decision, canAct }) {
                     disabled={!canAct}
                     onClick={handleSkipRequirement}
                   >
-                    {isOptional ? "Skip (optional)" : "Next requirement \u2192"}
+                    {isOptional ? "Skip (optional)" : <>Next requirement <ArrowRight className="size-3 inline" /></>}
                   </Button>
                 )}
               </div>

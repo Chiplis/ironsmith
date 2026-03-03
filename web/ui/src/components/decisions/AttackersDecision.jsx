@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Swords, ArrowRight } from "lucide-react";
 
 function decodeAttackTargetChoice(choice) {
   if (choice && typeof choice === "object") {
@@ -115,11 +116,11 @@ export default function AttackersDecision({ decision, canAct }) {
                 disabled={!canAct}
                 onClick={() => toggleAttacker(opt)}
               >
-                {attacking ? "\u2694 " : ""}{name}
+                {attacking ? <Swords className="size-3.5 inline mr-1" /> : ""}{name}
                 {opt.must_attack && " (must attack)"}
                 {attacking && decl && validTargets.length > 1 && (
-                  <span className="ml-1 text-[10px] text-muted-foreground">
-                    \u2192 {attackTargetLabel(decl.target, players)}
+                  <span className="ml-1 text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
+                    <ArrowRight className="size-3" /> {attackTargetLabel(decl.target, players)}
                   </span>
                 )}
               </Button>

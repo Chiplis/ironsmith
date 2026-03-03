@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Swords } from "lucide-react";
 
 /**
  * The engine emits attacker-centric blocker options:
@@ -105,7 +106,7 @@ export default function BlockersDecision({ decision, canAct }) {
                       disabled={!canAct}
                       onClick={() => toggleBlocker(blockerId, attackerId)}
                     >
-                      {blocking ? "\u2694 " : ""}Block {attackerName}
+                      {blocking ? <Swords className="size-3.5 inline mr-1" /> : ""}Block {attackerName}
                     </Button>
                   );
                 })}

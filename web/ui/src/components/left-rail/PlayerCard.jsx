@@ -2,6 +2,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import ManaPool from "./ManaPool";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 export default function PlayerCard({ player, isActive, isPerspective, label }) {
   const [expanded, setExpanded] = useState(false);
@@ -19,13 +20,13 @@ export default function PlayerCard({ player, isActive, isPerspective, label }) {
       className={cn(
         "border p-2 grid gap-2",
         "bg-gradient-to-b from-[#151e2a] to-[#101723]",
-        isActive && "border-[rgba(88,214,166,0.76)] shadow-[0_0_0_1px_rgba(88,214,166,0.32)_inset]",
+        isActive && "border-[rgba(88,214,166,0.88)] shadow-[0_0_8px_rgba(88,214,166,0.25),0_0_0_1px_rgba(88,214,166,0.4)_inset]",
         isPerspective && "border-[rgba(100,169,255,0.88)] shadow-[0_0_0_1px_rgba(100,169,255,0.35)_inset]",
         !isActive && !isPerspective && "border-game-line-2"
       )}
       data-player-id={player.id}
     >
-      <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
         {expandable && (
           <button
             className={cn(
@@ -36,28 +37,29 @@ export default function PlayerCard({ player, isActive, isPerspective, label }) {
             )}
             onClick={() => setExpanded((e) => !e)}
           >
-            {expanded ? "\u25BE" : "\u25B8"}
+            {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           </button>
         )}
-        <h2 className="text-[16px] font-bold m-0 truncate">{player.name}</h2>
+        <span className="text-[22px] font-bold leading-none text-[#f5d08b] tabular-nums min-w-[28px]">{player.life}</span>
+        <h2 className="text-[15px] font-bold m-0 truncate">{player.name}</h2>
         <ManaPool pool={player.mana_pool} />
       </div>
 
-      <div className="flex flex-wrap gap-1 text-[11px] text-[#a8bfdd] tracking-wide">
-        <span className="border border-[#223448] bg-[#0b121b] px-1 rounded-sm min-w-[30px] text-center">
-          L {player.library_size}
+      <div className="flex flex-wrap gap-1 text-[11px] text-[#a8bfdd]">
+        <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Library">
+          Lib <span className="font-bold text-[#d6e6fb]">{player.library_size}</span>
         </span>
-        <span className="border border-[#223448] bg-[#0b121b] px-1 rounded-sm min-w-[30px] text-center">
-          H {player.hand_size}
+        <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Hand">
+          Hand <span className="font-bold text-[#d6e6fb]">{player.hand_size}</span>
         </span>
-        <span className="border border-[#223448] bg-[#0b121b] px-1 rounded-sm min-w-[30px] text-center">
-          G {player.graveyard_size}
+        <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Graveyard">
+          GY <span className="font-bold text-[#d6e6fb]">{player.graveyard_size}</span>
         </span>
-        <span className="border border-[#223448] bg-[#0b121b] px-1 rounded-sm min-w-[30px] text-center">
-          X {exileCards.length}
+        <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Exile">
+          Exl <span className="font-bold text-[#d6e6fb]">{exileCards.length}</span>
         </span>
-        <span className="border border-[#223448] bg-[#0b121b] px-1 rounded-sm min-w-[30px] text-center">
-          B {battlefieldCount}
+        <span className="border border-[#223448] bg-[#0b121b] px-1.5 rounded-sm" title="Battlefield">
+          BF <span className="font-bold text-[#d6e6fb]">{battlefieldCount}</span>
         </span>
       </div>
 

@@ -3,6 +3,7 @@ import { useGame } from "@/context/GameContext";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { ChevronUp, ChevronDown } from "lucide-react";
 
 export default function SelectOptionsDecision({ decision, canAct }) {
   const reason = (decision.reason || "").toLowerCase();
@@ -159,7 +160,7 @@ function OrderingDecision({ decision, canAct }) {
                 disabled={!canAct || pos === 0}
                 onClick={() => move(pos, -1)}
               >
-                \u25B2
+                <ChevronUp className="size-3.5" />
               </Button>
               <Button
                 variant="ghost"
@@ -168,7 +169,7 @@ function OrderingDecision({ decision, canAct }) {
                 disabled={!canAct || pos === order.length - 1}
                 onClick={() => move(pos, 1)}
               >
-                \u25BC
+                <ChevronDown className="size-3.5" />
               </Button>
             </div>
           );
