@@ -7483,10 +7483,8 @@ fn parse_cant_attack_unless_defending_player_controls_island_line() {
         .collect();
 
     assert!(
-        ids.contains(
-            &crate::static_abilities::StaticAbilityId::CantAttackUnlessDefendingPlayerControlsLandSubtype
-        ),
-        "expected defending-player-land-subtype attack restriction, got {ids:?}"
+        ids.contains(&crate::static_abilities::StaticAbilityId::CantAttackUnlessCondition),
+        "expected generic cant-attack-unless condition restriction, got {ids:?}"
     );
     assert!(
         !ids.contains(&StaticAbilityId::RuleTextPlaceholder),

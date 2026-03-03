@@ -1012,9 +1012,9 @@ mod tests {
             .push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
                     CantAttackUnlessConditionSpec::AttackCost(
-                        crate::static_abilities::AttackCostCondition::SacrificeLands {
+                        crate::static_abilities::AttackCostCondition::SacrificePermanents {
+                            filter: crate::filter::ObjectFilter::land(),
                             count: 1,
-                            subtype: None,
                         },
                     ),
                     "Can't attack unless you sacrifice a land",
@@ -1068,7 +1068,10 @@ mod tests {
             .push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
                     CantAttackUnlessConditionSpec::AttackCost(
-                        crate::static_abilities::AttackCostCondition::ReturnEnchantmentYouControlToOwnersHand,
+                        crate::static_abilities::AttackCostCondition::ReturnPermanentsToOwnersHand {
+                            filter: crate::filter::ObjectFilter::enchantment(),
+                            count: 1,
+                        },
                     ),
                     "Can't attack unless you return an enchantment you control to its owner's hand",
                 ),
@@ -1123,7 +1126,10 @@ mod tests {
             attacker_obj.abilities.push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
                     CantAttackUnlessConditionSpec::AttackCost(
-                        crate::static_abilities::AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt,
+                        crate::static_abilities::AttackCostCondition::PayGenericPerSourceCounter {
+                            counter_type: CounterType::PlusOnePlusOne,
+                            amount_per_counter: 1,
+                        },
                     ),
                     "Can't attack unless you pay {1} for each +1/+1 counter on it",
                 ),

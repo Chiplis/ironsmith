@@ -71,7 +71,6 @@ pub enum StaticAbilityId {
     CantAttack,
     CantAttackUnlessControllerCastCreatureSpellThisTurn,
     CantAttackUnlessControllerCastNonCreatureSpellThisTurn,
-    CantAttackUnlessDefendingPlayerControlsLandSubtype,
     CantAttackUnlessCondition,
     CantAttackYouUnlessControllerPaysPerAttacker,
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
@@ -278,7 +277,6 @@ impl StaticAbilityId {
             | CantAttack
             | CantAttackUnlessControllerCastCreatureSpellThisTurn
             | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
-            | CantAttackUnlessDefendingPlayerControlsLandSubtype
             | CantAttackUnlessCondition
             | CantAttackYouUnlessControllerPaysPerAttacker
             | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
@@ -505,7 +503,6 @@ impl StaticAbilityId {
                 | CantAttack
                 | CantAttackUnlessControllerCastCreatureSpellThisTurn
                 | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
-                | CantAttackUnlessDefendingPlayerControlsLandSubtype
                 | CantAttackUnlessCondition
                 | CantAttackYouUnlessControllerPaysPerAttacker
                 | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl

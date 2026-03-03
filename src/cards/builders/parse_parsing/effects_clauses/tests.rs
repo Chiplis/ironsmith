@@ -245,10 +245,7 @@ fn parse_line_cant_attack_unless_defending_player_controls_island_prefers_typed_
         }
         other => panic!("expected static ability parse, got {other:?}"),
     };
-    assert_eq!(
-        ability.id(),
-        StaticAbilityId::CantAttackUnlessDefendingPlayerControlsLandSubtype
-    );
+    assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
 #[test]

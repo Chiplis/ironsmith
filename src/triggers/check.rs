@@ -710,6 +710,8 @@ pub fn verify_intervening_if(
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller,
         source: source_object_id,
+        defending_player: None,
+        attacking_player: None,
         // Legacy intervening-if checks intentionally did not provide a filter-context source.
         filter_source: None,
         triggering_event: Some(event),

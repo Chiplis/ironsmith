@@ -478,35 +478,6 @@ impl StaticAbilityKind for MustAttack {
     // by checking if creatures have this ability, rather than using a tracker.
 }
 
-/// Can't attack unless defending player controls a land with the specified subtype.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CantAttackUnlessDefendingPlayerControlsLandSubtype {
-    pub land_subtype: crate::types::Subtype,
-}
-
-impl CantAttackUnlessDefendingPlayerControlsLandSubtype {
-    pub const fn new(land_subtype: crate::types::Subtype) -> Self {
-        Self { land_subtype }
-    }
-}
-
-impl StaticAbilityKind for CantAttackUnlessDefendingPlayerControlsLandSubtype {
-    fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::CantAttackUnlessDefendingPlayerControlsLandSubtype
-    }
-
-    fn display(&self) -> String {
-        format!(
-            "Can't attack unless defending player controls {}",
-            format!("{:?}", self.land_subtype).to_ascii_lowercase()
-        )
-    }
-
-    fn required_defending_player_land_subtype_for_attack(&self) -> Option<crate::types::Subtype> {
-        Some(self.land_subtype)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum CantAttackUnlessConditionSpec {
     /// Controller controls more permanents matching this filter than defending player.
@@ -547,12 +518,18 @@ pub enum AttackingGroupAttackCondition {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AttackCostCondition {
-    SacrificeLands {
+    SacrificePermanents {
+        filter: ObjectFilter,
         count: u32,
-        subtype: Option<crate::types::Subtype>,
     },
-    ReturnEnchantmentYouControlToOwnersHand,
-    PayOneForEachPlusOnePlusOneCounterOnIt,
+    ReturnPermanentsToOwnersHand {
+        filter: ObjectFilter,
+        count: u32,
+    },
+    PayGenericPerSourceCounter {
+        counter_type: CounterType,
+        amount_per_counter: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -562,10 +539,187 @@ pub struct CantAttackUnlessCondition {
 }
 
 impl CantAttackUnlessCondition {
+    fn strip_indefinite_article(text: &str) -> &str {
+        text.strip_prefix("an ")
+            .or_else(|| text.strip_prefix("a "))
+            .unwrap_or(text)
+    }
+
+    fn pluralize_noun_phrase(noun: &str) -> String {
+        if noun.ends_with('s') {
+            noun.to_string()
+        } else {
+            format!("{noun}s")
+        }
+    }
+
+    fn describe_source_condition(condition: &crate::ConditionExpr) -> String {
+        match condition {
+            crate::ConditionExpr::YouControl(filter) => {
+                format!("you control {}", filter.description())
+            }
+            crate::ConditionExpr::PlayerControlsAtLeast {
+                player: crate::target::PlayerFilter::You,
+                filter,
+                count,
+            } => {
+                let described = filter.description();
+                let noun = Self::strip_indefinite_article(&described);
+                if *count <= 1 {
+                    format!("you control {described}")
+                } else {
+                    format!(
+                        "you control {count} or more {}",
+                        Self::pluralize_noun_phrase(noun)
+                    )
+                }
+            }
+            crate::ConditionExpr::SourceAttackedThisTurn => {
+                "this creature attacked this turn".to_string()
+            }
+            crate::ConditionExpr::Not(inner)
+                if matches!(&**inner, crate::ConditionExpr::SourceAttackedThisTurn) =>
+            {
+                "this creature didn't attack this turn".to_string()
+            }
+            crate::ConditionExpr::Or(left, right) => format!(
+                "{} or {}",
+                Self::describe_source_condition(left),
+                Self::describe_source_condition(right)
+            ),
+            crate::ConditionExpr::And(left, right) => format!(
+                "{} and {}",
+                Self::describe_source_condition(left),
+                Self::describe_source_condition(right)
+            ),
+            other => format!("{other:?}").to_ascii_lowercase(),
+        }
+    }
+
+    fn canonical_display_for_condition(condition: &CantAttackUnlessConditionSpec) -> String {
+        match condition {
+            CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(filter) => {
+                let described = filter.description();
+                let noun = Self::strip_indefinite_article(&described);
+                format!(
+                    "Can't attack unless you control more {} than defending player",
+                    Self::pluralize_noun_phrase(noun)
+                )
+            }
+            CantAttackUnlessConditionSpec::SourceCondition(source_condition) => format!(
+                "Can't attack unless {}",
+                Self::describe_source_condition(source_condition)
+            ),
+            CantAttackUnlessConditionSpec::BattlefieldCountAtLeast { filter, count } => {
+                let described = filter.description();
+                if *count <= 1 {
+                    format!("Can't attack unless there is {described} on the battlefield")
+                } else {
+                    let noun = Self::strip_indefinite_article(&described);
+                    format!(
+                        "Can't attack unless there are {count} or more {} on the battlefield",
+                        Self::pluralize_noun_phrase(noun)
+                    )
+                }
+            }
+            CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(count) => {
+                format!("Can't attack unless there are {count} or more cards in your graveyard")
+            }
+            CantAttackUnlessConditionSpec::DefendingPlayerCondition(defender_condition) => {
+                let clause = match defender_condition {
+                    DefendingPlayerAttackCondition::IsPoisoned => {
+                        "defending player is poisoned".to_string()
+                    }
+                    DefendingPlayerAttackCondition::HasCardsInGraveyardOrMore(count) => {
+                        format!("defending player has {count} or more cards in their graveyard")
+                    }
+                    DefendingPlayerAttackCondition::Controls(filter) => {
+                        format!("defending player controls {}", filter.description())
+                    }
+                    DefendingPlayerAttackCondition::ControlsEnchantmentOrEnchantedPermanent => {
+                        "defending player controls an enchantment or an enchanted permanent"
+                            .to_string()
+                    }
+                    DefendingPlayerAttackCondition::IsMonarch => {
+                        "defending player is the monarch".to_string()
+                    }
+                };
+                format!("Can't attack unless {clause}")
+            }
+            CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn => {
+                "Can't attack unless an opponent has been dealt damage this turn".to_string()
+            }
+            CantAttackUnlessConditionSpec::AttackingGroupCondition(group_condition) => {
+                let clause = match group_condition {
+                    AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(count) => {
+                        format!("at least {count} other creatures attack")
+                    }
+                    AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks => {
+                        "a creature with greater power also attacks".to_string()
+                    }
+                    AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks => {
+                        "a black or green creature also attacks".to_string()
+                    }
+                };
+                format!("Can't attack unless {clause}")
+            }
+            CantAttackUnlessConditionSpec::AttackCost(cost_condition) => {
+                let clause = match cost_condition {
+                    AttackCostCondition::SacrificePermanents { filter, count } => {
+                        let described = filter.description();
+                        if *count <= 1 {
+                            format!("you sacrifice {described}")
+                        } else {
+                            let noun = Self::strip_indefinite_article(&described);
+                            format!(
+                                "you sacrifice {count} {}",
+                                Self::pluralize_noun_phrase(noun)
+                            )
+                        }
+                    }
+                    AttackCostCondition::ReturnPermanentsToOwnersHand { filter, count } => {
+                        let described = filter.description();
+                        if *count <= 1 {
+                            format!("you return {described} to its owner's hand")
+                        } else {
+                            let noun = Self::strip_indefinite_article(&described);
+                            format!(
+                                "you return {count} {} to their owners' hands",
+                                Self::pluralize_noun_phrase(noun)
+                            )
+                        }
+                    }
+                    AttackCostCondition::PayGenericPerSourceCounter {
+                        counter_type,
+                        amount_per_counter,
+                    } => {
+                        if *amount_per_counter == 1 {
+                            format!(
+                                "you pay {{1}} for each {} counter on it",
+                                counter_type.description()
+                            )
+                        } else {
+                            format!(
+                                "you pay {{{amount_per_counter}}} for each {} counter on it",
+                                counter_type.description()
+                            )
+                        }
+                    }
+                };
+                format!("Can't attack unless {clause}")
+            }
+        }
+    }
+
     pub fn new(condition: CantAttackUnlessConditionSpec, display_text: impl Into<String>) -> Self {
+        let display_text = display_text.into();
         Self {
+            display_text: if display_text.trim().is_empty() {
+                Self::canonical_display_for_condition(&condition)
+            } else {
+                display_text
+            },
             condition,
-            display_text: display_text.into(),
         }
     }
 
@@ -586,6 +740,8 @@ impl CantAttackUnlessCondition {
         let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
             controller,
             source,
+            defending_player: None,
+            attacking_player: Some(controller),
             filter_source: Some(source),
             triggering_event: None,
             trigger_identity: None,
@@ -614,10 +770,6 @@ impl CantAttackUnlessCondition {
                     && battlefield_filter.matches(obj, &filter_ctx, game)
             })
             .count()
-    }
-
-    fn player_controls_matching(game: &GameState, player: PlayerId, filter: &ObjectFilter) -> bool {
-        Self::battlefield_count_matching(game, filter, Some(player)) > 0
     }
 
     fn player_controls_more_matching(
@@ -673,6 +825,7 @@ impl CantAttackUnlessCondition {
     fn source_can_attack_defender(
         &self,
         game: &GameState,
+        source: ObjectId,
         controller: PlayerId,
         defending_player: PlayerId,
     ) -> Option<bool> {
@@ -710,9 +863,27 @@ impl CantAttackUnlessCondition {
                         })
                     }))
                 }
-                DefendingPlayerAttackCondition::Controls(filter) => Some(
-                    Self::player_controls_matching(game, defending_player, filter),
-                ),
+                DefendingPlayerAttackCondition::Controls(filter) => {
+                    Some(crate::condition_eval::evaluate_condition_external(
+                        game,
+                        &crate::ConditionExpr::PlayerControlsAtLeast {
+                            player: crate::target::PlayerFilter::Defending,
+                            filter: filter.clone(),
+                            count: 1,
+                        },
+                        &crate::condition_eval::ExternalEvaluationContext {
+                            controller,
+                            source,
+                            defending_player: Some(defending_player),
+                            attacking_player: Some(controller),
+                            filter_source: Some(source),
+                            triggering_event: None,
+                            trigger_identity: None,
+                            ability_index: None,
+                            options: Default::default(),
+                        },
+                    ))
+                }
                 DefendingPlayerAttackCondition::IsMonarch => {
                     Some(game.monarch == Some(defending_player))
                 }
@@ -791,21 +962,24 @@ impl CantAttackUnlessCondition {
         }
     }
 
-    fn eligible_sacrificial_lands_for_controller(
+    fn eligible_permanents_for_controller(
         game: &GameState,
         controller: PlayerId,
-        subtype: Option<crate::types::Subtype>,
+        filter: &ObjectFilter,
+        require_sacrificable: bool,
     ) -> Vec<ObjectId> {
+        let mut battlefield_filter = filter.clone();
+        battlefield_filter.zone = Some(Zone::Battlefield);
+        let filter_ctx = crate::target::FilterContext::default();
+
         game.battlefield
             .iter()
             .copied()
             .filter(|&id| {
                 game.object(id).is_some_and(|obj| {
                     obj.controller == controller
-                        && game.object_has_card_type(id, crate::types::CardType::Land)
-                        && subtype
-                            .is_none_or(|required| game.calculated_subtypes(id).contains(&required))
-                        && game.can_be_sacrificed(id)
+                        && battlefield_filter.matches(obj, &filter_ctx, game)
+                        && (!require_sacrificable || game.can_be_sacrificed(id))
                 })
             })
             .collect()
@@ -819,21 +993,15 @@ impl CantAttackUnlessCondition {
     ) -> Option<bool> {
         match &self.condition {
             CantAttackUnlessConditionSpec::AttackCost(cost) => match cost {
-                AttackCostCondition::SacrificeLands { count, subtype } => Some(
-                    Self::eligible_sacrificial_lands_for_controller(game, controller, *subtype)
-                        .len()
+                AttackCostCondition::SacrificePermanents { filter, count } => Some(
+                    Self::eligible_permanents_for_controller(game, controller, filter, true).len()
                         >= *count as usize,
                 ),
-                AttackCostCondition::ReturnEnchantmentYouControlToOwnersHand => {
-                    Some(game.battlefield.iter().any(|&id| {
-                        game.object(id).is_some_and(|obj| {
-                            obj.controller == controller
-                                && game
-                                    .object_has_card_type(id, crate::types::CardType::Enchantment)
-                        })
-                    }))
-                }
-                AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt => {
+                AttackCostCondition::ReturnPermanentsToOwnersHand { filter, count } => Some(
+                    Self::eligible_permanents_for_controller(game, controller, filter, false).len()
+                        >= *count as usize,
+                ),
+                AttackCostCondition::PayGenericPerSourceCounter { .. } => {
                     Some(game.object(source).is_some())
                 }
             },
@@ -855,13 +1023,16 @@ impl CantAttackUnlessCondition {
     ) -> Option<u32> {
         match &self.condition {
             CantAttackUnlessConditionSpec::AttackCost(
-                AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt,
+                AttackCostCondition::PayGenericPerSourceCounter {
+                    counter_type,
+                    amount_per_counter,
+                },
             ) => {
                 let amount = game
                     .object(source)
-                    .and_then(|obj| obj.counters.get(&CounterType::PlusOnePlusOne).copied())
+                    .and_then(|obj| obj.counters.get(counter_type).copied())
                     .unwrap_or(0);
-                Some(amount)
+                Some(amount.saturating_mul(*amount_per_counter))
             }
             _ => None,
         }
@@ -872,9 +1043,9 @@ impl CantAttackUnlessCondition {
         source: ObjectId,
         controller: PlayerId,
         count: u32,
-        subtype: Option<crate::types::Subtype>,
+        filter: &ObjectFilter,
     ) -> Result<(), String> {
-        let candidates = Self::eligible_sacrificial_lands_for_controller(game, controller, subtype);
+        let candidates = Self::eligible_permanents_for_controller(game, controller, filter, true);
         if candidates.len() < count as usize {
             return Err("Cannot pay required attack cost".to_string());
         }
@@ -917,38 +1088,40 @@ impl CantAttackUnlessCondition {
         Ok(())
     }
 
-    fn pay_return_enchantment_attack_cost(
+    fn pay_return_permanents_attack_cost(
         game: &mut GameState,
         controller: PlayerId,
+        filter: &ObjectFilter,
+        count: u32,
     ) -> Result<(), String> {
-        let Some(target_id) = game.battlefield.iter().copied().find(|&id| {
-            game.object(id).is_some_and(|obj| {
-                obj.controller == controller
-                    && game.object_has_card_type(id, crate::types::CardType::Enchantment)
-            })
-        }) else {
+        let candidates = Self::eligible_permanents_for_controller(game, controller, filter, false);
+        if candidates.len() < count as usize {
             return Err("Cannot pay required attack cost".to_string());
-        };
+        }
+        let chosen: Vec<ObjectId> = candidates.into_iter().take(count as usize).collect();
 
-        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-        match process_zone_change(
-            game,
-            target_id,
-            Zone::Battlefield,
-            Zone::Hand,
-            &mut decision_maker,
-        ) {
-            EventOutcome::Prevented | EventOutcome::NotApplicable | EventOutcome::Replaced => {
-                Err("Cannot pay required attack cost".to_string())
-            }
-            EventOutcome::Proceed(final_zone) => {
-                if final_zone != Zone::Hand {
+        for target_id in chosen {
+            let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+            match process_zone_change(
+                game,
+                target_id,
+                Zone::Battlefield,
+                Zone::Hand,
+                &mut decision_maker,
+            ) {
+                EventOutcome::Prevented | EventOutcome::NotApplicable | EventOutcome::Replaced => {
                     return Err("Cannot pay required attack cost".to_string());
                 }
-                game.move_object(target_id, final_zone);
-                Ok(())
+                EventOutcome::Proceed(final_zone) => {
+                    if final_zone != Zone::Hand {
+                        return Err("Cannot pay required attack cost".to_string());
+                    }
+                    game.move_object(target_id, final_zone);
+                }
             }
         }
+
+        Ok(())
     }
 
     fn pay_non_mana_attack_cost_now(
@@ -959,13 +1132,13 @@ impl CantAttackUnlessCondition {
     ) -> Option<Result<(), String>> {
         match &self.condition {
             CantAttackUnlessConditionSpec::AttackCost(cost) => match cost {
-                AttackCostCondition::SacrificeLands { count, subtype } => Some(
-                    Self::pay_sacrifice_attack_cost(game, source, controller, *count, *subtype),
+                AttackCostCondition::SacrificePermanents { filter, count } => Some(
+                    Self::pay_sacrifice_attack_cost(game, source, controller, *count, filter),
                 ),
-                AttackCostCondition::ReturnEnchantmentYouControlToOwnersHand => {
-                    Some(Self::pay_return_enchantment_attack_cost(game, controller))
-                }
-                AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt => Some(Ok(())),
+                AttackCostCondition::ReturnPermanentsToOwnersHand { filter, count } => Some(
+                    Self::pay_return_permanents_attack_cost(game, controller, filter, *count),
+                ),
+                AttackCostCondition::PayGenericPerSourceCounter { .. } => Some(Ok(())),
             },
             _ => None,
         }
@@ -1003,11 +1176,11 @@ impl StaticAbilityKind for CantAttackUnlessCondition {
     fn can_attack_specific_defender(
         &self,
         game: &GameState,
-        _source: ObjectId,
+        source: ObjectId,
         controller: PlayerId,
         defending_player: PlayerId,
     ) -> Option<bool> {
-        self.source_can_attack_defender(game, controller, defending_player)
+        self.source_can_attack_defender(game, source, controller, defending_player)
     }
 
     fn can_attack_with_attacking_group(
@@ -1401,7 +1574,10 @@ mod tests {
 
         let ability = CantAttackUnlessCondition::new(
             CantAttackUnlessConditionSpec::AttackCost(
-                AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt,
+                AttackCostCondition::PayGenericPerSourceCounter {
+                    counter_type: CounterType::PlusOnePlusOne,
+                    amount_per_counter: 1,
+                },
             ),
             "Can't attack unless you pay {1} for each +1/+1 counter on it",
         );

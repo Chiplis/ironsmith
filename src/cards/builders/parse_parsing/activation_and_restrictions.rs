@@ -3856,9 +3856,9 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
         if tail == ["you", "sacrifice", "a", "land"] || tail == ["you", "sacrifice", "land"] {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
-                    crate::static_abilities::AttackCostCondition::SacrificeLands {
+                    crate::static_abilities::AttackCostCondition::SacrificePermanents {
+                        filter: ObjectFilter::land(),
                         count: 1,
-                        subtype: None,
                     },
                 ),
             );
@@ -3868,9 +3868,9 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
         {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
-                    crate::static_abilities::AttackCostCondition::SacrificeLands {
+                    crate::static_abilities::AttackCostCondition::SacrificePermanents {
+                        filter: ObjectFilter::land().with_subtype(Subtype::Island),
                         count: value,
-                        subtype: Some(Subtype::Island),
                     },
                 ),
             );
@@ -3917,7 +3917,10 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
         {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
-                    crate::static_abilities::AttackCostCondition::ReturnEnchantmentYouControlToOwnersHand,
+                    crate::static_abilities::AttackCostCondition::ReturnPermanentsToOwnersHand {
+                        filter: ObjectFilter::enchantment(),
+                        count: 1,
+                    },
                 ),
             );
         }
@@ -3932,7 +3935,10 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
         {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
-                    crate::static_abilities::AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt,
+                    crate::static_abilities::AttackCostCondition::PayGenericPerSourceCounter {
+                        counter_type: crate::object::CounterType::PlusOnePlusOne,
+                        amount_per_counter: 1,
+                    },
                 ),
             );
         }
@@ -4002,9 +4008,14 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             )));
         }
 
-        return Ok(Some(
-            StaticAbility::cant_attack_unless_defending_player_controls_land_subtype(subtype),
-        ));
+        return Ok(Some(StaticAbility::cant_attack_unless_condition(
+            crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                crate::static_abilities::DefendingPlayerAttackCondition::Controls(
+                    ObjectFilter::land().with_subtype(subtype),
+                ),
+            ),
+            "",
+        )));
     }
 
     if let Some((neg_start, neg_end)) = find_negation_span(tokens) {

@@ -175,51 +175,6 @@ fn evaluate_condition_shared_core(
     }
 }
 
-fn lower_legacy_activation_condition(condition: &Condition) -> Option<Condition> {
-    match condition {
-        Condition::ControlLandWithSubtype(required_subtypes) => {
-            let mut lowered: Option<Condition> = None;
-            for subtype in required_subtypes {
-                let next = Condition::YouControl(
-                    crate::target::ObjectFilter::default()
-                        .with_type(crate::types::CardType::Land)
-                        .with_subtype(*subtype),
-                );
-                lowered = Some(match lowered {
-                    Some(existing) => Condition::Or(Box::new(existing), Box::new(next)),
-                    None => next,
-                });
-            }
-            lowered
-        }
-        Condition::ControlAtLeastArtifacts(required_count) => {
-            let mut filter = crate::target::ObjectFilter::artifact();
-            filter.zone = Some(Zone::Battlefield);
-            Some(Condition::PlayerControlsAtLeast {
-                player: PlayerFilter::You,
-                filter,
-                count: *required_count,
-            })
-        }
-        Condition::ControlAtLeastLands(required_count) => {
-            let mut filter =
-                crate::target::ObjectFilter::default().with_type(crate::types::CardType::Land);
-            filter.zone = Some(Zone::Battlefield);
-            Some(Condition::PlayerControlsAtLeast {
-                player: PlayerFilter::You,
-                filter,
-                count: *required_count,
-            })
-        }
-        Condition::ControlCreatureWithPowerAtLeast(required_power) => Some(Condition::YouControl(
-            crate::target::ObjectFilter::creature().with_power(
-                crate::filter::Comparison::GreaterThanOrEqual(*required_power as i32),
-            ),
-        )),
-        _ => None,
-    }
-}
-
 fn assert_condition_variant_coverage(condition: &Condition) {
     match condition {
         Condition::YouControl(..) => {}
@@ -268,10 +223,6 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
         Condition::TriggeringObjectHadCounters { .. } => {}
-        Condition::ControlLandWithSubtype(..) => {}
-        Condition::ControlAtLeastArtifacts(..) => {}
-        Condition::ControlAtLeastLands(..) => {}
-        Condition::ControlCreatureWithPowerAtLeast(..) => {}
         Condition::ControlCreaturesTotalPowerAtLeast(..) => {}
         Condition::CardInYourGraveyard { .. } => {}
         Condition::ActivationTiming(..) => {}
@@ -333,6 +284,10 @@ pub struct ExternalEvaluationOptions {
 pub struct ExternalEvaluationContext<'a> {
     pub controller: PlayerId,
     pub source: ObjectId,
+    /// Player currently being attacked (if evaluation occurs in an attack-defender context).
+    pub defending_player: Option<PlayerId>,
+    /// Player currently attacking (if different from `controller` in a delegated context).
+    pub attacking_player: Option<PlayerId>,
     /// The `FilterContext.source` used when matching ObjectFilters.
     ///
     /// This is intentionally configurable to preserve legacy semantics:
@@ -378,10 +333,6 @@ pub fn evaluate_condition_external(
         return result;
     }
 
-    if let Some(lowered) = lower_legacy_activation_condition(condition) {
-        return evaluate_condition_external(game, &lowered, ctx);
-    }
-
     match condition {
         Condition::XValueAtLeast(_) => false, // X not available in static context
         Condition::ThisSpellWasKicked => game
@@ -425,23 +376,20 @@ pub fn evaluate_condition_external(
             cast_count >= *count
         }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
-            else {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
             game.players_tapped_land_for_mana_this_turn
                 .contains(&player_id)
         }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
-            else {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
             player_had_land_enter_battlefield_this_turn(game, player_id)
         }
         Condition::PlayerCardsInHandOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
-            else {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
             game.player(player_id)
@@ -449,8 +397,7 @@ pub fn evaluate_condition_external(
                 .unwrap_or(false)
         }
         Condition::PlayerCardsInHandOrFewer { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
-            else {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
             game.player(player_id)
@@ -458,8 +405,7 @@ pub fn evaluate_condition_external(
                 .unwrap_or(false)
         }
         Condition::PlayerHasLessLifeThanYou { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
-            else {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
             let you_life = game.player(ctx.controller).map(|p| p.life).unwrap_or(0);
@@ -467,8 +413,7 @@ pub fn evaluate_condition_external(
             other_life < you_life
         }
         Condition::PlayerHasCitysBlessing { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
-            else {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
             game.has_citys_blessing(player_id)
@@ -496,48 +441,6 @@ pub fn evaluate_condition_external(
                 snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
             }),
 
-        Condition::ControlLandWithSubtype(required_subtypes) => {
-            game.battlefield.iter().any(|&id| {
-                game.object(id).is_some_and(|obj| {
-                    obj.controller == ctx.controller
-                        && obj.is_land()
-                        && required_subtypes
-                            .iter()
-                            .any(|subtype| obj.has_subtype(*subtype))
-                })
-            })
-        }
-        Condition::ControlAtLeastArtifacts(required_count) => {
-            let controlled_artifacts = game
-                .battlefield
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| {
-                    obj.controller == ctx.controller && obj.card_types.contains(&CardType::Artifact)
-                })
-                .count() as u32;
-            controlled_artifacts >= *required_count
-        }
-        Condition::ControlAtLeastLands(required_count) => {
-            let controlled_lands = game
-                .battlefield
-                .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| obj.controller == ctx.controller && obj.is_land())
-                .count() as u32;
-            controlled_lands >= *required_count
-        }
-        Condition::ControlCreatureWithPowerAtLeast(required_power) => {
-            game.battlefield.iter().any(|&id| {
-                game.object(id).is_some_and(|obj| {
-                    obj.controller == ctx.controller
-                        && obj.is_creature()
-                        && obj
-                            .power()
-                            .is_some_and(|power| power >= *required_power as i32)
-                })
-            })
-        }
         Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
             let total_power = game
                 .battlefield
@@ -552,8 +455,7 @@ pub fn evaluate_condition_external(
             use crate::types::Subtype;
             use std::collections::HashSet;
 
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
-            else {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
 
@@ -580,8 +482,7 @@ pub fn evaluate_condition_external(
             seen.len() >= *count as usize
         }
         Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
-            let Some(player_id) = resolve_condition_player_simple(game, ctx.controller, player)
-            else {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
             };
             count_distinct_card_types_in_graveyard(game, player_id) >= *count as usize
@@ -603,6 +504,189 @@ pub fn evaluate_condition_external(
                 card_type_match && subtype_match
             })
         }),
+        Condition::PlayerControls { player, filter } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            let opponents: Vec<PlayerId> = game
+                .players
+                .iter()
+                .filter(|p| p.id != player_id)
+                .map(|p| p.id)
+                .collect();
+            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
+                .with_source(ctx.source)
+                .with_opponents(opponents);
+            if *player == PlayerFilter::IteratedPlayer {
+                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
+            }
+            condition_candidate_ids_for_zone(game, filter.zone)
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .any(|obj| filter.matches(obj, &filter_ctx, game))
+        }
+        Condition::PlayerControlsAtLeast {
+            player,
+            filter,
+            count,
+        } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            let opponents: Vec<PlayerId> = game
+                .players
+                .iter()
+                .filter(|p| p.id != player_id)
+                .map(|p| p.id)
+                .collect();
+            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
+                .with_source(ctx.source)
+                .with_opponents(opponents);
+            if *player == PlayerFilter::IteratedPlayer {
+                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
+            }
+            let matches = condition_candidate_ids_for_zone(game, filter.zone)
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                .count();
+            matches >= *count as usize
+        }
+        Condition::PlayerControlsExactly {
+            player,
+            filter,
+            count,
+        } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            let opponents: Vec<PlayerId> = game
+                .players
+                .iter()
+                .filter(|p| p.id != player_id)
+                .map(|p| p.id)
+                .collect();
+            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
+                .with_source(ctx.source)
+                .with_opponents(opponents);
+            if *player == PlayerFilter::IteratedPlayer {
+                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
+            }
+            let matches = condition_candidate_ids_for_zone(game, filter.zone)
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                .count();
+            matches == *count as usize
+        }
+        Condition::PlayerControlsAtLeastWithDifferentPowers {
+            player,
+            filter,
+            count,
+        } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            let opponents: Vec<PlayerId> = game
+                .players
+                .iter()
+                .filter(|p| p.id != player_id)
+                .map(|p| p.id)
+                .collect();
+            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
+                .with_source(ctx.source)
+                .with_opponents(opponents);
+            if *player == PlayerFilter::IteratedPlayer {
+                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
+            }
+            count_distinct_matching_powers(game, player_id, filter, &filter_ctx) >= *count as usize
+        }
+        Condition::PlayerControlsMost { player, filter } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            let opponents: Vec<PlayerId> = game
+                .players
+                .iter()
+                .filter(|p| p.id != player_id)
+                .map(|p| p.id)
+                .collect();
+            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
+                .with_source(ctx.source)
+                .with_opponents(opponents);
+            if *player == PlayerFilter::IteratedPlayer {
+                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
+            }
+            let your_count = condition_candidate_ids_for_zone(game, filter.zone)
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| condition_object_matches_player_zone(obj, player_id, filter.zone))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                .count();
+            game.players.iter().filter(|p| p.id != player_id).all(|p| {
+                let other_id = p.id;
+                let other_opponents: Vec<PlayerId> = game
+                    .players
+                    .iter()
+                    .filter(|q| q.id != other_id)
+                    .map(|q| q.id)
+                    .collect();
+                let mut other_ctx = crate::filter::FilterContext::new(other_id)
+                    .with_source(ctx.source)
+                    .with_opponents(other_opponents);
+                if *player == PlayerFilter::IteratedPlayer {
+                    other_ctx = other_ctx.with_iterated_player(Some(other_id));
+                }
+                let other_count = condition_candidate_ids_for_zone(game, filter.zone)
+                    .iter()
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| condition_object_matches_player_zone(obj, other_id, filter.zone))
+                    .filter(|obj| filter.matches(obj, &other_ctx, game))
+                    .count();
+                your_count >= other_count
+            })
+        }
+        Condition::PlayerOwnsCardNamedInZones {
+            player,
+            name,
+            zones,
+        } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            let opponents: Vec<PlayerId> = game
+                .players
+                .iter()
+                .filter(|p| p.id != player_id)
+                .map(|p| p.id)
+                .collect();
+            let mut filter_ctx = crate::filter::FilterContext::new(player_id)
+                .with_source(ctx.source)
+                .with_opponents(opponents);
+            if *player == PlayerFilter::IteratedPlayer {
+                filter_ctx = filter_ctx.with_iterated_player(Some(player_id));
+            }
+            if zones.is_empty() {
+                return false;
+            }
+
+            let mut filter = crate::target::ObjectFilter::default().named(name.clone());
+            for zone in zones {
+                filter.zone = Some(*zone);
+                let has_matching = condition_candidate_ids_for_zone(game, Some(*zone))
+                    .iter()
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| obj.owner == player_id)
+                    .any(|obj| filter.matches(obj, &filter_ctx, game));
+                if !has_matching {
+                    return false;
+                }
+            }
+            true
+        }
         Condition::ActivationTiming(timing) => {
             if ctx.options.ignore_timing {
                 return true;
@@ -724,13 +808,7 @@ pub fn evaluate_condition_external(
         | Condition::TargetSpellManaSpentToCastAtLeast { .. }
         | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures
-        | Condition::TargetManaValueLteColorsSpentToCastThisSpell
-        | Condition::PlayerControls { .. }
-        | Condition::PlayerControlsAtLeast { .. }
-        | Condition::PlayerControlsExactly { .. }
-        | Condition::PlayerControlsAtLeastWithDifferentPowers { .. }
-        | Condition::PlayerControlsMost { .. }
-        | Condition::PlayerOwnsCardNamedInZones { .. } => false,
+        | Condition::TargetManaValueLteColorsSpentToCastThisSpell => false,
         Condition::Custom(_)
         | Condition::Unmodeled(_)
         | Condition::LifeTotalOrLess(_)
@@ -921,10 +999,6 @@ fn evaluate_condition_simple(
         },
     ) {
         return result;
-    }
-
-    if let Some(lowered) = lower_legacy_activation_condition(condition) {
-        return evaluate_condition_simple(game, &lowered, controller, source);
     }
 
     match condition {
@@ -1222,11 +1296,7 @@ fn evaluate_condition_simple(
         Condition::TriggeringObjectWasEnchanted | Condition::TriggeringObjectHadCounters { .. } => {
             false
         }
-        Condition::ControlLandWithSubtype(_)
-        | Condition::ControlAtLeastArtifacts(_)
-        | Condition::ControlAtLeastLands(_)
-        | Condition::ControlCreatureWithPowerAtLeast(_)
-        | Condition::ControlCreaturesTotalPowerAtLeast(_)
+        Condition::ControlCreaturesTotalPowerAtLeast(_)
         | Condition::CardInYourGraveyard { .. }
         | Condition::ActivationTiming(_)
         | Condition::MaxActivationsPerTurn(_)
@@ -1326,6 +1396,18 @@ fn resolve_condition_player_simple(
     }
 }
 
+fn resolve_condition_player_external(
+    game: &GameState,
+    ctx: &ExternalEvaluationContext<'_>,
+    player: &PlayerFilter,
+) -> Option<PlayerId> {
+    match player {
+        PlayerFilter::Defending => ctx.defending_player,
+        PlayerFilter::Attacking => Some(ctx.attacking_player.unwrap_or(ctx.controller)),
+        _ => resolve_condition_player_simple(game, ctx.controller, player),
+    }
+}
+
 /// Evaluate a condition.
 fn evaluate_condition(
     game: &GameState,
@@ -1363,10 +1445,6 @@ fn evaluate_condition(
         },
     ) {
         return Ok(result);
-    }
-
-    if let Some(lowered) = lower_legacy_activation_condition(condition) {
-        return evaluate_condition(game, &lowered, ctx);
     }
 
     match condition {
@@ -1832,45 +1910,6 @@ fn evaluate_condition(
             .is_some_and(|snapshot| {
                 snapshot.counters.get(counter_type).copied().unwrap_or(0) >= *min_count
             })),
-        Condition::ControlLandWithSubtype(required_subtypes) => {
-            Ok(game.battlefield.iter().any(|&id| {
-                game.object(id).is_some_and(|obj| {
-                    obj.controller == ctx.controller
-                        && obj.is_land()
-                        && required_subtypes
-                            .iter()
-                            .any(|subtype| obj.has_subtype(*subtype))
-                })
-            }))
-        }
-        Condition::ControlAtLeastArtifacts(required_count) => Ok(game
-            .battlefield
-            .iter()
-            .filter_map(|&id| game.object(id))
-            .filter(|obj| {
-                obj.controller == ctx.controller
-                    && obj.card_types.contains(&crate::types::CardType::Artifact)
-            })
-            .count() as u32
-            >= *required_count),
-        Condition::ControlAtLeastLands(required_count) => Ok(game
-            .battlefield
-            .iter()
-            .filter_map(|&id| game.object(id))
-            .filter(|obj| obj.controller == ctx.controller && obj.is_land())
-            .count() as u32
-            >= *required_count),
-        Condition::ControlCreatureWithPowerAtLeast(required_power) => {
-            Ok(game.battlefield.iter().any(|&id| {
-                game.object(id).is_some_and(|obj| {
-                    obj.controller == ctx.controller
-                        && obj.is_creature()
-                        && obj
-                            .power()
-                            .is_some_and(|power| power >= *required_power as i32)
-                })
-            }))
-        }
         Condition::ControlCreaturesTotalPowerAtLeast(required_power) => {
             let total_power = game
                 .battlefield

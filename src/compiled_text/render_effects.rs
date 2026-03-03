@@ -6895,47 +6895,6 @@ fn describe_mana_activation_condition(condition: &crate::ConditionExpr) -> Strin
                 }
             }
         }
-        crate::ConditionExpr::ControlLandWithSubtype(subtypes) => {
-            let names = subtypes
-                .iter()
-                .map(|subtype| format!("{subtype:?}"))
-                .collect::<Vec<_>>();
-            match names.len() {
-                0 => "Activate only if you control a land of the required subtype".to_string(),
-                1 => format!("Activate only if you control a {}", names[0]),
-                2 => format!(
-                    "Activate only if you control a {} or a {}",
-                    names[0], names[1]
-                ),
-                _ => {
-                    let mut list = names[..names.len() - 1]
-                        .iter()
-                        .map(|name| format!("a {name}"))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    list.push_str(", or a ");
-                    list.push_str(names.last().expect("last subtype name"));
-                    format!("Activate only if you control {list}")
-                }
-            }
-        }
-        crate::ConditionExpr::ControlAtLeastArtifacts(count) => {
-            if *count == 1 {
-                "Activate only if you control an artifact".to_string()
-            } else {
-                format!("Activate only if you control {count} or more artifacts")
-            }
-        }
-        crate::ConditionExpr::ControlAtLeastLands(count) => {
-            if *count == 1 {
-                "Activate only if you control a land".to_string()
-            } else {
-                format!("Activate only if you control {count} or more lands")
-            }
-        }
-        crate::ConditionExpr::ControlCreatureWithPowerAtLeast(power) => {
-            format!("Activate only if you control a creature with power {power} or greater")
-        }
         crate::ConditionExpr::ControlCreaturesTotalPowerAtLeast(power) => {
             format!("Activate only if creatures you control have total power {power} or greater")
         }

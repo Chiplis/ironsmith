@@ -4,7 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 
 export default function DecisionPanel() {
-  const { state, status, cancelDecision } = useGame();
+  const { state, cancelDecision } = useGame();
   const decision = state?.decision;
   const players = state?.players || [];
   const perspective = state?.perspective;
@@ -50,12 +50,6 @@ export default function DecisionPanel() {
         </div>
       </ScrollArea>
 
-      <div
-        className="text-[14px] shrink-0 px-1 py-0.5 truncate"
-        style={{ color: status.isError ? "#ffb5c5" : "#d5e4f8" }}
-      >
-        {status.msg}
-      </div>
     </section>
   );
 }

@@ -559,6 +559,8 @@ fn static_condition_is_active(
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller,
         source,
+        defending_player: None,
+        attacking_player: None,
         filter_source: Some(source),
         triggering_event: None,
         trigger_identity: None,
@@ -1315,6 +1317,8 @@ impl StaticAbilityKind for CopyActivatedAbilities {
         let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
             controller,
             source,
+            defending_player: None,
+            attacking_player: None,
             filter_source: Some(source),
             triggering_event: None,
             trigger_identity: None,

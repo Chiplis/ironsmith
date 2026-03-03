@@ -143,6 +143,8 @@ fn mana_ability_condition_met(
             let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
                 controller: source.controller,
                 source: source.id,
+                defending_player: None,
+                attacking_player: None,
                 filter_source: Some(source.id),
                 triggering_event: None,
                 trigger_identity: None,

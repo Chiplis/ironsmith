@@ -278,6 +278,8 @@ fn cost_modifier_condition_is_active(
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller: source_obj.controller,
         source,
+        defending_player: None,
+        attacking_player: None,
         filter_source: Some(source),
         triggering_event: None,
         trigger_identity: None,
@@ -746,6 +748,8 @@ fn this_spell_condition_eval_ctx<'a>(
     crate::condition_eval::ExternalEvaluationContext {
         controller,
         source,
+        defending_player: None,
+        attacking_player: None,
         filter_source: Some(source),
         triggering_event: None,
         trigger_identity: None,

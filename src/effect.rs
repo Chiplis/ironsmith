@@ -1733,18 +1733,6 @@ pub enum Condition {
         min_count: u32,
     },
 
-    /// Mana ability activation condition: "Activate only if you control a Plains or a Swamp."
-    ControlLandWithSubtype(Vec<crate::types::Subtype>),
-
-    /// Mana ability activation condition: "Activate only if you control N or more artifacts."
-    ControlAtLeastArtifacts(u32),
-
-    /// Mana ability activation condition: "Activate only if you control N or more lands."
-    ControlAtLeastLands(u32),
-
-    /// Mana ability activation condition: "Activate only if you control a creature with power 4 or greater."
-    ControlCreatureWithPowerAtLeast(u32),
-
     /// Mana ability activation condition: "Activate only if creatures you control have total power 8 or greater."
     ControlCreaturesTotalPowerAtLeast(u32),
 

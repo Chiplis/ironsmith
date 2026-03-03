@@ -7046,20 +7046,6 @@ fn describe_condition(condition: &Condition) -> String {
             "the triggering object had {min_count} or more {} counters",
             counter_type.description()
         ),
-        Condition::ControlLandWithSubtype(subtypes) => {
-            let types = subtypes
-                .iter()
-                .map(|st| format!("{st:?}"))
-                .collect::<Vec<_>>();
-            format!("you control a land with subtype {}", join_with_or(&types))
-        }
-        Condition::ControlAtLeastArtifacts(count) => {
-            format!("you control {count} or more artifacts")
-        }
-        Condition::ControlAtLeastLands(count) => format!("you control {count} or more lands"),
-        Condition::ControlCreatureWithPowerAtLeast(power) => format!(
-            "you control a creature with power {power} or greater"
-        ),
         Condition::ControlCreaturesTotalPowerAtLeast(power) => format!(
             "creatures you control have total power {power} or greater"
         ),

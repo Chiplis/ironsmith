@@ -3,7 +3,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import StackCard from "@/components/cards/StackCard";
 
 export default function StackPanel({ onInspect }) {
-  const { state } = useGame();
+  const { state, status, setStatus } = useGame();
   const objects = state?.stack_objects || [];
   const previews = state?.stack_preview || [];
 
@@ -30,6 +30,22 @@ export default function StackPanel({ onInspect }) {
               : null}
         </div>
       </ScrollArea>
+      {status.msg && (
+        <div
+          className="text-[14px] shrink-0 px-1 py-0.5 break-words relative"
+          style={{ color: status.isError ? "#ffb5c5" : "#d5e4f8" }}
+        >
+          {status.msg}
+          {status.isError && (
+            <span
+              className="absolute top-0 right-0 cursor-pointer text-[#f76969] hover:text-[#ff9999] px-1 leading-none text-[16px]"
+              onClick={() => setStatus("")}
+            >
+              ×
+            </span>
+          )}
+        </div>
+      )}
     </section>
   );
 }

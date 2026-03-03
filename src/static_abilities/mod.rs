@@ -399,11 +399,6 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         false
     }
 
-    /// Returns required land subtype for "can't attack unless defending player controls ...".
-    fn required_defending_player_land_subtype_for_attack(&self) -> Option<crate::types::Subtype> {
-        None
-    }
-
     /// Defender-specific attack legality hook for "can't attack unless ...".
     ///
     /// Return:
@@ -909,12 +904,6 @@ impl StaticAbility {
         self.0.is_unblockable()
     }
 
-    pub fn required_defending_player_land_subtype_for_attack(
-        &self,
-    ) -> Option<crate::types::Subtype> {
-        self.0.required_defending_player_land_subtype_for_attack()
-    }
-
     pub fn can_attack_specific_defender(
         &self,
         game: &GameState,
@@ -1355,9 +1344,16 @@ impl StaticAbility {
     pub fn cant_attack_unless_defending_player_controls_land_subtype(
         subtype: crate::types::Subtype,
     ) -> Self {
-        Self::new(CantAttackUnlessDefendingPlayerControlsLandSubtype::new(
-            subtype,
-        ))
+        Self::cant_attack_unless_condition(
+            CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                DefendingPlayerAttackCondition::Controls(
+                    crate::filter::ObjectFilter::default()
+                        .with_type(crate::types::CardType::Land)
+                        .with_subtype(subtype),
+                ),
+            ),
+            "",
+        )
     }
 
     pub fn cant_attack_unless_condition(

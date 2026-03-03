@@ -813,6 +813,8 @@ pub(crate) fn can_activate_ability_with_restrictions(
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller,
         source,
+        defending_player: None,
+        attacking_player: None,
         filter_source: Some(source),
         triggering_event: None,
         trigger_identity: None,
@@ -2616,6 +2618,8 @@ fn check_mana_ability_condition_for_potential(
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller: player,
         source,
+        defending_player: None,
+        attacking_player: None,
         filter_source: Some(source),
         triggering_event: None,
         trigger_identity: None,

@@ -650,6 +650,8 @@ fn check_mana_ability_condition(
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller: player,
         source,
+        defending_player: None,
+        attacking_player: None,
         filter_source: Some(source),
         triggering_event: None,
         trigger_identity: None,

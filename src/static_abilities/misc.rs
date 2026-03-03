@@ -614,6 +614,8 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessConditionMatcher {
         let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
             controller: ctx.controller,
             source,
+            defending_player: None,
+            attacking_player: None,
             filter_source: None,
             triggering_event: None,
             trigger_identity: None,
@@ -921,6 +923,8 @@ impl ReplacementMatcher for ThisWouldEnterWithCountersIfConditionMatcher {
         let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
             controller: ctx.controller,
             source,
+            defending_player: None,
+            attacking_player: None,
             filter_source: None,
             triggering_event: None,
             trigger_identity: None,

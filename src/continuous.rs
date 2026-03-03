@@ -1079,6 +1079,8 @@ fn effect_applies_to_direct(
         let ctx = crate::condition_eval::ExternalEvaluationContext {
             controller: effect.controller,
             source: effect.source,
+            defending_player: None,
+            attacking_player: None,
             filter_source: Some(effect.source),
             triggering_event: None,
             trigger_identity: None,

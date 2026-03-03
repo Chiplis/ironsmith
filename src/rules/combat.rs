@@ -404,26 +404,6 @@ pub fn can_attack_defending_player(
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| get_static_abilities(creature));
 
-    for required_land_subtype in abilities
-        .iter()
-        .filter_map(|ability| ability.required_defending_player_land_subtype_for_attack())
-    {
-        let defending_has_required_land = game
-            .battlefield
-            .iter()
-            .filter_map(|&id| game.object(id))
-            .any(|obj| {
-                obj.controller == defending_player
-                    && game.object_has_card_type(obj.id, CardType::Land)
-                    && game
-                        .calculated_subtypes(obj.id)
-                        .contains(&required_land_subtype)
-            });
-        if !defending_has_required_land {
-            return false;
-        }
-    }
-
     for ability in &abilities {
         if let Some(can_attack) = ability.can_attack_specific_defender(
             game,
