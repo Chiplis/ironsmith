@@ -7,7 +7,7 @@ export default function PhaseTrack() {
   const active = state ? normalizePhaseStep(state.phase, state.step) : null;
 
   return (
-    <section className="border border-[#42566f] bg-[#0e141d] grid grid-cols-8 gap-px min-h-[40px]">
+    <section className="border border-[#42566f] bg-[#0e141d] grid grid-cols-8 gap-px min-h-[24px]">
       {PHASE_TRACK.map((name) => (
         <div
           key={name}

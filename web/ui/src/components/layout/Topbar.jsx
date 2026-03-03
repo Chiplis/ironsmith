@@ -1,5 +1,4 @@
 import { useGame } from "@/context/GameContext";
-import { formatStep } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,7 +13,6 @@ export default function Topbar({
   startingLife,
   setStartingLife,
   onReset,
-  onLoadDemoDecks,
   onAdvance,
   onChangePerspective,
   onRefresh,
@@ -62,7 +60,6 @@ export default function Topbar({
       />
 
       <Badge variant="secondary" className={pill} onClick={onReset}>Reset</Badge>
-      <Badge variant="secondary" className={pill} onClick={onLoadDemoDecks}>Decks</Badge>
       <Badge variant="secondary" className={pill} onClick={onEnterDeckLoading}>
         {deckLoadingMode ? "Cancel Load" : "Load Decks"}
       </Badge>
@@ -115,16 +112,6 @@ export default function Topbar({
       <Badge variant="secondary" className="text-[13px] uppercase">
         View {me?.name || "-"}
       </Badge>
-      <Badge variant="secondary" className="text-[13px] uppercase">
-        Turn {state?.turn_number ?? "-"}
-      </Badge>
-      <Badge variant="secondary" className="text-[13px] uppercase">
-        Phase {state?.phase ?? "-"}
-      </Badge>
-      <Badge variant="secondary" className="text-[13px] uppercase">
-        Step {formatStep(state?.step)}
-      </Badge>
-
       <Badge variant="secondary" className={pill} onClick={onToggleLog}>Log</Badge>
     </header>
   );

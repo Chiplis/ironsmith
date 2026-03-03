@@ -237,7 +237,6 @@ export default function Shell() {
         startingLife={startingLife}
         setStartingLife={setStartingLife}
         onReset={handleReset}
-        onLoadDemoDecks={handleLoadDemoDecks}
         onAdvance={handleAdvance}
         onChangePerspective={handleChangePerspective}
         onRefresh={() => refresh("Refreshed")}

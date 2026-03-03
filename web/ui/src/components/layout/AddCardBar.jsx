@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
+import { formatStep } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -102,6 +103,18 @@ export default function AddCardBar({ zoneView, setZoneView }) {
         {semanticThreshold > 0 ? `${Math.round(semanticThreshold * 100)}%` : "Off"}
         {" "}({cardsMeetingThreshold})
       </span>
+
+      <span className="mx-1 text-muted-foreground/40">|</span>
+
+      <Badge variant="secondary" className="text-[13px] uppercase">
+        Turn {state?.turn_number ?? "-"}
+      </Badge>
+      <Badge variant="secondary" className="text-[13px] uppercase">
+        Phase {state?.phase ?? "-"}
+      </Badge>
+      <Badge variant="secondary" className="text-[13px] uppercase">
+        Step {formatStep(state?.step)}
+      </Badge>
 
       <div className="flex-1" />
 
