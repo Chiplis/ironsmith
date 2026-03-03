@@ -37,12 +37,12 @@ function OpponentSlot({ player, selectedObjectId, onInspect, zoneView }) {
   return (
     <div className="border border-[#2b3e55] bg-gradient-to-b from-[#101826] to-[#0a121d] p-1.5 grid gap-1.5 min-h-0 h-full" style={{ gridTemplateRows: "auto minmax(0,1fr)", alignContent: "stretch" }}>
       <div className="flex items-center gap-2">
-        <span className="text-[18px] font-bold leading-none text-[#f5d08b] tabular-nums">{player.life}</span>
-        <span className="text-[12px] text-[#a4bdd7] uppercase tracking-wider font-bold">
+        <span className="text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums">{player.life}</span>
+        <span className="text-[16px] text-[#a4bdd7] uppercase tracking-wider font-bold">
           {player.name}
           {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
         </span>
-        <span className="text-[11px] text-muted-foreground ml-auto">{cards.length} cards</span>
+        <span className="text-[14px] text-muted-foreground ml-auto">{cards.length} cards</span>
       </div>
       <BattlefieldRow cards={cards} compact selectedObjectId={selectedObjectId} onInspect={onInspect} />
     </div>

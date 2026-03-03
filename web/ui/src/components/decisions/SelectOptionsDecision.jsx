@@ -41,14 +41,14 @@ function SingleSelectDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-1">
       {decision.description && (
-        <div className="text-[12px] text-muted-foreground mb-1">{decision.description}</div>
+        <div className="text-[16px] text-muted-foreground mb-1">{decision.description}</div>
       )}
       {options.map((opt) => (
         <Button
           key={opt.index}
           variant="outline"
           size="sm"
-          className="h-7 text-[11px] justify-start px-2 whitespace-normal text-left"
+          className="h-7 text-[14px] justify-start px-2 whitespace-normal text-left"
           disabled={!canAct || !opt.legal}
           onClick={() =>
             dispatch(
@@ -83,16 +83,16 @@ function MultiSelectDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-2">
       {decision.description && (
-        <div className="text-[12px] text-muted-foreground">{decision.description}</div>
+        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
       )}
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-[14px] text-muted-foreground">
         Select {min === max ? min : `${min}-${max}`}
       </div>
       <div className="flex flex-col gap-1">
         {options.map((opt) => (
           <label
             key={opt.index}
-            className={`flex items-center gap-2 text-[11px] p-1 border rounded-sm cursor-pointer ${
+            className={`flex items-center gap-2 text-[14px] p-1 border rounded-sm cursor-pointer ${
               opt.legal ? "border-game-line-2 hover:border-game-line" : "opacity-50"
             } ${selected.has(opt.index) ? "border-primary bg-primary/10" : ""}`}
           >
@@ -109,7 +109,7 @@ function MultiSelectDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct || selected.size < min || selected.size > max}
         onClick={() =>
           dispatch(
@@ -144,19 +144,19 @@ function OrderingDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-2">
       {decision.description && (
-        <div className="text-[12px] text-muted-foreground">{decision.description}</div>
+        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
       )}
       <div className="flex flex-col gap-1">
         {order.map((optIndex, pos) => {
           const opt = options.find((o) => o.index === optIndex);
           if (!opt) return null;
           return (
-            <div key={optIndex} className="flex items-center gap-1.5 text-[11px] p-1 border border-game-line-2 rounded-sm">
+            <div key={optIndex} className="flex items-center gap-1.5 text-[14px] p-1 border border-game-line-2 rounded-sm">
               <span className="flex-1">{pos + 1}. {opt.description}</span>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-5 w-5 p-0 text-[10px]"
+                className="h-5 w-5 p-0 text-[13px]"
                 disabled={!canAct || pos === 0}
                 onClick={() => move(pos, -1)}
               >
@@ -165,7 +165,7 @@ function OrderingDecision({ decision, canAct }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-5 w-5 p-0 text-[10px]"
+                className="h-5 w-5 p-0 text-[13px]"
                 disabled={!canAct || pos === order.length - 1}
                 onClick={() => move(pos, 1)}
               >
@@ -178,7 +178,7 @@ function OrderingDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct}
         onClick={() =>
           dispatch({ type: "select_options", option_indices: order.slice() }, "Order submitted")
@@ -213,18 +213,18 @@ function DistributeDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-2">
       {decision.description && (
-        <div className="text-[12px] text-muted-foreground">{decision.description}</div>
+        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
       )}
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-[14px] text-muted-foreground">
         Distribute {total} total
       </div>
       <div className="flex flex-col gap-1">
         {options.map((opt) => (
-          <label key={opt.index} className="flex items-center gap-2 text-[11px] p-1 border border-game-line-2 rounded-sm">
+          <label key={opt.index} className="flex items-center gap-2 text-[14px] p-1 border border-game-line-2 rounded-sm">
             <span className="flex-1">{opt.description}</span>
             <Input
               type="number"
-              className="h-6 w-14 text-[11px] bg-transparent text-center"
+              className="h-6 w-14 text-[14px] bg-transparent text-center"
               min={0}
               max={Number(opt.max_count ?? total)}
               value={counts[opt.index] || 0}
@@ -239,7 +239,7 @@ function DistributeDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct || assigned !== total}
         onClick={() => {
           if (assigned !== total) {
@@ -281,15 +281,15 @@ function CountersDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-2">
       {decision.description && (
-        <div className="text-[12px] text-muted-foreground">{decision.description}</div>
+        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
       )}
       <div className="flex flex-col gap-1">
         {options.map((opt) => (
-          <label key={opt.index} className="flex items-center gap-2 text-[11px] p-1 border border-game-line-2 rounded-sm">
+          <label key={opt.index} className="flex items-center gap-2 text-[14px] p-1 border border-game-line-2 rounded-sm">
             <span className="flex-1">{opt.description}</span>
             <Input
               type="number"
-              className="h-6 w-14 text-[11px] bg-transparent text-center"
+              className="h-6 w-14 text-[14px] bg-transparent text-center"
               min={0}
               max={Number(opt.max_count ?? maxTotal)}
               value={counts[opt.index] || 0}
@@ -304,7 +304,7 @@ function CountersDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct || total > maxTotal}
         onClick={() =>
           dispatch(
@@ -342,15 +342,15 @@ function RepeatableDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-2">
       {decision.description && (
-        <div className="text-[12px] text-muted-foreground">{decision.description}</div>
+        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
       )}
       <div className="flex flex-col gap-1">
         {options.map((opt) => (
-          <label key={opt.index} className="flex items-center gap-2 text-[11px] p-1 border border-game-line-2 rounded-sm">
+          <label key={opt.index} className="flex items-center gap-2 text-[14px] p-1 border border-game-line-2 rounded-sm">
             <span className="flex-1">{opt.description}</span>
             <Input
               type="number"
-              className="h-6 w-14 text-[11px] bg-transparent text-center"
+              className="h-6 w-14 text-[14px] bg-transparent text-center"
               min={0}
               max={Number(opt.max_count ?? maxTotal)}
               value={counts[opt.index] || 0}
@@ -365,7 +365,7 @@ function RepeatableDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct || total < (decision.min || 0) || total > maxTotal}
         onClick={() =>
           dispatch(

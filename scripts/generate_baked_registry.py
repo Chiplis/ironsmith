@@ -429,6 +429,60 @@ def write_generated_source(
     lines.append("    }")
     lines.append("}")
     lines.append("")
+    lines.append("pub fn try_compile_card_by_name(name: &str) -> Result<CardDefinition, String> {")
+    lines.append("    let texts = generated_card_texts();")
+    lines.append("    let normalized = name.trim();")
+    lines.append("")
+    lines.append("    for entry in &texts.singles {")
+    lines.append("        if entry.name.eq_ignore_ascii_case(normalized) {")
+    lines.append("            let builder = CardDefinitionBuilder::new(CardId::new(), &entry.name);")
+    lines.append("            match builder.parse_text(entry.block.clone()) {")
+    lines.append("                Ok(def) => {")
+    lines.append("                    if !super::generated_definition_is_supported(&def) {")
+    lines.append(
+        '                        return Err("card compiled but contains unsupported mechanics".to_string());'
+    )
+    lines.append("                    }")
+    lines.append("                    return Ok(def);")
+    lines.append("                }")
+    lines.append("                Err(e) => return Err(format!(\"{e:?}\")),")
+    lines.append("            }")
+    lines.append("        }")
+    lines.append("    }")
+    lines.append("")
+    lines.append("    for entry in &texts.flips {")
+    lines.append("        if entry.front_name.eq_ignore_ascii_case(normalized)")
+    lines.append("            || entry.back_name.eq_ignore_ascii_case(normalized)")
+    lines.append("            || entry.combined_name.eq_ignore_ascii_case(normalized)")
+    lines.append("        {")
+    lines.append("            let front_builder = CardDefinitionBuilder::new(CardId::new(), &entry.front_name);")
+    lines.append(
+        "            let front = front_builder.parse_text(entry.front_block.clone())"
+    )
+    lines.append(
+        '                .map_err(|e| format!("front face: {e:?}"))?;'
+    )
+    lines.append("            let back_builder = CardDefinitionBuilder::new(CardId::new(), &entry.back_name);")
+    lines.append(
+        "            back_builder.parse_text(entry.back_block.clone())"
+    )
+    lines.append(
+        '                .map_err(|e| format!("back face: {e:?}"))?;'
+    )
+    lines.append("            if !super::generated_definition_is_supported(&front) {")
+    lines.append(
+        '                return Err("card compiled but contains unsupported mechanics".to_string());'
+    )
+    lines.append("            }")
+    lines.append("            return Ok(front);")
+    lines.append("        }")
+    lines.append("    }")
+    lines.append("")
+    lines.append(
+        '    Err(format!("card \'{}\' not found in card database", name))'
+    )
+    lines.append("}")
+    lines.append("")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines), encoding="utf-8")

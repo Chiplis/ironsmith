@@ -21,7 +21,7 @@ export default function DecisionPanel() {
     <section className="flex-1 min-h-0 overflow-hidden flex flex-col gap-1.5">
       <div className="flex items-baseline gap-1.5 shrink-0">
         <h3 className="m-0 text-sm font-bold whitespace-nowrap">Decision</h3>
-        <span className="text-muted-foreground text-[11px] truncate">{metaText}</span>
+        <span className="text-muted-foreground text-[14px] truncate">{metaText}</span>
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
@@ -29,7 +29,7 @@ export default function DecisionPanel() {
           {decision ? (
             <DecisionRouter decision={decision} canAct={canAct} />
           ) : (
-            <div className="text-muted-foreground text-[12px] italic p-2">
+            <div className="text-muted-foreground text-[16px] italic p-2">
               Waiting for decision...
             </div>
           )}
@@ -37,7 +37,7 @@ export default function DecisionPanel() {
       </ScrollArea>
 
       <div
-        className="text-[11px] shrink-0 px-1 py-0.5 truncate"
+        className="text-[14px] shrink-0 px-1 py-0.5 truncate"
         style={{ color: status.isError ? "#ffb5c5" : "#d5e4f8" }}
       >
         {status.msg}

@@ -9,7 +9,7 @@ export default function StackPanel({ onInspect }) {
 
   return (
     <section className="flex-1 min-h-0 p-2 flex flex-col gap-1.5 overflow-hidden">
-      <h4 className="m-0 text-[#8ec4ff] uppercase tracking-widest text-[12px] font-bold shrink-0">
+      <h4 className="m-0 text-[#8ec4ff] uppercase tracking-widest text-[16px] font-bold shrink-0">
         The Stack
       </h4>
       <ScrollArea className="flex-1 min-h-0">
@@ -22,7 +22,7 @@ export default function StackPanel({ onInspect }) {
               ? previews.map((name, i) => (
                   <div
                     key={i}
-                    className="game-card w-full min-w-0 min-h-[60px] text-[11px] border-[#80a8d7] bg-gradient-to-b from-[#132237] to-[#0d1726] p-1.5"
+                    className="game-card w-full min-w-0 min-h-[60px] text-[14px] border-[#80a8d7] bg-gradient-to-b from-[#132237] to-[#0d1726] p-1.5"
                   >
                     <span className="relative z-2 leading-[1.12] text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">{name}</span>
                   </div>

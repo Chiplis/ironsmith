@@ -4,9 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 
-const pill = "text-[10px] uppercase cursor-pointer hover:brightness-125 transition-all select-none";
-const inputPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[10px] font-medium border-0 outline-none focus:ring-1 focus:ring-primary/50";
-const selectPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[10px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
+const pill = "text-[13px] uppercase cursor-pointer hover:brightness-125 transition-all select-none";
+const inputPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none focus:ring-1 focus:ring-primary/50";
+const selectPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 
 export default function Topbar({
   playerNames,
@@ -44,7 +44,7 @@ export default function Topbar({
 
   return (
     <header className="panel-gradient flex items-center gap-1.5 rounded px-2.5 py-1 flex-wrap">
-      <h1 className="m-0 text-[15px] uppercase tracking-wider whitespace-nowrap font-bold">
+      <h1 className="m-0 text-[20px] uppercase tracking-wider whitespace-nowrap font-bold">
         Maishik
       </h1>
 
@@ -98,7 +98,7 @@ export default function Topbar({
         <option value="ending">Ending</option>
         <option value="always">Always</option>
       </select>
-      <label className="flex items-center gap-1 text-muted-foreground text-[10px] whitespace-nowrap cursor-pointer uppercase">
+      <label className="flex items-center gap-1 text-muted-foreground text-[13px] whitespace-nowrap cursor-pointer uppercase">
         <Checkbox
           checked={autoPassEnabled}
           onCheckedChange={(v) => setAutoPassEnabled(!!v)}
@@ -109,19 +109,19 @@ export default function Topbar({
 
       <div className="flex-1" />
 
-      <Badge variant="secondary" className="text-[10px] uppercase">
+      <Badge variant="secondary" className="text-[13px] uppercase">
         Cards {compiledLabel}
       </Badge>
-      <Badge variant="secondary" className="text-[10px] uppercase">
+      <Badge variant="secondary" className="text-[13px] uppercase">
         View {me?.name || "-"}
       </Badge>
-      <Badge variant="secondary" className="text-[10px] uppercase">
+      <Badge variant="secondary" className="text-[13px] uppercase">
         Turn {state?.turn_number ?? "-"}
       </Badge>
-      <Badge variant="secondary" className="text-[10px] uppercase">
+      <Badge variant="secondary" className="text-[13px] uppercase">
         Phase {state?.phase ?? "-"}
       </Badge>
-      <Badge variant="secondary" className="text-[10px] uppercase">
+      <Badge variant="secondary" className="text-[13px] uppercase">
         Step {formatStep(state?.step)}
       </Badge>
 

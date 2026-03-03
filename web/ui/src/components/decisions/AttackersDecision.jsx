@@ -93,7 +93,7 @@ export default function AttackersDecision({ decision, canAct }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-[12px] text-muted-foreground">Declare attackers</div>
+      <div className="text-[16px] text-muted-foreground">Declare attackers</div>
       <div className="flex flex-col gap-1">
         {options.map((opt) => {
           const creatureId = Number(opt.creature);
@@ -109,7 +109,7 @@ export default function AttackersDecision({ decision, canAct }) {
                 variant="outline"
                 size="sm"
                 className={cn(
-                  "h-7 text-[11px] justify-start px-2",
+                  "h-7 text-[14px] justify-start px-2",
                   attacking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]",
                   opt.must_attack && "italic"
                 )}
@@ -119,7 +119,7 @@ export default function AttackersDecision({ decision, canAct }) {
                 {attacking ? <Swords className="size-3.5 inline mr-1" /> : ""}{name}
                 {opt.must_attack && " (must attack)"}
                 {attacking && decl && validTargets.length > 1 && (
-                  <span className="ml-1 text-[10px] text-muted-foreground inline-flex items-center gap-0.5">
+                  <span className="ml-1 text-[13px] text-muted-foreground inline-flex items-center gap-0.5">
                     <ArrowRight className="size-3" /> {attackTargetLabel(decl.target, players)}
                   </span>
                 )}
@@ -128,7 +128,7 @@ export default function AttackersDecision({ decision, canAct }) {
               {/* Target picker when multiple valid targets */}
               {isChoosingTarget && (
                 <div className="ml-4 flex flex-col gap-0.5">
-                  <div className="text-[10px] text-muted-foreground">Choose attack target:</div>
+                  <div className="text-[13px] text-muted-foreground">Choose attack target:</div>
                   {validTargets.map((target, tIdx) => {
                     const decoded = decodeAttackTargetChoice(target);
                     const label = attackTargetLabel(decoded, players);
@@ -137,7 +137,7 @@ export default function AttackersDecision({ decision, canAct }) {
                         key={tIdx}
                         variant="outline"
                         size="sm"
-                        className="h-5 text-[10px] justify-start px-2"
+                        className="h-5 text-[13px] justify-start px-2"
                         disabled={!canAct}
                         onClick={() => selectTarget(creatureId, target)}
                       >
@@ -153,7 +153,7 @@ export default function AttackersDecision({ decision, canAct }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-4 text-[9px] ml-4 text-muted-foreground"
+                  className="h-4 text-[12px] ml-4 text-muted-foreground"
                   disabled={!canAct}
                   onClick={() => changeTarget(opt)}
                 >
@@ -167,7 +167,7 @@ export default function AttackersDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct}
         onClick={() =>
           dispatch(

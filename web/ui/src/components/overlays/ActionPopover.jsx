@@ -32,7 +32,7 @@ export default function ActionPopover({ anchorRect, actions, onAction, onClose }
       className="fixed z-50 grid gap-1 p-2 min-w-[200px] max-w-[260px] border border-[#6284a8] bg-[#0d1520] shadow-lg rounded-sm"
       style={{ left: `${left}px`, top: `${top}px` }}
     >
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold pb-0.5 border-b border-game-line-2">
+      <div className="text-[13px] uppercase tracking-wider text-muted-foreground font-bold pb-0.5 border-b border-game-line-2">
         Available actions
       </div>
       {actions.map((action) => (
@@ -40,7 +40,7 @@ export default function ActionPopover({ anchorRect, actions, onAction, onClose }
           key={action.index}
           variant="outline"
           size="sm"
-          className="h-7 text-[11px] justify-start px-2 whitespace-normal text-left"
+          className="h-7 text-[14px] justify-start px-2 whitespace-normal text-left"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();

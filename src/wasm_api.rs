@@ -1473,6 +1473,10 @@ pub struct WasmGame {
     runner_pending_decision: bool,
     /// When true, cleanup discard decisions are auto-resolved with random cards.
     auto_cleanup_discard: bool,
+    /// Semantic similarity scores for each registered card (card name → score 0.0–1.0).
+    semantic_scores: HashMap<String, f32>,
+    /// User-configured minimum semantic threshold for card addition (0.0 = no filter).
+    semantic_threshold: f32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1510,6 +1514,8 @@ impl WasmGame {
             runner_awaiting_priority: false,
             runner_pending_decision: false,
             auto_cleanup_discard: true,
+            semantic_scores: HashMap::new(),
+            semantic_threshold: 0.0,
         }
     }
 
@@ -1589,6 +1595,16 @@ impl WasmGame {
             self.registry_preload_cursor = self
                 .registry
                 .preload_generated_cards_chunk(self.registry_preload_cursor, chunk_size);
+
+            // Score any newly registered cards.
+            for def in self.registry.all() {
+                let name = def.name();
+                if self.semantic_scores.contains_key(name) {
+                    continue;
+                }
+                let score = Self::compute_card_score(def);
+                self.semantic_scores.insert(name.to_string(), score);
+            }
         }
         self.preload_registry_status()
     }
@@ -1678,7 +1694,12 @@ impl WasmGame {
         let definition = self
             .find_card_definition(query)
             .cloned()
-            .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {query}")))?;
+            .ok_or_else(|| {
+                match crate::cards::CardRegistry::try_compile_card(query) {
+                    Ok(_) => JsValue::from_str(&format!("unknown card name: {query}")),
+                    Err(err) => JsValue::from_str(&err),
+                }
+            })?;
 
         let object_id = self.game.create_object_from_definition(
             &definition,
@@ -1727,7 +1748,28 @@ impl WasmGame {
         let definition = self
             .find_card_definition(query)
             .cloned()
-            .ok_or_else(|| JsValue::from_str(&format!("unknown card name: {query}")))?;
+            .ok_or_else(|| {
+                match crate::cards::CardRegistry::try_compile_card(query) {
+                    Ok(_) => JsValue::from_str(&format!("unknown card name: {query}")),
+                    Err(err) => JsValue::from_str(&err),
+                }
+            })?;
+
+        if self.semantic_threshold > 0.0 {
+            let score = self
+                .semantic_scores
+                .get(definition.name())
+                .copied()
+                .unwrap_or_else(|| Self::compute_card_score(&definition));
+            if score < self.semantic_threshold {
+                return Err(JsValue::from_str(&format!(
+                    "Card '{}' has fidelity {:.0}%, below threshold {:.0}%",
+                    definition.name(),
+                    score * 100.0,
+                    self.semantic_threshold * 100.0,
+                )));
+            }
+        }
 
         if skip_triggers {
             let object_id = self
@@ -1865,6 +1907,44 @@ impl WasmGame {
         self.auto_cleanup_discard = enabled;
     }
 
+    /// Set the semantic similarity threshold for card addition (0.0 = off).
+    #[wasm_bindgen(js_name = setSemanticThreshold)]
+    pub fn set_semantic_threshold(&mut self, threshold: f32) {
+        self.semantic_threshold = threshold.clamp(0.0, 1.0);
+    }
+
+    /// Get the current semantic threshold.
+    #[wasm_bindgen(js_name = getSemanticThreshold)]
+    pub fn get_semantic_threshold(&self) -> f32 {
+        self.semantic_threshold
+    }
+
+    /// Get the semantic score for a specific card. Returns -1.0 if not scored yet.
+    #[wasm_bindgen(js_name = getCardSemanticScore)]
+    pub fn get_card_semantic_score(&self, card_name: &str) -> f32 {
+        self.semantic_scores
+            .get(card_name)
+            .or_else(|| {
+                let lower = card_name.trim().to_lowercase();
+                self.semantic_scores
+                    .iter()
+                    .find(|(k, _)| k.to_lowercase() == lower)
+                    .map(|(_, v)| v)
+            })
+            .copied()
+            .unwrap_or(-1.0)
+    }
+
+    /// Get the count of registered cards meeting the current threshold.
+    #[wasm_bindgen(js_name = cardsMeetingThreshold)]
+    pub fn cards_meeting_threshold(&self) -> usize {
+        if self.semantic_threshold <= 0.0 {
+            return self.registry.len();
+        }
+        let t = self.semantic_threshold;
+        self.semantic_scores.values().filter(|&&s| s >= t).count()
+    }
+
     /// Switch local perspective to the next player.
     #[wasm_bindgen(js_name = switchPerspective)]
     pub fn switch_perspective(&mut self) -> Result<u8, JsValue> {
@@ -1983,6 +2063,18 @@ impl WasmGame {
 }
 
 impl WasmGame {
+    /// Compute the semantic similarity score for a card definition.
+    fn compute_card_score(def: &CardDefinition) -> f32 {
+        let oracle = &def.card.oracle_text;
+        if oracle.is_empty() {
+            return 1.0;
+        }
+        let compiled = crate::compiled_text::compiled_lines(def);
+        let (_oracle_cov, _compiled_cov, similarity, _delta, _mismatch) =
+            crate::semantic_compare::compare_semantics_scored(oracle, &compiled, None);
+        similarity
+    }
+
     fn has_demo_supported_cost_symbols(cost: &crate::mana::ManaCost) -> bool {
         !cost.pips().iter().flatten().any(|symbol| {
             matches!(
@@ -2052,6 +2144,17 @@ impl WasmGame {
             let Some(def) = self.registry.get(candidate.as_str()) else {
                 continue;
             };
+            // Skip cards below the semantic fidelity threshold.
+            if self.semantic_threshold > 0.0 {
+                let score = self
+                    .semantic_scores
+                    .get(def.name())
+                    .copied()
+                    .unwrap_or_else(|| Self::compute_card_score(def));
+                if score < self.semantic_threshold {
+                    continue;
+                }
+            }
             let canonical = def.name().to_string();
             let key = canonical.to_lowercase();
             if Self::is_strict_demo_spell_candidate(def) {
@@ -3318,18 +3421,28 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
             from_zone,
             casting_method,
         } => {
-            let method = match casting_method {
-                crate::alternative_cast::CastingMethod::Normal => "normal".to_string(),
-                crate::alternative_cast::CastingMethod::Alternative(index) => game
-                    .object(*spell_id)
-                    .and_then(|obj| obj.alternative_casts.get(*index))
-                    .map(|method| method.name().to_ascii_lowercase())
-                    .unwrap_or_else(|| format!("alternative #{index}")),
+            let name = object_name(game, *spell_id);
+            let mut qualifiers = Vec::new();
+
+            match casting_method {
+                crate::alternative_cast::CastingMethod::Normal => {
+                    if *from_zone != Zone::Hand {
+                        qualifiers.push(format!("from {}", zone_display_name(*from_zone)));
+                    }
+                }
+                crate::alternative_cast::CastingMethod::Alternative(index) => {
+                    let method_name = game
+                        .object(*spell_id)
+                        .and_then(|obj| obj.alternative_casts.get(*index))
+                        .map(|m| m.name().to_ascii_lowercase())
+                        .unwrap_or_else(|| format!("alternative #{index}"));
+                    qualifiers.push(method_name);
+                }
                 crate::alternative_cast::CastingMethod::GrantedEscape { .. } => {
-                    "granted escape".to_string()
+                    qualifiers.push("escape".to_string());
                 }
                 crate::alternative_cast::CastingMethod::GrantedFlashback => {
-                    "granted flashback".to_string()
+                    qualifiers.push("flashback".to_string());
                 }
                 crate::alternative_cast::CastingMethod::PlayFrom {
                     zone,
@@ -3340,20 +3453,19 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
                         let alt = game
                             .object(*spell_id)
                             .and_then(|obj| obj.alternative_casts.get(*index))
-                            .map(|method| method.name().to_ascii_lowercase())
+                            .map(|m| m.name().to_ascii_lowercase())
                             .unwrap_or_else(|| format!("alternative #{index}"));
-                        format!("play from {:?} ({alt})", zone)
-                    } else {
-                        format!("play from {:?}", zone)
+                        qualifiers.push(alt);
                     }
+                    qualifiers.push(format!("from {}", zone_display_name(*zone)));
                 }
-            };
-            format!(
-                "Cast {} ({:?}, {})",
-                object_name(game, *spell_id),
-                from_zone,
-                method
-            )
+            }
+
+            if qualifiers.is_empty() {
+                format!("Cast {}", name)
+            } else {
+                format!("Cast {} ({})", name, qualifiers.join(", "))
+            }
         }
         LegalAction::ActivateAbility {
             source,
@@ -3392,7 +3504,27 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
         LegalAction::TurnFaceUp { creature_id } => {
             format!("Turn face up {}", object_name(game, *creature_id))
         }
-        LegalAction::SpecialAction(action) => format!("Special action: {:?}", action),
+        LegalAction::SpecialAction(action) => match action {
+            crate::special_actions::SpecialAction::Suspend { card_id } => {
+                format!("Suspend {}", object_name(game, *card_id))
+            }
+            crate::special_actions::SpecialAction::Foretell { card_id } => {
+                format!("Foretell {}", object_name(game, *card_id))
+            }
+            _ => format!("Special action: {:?}", action),
+        },
+    }
+}
+
+fn zone_display_name(zone: Zone) -> &'static str {
+    match zone {
+        Zone::Library => "library",
+        Zone::Hand => "hand",
+        Zone::Battlefield => "battlefield",
+        Zone::Graveyard => "graveyard",
+        Zone::Exile => "exile",
+        Zone::Stack => "stack",
+        Zone::Command => "command zone",
     }
 }
 

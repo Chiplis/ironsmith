@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { Badge } from "@/components/ui/badge";
 
-const pill = "text-[10px] uppercase cursor-pointer hover:brightness-125 transition-all select-none";
+const pill = "text-[13px] uppercase cursor-pointer hover:brightness-125 transition-all select-none";
 
 function parseDeckList(text) {
   const cards = [];
@@ -63,15 +63,15 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
             style={{ gridTemplateRows: "auto minmax(0,1fr)" }}
           >
             <div className="flex justify-between items-baseline">
-              <span className="text-[12px] text-[#a4bdd7] uppercase tracking-wider font-bold">
+              <span className="text-[16px] text-[#a4bdd7] uppercase tracking-wider font-bold">
                 {player.name}
               </span>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-[14px] text-muted-foreground">
                 {cardCounts[i]} cards
               </span>
             </div>
             <textarea
-              className="w-full min-h-0 h-full bg-[#0b1118] border border-[#344a61] text-foreground text-[11px] p-2 rounded resize-none font-mono focus:outline-none focus:border-primary/50"
+              className="w-full min-h-0 h-full bg-[#0b1118] border border-[#344a61] text-foreground text-[14px] p-2 rounded resize-none font-mono focus:outline-none focus:border-primary/50"
               placeholder={`Paste ${player.name}'s deck list...\n\nMTGA / MTGO / Moxfield format:\n4 Lightning Bolt\n2 Counterspell\n20 Island`}
               value={texts[i] || ""}
               onChange={(e) => handleTextChange(i, e.target.value)}

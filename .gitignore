@@ -9,3 +9,4 @@ scripts/
 *.txt
 *.json
 *.csv
+web/ui/node_modules

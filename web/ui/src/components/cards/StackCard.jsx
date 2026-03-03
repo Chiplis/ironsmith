@@ -7,7 +7,7 @@ export default function StackCard({ entry, onClick }) {
 
   return (
     <div
-      className="game-card w-full min-w-0 min-h-[80px] text-[11px] border-[#80a8d7] bg-gradient-to-b from-[#132237] to-[#0d1726] cursor-pointer flex flex-col"
+      className="game-card w-full min-w-0 min-h-[80px] text-[14px] border-[#80a8d7] bg-gradient-to-b from-[#132237] to-[#0d1726] cursor-pointer flex flex-col"
       data-object-id={entry.id}
       data-card-name={name}
       onClick={() => onClick?.(entry.id)}
@@ -41,7 +41,7 @@ export default function StackCard({ entry, onClick }) {
 
       {scryfallUrl && (
         <a
-          className="absolute top-1 right-1 border border-[#4e6f93] bg-[#0a1118] text-[#9ec3ea] no-underline uppercase text-[9px] tracking-wide px-1 py-px rounded-sm leading-tight z-2 opacity-0 hover:opacity-100 transition-opacity"
+          className="absolute top-1 right-1 border border-[#4e6f93] bg-[#0a1118] text-[#9ec3ea] no-underline uppercase text-[12px] tracking-wide px-1 py-px rounded-sm leading-tight z-2 opacity-0 hover:opacity-100 transition-opacity"
           href={scryfallUrl}
           target="_blank"
           rel="noopener noreferrer"
@@ -60,11 +60,11 @@ export default function StackCard({ entry, onClick }) {
         <span className="leading-[1.12] text-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">{name}</span>
 
         {entry.ability_kind ? (
-          <span className="block text-[9px] italic text-[#c0a060] pt-0.5 leading-tight">
+          <span className="block text-[12px] italic text-[#c0a060] pt-0.5 leading-tight">
             {entry.ability_kind} ability
           </span>
         ) : entry.effect_text ? (
-          <span className="block text-[9px] text-[#8ab4e0] pt-0.5 leading-tight overflow-hidden text-ellipsis max-h-[3.6em]">
+          <span className="block text-[12px] text-[#8ab4e0] pt-0.5 leading-tight overflow-hidden text-ellipsis max-h-[3.6em]">
             {entry.effect_text}
           </span>
         ) : null}

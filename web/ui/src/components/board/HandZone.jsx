@@ -48,10 +48,10 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
     const handCards = player.hand_cards || [];
     return (
       <section className="border border-[#41566f] bg-[#10161f] p-2 grid gap-1.5">
-        <h3 className="m-0 text-[#a4bdd7] uppercase tracking-wider text-[12px] font-semibold">
+        <h3 className="m-0 text-[#a4bdd7] uppercase tracking-wider text-[16px] font-semibold">
           Your Hand
         </h3>
-        <div className="flex gap-1.5 flex-nowrap overflow-x-auto pb-0.5 min-h-[176px] items-end">
+        <div className="flex gap-1.5 flex-nowrap overflow-x-auto pb-0.5 min-h-[110px] items-end">
           {handCards.map((card) => {
             const plays = playableMap.get(Number(card.id)) || [];
             const isPlayable = plays.length > 0;
@@ -67,7 +67,7 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
             );
           })}
           {handCards.length === 0 && (
-            <div className="text-muted-foreground text-[13px] p-3 italic">Empty hand</div>
+            <div className="text-muted-foreground text-[17px] p-3 italic">Empty hand</div>
           )}
         </div>
 
@@ -87,17 +87,17 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
   const backs = Math.min(player.hand_size, 8);
   return (
     <section className="border border-[#41566f] bg-[#10161f] p-2 grid gap-1.5">
-      <h3 className="m-0 text-[#a4bdd7] uppercase tracking-wider text-[12px] font-semibold">
+      <h3 className="m-0 text-[#a4bdd7] uppercase tracking-wider text-[16px] font-semibold">
         Hand ({player.hand_size})
       </h3>
-      <div className="flex gap-1.5 flex-nowrap overflow-x-auto pb-0.5 min-h-[176px] items-end">
+      <div className="flex gap-1.5 flex-nowrap overflow-x-auto pb-0.5 min-h-[110px] items-end">
         {backs > 0
           ? Array.from({ length: backs }, (_, i) => (
-              <div key={i} className="game-card w-[92px] min-w-[92px] min-h-[126px] p-1 text-[11px] grid content-end">
+              <div key={i} className="game-card w-[92px] min-w-[92px] min-h-[126px] p-1 text-[14px] grid content-end">
                 <span className="card-label text-muted-foreground">Card</span>
               </div>
             ))
-          : <div className="text-muted-foreground text-[13px] p-3 italic">Empty hand</div>
+          : <div className="text-muted-foreground text-[17px] p-3 italic">Empty hand</div>
         }
       </div>
     </section>

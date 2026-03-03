@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, useMemo } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useWasmGame } from "@/hooks/useWasmGame";
 
 const GameContext = createContext(null);
@@ -108,6 +108,8 @@ export function GameProvider({ children }) {
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
   const [holdRule, setHoldRule] = useState("never");
+  const [semanticThreshold, setSemanticThresholdRaw] = useState(0);
+  const [cardsMeetingThreshold, setCardsMeetingThreshold] = useState(0);
   const logRef = useRef([]);
   const [logEntries, setLogEntries] = useState([]);
 
@@ -128,6 +130,29 @@ export function GameProvider({ children }) {
     },
     [pushLog]
   );
+
+  const setSemanticThreshold = useCallback(
+    async (value) => {
+      setSemanticThresholdRaw(value);
+      if (game && typeof game.setSemanticThreshold === "function") {
+        try {
+          await game.setSemanticThreshold(value);
+          const count = await game.cardsMeetingThreshold();
+          setCardsMeetingThreshold(count);
+        } catch (err) {
+          console.warn("setSemanticThreshold failed:", err);
+        }
+      }
+    },
+    [game]
+  );
+
+  useEffect(() => {
+    if (!game || typeof game.cardsMeetingThreshold !== "function") return;
+    game.cardsMeetingThreshold()
+      .then((count) => setCardsMeetingThreshold(count))
+      .catch(() => {});
+  }, [game, wasmRegistryCount, semanticThreshold]);
 
   const opponentHoldReason = useCallback(
     (decision, currentState) => {
@@ -305,6 +330,9 @@ export function GameProvider({ children }) {
       setAutoPassEnabled,
       holdRule,
       setHoldRule,
+      semanticThreshold,
+      setSemanticThreshold,
+      cardsMeetingThreshold,
       logEntries,
       pushLog,
     }),
@@ -319,7 +347,9 @@ export function GameProvider({ children }) {
       wasmRegistryTotal,
       status,
       setStatus,
-      dispatch, refresh, autoPassEnabled, holdRule, logEntries, pushLog,
+      dispatch, refresh, autoPassEnabled, holdRule,
+      semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
+      logEntries, pushLog,
     ]
   );
 

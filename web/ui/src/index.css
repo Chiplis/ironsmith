@@ -134,7 +134,7 @@
 .game-card {
   @apply relative border font-bold select-none overflow-hidden cursor-default;
   border-color: #61758d;
-  font-size: 12px;
+  font-size: 16px;
   line-height: 1.2;
   color: #d8e8ff;
   background:

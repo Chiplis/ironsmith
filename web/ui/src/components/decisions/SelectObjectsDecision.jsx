@@ -27,16 +27,16 @@ export default function SelectObjectsDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-2">
       {decision.description && (
-        <div className="text-[12px] text-muted-foreground">{decision.description}</div>
+        <div className="text-[16px] text-muted-foreground">{decision.description}</div>
       )}
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-[14px] text-muted-foreground">
         Select {min === max ? min : `${min}-${max}`} object(s)
       </div>
       <div className="flex flex-col gap-1">
         {candidates.map((c) => (
           <label
             key={c.id}
-            className={`flex items-center gap-2 text-[11px] p-1 border rounded-sm cursor-pointer transition-colors ${
+            className={`flex items-center gap-2 text-[14px] p-1 border rounded-sm cursor-pointer transition-colors ${
               c.legal
                 ? selected.has(c.id)
                   ? "border-primary bg-primary/10"
@@ -57,7 +57,7 @@ export default function SelectObjectsDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct || !canSubmit}
         onClick={() =>
           dispatch(

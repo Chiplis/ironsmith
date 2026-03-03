@@ -91,7 +91,7 @@ export default function TargetsDecision({ decision, canAct }) {
   return (
     <div className="flex flex-col gap-2">
       {decision.context && (
-        <div className="text-[12px] text-muted-foreground">{decision.context}</div>
+        <div className="text-[16px] text-muted-foreground">{decision.context}</div>
       )}
 
       {requirements.map((req, reqIdx) => {
@@ -109,9 +109,9 @@ export default function TargetsDecision({ decision, canAct }) {
               isActive ? "border-primary" : "border-game-line-2"
             )}
           >
-            <div className="text-[11px] text-muted-foreground mb-1">
+            <div className="text-[14px] text-muted-foreground mb-1">
               Target {reqIdx + 1}: {req.description || "Choose a target"}
-              <span className="ml-1 text-[10px]">
+              <span className="ml-1 text-[13px]">
                 ({reqMin}-{reqMax})
                 {isOptional && " [optional]"}
               </span>
@@ -130,7 +130,7 @@ export default function TargetsDecision({ decision, canAct }) {
                       key={selIdx}
                       variant="outline"
                       size="sm"
-                      className="h-5 text-[10px] px-1.5 border-primary bg-primary/10"
+                      className="h-5 text-[13px] px-1.5 border-primary bg-primary/10"
                       disabled={!canAct}
                       onClick={() => handleRemoveTarget(reqIdx, selIdx)}
                     >
@@ -153,7 +153,7 @@ export default function TargetsDecision({ decision, canAct }) {
                       key={tIdx}
                       variant="outline"
                       size="sm"
-                      className="h-6 text-[11px] justify-start px-2"
+                      className="h-6 text-[14px] justify-start px-2"
                       disabled={!canAct}
                       onClick={() => handleSelectTarget(target)}
                     >
@@ -166,7 +166,7 @@ export default function TargetsDecision({ decision, canAct }) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-5 text-[10px] text-muted-foreground"
+                    className="h-5 text-[13px] text-muted-foreground"
                     disabled={!canAct}
                     onClick={handleSkipRequirement}
                   >
@@ -182,7 +182,7 @@ export default function TargetsDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct || !canSubmit}
         onClick={handleSubmit}
       >

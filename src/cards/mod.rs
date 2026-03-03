@@ -261,6 +261,13 @@ impl CardRegistry {
         generated_registry::register_generated_parser_cards_chunk(self, cursor, chunk_size)
     }
 
+    /// Try to compile a card by name, returning the specific error if it fails.
+    ///
+    /// Used to distinguish "card not in database" from "card exists but failed to compile".
+    pub fn try_compile_card(name: &str) -> Result<CardDefinition, String> {
+        generated_registry::try_compile_card_by_name(name)
+    }
+
     /// Create a card registry with only the requested hand-written cards plus generated parser cards.
     #[cfg(test)]
     pub fn with_builtin_cards_for_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {

@@ -183,7 +183,7 @@ export default function Shell() {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-3 text-muted-foreground">
         {wasmPhase === "init" ? (
-          <span className="text-[14px] font-bold uppercase tracking-wider">
+          <span className="text-[18px] font-bold uppercase tracking-wider">
             {phaseLabel}
             <span className="loading-dots" aria-hidden="true">
               <span className="loading-dot loading-dot-1">.</span>
@@ -192,7 +192,7 @@ export default function Shell() {
             </span>
           </span>
         ) : (
-          <span className="text-[14px] font-bold uppercase tracking-wider">{phaseLabel}</span>
+          <span className="text-[18px] font-bold uppercase tracking-wider">{phaseLabel}</span>
         )}
         <div className="w-64 h-2 bg-[#1a2433] border border-game-line rounded-sm overflow-hidden">
           <div
@@ -200,7 +200,7 @@ export default function Shell() {
             style={{ width: `${widthPct}%` }}
           />
         </div>
-        <span className="text-[12px]">{pct}%</span>
+        <span className="text-[16px]">{pct}%</span>
       </div>
     );
   }
@@ -217,7 +217,7 @@ export default function Shell() {
   if (!state) {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-3 text-muted-foreground">
-        <span className="text-[14px] font-bold uppercase tracking-wider">
+        <span className="text-[18px] font-bold uppercase tracking-wider">
           Preparing Game
           <span className="loading-dots" aria-hidden="true">
             <span className="loading-dot loading-dot-1">.</span>

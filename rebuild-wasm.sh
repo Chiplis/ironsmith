@@ -4,23 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PKG_DIR="$ROOT_DIR/pkg"
 DEMO_PKG_DIR="$ROOT_DIR/web/wasm_demo/pkg"
-ROOT_FALSE_POSITIVES_FILE="$ROOT_DIR/semantic_false_positives.txt"
-LEGACY_FALSE_POSITIVES_FILE="$ROOT_DIR/scripts/semantic_false_positives.txt"
-if [[ -f "$ROOT_FALSE_POSITIVES_FILE" ]]; then
-  FALSE_POSITIVES_FILE="$ROOT_FALSE_POSITIVES_FILE"
-elif [[ -f "$LEGACY_FALSE_POSITIVES_FILE" ]]; then
-  FALSE_POSITIVES_FILE="$LEGACY_FALSE_POSITIVES_FILE"
-else
-  FALSE_POSITIVES_FILE=""
-fi
-PREFERRED_REPORTS_DIR="/reports"
-REPORTS_DIR="$PREFERRED_REPORTS_DIR"
-
-# Prefer the parser threshold env var used by the audit tooling, then fall back
-# to the old wasm-specific var name.
-THRESHOLD="${IRONSMITH_PARSER_SEMANTIC_THRESHOLD:-${IRONSMITH_WASM_SEMANTIC_THRESHOLD:-}}"
-DIMS="${IRONSMITH_WASM_SEMANTIC_DIMS:-384}"
-MIN_CLUSTER_SIZE="${IRONSMITH_WASM_MIN_CLUSTER_SIZE:-1}"
 FEATURES="wasm,generated-registry"
 
 require_cmd() {
@@ -30,58 +13,21 @@ require_cmd() {
   }
 }
 
-count_nonempty_lines() {
-  awk 'NF { count += 1 } END { print count + 0 }' "$1"
-}
-
-resolve_reports_dir() {
-  local preferred="$1"
-  local fallback="$2"
-  if mkdir -p "$preferred" 2>/dev/null && [[ -w "$preferred" ]]; then
-    REPORTS_DIR="$preferred"
-    return
-  fi
-  REPORTS_DIR="$fallback"
-  mkdir -p "$REPORTS_DIR"
-  echo "[WARN] fallback to $REPORTS_DIR (could not write to $preferred)"
-}
-
 usage() {
   cat <<'USAGE'
-Usage: ./rebuild-wasm.sh [--threshold <float>] [--dims <int>] [--min-cluster-size <int>] [--features <csv>]
+Usage: ./rebuild-wasm.sh [--features <csv>]
 
 Examples:
   ./rebuild-wasm.sh
-  ./rebuild-wasm.sh --threshold 0.90
-  IRONSMITH_PARSER_SEMANTIC_THRESHOLD=0.85 ./rebuild-wasm.sh
-  ./rebuild-wasm.sh --min-cluster-size 1
+  ./rebuild-wasm.sh --features wasm
 
 Notes:
-  - --threshold enables semantic gating for generated-registry builds.
-    Cards below the threshold are excluded from the generated registry.
-  - Parse failures are still excluded independently of threshold gating.
-  - Use the same threshold in audit_oracle_clusters to compare counts.
   - Default features are "wasm,generated-registry".
 USAGE
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --threshold|--threhsold)
-      [[ $# -ge 2 ]] || { echo "missing value for --threshold" >&2; exit 1; }
-      THRESHOLD="$2"
-      shift 2
-      ;;
-    --dims)
-      [[ $# -ge 2 ]] || { echo "missing value for --dims" >&2; exit 1; }
-      DIMS="$2"
-      shift 2
-      ;;
-    --min-cluster-size)
-      [[ $# -ge 2 ]] || { echo "missing value for --min-cluster-size" >&2; exit 1; }
-      MIN_CLUSTER_SIZE="$2"
-      shift 2
-      ;;
     --features)
       [[ $# -ge 2 ]] || { echo "missing value for --features" >&2; exit 1; }
       FEATURES="$2"
@@ -102,127 +48,6 @@ done
 cd "$ROOT_DIR"
 require_cmd cargo
 require_cmd wasm-pack
-
-if [[ -n "$THRESHOLD" ]]; then
-  require_cmd awk
-  require_cmd jq
-  resolve_reports_dir "$REPORTS_DIR" "$ROOT_DIR/reports"
-
-  TIMESTAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
-  SAFE_THRESHOLD="${THRESHOLD//./_}"
-  RUN_ID="${SAFE_THRESHOLD}_${DIMS}_${TIMESTAMP}"
-  MISMATCH_NAMES_FILE="${TMPDIR:-/tmp}/ironsmith_wasm_mismatch_names_${RUN_ID}.txt"
-  FILTERED_SKIP_NAMES_FILE="${TMPDIR:-/tmp}/ironsmith_wasm_skip_names_${RUN_ID}.txt"
-  FAILURES_REPORT="${TMPDIR:-/tmp}/ironsmith_wasm_threshold_failures_${RUN_ID}.json"
-  CLUSTER_REPORT="${TMPDIR:-/tmp}/ironsmith_wasm_cluster_report_${RUN_ID}.json"
-  MISMATCH_REPORT="$REPORTS_DIR/ironsmith_wasm_semantic_mismatch_report_${RUN_ID}.json"
-  UNPARSABLE_REPORT="$REPORTS_DIR/ironsmith_wasm_unparsable_clusters_${RUN_ID}.json"
-
-  echo "[INFO] computing semantic threshold failures (threshold=${THRESHOLD}, dims=${DIMS})..."
-  AUDIT_CMD=(
-    cargo run --quiet --bin audit_oracle_clusters --
-    --cards "$ROOT_DIR/cards.json"
-    --use-embeddings
-    --embedding-dims "$DIMS"
-    --embedding-threshold "$THRESHOLD"
-    --min-cluster-size "$MIN_CLUSTER_SIZE"
-    --top-clusters 20000
-    --examples 1
-    --mismatch-names-out "$MISMATCH_NAMES_FILE"
-    --failures-out "$FAILURES_REPORT"
-    --json-out "$CLUSTER_REPORT"
-  )
-  if [[ -f "$FALSE_POSITIVES_FILE" ]]; then
-    AUDIT_CMD+=(--false-positive-names "$FALSE_POSITIVES_FILE")
-  fi
-  "${AUDIT_CMD[@]}"
-
-  if [[ -f "$FALSE_POSITIVES_FILE" ]]; then
-    awk '
-      NR == FNR {
-        line = $0
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-        if (line == "" || line ~ /^#/) {
-          next
-        }
-        if (line ~ /^Name:/) {
-          sub(/^Name:[[:space:]]*/, "", line)
-          if (line == "") {
-            next
-          }
-        } else if (line ~ /:/) {
-          next
-        }
-        excluded[tolower(line)] = 1
-        next
-      }
-      {
-        line = $0
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-        if (line == "") {
-          next
-        }
-        if (!(tolower(line) in excluded)) {
-          print line
-        }
-      }
-    ' "$FALSE_POSITIVES_FILE" "$MISMATCH_NAMES_FILE" > "$FILTERED_SKIP_NAMES_FILE"
-  else
-    cp -f "$MISMATCH_NAMES_FILE" "$FILTERED_SKIP_NAMES_FILE"
-  fi
-
-  EXCLUDED_COUNT="$(count_nonempty_lines "$FILTERED_SKIP_NAMES_FILE")"
-  export IRONSMITH_GENERATED_REGISTRY_SKIP_NAMES_FILE="$FILTERED_SKIP_NAMES_FILE"
-  echo "[INFO] semantic gating active: excluding ${EXCLUDED_COUNT} below-threshold card(s)"
-  cp -f "$FAILURES_REPORT" "$MISMATCH_REPORT"
-  jq --arg ts "$TIMESTAMP" --arg threshold "$THRESHOLD" --arg dims "$DIMS" '
-    {
-      generated_at: $ts,
-      threshold: $threshold,
-      embedding_dims: $dims,
-      cards_processed: .cards_processed,
-      semantic_failures_report: .failures,
-      parse_failures: .parse_failures,
-      unparsable_clusters_by_error: (
-        .clusters
-        | map(
-          select(.parse_failures > 0)
-          | {
-              error: (.top_errors[0].error // "unclassified"),
-              cluster: {
-                signature: .signature,
-                size: .size,
-                parse_failures: .parse_failures,
-                parse_failure_rate: .parse_failure_rate,
-                top_errors: .top_errors,
-                examples: .examples
-              }
-            }
-        )
-        | if length == 0 then
-            {}
-          else
-            sort_by(.error)
-            | group_by(.error)
-            | map(
-                {
-                  (.[0].error): {
-                    cluster_count: length,
-                    total_parse_failures: (map(.cluster.parse_failures) | add),
-                    clusters: (map(.cluster))
-                  }
-                }
-              )
-            | add
-          end
-      )
-    }
-  ' "$CLUSTER_REPORT" > "$UNPARSABLE_REPORT"
-  echo "[INFO] semantic mismatch report: $MISMATCH_REPORT"
-  echo "[INFO] unparsable cluster report: $UNPARSABLE_REPORT"
-else
-  unset IRONSMITH_GENERATED_REGISTRY_SKIP_NAMES_FILE
-fi
 
 wasm-pack build --release --target web --features "$FEATURES"
 

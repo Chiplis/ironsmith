@@ -40,6 +40,9 @@ pub fn register_generated_parser_cards_if_name<F>(
     F: FnMut(&str) -> bool,
 {
 }
+pub fn try_compile_card_by_name(_name: &str) -> Result<crate::cards::CardDefinition, String> {
+    Err("generated registry not available".to_string())
+}
 "#;
         fs::write(&out_file, stub).expect("failed to write generated_registry.rs stub");
         return;

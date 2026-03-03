@@ -73,7 +73,7 @@ export default function BlockersDecision({ decision, canAct }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-[12px] text-muted-foreground">Declare blockers</div>
+      <div className="text-[16px] text-muted-foreground">Declare blockers</div>
       <div className="flex flex-col gap-1.5">
         {blockerOptions.map((opt) => {
           const blockerId = opt.blocker;
@@ -84,7 +84,7 @@ export default function BlockersDecision({ decision, canAct }) {
           return (
             <div key={blockerId} className="border border-game-line-2 p-1 rounded-sm">
               <div className={cn(
-                "text-[11px] font-bold mb-0.5",
+                "text-[14px] font-bold mb-0.5",
                 currentDecls.length > 0 && "text-[rgba(174,118,255,0.95)]"
               )}>
                 {name}
@@ -100,7 +100,7 @@ export default function BlockersDecision({ decision, canAct }) {
                       variant="outline"
                       size="sm"
                       className={cn(
-                        "h-5 text-[10px] px-1.5",
+                        "h-5 text-[13px] px-1.5",
                         blocking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]"
                       )}
                       disabled={!canAct}
@@ -118,7 +118,7 @@ export default function BlockersDecision({ decision, canAct }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[14px]"
         disabled={!canAct}
         onClick={() =>
           dispatch(

@@ -10,7 +10,7 @@ export default function RightRail({ inspectorOpen, setInspectorOpen, selectedObj
       <Button
         variant="ghost"
         size="sm"
-        className="shrink-0 text-[11px] uppercase tracking-wide w-full justify-start rounded-none border-b border-game-line-2 h-7 gap-1"
+        className="shrink-0 text-[14px] uppercase tracking-wide w-full justify-start rounded-none border-b border-game-line-2 h-7 gap-1"
         onClick={() => setInspectorOpen((o) => !o)}
       >
         {inspectorOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
