@@ -677,7 +677,8 @@ impl CantEffectTracker {
     pub fn can_cast_additional_nonphyrexian_spell_this_turn(&self, player: PlayerId) -> bool {
         self.can_cast_additional_spell_matching_this_turn(
             player,
-            &crate::target::ObjectFilter::default().without_subtype(crate::types::Subtype::Phyrexian),
+            &crate::target::ObjectFilter::default()
+                .without_subtype(crate::types::Subtype::Phyrexian),
         )
     }
 
@@ -3013,10 +3014,7 @@ impl GameState {
     pub fn has_citys_blessing(&self, player: PlayerId) -> bool {
         self.command_zone.iter().any(|&obj_id| {
             self.object(obj_id).is_some_and(|obj| {
-                obj.controller == player
-                    && obj
-                        .name
-                        .eq_ignore_ascii_case("City's Blessing")
+                obj.controller == player && obj.name.eq_ignore_ascii_case("City's Blessing")
             })
         })
     }

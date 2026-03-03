@@ -231,8 +231,9 @@ impl ThisSpellCastRestrictionKind {
     pub fn if_you_cast_another_green_spell_this_turn() -> Self {
         Self::condition(ThisSpellCastCondition::PlayerCastSpellThisTurnOrMore {
             player: crate::target::PlayerFilter::You,
-            spell_filter: crate::target::ObjectFilter::default()
-                .with_colors(crate::color::ColorSet::from_color(crate::color::Color::Green)),
+            spell_filter: crate::target::ObjectFilter::default().with_colors(
+                crate::color::ColorSet::from_color(crate::color::Color::Green),
+            ),
             count: 1,
         })
     }
@@ -255,9 +256,7 @@ impl ThisSpellCastRestrictionKind {
     }
 
     pub fn if_no_permanents_named_on_battlefield(name: &'static str) -> Self {
-        Self::condition(ThisSpellCastCondition::NoPermanentsNamedOnBattlefield(
-            name,
-        ))
+        Self::condition(ThisSpellCastCondition::NoPermanentsNamedOnBattlefield(name))
     }
 
     pub fn if_you_control_snow_land() -> Self {

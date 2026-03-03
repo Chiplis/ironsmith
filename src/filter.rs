@@ -3182,6 +3182,10 @@ impl ObjectFilter {
         let creature_only = self.all_card_types.is_empty()
             && self.card_types.len() == 1
             && self.card_types[0] == CardType::Creature;
+        let land_only = self.all_card_types.is_empty()
+            && self.card_types.len() == 1
+            && self.card_types[0] == CardType::Land
+            && matches!(self.zone, None | Some(Zone::Battlefield));
         if self.type_or_subtype_union {
             match (type_phrase, subtype_phrase) {
                 (Some((_, type_phrase)), Some(subtype_phrase)) => {
@@ -3196,6 +3200,9 @@ impl ObjectFilter {
                 (Some((_, type_phrase)), Some(subtype_phrase)) if creature_only => {
                     parts.push(subtype_phrase);
                     parts.push(type_phrase);
+                }
+                (Some((_, _type_phrase)), Some(subtype_phrase)) if land_only => {
+                    parts.push(subtype_phrase);
                 }
                 (Some((type_is_card_type, type_phrase)), Some(subtype_phrase))
                     if !type_is_card_type && type_phrase == "card" =>

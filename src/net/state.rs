@@ -702,17 +702,14 @@ fn hash_trackers_state(game: &GameState) -> Hash32 {
         cant_be_destroyed: sort_objects(game.cant_effects.cant_be_destroyed.iter().copied()),
         cant_be_regenerated: sort_objects(game.cant_effects.cant_be_regenerated.iter().copied()),
         cant_be_sacrificed: sort_objects(game.cant_effects.cant_be_sacrificed.iter().copied()),
-        cant_cast_spells: sort_players(
-            game.cant_effects
-                .cant_cast_filters
-                .iter()
-                .filter_map(|(player, filters)| {
-                    filters
-                        .iter()
-                        .any(|filter| filter == &crate::target::ObjectFilter::default())
-                        .then_some(*player)
-                }),
-        ),
+        cant_cast_spells: sort_players(game.cant_effects.cant_cast_filters.iter().filter_map(
+            |(player, filters)| {
+                filters
+                    .iter()
+                    .any(|filter| filter == &crate::target::ObjectFilter::default())
+                    .then_some(*player)
+            },
+        )),
         cant_cast_filters,
         cant_draw: sort_players(game.cant_effects.cant_draw.iter().copied()),
         cant_draw_extra_cards: sort_players(

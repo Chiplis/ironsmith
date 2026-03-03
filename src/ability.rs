@@ -494,9 +494,9 @@ impl ActivatedAbility {
             return cap;
         }
 
-        self.additional_restrictions.iter().find_map(|restriction| {
-            parse_activation_max_times_per_turn(restriction)
-        })
+        self.additional_restrictions
+            .iter()
+            .find_map(|restriction| parse_activation_max_times_per_turn(restriction))
     }
 }
 
@@ -627,6 +627,19 @@ impl ActivatedAbility {
         mana: ManaSymbol,
         required_subtypes: Vec<crate::types::Subtype>,
     ) -> Self {
+        let mut condition: Option<crate::ConditionExpr> = None;
+        for subtype in required_subtypes {
+            let next = crate::ConditionExpr::YouControl(
+                crate::filter::ObjectFilter::default()
+                    .with_type(crate::types::CardType::Land)
+                    .with_subtype(subtype),
+            );
+            condition = Some(match condition {
+                Some(existing) => crate::ConditionExpr::Or(Box::new(existing), Box::new(next)),
+                None => next,
+            });
+        }
+
         Self {
             mana_cost: TotalCost::from_cost(crate::costs::Cost::effect(Effect::tap_source())),
             effects: vec![],
@@ -635,9 +648,7 @@ impl ActivatedAbility {
             additional_restrictions: vec![],
             activation_restrictions: vec![],
             mana_output: Some(vec![mana]),
-            activation_condition: Some(crate::ConditionExpr::ControlLandWithSubtype(
-                required_subtypes,
-            )),
+            activation_condition: condition,
         }
     }
 }

@@ -2488,10 +2488,9 @@ pub(crate) fn parse_activation_condition(tokens: &[Token]) -> Option<crate::Cond
         let tail = &control_tail[power_idx + 2..];
         if tail == ["or", "greater"] {
             return Some(crate::ConditionExpr::YouControl(
-                ObjectFilter::creature()
-                    .with_power(crate::filter::Comparison::GreaterThanOrEqual(
-                        threshold as i32,
-                    )),
+                ObjectFilter::creature().with_power(crate::filter::Comparison::GreaterThanOrEqual(
+                    threshold as i32,
+                )),
             ));
         }
         return None;
@@ -2724,7 +2723,8 @@ pub(crate) fn parse_cast_this_spell_only_line(
 
     if tail == ["during", "combat", "on", "an", "opponents", "turn"] {
         return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_combat_on_opponents_turn(),
+            crate::static_abilities::ThisSpellCastRestrictionKind::during_combat_on_opponents_turn(
+            ),
             "Cast this spell only during combat on an opponent's turn.",
         )));
     }
@@ -3516,7 +3516,9 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             ]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlMoreCreaturesThanDefendingPlayer,
+                crate::static_abilities::CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(
+                    ObjectFilter::default().with_type(crate::types::CardType::Creature),
+                ),
             );
         }
         if tail
@@ -3531,7 +3533,9 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             ]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlMoreLandsThanDefendingPlayer,
+                crate::static_abilities::CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(
+                    ObjectFilter::default().with_type(crate::types::CardType::Land),
+                ),
             );
         }
         if let [
@@ -3548,26 +3552,49 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             && let Some(value) = parse_cardinal_u32(amount)
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlAnotherCreatureWithPowerAtLeast(
-                    value,
+                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
+                    crate::ConditionExpr::YouControl(
+                        ObjectFilter::creature().you_control().other().with_power(
+                            crate::filter::Comparison::GreaterThanOrEqual(value as i32),
+                        ),
+                    ),
                 ),
             );
         }
         if tail == ["you", "control", "another", "artifact"] {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlAnotherArtifact,
+                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
+                    crate::ConditionExpr::YouControl(
+                        ObjectFilter::artifact().you_control().other(),
+                    ),
+                ),
             );
         }
         if tail == ["you", "control", "an", "artifact"] || tail == ["you", "control", "artifact"] {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlArtifact,
+                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
+                    crate::ConditionExpr::YouControl(ObjectFilter::artifact().you_control()),
+                ),
             );
         }
         if tail == ["you", "control", "a", "knight", "or", "a", "soldier"]
             || tail == ["you", "control", "knight", "or", "soldier"]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlKnightOrSoldier,
+                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
+                    crate::ConditionExpr::Or(
+                        Box::new(crate::ConditionExpr::YouControl(
+                            ObjectFilter::creature()
+                                .you_control()
+                                .with_subtype(Subtype::Knight),
+                        )),
+                        Box::new(crate::ConditionExpr::YouControl(
+                            ObjectFilter::creature()
+                                .you_control()
+                                .with_subtype(Subtype::Soldier),
+                        )),
+                    ),
+                ),
             );
         }
         if let [
@@ -3584,8 +3611,12 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             && let Some(value) = parse_cardinal_u32(amount)
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAtLeast(
-                    value,
+                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
+                    crate::ConditionExpr::YouControl(
+                        ObjectFilter::creature().you_control().with_power(
+                            crate::filter::Comparison::GreaterThanOrEqual(value as i32),
+                        ),
+                    ),
                 ),
             );
         }
@@ -3593,8 +3624,13 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             || tail == ["you", "control", "1/1", "creature"]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAndToughness(
-                    1, 1,
+                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
+                    crate::ConditionExpr::YouControl(
+                        ObjectFilter::creature()
+                            .you_control()
+                            .with_power(crate::filter::Comparison::Equal(1))
+                            .with_toughness(crate::filter::Comparison::Equal(1)),
+                    ),
                 ),
             );
         }
@@ -3603,9 +3639,12 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             || tail == ["there", "is", "mountain", "on", "battlefield"]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::ThereIsALandWithSubtypeOnBattlefield(
-                    Subtype::Mountain,
-                ),
+                crate::static_abilities::CantAttackUnlessConditionSpec::BattlefieldCountAtLeast {
+                    filter: ObjectFilter::default()
+                        .with_type(crate::types::CardType::Land)
+                        .with_subtype(Subtype::Mountain),
+                    count: 1,
+                },
             );
         }
         if let [
@@ -3622,7 +3661,7 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             && let Some(value) = parse_cardinal_u32(amount)
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::ThereAreCardsInYourGraveyardOrMore(
+                crate::static_abilities::CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(
                     value,
                 ),
             );
@@ -3641,15 +3680,19 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             && let Some(value) = parse_cardinal_u32(amount)
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::ThereAreLandsWithSubtypeOnBattlefieldOrMore {
-                    subtype: Subtype::Island,
+                crate::static_abilities::CantAttackUnlessConditionSpec::BattlefieldCountAtLeast {
+                    filter: ObjectFilter::default()
+                        .with_type(crate::types::CardType::Land)
+                        .with_subtype(Subtype::Island),
                     count: value,
                 },
             );
         }
         if tail == ["defending", "player", "is", "poisoned"] {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::IsPoisoned,
+                ),
             );
         }
         if let [
@@ -3667,8 +3710,10 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             && let Some(value) = parse_cardinal_u32(amount)
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerHasCardsInGraveyardOrMore(
-                    value,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::HasCardsInGraveyardOrMore(
+                        value,
+                    ),
                 ),
             );
         }
@@ -3696,14 +3741,22 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
                 ]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerControlsEnchantmentOrEnchantedPermanent,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::ControlsEnchantmentOrEnchantedPermanent,
+                ),
             );
         }
         if tail == ["defending", "player", "controls", "a", "snow", "land"]
             || tail == ["defending", "player", "controls", "snow", "land"]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerControlsSnowLand,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::Controls(
+                        ObjectFilter::default()
+                            .with_type(crate::types::CardType::Land)
+                            .with_supertype(crate::types::Supertype::Snow),
+                    ),
+                ),
             );
         }
         if tail
@@ -3727,20 +3780,34 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
                 ]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerControlsCreatureWithFlying,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::Controls(
+                        ObjectFilter::default()
+                            .with_type(crate::types::CardType::Creature)
+                            .with_static_ability(crate::static_abilities::StaticAbilityId::Flying),
+                    ),
+                ),
             );
         }
         if tail == ["defending", "player", "controls", "a", "blue", "permanent"]
             || tail == ["defending", "player", "controls", "blue", "permanent"]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerControlsBluePermanent,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::Controls(
+                        ObjectFilter::default().with_colors(crate::color::ColorSet::from_color(
+                            crate::color::Color::Blue,
+                        )),
+                    ),
+                ),
             );
         }
         if tail == ["at", "least", "two", "other", "creatures", "attack"] {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::AtLeastNOtherCreaturesAttack(
-                    2,
+                crate::static_abilities::CantAttackUnlessConditionSpec::AttackingGroupCondition(
+                    crate::static_abilities::AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(
+                        2,
+                    ),
                 ),
             );
         }
@@ -3750,12 +3817,16 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
             ]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::CreatureWithGreaterPowerAlsoAttacks,
+                crate::static_abilities::CantAttackUnlessConditionSpec::AttackingGroupCondition(
+                    crate::static_abilities::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks,
+                ),
             );
         }
         if tail == ["a", "black", "or", "green", "creature", "also", "attacks"] {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::BlackOrGreenCreatureAlsoAttacks,
+                crate::static_abilities::CantAttackUnlessConditionSpec::AttackingGroupCondition(
+                    crate::static_abilities::AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks,
+                ),
             );
         }
         if tail
@@ -3770,28 +3841,38 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
         if let ["you", "control", amount, "or", "more", "artifacts"] = tail
             && let Some(value) = parse_cardinal_u32(amount)
         {
+            let mut filter = ObjectFilter::artifact();
+            filter.zone = Some(Zone::Battlefield);
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::YouControlArtifactsOrMore(
-                    value,
+                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
+                    crate::ConditionExpr::PlayerControlsAtLeast {
+                        player: PlayerFilter::You,
+                        filter,
+                        count: value,
+                    },
                 ),
             );
         }
         if tail == ["you", "sacrifice", "a", "land"] || tail == ["you", "sacrifice", "land"] {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::SacrificeLands {
-                    count: 1,
-                    subtype: None,
-                },
+                crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
+                    crate::static_abilities::AttackCostCondition::SacrificeLands {
+                        count: 1,
+                        subtype: None,
+                    },
+                ),
             );
         }
         if let ["you", "sacrifice", amount, "islands"] = tail
             && let Some(value) = parse_cardinal_u32(amount)
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::SacrificeLands {
-                    count: value,
-                    subtype: Some(Subtype::Island),
-                },
+                crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
+                    crate::static_abilities::AttackCostCondition::SacrificeLands {
+                        count: value,
+                        subtype: Some(Subtype::Island),
+                    },
+                ),
             );
         }
         if tail
@@ -3835,7 +3916,9 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
                 ]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand,
+                crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
+                    crate::static_abilities::AttackCostCondition::ReturnEnchantmentYouControlToOwnersHand,
+                ),
             );
         }
         if tail
@@ -3848,14 +3931,18 @@ pub(crate) fn parse_cant_clause(tokens: &[Token]) -> Result<Option<StaticAbility
                 ]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt,
+                crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
+                    crate::static_abilities::AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt,
+                ),
             );
         }
         if tail == ["defending", "player", "is", "the", "monarch"]
             || tail == ["defending", "player", "is", "monarch"]
         {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::IsMonarch,
+                ),
             );
         }
     }
@@ -4388,7 +4475,9 @@ fn parse_cast_limit_qualifier(words: &[&str]) -> Option<(ObjectFilter, usize)> {
     };
 
     if let Some(first) = words.first().copied() {
-        if let Some(term) = first.strip_prefix("non-").or_else(|| first.strip_prefix("non"))
+        if let Some(term) = first
+            .strip_prefix("non-")
+            .or_else(|| first.strip_prefix("non"))
             && !term.is_empty()
             && let Some(filter) = parse_non_term(term)
         {

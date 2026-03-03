@@ -1705,15 +1705,12 @@ impl WasmGame {
         }
 
         self.registry.ensure_cards_loaded([query]);
-        let definition = self
-            .find_card_definition(query)
-            .cloned()
-            .ok_or_else(|| {
-                match crate::cards::CardRegistry::try_compile_card(query) {
-                    Ok(_) => JsValue::from_str(&format!("unknown card name: {query}")),
-                    Err(err) => JsValue::from_str(&err),
-                }
-            })?;
+        let definition = self.find_card_definition(query).cloned().ok_or_else(|| {
+            match crate::cards::CardRegistry::try_compile_card(query) {
+                Ok(_) => JsValue::from_str(&format!("unknown card name: {query}")),
+                Err(err) => JsValue::from_str(&err),
+            }
+        })?;
 
         let object_id = self.game.create_object_from_definition(
             &definition,
@@ -1759,15 +1756,12 @@ impl WasmGame {
         };
 
         self.registry.ensure_cards_loaded([query]);
-        let definition = self
-            .find_card_definition(query)
-            .cloned()
-            .ok_or_else(|| {
-                match crate::cards::CardRegistry::try_compile_card(query) {
-                    Ok(_) => JsValue::from_str(&format!("unknown card name: {query}")),
-                    Err(err) => JsValue::from_str(&err),
-                }
-            })?;
+        let definition = self.find_card_definition(query).cloned().ok_or_else(|| {
+            match crate::cards::CardRegistry::try_compile_card(query) {
+                Ok(_) => JsValue::from_str(&format!("unknown card name: {query}")),
+                Err(err) => JsValue::from_str(&err),
+            }
+        })?;
 
         if self.semantic_threshold > 0.0 {
             let score = self
@@ -2350,12 +2344,7 @@ impl WasmGame {
 
         let mut spells: Vec<String> = Vec::with_capacity(spells_needed);
         if spell_pool.len() >= spells_needed {
-            spells.extend(
-                spell_pool
-                    .iter()
-                    .take(spells_needed)
-                    .cloned(),
-            );
+            spells.extend(spell_pool.iter().take(spells_needed).cloned());
         } else {
             // If pool is smaller than requested spells, wrap and keep shuffling for variety.
             while spells.len() < spells_needed {
@@ -2563,10 +2552,7 @@ impl WasmGame {
                                         .collect();
                                     ids.shuffle(&mut rand::rng());
                                     ids.truncate(obj.min);
-                                    self.runner
-                                        .as_mut()
-                                        .unwrap()
-                                        .respond_discard(ids);
+                                    self.runner.as_mut().unwrap().respond_discard(ids);
                                     continue;
                                 }
                             }
@@ -2716,10 +2702,7 @@ impl WasmGame {
             (DecisionContext::Attackers(actx), UiCommand::DeclareAttackers { declarations }) => {
                 let converted = validate_attacker_declarations(actx, &declarations)
                     .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
-                self.runner
-                    .as_mut()
-                    .unwrap()
-                    .respond_attackers(converted);
+                self.runner.as_mut().unwrap().respond_attackers(converted);
             }
             (DecisionContext::Blockers(bctx), UiCommand::DeclareBlockers { declarations }) => {
                 let player = bctx.player;
@@ -2745,10 +2728,7 @@ impl WasmGame {
                     .iter()
                     .map(|&id| ObjectId::from_raw(id))
                     .collect();
-                self.runner
-                    .as_mut()
-                    .unwrap()
-                    .respond_discard(cards);
+                self.runner.as_mut().unwrap().respond_discard(cards);
             }
             _ => {
                 self.pending_decision = Some(pending_ctx);

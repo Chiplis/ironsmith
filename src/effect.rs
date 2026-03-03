@@ -2912,14 +2912,16 @@ impl Effect {
         mana_multiplier: Option<Value>,
     ) -> Self {
         use crate::effects::UnlessPaysEffect;
-        Self::new(UnlessPaysEffect::new_with_life_and_additional_and_multiplier(
-            effects,
-            player,
-            mana,
-            life,
-            additional_generic,
-            mana_multiplier,
-        ))
+        Self::new(
+            UnlessPaysEffect::new_with_life_and_additional_and_multiplier(
+                effects,
+                player,
+                mana,
+                life,
+                additional_generic,
+                mana_multiplier,
+            ),
+        )
     }
 
     /// "X unless you/they [action]" - execute effects unless the player performs an action.

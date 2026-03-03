@@ -879,108 +879,6 @@ pub(crate) fn can_activate_ability_with_restrictions(
         }
     }
 
-    activated
-        .additional_restrictions
-        .iter()
-        .all(|restriction| activation_only_restriction_holds(game, source, restriction))
-}
-
-fn activation_only_restriction_holds(
-    game: &GameState,
-    source: ObjectId,
-    restriction: &str,
-) -> bool {
-    let lower = restriction
-        .trim()
-        .to_ascii_lowercase()
-        .trim_end_matches('.')
-        .to_string();
-
-    let Some(rest) = lower.strip_prefix("activate only ") else {
-        return true;
-    };
-
-    let mut conditions = rest.trim_start();
-    if conditions.starts_with("if ") {
-        conditions = conditions[3..].trim_start();
-    }
-
-    let controller = game
-        .object(source)
-        .map(|obj| obj.controller)
-        .unwrap_or(game.turn.active_player);
-    let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
-        controller,
-        source,
-        filter_source: Some(source),
-        triggering_event: None,
-        trigger_identity: None,
-        ability_index: None,
-        options: Default::default(),
-    };
-
-    let tokens = crate::cards::builders::tokenize_line(&lower, 0);
-    if let Some(timing) = crate::cards::builders::parse_activate_only_timing(&tokens)
-        && !matches!(timing, crate::ability::ActivationTiming::OncePerTurn)
-        && !crate::condition_eval::evaluate_condition_external(
-            game,
-            &crate::effect::Condition::ActivationTiming(timing),
-            &eval_ctx,
-        )
-    {
-        return false;
-    }
-    if let Some(condition) = crate::cards::builders::parse_activation_condition(&tokens)
-        && !matches!(condition, crate::effect::Condition::MaxActivationsPerTurn(_))
-        && !crate::condition_eval::evaluate_condition_external(game, &condition, &eval_ctx)
-    {
-        return false;
-    }
-
-    for condition in conditions.split(" and ") {
-        let condition = condition.trim();
-        if condition.is_empty() {
-            continue;
-        }
-
-        if condition.contains("didn't attack this turn")
-            || condition.contains("did not attack this turn")
-            || condition.contains("has not attacked this turn")
-        {
-            let expr = crate::effect::Condition::Not(Box::new(
-                crate::effect::Condition::SourceAttackedThisTurn,
-            ));
-            if !crate::condition_eval::evaluate_condition_external(game, &expr, &eval_ctx) {
-                return false;
-            }
-            continue;
-        }
-
-        if condition.contains("this creature attacked this turn")
-            || condition.contains("it attacked this turn")
-            || condition.contains("that creature attacked this turn")
-        {
-            let expr = crate::effect::Condition::SourceAttackedThisTurn;
-            if !crate::condition_eval::evaluate_condition_external(game, &expr, &eval_ctx) {
-                return false;
-            }
-            continue;
-        }
-
-        // Activation limits are tracked separately via max_activations_per_turn.
-        if condition.starts_with("once each turn")
-            || condition.starts_with("twice each turn")
-            || condition.starts_with("three times")
-            || condition.starts_with("three each turn")
-        {
-            continue;
-        }
-
-        // Unknown textual restrictions are intentionally treated as permissive to avoid
-        // introducing false negatives from unmodeled conditions.
-        continue;
-    }
-
     true
 }
 
@@ -1202,11 +1100,7 @@ fn snapshot_matches_cast_filter(
     snapshot: &crate::snapshot::ObjectSnapshot,
     spell_filter: &crate::target::ObjectFilter,
 ) -> bool {
-    spell_filter.matches_snapshot(
-        snapshot,
-        &crate::target::FilterContext::default(),
-        game,
-    )
+    spell_filter.matches_snapshot(snapshot, &crate::target::FilterContext::default(), game)
 }
 
 fn spells_cast_this_turn_matching_filter(
@@ -1241,7 +1135,11 @@ fn violates_cast_limit(
         && spells_cast_this_turn_matching_filter(game, player, spell_filter) >= 1
 }
 
-fn violates_any_cast_limit(game: &GameState, player: PlayerId, spell: &crate::object::Object) -> bool {
+fn violates_any_cast_limit(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> bool {
     game.cant_effects
         .cast_limit_filters_for_player(player)
         .is_some_and(|filters| {
@@ -1308,9 +1206,7 @@ fn player_was_attacked_this_step(game: &GameState, player: PlayerId) -> bool {
     use crate::combat_state::AttackTarget;
     use crate::game_state::{Phase, Step};
 
-    if !matches!(game.turn.phase, Phase::Combat)
-        || game.turn.step != Some(Step::DeclareAttackers)
-    {
+    if !matches!(game.turn.phase, Phase::Combat) || game.turn.step != Some(Step::DeclareAttackers) {
         return false;
     }
 
@@ -1318,12 +1214,15 @@ fn player_was_attacked_this_step(game: &GameState, player: PlayerId) -> bool {
         return false;
     };
 
-    combat.attackers.iter().any(|attacker| match attacker.target {
-        AttackTarget::Player(defender) => defender == player,
-        AttackTarget::Planeswalker(planeswalker_id) => game
-            .object(planeswalker_id)
-            .is_some_and(|planeswalker| planeswalker.controller == player),
-    })
+    combat
+        .attackers
+        .iter()
+        .any(|attacker| match attacker.target {
+            AttackTarget::Player(defender) => defender == player,
+            AttackTarget::Planeswalker(planeswalker_id) => game
+                .object(planeswalker_id)
+                .is_some_and(|planeswalker| planeswalker.controller == player),
+        })
 }
 
 fn this_spell_cast_restriction_allows(
@@ -1331,9 +1230,9 @@ fn this_spell_cast_restriction_allows(
     player: PlayerId,
     kind: &crate::static_abilities::ThisSpellCastRestrictionKind,
 ) -> bool {
-    let timing_allows = kind.timing.is_none_or(|timing| {
-        this_spell_cast_timing_allows(game, player, timing)
-    });
+    let timing_allows = kind
+        .timing
+        .is_none_or(|timing| this_spell_cast_timing_allows(game, player, timing));
     if !timing_allows {
         return false;
     }
@@ -6753,10 +6652,10 @@ mod tests {
         let attacker_id = game.create_object_from_card(&threshold_card, alice, Zone::Battlefield);
         game.object_mut(attacker_id)
             .expect("threshold attacker exists")
-            .abilities
-            .push(Ability::static_ability(
-                StaticAbility::cant_attack_unless_condition(
-                    crate::static_abilities::CantAttackUnlessConditionSpec::ThereAreCardsInYourGraveyardOrMore(5),
+                .abilities
+                .push(Ability::static_ability(
+                    StaticAbility::cant_attack_unless_condition(
+                    crate::static_abilities::CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(5),
                     "Can't attack unless there are five or more cards in your graveyard",
                 ),
             ));
@@ -7869,11 +7768,10 @@ mod tests {
         );
         game.spells_cast_this_turn_snapshots.push(prior_snapshot);
         game.spells_cast_this_turn.insert(alice, 1);
-        game.cant_effects
-            .add_cast_limit_filter(
-                alice,
-                crate::target::ObjectFilter::default().without_type(CardType::Creature),
-            );
+        game.cant_effects.add_cast_limit_filter(
+            alice,
+            crate::target::ObjectFilter::default().without_type(CardType::Creature),
+        );
 
         assert!(
             !can_cast_spell(&game, alice, &instant_obj, &CastingMethod::Normal),
@@ -7912,11 +7810,10 @@ mod tests {
         );
         game.spells_cast_this_turn_snapshots.push(prior_snapshot);
         game.spells_cast_this_turn.insert(alice, 1);
-        game.cant_effects
-            .add_cast_limit_filter(
-                alice,
-                crate::target::ObjectFilter::default().without_type(CardType::Creature),
-            );
+        game.cant_effects.add_cast_limit_filter(
+            alice,
+            crate::target::ObjectFilter::default().without_type(CardType::Creature),
+        );
 
         assert!(
             can_cast_spell(&game, alice, &creature_obj, &CastingMethod::Normal),
@@ -7951,11 +7848,10 @@ mod tests {
         );
         game.spells_cast_this_turn_snapshots.push(prior_snapshot);
         game.spells_cast_this_turn.insert(alice, 1);
-        game.cant_effects
-            .add_cast_limit_filter(
-                alice,
-                crate::target::ObjectFilter::default().without_type(CardType::Artifact),
-            );
+        game.cant_effects.add_cast_limit_filter(
+            alice,
+            crate::target::ObjectFilter::default().without_type(CardType::Artifact),
+        );
 
         assert!(
             !can_cast_spell(&game, alice, &nonartifact_spell_obj, &CastingMethod::Normal),
@@ -7993,11 +7889,10 @@ mod tests {
         );
         game.spells_cast_this_turn_snapshots.push(prior_snapshot);
         game.spells_cast_this_turn.insert(alice, 1);
-        game.cant_effects
-            .add_cast_limit_filter(
-                alice,
-                crate::target::ObjectFilter::default().without_type(CardType::Artifact),
-            );
+        game.cant_effects.add_cast_limit_filter(
+            alice,
+            crate::target::ObjectFilter::default().without_type(CardType::Artifact),
+        );
 
         assert!(
             can_cast_spell(&game, alice, &artifact_spell_obj, &CastingMethod::Normal),
@@ -8036,11 +7931,10 @@ mod tests {
         );
         game.spells_cast_this_turn_snapshots.push(prior_snapshot);
         game.spells_cast_this_turn.insert(alice, 1);
-        game.cant_effects
-            .add_cast_limit_filter(
-                alice,
-                crate::target::ObjectFilter::default().without_subtype(Subtype::Phyrexian),
-            );
+        game.cant_effects.add_cast_limit_filter(
+            alice,
+            crate::target::ObjectFilter::default().without_subtype(Subtype::Phyrexian),
+        );
 
         assert!(
             !can_cast_spell(
@@ -8087,11 +7981,10 @@ mod tests {
         );
         game.spells_cast_this_turn_snapshots.push(prior_snapshot);
         game.spells_cast_this_turn.insert(alice, 1);
-        game.cant_effects
-            .add_cast_limit_filter(
-                alice,
-                crate::target::ObjectFilter::default().without_subtype(Subtype::Phyrexian),
-            );
+        game.cant_effects.add_cast_limit_filter(
+            alice,
+            crate::target::ObjectFilter::default().without_subtype(Subtype::Phyrexian),
+        );
 
         assert!(
             can_cast_spell(&game, alice, &phyrexian_spell_obj, &CastingMethod::Normal),

@@ -2429,7 +2429,9 @@ Unearth {U} ({U}: Return this card from your graveyard to the battlefield. It ga
 
     let rendered = oracle_like_lines(&def).join(" ");
     assert!(
-        rendered.contains("Unearth {U}") || rendered.contains("UnearthEffect") || rendered.contains("Unearth"),
+        rendered.contains("Unearth {U}")
+            || rendered.contains("UnearthEffect")
+            || rendered.contains("Unearth"),
         "expected unearth keyword in render output, got {rendered}"
     );
     let debug = format!("{def:#?}").to_ascii_lowercase();
@@ -6687,8 +6689,10 @@ fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        (rendered.contains("effect(ninjutsucosteffect)") && rendered.contains("effect(ninjutsueffect)"))
-            || (rendered.contains("return an unblocked attacker") && rendered.contains("put this card onto the battlefield tapped and attacking")),
+        (rendered.contains("effect(ninjutsucosteffect)")
+            && rendered.contains("effect(ninjutsueffect)"))
+            || (rendered.contains("return an unblocked attacker")
+                && rendered.contains("put this card onto the battlefield tapped and attacking")),
         "expected compiled output to include ninjutsu effect pipeline, got {rendered}"
     );
 }
@@ -10048,7 +10052,7 @@ fn parse_mana_ability_activate_only_if_control_subtype() {
     );
     assert!(
         rendered.contains("activate only if you control a swamp")
-            || rendered.contains("activate only if you control land swamp"),
+            || rendered.contains("activate only if you control swamp"),
         "expected rendered subtype activation restriction, got {rendered}"
     );
 }
@@ -13372,7 +13376,8 @@ fn parse_target_creature_becomes_single_color_until_end_of_turn() {
     // The "becomes red" effect parses but compiles to an unsupported effect placeholder.
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("unsupported") || (rendered.contains("setcolors") && rendered.contains("red")),
+        rendered.contains("unsupported")
+            || (rendered.contains("setcolors") && rendered.contains("red")),
         "expected unsupported or set-colors(red) in compiled output, got {rendered}"
     );
 }

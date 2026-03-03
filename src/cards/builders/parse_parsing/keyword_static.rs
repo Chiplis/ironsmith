@@ -6418,11 +6418,17 @@ pub(crate) fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
     }
 
     let Some(can_idx) = normalized.windows(8).position(|window| {
-        window == ["can", "attack", "as", "though", "it", "didnt", "have", "defender"]
+        window
+            == [
+                "can", "attack", "as", "though", "it", "didnt", "have", "defender",
+            ]
     }) else {
         return Ok(None);
     };
-    let Some(comma_idx) = tokens.iter().position(|token| matches!(token, Token::Comma(_))) else {
+    let Some(comma_idx) = tokens
+        .iter()
+        .position(|token| matches!(token, Token::Comma(_)))
+    else {
         return Ok(None);
     };
     let Some(can_token_idx) = token_index_for_word_index(tokens, can_idx) else {
@@ -8518,11 +8524,7 @@ pub(crate) fn parse_enchanted_creature_has_line(
         {
             let ability_text = format!("{subject} has {}", text.to_ascii_lowercase());
             let mut grant = crate::static_abilities::AttachedAbilityGrant::new(
-                cumulative_upkeep_granted_ability(
-                    mana_symbols_per_counter,
-                    life_per_counter,
-                    text,
-                ),
+                cumulative_upkeep_granted_ability(mana_symbols_per_counter, life_per_counter, text),
                 ability_text,
             );
             if let Some(condition) = &condition {
@@ -10524,11 +10526,13 @@ pub(crate) fn parse_filter_has_granted_ability_line(
             }
         }
     } else if let Some(actions) = parse_ability_line(ability_tokens) {
-        let [KeywordAction::CumulativeUpkeep {
-            mana_symbols_per_counter,
-            life_per_counter,
-            text,
-        }] = actions.as_slice()
+        let [
+            KeywordAction::CumulativeUpkeep {
+                mana_symbols_per_counter,
+                life_per_counter,
+                text,
+            },
+        ] = actions.as_slice()
         else {
             return Ok(None);
         };

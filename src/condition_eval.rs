@@ -212,10 +212,9 @@ fn lower_legacy_activation_condition(condition: &Condition) -> Option<Condition>
             })
         }
         Condition::ControlCreatureWithPowerAtLeast(required_power) => Some(Condition::YouControl(
-            crate::target::ObjectFilter::creature()
-                .with_power(crate::filter::Comparison::GreaterThanOrEqual(
-                    *required_power as i32,
-                )),
+            crate::target::ObjectFilter::creature().with_power(
+                crate::filter::Comparison::GreaterThanOrEqual(*required_power as i32),
+            ),
         )),
         _ => None,
     }

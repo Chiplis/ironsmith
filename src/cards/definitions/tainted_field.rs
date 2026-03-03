@@ -158,13 +158,6 @@ mod tests {
             );
 
             match &mana_ability.activation_condition {
-                Some(crate::ConditionExpr::ControlLandWithSubtype(subtypes)) => {
-                    assert!(subtypes.contains(&Subtype::Swamp));
-                    assert!(
-                        !subtypes.contains(&Subtype::Plains),
-                        "Should only require Swamp, not Plains"
-                    );
-                }
                 Some(crate::ConditionExpr::YouControl(filter)) => {
                     assert!(filter.subtypes.contains(&Subtype::Swamp));
                     assert!(
@@ -172,7 +165,7 @@ mod tests {
                         "Should only require Swamp, not Plains"
                     );
                 }
-                other => panic!("Expected subtype activation condition, got {other:?}"),
+                other => panic!("Expected generic subtype activation condition, got {other:?}"),
             }
         } else {
             panic!("Expected mana ability");
@@ -211,13 +204,10 @@ mod tests {
             );
 
             match &mana_ability.activation_condition {
-                Some(crate::ConditionExpr::ControlLandWithSubtype(subtypes)) => {
-                    assert!(subtypes.contains(&Subtype::Swamp));
-                }
                 Some(crate::ConditionExpr::YouControl(filter)) => {
                     assert!(filter.subtypes.contains(&Subtype::Swamp));
                 }
-                other => panic!("Expected subtype activation condition, got {other:?}"),
+                other => panic!("Expected generic subtype activation condition, got {other:?}"),
             }
         } else {
             panic!("Expected mana ability");

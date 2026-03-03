@@ -7302,9 +7302,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[test]
     fn this_spell_cast_restriction_runtime_requires_attacked_declare_attackers_step() {
+        use crate::alternative_cast::CastingMethod;
         use crate::card::{CardBuilder, PowerToughness};
         use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-        use crate::alternative_cast::CastingMethod;
         use crate::decision::can_cast_spell;
         use crate::game_state::{Phase, Step};
         use crate::ids::PlayerId;
@@ -7370,7 +7370,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let def = CardDefinitionBuilder::new(CardId::new(), "Panic Probe")
             .card_types(vec![CardType::Instant])
-            .parse_text("Cast this spell only during combat before blockers are declared.\nDraw a card.")
+            .parse_text(
+                "Cast this spell only during combat before blockers are declared.\nDraw a card.",
+            )
             .expect("combat-before-blockers cast restriction should parse");
 
         let mut game =
@@ -7418,7 +7420,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let def = CardDefinitionBuilder::new(CardId::new(), "Illusory Angel Probe")
             .card_types(vec![CardType::Instant])
-            .parse_text("Cast this spell only if you've cast another spell this turn.\nDraw a card.")
+            .parse_text(
+                "Cast this spell only if you've cast another spell this turn.\nDraw a card.",
+            )
             .expect("cast-another-spell restriction should parse");
 
         let debug = format!("{:?}", def.abilities);
@@ -7584,7 +7588,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         };
 
         run_upkeep(&mut game);
-        let source_obj = game.object(source).expect("source should remain after first upkeep");
+        let source_obj = game
+            .object(source)
+            .expect("source should remain after first upkeep");
         assert_eq!(
             source_obj
                 .counters
@@ -7606,8 +7612,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         run_upkeep(&mut game);
         let source_obj = game.object(source);
         assert!(
-            source_obj.is_none()
-                || source_obj.is_some_and(|object| object.zone == Zone::Graveyard),
+            source_obj.is_none() || source_obj.is_some_and(|object| object.zone == Zone::Graveyard),
             "second cumulative upkeep without mana should sacrifice source, got {source_obj:?}"
         );
     }
@@ -7708,10 +7713,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Creatures with power less than this creature's power can't block it.")
             .expect("parse skulk rules text line");
 
-        let equal_blocker_def = CardDefinitionBuilder::new(CardId::from_raw(70102), "Equal Blocker")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
+        let equal_blocker_def =
+            CardDefinitionBuilder::new(CardId::from_raw(70102), "Equal Blocker")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build();
         let larger_blocker_def =
             CardDefinitionBuilder::new(CardId::from_raw(70103), "Larger Blocker")
                 .card_types(vec![CardType::Creature])
@@ -7723,7 +7729,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 
-        let attacker_id = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+        let attacker_id =
+            game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
         let equal_blocker_id =
             game.create_object_from_definition(&equal_blocker_def, bob, Zone::Battlefield);
         let larger_blocker_id =

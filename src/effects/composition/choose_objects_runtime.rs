@@ -614,6 +614,9 @@ mod tests {
         };
         // Should only find Alice's creature, not Bob's
         assert_eq!(chosen.len(), 1);
-        assert_eq!(chosen[0], alice_card, "should only search chooser's library");
+        assert_eq!(
+            chosen[0], alice_card,
+            "should only search chooser's library"
+        );
     }
 }

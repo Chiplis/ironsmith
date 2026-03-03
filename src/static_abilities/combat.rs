@@ -507,43 +507,55 @@ impl StaticAbilityKind for CantAttackUnlessDefendingPlayerControlsLandSubtype {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CantAttackUnlessConditionSpec {
-    YouControlMoreCreaturesThanDefendingPlayer,
-    YouControlMoreLandsThanDefendingPlayer,
-    YouControlAnotherCreatureWithPowerAtLeast(u32),
-    YouControlAnotherArtifact,
-    YouControlArtifact,
-    YouControlKnightOrSoldier,
-    YouControlCreatureWithPowerAtLeast(u32),
-    YouControlCreatureWithPowerAndToughness(u32, u32),
-    ThereIsALandWithSubtypeOnBattlefield(crate::types::Subtype),
-    ThereAreLandsWithSubtypeOnBattlefieldOrMore {
-        subtype: crate::types::Subtype,
+    /// Controller controls more permanents matching this filter than defending player.
+    ControllerControlsMoreThanDefendingPlayer(ObjectFilter),
+    /// Source/controller-scoped requirement that does not depend on the chosen defender.
+    SourceCondition(crate::ConditionExpr),
+    /// Battlefield-global count requirement (independent of controller/defender).
+    BattlefieldCountAtLeast {
+        filter: ObjectFilter,
         count: u32,
     },
-    ThereAreCardsInYourGraveyardOrMore(u32),
-    DefendingPlayerIsPoisoned,
-    DefendingPlayerHasCardsInGraveyardOrMore(u32),
-    DefendingPlayerControlsEnchantmentOrEnchantedPermanent,
-    DefendingPlayerControlsSnowLand,
-    DefendingPlayerControlsCreatureWithFlying,
-    DefendingPlayerControlsBluePermanent,
+    /// Controller's graveyard size requirement.
+    ControllerGraveyardHasCardsAtLeast(u32),
+    /// Defending-player-scoped requirement.
+    DefendingPlayerCondition(DefendingPlayerAttackCondition),
     OpponentWasDealtDamageThisTurn,
-    YouControlArtifactsOrMore(u32),
+    /// Requirement that depends on the full attacking group being declared.
+    AttackingGroupCondition(AttackingGroupAttackCondition),
+    /// Requirement paid when attackers are declared.
+    AttackCost(AttackCostCondition),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DefendingPlayerAttackCondition {
+    IsPoisoned,
+    HasCardsInGraveyardOrMore(u32),
+    Controls(ObjectFilter),
+    ControlsEnchantmentOrEnchantedPermanent,
+    IsMonarch,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttackingGroupAttackCondition {
     AtLeastNOtherCreaturesAttack(u32),
     CreatureWithGreaterPowerAlsoAttacks,
     BlackOrGreenCreatureAlsoAttacks,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttackCostCondition {
     SacrificeLands {
         count: u32,
         subtype: Option<crate::types::Subtype>,
     },
     ReturnEnchantmentYouControlToOwnersHand,
     PayOneForEachPlusOnePlusOneCounterOnIt,
-    DefendingPlayerIsMonarch,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CantAttackUnlessCondition {
     pub condition: CantAttackUnlessConditionSpec,
     pub display_text: String,
@@ -558,63 +570,8 @@ impl CantAttackUnlessCondition {
     }
 
     fn source_condition_without_defender(&self) -> Option<crate::ConditionExpr> {
-        use crate::effect::Condition;
-        use crate::filter::Comparison;
-        use crate::target::PlayerFilter;
-        use crate::types::Subtype;
-
-        match self.condition {
-            CantAttackUnlessConditionSpec::YouControlAnotherCreatureWithPowerAtLeast(threshold) => {
-                Some(Condition::YouControl(
-                    ObjectFilter::creature()
-                        .you_control()
-                        .other()
-                        .with_power(Comparison::GreaterThanOrEqual(threshold as i32)),
-                ))
-            }
-            CantAttackUnlessConditionSpec::YouControlAnotherArtifact => Some(
-                Condition::YouControl(ObjectFilter::artifact().you_control().other()),
-            ),
-            CantAttackUnlessConditionSpec::YouControlArtifact => Some(Condition::YouControl(
-                ObjectFilter::artifact().you_control(),
-            )),
-            CantAttackUnlessConditionSpec::YouControlKnightOrSoldier => Some(Condition::Or(
-                Box::new(Condition::YouControl(
-                    ObjectFilter::creature()
-                        .you_control()
-                        .with_subtype(Subtype::Knight),
-                )),
-                Box::new(Condition::YouControl(
-                    ObjectFilter::creature()
-                        .you_control()
-                        .with_subtype(Subtype::Soldier),
-                )),
-            )),
-            CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAtLeast(threshold) => {
-                Some(Condition::YouControl(
-                    ObjectFilter::creature()
-                        .you_control()
-                        .with_power(Comparison::GreaterThanOrEqual(threshold as i32)),
-                ))
-            }
-            CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAndToughness(
-                required_power,
-                required_toughness,
-            ) => Some(Condition::YouControl(
-                ObjectFilter::creature()
-                    .you_control()
-                    .with_power(Comparison::Equal(required_power as i32))
-                    .with_toughness(Comparison::Equal(required_toughness as i32)),
-            )),
-            CantAttackUnlessConditionSpec::YouControlArtifactsOrMore(required_count) => {
-                let mut filter = ObjectFilter::artifact();
-                filter.zone = Some(crate::zone::Zone::Battlefield);
-                Some(Condition::PlayerControlsAtLeast {
-                    player: PlayerFilter::You,
-                    filter,
-                    count: required_count,
-                })
-            }
+        match &self.condition {
+            CantAttackUnlessConditionSpec::SourceCondition(condition) => Some(condition.clone()),
             _ => None,
         }
     }
@@ -685,32 +642,16 @@ impl CantAttackUnlessCondition {
             return Some(result);
         }
 
-        use crate::types::Subtype;
-
-        let count_lands_with_subtype = |subtype: Subtype| -> u32 {
-            Self::battlefield_count_matching(
-                game,
-                &ObjectFilter::default()
-                    .with_type(crate::types::CardType::Land)
-                    .with_subtype(subtype),
-                None,
-            ) as u32
-        };
-
-        match self.condition {
-            CantAttackUnlessConditionSpec::ThereIsALandWithSubtypeOnBattlefield(subtype) => {
-                Some(count_lands_with_subtype(subtype) >= 1)
+        match &self.condition {
+            CantAttackUnlessConditionSpec::BattlefieldCountAtLeast { filter, count } => {
+                Some(Self::battlefield_count_matching(game, filter, None) >= *count as usize)
             }
-            CantAttackUnlessConditionSpec::ThereAreLandsWithSubtypeOnBattlefieldOrMore {
-                subtype,
-                count,
-            } => Some(count_lands_with_subtype(subtype) >= count),
-            CantAttackUnlessConditionSpec::ThereAreCardsInYourGraveyardOrMore(count) => Some(
+            CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(count) => Some(
                 game.player(controller)
-                    .is_some_and(|player| player.graveyard.len() >= count as usize),
+                    .is_some_and(|player| player.graveyard.len() >= *count as usize),
             ),
-            CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn => Some(
-                game.players.iter().any(|player| {
+            CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn => {
+                Some(game.players.iter().any(|player| {
                     player.is_in_game()
                         && player.id != controller
                         && game
@@ -719,30 +660,13 @@ impl CantAttackUnlessCondition {
                             .copied()
                             .unwrap_or(0)
                             > 0
-                }),
-            ),
-            CantAttackUnlessConditionSpec::YouControlMoreCreaturesThanDefendingPlayer
-            | CantAttackUnlessConditionSpec::YouControlMoreLandsThanDefendingPlayer
-            | CantAttackUnlessConditionSpec::YouControlAnotherCreatureWithPowerAtLeast(_)
-            | CantAttackUnlessConditionSpec::YouControlAnotherArtifact
-            | CantAttackUnlessConditionSpec::YouControlArtifact
-            | CantAttackUnlessConditionSpec::YouControlKnightOrSoldier
-            | CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAtLeast(_)
-            | CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAndToughness(_, _)
-            | CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned
-            | CantAttackUnlessConditionSpec::DefendingPlayerHasCardsInGraveyardOrMore(_)
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsEnchantmentOrEnchantedPermanent
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsSnowLand
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsCreatureWithFlying
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsBluePermanent
-            | CantAttackUnlessConditionSpec::AtLeastNOtherCreaturesAttack(_)
-            | CantAttackUnlessConditionSpec::CreatureWithGreaterPowerAlsoAttacks
-            | CantAttackUnlessConditionSpec::BlackOrGreenCreatureAlsoAttacks
-            | CantAttackUnlessConditionSpec::YouControlArtifactsOrMore(_)
-            | CantAttackUnlessConditionSpec::SacrificeLands { .. }
-            | CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand
-            | CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt
-            | CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch => None,
+                }))
+            }
+            CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(_)
+            | CantAttackUnlessConditionSpec::SourceCondition(_)
+            | CantAttackUnlessConditionSpec::DefendingPlayerCondition(_)
+            | CantAttackUnlessConditionSpec::AttackingGroupCondition(_)
+            | CantAttackUnlessConditionSpec::AttackCost(_) => None,
         }
     }
 
@@ -754,95 +678,51 @@ impl CantAttackUnlessCondition {
     ) -> Option<bool> {
         use crate::types::{CardType, Subtype};
 
-        match self.condition {
-            CantAttackUnlessConditionSpec::YouControlMoreCreaturesThanDefendingPlayer => {
-                let creature_filter = ObjectFilter::default().with_type(CardType::Creature);
+        match &self.condition {
+            CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(filter) => {
                 Some(Self::player_controls_more_matching(
                     game,
                     controller,
                     defending_player,
-                    &creature_filter,
+                    filter,
                 ))
             }
-            CantAttackUnlessConditionSpec::YouControlMoreLandsThanDefendingPlayer => {
-                let land_filter = ObjectFilter::default().with_type(CardType::Land);
-                Some(Self::player_controls_more_matching(
-                    game,
-                    controller,
-                    defending_player,
-                    &land_filter,
-                ))
-            }
-            CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned => Some(
-                game.player(defending_player)
-                    .is_some_and(|player| player.poison_counters > 0),
-            ),
-            CantAttackUnlessConditionSpec::DefendingPlayerHasCardsInGraveyardOrMore(count) => Some(
-                game.player(defending_player)
-                    .is_some_and(|player| player.graveyard.len() >= count as usize),
-            ),
-            CantAttackUnlessConditionSpec::DefendingPlayerControlsEnchantmentOrEnchantedPermanent => {
-                Some(game.battlefield.iter().any(|&id| {
-                    game.object(id).is_some_and(|obj| {
-                        obj.controller == defending_player
-                            && (game.object_has_card_type(obj.id, CardType::Enchantment)
-                                || obj.attachments.iter().any(|attachment_id| {
-                                    game.object(*attachment_id).is_some_and(|attachment| {
-                                        game.calculated_subtypes(attachment.id).contains(&Subtype::Aura)
-                                    })
-                                }))
-                    })
-                }))
-            }
-            CantAttackUnlessConditionSpec::DefendingPlayerControlsSnowLand => {
-                let snow_land_filter = ObjectFilter::default()
-                    .with_type(CardType::Land)
-                    .with_supertype(crate::types::Supertype::Snow);
-                Some(Self::player_controls_matching(
-                    game,
-                    defending_player,
-                    &snow_land_filter,
-                ))
-            }
-            CantAttackUnlessConditionSpec::DefendingPlayerControlsCreatureWithFlying => {
-                let flying_creature_filter = ObjectFilter::default()
-                    .with_type(CardType::Creature)
-                    .with_static_ability(crate::static_abilities::StaticAbilityId::Flying);
-                Some(Self::player_controls_matching(
-                    game,
-                    defending_player,
-                    &flying_creature_filter,
-                ))
-            }
-            CantAttackUnlessConditionSpec::DefendingPlayerControlsBluePermanent => {
-                let blue_filter = ObjectFilter::default()
-                    .with_colors(crate::color::ColorSet::from_color(crate::color::Color::Blue));
-                Some(Self::player_controls_matching(
-                    game,
-                    defending_player,
-                    &blue_filter,
-                ))
-            }
-            CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch => {
-                Some(game.monarch == Some(defending_player))
-            }
-            CantAttackUnlessConditionSpec::YouControlAnotherCreatureWithPowerAtLeast(_)
-            | CantAttackUnlessConditionSpec::YouControlAnotherArtifact
-            | CantAttackUnlessConditionSpec::YouControlArtifact
-            | CantAttackUnlessConditionSpec::YouControlKnightOrSoldier
-            | CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAtLeast(_)
-            | CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAndToughness(_, _)
-            | CantAttackUnlessConditionSpec::ThereIsALandWithSubtypeOnBattlefield(_)
-            | CantAttackUnlessConditionSpec::ThereAreLandsWithSubtypeOnBattlefieldOrMore { .. }
-            | CantAttackUnlessConditionSpec::ThereAreCardsInYourGraveyardOrMore(_)
+            CantAttackUnlessConditionSpec::DefendingPlayerCondition(condition) => match condition {
+                DefendingPlayerAttackCondition::IsPoisoned => Some(
+                    game.player(defending_player)
+                        .is_some_and(|player| player.poison_counters > 0),
+                ),
+                DefendingPlayerAttackCondition::HasCardsInGraveyardOrMore(count) => Some(
+                    game.player(defending_player)
+                        .is_some_and(|player| player.graveyard.len() >= *count as usize),
+                ),
+                DefendingPlayerAttackCondition::ControlsEnchantmentOrEnchantedPermanent => {
+                    Some(game.battlefield.iter().any(|&id| {
+                        game.object(id).is_some_and(|obj| {
+                            obj.controller == defending_player
+                                && (game.object_has_card_type(obj.id, CardType::Enchantment)
+                                    || obj.attachments.iter().any(|attachment_id| {
+                                        game.object(*attachment_id).is_some_and(|attachment| {
+                                            game.calculated_subtypes(attachment.id)
+                                                .contains(&Subtype::Aura)
+                                        })
+                                    }))
+                        })
+                    }))
+                }
+                DefendingPlayerAttackCondition::Controls(filter) => Some(
+                    Self::player_controls_matching(game, defending_player, filter),
+                ),
+                DefendingPlayerAttackCondition::IsMonarch => {
+                    Some(game.monarch == Some(defending_player))
+                }
+            },
+            CantAttackUnlessConditionSpec::SourceCondition(_)
+            | CantAttackUnlessConditionSpec::BattlefieldCountAtLeast { .. }
+            | CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(_)
             | CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn
-            | CantAttackUnlessConditionSpec::YouControlArtifactsOrMore(_)
-            | CantAttackUnlessConditionSpec::AtLeastNOtherCreaturesAttack(_)
-            | CantAttackUnlessConditionSpec::CreatureWithGreaterPowerAlsoAttacks
-            | CantAttackUnlessConditionSpec::BlackOrGreenCreatureAlsoAttacks
-            | CantAttackUnlessConditionSpec::SacrificeLands { .. }
-            | CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand
-            | CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt => None,
+            | CantAttackUnlessConditionSpec::AttackingGroupCondition(_)
+            | CantAttackUnlessConditionSpec::AttackCost(_) => None,
         }
     }
 
@@ -854,42 +734,42 @@ impl CantAttackUnlessCondition {
     ) -> Option<bool> {
         use crate::types::CardType;
 
-        match self.condition {
-            CantAttackUnlessConditionSpec::AtLeastNOtherCreaturesAttack(required) => {
-                let other_attacking_creatures = attacking_creatures
-                    .iter()
-                    .copied()
-                    .filter(|id| *id != source)
-                    .filter(|id| game.object_has_card_type(*id, CardType::Creature))
-                    .count() as u32;
-                Some(other_attacking_creatures >= required)
-            }
-            CantAttackUnlessConditionSpec::CreatureWithGreaterPowerAlsoAttacks => {
-                let source_power = game
-                    .calculated_power(source)
-                    .or_else(|| game.object(source).and_then(|obj| obj.power()))
-                    .unwrap_or(0);
-                Some(attacking_creatures.iter().any(|id| {
-                    if *id == source {
-                        return false;
-                    }
-                    game.object(*id).is_some_and(|obj| {
-                        game.object_has_card_type(obj.id, CardType::Creature)
-                            && game
-                                .calculated_power(obj.id)
-                                .or_else(|| obj.power())
-                                .is_some_and(|power| power > source_power)
-                    })
-                }))
-            }
-            CantAttackUnlessConditionSpec::BlackOrGreenCreatureAlsoAttacks => Some(
-                attacking_creatures.iter().any(|id| {
-                    if *id == source {
-                        return false;
-                    }
-                    game.object(*id).is_some_and(|obj| {
-                        game.object_has_card_type(obj.id, CardType::Creature)
-                            && {
+        match &self.condition {
+            CantAttackUnlessConditionSpec::AttackingGroupCondition(condition) => match condition {
+                AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(required) => {
+                    let other_attacking_creatures = attacking_creatures
+                        .iter()
+                        .copied()
+                        .filter(|id| *id != source)
+                        .filter(|id| game.object_has_card_type(*id, CardType::Creature))
+                        .count() as u32;
+                    Some(other_attacking_creatures >= *required)
+                }
+                AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks => {
+                    let source_power = game
+                        .calculated_power(source)
+                        .or_else(|| game.object(source).and_then(|obj| obj.power()))
+                        .unwrap_or(0);
+                    Some(attacking_creatures.iter().any(|id| {
+                        if *id == source {
+                            return false;
+                        }
+                        game.object(*id).is_some_and(|obj| {
+                            game.object_has_card_type(obj.id, CardType::Creature)
+                                && game
+                                    .calculated_power(obj.id)
+                                    .or_else(|| obj.power())
+                                    .is_some_and(|power| power > source_power)
+                        })
+                    }))
+                }
+                AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks => {
+                    Some(attacking_creatures.iter().any(|id| {
+                        if *id == source {
+                            return false;
+                        }
+                        game.object(*id).is_some_and(|obj| {
+                            game.object_has_card_type(obj.id, CardType::Creature) && {
                                 let colors = game
                                     .calculated_characteristics(obj.id)
                                     .map(|chars| chars.colors)
@@ -897,32 +777,17 @@ impl CantAttackUnlessCondition {
                                 colors.contains(crate::color::Color::Black)
                                     || colors.contains(crate::color::Color::Green)
                             }
-                    })
-                }),
-            ),
-            CantAttackUnlessConditionSpec::YouControlMoreCreaturesThanDefendingPlayer
-            | CantAttackUnlessConditionSpec::YouControlMoreLandsThanDefendingPlayer
-            | CantAttackUnlessConditionSpec::YouControlAnotherCreatureWithPowerAtLeast(_)
-            | CantAttackUnlessConditionSpec::YouControlAnotherArtifact
-            | CantAttackUnlessConditionSpec::YouControlArtifact
-            | CantAttackUnlessConditionSpec::YouControlKnightOrSoldier
-            | CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAtLeast(_)
-            | CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAndToughness(_, _)
-            | CantAttackUnlessConditionSpec::ThereIsALandWithSubtypeOnBattlefield(_)
-            | CantAttackUnlessConditionSpec::ThereAreLandsWithSubtypeOnBattlefieldOrMore { .. }
-            | CantAttackUnlessConditionSpec::ThereAreCardsInYourGraveyardOrMore(_)
-            | CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned
-            | CantAttackUnlessConditionSpec::DefendingPlayerHasCardsInGraveyardOrMore(_)
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsEnchantmentOrEnchantedPermanent
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsSnowLand
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsCreatureWithFlying
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsBluePermanent
+                        })
+                    }))
+                }
+            },
+            CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(_)
+            | CantAttackUnlessConditionSpec::SourceCondition(_)
+            | CantAttackUnlessConditionSpec::BattlefieldCountAtLeast { .. }
+            | CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(_)
+            | CantAttackUnlessConditionSpec::DefendingPlayerCondition(_)
             | CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn
-            | CantAttackUnlessConditionSpec::YouControlArtifactsOrMore(_)
-            | CantAttackUnlessConditionSpec::SacrificeLands { .. }
-            | CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand
-            | CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt
-            | CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch => None,
+            | CantAttackUnlessConditionSpec::AttackCost(_) => None,
         }
     }
 
@@ -952,45 +817,33 @@ impl CantAttackUnlessCondition {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<bool> {
-        match self.condition {
-            CantAttackUnlessConditionSpec::SacrificeLands { count, subtype } => Some(
-                Self::eligible_sacrificial_lands_for_controller(game, controller, subtype).len()
-                    >= count as usize,
-            ),
-            CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand => {
-                Some(game.battlefield.iter().any(|&id| {
-                    game.object(id).is_some_and(|obj| {
-                        obj.controller == controller
-                            && game.object_has_card_type(id, crate::types::CardType::Enchantment)
-                    })
-                }))
-            }
-            CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt => {
-                Some(game.object(source).is_some())
-            }
-            CantAttackUnlessConditionSpec::YouControlMoreCreaturesThanDefendingPlayer
-            | CantAttackUnlessConditionSpec::YouControlMoreLandsThanDefendingPlayer
-            | CantAttackUnlessConditionSpec::YouControlAnotherCreatureWithPowerAtLeast(_)
-            | CantAttackUnlessConditionSpec::YouControlAnotherArtifact
-            | CantAttackUnlessConditionSpec::YouControlArtifact
-            | CantAttackUnlessConditionSpec::YouControlKnightOrSoldier
-            | CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAtLeast(_)
-            | CantAttackUnlessConditionSpec::YouControlCreatureWithPowerAndToughness(_, _)
-            | CantAttackUnlessConditionSpec::ThereIsALandWithSubtypeOnBattlefield(_)
-            | CantAttackUnlessConditionSpec::ThereAreLandsWithSubtypeOnBattlefieldOrMore { .. }
-            | CantAttackUnlessConditionSpec::ThereAreCardsInYourGraveyardOrMore(_)
-            | CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned
-            | CantAttackUnlessConditionSpec::DefendingPlayerHasCardsInGraveyardOrMore(_)
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsEnchantmentOrEnchantedPermanent
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsSnowLand
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsCreatureWithFlying
-            | CantAttackUnlessConditionSpec::DefendingPlayerControlsBluePermanent
+        match &self.condition {
+            CantAttackUnlessConditionSpec::AttackCost(cost) => match cost {
+                AttackCostCondition::SacrificeLands { count, subtype } => Some(
+                    Self::eligible_sacrificial_lands_for_controller(game, controller, *subtype)
+                        .len()
+                        >= *count as usize,
+                ),
+                AttackCostCondition::ReturnEnchantmentYouControlToOwnersHand => {
+                    Some(game.battlefield.iter().any(|&id| {
+                        game.object(id).is_some_and(|obj| {
+                            obj.controller == controller
+                                && game
+                                    .object_has_card_type(id, crate::types::CardType::Enchantment)
+                        })
+                    }))
+                }
+                AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt => {
+                    Some(game.object(source).is_some())
+                }
+            },
+            CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(_)
+            | CantAttackUnlessConditionSpec::SourceCondition(_)
+            | CantAttackUnlessConditionSpec::BattlefieldCountAtLeast { .. }
+            | CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(_)
+            | CantAttackUnlessConditionSpec::DefendingPlayerCondition(_)
             | CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn
-            | CantAttackUnlessConditionSpec::YouControlArtifactsOrMore(_)
-            | CantAttackUnlessConditionSpec::AtLeastNOtherCreaturesAttack(_)
-            | CantAttackUnlessConditionSpec::CreatureWithGreaterPowerAlsoAttacks
-            | CantAttackUnlessConditionSpec::BlackOrGreenCreatureAlsoAttacks
-            | CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch => None,
+            | CantAttackUnlessConditionSpec::AttackingGroupCondition(_) => None,
         }
     }
 
@@ -1000,8 +853,10 @@ impl CantAttackUnlessCondition {
         source: ObjectId,
         _controller: PlayerId,
     ) -> Option<u32> {
-        match self.condition {
-            CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt => {
+        match &self.condition {
+            CantAttackUnlessConditionSpec::AttackCost(
+                AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt,
+            ) => {
                 let amount = game
                     .object(source)
                     .and_then(|obj| obj.counters.get(&CounterType::PlusOnePlusOne).copied())
@@ -1102,14 +957,16 @@ impl CantAttackUnlessCondition {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<Result<(), String>> {
-        match self.condition {
-            CantAttackUnlessConditionSpec::SacrificeLands { count, subtype } => Some(
-                Self::pay_sacrifice_attack_cost(game, source, controller, count, subtype),
-            ),
-            CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand => {
-                Some(Self::pay_return_enchantment_attack_cost(game, controller))
-            }
-            CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt => Some(Ok(())),
+        match &self.condition {
+            CantAttackUnlessConditionSpec::AttackCost(cost) => match cost {
+                AttackCostCondition::SacrificeLands { count, subtype } => Some(
+                    Self::pay_sacrifice_attack_cost(game, source, controller, *count, *subtype),
+                ),
+                AttackCostCondition::ReturnEnchantmentYouControlToOwnersHand => {
+                    Some(Self::pay_return_enchantment_attack_cost(game, controller))
+                }
+                AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt => Some(Ok(())),
+            },
             _ => None,
         }
     }
@@ -1495,7 +1352,9 @@ mod tests {
     #[test]
     fn test_cant_attack_unless_condition_id_and_display() {
         let ability = CantAttackUnlessCondition::new(
-            CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned,
+            CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                DefendingPlayerAttackCondition::IsPoisoned,
+            ),
             "Can't attack unless defending player is poisoned",
         );
         assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
@@ -1512,7 +1371,9 @@ mod tests {
         let bob = PlayerId::from_index(1);
 
         let ability = CantAttackUnlessCondition::new(
-            CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch,
+            CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                DefendingPlayerAttackCondition::IsMonarch,
+            ),
             "Can't attack unless defending player is the monarch",
         );
         assert_eq!(
@@ -1539,7 +1400,9 @@ mod tests {
             .add_counters(CounterType::PlusOnePlusOne, 3);
 
         let ability = CantAttackUnlessCondition::new(
-            CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt,
+            CantAttackUnlessConditionSpec::AttackCost(
+                AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt,
+            ),
             "Can't attack unless you pay {1} for each +1/+1 counter on it",
         );
         assert_eq!(

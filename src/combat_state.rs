@@ -959,7 +959,11 @@ mod tests {
             .abilities
             .push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
-                    CantAttackUnlessConditionSpec::AtLeastNOtherCreaturesAttack(2),
+                    CantAttackUnlessConditionSpec::AttackingGroupCondition(
+                        crate::static_abilities::AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(
+                            2,
+                        ),
+                    ),
                     "Can't attack unless at least two other creatures attack",
                 ),
             ));
@@ -1007,10 +1011,12 @@ mod tests {
             .abilities
             .push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
-                    CantAttackUnlessConditionSpec::SacrificeLands {
-                        count: 1,
-                        subtype: None,
-                    },
+                    CantAttackUnlessConditionSpec::AttackCost(
+                        crate::static_abilities::AttackCostCondition::SacrificeLands {
+                            count: 1,
+                            subtype: None,
+                        },
+                    ),
                     "Can't attack unless you sacrifice a land",
                 ),
             ));
@@ -1061,7 +1067,9 @@ mod tests {
             .abilities
             .push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
-                    CantAttackUnlessConditionSpec::ReturnEnchantmentYouControlToOwnersHand,
+                    CantAttackUnlessConditionSpec::AttackCost(
+                        crate::static_abilities::AttackCostCondition::ReturnEnchantmentYouControlToOwnersHand,
+                    ),
                     "Can't attack unless you return an enchantment you control to its owner's hand",
                 ),
             ));
@@ -1114,7 +1122,9 @@ mod tests {
             attacker_obj.add_counters(CounterType::PlusOnePlusOne, 2);
             attacker_obj.abilities.push(Ability::static_ability(
                 StaticAbility::cant_attack_unless_condition(
-                    CantAttackUnlessConditionSpec::PayOneForEachPlusOnePlusOneCounterOnIt,
+                    CantAttackUnlessConditionSpec::AttackCost(
+                        crate::static_abilities::AttackCostCondition::PayOneForEachPlusOnePlusOneCounterOnIt,
+                    ),
                     "Can't attack unless you pay {1} for each +1/+1 counter on it",
                 ),
             ));

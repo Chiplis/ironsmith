@@ -961,7 +961,9 @@ mod tests {
         add_ability(
             &mut attacker,
             StaticAbility::cant_attack_unless_condition(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerIsPoisoned,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::IsPoisoned,
+                ),
                 "Can't attack unless defending player is poisoned",
             ),
         );
@@ -984,7 +986,9 @@ mod tests {
         add_ability(
             &mut attacker,
             StaticAbility::cant_attack_unless_condition(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerIsMonarch,
+                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
+                    crate::static_abilities::DefendingPlayerAttackCondition::IsMonarch,
+                ),
                 "Can't attack unless defending player is the monarch",
             ),
         );
