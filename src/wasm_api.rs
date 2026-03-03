@@ -528,9 +528,6 @@ impl GameSnapshot {
             );
             stack_size += 1;
         }
-        stack_preview.truncate(4);
-        stack_objects.truncate(4);
-
         Self {
             perspective: perspective.0,
             turn_number: game.turn.turn_number,

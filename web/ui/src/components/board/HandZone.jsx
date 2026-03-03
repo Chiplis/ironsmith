@@ -3,7 +3,7 @@ import { useGame } from "@/context/GameContext";
 import GameCard from "@/components/cards/GameCard";
 import ActionPopover from "@/components/overlays/ActionPopover";
 
-export default function HandZone({ player, onInspect }) {
+export default function HandZone({ player, selectedObjectId, onInspect }) {
   const { state, dispatch } = useGame();
   const [popover, setPopover] = useState(null); // { anchorRect, actions, objectId }
 
@@ -28,12 +28,11 @@ export default function HandZone({ player, onInspect }) {
   }
 
   const handleCardClick = (e, card) => {
+    onInspect?.(card.id);
     const plays = playableMap.get(Number(card.id)) || [];
     if (plays.length > 0) {
       const rect = e.currentTarget.getBoundingClientRect();
       setPopover({ anchorRect: rect, actions: plays, objectId: card.id });
-    } else {
-      onInspect?.(card.id);
     }
   };
 
@@ -62,6 +61,7 @@ export default function HandZone({ player, onInspect }) {
                 card={card}
                 variant="hand"
                 isPlayable={isPlayable}
+                isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
                 onClick={(e) => handleCardClick(e, card)}
               />
             );

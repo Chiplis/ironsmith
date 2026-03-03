@@ -40,7 +40,6 @@ export default function PlayerCard({ player, isActive, isPerspective, label }) {
             {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           </button>
         )}
-        <span className="text-[22px] font-bold leading-none text-[#f5d08b] tabular-nums min-w-[28px]">{player.life}</span>
         <h2 className="text-[15px] font-bold m-0 truncate">{player.name}</h2>
         <ManaPool pool={player.mana_pool} />
       </div>

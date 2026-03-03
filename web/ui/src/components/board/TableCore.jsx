@@ -25,7 +25,7 @@ export default function TableCore({ selectedObjectId, onInspect, zoneView, deckL
       <OpponentZone opponents={opponents} selectedObjectId={selectedObjectId} onInspect={onInspect} zoneView={zoneView} />
       <MyZone player={me} selectedObjectId={selectedObjectId} onInspect={onInspect} zoneView={zoneView} />
       <PhaseTrack />
-      <HandZone player={me} onInspect={onInspect} />
+      <HandZone player={me} selectedObjectId={selectedObjectId} onInspect={onInspect} />
     </main>
   );
 }

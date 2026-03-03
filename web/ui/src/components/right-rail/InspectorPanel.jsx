@@ -3,6 +3,7 @@ import { useGame } from "@/context/GameContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { scryfallImageUrl } from "@/lib/scryfall";
 
 function CollapsibleSection({ title, defaultOpen = false, children }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -78,24 +79,38 @@ function ObjectView({ details }) {
     counters,
   ].filter(Boolean);
 
+  const artUrl = scryfallImageUrl(details.name, "art_crop");
+
   return (
     <div className="grid gap-1.5 text-[11px] pr-1">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="font-bold text-[13px]">{details.name || "Unknown"}</span>
-        {meta.length > 0 && (
-          <span className="text-[10px] text-muted-foreground">{meta.join(" · ")}</span>
+      <div className="relative overflow-hidden rounded border border-[#1e3044]">
+        {artUrl && (
+          <img
+            className="absolute inset-0 w-full h-full object-cover opacity-40 z-0 pointer-events-none"
+            src={artUrl}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
         )}
-        {details.mana_cost && (
-          <>
-            {meta.length > 0 && <span className="text-[10px] text-muted-foreground">·</span>}
-            <ManaCostIcons cost={details.mana_cost} />
-          </>
-        )}
+        <div className="relative z-1 bg-[rgba(10,17,24,0.75)] p-1.5 grid gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-bold text-[13px] text-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{details.name || "Unknown"}</span>
+            {meta.length > 0 && (
+              <span className="text-[10px] text-muted-foreground text-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{meta.join(" · ")}</span>
+            )}
+            {details.mana_cost && (
+              <>
+                {meta.length > 0 && <span className="text-[10px] text-muted-foreground">·</span>}
+                <ManaCostIcons cost={details.mana_cost} />
+              </>
+            )}
+          </div>
+          <pre className="whitespace-pre-wrap text-[11px] text-[#c0d8f0] m-0 font-[inherit] min-h-[40px] text-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+            {details.oracle_text || "No oracle text."}
+          </pre>
+        </div>
       </div>
-
-      <pre className="whitespace-pre-wrap text-[11px] text-[#c0d8f0] bg-[#0a1118] border border-[#1e3044] p-1.5 m-0 font-[inherit] min-h-[40px]">
-        {details.oracle_text || "No oracle text."}
-      </pre>
 
       {details.compiled_text && (
         <CollapsibleSection title="Compiled Text">
@@ -169,7 +184,6 @@ export default function InspectorPanel({ selectedObjectId }) {
 
   return (
     <section className="p-2 border-b border-game-line-2 flex flex-col gap-1.5 min-h-0 overflow-hidden">
-      <h3 className="m-0 text-sm font-bold">Object Inspector</h3>
       {stackEntry ? (
         <ScrollArea className="min-h-0 flex-1">
           <StackAbilityView entry={stackEntry} />
