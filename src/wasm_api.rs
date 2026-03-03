@@ -2057,9 +2057,17 @@ impl WasmGame {
                     self.snapshot()
                 }
                 ReplayOutcome::Complete(progress) => {
-                    self.pending_replay_action = None;
-                    self.apply_progress(progress)?;
-                    self.snapshot()
+                    if let GameProgress::NeedsDecisionCtx(next_ctx) = progress {
+                        // Follow-up contexts produced directly by GameProgress
+                        // must be handled by normal dispatch, not replay.
+                        self.pending_decision = Some(next_ctx);
+                        self.pending_replay_action = None;
+                        self.snapshot()
+                    } else {
+                        self.pending_replay_action = None;
+                        self.apply_progress(progress)?;
+                        self.snapshot()
+                    }
                 }
             }
         } else {
@@ -2092,9 +2100,17 @@ impl WasmGame {
                     self.snapshot()
                 }
                 ReplayOutcome::Complete(progress) => {
-                    self.pending_replay_action = None;
-                    self.apply_progress(progress)?;
-                    self.snapshot()
+                    if let GameProgress::NeedsDecisionCtx(next_ctx) = progress {
+                        // Follow-up contexts produced directly by GameProgress
+                        // must be handled by normal dispatch, not replay.
+                        self.pending_decision = Some(next_ctx);
+                        self.pending_replay_action = None;
+                        self.snapshot()
+                    } else {
+                        self.pending_replay_action = None;
+                        self.apply_progress(progress)?;
+                        self.snapshot()
+                    }
                 }
             }
         }
@@ -2110,9 +2126,20 @@ impl WasmGame {
     /// - hidden-information/library changes that cannot be safely reversed
     ///   (shuffle/reorder, draw/mill/exile-from-library, etc.) disable cancel.
     fn is_cancelable(&self) -> bool {
-        self.pending_replay_action
-            .as_ref()
-            .is_some_and(|replay| self.is_replay_chain_cancelable(replay))
+        if let Some(replay) = self.pending_replay_action.as_ref() {
+            return self.is_replay_chain_cancelable(replay);
+        }
+
+        let Some(epoch) = self.priority_epoch_checkpoint.as_ref() else {
+            return false;
+        };
+
+        let has_pending_action_chain = self.priority_state.pending_cast.is_some()
+            || self.priority_state.pending_activation.is_some()
+            || self.priority_state.pending_method_selection.is_some()
+            || self.priority_state.pending_mana_ability.is_some();
+
+        has_pending_action_chain && !self.has_irreversible_library_change_since(epoch)
     }
 
     fn is_replay_chain_cancelable(&self, replay: &PendingReplayAction) -> bool {
