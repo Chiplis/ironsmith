@@ -4,9 +4,9 @@
 //! - `CreateTokenEffect` - Basic token creation
 //! - `CreateTokenCopyEffect` - Create token copies of permanents
 
+mod amass;
 mod create_token;
 mod create_token_copy;
-mod amass;
 mod investigate;
 mod lifecycle;
 

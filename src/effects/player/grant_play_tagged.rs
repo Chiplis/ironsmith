@@ -45,15 +45,83 @@ impl GrantPlayTaggedEffect {
         Self::new(tag, player, GrantPlayTaggedDuration::UntilYourNextTurnEnd)
     }
 
+    /// Compute the turn number corresponding to the end of `player`'s next turn.
+    ///
+    /// This simulates `GameState::next_turn` turn selection logic (including
+    /// multiplayer turn order, queued extra turns, and skipped turns) without
+    /// mutating game state.
+    fn next_turn_number_for_player(game: &GameState, player: crate::ids::PlayerId) -> u32 {
+        if game.turn_order.is_empty() {
+            return game.turn.turn_number;
+        }
+
+        let mut simulated_active_player = game.turn.active_player;
+        let mut simulated_turn_number = game.turn.turn_number;
+        let mut simulated_extra_turns = game.extra_turns.clone();
+        let mut simulated_skip_next_turn = game.skip_next_turn.clone();
+
+        // Defensive bound to avoid pathological infinite loops if state is invalid.
+        let max_iterations = game
+            .turn_order
+            .len()
+            .saturating_mul(16)
+            .saturating_add(simulated_extra_turns.len().saturating_mul(2))
+            .saturating_add(16)
+            .max(1);
+
+        for _ in 0..max_iterations {
+            let next_player = if !simulated_extra_turns.is_empty() {
+                simulated_extra_turns.remove(0)
+            } else {
+                let current_index = game
+                    .turn_order
+                    .iter()
+                    .position(|&p| p == simulated_active_player)
+                    .unwrap_or(0);
+
+                let mut next_index = (current_index + 1) % game.turn_order.len();
+                let start_index = next_index;
+
+                loop {
+                    let candidate = game.turn_order[next_index];
+                    let is_in_game = game.player(candidate).is_some_and(|p| p.is_in_game());
+
+                    if is_in_game {
+                        if simulated_skip_next_turn.remove(&candidate) {
+                            next_index = (next_index + 1) % game.turn_order.len();
+                            if next_index == start_index {
+                                break;
+                            }
+                            continue;
+                        }
+                        break;
+                    }
+
+                    next_index = (next_index + 1) % game.turn_order.len();
+                    if next_index == start_index {
+                        break;
+                    }
+                }
+
+                game.turn_order[next_index]
+            };
+
+            simulated_turn_number = simulated_turn_number.saturating_add(1);
+            simulated_active_player = next_player;
+            if simulated_active_player == player {
+                return simulated_turn_number;
+            }
+        }
+
+        // Fallback should be unreachable in valid games.
+        game.turn.turn_number.saturating_add(1)
+    }
+
     fn expires_end_of_turn(&self, game: &GameState, player: crate::ids::PlayerId) -> u32 {
         match self.duration {
             GrantPlayTaggedDuration::UntilEndOfTurn => game.turn.turn_number,
             GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
-                if game.turn.active_player == player {
-                    game.turn.turn_number.saturating_add(2)
-                } else {
-                    game.turn.turn_number.saturating_add(1)
-                }
+                Self::next_turn_number_for_player(game, player)
             }
         }
     }
@@ -116,6 +184,7 @@ mod tests {
     use crate::executor::ExecutionContext;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::snapshot::ObjectSnapshot;
+    use std::collections::HashSet;
 
     #[test]
     fn grant_play_tagged_until_your_next_turn_applies_to_tagged_exile_cards() {
@@ -163,5 +232,60 @@ mod tests {
             }
             _ => panic!("expected effect grant source"),
         }
+    }
+
+    #[test]
+    fn grant_play_tagged_until_your_next_turn_uses_multiplayer_turn_order() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+
+        // Alice is active now. In a 3-player game, Alice's next turn ends at +3.
+        game.turn.active_player = alice;
+        game.turn.turn_number = 10;
+
+        let expires = GrantPlayTaggedEffect::until_your_next_turn("it", PlayerFilter::You)
+            .expires_end_of_turn(&game, alice);
+        assert_eq!(
+            expires, 13,
+            "duration should last through Alice's next turn in multiplayer"
+        );
+    }
+
+    #[test]
+    fn grant_play_tagged_until_your_next_turn_respects_extra_and_skipped_turns() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        // Grant on Bob's turn with queued extra turn for Alice.
+        game.turn.active_player = bob;
+        game.turn.turn_number = 20;
+        game.extra_turns = vec![alice];
+        let expires_with_extra =
+            GrantPlayTaggedEffect::until_your_next_turn("it", PlayerFilter::You)
+                .expires_end_of_turn(&game, alice);
+        assert_eq!(
+            expires_with_extra, 21,
+            "queued extra turn for Alice should make her next turn immediate"
+        );
+
+        // If Alice's next turn is skipped, duration should extend to the following turn she takes.
+        game.extra_turns.clear();
+        game.turn.active_player = bob;
+        game.turn.turn_number = 30;
+        game.skip_next_turn = HashSet::from([alice]);
+        let expires_with_skip =
+            GrantPlayTaggedEffect::until_your_next_turn("it", PlayerFilter::You)
+                .expires_end_of_turn(&game, alice);
+        assert_eq!(
+            expires_with_skip, 34,
+            "skipped next turn should defer expiration to Alice's subsequent turn"
+        );
     }
 }

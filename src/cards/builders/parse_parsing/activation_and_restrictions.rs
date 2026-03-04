@@ -6268,7 +6268,9 @@ pub(crate) fn strip_leading_one_or_more(tokens: &[Token]) -> &[Token] {
 fn parse_leading_or_more_quantifier(tokens: &[Token]) -> Option<(u32, &[Token])> {
     let (count, used) = parse_number(tokens)?;
     if tokens.get(used).is_some_and(|token| token.is_word("or"))
-        && tokens.get(used + 1).is_some_and(|token| token.is_word("more"))
+        && tokens
+            .get(used + 1)
+            .is_some_and(|token| token.is_word("more"))
     {
         Some((count, &tokens[used + 2..]))
     } else {
@@ -8175,14 +8177,14 @@ pub(crate) fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
     ) || contains_word_sequence(
         words,
         &[
-            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "their",
-            "draw", "step",
+            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "their", "draw",
+            "step",
         ],
     ) || contains_word_sequence(
         words,
         &[
-            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "their",
-            "draw", "step",
+            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "their", "draw",
+            "step",
         ],
     ) || contains_word_sequence(
         words,

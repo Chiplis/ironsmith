@@ -118,7 +118,9 @@ impl EffectExecutor for AmassEffect {
 
         // "Amass <Subtype>" causes the chosen Army creature to become that subtype
         // in addition to its other types if it doesn't already have it.
-        if !game.calculated_subtypes(chosen_army).contains(&amass_subtype)
+        if !game
+            .calculated_subtypes(chosen_army)
+            .contains(&amass_subtype)
             && let Some(obj) = game.object_mut(chosen_army)
             && !obj.subtypes.contains(&amass_subtype)
         {

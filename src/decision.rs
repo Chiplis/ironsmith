@@ -2244,17 +2244,54 @@ fn apply_spell_cost_modifiers(
     chosen_targets: &[Target],
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
+    use crate::filter::FilterContext;
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::target::ObjectFilter;
+
+    fn opponents_of(game: &GameState, player: PlayerId) -> Vec<PlayerId> {
+        game.turn_order
+            .iter()
+            .copied()
+            .filter(|p| *p != player)
+            .collect()
+    }
+
+    fn spell_matches_filter(
+        game: &GameState,
+        spell: &crate::object::Object,
+        caster: PlayerId,
+        filter: &ObjectFilter,
+        ctx: &FilterContext,
+    ) -> bool {
+        if filter.targets_object.is_some() || filter.targets_player.is_some() {
+            // Target-dependent cost modifiers require target selection context.
+            return false;
+        }
+        if filter.alternative_cast.is_some() {
+            // Alternative casting method isn't tracked for cost computation yet.
+            return false;
+        }
+        let mut cast_filter = filter.clone();
+        cast_filter.targets_player = None;
+        cast_filter.targets_object = None;
+        cast_filter.alternative_cast = None;
+        cast_filter.matches(spell, &ctx.clone().with_caster(Some(caster)), game)
+    }
 
     let mut total_increase: i32 = 0;
     let mut total_reduction: i32 = 0;
     let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    let ctx = FilterContext::new(player)
+        .with_source(spell.id)
+        .with_active_player(game.turn.active_player)
+        .with_opponents(opponents_of(game, player));
 
     for ability in &spell.abilities {
         let AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
         };
+        let functions_in_current_zone = ability.functions_in(&spell.zone);
         if let Some(reduction) = static_ability.this_spell_cost_reduction() {
             if crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
                 game,
@@ -2279,25 +2316,36 @@ fn apply_spell_cost_modifiers(
                 reduction_pips.extend(reduction.reduction.pips().iter().cloned());
             }
         }
+        if !functions_in_current_zone {
+            continue;
+        }
         if !static_ability.is_active(game, spell.id) {
             continue;
         }
-        if let Some(reduction) = static_ability.cost_reduction() {
+        if let Some(reduction) = static_ability.cost_reduction()
+            && spell_matches_filter(game, spell, player, &reduction.filter, &ctx)
+        {
             let amount = resolve_cost_modifier_value(game, player, spell, &reduction.reduction);
             if amount > 0 {
                 total_reduction = total_reduction.saturating_add(amount);
             }
         }
-        if let Some(increase) = static_ability.cost_increase() {
+        if let Some(increase) = static_ability.cost_increase()
+            && spell_matches_filter(game, spell, player, &increase.filter, &ctx)
+        {
             let amount = resolve_cost_modifier_value(game, player, spell, &increase.increase);
             if amount > 0 {
                 total_increase = total_increase.saturating_add(amount);
             }
         }
-        if let Some(increase) = static_ability.cost_increase_mana_cost() {
+        if let Some(increase) = static_ability.cost_increase_mana_cost()
+            && spell_matches_filter(game, spell, player, &increase.filter, &ctx)
+        {
             increase_pips.extend(increase.increase.pips().iter().cloned());
         }
-        if let Some(reduction) = static_ability.cost_reduction_mana_cost() {
+        if let Some(reduction) = static_ability.cost_reduction_mana_cost()
+            && spell_matches_filter(game, spell, player, &reduction.filter, &ctx)
+        {
             reduction_pips.extend(reduction.reduction.pips().iter().cloned());
         }
         if let Some(per_target_amount) = static_ability.cost_increase_per_additional_target() {
@@ -7004,6 +7052,132 @@ mod tests {
     }
 
     #[test]
+    fn spell_attached_global_cost_reduction_requires_functional_zone() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let spell_card = CardBuilder::new(CardId::from_raw(16), "Zone Scoped Reducer")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .build();
+        let mut filter = ObjectFilter::default();
+        filter.cast_by = Some(PlayerFilter::You);
+
+        // A battlefield-only static modifier on a spell card in hand should not apply.
+        let battlefield_only_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let reduction = StaticAbility::new(crate::static_abilities::CostReduction::new(
+            filter.clone(),
+            Value::Fixed(1),
+        ));
+        game.object_mut(battlefield_only_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(reduction));
+        let battlefield_only_obj = game.object(battlefield_only_id).expect("spell exists");
+        let battlefield_only_base = battlefield_only_obj
+            .mana_cost
+            .as_ref()
+            .expect("spell has mana cost");
+        let battlefield_only_effective = calculate_effective_mana_cost(
+            &game,
+            alice,
+            battlefield_only_obj,
+            battlefield_only_base,
+        );
+        assert_eq!(
+            battlefield_only_effective.to_oracle(),
+            "{2}",
+            "battlefield-only modifiers must not apply while the spell is in hand"
+        );
+
+        // A hand/stack-scoped modifier still applies (e.g. Undaunted-style implementations).
+        let hand_scoped_id = game.create_object_from_card(&spell_card, alice, Zone::Hand);
+        let hand_scoped_reduction = StaticAbility::new(
+            crate::static_abilities::CostReduction::new(filter, Value::Fixed(1)),
+        );
+        game.object_mut(hand_scoped_id)
+            .expect("spell exists")
+            .abilities
+            .push(
+                Ability::static_ability(hand_scoped_reduction)
+                    .in_zones(vec![Zone::Hand, Zone::Stack]),
+            );
+        let hand_scoped_obj = game.object(hand_scoped_id).expect("spell exists");
+        let hand_scoped_base = hand_scoped_obj
+            .mana_cost
+            .as_ref()
+            .expect("spell has mana cost");
+        let hand_scoped_effective =
+            calculate_effective_mana_cost(&game, alice, hand_scoped_obj, hand_scoped_base);
+        assert_eq!(
+            hand_scoped_effective.to_oracle(),
+            "{1}",
+            "zone-scoped spell modifiers should still apply"
+        );
+    }
+
+    #[test]
+    fn spell_attached_global_cost_reduction_respects_color_filter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let mut red_filter = ObjectFilter::default();
+        red_filter.cast_by = Some(PlayerFilter::You);
+        red_filter.colors = Some(ColorSet::RED);
+
+        let colorless_spell = CardBuilder::new(CardId::from_raw(17), "Colorless Probe")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .build();
+        let colorless_id = game.create_object_from_card(&colorless_spell, alice, Zone::Hand);
+        let reduction = StaticAbility::new(crate::static_abilities::CostReduction::new(
+            red_filter.clone(),
+            Value::Fixed(1),
+        ));
+        game.object_mut(colorless_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(reduction).in_zones(vec![Zone::Hand, Zone::Stack]));
+        let colorless_obj = game.object(colorless_id).expect("spell exists");
+        let colorless_base = colorless_obj
+            .mana_cost
+            .as_ref()
+            .expect("spell has mana cost");
+        let colorless_effective =
+            calculate_effective_mana_cost(&game, alice, colorless_obj, colorless_base);
+        assert_eq!(
+            colorless_effective.to_oracle(),
+            "{2}",
+            "red-only filter must not reduce non-red spell costs"
+        );
+
+        let red_spell = CardBuilder::new(CardId::from_raw(18), "Red Probe")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Red],
+            ]))
+            .build();
+        let red_id = game.create_object_from_card(&red_spell, alice, Zone::Hand);
+        let red_reduction = StaticAbility::new(crate::static_abilities::CostReduction::new(
+            red_filter,
+            Value::Fixed(1),
+        ));
+        game.object_mut(red_id)
+            .expect("spell exists")
+            .abilities
+            .push(Ability::static_ability(red_reduction).in_zones(vec![Zone::Hand, Zone::Stack]));
+        let red_obj = game.object(red_id).expect("spell exists");
+        let red_base = red_obj.mana_cost.as_ref().expect("spell has mana cost");
+        let red_effective = calculate_effective_mana_cost(&game, alice, red_obj, red_base);
+        assert_eq!(
+            red_effective.to_oracle(),
+            "{R}",
+            "red-only filter should reduce matching red spell costs"
+        );
+    }
+
+    #[test]
     fn dynamic_spell_cost_reduction_distinct_names_reduces_generic_cost() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -7037,7 +7211,7 @@ mod tests {
         game.object_mut(spell_id)
             .expect("spell exists")
             .abilities
-            .push(Ability::static_ability(reduction));
+            .push(Ability::static_ability(reduction).in_zones(vec![Zone::Hand, Zone::Stack]));
 
         let spell_obj = game.object(spell_id).expect("spell exists");
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");

@@ -1044,11 +1044,7 @@ fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zo
         }
     }
 
-    if zones.is_empty() {
-        None
-    } else {
-        Some(zones)
-    }
+    if zones.is_empty() { None } else { Some(zones) }
 }
 
 fn apply_line_ast(

@@ -23,15 +23,16 @@ function handGlowFromTypes(cardTypes) {
 
 /**
  * Build a map of objectId → actions for all interactable hand cards.
- * Also builds a list of "extra" castable/playable cards from non-hand zones.
+ * Also builds a list of "extra" pseudo-hand cards from non-hand zones.
  */
 function buildPlayableMaps(state, player) {
   const handPlayable = new Map();   // objectId → actions[] (from hand)
   const extraPlayable = new Map();  // objectId → { name, actions[], fromZone }
 
-  if (state?.decision?.kind !== "priority" || !state?.decision?.actions) {
-    return { handPlayable, extraPlayable };
-  }
+  const actions =
+    state?.decision?.kind === "priority" && Array.isArray(state?.decision?.actions)
+      ? state.decision.actions
+      : [];
 
   const handIds = new Set((player?.hand_cards || []).map((c) => Number(c.id)));
 
@@ -41,7 +42,7 @@ function buildPlayableMaps(state, player) {
   for (const c of player?.exile_cards || []) cardNameById.set(Number(c.id), c.name);
   for (const c of player?.hand_cards || []) cardNameById.set(Number(c.id), c.name);
 
-  for (const action of state.decision.actions) {
+  for (const action of actions) {
     if (action.object_id == null) {
       continue;
     }
@@ -74,6 +75,26 @@ function buildPlayableMaps(state, player) {
       extraPlayable.get(objId).actions.push(action);
     }
   }
+
+  // Surface non-hand cards that currently have permission to be played/cast
+  // from their zone, even if they aren't payable right now.
+  const addPseudoHandCandidates = (cards, fromZone) => {
+    for (const card of cards || []) {
+      if (!card?.show_in_pseudo_hand) continue;
+      const objId = Number(card.id);
+      if (!Number.isFinite(objId) || handIds.has(objId)) continue;
+      if (!extraPlayable.has(objId)) {
+        extraPlayable.set(objId, {
+          name: card.name || cardNameById.get(objId) || `Card ${objId}`,
+          actions: [],
+          fromZone,
+        });
+      }
+    }
+  };
+
+  addPseudoHandCandidates(player?.graveyard_cards, "graveyard");
+  addPseudoHandCandidates(player?.exile_cards, "exile");
 
   return { handPlayable, extraPlayable };
 }
@@ -259,17 +280,20 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
             {extraCards.map((extra) => {
               const card = { id: extra.id, name: extra.name };
               const plays = extra.actions;
+              const isPlayable = plays.length > 0;
               return (
                 <GameCard
                   key={`extra-${extra.id}`}
                   card={card}
                   variant="hand"
-                  isPlayable
-                  glowKind="extra"
+                  isPlayable={isPlayable}
+                  glowKind={isPlayable ? "extra" : null}
                   isNew
                   isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
-                  onClick={plays.length <= 1 ? undefined : (e) => handleCardClick(e, card, plays)}
-                  onPointerDown={(e) => handlePointerDown(e, card, plays, "extra")}
+                  onClick={plays.length === 0
+                    ? (e) => handleCardClick(e, card, plays)
+                    : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card, plays)}
+                  onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, "extra") : undefined}
                   onMouseEnter={() => hoverCard(extra.id)}
                   onMouseLeave={clearHover}
                   style={{

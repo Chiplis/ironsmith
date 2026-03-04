@@ -4942,7 +4942,9 @@ fn compile_effect_inner(
             let count = resolve_value_it_tag(count, ctx)?;
             Ok((vec![Effect::investigate(count)], Vec::new()))
         }
-        EffectAst::Amass { subtype, amount } => Ok((vec![Effect::amass(*subtype, *amount)], Vec::new())),
+        EffectAst::Amass { subtype, amount } => {
+            Ok((vec![Effect::amass(*subtype, *amount)], Vec::new()))
+        }
         EffectAst::CreateTokenWithMods {
             name,
             count,

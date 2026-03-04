@@ -660,10 +660,17 @@ pub(crate) fn generated_definition_unsupported_mechanics_message(
     }
 
     const MAX_ISSUES_IN_MESSAGE: usize = 3;
-    let shown = issues.iter().take(MAX_ISSUES_IN_MESSAGE).cloned().collect::<Vec<_>>();
+    let shown = issues
+        .iter()
+        .take(MAX_ISSUES_IN_MESSAGE)
+        .cloned()
+        .collect::<Vec<_>>();
     let mut details = shown.join(" | ");
     if issues.len() > MAX_ISSUES_IN_MESSAGE {
-        details.push_str(&format!(" | (+{} more)", issues.len() - MAX_ISSUES_IN_MESSAGE));
+        details.push_str(&format!(
+            " | (+{} more)",
+            issues.len() - MAX_ISSUES_IN_MESSAGE
+        ));
     }
     Some(format!(
         "Card compiled but contains unsupported mechanics: {details}"
