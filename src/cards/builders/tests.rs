@@ -5180,6 +5180,16 @@ fn test_parse_granted_keyword_and_must_attack_keeps_both_parts() {
 }
 
 #[test]
+fn parse_anger_graveyard_condition_with_land_control() {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Anger Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Haste\nAs long as this card is in your graveyard and you control a Mountain, creatures you control have haste.",
+        )
+        .expect("anger-style graveyard + land-control condition should parse");
+}
+
+#[test]
 fn test_parse_landwalk_as_though_clause_is_not_partially_parsed() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Landwalk Override Variant")
         .card_types(vec![CardType::Enchantment])

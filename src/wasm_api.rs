@@ -1924,7 +1924,7 @@ impl WasmGame {
         let mut failed: Vec<String> = Vec::new();
 
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
-        for (player_id, deck) in player_ids.into_iter().zip(decks.iter()) {
+        for (&player_id, deck) in player_ids.iter().zip(decks.iter()) {
             self.registry
                 .ensure_cards_loaded(deck.iter().map(|name| name.as_str()));
 

@@ -4943,6 +4943,30 @@ pub(crate) fn parse_static_condition_clause(
         )));
     }
 
+    if let Some(is_idx) = clause_words
+        .iter()
+        .position(|word| *word == "is" || *word == "are")
+    {
+        let subject_words = &clause_words[..is_idx];
+        let source_pronoun_subject = matches!(subject_words, ["it"] | ["its"]);
+        if !subject_words.is_empty()
+            && (is_source_reference_words(subject_words) || source_pronoun_subject)
+        {
+            let remainder_words = &clause_words[is_idx + 1..];
+            if remainder_words == ["in", "your", "graveyard"]
+                || remainder_words == ["in", "graveyard"]
+            {
+                let mut filter = ObjectFilter::source();
+                filter.zone = Some(Zone::Graveyard);
+                return Ok(crate::ConditionExpr::CountComparison {
+                    count: AnthemCountExpression::MatchingFilter(filter),
+                    comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                    display: Some(clause_words.join(" ")),
+                });
+            }
+        }
+    }
+
     if clause_words.starts_with(&["there", "are"]) || clause_words.starts_with(&["there", "is"]) {
         if let Some((metric, threshold)) = parse_graveyard_metric_threshold_condition(&tokens)? {
             if metric == crate::static_abilities::GraveyardCountMetric::CardTypes {
@@ -5090,10 +5114,40 @@ pub(crate) fn parse_static_condition_clause(
         }
     }
 
+    if let Some(conjoined) = parse_conjoined_static_condition_clause(&tokens) {
+        return Ok(conjoined);
+    }
+
     Err(CardTextError::ParseError(format!(
         "unsupported static condition clause (clause: '{}')",
         clause_words.join(" ")
     )))
+}
+
+fn parse_conjoined_static_condition_clause(tokens: &[Token]) -> Option<crate::ConditionExpr> {
+    let words = words(tokens);
+    let and_positions = words
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, word)| (*word == "and").then_some(idx))
+        .collect::<Vec<_>>();
+    for and_word_idx in and_positions {
+        let and_token_idx = token_index_for_word_index(tokens, and_word_idx)?;
+        let left_tokens = trim_commas(&tokens[..and_token_idx]);
+        let right_tokens = trim_commas(&tokens[and_token_idx + 1..]);
+        if left_tokens.is_empty() || right_tokens.is_empty() {
+            continue;
+        }
+        let Ok(left) = parse_static_condition_clause(&left_tokens) else {
+            continue;
+        };
+        let right = parse_conjoined_static_condition_clause(&right_tokens)
+            .or_else(|| parse_static_condition_clause(&right_tokens).ok());
+        if let Some(right) = right {
+            return Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)));
+        }
+    }
+    None
 }
 
 pub(crate) fn parse_anthem_for_each_expression(
