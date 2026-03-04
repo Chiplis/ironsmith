@@ -112,6 +112,8 @@ def load_semantic_scores() -> tuple[Dict[str, float], bool]:
     return score_map, True
 
 
+UNSCORED_SENTINEL = -1.0
+
 SingleEntry = Tuple[str, str, float]
 FlipPair = Tuple[str, str, float, str, str, float, str]
 
@@ -122,7 +124,7 @@ def collect_unique_blocks(
 ) -> Tuple[Dict[str, SingleEntry], List[FlipPair]]:
     unique: Dict[str, SingleEntry] = {}
     flips: List[FlipPair] = []
-    skipped_missing_scores: List[str] = []
+    missing_scores: List[str] = []
 
     def resolve_score(*candidates: str) -> float | None:
         for name in candidates:
@@ -195,14 +197,16 @@ def collect_unique_blocks(
             back_score = resolve_score(back_name, combined_name)
             if front_score is None:
                 if strict_scores:
-                    skipped_missing_scores.append(front_name)
-                    continue
-                front_score = 1.0
+                    missing_scores.append(front_name)
+                    front_score = UNSCORED_SENTINEL
+                else:
+                    front_score = 1.0
             if back_score is None:
                 if strict_scores:
-                    skipped_missing_scores.append(back_name)
-                    continue
-                back_score = 1.0
+                    missing_scores.append(back_name)
+                    back_score = UNSCORED_SENTINEL
+                else:
+                    back_score = 1.0
 
             flips.append(
                 (
@@ -234,18 +238,19 @@ def collect_unique_blocks(
         score = resolve_score(name)
         if score is None:
             if strict_scores:
-                skipped_missing_scores.append(name)
-                continue
-            score = 1.0
+                missing_scores.append(name)
+                score = UNSCORED_SENTINEL
+            else:
+                score = 1.0
         if key not in unique:
             unique[key] = (name, parse_block, score)
 
-    if strict_scores and skipped_missing_scores:
-        unique_missing = sorted(set(skipped_missing_scores))
+    if strict_scores and missing_scores:
+        unique_missing = sorted(set(missing_scores))
         preview = ", ".join(unique_missing[:12])
         suffix = "" if len(unique_missing) <= 12 else f", ... (+{len(unique_missing) - 12} more)"
         print(
-            f"[generate_baked_registry] skipped {len(unique_missing)} card(s) without semantic scores: "
+            f"[generate_baked_registry] included {len(unique_missing)} card(s) without semantic scores: "
             f"{preview}{suffix}"
         )
 
@@ -276,6 +281,7 @@ def write_generated_source(
     lines.append(
         f'const GENERATED_REGISTRY_PAYLOAD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/{PAYLOAD_FILE_NAME}"));'
     )
+    lines.append(f"const UNSCORED_SENTINEL: f32 = {UNSCORED_SENTINEL};")
     lines.append("")
     lines.append("#[derive(Clone)]")
     lines.append("struct SingleCardText {")
@@ -395,24 +401,33 @@ def write_generated_source(
     lines.append("        let texts = generated_card_texts();")
     lines.append("        let mut scores_by_name: HashMap<String, f32> = HashMap::new();")
     lines.append("        for entry in &texts.singles {")
-    lines.append("            scores_by_name")
-    lines.append("                .entry(entry.name.to_lowercase())")
-    lines.append("                .and_modify(|score| *score = (*score).max(entry.score))")
-    lines.append("                .or_insert(entry.score);")
+    lines.append("            if entry.score > UNSCORED_SENTINEL {")
+    lines.append("                scores_by_name")
+    lines.append("                    .entry(entry.name.to_lowercase())")
+    lines.append("                    .and_modify(|score| *score = (*score).max(entry.score))")
+    lines.append("                    .or_insert(entry.score);")
+    lines.append("            }")
     lines.append("        }")
     lines.append("        for entry in &texts.flips {")
-    lines.append("            scores_by_name")
-    lines.append("                .entry(entry.front_name.to_lowercase())")
-    lines.append("                .and_modify(|score| *score = (*score).max(entry.front_score))")
-    lines.append("                .or_insert(entry.front_score);")
-    lines.append("            scores_by_name")
-    lines.append("                .entry(entry.back_name.to_lowercase())")
-    lines.append("                .and_modify(|score| *score = (*score).max(entry.back_score))")
-    lines.append("                .or_insert(entry.back_score);")
-    lines.append("            scores_by_name")
-    lines.append("                .entry(entry.combined_name.to_lowercase())")
-    lines.append("                .and_modify(|score| *score = (*score).max(entry.front_score))")
-    lines.append("                .or_insert(entry.front_score);")
+    lines.append("            if entry.front_score > UNSCORED_SENTINEL {")
+    lines.append("                scores_by_name")
+    lines.append("                    .entry(entry.front_name.to_lowercase())")
+    lines.append("                    .and_modify(|score| *score = (*score).max(entry.front_score))")
+    lines.append("                    .or_insert(entry.front_score);")
+    lines.append("            }")
+    lines.append("            if entry.back_score > UNSCORED_SENTINEL {")
+    lines.append("                scores_by_name")
+    lines.append("                    .entry(entry.back_name.to_lowercase())")
+    lines.append("                    .and_modify(|score| *score = (*score).max(entry.back_score))")
+    lines.append("                    .or_insert(entry.back_score);")
+    lines.append("            }")
+    lines.append("            let combined_score = entry.front_score.max(entry.back_score);")
+    lines.append("            if combined_score > UNSCORED_SENTINEL {")
+    lines.append("                scores_by_name")
+    lines.append("                    .entry(entry.combined_name.to_lowercase())")
+    lines.append("                    .and_modify(|score| *score = (*score).max(combined_score))")
+    lines.append("                    .or_insert(combined_score);")
+    lines.append("            }")
     lines.append("        }")
     lines.append("")
     lines.append("        let mut threshold_counts = [0usize; 100];")
@@ -612,10 +627,10 @@ def write_generated_source(
     lines.append("            let builder = CardDefinitionBuilder::new(CardId::new(), &entry.name);")
     lines.append("            match builder.parse_text(entry.block.clone()) {")
     lines.append("                Ok(def) => {")
-    lines.append("                    if !super::generated_definition_is_supported(&def) {")
     lines.append(
-        '                        return Err("card compiled but contains unsupported mechanics".to_string());'
+        "                    if let Some(detail) = super::generated_definition_unsupported_mechanics_message(&def) {"
     )
+    lines.append("                        return Err(detail);")
     lines.append("                    }")
     lines.append("                    return Ok(def);")
     lines.append("                }")
@@ -643,10 +658,10 @@ def write_generated_source(
     lines.append(
         '                .map_err(|e| format!("back face: {e:?}"))?;'
     )
-    lines.append("            if !super::generated_definition_is_supported(&front) {")
     lines.append(
-        '                return Err("card compiled but contains unsupported mechanics".to_string());'
+        "            if let Some(detail) = super::generated_definition_unsupported_mechanics_message(&front) {"
     )
+    lines.append("                return Err(detail);")
     lines.append("            }")
     lines.append("            return Ok(front);")
     lines.append("        }")
