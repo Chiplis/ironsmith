@@ -556,6 +556,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::YourTurn => Condition::YourTurn,
         PredicateAst::CreatureDiedThisTurn => Condition::CreatureDiedThisTurn,
+        PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn => {
+            Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        }
         PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
         PredicateAst::SourceHasNoCounter(counter_type) => {
             Condition::SourceHasNoCounter(*counter_type)
@@ -4904,22 +4907,70 @@ fn compile_effect_inner(
             let true_last_tag = ctx.last_object_tag.clone();
             ctx.last_object_tag = saved_last_tag.clone();
             let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
-            if if_false.is_empty() {
-                ctx.last_object_tag = true_last_tag.clone().or(saved_last_tag.clone());
+            let predicate_references_it = matches!(
+                predicate,
+                PredicateAst::ItIsLandCard | PredicateAst::ItMatches(_)
+            ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == IT_TAG)
+                || matches!(
+                    predicate,
+                    PredicateAst::PlayerTaggedObjectMatches { tag, .. } if tag.as_str() == IT_TAG
+                );
+
+            let antecedent_choice = if saved_last_tag.is_none() && predicate_references_it {
+                true_choices
+                    .iter()
+                    .chain(false_choices.iter())
+                    .find(|choice| choice.is_target() && choose_spec_targets_object(choice))
+                    .cloned()
             } else {
-                ctx.last_object_tag = saved_last_tag.clone();
+                None
+            };
+
+            let mut condition_reference_tag = saved_last_tag.clone();
+            let mut prelude = Vec::new();
+            if condition_reference_tag.is_none()
+                && let Some(choice) = antecedent_choice.clone()
+            {
+                let tag = if let Some(existing) = tagged_alias_for_choice(&true_effects, &choice) {
+                    existing
+                } else {
+                    ctx.next_tag("targeted")
+                };
+                prelude.push(
+                    Effect::new(crate::effects::TargetOnlyEffect::new(choice)).tag(tag.clone()),
+                );
+                condition_reference_tag = Some(tag);
             }
-            let condition_reference_tag = saved_last_tag.clone().or(true_last_tag.clone());
+
+            let original_last_tag = ctx.last_object_tag.clone();
+            ctx.last_object_tag = condition_reference_tag.clone().or(saved_last_tag.clone());
             let condition =
                 compile_condition_from_predicate_ast(predicate, ctx, &condition_reference_tag)?;
-            let effect = if false_effects.is_empty() {
+            ctx.last_object_tag = original_last_tag;
+
+            let conditional = if false_effects.is_empty() {
                 Effect::conditional_only(condition, true_effects)
             } else {
                 Effect::conditional(condition, true_effects, false_effects)
             };
+            prelude.push(conditional);
+
+            if let Some(reference_tag) = condition_reference_tag {
+                ctx.last_object_tag = Some(reference_tag);
+            } else if if_false.is_empty() {
+                ctx.last_object_tag = true_last_tag.clone().or(saved_last_tag.clone());
+            } else {
+                ctx.last_object_tag = saved_last_tag.clone();
+            }
+
             let mut choices = true_choices;
-            choices.extend(false_choices);
-            Ok((vec![effect], choices))
+            for choice in false_choices {
+                push_choice(&mut choices, choice);
+            }
+            if let Some(choice) = antecedent_choice {
+                push_choice(&mut choices, choice);
+            }
+            Ok((prelude, choices))
         }
         EffectAst::Enchant { filter } => {
             let spec = ChooseSpec::target(ChooseSpec::Object(filter.clone()));
@@ -6240,6 +6291,20 @@ pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
         | ChooseSpec::Source => true,
         _ => false,
     }
+}
+
+pub(crate) fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Option<String> {
+    for effect in effects {
+        let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+            continue;
+        };
+        if let Some(target_spec) = tagged.effect.0.get_target_spec()
+            && target_spec == choice
+        {
+            return Some(tagged.tag.as_str().to_string());
+        }
+    }
+    None
 }
 
 pub(crate) fn tag_object_target_effect(

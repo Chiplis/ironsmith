@@ -39,7 +39,7 @@ function pivotToBlockerCentric(attackerOptions) {
 export default function BlockersDecision({ decision, canAct }) {
   const { dispatch } = useGame();
   const { updateArrows, clearArrows, setCombatMode } = useCombatArrows();
-  const attackerOptions = decision.blocker_options || [];
+  const attackerOptions = useMemo(() => decision.blocker_options || [], [decision.blocker_options]);
   const blockerOptions = useMemo(
     () => pivotToBlockerCentric(attackerOptions),
     [attackerOptions]
@@ -120,24 +120,10 @@ export default function BlockersDecision({ decision, canAct }) {
   useEffect(() => clearArrows, [clearArrows]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-[11px] mb-0.5 shrink-0"
-        disabled={!canAct}
-        onClick={() =>
-          dispatch(
-            { type: "declare_blockers", declarations },
-            `Declared ${declarations.length} blocker(s)`
-          )
-        }
-      >
-        Confirm Blockers ({declarations.length})
-      </Button>
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col gap-1.5 pr-1">
-          <div className="text-[12px] text-muted-foreground">Declare blockers</div>
+    <div className="flex h-full min-h-0 w-full flex-col gap-2 overflow-x-hidden">
+      <ScrollArea className="flex-1 min-h-0 w-full overflow-x-hidden">
+        <div className="flex flex-col gap-2 pr-1 overflow-x-hidden">
+          <div className="px-0.5 text-[13px] font-bold uppercase tracking-wider text-[#a4c2e2]">Declare blockers</div>
           {blockerOptions.map((opt) => {
             const blockerId = opt.blocker;
             const name = opt.name;
@@ -145,14 +131,20 @@ export default function BlockersDecision({ decision, canAct }) {
             const validAttackers = opt.valid_attackers || [];
 
             return (
-              <div key={blockerId} className="border border-game-line-2 p-1 rounded-sm">
+              <div
+                key={blockerId}
+                className={cn(
+                  "min-w-0 rounded-sm px-2 py-1.5 border-l-[3px] border-[#2a3b4d] bg-[rgba(7,15,23,0.35)]",
+                  currentDecls.length > 0 && "border-[rgba(105,181,247,0.9)] bg-[rgba(20,39,58,0.52)]"
+                )}
+              >
                 <div className={cn(
-                  "text-[11px] font-bold mb-0.5",
-                  currentDecls.length > 0 && "text-[rgba(174,118,255,0.95)]"
+                  "mb-1.5 text-[15px] font-semibold text-[#d6e7fb]",
+                  currentDecls.length > 0 && "text-[#bfe1ff]"
                 )}>
                   {name}
                 </div>
-                <div className="flex flex-wrap gap-0.5">
+                <div className="flex flex-wrap gap-1.5">
                   {validAttackers.map((attacker) => {
                     const attackerId = Number(attacker.attacker);
                     const attackerName = attacker.name;
@@ -160,16 +152,18 @@ export default function BlockersDecision({ decision, canAct }) {
                     return (
                       <Button
                         key={attackerId}
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         className={cn(
-                          "h-5 text-[10px] px-1.5",
-                          blocking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]"
+                          "h-8 max-w-full min-w-0 overflow-hidden rounded-full border border-[#325474] bg-[rgba(15,27,40,0.9)] px-3 text-[13px] font-semibold text-[#c7dbf2] transition-all hover:border-[#4f7cad] hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+                          blocking && "border-[rgba(105,181,247,0.95)] bg-[rgba(41,73,105,0.7)] text-[#e1f1ff]"
                         )}
                         disabled={!canAct}
                         onClick={() => toggleBlocker(blockerId, attackerId)}
                       >
-                        {blocking ? "\u2694 " : ""}Block {attackerName}
+                        <span className="min-w-0 truncate">
+                          {blocking ? "[BLK] " : ""}Block {attackerName}
+                        </span>
                       </Button>
                     );
                   })}
@@ -179,6 +173,23 @@ export default function BlockersDecision({ decision, canAct }) {
           })}
         </div>
       </ScrollArea>
+
+      <div className="w-full shrink-0 pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full h-10 rounded-sm border border-[#315274] bg-[rgba(15,27,40,0.88)] px-3 text-[16px] font-bold text-[#8ec4ff] transition-all hover:border-[#4f7cad] hover:bg-[rgba(24,43,64,0.95)] hover:text-[#d7ebff]"
+          disabled={!canAct}
+          onClick={() =>
+            dispatch(
+              { type: "declare_blockers", declarations },
+              `Declared ${declarations.length} blocker(s)`
+            )
+          }
+        >
+          Confirm Blockers ({declarations.length})
+        </Button>
+      </div>
     </div>
   );
 }

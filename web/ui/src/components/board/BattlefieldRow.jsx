@@ -4,7 +4,16 @@ import { useCombatArrows } from "@/context/CombatArrowContext";
 import useNewCards from "@/hooks/useNewCards";
 import GameCard from "@/components/cards/GameCard";
 
-export default function BattlefieldRow({ cards = [], compact = false, selectedObjectId, onInspect, onCardClick, activatableMap }) {
+export default function BattlefieldRow({
+  cards = [],
+  compact = false,
+  selectedObjectId,
+  onInspect,
+  onCardClick,
+  activatableMap,
+  legalTargetObjectIds = new Set(),
+  allowVerticalScroll = false,
+}) {
   const rowRef = useRef(null);
   const { hoverCard, clearHover } = useHoverActions();
   const hoveredObjectId = useHoveredObjectId();
@@ -12,6 +21,19 @@ export default function BattlefieldRow({ cards = [], compact = false, selectedOb
   const cardIds = useMemo(() => cards.map((c) => c.id), [cards]);
   const { newIds, bumpedIds } = useNewCards(cardIds);
   const dragRef = useRef(null);
+  const syncOverflowMode = useCallback((layout) => {
+    const row = rowRef.current;
+    if (!row) return;
+    if (!allowVerticalScroll || !layout) {
+      row.style.overflowY = "visible";
+      row.style.overflowX = "visible";
+      return;
+    }
+    const contentHeight =
+      (layout.rows * layout.cardHeight) + (Math.max(layout.rows - 1, 0) * layout.gap);
+    row.style.overflowY = contentHeight > (layout.viewportHeight + 1) ? "auto" : "visible";
+    row.style.overflowX = "visible";
+  }, [allowVerticalScroll]);
 
   const fitCards = useCallback(() => {
     const row = rowRef.current;
@@ -20,6 +42,8 @@ export default function BattlefieldRow({ cards = [], compact = false, selectedOb
         row.style.removeProperty("--bf-cols");
         row.style.removeProperty("--bf-card-width");
         row.style.removeProperty("--bf-card-height");
+        row.style.overflowY = "visible";
+        row.style.overflowX = "visible";
       }
       return;
     }
@@ -49,21 +73,36 @@ export default function BattlefieldRow({ cards = [], compact = false, selectedOb
     }
 
     if (!best) {
-      const rows = maxRows;
-      const cols = Math.ceil(cards.length / rows);
+      const cols = Math.max(1, Math.floor((width + gap) / (minWidth + gap)));
+      const rows = Math.ceil(cards.length / cols);
       const widthLimit = (width - (cols - 1) * gap) / cols;
-      const heightLimit = ((height - (rows - 1) * gap) / rows) * aspect;
-      const cardWidth = Math.max(22, Math.floor(Math.min(widthLimit, heightLimit)));
-      const cardHeight = Math.max(30, Math.floor(cardWidth / aspect));
+      const cardWidth = Math.max(22, Math.floor(widthLimit));
+      const cardHeight = Math.max(minHeight, Math.floor(cardWidth / aspect));
       best = { rows, cols, cardWidth, cardHeight };
     }
 
     row.style.setProperty("--bf-cols", String(best.cols));
     row.style.setProperty("--bf-card-width", `${best.cardWidth}px`);
     row.style.setProperty("--bf-card-height", `${best.cardHeight}px`);
-  }, [cards.length, compact]);
+    syncOverflowMode({
+      rows: best.rows,
+      cardHeight: best.cardHeight,
+      gap,
+      viewportHeight: height,
+    });
+  }, [cards.length, compact, syncOverflowMode]);
 
   useLayoutEffect(fitCards, [fitCards]);
+
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const observer = new ResizeObserver(() => {
+      fitCards();
+    });
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [fitCards]);
 
   useEffect(() => {
     window.addEventListener("resize", fitCards);
@@ -131,19 +170,27 @@ export default function BattlefieldRow({ cards = [], compact = false, selectedOb
 
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
-  }, [combatModeRef, startDragArrow, updateDragArrow, endDragArrow]);
+  }, [combatModeRef, startDragArrow, updateDragArrow, endDragArrow, hoverCard, clearHover]);
 
   return (
     <div
       ref={rowRef}
-      className="grid gap-1.5 content-start justify-start min-h-0 h-full overflow-visible"
+      className="grid gap-1.5 content-start justify-start min-h-0 h-full"
       style={{
         gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, var(--bf-card-width, 124px)))`,
         gridAutoRows: "var(--bf-card-height, 96px)",
+        scrollbarGutter: allowVerticalScroll ? "stable" : "auto",
       }}
     >
       {cards.map((card, i) => {
         const isActivatable = activatableMap?.has(Number(card.id));
+        const cardObjectIds = [Number(card.id)];
+        if (Array.isArray(card.member_ids)) {
+          for (const memberId of card.member_ids) {
+            cardObjectIds.push(Number(memberId));
+          }
+        }
+        const isLegalTarget = cardObjectIds.some((id) => legalTargetObjectIds.has(id));
         const isNew = newIds.has(card.id);
         const isBumped = bumpedIds.has(card.id);
         let bumpDir = 0;
@@ -184,12 +231,14 @@ export default function BattlefieldRow({ cards = [], compact = false, selectedOb
           ? "attack-selected"
           : isAttackHoverTarget
             ? "attack-selected"
-          : isCombatCandidate
-            ? (combatMode.mode === "attackers" ? "attack-candidate" : "blocker-candidate")
-            : null;
-        const appliedGlowKind = isAttackHoverTarget
-          ? "attack-selected"
-          : (isCombatCandidate ? combatGlowKind : abilityGlow);
+            : isCombatCandidate
+              ? (combatMode.mode === "attackers" ? "attack-candidate" : "blocker-candidate")
+              : null;
+        const appliedGlowKind = isLegalTarget
+          ? "spell"
+          : isAttackHoverTarget
+            ? "attack-selected"
+            : (isCombatCandidate ? combatGlowKind : abilityGlow);
 
         return (
           <GameCard

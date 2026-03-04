@@ -428,7 +428,6 @@ impl GameSnapshot {
                         p.hand
                             .iter()
                             .rev()
-                            .take(12)
                             .filter_map(|id| game.object(*id))
                             .map(|o| {
                                 let mana_cost = o.mana_cost.as_ref().map(|mc| mc.to_oracle());
@@ -1560,6 +1559,12 @@ pub struct WasmGame {
     /// priority round.  `cancelDecision` rolls back to this point so that
     /// mana-ability activations, partial casts, etc. are all undone.
     priority_epoch_checkpoint: Option<ReplayCheckpoint>,
+    /// True once an undoable user action has successfully committed in the
+    /// current priority epoch.
+    priority_epoch_has_undoable_action: bool,
+    /// Latched for the current priority epoch when an irreversible mana ability
+    /// activation has occurred (for example sacrifice/counter/life side effects).
+    priority_epoch_undo_locked_by_mana: bool,
     /// User-configured minimum semantic threshold for card addition (0.0 = no filter).
     semantic_threshold: f32,
 }
@@ -1599,6 +1604,8 @@ impl WasmGame {
             runner_pending_decision: false,
             auto_cleanup_discard: true,
             priority_epoch_checkpoint: None,
+            priority_epoch_has_undoable_action: false,
+            priority_epoch_undo_locked_by_mana: false,
             semantic_threshold: 0.0,
         }
     }
@@ -2100,6 +2107,8 @@ impl WasmGame {
         }
         self.pending_decision = None;
         self.pending_replay_action = None;
+        self.priority_epoch_has_undoable_action = false;
+        self.priority_epoch_undo_locked_by_mana = false;
         self.recompute_ui_decision()?;
         self.snapshot()
     }
@@ -2152,6 +2161,12 @@ impl WasmGame {
                     self.snapshot()
                 }
                 ReplayOutcome::Complete(progress) => {
+                    if Self::replay_root_starts_undoable_action(&replay.root) {
+                        self.priority_epoch_has_undoable_action = true;
+                    }
+                    if self.replay_chain_has_irreversible_mana_activation(&replay) {
+                        self.priority_epoch_undo_locked_by_mana = true;
+                    }
                     if let GameProgress::NeedsDecisionCtx(next_ctx) = progress {
                         // Follow-up contexts produced directly by GameProgress
                         // must be handled by normal dispatch, not replay.
@@ -2195,6 +2210,12 @@ impl WasmGame {
                     self.snapshot()
                 }
                 ReplayOutcome::Complete(progress) => {
+                    if Self::replay_root_starts_undoable_action(&root) {
+                        self.priority_epoch_has_undoable_action = true;
+                    }
+                    if Self::replay_root_has_irreversible_mana_activation(&checkpoint.game, &root) {
+                        self.priority_epoch_undo_locked_by_mana = true;
+                    }
                     if let GameProgress::NeedsDecisionCtx(next_ctx) = progress {
                         // Follow-up contexts produced directly by GameProgress
                         // must be handled by normal dispatch, not replay.
@@ -2218,8 +2239,14 @@ impl WasmGame {
     /// Cancel is intentionally conservative:
     /// - only user-initiated replay chains are cancelable;
     /// - priority pass commits the action chain and disables cancel;
+    /// - playing a land commits the action chain and disables cancel;
     /// - hidden-information/library changes that cannot be safely reversed
     ///   (shuffle/reorder, draw/mill/exile-from-library, etc.) disable cancel.
+    /// - mana-ability activations with non-mana game-state side effects lock undo
+    ///   once they are committed.
+    ///
+    /// While a decision prompt is still open, we allow undo back to the replay
+    /// checkpoint even if the in-progress chain includes an irreversible mana ability.
     fn is_cancelable(&self) -> bool {
         if let Some(replay) = self.pending_replay_action.as_ref() {
             return self.is_replay_chain_cancelable(replay);
@@ -2229,12 +2256,10 @@ impl WasmGame {
             return false;
         };
 
-        let has_pending_action_chain = self.priority_state.pending_cast.is_some()
-            || self.priority_state.pending_activation.is_some()
-            || self.priority_state.pending_method_selection.is_some()
-            || self.priority_state.pending_mana_ability.is_some();
-
-        has_pending_action_chain && !self.has_irreversible_library_change_since(epoch)
+        self.priority_epoch_has_undoable_action
+            && !self.has_irreversible_mana_undo_lock()
+            && !self.has_land_play_since(epoch)
+            && !self.has_irreversible_library_change_since(epoch)
     }
 
     fn is_replay_chain_cancelable(&self, replay: &PendingReplayAction) -> bool {
@@ -2258,7 +2283,107 @@ impl WasmGame {
             return false;
         }
 
+        if self.has_irreversible_mana_undo_lock() {
+            return false;
+        }
+
+        if self.has_land_play_since(&replay.checkpoint) {
+            return false;
+        }
+
+        if self.pending_decision.is_none()
+            && self.replay_chain_has_irreversible_mana_activation(replay)
+        {
+            return false;
+        }
+
         !self.has_irreversible_library_change_since(&replay.checkpoint)
+    }
+
+    fn has_irreversible_mana_undo_lock(&self) -> bool {
+        if self.priority_epoch_undo_locked_by_mana {
+            return true;
+        }
+
+        // In-flight locks should not hide Undo while the user is still resolving
+        // a prompt in the current action chain. The lock is latched at epoch level
+        // when that chain commits.
+        if self.pending_decision.is_some() {
+            return false;
+        }
+
+        self.priority_state
+            .pending_cast
+            .as_ref()
+            .is_some_and(|pending| pending.undo_locked_by_mana)
+            || self
+                .priority_state
+                .pending_activation
+                .as_ref()
+                .is_some_and(|pending| pending.undo_locked_by_mana)
+            || self
+                .priority_state
+                .pending_mana_ability
+                .as_ref()
+                .is_some_and(|pending| pending.undo_locked_by_mana)
+    }
+
+    fn replay_root_has_irreversible_mana_activation(game: &GameState, root: &ReplayRoot) -> bool {
+        if let ReplayRoot::Response(PriorityResponse::PriorityAction(action)) = root {
+            return Self::legal_action_has_irreversible_mana_ability(game, action);
+        }
+        false
+    }
+
+    fn replay_root_starts_undoable_action(root: &ReplayRoot) -> bool {
+        match root {
+            ReplayRoot::Response(PriorityResponse::PriorityAction(LegalAction::PassPriority)) => {
+                false
+            }
+            ReplayRoot::Response(_) => true,
+            ReplayRoot::Advance => false,
+        }
+    }
+
+    fn replay_chain_has_irreversible_mana_activation(&self, replay: &PendingReplayAction) -> bool {
+        if Self::replay_root_has_irreversible_mana_activation(&replay.checkpoint.game, &replay.root)
+        {
+            return true;
+        }
+
+        replay.nested_answers.iter().any(|answer| {
+            if let ReplayDecisionAnswer::Priority(action) = answer {
+                return Self::legal_action_has_irreversible_mana_ability(
+                    &replay.checkpoint.game,
+                    action,
+                );
+            }
+            false
+        })
+    }
+
+    fn has_land_play_since(&self, checkpoint: &ReplayCheckpoint) -> bool {
+        for before_player in &checkpoint.game.players {
+            let Some(after_player) = self.game.player(before_player.id) else {
+                return true;
+            };
+            if after_player.lands_played_this_turn > before_player.lands_played_this_turn {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn legal_action_has_irreversible_mana_ability(game: &GameState, action: &LegalAction) -> bool {
+        let LegalAction::ActivateManaAbility {
+            source,
+            ability_index,
+        } = action
+        else {
+            return false;
+        };
+
+        !crate::game_loop::mana_ability_is_undo_safe(game, *source, *ability_index)
     }
 
     /// Returns true when the current game diverged from `checkpoint` in a way
@@ -2584,6 +2709,8 @@ impl WasmGame {
         self.pending_decision = None;
         self.pending_replay_action = None;
         self.priority_epoch_checkpoint = None;
+        self.priority_epoch_has_undoable_action = false;
+        self.priority_epoch_undo_locked_by_mana = false;
         self.game_over = None;
         self.runner = None;
         self.runner_awaiting_priority = false;
@@ -2598,14 +2725,28 @@ impl WasmGame {
     fn recompute_ui_decision(&mut self) -> Result<(), JsValue> {
         self.pending_decision = None;
         self.pending_replay_action = None;
+        self.priority_epoch_checkpoint = None;
+        self.priority_epoch_has_undoable_action = false;
+        self.priority_epoch_undo_locked_by_mana = false;
         if self.game_over.is_some() {
             return Ok(());
         }
         self.advance_until_decision()
     }
 
+    fn should_auto_resolve_cleanup_discard(&self, ctx: &DecisionContext) -> bool {
+        if !self.auto_cleanup_discard {
+            return false;
+        }
+        let DecisionContext::SelectObjects(obj) = ctx else {
+            return false;
+        };
+        self.game.turn.step == Some(crate::game_state::Step::Cleanup)
+            && obj.min > 0
+            && obj.player != self.perspective
+    }
+
     fn advance_until_decision(&mut self) -> Result<(), JsValue> {
-        use crate::game_state::Step;
         use crate::turn_runner::TurnAction;
 
         // Lazily create the TurnRunner on first call.
@@ -2629,22 +2770,20 @@ impl WasmGame {
 
                     TurnAction::Decision(ctx) => {
                         // Auto-resolve cleanup discards when the flag is set.
-                        if self.auto_cleanup_discard {
-                            if let DecisionContext::SelectObjects(ref obj) = ctx {
-                                if self.game.turn.step == Some(Step::Cleanup) && obj.min > 0 {
-                                    use rand::seq::SliceRandom;
-                                    let mut ids: Vec<_> = obj
-                                        .candidates
-                                        .iter()
-                                        .filter(|c| c.legal)
-                                        .map(|c| c.id)
-                                        .collect();
-                                    ids.shuffle(&mut rand::rng());
-                                    ids.truncate(obj.min);
-                                    self.runner.as_mut().unwrap().respond_discard(ids);
-                                    continue;
-                                }
-                            }
+                        if self.should_auto_resolve_cleanup_discard(&ctx)
+                            && let DecisionContext::SelectObjects(ref obj) = ctx
+                        {
+                            use rand::seq::SliceRandom;
+                            let mut ids: Vec<_> = obj
+                                .candidates
+                                .iter()
+                                .filter(|c| c.legal)
+                                .map(|c| c.id)
+                                .collect();
+                            ids.shuffle(&mut rand::rng());
+                            ids.truncate(obj.min);
+                            self.runner.as_mut().unwrap().respond_discard(ids);
+                            continue;
                         }
                         self.pending_decision = Some(ctx);
                         self.runner_pending_decision = true;
@@ -2691,6 +2830,8 @@ impl WasmGame {
             // We're inside a priority loop - use existing priority mechanism
             if self.priority_epoch_checkpoint.is_none() {
                 self.priority_epoch_checkpoint = Some(self.capture_replay_checkpoint());
+                self.priority_epoch_has_undoable_action = false;
+                self.priority_epoch_undo_locked_by_mana = false;
             }
             let checkpoint = self.capture_replay_checkpoint();
             let outcome = self.execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])?;
@@ -2717,12 +2858,16 @@ impl WasmGame {
                         self.runner.as_mut().unwrap().priority_done();
                         self.runner_awaiting_priority = false;
                         self.priority_epoch_checkpoint = None;
+                        self.priority_epoch_has_undoable_action = false;
+                        self.priority_epoch_undo_locked_by_mana = false;
                         self.pending_decision = None;
                         continue;
                     }
                     GameProgress::StackResolved => {
                         // New priority round after resolution — fresh epoch.
                         self.priority_epoch_checkpoint = None;
+                        self.priority_epoch_has_undoable_action = false;
+                        self.priority_epoch_undo_locked_by_mana = false;
                         continue;
                     }
                     GameProgress::GameOver(result) => {
@@ -2752,6 +2897,8 @@ impl WasmGame {
                     self.runner_awaiting_priority = false;
                 }
                 self.priority_epoch_checkpoint = None;
+                self.priority_epoch_has_undoable_action = false;
+                self.priority_epoch_undo_locked_by_mana = false;
                 self.pending_decision = None;
                 self.advance_until_decision()
             }
@@ -2762,6 +2909,8 @@ impl WasmGame {
             }
             GameProgress::StackResolved => {
                 self.priority_epoch_checkpoint = None;
+                self.priority_epoch_has_undoable_action = false;
+                self.priority_epoch_undo_locked_by_mana = false;
                 self.pending_decision = None;
                 self.advance_until_decision()
             }
@@ -4280,12 +4429,20 @@ fn convert_and_validate_targets(
 
 #[cfg(test)]
 mod tests {
-    use super::{WasmGame, build_object_details_snapshot};
+    use super::{
+        GameSnapshot, PendingReplayAction, ReplayRoot, WasmGame, build_object_details_snapshot,
+    };
     use crate::cards::definitions::grizzly_bears;
     use crate::continuous::ContinuousEffect;
+    use crate::decision::LegalAction;
+    use crate::decisions::context::{
+        BooleanContext, DecisionContext, SelectObjectsContext, SelectableObject,
+    };
     use crate::effect::Until;
-    use crate::game_state::GameState;
+    use crate::game_loop::{PendingManaAbility, PriorityResponse};
+    use crate::game_state::{GameState, Step};
     use crate::ids::{ObjectId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;
     use crate::zone::Zone;
 
@@ -4344,6 +4501,328 @@ mod tests {
             entered.counters.get(&CounterType::Vigilance).copied(),
             Some(1),
             "addCardToZone battlefield path should apply Tayam ETB replacement counter"
+        );
+    }
+
+    #[test]
+    fn cancelability_allows_locked_pending_mana_ability_while_decision_open() {
+        let mut wasm = WasmGame::new();
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.priority_epoch_has_undoable_action = true;
+        wasm.priority_state.pending_mana_ability = Some(PendingManaAbility {
+            source: ObjectId::from_raw(1),
+            ability_index: 0,
+            activator: PlayerId::from_index(0),
+            mana_cost: ManaCost::new(),
+            other_costs: Vec::new(),
+            mana_to_add: vec![ManaSymbol::Green],
+            effects: Vec::new(),
+            undo_locked_by_mana: true,
+        });
+        wasm.pending_decision = Some(DecisionContext::Boolean(BooleanContext::new(
+            PlayerId::from_index(0),
+            None,
+            "choose a color",
+        )));
+
+        assert!(
+            wasm.is_cancelable(),
+            "cancel should stay enabled while a decision prompt is open"
+        );
+    }
+
+    #[test]
+    fn cancelability_allows_mana_undo_when_not_locked() {
+        let mut wasm = WasmGame::new();
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.priority_epoch_has_undoable_action = true;
+        wasm.priority_state.pending_mana_ability = Some(PendingManaAbility {
+            source: ObjectId::from_raw(1),
+            ability_index: 0,
+            activator: PlayerId::from_index(0),
+            mana_cost: ManaCost::new(),
+            other_costs: Vec::new(),
+            mana_to_add: vec![ManaSymbol::Green],
+            effects: Vec::new(),
+            undo_locked_by_mana: false,
+        });
+
+        assert!(
+            wasm.is_cancelable(),
+            "cancel should stay enabled for undo-safe mana activation chains"
+        );
+    }
+
+    #[test]
+    fn cancelability_allows_epoch_undo_without_pending_chain() {
+        let mut wasm = WasmGame::new();
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.priority_epoch_has_undoable_action = true;
+
+        assert!(
+            wasm.is_cancelable(),
+            "cancel should stay available during a reversible priority epoch"
+        );
+    }
+
+    #[test]
+    fn cancelability_blocks_epoch_undo_without_user_action() {
+        let mut wasm = WasmGame::new();
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.priority_epoch_has_undoable_action = false;
+
+        assert!(
+            !wasm.is_cancelable(),
+            "cancel should be disabled when no undoable action happened in this epoch"
+        );
+    }
+
+    #[test]
+    fn cancelability_allows_irreversible_mana_replay_while_decision_open() {
+        let mut wasm = WasmGame::new();
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Boolean(BooleanContext::new(
+            PlayerId::from_index(0),
+            None,
+            "choose a color",
+        )));
+        let checkpoint = wasm.capture_replay_checkpoint();
+        wasm.pending_replay_action = Some(PendingReplayAction {
+            checkpoint,
+            root: ReplayRoot::Response(PriorityResponse::PriorityAction(
+                LegalAction::ActivateManaAbility {
+                    source: ObjectId::from_raw(999),
+                    ability_index: 0,
+                },
+            )),
+            nested_answers: Vec::new(),
+        });
+
+        assert!(
+            wasm.is_cancelable(),
+            "cancel should stay enabled while replay is waiting on a decision"
+        );
+    }
+
+    #[test]
+    fn cancelability_blocks_irreversible_mana_replay_without_open_decision() {
+        let mut wasm = WasmGame::new();
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        let checkpoint = wasm.capture_replay_checkpoint();
+        wasm.pending_replay_action = Some(PendingReplayAction {
+            checkpoint,
+            root: ReplayRoot::Response(PriorityResponse::PriorityAction(
+                LegalAction::ActivateManaAbility {
+                    source: ObjectId::from_raw(999),
+                    ability_index: 0,
+                },
+            )),
+            nested_answers: Vec::new(),
+        });
+
+        assert!(
+            !wasm.is_cancelable(),
+            "cancel should be disabled once irreversible mana replay is committed"
+        );
+    }
+
+    #[test]
+    fn cancelability_blocks_when_land_played_in_epoch() {
+        let mut wasm = WasmGame::new();
+        let player = PlayerId::from_index(0);
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.game
+            .player_mut(player)
+            .expect("player should exist")
+            .record_land_play();
+
+        assert!(
+            !wasm.is_cancelable(),
+            "cancel should be disabled after a land play in the current epoch"
+        );
+    }
+
+    #[test]
+    fn cancelability_blocks_land_play_replay_even_with_open_decision() {
+        let mut wasm = WasmGame::new();
+        let player = PlayerId::from_index(0);
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Boolean(BooleanContext::new(
+            player,
+            None,
+            "resolve trigger",
+        )));
+        let checkpoint = wasm.capture_replay_checkpoint();
+        wasm.pending_replay_action = Some(PendingReplayAction {
+            checkpoint,
+            root: ReplayRoot::Response(PriorityResponse::PriorityAction(LegalAction::PlayLand {
+                land_id: ObjectId::from_raw(777),
+            })),
+            nested_answers: Vec::new(),
+        });
+        wasm.game
+            .player_mut(player)
+            .expect("player should exist")
+            .record_land_play();
+
+        assert!(
+            !wasm.is_cancelable(),
+            "cancel should stay disabled once a replay chain includes a land play"
+        );
+    }
+
+    #[test]
+    fn cancelability_blocks_when_epoch_is_mana_locked() {
+        let mut wasm = WasmGame::new();
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.priority_epoch_undo_locked_by_mana = true;
+
+        assert!(
+            !wasm.is_cancelable(),
+            "cancel should be disabled once epoch is locked by irreversible mana activation"
+        );
+    }
+
+    #[test]
+    fn cleanup_auto_discard_only_applies_for_non_perspective_player() {
+        let mut wasm = WasmGame::new();
+        wasm.game.turn.step = Some(Step::Cleanup);
+
+        let perspective_ctx = DecisionContext::SelectObjects(SelectObjectsContext::new(
+            wasm.perspective,
+            None,
+            "Discard cards",
+            vec![
+                SelectableObject::new(ObjectId::from_raw(1), "Card A"),
+                SelectableObject::new(ObjectId::from_raw(2), "Card B"),
+            ],
+            1,
+            Some(1),
+        ));
+        assert!(
+            !wasm.should_auto_resolve_cleanup_discard(&perspective_ctx),
+            "cleanup discard should not auto-resolve for the perspective player"
+        );
+
+        let opponent = PlayerId::from_index((wasm.perspective.0 + 1) % wasm.game.players.len() as u8);
+        let opponent_ctx = DecisionContext::SelectObjects(SelectObjectsContext::new(
+            opponent,
+            None,
+            "Discard cards",
+            vec![
+                SelectableObject::new(ObjectId::from_raw(3), "Card C"),
+                SelectableObject::new(ObjectId::from_raw(4), "Card D"),
+            ],
+            1,
+            Some(1),
+        ));
+        assert!(
+            wasm.should_auto_resolve_cleanup_discard(&opponent_ctx),
+            "cleanup discard should auto-resolve for non-perspective players"
+        );
+    }
+
+    #[test]
+    fn cleanup_auto_discard_respects_toggle_and_cleanup_step() {
+        let mut wasm = WasmGame::new();
+        let opponent = PlayerId::from_index((wasm.perspective.0 + 1) % wasm.game.players.len() as u8);
+        let opponent_ctx = DecisionContext::SelectObjects(SelectObjectsContext::new(
+            opponent,
+            None,
+            "Discard cards",
+            vec![SelectableObject::new(ObjectId::from_raw(5), "Card E")],
+            1,
+            Some(1),
+        ));
+
+        wasm.game.turn.step = Some(Step::Cleanup);
+        wasm.auto_cleanup_discard = false;
+        assert!(
+            !wasm.should_auto_resolve_cleanup_discard(&opponent_ctx),
+            "toggle should disable cleanup auto-discard"
+        );
+
+        wasm.auto_cleanup_discard = true;
+        wasm.game.turn.step = Some(Step::End);
+        assert!(
+            !wasm.should_auto_resolve_cleanup_discard(&opponent_ctx),
+            "auto-discard should only happen during cleanup step"
+        );
+    }
+
+    #[test]
+    fn snapshot_perspective_hand_cards_are_not_truncated() {
+        let mut wasm = WasmGame::new();
+        for _ in 0..20 {
+            wasm.add_card_to_zone(
+                0,
+                "Ornithopter".to_string(),
+                "hand".to_string(),
+                true,
+            )
+            .expect("adding card to hand should succeed");
+        }
+
+        let pending_cast_stack_id = wasm.priority_state.pending_cast.as_ref().map(|p| p.stack_id);
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            wasm.perspective,
+            wasm.pending_decision.as_ref(),
+            wasm.game_over.as_ref(),
+            pending_cast_stack_id,
+            wasm.is_cancelable(),
+        );
+        let me = snapshot
+            .players
+            .iter()
+            .find(|p| p.id == wasm.perspective.0)
+            .expect("perspective player should exist in snapshot");
+
+        assert_eq!(
+            me.hand_cards.len(),
+            me.hand_size,
+            "perspective hand_cards must stay in sync with hand_size"
+        );
+        assert!(
+            me.hand_cards.len() >= 20,
+            "expected all 20 hand cards to be present in snapshot"
+        );
+    }
+
+    #[test]
+    fn snapshot_grouped_battlefield_count_matches_total() {
+        let mut wasm = WasmGame::new();
+        for _ in 0..3 {
+            wasm.add_card_to_zone(
+                0,
+                "Black Lotus".to_string(),
+                "battlefield".to_string(),
+                true,
+            )
+            .expect("adding lotus to battlefield should succeed");
+        }
+        wasm.add_card_to_zone(0, "Mountain".to_string(), "battlefield".to_string(), true)
+            .expect("adding mountain to battlefield should succeed");
+
+        let pending_cast_stack_id = wasm.priority_state.pending_cast.as_ref().map(|p| p.stack_id);
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            wasm.perspective,
+            wasm.pending_decision.as_ref(),
+            wasm.game_over.as_ref(),
+            pending_cast_stack_id,
+            wasm.is_cancelable(),
+        );
+        let me = snapshot
+            .players
+            .iter()
+            .find(|p| p.id == wasm.perspective.0)
+            .expect("perspective player should exist in snapshot");
+
+        let grouped_total: usize = me.battlefield.iter().map(|perm| perm.count).sum();
+        assert_eq!(
+            grouped_total, me.battlefield_total,
+            "battlefield_total must equal sum of grouped permanent counts"
         );
     }
 }

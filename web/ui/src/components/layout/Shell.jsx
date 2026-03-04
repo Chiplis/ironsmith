@@ -22,7 +22,7 @@ export default function Shell() {
   const [playerNames, setPlayerNames] = useState("Alice,Bob,Charlie,Diana");
   const [startingLife, setStartingLife] = useState(20);
   const [logOpen, setLogOpen] = useState(false);
-  const [zoneView, setZoneView] = useState("battlefield");
+  const [zoneViews, setZoneViews] = useState(["battlefield"]);
   const [deckLoadingMode, setDeckLoadingMode] = useState(false);
 
   // Initialize game when WASM loads
@@ -237,9 +237,10 @@ export default function Shell() {
         onEnterDeckLoading={() => setDeckLoadingMode((m) => !m)}
         deckLoadingMode={deckLoadingMode}
       />
-      <AddCardBar zoneView={zoneView} setZoneView={setZoneView} />
+      <AddCardBar />
       <Workspace
-        zoneView={zoneView}
+        zoneViews={zoneViews}
+        setZoneViews={setZoneViews}
         deckLoadingMode={deckLoadingMode}
         onLoadDecks={handleLoadCustomDecks}
         onCancelDeckLoading={() => setDeckLoadingMode(false)}

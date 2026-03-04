@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHoverActions } from "@/context/HoverContext";
 import { useDragActions } from "@/context/DragContext";
@@ -107,8 +107,9 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
   const dragThresholdRef = useRef(null);
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
+  const hoverClearTimerRef = useRef(null);
   const handCards = (player?.can_view_hand && player?.hand_cards) || [];
-  const handCardIds = useMemo(() => handCards.map((c) => c.id), [handCards]);
+  const handCardIds = handCards.map((c) => c.id);
   const { newIds, bumpedIds } = useNewCards(handCardIds);
 
   const isMe = player?.id === state?.perspective;
@@ -161,6 +162,10 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
 
   useEffect(() => {
     return () => {
+      if (hoverClearTimerRef.current) {
+        clearTimeout(hoverClearTimerRef.current);
+        hoverClearTimerRef.current = null;
+      }
       const handlers = dragHandlersRef.current;
       if (!handlers) return;
       document.removeEventListener("pointermove", handlers.onMove);
@@ -170,6 +175,25 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
       activePointerIdRef.current = null;
     };
   }, []);
+
+  const handleHoverEnter = useCallback((objectId) => {
+    if (hoverClearTimerRef.current) {
+      clearTimeout(hoverClearTimerRef.current);
+      hoverClearTimerRef.current = null;
+    }
+    hoverCard(objectId);
+  }, [hoverCard]);
+
+  const handleHoverLeave = useCallback(() => {
+    if (hoverClearTimerRef.current) {
+      clearTimeout(hoverClearTimerRef.current);
+    }
+    // Small delay smooths hover-out when moving across dense hand cards.
+    hoverClearTimerRef.current = setTimeout(() => {
+      clearHover();
+      hoverClearTimerRef.current = null;
+    }, 110);
+  }, [clearHover]);
 
   const handlePointerDown = (e, card, plays, glowKind) => {
     if (plays.length === 0) return;
@@ -231,9 +255,11 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
     const hasExtra = extraCards.length > 0;
 
     return (
-      <section className="bg-[#10161f] px-2 pt-0 pb-0.5 h-full overflow-visible">
-        <div className="min-h-0 h-[calc(100%+8px)] -mt-2 -mx-2 px-2 overflow-x-auto overflow-y-hidden pb-0.5">
-          <div className="flex gap-1.5 flex-nowrap items-end h-full w-max pl-1 pr-2">
+      <section
+        className="bg-[#10161f] px-2 pt-1 pb-0.5 h-full min-h-0 overflow-hidden"
+      >
+        <div className="min-h-0 h-full -mx-2 px-2 overflow-x-auto overflow-y-hidden pb-0.5">
+          <div className="flex gap-1.5 flex-nowrap items-center h-full w-max pl-1 pr-2">
             {/* Regular hand cards */}
             {handCards.map((card, i) => {
               const plays = handPlayable.get(Number(card.id)) || [];
@@ -259,8 +285,8 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
                   isInspected={isPlayable && selectedObjectId != null && String(card.id) === String(selectedObjectId)}
                   onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
                   onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
-                  onMouseEnter={() => hoverCard(card.id)}
-                  onMouseLeave={clearHover}
+                  onMouseEnter={() => handleHoverEnter(card.id)}
+                  onMouseLeave={handleHoverLeave}
                   style={{
                     flex: "0 0 124px",
                     width: "124px",
@@ -294,8 +320,8 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
                     ? (e) => handleCardClick(e, card, plays)
                     : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card, plays)}
                   onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, "extra") : undefined}
-                  onMouseEnter={() => hoverCard(extra.id)}
-                  onMouseLeave={clearHover}
+                  onMouseEnter={() => handleHoverEnter(extra.id)}
+                  onMouseLeave={handleHoverLeave}
                   style={{
                     flex: "0 0 124px",
                     width: "124px",

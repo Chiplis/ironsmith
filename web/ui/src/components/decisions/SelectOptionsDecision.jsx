@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,68 @@ import { Input } from "@/components/ui/input";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { SymbolText } from "@/lib/mana-symbols";
 import { normalizeDecisionText } from "./decisionText";
+
+function buildContextualOptions(options, hoveredObjectId) {
+  const hasObjectBoundOptions = options.some((opt) => opt.object_id != null);
+  if (!hasObjectBoundOptions) {
+    return {
+      options,
+      waitingForHover: false,
+    };
+  }
+
+  const hasHoveredObject = hoveredObjectId != null;
+  const hasMatchedHover = hasHoveredObject && options.some(
+    (opt) => opt.object_id != null && String(opt.object_id) === String(hoveredObjectId)
+  );
+
+  const contextualOptions = options.filter((opt) => {
+    if (opt.object_id == null) return true;
+    return hasMatchedHover && String(opt.object_id) === String(hoveredObjectId);
+  });
+
+  return {
+    options: contextualOptions,
+    waitingForHover: !hasMatchedHover,
+  };
+}
+
+function useAnimatedRows(rows, showRows, hideDelayMs = 180) {
+  const [visibleRows, setVisibleRows] = useState(rows);
+  const hideTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+
+    hideTimerRef.current = setTimeout(() => {
+      setVisibleRows(showRows ? rows : []);
+      hideTimerRef.current = null;
+    }, showRows ? 0 : hideDelayMs);
+  }, [rows, showRows, hideDelayMs]);
+
+  useEffect(
+    () => () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+    },
+    []
+  );
+
+  return visibleRows;
+}
+
+function HoverHint({ text }) {
+  return (
+    <div className="text-[12px] italic text-[#89a7c7] px-1 pb-0.5 leading-snug">
+      {text}
+    </div>
+  );
+}
 
 function OptionButton({ opt, canAct, onClick, isHighlighted, onMouseEnter, onMouseLeave }) {
   const disabled = !canAct || opt.legal === false;
@@ -111,15 +173,29 @@ export default function SelectOptionsDecision({ decision, canAct }) {
 function SingleSelectDecision({ decision, canAct }) {
   const { dispatch } = useGame();
   const { hoveredObjectId, hoverCard, clearHover } = useHover();
-  const options = decision.options || [];
+  const options = useMemo(() => decision.options || [], [decision.options]);
+  const contextual = useMemo(
+    () => buildContextualOptions(options, hoveredObjectId),
+    [options, hoveredObjectId]
+  );
+  const showRows = contextual.options.length > 0;
+  const visibleOptions = useAnimatedRows(contextual.options, showRows);
+  const showHoverHint = contextual.waitingForHover && options.some((opt) => opt.object_id != null);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1">
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-1 pr-1">
           <Description text={decision.description} />
-          <div className="flex flex-col gap-0.5">
-            {options.map((opt) => {
+          {showHoverHint && (
+            <HoverHint text="Hover a related card to show its available choices." />
+          )}
+          <div
+            className={`flex flex-col gap-0.5 transition-all duration-200 ${
+              showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
+            }`}
+          >
+            {visibleOptions.map((opt) => {
               const objId = opt.object_id != null ? String(opt.object_id) : null;
               return (
                 <OptionButton
@@ -139,6 +215,9 @@ function SingleSelectDecision({ decision, canAct }) {
               );
             })}
           </div>
+          {!showHoverHint && visibleOptions.length === 0 && (
+            <div className="text-[12px] italic text-muted-foreground px-1">No legal choices.</div>
+          )}
         </div>
       </ScrollArea>
     </div>
@@ -148,10 +227,25 @@ function SingleSelectDecision({ decision, canAct }) {
 function MultiSelectDecision({ decision, canAct }) {
   const { dispatch } = useGame();
   const { hoveredObjectId, hoverCard, clearHover } = useHover();
-  const options = decision.options || [];
+  const options = useMemo(() => decision.options || [], [decision.options]);
   const [selected, setSelected] = useState(new Set());
   const min = decision.min ?? 0;
   const max = decision.max ?? options.length;
+  const contextual = useMemo(
+    () => buildContextualOptions(options, hoveredObjectId),
+    [options, hoveredObjectId]
+  );
+  const showRows = contextual.options.length > 0;
+  const visibleOptions = useAnimatedRows(contextual.options, showRows);
+  const visibleOptionIndexSet = useMemo(
+    () => new Set(visibleOptions.map((opt) => opt.index)),
+    [visibleOptions]
+  );
+  const hiddenSelectedCount = useMemo(
+    () => Array.from(selected).filter((idx) => !visibleOptionIndexSet.has(idx)).length,
+    [selected, visibleOptionIndexSet]
+  );
+  const showHoverHint = contextual.waitingForHover && options.some((opt) => opt.object_id != null);
 
   const toggle = (index) => {
     setSelected((prev) => {
@@ -168,8 +262,15 @@ function MultiSelectDecision({ decision, canAct }) {
         <div className="flex flex-col gap-1 pr-1">
           <Description text={decision.description} />
           <SectionHeader text={`Select ${min === max ? min : `${min}–${max}`}`} />
-          <div className="flex flex-col gap-0.5">
-            {options.map((opt) => {
+          {showHoverHint && (
+            <HoverHint text="Hover a related card to show its choices. You can keep previous selections." />
+          )}
+          <div
+            className={`flex flex-col gap-0.5 transition-all duration-200 ${
+              showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
+            }`}
+          >
+            {visibleOptions.map((opt) => {
               const objId = opt.object_id != null ? String(opt.object_id) : null;
               const isHighlighted = objId != null && hoveredObjectId === objId;
               const isSelected = selected.has(opt.index);
@@ -195,6 +296,14 @@ function MultiSelectDecision({ decision, canAct }) {
               );
             })}
           </div>
+          {hiddenSelectedCount > 0 && (
+            <div className="text-[12px] text-[#89a7c7] px-1">
+              {hiddenSelectedCount} selected option(s) from other cards.
+            </div>
+          )}
+          {!showHoverHint && visibleOptions.length === 0 && (
+            <div className="text-[12px] italic text-muted-foreground px-1">No legal choices.</div>
+          )}
         </div>
       </ScrollArea>
       <div className="shrink-0 border-t border-game-line-2/70 pt-1">

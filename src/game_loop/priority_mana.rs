@@ -466,6 +466,47 @@ fn mana_ability_can_pay_pip(
     false
 }
 
+/// Returns true when a mana ability activation is safe to expose as "undo".
+///
+/// Undo-safe mana abilities are intentionally narrow:
+/// - activated mana ability
+/// - all activation cost components are tap costs
+/// - every runtime effect is mana-production-only
+///
+/// Anything else (counters, sacrifice, life, non-mana side effects, etc.)
+/// is treated as irreversible for UI undo purposes.
+pub(crate) fn mana_ability_is_undo_safe(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+) -> bool {
+    use crate::ability::AbilityKind;
+
+    let Some(object) = game.object(source) else {
+        return false;
+    };
+    let Some(ability) = object.abilities.get(ability_index) else {
+        return false;
+    };
+    let AbilityKind::Activated(mana_ability) = &ability.kind else {
+        return false;
+    };
+    if !mana_ability.is_mana_ability() {
+        return false;
+    }
+
+    let costs = mana_ability.mana_cost.costs();
+    if costs.is_empty() || !costs.iter().all(|cost| cost.requires_tap()) {
+        return false;
+    }
+
+    mana_ability.effects.iter().all(|effect| {
+        effect
+            .producible_mana_symbols(game, source, object.controller)
+            .is_some()
+    })
+}
+
 fn pip_mana_color_restriction(
     pip: &[crate::mana::ManaSymbol],
     allow_any_color: bool,
@@ -970,6 +1011,8 @@ fn apply_mana_payment_response(
             None,
         );
 
+        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
+
         // Record the mana ability activation in the payment trace.
         record_cast_mana_ability_payment(&mut pending, perm_id, ability_index);
 
@@ -995,7 +1038,7 @@ fn apply_mana_payment_response_mana_ability(
     use crate::ability::AbilityKind;
     use crate::special_actions::{SpecialAction, perform};
 
-    let pending = state.pending_mana_ability.take().ok_or_else(|| {
+    let mut pending = state.pending_mana_ability.take().ok_or_else(|| {
         GameLoopError::InvalidState("No pending mana ability for payment response".to_string())
     })?;
 
@@ -1060,6 +1103,8 @@ fn apply_mana_payment_response_mana_ability(
             true,
             None,
         );
+
+        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
 
         // Check if player can now pay
         let can_pay_now = game.can_pay_mana_cost(
@@ -1241,6 +1286,8 @@ fn apply_mana_payment_response_activation(
             None,
         );
 
+        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, perm_id, ability_index);
+
         // Record the mana ability activation in the payment trace.
         record_activation_mana_ability_payment(&mut pending, perm_id, ability_index);
 
@@ -1369,6 +1416,14 @@ fn apply_pip_payment_response_activation(
     );
     drain_pending_trigger_events(game, trigger_queue);
 
+    if let ManaPipPaymentAction::ActivateManaAbility {
+        source_id,
+        ability_index,
+    } = action
+    {
+        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, *source_id, *ability_index);
+    }
+
     // Only remove the pip if it was actually paid (not just mana generated)
     if pip_paid {
         pending.remaining_mana_pips.remove(0);
@@ -1441,6 +1496,14 @@ fn apply_pip_payment_response_cast(
         pending.caster,
     );
     drain_pending_trigger_events(game, trigger_queue);
+
+    if let ManaPipPaymentAction::ActivateManaAbility {
+        source_id,
+        ability_index,
+    } = action
+    {
+        pending.undo_locked_by_mana |= !mana_ability_is_undo_safe(game, *source_id, *ability_index);
+    }
 
     // Only remove the pip if it was actually paid (not just mana generated)
     if pip_paid {
@@ -2586,6 +2649,9 @@ fn get_priority_player_from_ctx(
 #[cfg(test)]
 mod priority_mana_tests {
     use super::*;
+    use crate::cards::definitions::{
+        basic_mountain, blood_celebrant, command_tower, wall_of_roots,
+    };
     use crate::cards::tokens::treasure_token_definition;
     use crate::color::Color;
     use crate::decision::DecisionMaker;
@@ -2607,6 +2673,64 @@ mod priority_mana_tests {
         assert!(
             mana_ability_can_pay_pip(&game, treasure_id, 0, &[ManaSymbol::Black], false),
             "Treasure should be considered able to pay a colored pip"
+        );
+    }
+
+    #[test]
+    fn test_mana_ability_undo_safe_for_basic_tap_sources() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let mountain_id =
+            game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+        assert!(
+            mana_ability_is_undo_safe(&game, mountain_id, 0),
+            "basic tap-for-mana land should be undo-safe"
+        );
+
+        let command_tower_id =
+            game.create_object_from_definition(&command_tower(), alice, Zone::Battlefield);
+        assert!(
+            mana_ability_is_undo_safe(&game, command_tower_id, 0),
+            "tap-for-any-color mana ability should be undo-safe"
+        );
+    }
+
+    #[test]
+    fn test_mana_ability_undo_not_safe_for_stateful_activations() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let wall_id = game.create_object_from_definition(&wall_of_roots(), alice, Zone::Battlefield);
+        let wall_mana_index = game
+            .object(wall_id)
+            .and_then(|obj| obj.abilities.iter().position(|ability| ability.is_mana_ability()))
+            .expect("wall of roots should have a mana ability");
+        assert!(
+            !mana_ability_is_undo_safe(&game, wall_id, wall_mana_index),
+            "Wall of Roots-style counter costs should not be undo-safe"
+        );
+
+        let blood_celebrant_id =
+            game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
+        let blood_celebrant_mana_index = game
+            .object(blood_celebrant_id)
+            .and_then(|obj| obj.abilities.iter().position(|ability| ability.is_mana_ability()))
+            .expect("blood celebrant should have a mana ability");
+        assert!(
+            !mana_ability_is_undo_safe(
+                &game,
+                blood_celebrant_id,
+                blood_celebrant_mana_index
+            ),
+            "mana abilities with non-mana side effects should not be undo-safe"
+        );
+
+        let treasure_id =
+            game.create_object_from_definition(&treasure_token_definition(), alice, Zone::Battlefield);
+        assert!(
+            !mana_ability_is_undo_safe(&game, treasure_id, 0),
+            "tap+sacrifice mana abilities should not be undo-safe"
         );
     }
 

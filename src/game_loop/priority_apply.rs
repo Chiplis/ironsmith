@@ -868,6 +868,11 @@ pub fn apply_priority_response_with_dm(
                         other_costs,
                         mana_to_add,
                         effects: effects_to_run,
+                        undo_locked_by_mana: !mana_ability_is_undo_safe(
+                            game,
+                            *source,
+                            *ability_index,
+                        ),
                     };
 
                     let options = compute_mana_ability_payment_options(

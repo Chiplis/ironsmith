@@ -3,13 +3,12 @@ import { useGame } from "@/context/GameContext";
 import { formatStep } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const pill = "text-[13px] uppercase cursor-pointer hover:brightness-125 transition-all select-none";
 const inputPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none focus:ring-1 focus:ring-primary/50";
 const selectPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 
-export default function AddCardBar({ zoneView, setZoneView }) {
+export default function AddCardBar() {
   const { game, state, refresh, setStatus, semanticThreshold, setSemanticThreshold, cardsMeetingThreshold } = useGame();
   const [cardName, setCardName] = useState("");
   const [zone, setZone] = useState("battlefield");
@@ -125,23 +124,6 @@ export default function AddCardBar({ zoneView, setZoneView }) {
       ) : null; })()}
 
       <div className="flex-1" />
-
-      <svg className="text-muted-foreground shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-
-      <ToggleGroup type="single" value={zoneView} onValueChange={(v) => v && setZoneView(v)} className="gap-0.5">
-        {["battlefield", "hand", "graveyard", "exile"].map((z) => (
-          <ToggleGroupItem
-            key={z}
-            value={z}
-            className="h-6 px-1.5 text-[14px] uppercase tracking-wide data-[state=on]:bg-[rgba(62,98,138,0.35)] data-[state=on]:text-foreground"
-          >
-            {z === "battlefield" ? "Battlefield" : z.charAt(0).toUpperCase() + z.slice(1)}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
     </div>
   );
 }

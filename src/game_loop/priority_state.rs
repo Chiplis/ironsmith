@@ -75,6 +75,10 @@ pub struct PendingCast {
     pub optional_costs_paid: OptionalCostsPaid,
     /// Ordered trace of cost payments performed so far.
     pub payment_trace: Vec<CostStep>,
+    /// True after activating a mana ability that is not undo-safe
+    /// (for example it adds/removes counters, sacrifices, loses life, or has
+    /// non-mana side effects).
+    pub undo_locked_by_mana: bool,
     /// Mana actually spent to cast the spell (color-by-color).
     pub mana_spent_to_cast: ManaPool,
     /// The computed mana cost to pay (set during PayingMana stage).
@@ -128,6 +132,7 @@ impl PendingCast {
             casting_method,
             optional_costs_paid,
             payment_trace: Vec::new(),
+            undo_locked_by_mana: false,
             mana_spent_to_cast: ManaPool::default(),
             mana_cost_to_pay: None,
             remaining_mana_pips: Vec::new(),
@@ -274,6 +279,9 @@ pub struct PendingActivation {
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
     /// Ordered trace of cost payments performed so far.
     pub payment_trace: Vec<CostStep>,
+    /// True after activating a mana ability that is not undo-safe while paying
+    /// this activation's mana costs.
+    pub undo_locked_by_mana: bool,
     /// Remaining mana pips to pay (pip-by-pip payment flow).
     /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
     pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
@@ -338,6 +346,7 @@ impl PendingActivation {
             remaining_requirements,
             mana_cost_to_pay,
             payment_trace,
+            undo_locked_by_mana: false,
             remaining_mana_pips: Vec::new(),
             remaining_sacrifice_costs,
             remaining_card_choice_costs,
@@ -374,6 +383,11 @@ pub struct PendingManaAbility {
     pub mana_to_add: Vec<crate::mana::ManaSymbol>,
     /// The effects to execute (for complex mana abilities like Blood Celebrant).
     pub effects: Vec<crate::effect::Effect>,
+    /// True when undo should be blocked for this pending mana ability flow.
+    /// This is set when either:
+    /// - the root mana ability itself is not undo-safe, or
+    /// - a mana ability activated to pay this mana cost is not undo-safe.
+    pub undo_locked_by_mana: bool,
 }
 
 /// State for tracking the priority loop between decisions.

@@ -17,7 +17,11 @@ function decisionKey(decision) {
   }
   if (decision.requirements) {
     return decision.requirements
-      .map((r) => r.legal_targets.map((t) => t.id).join("+"))
+      .map((r) =>
+        (r.legal_targets || [])
+          .map((t) => (t.kind === "player" ? `p${t.player}` : `o${t.object}`))
+          .join("+")
+      )
       .join(",");
   }
   return decision.description || "";

@@ -11074,6 +11074,32 @@ fn parse_conditional_create_token_with_quoted_comma_uses_first_comma_split() {
 }
 
 #[test]
+fn parse_fatal_push_revolt_clause_keeps_permanent_left_gate() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fatal Push Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Destroy target creature if it has mana value 2 or less.\nRevolt — Destroy that creature if it has mana value 4 or less instead if a permanent left the battlefield under your control this turn.",
+        )
+        .expect("fatal push revolt clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("PermanentLeftBattlefieldUnderYourControlThisTurn"),
+        "expected revolt gate to compile into a permanent-left condition, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("mana value 4 or less"),
+        "expected revolt branch to preserve the mana value 4 threshold, got {rendered}"
+    );
+    assert!(
+        rendered.contains("mana value 2 or less"),
+        "expected base branch to preserve the mana value 2 threshold, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_conditional_type_list_predicate_uses_rightmost_comma_split() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gate to the Aether")
         .card_types(vec![CardType::Artifact])

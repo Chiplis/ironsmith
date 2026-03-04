@@ -28,6 +28,8 @@ export default function Topbar({
     setAutoPassEnabled,
     holdRule,
     setHoldRule,
+    inspectorDebug,
+    setInspectorDebug,
   } = useGame();
 
   const players = state?.players || [];
@@ -104,6 +106,14 @@ export default function Topbar({
           className="h-3.5 w-3.5"
         />
         Auto-pass
+      </label>
+      <label className="flex items-center gap-1 text-muted-foreground text-[13px] whitespace-nowrap cursor-pointer uppercase">
+        <Checkbox
+          checked={inspectorDebug}
+          onCheckedChange={(v) => setInspectorDebug(!!v)}
+          className="h-3.5 w-3.5"
+        />
+        Debug
       </label>
 
       <div className="flex-1" />

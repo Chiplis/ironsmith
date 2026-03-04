@@ -1,12 +1,27 @@
 import { useState } from "react";
 import { useGame } from "@/context/GameContext";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import BattlefieldRow from "./BattlefieldRow";
 import ActionPopover from "@/components/overlays/ActionPopover";
 import ManaPool from "@/components/left-rail/ManaPool";
+import { cn } from "@/lib/utils";
 
-function getZoneCards(player, zoneView) {
-  switch (zoneView) {
+const ZONE_ORDER = ["battlefield", "hand", "graveyard", "exile"];
+const ZONE_LABELS = {
+  battlefield: "Battlefield",
+  hand: "Hand",
+  graveyard: "Graveyard",
+  exile: "Exile",
+};
+
+function normalizeZoneViews(zoneViews) {
+  const normalized = Array.isArray(zoneViews)
+    ? zoneViews.filter((zone) => ZONE_ORDER.includes(zone))
+    : [];
+  return normalized.length > 0 ? normalized : ["battlefield"];
+}
+
+function getZoneCards(player, zone) {
+  switch (zone) {
     case "hand": return player.hand_cards || [];
     case "graveyard": return player.graveyard_cards || [];
     case "exile": return player.exile_cards || [];
@@ -14,41 +29,74 @@ function getZoneCards(player, zoneView) {
   }
 }
 
-function ZoneCountChips({ player }) {
+function buildZoneEntries(player, zoneViews) {
+  const activeZones = normalizeZoneViews(zoneViews);
+  return ZONE_ORDER.map((zone) => ({
+    zone,
+    label: ZONE_LABELS[zone] || zone,
+    cards: getZoneCards(player, zone),
+    active: activeZones.includes(zone),
+  }));
+}
+
+function zoneCounts(player) {
   const exileCards = Array.isArray(player.exile_cards) ? player.exile_cards : [];
   const battlefieldCount = (player.battlefield || []).reduce((total, card) => {
     const count = Number(card.count);
     return total + (Number.isFinite(count) && count > 1 ? count : 1);
   }, 0);
 
+  return [
+    { label: "Battlefield", count: battlefieldCount },
+    { label: "Hand", count: player.hand_size ?? 0 },
+    { label: "Graveyard", count: player.graveyard_size ?? 0 },
+    { label: "Exile", count: exileCards.length },
+  ];
+}
+
+function ZoneCountInline({ player }) {
+  const counts = zoneCounts(player);
   return (
-    <div className="flex flex-wrap gap-1 text-[11px] text-[#a8bfdd]">
-      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Library">
-        Lib <span className="font-bold text-[#d6e6fb]">{player.library_size}</span>
-      </span>
-      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Hand">
-        Hand <span className="font-bold text-[#d6e6fb]">{player.hand_size}</span>
-      </span>
-      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Graveyard">
-        GY <span className="font-bold text-[#d6e6fb]">{player.graveyard_size}</span>
-      </span>
-      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Exile">
-        Exl <span className="font-bold text-[#d6e6fb]">{exileCards.length}</span>
-      </span>
-      <span className="bg-[#0b121b] px-1.5 rounded-sm" title="Battlefield">
-        BF <span className="font-bold text-[#d6e6fb]">{battlefieldCount}</span>
-      </span>
+    <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
+      {counts.map((entry) => (
+        <span key={entry.label}>
+          <span className="font-bold text-[#c1d4ea]">{entry.label}</span>{" "}
+          <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
+        </span>
+      ))}
     </div>
   );
 }
 
-export default function MyZone({ player, selectedObjectId, onInspect, zoneView = "battlefield" }) {
+export default function MyZone({
+  player,
+  selectedObjectId,
+  onInspect,
+  zoneViews = ["battlefield"],
+  legalTargetPlayerIds = new Set(),
+  legalTargetObjectIds = new Set(),
+}) {
   const { state, dispatch } = useGame();
   const [popover, setPopover] = useState(null);
-  const [zoneCounts, setZoneCounts] = useState(false);
 
-  const cards = getZoneCards(player, zoneView);
-  const zoneName = zoneView === "battlefield" ? "" : ` — ${zoneView.charAt(0).toUpperCase() + zoneView.slice(1)}`;
+  const zoneEntries = buildZoneEntries(player, zoneViews);
+  const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
+  const visibleZones = new Set(
+    activeZoneEntries
+      .filter((entry) => entry.zone === "battlefield" || entry.cards.length > 0)
+      .map((entry) => entry.zone)
+  );
+  if (visibleZones.size === 0 && activeZoneEntries.length > 0) {
+    visibleZones.add(activeZoneEntries[0].zone);
+  }
+  const zoneName = activeZoneEntries.length === 1
+    ? (activeZoneEntries[0].zone === "battlefield" ? "" : ` — ${activeZoneEntries[0].label}`)
+    : "";
+  const showZoneHeaders = visibleZones.size > 1;
+  const isPlayerLegalTarget =
+    legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
+  const canPickTargetFromBoard = state?.decision?.kind === "targets"
+    && state?.decision?.player === state?.perspective;
 
   // Build activatable map from decision actions (activate_ability + activate_mana_ability)
   const activatableMap = new Map();
@@ -66,6 +114,24 @@ export default function MyZone({ player, selectedObjectId, onInspect, zoneView =
   }
 
   const handleCardClick = (e, card) => {
+    if (canPickTargetFromBoard) {
+      const candidateObjectIds = [Number(card.id)];
+      if (Array.isArray(card.member_ids)) {
+        for (const memberId of card.member_ids) {
+          candidateObjectIds.push(Number(memberId));
+        }
+      }
+      const matchedTargetId = candidateObjectIds.find((id) => legalTargetObjectIds.has(id));
+      if (matchedTargetId != null) {
+        window.dispatchEvent(
+          new CustomEvent("ironsmith:target-choice", {
+            detail: { target: { kind: "object", object: matchedTargetId } },
+          })
+        );
+        return;
+      }
+    }
+
     // Always inspect
     onInspect?.(card.id);
 
@@ -85,37 +151,92 @@ export default function MyZone({ player, selectedObjectId, onInspect, zoneView =
     );
   };
 
+  const handlePlayerTargetClick = () => {
+    if (!canPickTargetFromBoard || !isPlayerLegalTarget) return;
+    const targetPlayer = legalTargetPlayerIds.has(Number(player.id))
+      ? Number(player.id)
+      : Number(player.index);
+    if (!Number.isFinite(targetPlayer)) return;
+    window.dispatchEvent(
+      new CustomEvent("ironsmith:target-choice", {
+        detail: { target: { kind: "player", player: targetPlayer } },
+      })
+    );
+  };
+
   return (
-    <section className="board-zone-bg p-2 min-h-[120px] overflow-hidden grid gap-1" style={{ gridTemplateRows: "auto minmax(0,1fr)", alignContent: "stretch" }}>
+    <section className="board-zone-bg relative z-[2] p-2 min-h-[120px] overflow-visible grid gap-1" style={{ gridTemplateRows: "auto minmax(0,1fr)", alignContent: "stretch" }}>
       <div>
-        <div className="flex items-center gap-2">
-          <span className="text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums">{player.life}</span>
-          <span className="text-[16px] text-[#a4bdd7] uppercase tracking-wider font-bold">
+        <div className="relative -top-[5px] flex items-center gap-2">
+          <span
+            className={cn(
+              "text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums",
+              isPlayerLegalTarget
+                && "text-[#d7ebff] rounded px-1 py-0.5 shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
+            )}
+            onClick={handlePlayerTargetClick}
+            style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+          >
+            {player.life}
+          </span>
+          <span
+            className={cn(
+              "text-[16px] text-[#a4bdd7] uppercase tracking-wider font-bold",
+              isPlayerLegalTarget && "text-[#d7ebff] drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
+            )}
+            onClick={handlePlayerTargetClick}
+            style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+          >
             {player.name}
             {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
           </span>
+          <ZoneCountInline player={player} />
           <ManaPool pool={player.mana_pool} />
-          <button
-            className="p-0.5 text-muted-foreground hover:text-[#a4bdd7] transition-colors"
-            onClick={() => setZoneCounts((v) => !v)}
-            title="Toggle zone counts"
-          >
-            {zoneCounts ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-          </button>
-          <span className="text-[14px] text-muted-foreground ml-auto">{cards.length} cards</span>
         </div>
-        {zoneCounts && (
-          <div className="mt-1">
-            <ZoneCountChips player={player} />
-          </div>
-        )}
       </div>
-      <BattlefieldRow
-        cards={cards}
-        selectedObjectId={selectedObjectId}
-        onCardClick={handleCardClick}
-        activatableMap={activatableMap}
-      />
+      <div className="flex gap-1 min-h-0 h-full overflow-visible">
+        {zoneEntries.map((entry) => {
+          const isVisible = entry.active && visibleZones.has(entry.zone);
+          return (
+            <div
+              key={entry.zone}
+              className="min-h-0 h-full"
+              style={{
+                flexGrow: isVisible ? 1 : 0,
+                flexShrink: 1,
+                flexBasis: "0%",
+                maxWidth: isVisible ? "100%" : "0px",
+                opacity: isVisible ? 1 : 0,
+                transform: isVisible ? "translateY(0)" : "translateY(4px)",
+                pointerEvents: isVisible ? "auto" : "none",
+                overflow: isVisible ? "visible" : "hidden",
+                transition: "flex-grow 220ms ease, max-width 220ms ease, opacity 180ms ease, transform 220ms ease",
+              }}
+            >
+              <div
+                className="grid gap-1 min-h-0 h-full"
+                style={{ gridTemplateRows: showZoneHeaders ? "auto minmax(0,1fr)" : "minmax(0,1fr)" }}
+              >
+                {showZoneHeaders && (
+                  <div className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-[#9cb8d8] px-0.5">
+                    <span>{entry.label}</span>
+                    <span className="text-[#d6e6fb]">{entry.cards.length}</span>
+                  </div>
+                )}
+                <BattlefieldRow
+                  cards={entry.cards}
+                  compact={entry.zone !== "battlefield"}
+                  selectedObjectId={selectedObjectId}
+                  onCardClick={handleCardClick}
+                  activatableMap={activatableMap}
+                  legalTargetObjectIds={legalTargetObjectIds}
+                  allowVerticalScroll={entry.zone === "hand"}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {popover && (
         <ActionPopover

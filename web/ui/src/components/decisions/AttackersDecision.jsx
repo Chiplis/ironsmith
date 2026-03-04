@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/CombatArrowContext";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
@@ -20,7 +20,7 @@ function decodeAttackTargetChoice(choice) {
 
 function attackTargetLabel(target, players) {
   if (target.kind === "player") {
-    const p = players.find((pl) => pl.index === target.player);
+    const p = players.find((pl) => Number(pl.id ?? pl.index) === target.player);
     return p ? p.name : `Player ${target.player}`;
   }
   return target.name || `Planeswalker ${target.object}`;
@@ -70,10 +70,9 @@ function resolveDropTarget(x, y, validTargets) {
 export default function AttackersDecision({ decision, canAct }) {
   const { dispatch, state } = useGame();
   const { updateArrows, clearArrows, startDragArrow, updateDragArrow, endDragArrow, setCombatMode } = useCombatArrows();
-  const options = decision.attacker_options || [];
+  const options = useMemo(() => decision.attacker_options || [], [decision.attacker_options]);
   const players = state?.players || [];
   const optionsRef = useRef(options);
-  optionsRef.current = options;
 
   const [declarations, setDeclarations] = useState(() => {
     const initial = [];
@@ -94,9 +93,19 @@ export default function AttackersDecision({ decision, canAct }) {
   // Selected attacker awaiting target click (for multi-target creatures)
   const [selectedAttackerId, setSelectedAttackerId] = useState(null);
   const selectedAttackerRef = useRef(null);
-  selectedAttackerRef.current = selectedAttackerId;
   const declarationsRef = useRef(declarations);
-  declarationsRef.current = declarations;
+
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
+
+  useEffect(() => {
+    selectedAttackerRef.current = selectedAttackerId;
+  }, [selectedAttackerId]);
+
+  useEffect(() => {
+    declarationsRef.current = declarations;
+  }, [declarations]);
 
   const getDeclaration = (creatureId) =>
     declarations.find((d) => d.creature === Number(creatureId));
@@ -293,24 +302,10 @@ export default function AttackersDecision({ decision, canAct }) {
   useEffect(() => clearArrows, [clearArrows]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-[11px] mb-0.5 shrink-0"
-        disabled={!canAct}
-        onClick={() =>
-          dispatch(
-            { type: "declare_attackers", declarations },
-            `Declared ${declarations.length} attacker(s)`
-          )
-        }
-      >
-        Confirm Attackers ({declarations.length})
-      </Button>
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col gap-1 pr-1">
-          <div className="text-[12px] text-muted-foreground">Declare attackers</div>
+    <div className="flex h-full min-h-0 w-full flex-col gap-2 overflow-x-hidden">
+      <ScrollArea className="flex-1 min-h-0 w-full overflow-x-hidden">
+        <div className="flex flex-col gap-2 pr-1 overflow-x-hidden">
+          <div className="px-0.5 text-[13px] font-bold uppercase tracking-wider text-[#a4c2e2]">Declare attackers</div>
           {options.map((opt) => {
             const creatureId = Number(opt.creature);
             const attacking = isAttacking(creatureId);
@@ -320,33 +315,79 @@ export default function AttackersDecision({ decision, canAct }) {
             const isSelected = selectedAttackerId === creatureId;
 
             return (
-              <div key={creatureId} className="flex flex-col gap-0.5">
+              <div
+                key={creatureId}
+                className={cn(
+                  "min-w-0 rounded-sm px-2 py-1.5 border-l-[3px] border-[#2a3b4d] bg-[rgba(7,15,23,0.35)]",
+                  attacking && "border-[rgba(174,118,255,0.85)] bg-[rgba(38,24,58,0.48)]",
+                  isSelected && "border-[rgba(255,59,48,0.85)] bg-[rgba(52,20,24,0.5)] shadow-[inset_0_0_0_1px_rgba(255,59,48,0.25)]"
+                )}
+              >
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 text-[11px] justify-start px-2",
-                    attacking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]",
-                    isSelected && "border-[rgba(255,59,48,0.8)] bg-[rgba(255,59,48,0.08)]",
+                    "h-auto min-h-10 w-full min-w-0 overflow-hidden justify-start rounded-sm border px-3 py-2 text-left text-[15px] font-semibold leading-snug whitespace-normal",
+                    "border-[#2f4f70] bg-[rgba(15,27,40,0.9)] text-[#d6e7fb] hover:border-[#4f7cad] hover:bg-[rgba(24,43,64,0.95)]",
+                    attacking && "border-[rgba(174,118,255,0.95)] bg-[rgba(65,38,102,0.5)] text-[#eadbff]",
+                    isSelected && "border-[rgba(255,59,48,0.85)] bg-[rgba(78,28,33,0.52)] text-[#ffd2cf]",
                     opt.must_attack && "italic"
                   )}
                   disabled={!canAct}
                   onClick={() => toggleAttacker(opt)}
                 >
-                  {attacking ? "\u2694 " : ""}{name}
-                  {opt.must_attack && " (must attack)"}
-                  {isSelected && " (select target)"}
-                  {attacking && decl && validTargets.length > 1 && (
-                    <span className="ml-1 text-[10px] text-muted-foreground">
-                      → {attackTargetLabel(decl.target, players)}
-                    </span>
-                  )}
+                  <span className="block min-w-0 truncate">
+                    {attacking ? "[ATK] " : ""}{name}
+                    {opt.must_attack && " (must attack)"}
+                  </span>
                 </Button>
+
+                {attacking && decl && (
+                  <div className="mt-1.5 px-1 text-[14px] text-[#bcd0e8] min-w-0 truncate">
+                    -&gt; {attackTargetLabel(decl.target, players)}
+                  </div>
+                )}
+
+                {isSelected && validTargets.length > 1 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {validTargets.map((target, i) => (
+                      <Button
+                        key={`${creatureId}-target-${i}`}
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 max-w-full min-w-0 overflow-hidden rounded-full border border-[#325474] bg-[rgba(15,27,40,0.9)] px-3 text-[13px] font-semibold text-[#c7dbf2] transition-all hover:border-[#4f7cad] hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]"
+                        disabled={!canAct}
+                        onClick={() => selectTarget(creatureId, target)}
+                      >
+                        <span className="min-w-0 truncate">
+                          {attackTargetLabel(decodeAttackTargetChoice(target), players)}
+                        </span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       </ScrollArea>
+
+      <div className="w-full shrink-0 pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full h-10 rounded-sm border border-[#315274] bg-[rgba(15,27,40,0.88)] px-3 text-[16px] font-bold text-[#8ec4ff] transition-all hover:border-[#4f7cad] hover:bg-[rgba(24,43,64,0.95)] hover:text-[#d7ebff]"
+          disabled={!canAct}
+          onClick={() =>
+            dispatch(
+              { type: "declare_attackers", declarations },
+              `Declared ${declarations.length} attacker(s)`
+            )
+          }
+        >
+          Confirm Attackers ({declarations.length})
+        </Button>
+      </div>
     </div>
   );
 }

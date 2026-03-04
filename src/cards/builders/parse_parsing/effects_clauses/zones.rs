@@ -2276,6 +2276,48 @@ pub(crate) fn parse_destroy(tokens: &[Token]) -> Result<EffectAst, CardTextError
         }
 
         let target = parse_target_phrase(&target_tokens)?;
+
+        if let Some(instead_if_idx) = predicate_tokens.windows(2).position(|window| {
+            window[0].is_word("instead") && window[1].is_word("if")
+        }) {
+            let base_predicate_tokens = trim_commas(&predicate_tokens[..instead_if_idx]);
+            let outer_predicate_tokens = trim_commas(&predicate_tokens[instead_if_idx + 2..]);
+            if base_predicate_tokens.is_empty() || outer_predicate_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported conditional destroy clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+
+            let base_predicate = parse_predicate(&base_predicate_tokens).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported conditional destroy clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            let outer_predicate = parse_predicate(&outer_predicate_tokens).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported conditional destroy clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+
+            return Ok(wrap_destroy_with_delayed_timing(
+                EffectAst::Conditional {
+                    predicate: outer_predicate,
+                    if_true: vec![EffectAst::Conditional {
+                        predicate: base_predicate,
+                        if_true: vec![EffectAst::Destroy {
+                            target: target.clone(),
+                        }],
+                        if_false: Vec::new(),
+                    }],
+                    if_false: Vec::new(),
+                },
+                delayed_timing,
+            ));
+        }
+
         let predicate = parse_predicate(&predicate_tokens).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported conditional destroy clause (clause: '{}')",

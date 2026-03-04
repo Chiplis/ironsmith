@@ -108,6 +108,7 @@ export function GameProvider({ children }) {
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
   const [holdRule, setHoldRule] = useState("never");
+  const [inspectorDebug, setInspectorDebug] = useState(false);
   const [semanticThreshold, setSemanticThresholdRaw] = useState(35);
   const [cardsMeetingThreshold, setCardsMeetingThreshold] = useState(0);
   const logRef = useRef([]);
@@ -314,7 +315,7 @@ export function GameProvider({ children }) {
           const autoResolved = await autoResolveTrivialDecisions(game, st, settleOpponentPriority);
           st = autoResolved.state;
           setState(st);
-        } catch (_) {
+        } catch {
           // keep original error
         }
         setStatus(`Action failed: ${err}`, true);
@@ -363,6 +364,8 @@ export function GameProvider({ children }) {
       setAutoPassEnabled,
       holdRule,
       setHoldRule,
+      inspectorDebug,
+      setInspectorDebug,
       semanticThreshold,
       setSemanticThreshold,
       cardsMeetingThreshold,
@@ -380,7 +383,7 @@ export function GameProvider({ children }) {
       wasmRegistryTotal,
       status,
       setStatus,
-      dispatch, cancelDecision, refresh, autoPassEnabled, holdRule,
+      dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, inspectorDebug,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,
     ]
@@ -389,6 +392,7 @@ export function GameProvider({ children }) {
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useGame() {
   const ctx = useContext(GameContext);
   if (!ctx) throw new Error("useGame must be used within GameProvider");

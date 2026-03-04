@@ -1208,6 +1208,31 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
     if matches!(
         filtered.as_slice(),
         [
+            "permanent",
+            "left",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ] | [
+            "permanents",
+            "left",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Ok(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn);
+    }
+
+    if matches!(
+        filtered.as_slice(),
+        [
             "you",
             "had",
             "land",

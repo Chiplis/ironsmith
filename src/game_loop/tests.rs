@@ -1237,6 +1237,92 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_fatal_push_without_revolt_does_not_destroy_four_mana_target() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let fatal_push = crate::cards::CardDefinitionBuilder::new(CardId::from_raw(468), "Fatal Push")
+            .card_types(vec![CardType::Instant])
+            .parse_text(
+                "Destroy target creature if it has mana value 2 or less.\nRevolt — Destroy that creature if it has mana value 4 or less instead if a permanent left the battlefield under your control this turn.",
+            )
+            .expect("fatal push definition should parse");
+        let four_mana_creature = CardBuilder::new(CardId::from_raw(9003), "Four Mana Creature")
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![
+                vec![crate::mana::ManaSymbol::Generic(2)],
+                vec![crate::mana::ManaSymbol::Black],
+                vec![crate::mana::ManaSymbol::Black],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 4))
+            .build();
+
+        let target_id = game.create_object_from_card(&four_mana_creature, bob, Zone::Battlefield);
+        let fatal_push_id = game.create_object_from_definition(&fatal_push, alice, Zone::Stack);
+
+        game.push_to_stack(
+            StackEntry::new(fatal_push_id, alice).with_targets(vec![Target::Object(target_id)]),
+        );
+
+        resolve_stack_entry(&mut game).expect("fatal push should resolve");
+
+        assert!(
+            game.battlefield.contains(&target_id),
+            "without revolt, Fatal Push should not destroy a mana value 4 creature"
+        );
+    }
+
+    #[test]
+    fn test_fatal_push_with_revolt_destroys_four_mana_target() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let fatal_push = crate::cards::CardDefinitionBuilder::new(CardId::from_raw(468), "Fatal Push")
+            .card_types(vec![CardType::Instant])
+            .parse_text(
+                "Destroy target creature if it has mana value 2 or less.\nRevolt — Destroy that creature if it has mana value 4 or less instead if a permanent left the battlefield under your control this turn.",
+            )
+            .expect("fatal push definition should parse");
+        let four_mana_creature = CardBuilder::new(CardId::from_raw(9004), "Four Mana Creature")
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![
+                vec![crate::mana::ManaSymbol::Generic(2)],
+                vec![crate::mana::ManaSymbol::Black],
+                vec![crate::mana::ManaSymbol::Black],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 4))
+            .build();
+
+        let target_id = game.create_object_from_card(&four_mana_creature, bob, Zone::Battlefield);
+        let fatal_push_id = game.create_object_from_definition(&fatal_push, alice, Zone::Stack);
+
+        game.permanents_left_battlefield_under_controller_this_turn
+            .insert(alice, 1);
+
+        game.push_to_stack(
+            StackEntry::new(fatal_push_id, alice).with_targets(vec![Target::Object(target_id)]),
+        );
+
+        resolve_stack_entry(&mut game).expect("fatal push should resolve");
+
+        assert!(
+            !game.battlefield.contains(&target_id),
+            "with revolt, Fatal Push should destroy a mana value 4 creature"
+        );
+        assert!(
+            game.player(bob).is_some_and(|player| {
+                player.graveyard.iter().any(|graveyard_id| {
+                    game.object(*graveyard_id)
+                        .is_some_and(|object| object.name == "Four Mana Creature")
+                })
+            }),
+            "target should be in graveyard after being destroyed"
+        );
+    }
+
     // === Combat Damage Tests ===
 
     #[test]

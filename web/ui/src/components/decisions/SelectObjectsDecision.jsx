@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import { useHoveredObjectId } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -7,10 +8,26 @@ import { normalizeDecisionText } from "./decisionText";
 
 export default function SelectObjectsDecision({ decision, canAct }) {
   const { dispatch } = useGame();
-  const candidates = decision.candidates || [];
+  const hoveredObjectId = useHoveredObjectId();
+  const candidates = useMemo(() => decision.candidates || [], [decision.candidates]);
   const [selected, setSelected] = useState(new Set());
   const min = decision.min ?? 0;
   const max = decision.max ?? candidates.length;
+  const hideTimerRef = useRef(null);
+
+  const scopedCandidates = useMemo(() => {
+    if (hoveredObjectId == null) return candidates;
+    const hoveredStr = String(hoveredObjectId);
+    const hasHoveredCandidate = candidates.some((c) => String(c.id) === hoveredStr);
+    if (!hasHoveredCandidate) return candidates;
+    return candidates.filter(
+      (c) => String(c.id) === hoveredStr || selected.has(c.id)
+    );
+  }, [candidates, hoveredObjectId, selected]);
+  const showRows = scopedCandidates.length > 0;
+  const [visibleCandidates, setVisibleCandidates] = useState(scopedCandidates);
+  const focusedToHover = hoveredObjectId != null
+    && candidates.some((c) => String(c.id) === String(hoveredObjectId));
 
   const toggleObject = (id) => {
     setSelected((prev) => {
@@ -26,6 +43,27 @@ export default function SelectObjectsDecision({ decision, canAct }) {
 
   const canSubmit = selected.size >= min && selected.size <= max;
 
+  useEffect(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    hideTimerRef.current = setTimeout(() => {
+      setVisibleCandidates(showRows ? scopedCandidates : []);
+      hideTimerRef.current = null;
+    }, showRows ? 0 : 180);
+  }, [scopedCandidates, showRows]);
+
+  useEffect(
+    () => () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+    },
+    []
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <ScrollArea className="flex-1 min-h-0">
@@ -36,8 +74,17 @@ export default function SelectObjectsDecision({ decision, canAct }) {
           <div className="text-[14px] text-muted-foreground">
             Select {min === max ? min : `${min}-${max}`} object(s)
           </div>
-          <div className="grid grid-cols-2 gap-1">
-            {candidates.map((c) => (
+          {focusedToHover && (
+            <div className="text-[12px] italic text-[#89a7c7] px-0.5 -mt-1">
+              Showing options for the hovered card.
+            </div>
+          )}
+          <div
+            className={`grid grid-cols-2 gap-1 transition-all duration-200 ${
+              showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
+            }`}
+          >
+            {visibleCandidates.map((c) => (
               <label
                 key={c.id}
                 className={`flex items-center gap-2 text-[14px] p-1 rounded-sm cursor-pointer transition-all ${

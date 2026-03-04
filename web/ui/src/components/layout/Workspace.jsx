@@ -9,7 +9,13 @@ import DragOverlay from "@/components/overlays/DragOverlay";
 import CastParticles from "@/components/overlays/CastParticles";
 import ArrowOverlay from "@/components/overlays/ArrowOverlay";
 
-export default function Workspace({ zoneView, deckLoadingMode, onLoadDecks, onCancelDeckLoading }) {
+export default function Workspace({
+  zoneViews,
+  setZoneViews,
+  deckLoadingMode,
+  onLoadDecks,
+  onCancelDeckLoading,
+}) {
   const [selectedObjectId, setSelectedObjectId] = useState(null);
   const [stackExpanded, setStackExpanded] = useState(false);
   const [stackHeightCap, setStackHeightCap] = useState(520);
@@ -79,7 +85,7 @@ export default function Workspace({ zoneView, deckLoadingMode, onLoadDecks, onCa
       observer.disconnect();
       window.removeEventListener("resize", recalcCap);
     };
-  }, [stackCompactHeight, stackCount, zoneView, deckLoadingMode, stackExpanded]);
+  }, [stackCompactHeight, stackCount, zoneViews, deckLoadingMode, stackExpanded]);
 
   // Handle drag drop — if user drops on the battlefield area, dispatch the action
   useEffect(() => {
@@ -151,7 +157,8 @@ export default function Workspace({ zoneView, deckLoadingMode, onLoadDecks, onCa
       <TableCore
         selectedObjectId={selectedObjectId}
         onInspect={setSelectedObjectId}
-        zoneView={zoneView}
+        zoneViews={zoneViews}
+        setZoneViews={setZoneViews}
         deckLoadingMode={deckLoadingMode}
         onLoadDecks={onLoadDecks}
         onCancelDeckLoading={onCancelDeckLoading}

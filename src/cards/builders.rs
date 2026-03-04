@@ -524,6 +524,7 @@ pub(crate) enum PredicateAst {
     },
     YourTurn,
     CreatureDiedThisTurn,
+    PermanentLeftBattlefieldUnderYourControlThisTurn,
     YouAttackedThisTurn,
     SourceWasCast,
     NoSpellsWereCastLastTurn,
