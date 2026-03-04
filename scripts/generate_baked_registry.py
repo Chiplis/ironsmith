@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CARDS_JSON = ROOT / "cards.json"
 OUT_FILE = ROOT / "src" / "cards" / "generated_registry.rs"
 PAYLOAD_FILE_NAME = "generated_registry_payload.bin"
+SCORES_FILE_ENV = "IRONSMITH_GENERATED_REGISTRY_SCORES_FILE"
 
 def card_oracle_text(card: dict) -> str | None:
     oracle_text = card.get("oracle_text")
@@ -48,32 +49,91 @@ def rust_raw_literal(value: str) -> str:
     return json.dumps(value)
 
 
-def load_excluded_name_keys() -> set[str]:
-    raw_path = os.environ.get("IRONSMITH_GENERATED_REGISTRY_SKIP_NAMES_FILE", "").strip()
+def load_semantic_scores() -> tuple[Dict[str, float], bool]:
+    """Load card-name -> similarity-score map.
+
+    Supported formats:
+    - audits report object with `entries` list containing `name` + `similarity_score`
+    - plain object mapping `{ "Card Name": 0.98, ... }`
+    - list of objects containing `name` + `similarity_score`
+    """
+    raw_path = os.environ.get(SCORES_FILE_ENV, "").strip()
     if not raw_path:
-        return set()
+        return {}, False
 
     path = Path(raw_path)
     if not path.exists():
-        print(f"[generate_baked_registry] skip-list file not found: {path}")
-        return set()
+        raise FileNotFoundError(
+            f"[generate_baked_registry] scores file not found: {path}"
+        )
 
-    excluded: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        name = line.strip()
-        if name:
-            excluded.add(name.casefold())
-    return excluded
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    score_map: Dict[str, float] = {}
+
+    def coerce_score(raw: object) -> float | None:
+        try:
+            score = float(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+        return max(0.0, min(1.0, score))
+
+    def maybe_insert(name_raw: object, score_raw: object) -> None:
+        if not isinstance(name_raw, str):
+            return
+        name = name_raw.strip()
+        score = coerce_score(score_raw)
+        if not name or score is None:
+            return
+        key = name.casefold()
+        prev = score_map.get(key)
+        if prev is None or score > prev:
+            score_map[key] = score
+
+    if isinstance(payload, dict):
+        entries = payload.get("entries")
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                parse_error = entry.get("parse_error")
+                has_unimplemented = bool(entry.get("has_unimplemented", False))
+                if parse_error is not None or has_unimplemented:
+                    continue
+                maybe_insert(entry.get("name"), entry.get("similarity_score"))
+        else:
+            for name, score in payload.items():
+                maybe_insert(name, score)
+    elif isinstance(payload, list):
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
+            maybe_insert(entry.get("name"), entry.get("similarity_score"))
+
+    return score_map, True
 
 
-FlipPair = Tuple[str, str, str, str, str]
+SingleEntry = Tuple[str, str, float]
+FlipPair = Tuple[str, str, float, str, str, float, str]
 
 
 def collect_unique_blocks(
-    excluded_name_keys: set[str],
-) -> Tuple[Dict[str, Tuple[str, str]], List[FlipPair]]:
-    unique: Dict[str, Tuple[str, str]] = {}
+    semantic_scores: Dict[str, float],
+    strict_scores: bool,
+) -> Tuple[Dict[str, SingleEntry], List[FlipPair]]:
+    unique: Dict[str, SingleEntry] = {}
     flips: List[FlipPair] = []
+    missing_scores: List[str] = []
+
+    def resolve_score(*candidates: str) -> float | None:
+        for name in candidates:
+            key = (name or "").strip().casefold()
+            if not key:
+                continue
+            score = semantic_scores.get(key)
+            if score is not None:
+                return score
+        return None
+
     for card in iter_json_array(CARDS_JSON):
         oracle_text = card_oracle_text(card)
         if (
@@ -131,15 +191,25 @@ def collect_unique_blocks(
             front_name, front_parse_block = front_pair
             back_name, back_parse_block = back_pair
 
-            if (
-                front_name.casefold() in excluded_name_keys
-                or back_name.casefold() in excluded_name_keys
-                or combined_name.casefold() in excluded_name_keys
-            ):
-                continue
+            front_score = resolve_score(front_name, combined_name)
+            back_score = resolve_score(back_name, combined_name)
+            if front_score is None:
+                missing_scores.append(front_name)
+                front_score = 1.0
+            if back_score is None:
+                missing_scores.append(back_name)
+                back_score = 1.0
 
             flips.append(
-                (front_name, front_parse_block, back_name, back_parse_block, combined_name)
+                (
+                    front_name,
+                    front_parse_block,
+                    front_score,
+                    back_name,
+                    back_parse_block,
+                    back_score,
+                    combined_name,
+                )
             )
             continue
 
@@ -157,15 +227,26 @@ def collect_unique_blocks(
         # Leaving "Name:" inside the parse input causes strict parser failures.
         parse_block = "\n".join(lines[1:]).strip()
         key = name.casefold()
-        if key in excluded_name_keys:
-            continue
+        score = resolve_score(name)
+        if score is None:
+            missing_scores.append(name)
+            score = 1.0
         if key not in unique:
-            unique[key] = (name, parse_block)
+            unique[key] = (name, parse_block, score)
+
+    if strict_scores and missing_scores:
+        unique_missing = sorted(set(missing_scores))
+        preview = ", ".join(unique_missing[:12])
+        suffix = "" if len(unique_missing) <= 12 else f", ... (+{len(unique_missing) - 12} more)"
+        raise RuntimeError(
+            f"[generate_baked_registry] semantic scores missing for {len(unique_missing)} card(s): {preview}{suffix}"
+        )
+
     return unique, flips
 
 
 def write_generated_source(
-    cards: Dict[str, Tuple[str, str]], flips: List[FlipPair], output_path: Path
+    cards: Dict[str, SingleEntry], flips: List[FlipPair], output_path: Path
 ) -> None:
     ordered = sorted(cards.values(), key=lambda pair: pair[0].casefold())
     flips_ordered = sorted(flips, key=lambda pair: pair[0].casefold())
@@ -178,6 +259,7 @@ def write_generated_source(
     lines.append("")
     lines.append("use super::{CardDefinition, CardDefinitionBuilder, CardRegistry};")
     lines.append("use crate::ids::CardId;")
+    lines.append("use std::collections::HashMap;")
     lines.append("use std::sync::OnceLock;")
     lines.append("")
     lines.append(
@@ -192,14 +274,17 @@ def write_generated_source(
     lines.append("struct SingleCardText {")
     lines.append("    name: String,")
     lines.append("    block: String,")
+    lines.append("    score: f32,")
     lines.append("}")
     lines.append("")
     lines.append("#[derive(Clone)]")
     lines.append("struct FlipCardText {")
     lines.append("    front_name: String,")
     lines.append("    front_block: String,")
+    lines.append("    front_score: f32,")
     lines.append("    back_name: String,")
     lines.append("    back_block: String,")
+    lines.append("    back_score: f32,")
     lines.append("    combined_name: String,")
     lines.append("}")
     lines.append("")
@@ -225,6 +310,14 @@ def write_generated_source(
     lines.append("    Some(text)")
     lines.append("}")
     lines.append("")
+    lines.append("fn read_f32(bytes: &[u8], cursor: &mut usize) -> Option<f32> {")
+    lines.append("    let end = cursor.checked_add(4)?;")
+    lines.append("    let chunk = bytes.get(*cursor..end)?;")
+    lines.append("    let value = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);")
+    lines.append("    *cursor = end;")
+    lines.append("    Some(value)")
+    lines.append("}")
+    lines.append("")
     lines.append("fn decode_generated_registry_payload() -> GeneratedCardTexts {")
     lines.append("    let bytes = GENERATED_REGISTRY_PAYLOAD;")
     lines.append('    assert!(bytes.starts_with(b"MGR1"), "invalid generated registry payload magic");')
@@ -235,7 +328,8 @@ def write_generated_source(
     lines.append("    for _ in 0..singles_count {")
     lines.append('        let name = read_string(bytes, &mut cursor).expect("missing single-card name");')
     lines.append('        let block = read_string(bytes, &mut cursor).expect("missing single-card block");')
-    lines.append("        singles.push(SingleCardText { name, block });")
+    lines.append('        let score = read_f32(bytes, &mut cursor).expect("missing single-card score");')
+    lines.append("        singles.push(SingleCardText { name, block, score });")
     lines.append("    }")
     lines.append("")
     lines.append('    let flips_count = read_u32(bytes, &mut cursor).expect("missing flip-card count");')
@@ -245,9 +339,15 @@ def write_generated_source(
     lines.append(
         '        let front_block = read_string(bytes, &mut cursor).expect("missing flip front block");'
     )
+    lines.append(
+        '        let front_score = read_f32(bytes, &mut cursor).expect("missing flip front score");'
+    )
     lines.append('        let back_name = read_string(bytes, &mut cursor).expect("missing flip back name");')
     lines.append(
         '        let back_block = read_string(bytes, &mut cursor).expect("missing flip back block");'
+    )
+    lines.append(
+        '        let back_score = read_f32(bytes, &mut cursor).expect("missing flip back score");'
     )
     lines.append(
         '        let combined_name = read_string(bytes, &mut cursor).expect("missing flip combined name");'
@@ -255,8 +355,10 @@ def write_generated_source(
     lines.append("        flips.push(FlipCardText {")
     lines.append("            front_name,")
     lines.append("            front_block,")
+    lines.append("            front_score,")
     lines.append("            back_name,")
     lines.append("            back_block,")
+    lines.append("            back_score,")
     lines.append("            combined_name,")
     lines.append("        });")
     lines.append("    }")
@@ -273,6 +375,71 @@ def write_generated_source(
     lines.append("fn generated_card_texts() -> &'static GeneratedCardTexts {")
     lines.append("    static TEXTS: OnceLock<GeneratedCardTexts> = OnceLock::new();")
     lines.append("    TEXTS.get_or_init(decode_generated_registry_payload)")
+    lines.append("}")
+    lines.append("")
+    lines.append("struct GeneratedSemanticData {")
+    lines.append("    scores_by_name: HashMap<String, f32>,")
+    lines.append("    threshold_counts: [usize; 100],")
+    lines.append("}")
+    lines.append("")
+    lines.append("fn generated_semantic_data() -> &'static GeneratedSemanticData {")
+    lines.append("    static DATA: OnceLock<GeneratedSemanticData> = OnceLock::new();")
+    lines.append("    DATA.get_or_init(|| {")
+    lines.append("        let texts = generated_card_texts();")
+    lines.append("        let mut scores_by_name: HashMap<String, f32> = HashMap::new();")
+    lines.append("        for entry in &texts.singles {")
+    lines.append("            scores_by_name")
+    lines.append("                .entry(entry.name.to_lowercase())")
+    lines.append("                .and_modify(|score| *score = (*score).max(entry.score))")
+    lines.append("                .or_insert(entry.score);")
+    lines.append("        }")
+    lines.append("        for entry in &texts.flips {")
+    lines.append("            scores_by_name")
+    lines.append("                .entry(entry.front_name.to_lowercase())")
+    lines.append("                .and_modify(|score| *score = (*score).max(entry.front_score))")
+    lines.append("                .or_insert(entry.front_score);")
+    lines.append("            scores_by_name")
+    lines.append("                .entry(entry.back_name.to_lowercase())")
+    lines.append("                .and_modify(|score| *score = (*score).max(entry.back_score))")
+    lines.append("                .or_insert(entry.back_score);")
+    lines.append("            scores_by_name")
+    lines.append("                .entry(entry.combined_name.to_lowercase())")
+    lines.append("                .and_modify(|score| *score = (*score).max(entry.front_score))")
+    lines.append("                .or_insert(entry.front_score);")
+    lines.append("        }")
+    lines.append("")
+    lines.append("        let mut threshold_counts = [0usize; 100];")
+    lines.append("        for score in scores_by_name.values().copied() {")
+    lines.append("            let clamped = score.clamp(0.0, 1.0);")
+    lines.append("            for threshold_index in 0..100usize {")
+    lines.append("                let threshold = (threshold_index + 1) as f32 / 100.0;")
+    lines.append("                if clamped >= threshold {")
+    lines.append("                    threshold_counts[threshold_index] += 1;")
+    lines.append("                }")
+    lines.append("            }")
+    lines.append("        }")
+    lines.append("")
+    lines.append("        GeneratedSemanticData {")
+    lines.append("            scores_by_name,")
+    lines.append("            threshold_counts,")
+    lines.append("        }")
+    lines.append("    })")
+    lines.append("}")
+    lines.append("")
+    lines.append("pub fn generated_parser_semantic_score(name: &str) -> Option<f32> {")
+    lines.append("    let normalized = name.trim().to_lowercase();")
+    lines.append("    if normalized.is_empty() {")
+    lines.append("        return None;")
+    lines.append("    }")
+    lines.append("    generated_semantic_data().scores_by_name.get(&normalized).copied()")
+    lines.append("}")
+    lines.append("")
+    lines.append("pub fn generated_parser_semantic_threshold_counts() -> [usize; 100] {")
+    lines.append("    generated_semantic_data().threshold_counts")
+    lines.append("}")
+    lines.append("")
+    lines.append("pub fn generated_parser_semantic_scored_count() -> usize {")
+    lines.append("    generated_semantic_data().scores_by_name.len()")
     lines.append("}")
     lines.append("")
     lines.append("fn parse_generated_card(cards: &mut Vec<CardDefinition>, name: &str, block: &str) {")
@@ -498,22 +665,37 @@ def append_string(buffer: bytearray, value: str) -> None:
     buffer.extend(encoded)
 
 
+def append_f32(buffer: bytearray, value: float) -> None:
+    buffer.extend(struct.pack("<f", value))
+
+
 def write_generated_payload(
-    ordered: List[Tuple[str, str]], flips_ordered: List[FlipPair], payload_path: Path
+    ordered: List[SingleEntry], flips_ordered: List[FlipPair], payload_path: Path
 ) -> None:
     payload = bytearray()
     payload.extend(b"MGR1")
     append_u32(payload, len(ordered))
-    for name, block in ordered:
+    for name, block, score in ordered:
         append_string(payload, name)
         append_string(payload, block)
+        append_f32(payload, score)
 
     append_u32(payload, len(flips_ordered))
-    for front_name, front_block, back_name, back_block, combined_name in flips_ordered:
+    for (
+        front_name,
+        front_block,
+        front_score,
+        back_name,
+        back_block,
+        back_score,
+        combined_name,
+    ) in flips_ordered:
         append_string(payload, front_name)
         append_string(payload, front_block)
+        append_f32(payload, front_score)
         append_string(payload, back_name)
         append_string(payload, back_block)
+        append_f32(payload, back_score)
         append_string(payload, combined_name)
 
     payload_path.write_bytes(payload)
@@ -535,12 +717,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     output_path = Path(args.out)
-    excluded_name_keys = load_excluded_name_keys()
-    cards, flips = collect_unique_blocks(excluded_name_keys)
+    semantic_scores, strict_scores = load_semantic_scores()
+    cards, flips = collect_unique_blocks(semantic_scores, strict_scores)
     write_generated_source(cards, flips, output_path)
     print(
         f"wrote {output_path} with {len(cards) + 2 * len(flips)} source cards "
-        f"(excluded by threshold: {len(excluded_name_keys)})"
+        f"(semantic scores loaded: {len(semantic_scores)})"
     )
 
 

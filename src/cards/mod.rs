@@ -252,6 +252,21 @@ impl CardRegistry {
         generated_registry::generated_parser_card_names()
     }
 
+    /// Semantic fidelity score for a generated parser card name.
+    pub fn generated_parser_semantic_score(name: &str) -> Option<f32> {
+        generated_registry::generated_parser_semantic_score(name)
+    }
+
+    /// Precomputed counts of cards meeting each integer threshold from 1%..=100%.
+    pub fn generated_parser_semantic_threshold_counts() -> [usize; 100] {
+        generated_registry::generated_parser_semantic_threshold_counts()
+    }
+
+    /// Number of generated parser card names that have an embedded semantic score.
+    pub fn generated_parser_semantic_scored_count() -> usize {
+        generated_registry::generated_parser_semantic_scored_count()
+    }
+
     /// Incrementally parse/register generated cards and return the next cursor position.
     pub fn preload_generated_cards_chunk(&mut self, cursor: usize, chunk_size: usize) -> usize {
         #[cfg(test)]

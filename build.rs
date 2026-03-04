@@ -7,11 +7,11 @@ fn main() {
     println!("cargo:rerun-if-changed=cards.json");
     println!("cargo:rerun-if-changed=scripts/generate_baked_registry.py");
     println!("cargo:rerun-if-changed=scripts/stream_scryfall_blocks.py");
-    println!("cargo:rerun-if-env-changed=IRONSMITH_GENERATED_REGISTRY_SKIP_NAMES_FILE");
+    println!("cargo:rerun-if-env-changed=IRONSMITH_GENERATED_REGISTRY_SCORES_FILE");
 
-    if let Some(skip_file) = env::var_os("IRONSMITH_GENERATED_REGISTRY_SKIP_NAMES_FILE") {
-        let skip_file = PathBuf::from(skip_file);
-        println!("cargo:rerun-if-changed={}", skip_file.display());
+    if let Some(scores_file) = env::var_os("IRONSMITH_GENERATED_REGISTRY_SCORES_FILE") {
+        let scores_file = PathBuf::from(scores_file);
+        println!("cargo:rerun-if-changed={}", scores_file.display());
     }
 
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set");
@@ -40,6 +40,9 @@ pub fn register_generated_parser_cards_if_name<F>(
     F: FnMut(&str) -> bool,
 {
 }
+pub fn generated_parser_semantic_score(_name: &str) -> Option<f32> { None }
+pub fn generated_parser_semantic_threshold_counts() -> [usize; 100] { [0; 100] }
+pub fn generated_parser_semantic_scored_count() -> usize { 0 }
 pub fn try_compile_card_by_name(_name: &str) -> Result<crate::cards::CardDefinition, String> {
     Err("generated registry not available".to_string())
 }

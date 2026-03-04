@@ -1768,12 +1768,12 @@ impl WasmGame {
             && let Some(score) = Self::semantic_score_for_name(definition.name())
             && score < self.semantic_threshold
         {
-                return Err(JsValue::from_str(&format!(
-                    "Card '{}' has fidelity {:.0}%, below threshold {:.0}%",
-                    definition.name(),
-                    score * 100.0,
-                    self.semantic_threshold * 100.0,
-                )));
+            return Err(JsValue::from_str(&format!(
+                "Card '{}' has fidelity {:.0}%, below threshold {:.0}%",
+                definition.name(),
+                score * 100.0,
+                self.semantic_threshold * 100.0,
+            )));
         }
 
         if skip_triggers {
@@ -1966,42 +1966,35 @@ impl WasmGame {
         self.auto_cleanup_discard = enabled;
     }
 
-    /// Set the semantic similarity threshold for card addition (0.0 = off).
+    /// Set the semantic similarity threshold for card addition (0..100%, 0 = off).
     #[wasm_bindgen(js_name = setSemanticThreshold)]
     pub fn set_semantic_threshold(&mut self, threshold: f32) {
-        self.semantic_threshold = threshold.clamp(0.0, 1.0);
+        self.semantic_threshold = (threshold / 100.0).clamp(0.0, 1.0);
     }
 
-    /// Get the current semantic threshold.
+    /// Get the current semantic threshold as percentage points.
     #[wasm_bindgen(js_name = getSemanticThreshold)]
     pub fn get_semantic_threshold(&self) -> f32 {
-        self.semantic_threshold
+        self.semantic_threshold * 100.0
     }
 
-    /// Get the semantic score for a specific card. Returns -1.0 if not scored yet.
+    /// Get the semantic score for a specific card. Returns -1.0 if score is unavailable.
     #[wasm_bindgen(js_name = getCardSemanticScore)]
     pub fn get_card_semantic_score(&self, card_name: &str) -> f32 {
-        self.semantic_scores
-            .get(card_name)
-            .or_else(|| {
-                let lower = card_name.trim().to_lowercase();
-                self.semantic_scores
-                    .iter()
-                    .find(|(k, _)| k.to_lowercase() == lower)
-                    .map(|(_, v)| v)
-            })
-            .copied()
-            .unwrap_or(-1.0)
+        Self::semantic_score_for_name(card_name).unwrap_or(-1.0)
     }
 
-    /// Get the count of registered cards meeting the current threshold.
+    /// Get the count of scored cards meeting the current threshold.
     #[wasm_bindgen(js_name = cardsMeetingThreshold)]
     pub fn cards_meeting_threshold(&self) -> usize {
         if self.semantic_threshold <= 0.0 {
-            return self.registry.len();
+            return CardRegistry::generated_parser_semantic_scored_count();
         }
-        let t = self.semantic_threshold;
-        self.semantic_scores.values().filter(|&&s| s >= t).count()
+        let threshold_counts = CardRegistry::generated_parser_semantic_threshold_counts();
+        let threshold_index = ((self.semantic_threshold * 100.0).ceil() as usize)
+            .clamp(1, threshold_counts.len())
+            - 1;
+        threshold_counts[threshold_index]
     }
 
     /// Switch local perspective to the next player.
@@ -2273,16 +2266,8 @@ impl WasmGame {
         false
     }
 
-    /// Compute the semantic similarity score for a card definition.
-    fn compute_card_score(def: &CardDefinition) -> f32 {
-        let oracle = &def.card.oracle_text;
-        if oracle.is_empty() {
-            return 1.0;
-        }
-        let compiled = crate::compiled_text::compiled_lines(def);
-        let (_oracle_cov, _compiled_cov, similarity, _delta, _mismatch) =
-            crate::semantic_compare::compare_semantics_scored(oracle, &compiled, None);
-        similarity
+    fn semantic_score_for_name(card_name: &str) -> Option<f32> {
+        CardRegistry::generated_parser_semantic_score(card_name)
     }
 
     fn has_demo_supported_cost_symbols(cost: &crate::mana::ManaCost) -> bool {
@@ -2350,21 +2335,17 @@ impl WasmGame {
         let mut fallback_seen: HashSet<String> = HashSet::new();
 
         for candidate in candidate_names {
+            // Skip cards below the semantic fidelity threshold before parsing.
+            if self.semantic_threshold > 0.0
+                && let Some(score) = Self::semantic_score_for_name(candidate.as_str())
+                && score < self.semantic_threshold
+            {
+                continue;
+            }
             self.registry.ensure_cards_loaded([candidate.as_str()]);
             let Some(def) = self.registry.get(candidate.as_str()) else {
                 continue;
             };
-            // Skip cards below the semantic fidelity threshold.
-            if self.semantic_threshold > 0.0 {
-                let score = self
-                    .semantic_scores
-                    .get(def.name())
-                    .copied()
-                    .unwrap_or_else(|| Self::compute_card_score(def));
-                if score < self.semantic_threshold {
-                    continue;
-                }
-            }
             let canonical = def.name().to_string();
             let key = canonical.to_lowercase();
             if Self::is_strict_demo_spell_candidate(def) {
