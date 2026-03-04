@@ -20,6 +20,7 @@ const WORKER_METHODS = [
   "registrySize",
   "reset",
   "setLife",
+  "setAutoCleanupDiscard",
   "setSemanticThreshold",
   "setPerspective",
   "snapshot",

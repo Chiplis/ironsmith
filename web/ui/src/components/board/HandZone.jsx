@@ -22,8 +22,8 @@ function handGlowFromTypes(cardTypes) {
 }
 
 /**
- * Build a map of objectId → actions for all castable/playable cards.
- * Also builds a list of "extra" playable cards from non-hand zones.
+ * Build a map of objectId → actions for all interactable hand cards.
+ * Also builds a list of "extra" castable/playable cards from non-hand zones.
  */
 function buildPlayableMaps(state, player) {
   const handPlayable = new Map();   // objectId → actions[] (from hand)
@@ -42,27 +42,36 @@ function buildPlayableMaps(state, player) {
   for (const c of player?.hand_cards || []) cardNameById.set(Number(c.id), c.name);
 
   for (const action of state.decision.actions) {
-    if (
-      (action.kind === "cast_spell" || action.kind === "play_land") &&
-      action.object_id != null
-    ) {
-      const objId = Number(action.object_id);
+    if (action.object_id == null) {
+      continue;
+    }
 
-      if (handIds.has(objId)) {
-        // Card is in hand
-        if (!handPlayable.has(objId)) handPlayable.set(objId, []);
-        handPlayable.get(objId).push(action);
-      } else {
-        // Card from another zone (graveyard flashback, exile, etc.)
-        if (!extraPlayable.has(objId)) {
-          extraPlayable.set(objId, {
-            name: cardNameById.get(objId) || action.label?.replace(/^(Cast|Play)\s+/i, "") || `Card ${objId}`,
-            actions: [],
-            fromZone: action.from_zone || "other",
-          });
-        }
-        extraPlayable.get(objId).actions.push(action);
+    const objId = Number(action.object_id);
+    const isHandCard = handIds.has(objId);
+    const isHandInteraction =
+      action.kind === "cast_spell"
+      || action.kind === "play_land"
+      || action.kind === "activate_ability"
+      || action.kind === "activate_mana_ability";
+
+    if (isHandCard && isHandInteraction) {
+      if (!handPlayable.has(objId)) handPlayable.set(objId, []);
+      handPlayable.get(objId).push(action);
+      continue;
+    }
+
+    // Card from another zone (graveyard flashback, exile, etc.)
+    // Keep this list focused on cast/play actions so battlefield activations
+    // don't show up as extra pseudo-hand cards.
+    if (action.kind === "cast_spell" || action.kind === "play_land") {
+      if (!extraPlayable.has(objId)) {
+        extraPlayable.set(objId, {
+          name: cardNameById.get(objId) || action.label?.replace(/^(Cast|Play)\s+/i, "") || `Card ${objId}`,
+          actions: [],
+          fromZone: action.from_zone || "other",
+        });
       }
+      extraPlayable.get(objId).actions.push(action);
     }
   }
 

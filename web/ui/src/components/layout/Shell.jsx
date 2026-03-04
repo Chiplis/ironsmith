@@ -152,16 +152,6 @@ export default function Shell() {
     }
   }, [game, refresh, setStatus]);
 
-  const handleAdvance = useCallback(async () => {
-    if (!game) return;
-    try {
-      await game.advancePhase();
-      await refresh("Advanced phase");
-    } catch (err) {
-      setStatus(`advancePhase failed: ${err}`, true);
-    }
-  }, [game, refresh, setStatus]);
-
   const handleChangePerspective = useCallback(
     async (playerIndex) => {
       if (!game) return;
@@ -241,7 +231,6 @@ export default function Shell() {
         startingLife={startingLife}
         setStartingLife={setStartingLife}
         onReset={handleReset}
-        onAdvance={handleAdvance}
         onChangePerspective={handleChangePerspective}
         onRefresh={() => refresh("Refreshed")}
         onToggleLog={() => setLogOpen((o) => !o)}

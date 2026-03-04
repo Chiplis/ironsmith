@@ -308,6 +308,7 @@ struct ZoneCardSnapshot {
 #[derive(Debug, Clone, Serialize)]
 struct StackObjectSnapshot {
     id: u64,
+    stable_id: Option<u64>,
     name: String,
     mana_cost: Option<String>,
     effect_text: Option<String>,
@@ -496,6 +497,7 @@ impl GameSnapshot {
                         .filter(|s| !s.is_empty());
                     StackObjectSnapshot {
                         id: entry.object_id.0,
+                        stable_id: obj.map(|o| o.stable_id.0.0),
                         name,
                         mana_cost: None,
                         effect_text: None,
@@ -515,6 +517,7 @@ impl GameSnapshot {
                     };
                     StackObjectSnapshot {
                         id: entry.object_id.0,
+                        stable_id: obj.map(|o| o.stable_id.0.0),
                         name,
                         mana_cost: obj.and_then(|o| o.mana_cost.as_ref().map(|mc| mc.to_oracle())),
                         effect_text,
@@ -545,6 +548,7 @@ impl GameSnapshot {
                 0,
                 StackObjectSnapshot {
                     id: stack_id.0,
+                    stable_id: Some(obj.stable_id.0.0),
                     name: obj.name.clone(),
                     mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
                     effect_text: pending_effect_text,
@@ -1562,7 +1566,6 @@ impl WasmGame {
 
         self.game = GameState::new(names, starting_life);
         self.load_demo_decks()?;
-        self.draw_opening_hands(7)?;
         self.reset_runtime_state();
         self.recompute_ui_decision()?;
         Ok(())

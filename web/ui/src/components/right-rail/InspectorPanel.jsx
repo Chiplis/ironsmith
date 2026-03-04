@@ -57,7 +57,11 @@ const tabCls = "flex items-center gap-0.5 px-1 py-0.5 text-[11px] uppercase trac
 const tabActive = tabCls + " bg-[rgba(68,117,168,0.3)] text-foreground";
 const tabInactive = tabCls + " text-muted-foreground hover:text-foreground";
 
-export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
+export default function InspectorPanel({
+  selectedObjectId,
+  pinnedObjectId,
+  resolvingCastStableId = null,
+}) {
   const { game, state } = useGame();
   const [details, setDetails] = useState(null);
   const [stackEntry, setStackEntry] = useState(null);
@@ -156,19 +160,30 @@ export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
     loadDetails(selectedObjectId);
   }, [selectedObjectId, loadDetails]);
 
-  const hasAbilities = details?.abilities?.length > 0;
-  const hasRaw = !!details?.raw_compilation;
-  const showTabs = details && (hasAbilities || hasRaw);
-  const similarityPct = Number.isFinite(details?.semantic_score)
-    ? Math.round(Math.max(0, Math.min(1, details.semantic_score)) * 100)
+  const suppressDuplicateResolvingCast =
+    details
+    && resolvingCastStableId != null
+    && Number(details.stable_id) === Number(resolvingCastStableId);
+  const visibleDetails = suppressDuplicateResolvingCast ? null : details;
+  const visibleStackEntry = suppressDuplicateResolvingCast ? null : stackEntry;
+
+  const hasAbilities = visibleDetails?.abilities?.length > 0;
+  const hasRaw = !!visibleDetails?.raw_compilation;
+  const showTabs = visibleDetails && (hasAbilities || hasRaw);
+  const similarityPct = Number.isFinite(visibleDetails?.semantic_score)
+    ? Math.round(Math.max(0, Math.min(1, visibleDetails.semantic_score)) * 100)
     : null;
 
-  const artUrl = details ? scryfallImageUrl(details.name, "art_crop") : null;
+  const artUrl = visibleDetails ? scryfallImageUrl(visibleDetails.name, "art_crop") : null;
 
-  const hasContent = details || stackEntry;
+  const hasContent = visibleDetails || visibleStackEntry;
+
+  if (!hasContent) {
+    return <div className="h-0" />;
+  }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden relative">
+    <div className="min-h-0 max-h-full flex flex-col overflow-hidden relative">
       {/* Card art — bleeds into container, dissolves at edges */}
       {artUrl && (
         <div className="absolute inset-x-[-12px] top-[-6px] h-[160px] z-0 pointer-events-none">
@@ -189,25 +204,25 @@ export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
       )}
 
       {/* Header: card name + mana cost */}
-      {details && (
+      {visibleDetails && (
         <div className="relative z-1 shrink-0 min-w-0 px-1.5 pt-[110px] pb-1"
           style={{
             background: artUrl ? "linear-gradient(to bottom, transparent 0%, rgba(11,17,26,0.6) 30%, rgba(11,17,26,0.92) 60%)" : undefined,
           }}
         >
           <div className="flex items-start gap-1">
-            <span className="font-bold text-[13px] leading-tight min-w-0 break-words flex-1">{details.name || "Unknown"}</span>
-            {details.mana_cost && <span className="shrink-0 mt-px"><ManaCostIcons cost={details.mana_cost} /></span>}
+            <span className="font-bold text-[13px] leading-tight min-w-0 break-words flex-1">{visibleDetails.name || "Unknown"}</span>
+            {visibleDetails.mana_cost && <span className="shrink-0 mt-px"><ManaCostIcons cost={visibleDetails.mana_cost} /></span>}
           </div>
           {(() => {
-            const counters = (details.counters || []).length
-              ? details.counters.map((c) => `${c.amount} ${c.kind}`).join(" \u2022 ")
+            const counters = (visibleDetails.counters || []).length
+              ? visibleDetails.counters.map((c) => `${c.amount} ${c.kind}`).join(" \u2022 ")
               : null;
-            const meta = [details.type_line, details.zone,
-              details.controller != null && `P${details.controller}`,
-              details.tapped && "Tapped", counters].filter(Boolean);
-            const pt = details.power != null && details.toughness != null
-              ? `${details.power}/${details.toughness}` : null;
+            const meta = [visibleDetails.type_line, visibleDetails.zone,
+              visibleDetails.controller != null && `P${visibleDetails.controller}`,
+              visibleDetails.tapped && "Tapped", counters].filter(Boolean);
+            const pt = visibleDetails.power != null && visibleDetails.toughness != null
+              ? `${visibleDetails.power}/${visibleDetails.toughness}` : null;
             return (meta.length > 0 || pt) ? (
               <div className="flex items-center mt-0.5">
                 <span className="text-[11px] text-muted-foreground leading-tight break-words">{meta.join(" · ")}</span>
@@ -256,21 +271,21 @@ export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
       {/* Content */}
       <ScrollArea className="relative z-1 flex-1 min-h-0">
         <div className="px-1.5 pb-1.5 pt-1">
-          {stackEntry ? (
-            <StackAbilityView entry={stackEntry} />
-          ) : details ? (
+          {visibleStackEntry ? (
+            <StackAbilityView entry={visibleStackEntry} />
+          ) : visibleDetails ? (
             view === "abilities" && hasAbilities ? (
               <div className="grid gap-1 content-start auto-rows-min text-[13px]">
-                {details.abilities.map((ab, i) => (
+                {visibleDetails.abilities.map((ab, i) => (
                   <div key={i} className="bg-[#0a1118] rounded p-1">
                     <SymbolText text={typeof ab === "string" ? ab : ab.text || ab.kind || `Ability ${i + 1}`} />
                   </div>
                 ))}
               </div>
             ) : view === "raw" && hasRaw ? (
-              <pre className="text-[11px] text-[#8a9eb8] font-mono whitespace-pre-wrap break-words m-0">{details.raw_compilation}</pre>
+              <pre className="text-[11px] text-[#8a9eb8] font-mono whitespace-pre-wrap break-words m-0">{visibleDetails.raw_compilation}</pre>
             ) : (
-              <CardView details={details} />
+              <CardView details={visibleDetails} />
             )
           ) : (
             <div />

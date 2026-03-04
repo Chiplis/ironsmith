@@ -154,6 +154,13 @@ export function GameProvider({ children }) {
       .catch(() => {});
   }, [game, wasmRegistryCount, semanticThreshold]);
 
+  useEffect(() => {
+    if (!game || typeof game.setAutoCleanupDiscard !== "function") return;
+    game
+      .setAutoCleanupDiscard(autoPassEnabled)
+      .catch((err) => console.warn("setAutoCleanupDiscard failed:", err));
+  }, [game, autoPassEnabled]);
+
   const opponentHoldReason = useCallback(
     (decision, currentState) => {
       if (!autoPassEnabled) return "auto-pass disabled";

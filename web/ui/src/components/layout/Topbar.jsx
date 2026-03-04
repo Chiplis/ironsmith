@@ -14,7 +14,6 @@ export default function Topbar({
   startingLife,
   setStartingLife,
   onReset,
-  onAdvance,
   onChangePerspective,
   onRefresh,
   onToggleLog,
@@ -67,6 +66,9 @@ export default function Topbar({
 
       <Separator orientation="vertical" className="h-4.5 mx-0.5" />
 
+      <span className="text-[13px] uppercase text-muted-foreground whitespace-nowrap">
+        Playing as
+      </span>
       <select
         className={selectPill}
         value={perspective ?? ""}
@@ -78,7 +80,6 @@ export default function Topbar({
           </option>
         ))}
       </select>
-      <Badge variant="secondary" className={pill} onClick={onAdvance}>Advance</Badge>
       <Badge variant="secondary" className={pill} onClick={onRefresh}>Refresh</Badge>
 
       <Separator orientation="vertical" className="h-4.5 mx-0.5" />
