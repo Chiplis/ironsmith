@@ -43,7 +43,7 @@ export default function Topbar({
   return (
     <header className="panel-gradient flex items-center gap-1.5 rounded px-2.5 py-1 flex-wrap">
       <h1 className="m-0 text-[20px] uppercase tracking-wider whitespace-nowrap font-bold">
-        Maishik
+        Ironsmith
       </h1>
 
       <input

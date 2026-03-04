@@ -8125,6 +8125,58 @@ pub(crate) fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {
 }
 
 pub(crate) fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
+    if contains_word_sequence(
+        words,
+        &[
+            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "each", "of",
+            "their", "draw", "steps",
+        ],
+    ) || contains_word_sequence(
+        words,
+        &[
+            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "each", "of",
+            "their", "draw", "steps",
+        ],
+    ) || contains_word_sequence(
+        words,
+        &[
+            "a", "card", "except", "the", "first", "one", "you", "draw", "in", "each", "of",
+            "your", "draw", "steps",
+        ],
+    ) || contains_word_sequence(
+        words,
+        &[
+            "a", "card", "except", "the", "first", "card", "you", "draw", "in", "each", "of",
+            "your", "draw", "steps",
+        ],
+    ) || contains_word_sequence(
+        words,
+        &[
+            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "their",
+            "draw", "step",
+        ],
+    ) || contains_word_sequence(
+        words,
+        &[
+            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "their",
+            "draw", "step",
+        ],
+    ) || contains_word_sequence(
+        words,
+        &[
+            "a", "card", "except", "the", "first", "one", "you", "draw", "in", "your", "draw",
+            "step",
+        ],
+    ) || contains_word_sequence(
+        words,
+        &[
+            "a", "card", "except", "the", "first", "card", "you", "draw", "in", "your", "draw",
+            "step",
+        ],
+    ) {
+        return Some(2);
+    }
+
     for (ordinal, count) in [
         ("second", 2u32),
         ("third", 3u32),

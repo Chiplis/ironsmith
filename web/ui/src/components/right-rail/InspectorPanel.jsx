@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { scryfallImageUrl } from "@/lib/scryfall";
 import { SymbolText, ManaCostIcons } from "@/lib/mana-symbols";
 
@@ -62,16 +62,41 @@ export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
   const [details, setDetails] = useState(null);
   const [stackEntry, setStackEntry] = useState(null);
   const [view, setView] = useState("card"); // "card" | "abilities" | "raw"
+  const [rawCopied, setRawCopied] = useState(false);
   const cacheRef = useRef(new Map()); // id → { details, stackEntry }
+  const copyResetTimerRef = useRef(null);
 
   const toggleView = useCallback((v) => {
     setView((prev) => (prev === v ? "card" : v));
   }, []);
 
+  const copyRawCompilation = useCallback(async () => {
+    const raw = details?.raw_compilation;
+    if (!raw) return;
+    try {
+      await navigator.clipboard.writeText(raw);
+      setRawCopied(true);
+      if (copyResetTimerRef.current) {
+        clearTimeout(copyResetTimerRef.current);
+      }
+      copyResetTimerRef.current = setTimeout(() => setRawCopied(false), 1200);
+    } catch (_) {
+      // Ignore clipboard errors (e.g. denied permission)
+    }
+  }, [details?.raw_compilation]);
+
   // Reset view only when the user clicks a new object (not on hover changes)
   useEffect(() => {
     setView("card");
   }, [pinnedObjectId]);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current) {
+        clearTimeout(copyResetTimerRef.current);
+      }
+    };
+  }, []);
 
   // Invalidate cache when game state changes (new actions resolved, etc.)
   const turnKey = `${state?.turn_number}|${state?.phase}|${state?.step}|${state?.stack_size}`;
@@ -134,6 +159,9 @@ export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
   const hasAbilities = details?.abilities?.length > 0;
   const hasRaw = !!details?.raw_compilation;
   const showTabs = details && (hasAbilities || hasRaw);
+  const similarityPct = Number.isFinite(details?.semantic_score)
+    ? Math.round(Math.max(0, Math.min(1, details.semantic_score)) * 100)
+    : null;
 
   const artUrl = details ? scryfallImageUrl(details.name, "art_crop") : null;
 
@@ -189,6 +217,14 @@ export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
           })()}
           {showTabs && (
             <div className="flex items-center gap-0.5 mt-1">
+              {hasAbilities && similarityPct != null && (
+                <span
+                  className="px-1 py-0.5 text-[11px] uppercase tracking-wider font-bold text-[#9fc2e4]"
+                  title="Semantic similarity score"
+                >
+                  {similarityPct}%
+                </span>
+              )}
               {hasAbilities && (
                 <button className={view === "abilities" ? tabActive : tabInactive} onClick={() => toggleView("abilities")}>
                   {view === "abilities" && <ChevronDown className="size-3" />}
@@ -196,10 +232,21 @@ export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
                 </button>
               )}
               {hasRaw && (
-                <button className={view === "raw" ? tabActive : tabInactive} onClick={() => toggleView("raw")}>
-                  {view === "raw" && <ChevronDown className="size-3" />}
-                  Raw
-                </button>
+                <div className="flex items-center gap-0.5">
+                  <button className={view === "raw" ? tabActive : tabInactive} onClick={() => toggleView("raw")}>
+                    {view === "raw" && <ChevronDown className="size-3" />}
+                    Raw
+                  </button>
+                  <button
+                    type="button"
+                    className={tabInactive}
+                    title="Copy raw compilation"
+                    aria-label="Copy raw compilation"
+                    onClick={copyRawCompilation}
+                  >
+                    {rawCopied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -226,9 +273,7 @@ export default function InspectorPanel({ selectedObjectId, pinnedObjectId }) {
               <CardView details={details} />
             )
           ) : (
-            <div className="text-muted-foreground text-[13px] italic p-1">
-              Hover or click to inspect
-            </div>
+            <div />
           )}
         </div>
       </ScrollArea>

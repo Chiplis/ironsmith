@@ -1,11 +1,10 @@
 import { useState, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { scryfallImageUrl } from "@/lib/scryfall";
-import { SymbolText, ManaCostIcons } from "@/lib/mana-symbols";
+import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 
 export default function DecisionPanel() {
   const { state, cancelDecision, holdRule, setHoldRule } = useGame();
@@ -26,6 +25,12 @@ export default function DecisionPanel() {
   const showCancel = canAct && state?.cancelable;
   const stackObjects = state?.stack_objects || [];
   const topOfStack = stackObjects.length > 0 ? stackObjects[0] : null;
+  const topName = topOfStack?.name || (topOfStack ? `Object#${topOfStack.id}` : "");
+  const isCastStackEntry = !!topOfStack && !topOfStack.ability_kind;
+  const topPt = topOfStack?.power_toughness
+    || (topOfStack?.power != null && topOfStack?.toughness != null
+      ? `${topOfStack.power}/${topOfStack.toughness}`
+      : null);
 
   const handleCancel = useCallback(() => {
     setCancelling(true);
@@ -36,7 +41,7 @@ export default function DecisionPanel() {
   }, [cancelDecision]);
 
   return (
-    <section className="relative shrink-0 overflow-hidden flex flex-col gap-1 p-1.5">
+    <section className="relative h-full min-h-0 overflow-hidden flex flex-col gap-1 p-1.5">
       {/* Cancel flash overlay */}
       {cancelling && (
         <div
@@ -73,27 +78,44 @@ export default function DecisionPanel() {
 
       {/* Top of stack */}
       {topOfStack && (
-        <div className="shrink-0 relative rounded overflow-hidden" style={{ minHeight: 48 }}>
+        <div className="shrink-0 relative rounded overflow-hidden min-h-[80px]">
           {scryfallImageUrl(topOfStack.name, "art_crop") && (
             <img
-              className="absolute inset-0 w-full h-full object-cover opacity-60 z-0 pointer-events-none"
+              className="absolute inset-0 w-full h-full object-cover opacity-72 saturate-[1.05] contrast-[1.04] z-0 pointer-events-none"
               src={scryfallImageUrl(topOfStack.name, "art_crop")}
               alt=""
               loading="lazy"
               referrerPolicy="no-referrer"
             />
           )}
-          <div className="relative z-[1] px-1.5 py-1 flex flex-col gap-0.5" style={{ background: "linear-gradient(to right, rgba(10,15,22,0.88) 0%, rgba(10,15,22,0.6) 100%)" }}>
-            <span className="text-[13px] font-bold text-[#d8e8ff] leading-tight text-shadow-[0_1px_2px_rgba(0,0,0,0.9)] flex items-center gap-1">
-              <span>
-                {topOfStack.ability_kind
-                  ? `${topOfStack.ability_kind.charAt(0).toUpperCase() + topOfStack.ability_kind.slice(1)} ability`
-                  : topOfStack.name}
+          <div
+            className="absolute inset-x-0 bottom-0 z-[1] p-1.5 pt-3"
+            style={{
+              background: "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0.88) 100%)",
+            }}
+          >
+            <div className="flex items-start gap-1">
+              <span className="block text-[13px] font-bold text-[#d8e8ff] leading-[1.12] text-shadow-[0_1px_2px_rgba(0,0,0,0.95)] flex-1 min-w-0 break-words">
+                {topName}
               </span>
-              {!topOfStack.ability_kind && topOfStack.mana_cost && (
-                <ManaCostIcons cost={topOfStack.mana_cost} size={14} />
+              {isCastStackEntry && topOfStack.mana_cost && (
+                <span className="shrink-0 mt-px">
+                  <ManaCostIcons cost={topOfStack.mana_cost} />
+                </span>
               )}
-            </span>
+            </div>
+            {isCastStackEntry && topPt && (
+              <div className="flex items-center mt-0.5">
+                <span className="ml-auto text-[#f5d08b] text-[13px] font-bold tracking-wide shrink-0">
+                  {topPt}
+                </span>
+              </div>
+            )}
+            {topOfStack.ability_kind && (
+              <span className="block text-[12px] italic text-[#c0a060] pt-0.5 leading-tight">
+                {topOfStack.ability_kind} ability
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -105,9 +127,9 @@ export default function DecisionPanel() {
         </div>
       )}
 
-      <ScrollArea className="min-h-0" style={{ maxHeight: "40vh" }}>
+      <div className="flex-1 min-h-0 overflow-hidden">
         <div
-          className="flex flex-col gap-1 pr-0.5"
+          className="flex h-full min-h-0 flex-col gap-1 pr-0.5"
           style={cancelling ? { animation: "cancel-slide-out 350ms ease-in forwards" } : undefined}
         >
           {decision ? (
@@ -118,7 +140,7 @@ export default function DecisionPanel() {
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </section>
   );
 }

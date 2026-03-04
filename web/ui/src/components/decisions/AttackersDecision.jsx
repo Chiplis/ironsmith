@@ -3,6 +3,7 @@ import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/CombatArrowContext";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 const ATTACKER_COLOR = "#ff3b30";
@@ -247,48 +248,11 @@ export default function AttackersDecision({ decision, canAct }) {
   useEffect(() => clearArrows, [clearArrows]);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-[12px] text-muted-foreground">Declare attackers</div>
-      <div className="flex flex-col gap-1">
-        {options.map((opt) => {
-          const creatureId = Number(opt.creature);
-          const attacking = isAttacking(creatureId);
-          const name = opt.creature_name || opt.name || `Creature ${creatureId}`;
-          const decl = getDeclaration(creatureId);
-          const validTargets = opt.valid_targets || [];
-          const isSelected = selectedAttackerId === creatureId;
-
-          return (
-            <div key={creatureId} className="flex flex-col gap-0.5">
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "h-7 text-[11px] justify-start px-2",
-                  attacking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]",
-                  isSelected && "border-[rgba(255,59,48,0.8)] bg-[rgba(255,59,48,0.08)]",
-                  opt.must_attack && "italic"
-                )}
-                disabled={!canAct}
-                onClick={() => toggleAttacker(opt)}
-              >
-                {attacking ? "\u2694 " : ""}{name}
-                {opt.must_attack && " (must attack)"}
-                {isSelected && " (select target)"}
-                {attacking && decl && validTargets.length > 1 && (
-                  <span className="ml-1 text-[10px] text-muted-foreground">
-                    → {attackTargetLabel(decl.target, players)}
-                  </span>
-                )}
-              </Button>
-            </div>
-          );
-        })}
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-2">
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[11px] mb-0.5 shrink-0"
         disabled={!canAct}
         onClick={() =>
           dispatch(
@@ -299,6 +263,45 @@ export default function AttackersDecision({ decision, canAct }) {
       >
         Confirm Attackers ({declarations.length})
       </Button>
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="flex flex-col gap-1 pr-1">
+          <div className="text-[12px] text-muted-foreground">Declare attackers</div>
+          {options.map((opt) => {
+            const creatureId = Number(opt.creature);
+            const attacking = isAttacking(creatureId);
+            const name = opt.creature_name || opt.name || `Creature ${creatureId}`;
+            const decl = getDeclaration(creatureId);
+            const validTargets = opt.valid_targets || [];
+            const isSelected = selectedAttackerId === creatureId;
+
+            return (
+              <div key={creatureId} className="flex flex-col gap-0.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "h-7 text-[11px] justify-start px-2",
+                    attacking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]",
+                    isSelected && "border-[rgba(255,59,48,0.8)] bg-[rgba(255,59,48,0.08)]",
+                    opt.must_attack && "italic"
+                  )}
+                  disabled={!canAct}
+                  onClick={() => toggleAttacker(opt)}
+                >
+                  {attacking ? "\u2694 " : ""}{name}
+                  {opt.must_attack && " (must attack)"}
+                  {isSelected && " (select target)"}
+                  {attacking && decl && validTargets.length > 1 && (
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      → {attackTargetLabel(decl.target, players)}
+                    </span>
+                  )}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      </ScrollArea>
     </div>
   );
 }

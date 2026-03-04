@@ -40,15 +40,15 @@ function buildModuleCandidates() {
 
   return [
     `${window.location.origin}${baseDir}pkg/ironsmith.js`,
-    `${window.location.origin}${baseDir}pkg/maishik.js`,
+    `${window.location.origin}${baseDir}pkg/ironsmith.js`,
     `${window.location.origin}${baseDir}pkg/pkg/ironsmith.js`,
-    `${window.location.origin}${baseDir}pkg/pkg/maishik.js`,
+    `${window.location.origin}${baseDir}pkg/pkg/ironsmith.js`,
     "./pkg/ironsmith.js",
-    "./pkg/maishik.js",
+    "./pkg/ironsmith.js",
     "./pkg/pkg/ironsmith.js",
-    "./pkg/pkg/maishik.js",
+    "./pkg/pkg/ironsmith.js",
     "../../pkg/ironsmith.js",
-    "../../pkg/maishik.js",
+    "../../pkg/ironsmith.js",
   ];
 }
 

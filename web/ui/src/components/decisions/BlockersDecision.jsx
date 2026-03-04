@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/CombatArrowContext";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 /**
@@ -119,53 +120,11 @@ export default function BlockersDecision({ decision, canAct }) {
   useEffect(() => clearArrows, [clearArrows]);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-[12px] text-muted-foreground">Declare blockers</div>
-      <div className="flex flex-col gap-1.5">
-        {blockerOptions.map((opt) => {
-          const blockerId = opt.blocker;
-          const name = opt.name;
-          const currentDecls = getBlockerDeclarations(blockerId);
-          const validAttackers = opt.valid_attackers || [];
-
-          return (
-            <div key={blockerId} className="border border-game-line-2 p-1 rounded-sm">
-              <div className={cn(
-                "text-[11px] font-bold mb-0.5",
-                currentDecls.length > 0 && "text-[rgba(174,118,255,0.95)]"
-              )}>
-                {name}
-              </div>
-              <div className="flex flex-wrap gap-0.5">
-                {validAttackers.map((attacker) => {
-                  const attackerId = Number(attacker.attacker);
-                  const attackerName = attacker.name;
-                  const blocking = isBlockingAttacker(blockerId, attackerId);
-                  return (
-                    <Button
-                      key={attackerId}
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        "h-5 text-[10px] px-1.5",
-                        blocking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]"
-                      )}
-                      disabled={!canAct}
-                      onClick={() => toggleBlocker(blockerId, attackerId)}
-                    >
-                      {blocking ? "\u2694 " : ""}Block {attackerName}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-2">
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-[11px]"
+        className="h-7 text-[11px] mb-0.5 shrink-0"
         disabled={!canAct}
         onClick={() =>
           dispatch(
@@ -176,6 +135,50 @@ export default function BlockersDecision({ decision, canAct }) {
       >
         Confirm Blockers ({declarations.length})
       </Button>
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="flex flex-col gap-1.5 pr-1">
+          <div className="text-[12px] text-muted-foreground">Declare blockers</div>
+          {blockerOptions.map((opt) => {
+            const blockerId = opt.blocker;
+            const name = opt.name;
+            const currentDecls = getBlockerDeclarations(blockerId);
+            const validAttackers = opt.valid_attackers || [];
+
+            return (
+              <div key={blockerId} className="border border-game-line-2 p-1 rounded-sm">
+                <div className={cn(
+                  "text-[11px] font-bold mb-0.5",
+                  currentDecls.length > 0 && "text-[rgba(174,118,255,0.95)]"
+                )}>
+                  {name}
+                </div>
+                <div className="flex flex-wrap gap-0.5">
+                  {validAttackers.map((attacker) => {
+                    const attackerId = Number(attacker.attacker);
+                    const attackerName = attacker.name;
+                    const blocking = isBlockingAttacker(blockerId, attackerId);
+                    return (
+                      <Button
+                        key={attackerId}
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-5 text-[10px] px-1.5",
+                          blocking && "border-[rgba(174,118,255,0.95)] bg-[rgba(174,118,255,0.08)]"
+                        )}
+                        disabled={!canAct}
+                        onClick={() => toggleBlocker(blockerId, attackerId)}
+                      >
+                        {blocking ? "\u2694 " : ""}Block {attackerName}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </ScrollArea>
     </div>
   );
 }

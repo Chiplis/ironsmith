@@ -1,9 +1,10 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymbolText } from "@/lib/mana-symbols";
+import { normalizeDecisionText } from "./decisionText";
 
 function nextStepLabel(phase, step, stackSize) {
   if (stackSize > 0) return "Resolve";
@@ -105,7 +106,7 @@ function ActionButton({ action, canAct, dispatch, label, isHighlighted, onMouseE
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {label ?? action.label}
+      {normalizeDecisionText(label ?? action.label)}
     </Button>
   );
 }
@@ -122,8 +123,8 @@ function activateSourceName(label) {
 }
 
 function actionLabel(action, catLabel, isActivate) {
-  if (isActivate) return activateSourceName(action.label);
-  return stripPrefix(action.label, catLabel);
+  if (isActivate) return normalizeDecisionText(activateSourceName(action.label));
+  return normalizeDecisionText(stripPrefix(action.label, catLabel));
 }
 
 /**
@@ -143,7 +144,7 @@ function extractManaOutput(label) {
 
 /** Render a mana ability as source name + mana pips */
 function ManaActionButton({ action, canAct, dispatch, isHighlighted, onMouseEnter, onMouseLeave }) {
-  const sourceName = activateSourceName(action.label);
+  const sourceName = normalizeDecisionText(activateSourceName(action.label));
   const manaOutput = extractManaOutput(action.label);
 
   return (
@@ -232,6 +233,11 @@ export default function PriorityDecision({ decision, canAct }) {
 
   const holdingPriority = holdRule === "always";
   const stackSize = state?.stack_size || 0;
+  const isResolvingStack = stackSize > 0;
+  const topOfStack = (state?.stack_objects || [])[0];
+  const resolvingAbilityText = isResolvingStack && topOfStack?.ability_kind
+    ? (topOfStack.ability_text || topOfStack.effect_text || null)
+    : null;
   const passLabel = holdingPriority
     ? passAction?.label || "Pass priority"
     : `→ ${nextStepLabel(state?.phase, state?.step, stackSize)}`;
@@ -282,7 +288,7 @@ export default function PriorityDecision({ decision, canAct }) {
         <Button
           variant="ghost"
           size="sm"
-          className="group h-auto min-h-7 py-1.5 text-[15px] font-bold justify-start px-3 whitespace-normal text-left transition-all duration-200 shrink-0 pass-priority-btn"
+          className="group mb-1.5 h-auto min-h-7 py-1.5 text-[15px] font-bold justify-start px-3 whitespace-normal text-left transition-all duration-200 shrink-0 pass-priority-btn"
           style={{
             color: pc.text,
             border: `1px solid ${pc.border}`,
@@ -305,8 +311,16 @@ export default function PriorityDecision({ decision, canAct }) {
         </Button>
       )}
 
-      {/* Category sections — always expanded, scrollable */}
-      {activeCategories.length > 0 && (
+      {resolvingAbilityText && (
+        <div className="px-1 pb-1">
+          <SymbolText
+            text={resolvingAbilityText}
+            className="text-[12px] text-[#9fc2e4] leading-snug font-[inherit] block"
+          />
+        </div>
+      )}
+
+      {!isResolvingStack && (
         <ScrollArea className="flex-1 min-h-0">
           <div className="flex flex-col gap-2 pr-1">
             {activeCategories.map((cat) => (
@@ -324,28 +338,27 @@ export default function PriorityDecision({ decision, canAct }) {
                 actionRefs={actionRefs}
               />
             ))}
+
+            {ungrouped.length > 0 && (
+              <div className="flex flex-col gap-0.5">
+                {ungrouped.map((action) => {
+                  const objId = action.object_id != null ? String(action.object_id) : null;
+                  return (
+                    <ActionButton
+                      key={action.index}
+                      action={action}
+                      canAct={canAct}
+                      dispatch={dispatch}
+                      isHighlighted={objId != null && hoveredObjectId === objId}
+                      onMouseEnter={() => objId && hoverCard(objId)}
+                      onMouseLeave={clearHover}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         </ScrollArea>
-      )}
-
-      {/* Ungrouped actions */}
-      {ungrouped.length > 0 && (
-        <div className="flex flex-col gap-0.5 shrink-0">
-          {ungrouped.map((action) => {
-            const objId = action.object_id != null ? String(action.object_id) : null;
-            return (
-              <ActionButton
-                key={action.index}
-                action={action}
-                canAct={canAct}
-                dispatch={dispatch}
-                isHighlighted={objId != null && hoveredObjectId === objId}
-                onMouseEnter={() => objId && hoverCard(objId)}
-                onMouseLeave={clearHover}
-              />
-            );
-          })}
-        </div>
       )}
     </div>
   );

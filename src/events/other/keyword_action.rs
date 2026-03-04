@@ -13,6 +13,7 @@ use crate::tag::TagKey;
 /// Keyword actions that can be observed by triggers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeywordActionKind {
+    Amass,
     CommitCrime,
     Cycle,
     Convoke,
@@ -37,6 +38,7 @@ impl KeywordActionKind {
     /// Parse the inflected trigger verb form.
     pub fn from_trigger_word(word: &str) -> Option<Self> {
         match word {
+            "amass" | "amasses" | "amassed" | "amassing" => Some(Self::Amass),
             "crime" | "crimes" => Some(Self::CommitCrime),
             "cycle" | "cycles" | "cycled" | "cycling" => Some(Self::Cycle),
             "convoke" | "convokes" | "convoked" => Some(Self::Convoke),
@@ -61,6 +63,7 @@ impl KeywordActionKind {
 
     pub fn infinitive(self) -> &'static str {
         match self {
+            Self::Amass => "amass",
             Self::CommitCrime => "commit a crime",
             Self::Cycle => "cycle",
             Self::Convoke => "convoke",
@@ -84,6 +87,7 @@ impl KeywordActionKind {
 
     pub fn third_person(self) -> &'static str {
         match self {
+            Self::Amass => "amasses",
             Self::CommitCrime => "commits a crime",
             Self::Cycle => "cycles",
             Self::Convoke => "convokes",
@@ -198,6 +202,10 @@ mod tests {
 
     #[test]
     fn keyword_action_parse_words() {
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("amassing"),
+            Some(KeywordActionKind::Amass)
+        );
         assert_eq!(
             KeywordActionKind::from_trigger_word("earthbends"),
             Some(KeywordActionKind::Earthbend)

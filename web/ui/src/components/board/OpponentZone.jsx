@@ -45,7 +45,7 @@ export default function OpponentZone({ opponents, selectedObjectId, onInspect, z
   if (!opponents.length) return <section className="board-zone-bg p-1.5 min-h-0" />;
 
   return (
-    <section className="board-zone-bg p-1.5 min-h-0 overflow-hidden" style={{ alignContent: "stretch" }}>
+    <section className="board-zone-bg p-1.5 min-h-0 overflow-hidden" data-opponents-zones style={{ alignContent: "stretch" }}>
       <div
         className="grid gap-2 min-h-0 h-full"
         style={{

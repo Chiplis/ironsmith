@@ -5183,12 +5183,28 @@ fn test_parse_granted_keyword_and_must_attack_keeps_both_parts() {
 
 #[test]
 fn parse_anger_graveyard_condition_with_land_control() {
-    CardDefinitionBuilder::new(CardId::from_raw(1), "Anger Variant")
+    use crate::zone::Zone;
+
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Anger Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
             "Haste\nAs long as this card is in your graveyard and you control a Mountain, creatures you control have haste.",
         )
         .expect("anger-style graveyard + land-control condition should parse");
+
+    let grant_from_graveyard = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::GrantAbility
+        ) && ability.functional_zones.contains(&Zone::Graveyard)
+            && !ability.functional_zones.contains(&Zone::Battlefield)
+    });
+    assert!(
+        grant_from_graveyard,
+        "expected anger-style grant ability to function from graveyard, got {:?}",
+        def.abilities
+    );
 }
 
 #[test]
@@ -13372,6 +13388,35 @@ fn parse_draw_third_card_each_turn_trigger_supports_higher_ordinals() {
     assert!(
         abilities_debug.contains("card_number: 3"),
         "expected third-card ordinal to compile as card_number=3, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_orcish_bowmasters_draw_exception_clause_compiles_noncustom_draw_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Orcish Bowmasters Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flash\nWhen this creature enters and whenever an opponent draws a card except the first one they draw in each of their draw steps, this creature deals 1 damage to any target. Then amass Orcs 1.",
+        )
+        .expect("orcish bowmasters-style trigger should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        !abilities_debug.contains("unimplemented_trigger"),
+        "expected no fallback custom trigger, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("OrTrigger"),
+        "expected ETB-or-draw trigger composition, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("PlayerDrawsNthCardEachTurnTrigger")
+            || abilities_debug.contains("draws their second card each turn"),
+        "expected draw-exception clause to compile as typed draw trigger, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("AmassEffect"),
+        "expected triggered effect list to include AmassEffect, got {abilities_debug}"
     );
 }
 

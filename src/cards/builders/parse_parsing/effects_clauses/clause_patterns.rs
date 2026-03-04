@@ -1169,9 +1169,32 @@ pub(crate) fn parse_keyword_mechanic_clause(
     }
 
     if clause_words.first() == Some(&"amass") {
-        return Ok(Some(EffectAst::May {
-            effects: Vec::new(),
-        }));
+        let mut amount_start = 1usize;
+        let mut subtype = None;
+
+        if let Some(candidate) = clause_words.get(amount_start).copied()
+            && let Some(parsed_subtype) = parse_subtype_word(candidate)
+                .or_else(|| candidate.strip_suffix('s').and_then(parse_subtype_word))
+            && parsed_subtype.is_creature_type()
+        {
+            subtype = Some(parsed_subtype);
+            amount_start += 1;
+        }
+
+        let (amount, used) = parse_number(&clause_tokens[amount_start..]).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing numeric amount for amass clause (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        if amount_start + used != clause_tokens.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing amass clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        return Ok(Some(EffectAst::Amass { subtype, amount }));
     }
 
     if clause_words.first() == Some(&"roll") && clause_words.contains(&"dice") {

@@ -1109,6 +1109,10 @@ pub(crate) enum EffectAst {
     Investigate {
         count: Value,
     },
+    Amass {
+        subtype: Option<Subtype>,
+        amount: u32,
+    },
     Destroy {
         target: TargetAst,
     },
@@ -10130,6 +10134,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("amass clause should parse structurally");
 
         let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+        assert!(
+            spell_debug.contains("amasseffect"),
+            "expected amass clause to compile to AmassEffect, got {spell_debug}"
+        );
         assert!(
             spell_debug.contains("dealdamageeffect"),
             "expected downstream damage effect to remain parsed, got {spell_debug}"

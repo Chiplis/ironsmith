@@ -201,71 +201,82 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
     const hasExtra = extraCards.length > 0;
 
     return (
-      <section className="bg-[#10161f] px-2 pt-3 pb-1 grid gap-1 h-full overflow-visible" style={{ gridTemplateRows: "auto minmax(0,1fr)" }}>
-        <h3 className="m-0 text-[#a4bdd7] uppercase tracking-wider text-[14px] font-semibold">
-          Hand
-        </h3>
-        <div className="flex gap-1.5 flex-nowrap pb-0.5 items-end min-h-0 overflow-visible">
-          {/* Regular hand cards */}
-          {handCards.map((card, i) => {
-            const plays = handPlayable.get(Number(card.id)) || [];
-            const isPlayable = plays.length > 0;
-            const glowKind = handGlowFromTypes(card.card_types);
-            const isNew = newIds.has(card.id);
-            const isBumped = bumpedIds.has(card.id);
-            let bumpDir = 0;
-            if (isBumped) {
-              if (i > 0 && newIds.has(handCards[i - 1].id)) bumpDir = 1;
-              else if (i < handCards.length - 1 && newIds.has(handCards[i + 1].id)) bumpDir = -1;
-            }
-            return (
-              <GameCard
-                key={card.id}
-                card={card}
-                variant="hand"
-                isPlayable={isPlayable}
-                glowKind={glowKind}
-                isNew={isNew}
-                isBumped={isBumped}
-                bumpDirection={bumpDir}
-                isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
-                onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
-                onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
-                onMouseEnter={() => hoverCard(card.id)}
-                onMouseLeave={clearHover}
-              />
-            );
-          })}
+      <section className="bg-[#10161f] px-2 pt-0 pb-0.5 h-full overflow-visible">
+        <div className="min-h-0 h-[calc(100%+8px)] -mt-2 -mx-2 px-2 overflow-x-auto overflow-y-hidden pb-0.5">
+          <div className="flex gap-1.5 flex-nowrap items-end h-full w-max pl-1 pr-2">
+            {/* Regular hand cards */}
+            {handCards.map((card, i) => {
+              const plays = handPlayable.get(Number(card.id)) || [];
+              const isPlayable = plays.length > 0;
+              const glowKind = isPlayable ? handGlowFromTypes(card.card_types) : null;
+              const isNew = newIds.has(card.id);
+              const isBumped = bumpedIds.has(card.id);
+              let bumpDir = 0;
+              if (isBumped) {
+                if (i > 0 && newIds.has(handCards[i - 1].id)) bumpDir = 1;
+                else if (i < handCards.length - 1 && newIds.has(handCards[i + 1].id)) bumpDir = -1;
+              }
+              return (
+                <GameCard
+                  key={card.id}
+                  card={card}
+                  variant="hand"
+                  isPlayable={isPlayable}
+                  glowKind={glowKind}
+                  isNew={isNew}
+                  isBumped={isBumped}
+                  bumpDirection={bumpDir}
+                  isInspected={isPlayable && selectedObjectId != null && String(card.id) === String(selectedObjectId)}
+                  onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
+                  onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
+                  onMouseEnter={() => hoverCard(card.id)}
+                  onMouseLeave={clearHover}
+                  style={{
+                    flex: "0 0 124px",
+                    width: "124px",
+                    minWidth: "124px",
+                    maxWidth: "124px",
+                  }}
+                />
+              );
+            })}
 
-          {/* Separator when extra cards present */}
-          {hasExtra && handCards.length > 0 && (
-            <div className="w-px self-stretch my-2 bg-[rgba(174,118,255,0.3)]" />
-          )}
+            {/* Separator when extra cards present */}
+            {hasExtra && handCards.length > 0 && (
+              <div className="w-px self-stretch my-2 bg-[rgba(174,118,255,0.3)]" />
+            )}
 
-          {/* Extra playable cards from other zones */}
-          {extraCards.map((extra) => {
-            const card = { id: extra.id, name: extra.name };
-            const plays = extra.actions;
-            return (
-              <GameCard
-                key={`extra-${extra.id}`}
-                card={card}
-                variant="hand"
-                isPlayable
-                glowKind="extra"
-                isNew
-                isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
-                onClick={plays.length <= 1 ? undefined : (e) => handleCardClick(e, card, plays)}
-                onPointerDown={(e) => handlePointerDown(e, card, plays, "extra")}
-                onMouseEnter={() => hoverCard(extra.id)}
-                onMouseLeave={clearHover}
-              />
-            );
-          })}
+            {/* Extra playable cards from other zones */}
+            {extraCards.map((extra) => {
+              const card = { id: extra.id, name: extra.name };
+              const plays = extra.actions;
+              return (
+                <GameCard
+                  key={`extra-${extra.id}`}
+                  card={card}
+                  variant="hand"
+                  isPlayable
+                  glowKind="extra"
+                  isNew
+                  isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
+                  onClick={plays.length <= 1 ? undefined : (e) => handleCardClick(e, card, plays)}
+                  onPointerDown={(e) => handlePointerDown(e, card, plays, "extra")}
+                  onMouseEnter={() => hoverCard(extra.id)}
+                  onMouseLeave={clearHover}
+                  style={{
+                    flex: "0 0 124px",
+                    width: "124px",
+                    minWidth: "124px",
+                    maxWidth: "124px",
+                  }}
+                />
+              );
+            })}
 
-          {handCards.length === 0 && extraCards.length === 0 && (
-            <div className="text-muted-foreground text-[17px] p-3 italic">Empty hand</div>
-          )}
+            {handCards.length === 0 && extraCards.length === 0 && (
+              <div className="text-muted-foreground text-[17px] p-3 italic">Empty hand</div>
+            )}
+          </div>
         </div>
 
         {popover && (

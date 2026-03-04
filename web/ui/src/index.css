@@ -132,21 +132,46 @@
 
 /* ---- Game Card ---- */
 .game-card {
-  @apply relative font-bold select-none overflow-hidden cursor-default;
+  @apply relative font-bold select-none cursor-default;
   isolation: isolate;
   --glow-rgb: 100, 169, 255;
   --aura-opacity-1-min: 0;
   --aura-opacity-1-max: 0;
   --aura-opacity-2-min: 0;
   --aura-opacity-2-max: 0;
-  --aura-scale-1-min: 0.94;
-  --aura-scale-1-max: 1.06;
-  --aura-scale-2-min: 0.88;
-  --aura-scale-2-max: 1.12;
-  --aura-duration-1: 2.4s;
-  --aura-duration-2: 3.9s;
+  --aura-glow-radius: 24px;
+  --aura-scale-1-min: 0.98;
+  --aura-scale-1-max: 1.05;
+  --aura-scale-2-min: 0.95;
+  --aura-scale-2-max: 1.08;
+  --aura-inner-strength: 1;
+  --aura-duration-inner: 2.9s;
+  --aura-ring-1-strength: 1;
+  --aura-ring-2-strength: 1;
+  --aura-ring-1-inner: 50%;
+  --aura-ring-1-core: 68%;
+  --aura-ring-1-fade: 79%;
+  --aura-ring-1-end: 94%;
+  --aura-ring-2-inner: 56%;
+  --aura-ring-2-core: 76%;
+  --aura-ring-2-fade: 87%;
+  --aura-ring-2-end: 100%;
+  --aura-duration-1: 2.6s;
+  --aura-duration-2: 3.8s;
   --aura-delay-1: 0s;
   --aura-delay-2: 0s;
+  --aura-rot-1-pos: 0.85deg;
+  --aura-rot-1-neg: -0.85deg;
+  --aura-rot-2-pos: 1.2deg;
+  --aura-rot-2-neg: -1.2deg;
+  --aura-tx-1-pos: 0.48%;
+  --aura-tx-1-neg: -0.48%;
+  --aura-ty-1-pos: 0.42%;
+  --aura-ty-1-neg: -0.42%;
+  --aura-tx-2-pos: 0.66%;
+  --aura-tx-2-neg: -0.66%;
+  --aura-ty-2-pos: 0.58%;
+  --aura-ty-2-neg: -0.58%;
   border: none;
   border-radius: 6px;
   font-size: 16px;
@@ -161,36 +186,78 @@
     inset 0 0 8px 2px rgba(0,0,0,0.3),
     inset 0 0 0 1px rgba(255,255,255,0.05);
   transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  overflow: visible;
+}
+
+.game-card-surface {
+  @apply absolute inset-0 overflow-hidden;
+  border-radius: inherit;
+}
+
+.game-card-surface::before {
+  content: "";
+  @apply absolute inset-0 pointer-events-none;
+  inset: -8%;
+  z-index: 1;
+  opacity: 0;
+  transform-origin: 50% 50%;
+  border-radius: var(--aura-glow-radius);
+  will-change: transform, opacity;
+  transition: opacity 240ms ease, transform 280ms ease;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(var(--glow-rgb), calc(0.2 * var(--aura-inner-strength))) 0%,
+    rgba(var(--glow-rgb), calc(0.11 * var(--aura-inner-strength))) 40%,
+    rgba(var(--glow-rgb), 0) 78%
+  );
 }
 
 .game-card::before,
 .game-card::after {
   content: "";
   @apply absolute inset-0 pointer-events-none;
-  z-index: 0;
+  z-index: -1;
   opacity: 0;
   transform-origin: 50% 50%;
-  border-radius: 8px;
+  border-radius: var(--aura-glow-radius);
+  box-sizing: border-box;
+  will-change: transform, opacity;
+  transition: opacity 240ms ease, transform 280ms ease;
 }
 
 .game-card::before {
-  inset: -12%;
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(var(--glow-rgb), 0.36) 0%,
-    rgba(var(--glow-rgb), 0.18) 36%,
-    rgba(var(--glow-rgb), 0) 74%
-  );
+  inset: -4px;
+  border-radius: var(--aura-glow-radius);
+  background:
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgba(var(--glow-rgb), 0) 66%,
+      rgba(var(--glow-rgb), calc(0.74 * var(--aura-ring-1-strength))) 80%,
+      rgba(var(--glow-rgb), calc(0.18 * var(--aura-ring-1-strength))) 90%,
+      rgba(var(--glow-rgb), calc(0.06 * var(--aura-ring-1-strength))) 96%,
+      rgba(var(--glow-rgb), 0) 100%
+    ),
+    radial-gradient(24% 20% at 0% 0%, rgba(var(--glow-rgb), calc(0.14 * var(--aura-ring-1-strength))) 0%, rgba(var(--glow-rgb), 0) 86%),
+    radial-gradient(24% 20% at 100% 0%, rgba(var(--glow-rgb), calc(0.14 * var(--aura-ring-1-strength))) 0%, rgba(var(--glow-rgb), 0) 86%),
+    radial-gradient(24% 20% at 0% 100%, rgba(var(--glow-rgb), calc(0.14 * var(--aura-ring-1-strength))) 0%, rgba(var(--glow-rgb), 0) 86%),
+    radial-gradient(24% 20% at 100% 100%, rgba(var(--glow-rgb), calc(0.14 * var(--aura-ring-1-strength))) 0%, rgba(var(--glow-rgb), 0) 86%);
 }
 
 .game-card::after {
-  inset: -20%;
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(var(--glow-rgb), 0.22) 0%,
-    rgba(var(--glow-rgb), 0.11) 42%,
-    rgba(var(--glow-rgb), 0) 84%
-  );
+  inset: -5px;
+  border-radius: var(--aura-glow-radius);
+  background:
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgba(var(--glow-rgb), 0) 60%,
+      rgba(var(--glow-rgb), calc(0.14 * var(--aura-ring-2-strength))) 84%,
+      rgba(var(--glow-rgb), calc(0.05 * var(--aura-ring-2-strength))) 93%,
+      rgba(var(--glow-rgb), 0) 100%
+    ),
+    radial-gradient(28% 22% at 0% 0%, rgba(var(--glow-rgb), calc(0.05 * var(--aura-ring-2-strength))) 0%, rgba(var(--glow-rgb), 0) 90%),
+    radial-gradient(28% 22% at 100% 0%, rgba(var(--glow-rgb), calc(0.05 * var(--aura-ring-2-strength))) 0%, rgba(var(--glow-rgb), 0) 90%),
+    radial-gradient(28% 22% at 0% 100%, rgba(var(--glow-rgb), calc(0.05 * var(--aura-ring-2-strength))) 0%, rgba(var(--glow-rgb), 0) 90%),
+    radial-gradient(28% 22% at 100% 100%, rgba(var(--glow-rgb), calc(0.05 * var(--aura-ring-2-strength))) 0%, rgba(var(--glow-rgb), 0) 90%);
 }
 
 .game-card-shade {
@@ -454,6 +521,109 @@
   cursor: grab;
 }
 
+/* Per-type ring tuning to make edge movement more visible without animating box-shadow */
+.game-card.glow-land,
+.game-card.glow-spell,
+.game-card.glow-mana,
+.game-card.glow-ability,
+.game-card.glow-extra,
+.game-card.glow-creature,
+.game-card.glow-enchantment,
+.game-card.glow-artifact,
+.game-card.playable {
+  --aura-ring-1-strength: 1.08;
+  --aura-ring-2-strength: 1.04;
+}
+
+.game-card.glow-instant,
+.game-card.glow-sorcery,
+.game-card.glow-battle,
+.game-card.glow-planeswalker {
+  --aura-ring-1-strength: 1.14;
+  --aura-ring-2-strength: 1.1;
+  --aura-ring-1-inner: 49%;
+  --aura-ring-1-core: 66%;
+  --aura-ring-2-inner: 55%;
+  --aura-ring-2-core: 74%;
+}
+
+.game-card.target-legal,
+.game-card.attack-candidate,
+.game-card.blocker-candidate {
+  --aura-ring-1-strength: 1.24;
+  --aura-ring-2-strength: 1.2;
+  --aura-ring-1-inner: 47%;
+  --aura-ring-1-core: 64%;
+  --aura-ring-1-fade: 77%;
+  --aura-ring-1-end: 92%;
+  --aura-ring-2-inner: 53%;
+  --aura-ring-2-core: 72%;
+  --aura-ring-2-fade: 84%;
+}
+
+.game-card.attack-selected,
+.game-card.inspected {
+  --aura-ring-1-strength: 1.32;
+  --aura-ring-2-strength: 1.28;
+  --aura-inner-strength: 1.16;
+  --aura-ring-1-inner: 45%;
+  --aura-ring-1-core: 62%;
+  --aura-ring-1-fade: 76%;
+  --aura-ring-1-end: 91%;
+  --aura-ring-2-inner: 51%;
+  --aura-ring-2-core: 70%;
+  --aura-ring-2-fade: 83%;
+}
+
+.game-card.glow-land,
+.game-card.glow-spell,
+.game-card.glow-mana,
+.game-card.glow-ability,
+.game-card.glow-extra,
+.game-card.glow-creature,
+.game-card.glow-enchantment,
+.game-card.glow-artifact,
+.game-card.playable {
+  --aura-inner-strength: 0.92;
+}
+
+.game-card.glow-instant,
+.game-card.glow-sorcery,
+.game-card.glow-battle,
+.game-card.glow-planeswalker {
+  --aura-inner-strength: 1;
+}
+
+.game-card.target-legal,
+.game-card.attack-candidate,
+.game-card.blocker-candidate {
+  --aura-inner-strength: 1.08;
+}
+
+.game-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .inspected
+) .game-card-surface::before {
+  animation: glow-aura-inner var(--aura-duration-inner) ease-in-out infinite;
+  animation-delay: var(--aura-delay-1);
+}
+
 .game-card.glow-land::before,
 .game-card.glow-spell::before,
 .game-card.glow-mana::before,
@@ -472,7 +642,7 @@
 .game-card.blocker-candidate::before,
 .game-card.attack-selected::before,
 .game-card.inspected::before {
-  animation: glow-aura-primary var(--aura-duration-1) ease-in-out infinite;
+  animation: glow-aura-primary var(--aura-duration-1) cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
   animation-delay: var(--aura-delay-1);
 }
 
@@ -494,29 +664,74 @@
 .game-card.blocker-candidate::after,
 .game-card.attack-selected::after,
 .game-card.inspected::after {
-  animation: glow-aura-secondary var(--aura-duration-2) ease-in-out infinite;
-  animation-delay: var(--aura-delay-2);
+  animation: none;
+  opacity: calc((var(--aura-opacity-2-min) * 0.14) + (var(--aura-opacity-2-max) * 0.1) + 0.008);
+  transform: translate3d(0, 0, 0);
 }
 
 @keyframes glow-aura-primary {
-  0%, 100% {
-    opacity: var(--aura-opacity-1-min);
-    transform: scale(var(--aura-scale-1-min));
+  0% {
+    opacity: calc(var(--aura-opacity-1-min) * 0.5);
+    transform: translate3d(calc(var(--aura-tx-1-neg) * 0.92), calc(var(--aura-ty-1-neg) * 0.72), 0) scale3d(var(--aura-scale-1-min), calc(var(--aura-scale-1-min) + 0.02), 1) rotate(calc(var(--aura-rot-1-neg) * 0.72));
   }
-  50% {
-    opacity: var(--aura-opacity-1-max);
-    transform: scale(var(--aura-scale-1-max));
+
+  14% {
+    opacity: calc((var(--aura-opacity-1-min) * 0.24) + (var(--aura-opacity-1-max) * 0.72));
+    transform: translate3d(calc(var(--aura-tx-1-neg) * 0.18), calc(var(--aura-ty-1-pos) * 0.96), 0) scale3d(calc(var(--aura-scale-1-max) - 0.006), calc(var(--aura-scale-1-min) + 0.065), 1) rotate(calc(var(--aura-rot-1-pos) * 0.52));
+  }
+
+  30% {
+    opacity: calc((var(--aura-opacity-1-min) * 0.14) + (var(--aura-opacity-1-max) * 0.9));
+    transform: translate3d(calc(var(--aura-tx-1-pos) * 0.9), calc(var(--aura-ty-1-pos) * 0.24), 0) scale3d(calc(var(--aura-scale-1-max) + 0.01), calc(var(--aura-scale-1-max) - 0.03), 1) rotate(calc(var(--aura-rot-1-pos) * 0.86));
+  }
+
+  48% {
+    opacity: calc(var(--aura-opacity-1-max) + 0.2);
+    transform: translate3d(var(--aura-tx-1-pos), calc(var(--aura-ty-1-neg) * 0.58), 0) scale3d(calc(var(--aura-scale-1-max) + 0.02), calc(var(--aura-scale-1-min) + 0.065), 1) rotate(var(--aura-rot-1-pos));
+  }
+
+  66% {
+    opacity: calc((var(--aura-opacity-1-min) * 0.2) + (var(--aura-opacity-1-max) * 0.76));
+    transform: translate3d(calc(var(--aura-tx-1-pos) * 0.24), var(--aura-ty-1-neg), 0) scale3d(calc(var(--aura-scale-1-max) - 0.032), calc(var(--aura-scale-1-min) + 0.078), 1) rotate(calc(var(--aura-rot-1-neg) * 0.62));
+  }
+
+  84% {
+    opacity: calc((var(--aura-opacity-1-min) * 0.28) + (var(--aura-opacity-1-max) * 0.66));
+    transform: translate3d(calc(var(--aura-tx-1-neg) * 0.76), calc(var(--aura-ty-1-neg) * 0.16), 0) scale3d(calc(var(--aura-scale-1-min) + 0.016), calc(var(--aura-scale-1-max) - 0.026), 1) rotate(calc(var(--aura-rot-1-neg) * 0.82));
+  }
+
+  100% {
+    opacity: calc(var(--aura-opacity-1-min) * 0.5);
+    transform: translate3d(calc(var(--aura-tx-1-neg) * 0.92), calc(var(--aura-ty-1-neg) * 0.72), 0) scale3d(var(--aura-scale-1-min), calc(var(--aura-scale-1-min) + 0.02), 1) rotate(calc(var(--aura-rot-1-neg) * 0.72));
   }
 }
 
 @keyframes glow-aura-secondary {
-  0%, 100% {
-    opacity: var(--aura-opacity-2-min);
-    transform: scale(var(--aura-scale-2-min));
+  0% {
+    opacity: calc(var(--aura-opacity-2-min) * 0.6);
+    transform: translate3d(var(--aura-tx-2-pos), var(--aura-ty-2-neg), 0) scale(var(--aura-scale-2-min)) rotate(var(--aura-rot-2-pos));
   }
+
   50% {
-    opacity: var(--aura-opacity-2-max);
-    transform: scale(var(--aura-scale-2-max));
+    opacity: calc(var(--aura-opacity-2-max) + 0.16);
+    transform: translate3d(var(--aura-tx-2-neg), var(--aura-ty-2-pos), 0) scale(var(--aura-scale-2-max)) rotate(var(--aura-rot-2-neg));
+  }
+
+  100% {
+    opacity: calc(var(--aura-opacity-2-min) * 0.6);
+    transform: translate3d(var(--aura-tx-2-pos), var(--aura-ty-2-neg), 0) scale(var(--aura-scale-2-min)) rotate(var(--aura-rot-2-pos));
+  }
+}
+
+@keyframes glow-aura-inner {
+  0%, 100% {
+    opacity: calc(var(--aura-opacity-1-min) * 0.45);
+    transform: translate3d(-0.9%, -0.5%, 0) scale(0.98);
+  }
+
+  50% {
+    opacity: calc(var(--aura-opacity-1-max) * 0.58);
+    transform: translate3d(0.9%, 0.5%, 0) scale(1.04);
   }
 }
 
@@ -781,8 +996,8 @@
   --aura-opacity-1-max: 0.52;
   --aura-opacity-2-min: 0.1;
   --aura-opacity-2-max: 0.3;
-  --aura-duration-1: 1.9s;
-  --aura-duration-2: 3.2s;
+  --aura-duration-1: 3s;
+  --aura-duration-2: 4.2s;
   box-shadow:
     0 0 8px 2px rgba(255, 59, 48, 0.45),
     0 0 18px 5px rgba(255, 59, 48, 0.2),
@@ -795,8 +1010,8 @@
   --aura-opacity-1-max: 0.52;
   --aura-opacity-2-min: 0.1;
   --aura-opacity-2-max: 0.3;
-  --aura-duration-1: 1.9s;
-  --aura-duration-2: 3.2s;
+  --aura-duration-1: 3s;
+  --aura-duration-2: 4.2s;
   box-shadow:
     0 0 8px 2px rgba(59, 130, 246, 0.45),
     0 0 18px 5px rgba(59, 130, 246, 0.2),
@@ -809,8 +1024,8 @@
   --aura-opacity-1-max: 0.66;
   --aura-opacity-2-min: 0.16;
   --aura-opacity-2-max: 0.38;
-  --aura-duration-1: 1.15s;
-  --aura-duration-2: 2.2s;
+  --aura-duration-1: 2.15s;
+  --aura-duration-2: 3.2s;
   box-shadow:
     0 0 14px 4px rgba(255, 59, 48, 0.65),
     0 0 28px 8px rgba(255, 59, 48, 0.3),
@@ -850,8 +1065,8 @@
   --aura-opacity-1-max: 0.58;
   --aura-opacity-2-min: 0.12;
   --aura-opacity-2-max: 0.34;
-  --aura-duration-1: 1.8s;
-  --aura-duration-2: 3s;
+  --aura-duration-1: 2.8s;
+  --aura-duration-2: 4s;
   box-shadow:
     0 0 8px 2px rgba(240, 206, 97, 0.5),
     0 0 18px 5px rgba(240, 206, 97, 0.22),

@@ -1921,6 +1921,12 @@ impl Effect {
         Self::new(AdaptEffect::new(amount))
     }
 
+    /// Create an "amass" effect.
+    pub fn amass(subtype: Option<crate::types::Subtype>, amount: u32) -> Self {
+        use crate::effects::AmassEffect;
+        Self::new(AmassEffect::new(subtype, amount))
+    }
+
     /// Emit a keyword-action event (for "when you <keyword action>" triggers).
     pub fn emit_keyword_action(action: crate::events::KeywordActionKind, amount: u32) -> Self {
         use crate::effects::EmitKeywordActionEffect;

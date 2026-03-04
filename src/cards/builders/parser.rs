@@ -1030,6 +1030,27 @@ fn latest_spell_reference_tag(spell_effects: &[Effect]) -> Option<String> {
     None
 }
 
+fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zone>> {
+    let mut zones = Vec::new();
+    for (needle, zone) in [
+        ("this card is in your hand", Zone::Hand),
+        ("this card is in your graveyard", Zone::Graveyard),
+        ("this card is in your library", Zone::Library),
+        ("this card is in exile", Zone::Exile),
+        ("this card is in the command zone", Zone::Command),
+    ] {
+        if normalized_line.contains(needle) {
+            zones.push(zone);
+        }
+    }
+
+    if zones.is_empty() {
+        None
+    } else {
+        Some(zones)
+    }
+}
+
 fn apply_line_ast(
     mut builder: CardDefinitionBuilder,
     parsed: LineAst,
@@ -1087,6 +1108,11 @@ fn apply_line_ast(
                     Zone::Command,
                 ]);
             }
+            if let Some(zones) =
+                infer_static_ability_functional_zones(info.normalized.normalized.as_str())
+            {
+                compiled = compiled.in_zones(zones);
+            }
             builder = builder.with_ability(compiled);
         }
         LineAst::StaticAbilities(abilities) => {
@@ -1108,6 +1134,11 @@ fn apply_line_ast(
                         Zone::Library,
                         Zone::Command,
                     ]);
+                }
+                if let Some(zones) =
+                    infer_static_ability_functional_zones(info.normalized.normalized.as_str())
+                {
+                    compiled = compiled.in_zones(zones);
                 }
                 builder = builder.with_ability(compiled);
             }

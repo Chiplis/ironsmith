@@ -128,7 +128,7 @@ pub use stack::{
     RetargetStackObjectEffect,
 };
 pub use tokens::{
-    CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect,
+    AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, InvestigateEffect,
 };
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, ExileEffect,

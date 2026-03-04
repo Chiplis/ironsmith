@@ -139,6 +139,7 @@ export default function BattlefieldRow({ cards = [], compact = false, selectedOb
         }
 
         const isCombatCandidate = combatMode?.candidates?.has(Number(card.id));
+        const isInteractable = isActivatable || isCombatCandidate;
         const isSelectedAttacker = combatMode?.selectedAttacker === Number(card.id);
         const combatGlowKind = isSelectedAttacker
           ? "attack-selected"
@@ -160,8 +161,8 @@ export default function BattlefieldRow({ cards = [], compact = false, selectedOb
             key={card.id}
             card={card}
             compact={compact}
-            isInspected={selectedObjectId === card.id}
-            isPlayable={isActivatable || isCombatCandidate}
+            isInspected={isInteractable && selectedObjectId === card.id}
+            isPlayable={isInteractable}
             glowKind={isCombatCandidate ? combatGlowKind : abilityGlow}
             isNew={isNew}
             isBumped={isBumped}

@@ -1091,7 +1091,7 @@ fn continue_spell_cast_mana_payment(
 
     // Get the first pip to pay
     let pip = pending.remaining_mana_pips[0].clone();
-    let remaining_count = pending.remaining_mana_pips.len() - 1;
+    let remaining_count = pending.remaining_mana_pips.len();
 
     // Build payment options for this pip
     let player_id = pending.caster;
@@ -2011,7 +2011,7 @@ fn continue_activation(
 
             // Get the first pip to pay
             let pip = pending.remaining_mana_pips[0].clone();
-            let remaining_count = pending.remaining_mana_pips.len() - 1;
+            let remaining_count = pending.remaining_mana_pips.len();
 
             // Build payment options for this pip
             let player_id = pending.activator;

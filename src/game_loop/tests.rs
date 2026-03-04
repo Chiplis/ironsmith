@@ -2236,6 +2236,57 @@ mod tests {
     }
 
     #[test]
+    fn test_anger_grants_haste_from_graveyard_when_you_control_mountain() {
+        use crate::card::PowerToughness;
+        use crate::cards::CardDefinitionBuilder;
+        use crate::cards::definitions::basic_mountain;
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::static_abilities::StaticAbilityId;
+        use crate::types::Subtype;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let anger_def = CardDefinitionBuilder::new(CardId::from_raw(397), "Anger")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Red],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .parse_text(
+                "Haste\nAs long as this card is in your graveyard and you control a Mountain, creatures you control have haste.",
+            )
+            .expect("anger text should parse");
+
+        let test_creature = CardBuilder::new(CardId::new(), "Test Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Bear])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&test_creature, alice, Zone::Battlefield);
+
+        assert!(
+            !game.object_has_static_ability_id(creature_id, StaticAbilityId::Haste),
+            "creature should not have haste before Anger is in graveyard"
+        );
+
+        let _anger_id = game.create_object_from_definition(&anger_def, alice, Zone::Graveyard);
+        assert!(
+            !game.object_has_static_ability_id(creature_id, StaticAbilityId::Haste),
+            "creature should not have haste without a Mountain"
+        );
+
+        let mountain_def = basic_mountain();
+        let _mountain_id =
+            game.create_object_from_definition(&mountain_def, alice, Zone::Battlefield);
+        assert!(
+            game.object_has_static_ability_id(creature_id, StaticAbilityId::Haste),
+            "creature should have haste when Anger is in graveyard and you control a Mountain"
+        );
+    }
+
+    #[test]
     fn test_geist_of_saint_traft_has_abilities() {
         use crate::ability::AbilityKind;
         use crate::cards::definitions::geist_of_saint_traft;

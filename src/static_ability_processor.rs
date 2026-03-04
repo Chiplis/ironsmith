@@ -35,9 +35,9 @@ use crate::ability::AbilityKind;
 use crate::continuous::ContinuousEffect;
 use crate::game_state::GameState;
 
-/// Generate all continuous effects from static abilities on the battlefield.
+/// Generate all continuous effects from static abilities in zones where they function.
 ///
-/// This scans all permanents for static abilities and generates the corresponding
+/// This scans all objects for static abilities and generates the corresponding
 /// continuous effects. These effects have `source_type: StaticAbility`, which
 /// means they apply dynamically (the filter is re-evaluated each time).
 ///
@@ -46,25 +46,32 @@ use crate::game_state::GameState;
 pub fn generate_continuous_effects_from_static_abilities(
     game: &GameState,
 ) -> Vec<ContinuousEffect> {
-    let mut effects = Vec::with_capacity(game.battlefield.len());
+    let mut effects = Vec::new();
 
-    // Iterate over all permanents on the battlefield
-    for &permanent_id in &game.battlefield {
-        if let Some(permanent) = game.object(permanent_id) {
-            let controller = permanent.controller;
+    let mut object_ids: Vec<_> = game.objects_iter().map(|object| object.id).collect();
+    object_ids.sort_unstable();
 
-            // Process each ability on the permanent
-            for ability in &permanent.abilities {
+    // Iterate over all objects and apply static abilities only in zones where they function.
+    for object_id in object_ids {
+        if let Some(object) = game.object(object_id) {
+            let controller = object.controller;
+            let zone = object.zone;
+
+            // Process each static ability on the object
+            for ability in &object.abilities {
                 if let AbilityKind::Static(static_ability) = &ability.kind {
-                    if !static_ability.is_active(game, permanent_id) {
+                    if !ability.functions_in(&zone) {
+                        continue;
+                    }
+                    if !static_ability.is_active(game, object_id) {
                         continue;
                     }
                     // Generate effects directly from the trait method
                     let mut ability_effects =
-                        static_ability.generate_effects(permanent_id, controller, game);
-                    // Static ability effect timestamps come from the source permanent's
-                    // battlefield entry timestamp (CR 613.7a/613.7d behavior).
-                    if let Some(ts) = game.continuous_effects.get_entry_timestamp(permanent_id) {
+                        static_ability.generate_effects(object_id, controller, game);
+                    // Static ability effect timestamps come from the source object's
+                    // current-zone entry timestamp (CR 613.7a/613.7d behavior).
+                    if let Some(ts) = game.continuous_effects.get_entry_timestamp(object_id) {
                         for effect in &mut ability_effects {
                             effect.timestamp = ts;
                         }
@@ -82,7 +89,7 @@ pub fn generate_continuous_effects_from_static_abilities(
 ///
 /// This combines:
 /// - Effects registered in the ContinuousEffectManager (from spells/abilities that resolved)
-/// - Effects generated dynamically from static abilities on the battlefield
+/// - Effects generated dynamically from static abilities in their functional zones
 ///
 /// This is the main entry point for getting all effects that should be applied
 /// during characteristic calculation.

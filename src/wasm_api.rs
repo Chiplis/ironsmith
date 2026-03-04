@@ -342,6 +342,7 @@ struct ObjectDetailsSnapshot {
     counters: Vec<CounterSnapshot>,
     abilities: Vec<String>,
     raw_compilation: String,
+    semantic_score: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3484,6 +3485,7 @@ fn build_object_details_snapshot(game: &GameState, id: ObjectId) -> Option<Objec
             lines
         },
         raw_compilation: format!("{:#?}", obj.to_card_definition()),
+        semantic_score: WasmGame::semantic_score_for_name(obj.name.as_str()),
     })
 }
 

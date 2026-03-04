@@ -218,6 +218,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Enchant { .. } => {}
         EffectAst::Attach { .. } => {}
         EffectAst::Investigate { .. } => {}
+        EffectAst::Amass { .. } => {}
         EffectAst::Destroy { .. } => {}
         EffectAst::DestroyNoRegeneration { .. } => {}
         EffectAst::DestroyAll { .. } => {}

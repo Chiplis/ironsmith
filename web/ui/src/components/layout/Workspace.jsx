@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useDragActions } from "@/context/DragContext";
 import TableCore from "@/components/board/TableCore";
@@ -11,12 +11,70 @@ import ArrowOverlay from "@/components/overlays/ArrowOverlay";
 
 export default function Workspace({ zoneView, deckLoadingMode, onLoadDecks, onCancelDeckLoading }) {
   const [selectedObjectId, setSelectedObjectId] = useState(null);
-  const { state, dispatch } = useGame();
+  const [stackExpanded, setStackExpanded] = useState(false);
+  const [stackHeightCap, setStackHeightCap] = useState(520);
+  const { state, dispatch, status } = useGame();
   const { endDrag } = useDragActions();
+  const workspaceRef = useRef(null);
+  const stackDockRef = useRef(null);
 
   const players = state?.players || [];
   const perspective = state?.perspective;
   const me = players.find((p) => p.id === perspective) || players[0];
+  const handRowHeight = 140;
+  const stackObjectsCount = state?.stack_objects?.length || 0;
+  const stackPreviewCount = state?.stack_preview?.length || 0;
+  const stackCount = stackObjectsCount > 0 ? stackObjectsCount : stackPreviewCount;
+  const hasStackContent = stackCount > 0;
+  const stackCompactHeight = handRowHeight;
+  const stackItemHeight = stackObjectsCount > 0 ? 80 : 60;
+  const stackExpandedHeightUncapped = Math.max(
+    stackCompactHeight,
+    44 + (stackCount * stackItemHeight) + (Math.max(stackCount - 1, 0) * 6)
+  );
+  const stackExpandedHeight = Math.min(Math.max(stackCompactHeight, stackHeightCap), stackExpandedHeightUncapped);
+  const stackPanelHeight = stackExpanded ? stackExpandedHeight : stackCompactHeight;
+  const stackPanelWidth = "clamp(160px, 20vw, 280px)";
+  const addCardError = status?.isError && typeof status?.msg === "string" && status.msg.startsWith("Add card failed:")
+    ? status.msg
+    : null;
+
+  useEffect(() => {
+    if (!hasStackContent && stackExpanded) {
+      setStackExpanded(false);
+    }
+  }, [hasStackContent, stackExpanded]);
+
+  useLayoutEffect(() => {
+    const root = workspaceRef.current;
+    const stackDock = stackDockRef.current;
+    if (!root || !stackDock) return;
+
+    const recalcCap = () => {
+      const rootRect = root.getBoundingClientRect();
+      const stackRect = stackDock.getBoundingClientRect();
+      const opponentsZone = root.querySelector("[data-opponents-zones]");
+      const topLimit = opponentsZone
+        ? opponentsZone.getBoundingClientRect().top
+        : rootRect.top + 8;
+      const nextCap = Math.floor(stackRect.bottom - topLimit - 8);
+      const normalizedCap = Math.max(stackCompactHeight, nextCap);
+      setStackHeightCap((prev) => (Math.abs(prev - normalizedCap) > 1 ? normalizedCap : prev));
+    };
+
+    recalcCap();
+    const observer = new ResizeObserver(recalcCap);
+    observer.observe(root);
+    observer.observe(stackDock);
+    const opponentsZone = root.querySelector("[data-opponents-zones]");
+    if (opponentsZone) observer.observe(opponentsZone);
+    window.addEventListener("resize", recalcCap);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", recalcCap);
+    };
+  }, [stackCompactHeight, stackCount, zoneView, deckLoadingMode, stackExpanded]);
 
   // Handle drag drop — if user drops on the battlefield area, dispatch the action
   useEffect(() => {
@@ -64,10 +122,11 @@ export default function Workspace({ zoneView, deckLoadingMode, onLoadDecks, onCa
 
   return (
     <section
-      className="grid gap-2 min-h-0 h-full"
+      ref={workspaceRef}
+      className="relative grid gap-2 min-h-0 h-full"
       style={{
         gridTemplateColumns: "clamp(143px,12vw,195px) minmax(0,1fr)",
-        gridTemplateRows: "minmax(0,1fr) 140px",
+        gridTemplateRows: `minmax(0,1fr) ${handRowHeight}px`,
       }}
     >
       <DragOverlay />
@@ -82,12 +141,24 @@ export default function Workspace({ zoneView, deckLoadingMode, onLoadDecks, onCa
         onLoadDecks={onLoadDecks}
         onCancelDeckLoading={onCancelDeckLoading}
       />
-      <div className="col-span-2 flex min-h-0 h-full overflow-visible">
-        <div className="flex-1 min-w-0 h-full overflow-visible">
+      <div className="col-span-2 flex min-h-0 h-full overflow-visible items-end">
+        <div className="flex-1 h-full min-w-0 overflow-visible">
           <HandZone player={me} selectedObjectId={selectedObjectId} onInspect={setSelectedObjectId} />
         </div>
-        <div className="shrink-0 h-full rail-gradient rounded overflow-hidden" style={{ width: "clamp(160px, 20vw, 280px)" }}>
-          <StackPanel onInspect={setSelectedObjectId} />
+        <div
+          ref={stackDockRef}
+          className="relative z-20 ml-2 shrink-0 self-end rounded overflow-hidden border border-[#2a3647] bg-[#0b1118] shadow-[0_16px_34px_rgba(0,0,0,0.46)] transition-[height] duration-200 ease-out"
+          style={{
+            width: stackPanelWidth,
+            height: `${stackPanelHeight}px`,
+          }}
+        >
+          <StackPanel
+            onInspect={setSelectedObjectId}
+            expanded={stackExpanded}
+            onToggleExpanded={() => setStackExpanded((v) => !v)}
+            addCardError={addCardError}
+          />
         </div>
       </div>
     </section>

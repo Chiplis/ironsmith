@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Maishik Table</title>
+  <title>Ironsmith Table</title>
   <style>
     :root {
       --bg: #070b10;
@@ -1650,7 +1650,7 @@
 <body>
   <div class="shell">
     <header class="topbar">
-      <h1 class="brand">Maishik</h1>
+      <h1 class="brand">Ironsmith</h1>
       <input id="playerNames" value="Alice,Bob,Charlie,Diana" />
       <input id="startingLife" type="number" value="20" min="1" style="width: 48px;" />
       <button id="resetBtn">Reset</button>
@@ -1797,15 +1797,15 @@
 
       const candidates = [
         `${window.location.origin}${baseDir}pkg/ironsmith.js`,
-        `${window.location.origin}${baseDir}pkg/maishik.js`,
+        `${window.location.origin}${baseDir}pkg/ironsmith.js`,
         `${window.location.origin}${baseDir}pkg/pkg/ironsmith.js`,
-        `${window.location.origin}${baseDir}pkg/pkg/maishik.js`,
+        `${window.location.origin}${baseDir}pkg/pkg/ironsmith.js`,
         "./pkg/ironsmith.js",
-        "./pkg/maishik.js",
+        "./pkg/ironsmith.js",
         "./pkg/pkg/ironsmith.js",
-        "./pkg/pkg/maishik.js",
+        "./pkg/pkg/ironsmith.js",
         "../../pkg/ironsmith.js",
-        "../../pkg/maishik.js",
+        "../../pkg/ironsmith.js",
       ];
       const errors = [];
       for (const path of candidates) {

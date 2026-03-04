@@ -1,9 +1,15 @@
 import { scryfallImageUrl } from "@/lib/scryfall";
+import { ManaCostIcons } from "@/lib/mana-symbols";
 
 export default function StackCard({ entry, isNew = false, onClick }) {
   const name = entry.name || `Object#${entry.id}`;
   const artUrl = scryfallImageUrl(name, "art_crop");
   const scryfallUrl = scryfallImageUrl(name);
+  const isCastEntry = !entry.ability_kind;
+  const pt = entry.power_toughness
+    || (entry.power != null && entry.toughness != null
+      ? `${entry.power}/${entry.toughness}`
+      : null);
 
   return (
     <div
@@ -57,7 +63,21 @@ export default function StackCard({ entry, isNew = false, onClick }) {
           background: "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0.88) 100%)",
         }}
       >
-        <span className="leading-[1.12] text-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">{name}</span>
+        <div className="flex items-start gap-1">
+          <span className="leading-[1.12] text-shadow-[0_1px_2px_rgba(0,0,0,0.95)] flex-1 min-w-0 break-words">{name}</span>
+          {isCastEntry && entry.mana_cost && (
+            <span className="shrink-0 mt-px">
+              <ManaCostIcons cost={entry.mana_cost} />
+            </span>
+          )}
+        </div>
+        {isCastEntry && pt && (
+          <div className="flex items-center mt-0.5">
+            <span className="ml-auto text-[#f5d08b] text-[13px] font-bold tracking-wide shrink-0">
+              {pt}
+            </span>
+          </div>
+        )}
 
         {entry.ability_kind ? (
           <span className="block text-[12px] italic text-[#c0a060] pt-0.5 leading-tight">
