@@ -60,9 +60,10 @@ pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTex
             | ["you", "choose", "a", "color"]
             | ["you", "choose", "color"]
     ) {
-        return Ok(EffectAst::May {
-            effects: Vec::new(),
-        });
+        return Err(CardTextError::ParseError(format!(
+            "unsupported choose-color clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
     }
 
     if let Some((chooser, choose_filter, choose_count)) =

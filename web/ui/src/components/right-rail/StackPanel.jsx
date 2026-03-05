@@ -9,6 +9,7 @@ export default function StackPanel({
   onInspect,
   expanded = false,
   onToggleExpanded,
+  onContentHeightChange,
 }) {
   const { state } = useGame();
   const objects = state?.stack_objects || [];
@@ -25,20 +26,46 @@ export default function StackPanel({
     const panelEl = panelRef.current;
     if (!panelEl || !hasContent) {
       setHasOverflow(false);
+      onContentHeightChange?.(0);
       return;
     }
 
     const viewport = panelEl.querySelector('[data-slot="scroll-area-viewport"]');
     if (!viewport) {
       setHasOverflow(false);
+      onContentHeightChange?.(0);
       return;
     }
 
     let frame = 0;
+    let observedContentEl = null;
+    const observer = new ResizeObserver(() => {
+      scheduleMeasure();
+    });
+
+    const syncObservedContent = () => {
+      const nextContentEl = viewport.firstElementChild;
+      if (nextContentEl === observedContentEl) return;
+      if (observedContentEl) {
+        observer.unobserve(observedContentEl);
+      }
+      observedContentEl = nextContentEl;
+      if (observedContentEl) {
+        observer.observe(observedContentEl);
+      }
+    };
+
     const measureOverflow = () => {
       frame = 0;
+      syncObservedContent();
       const nextOverflow = viewport.scrollHeight - viewport.clientHeight > 1;
       setHasOverflow(nextOverflow);
+      if (typeof onContentHeightChange === "function" && observedContentEl) {
+        // Chrome is panel framing (title row, padding, gaps). Content is card list height.
+        const panelChromeHeight = panelEl.clientHeight - viewport.clientHeight;
+        const desiredHeight = Math.ceil(panelChromeHeight + observedContentEl.scrollHeight + 2);
+        onContentHeightChange(desiredHeight);
+      }
     };
 
     const scheduleMeasure = () => {
@@ -47,17 +74,18 @@ export default function StackPanel({
     };
 
     scheduleMeasure();
-    const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(viewport);
-    if (viewport.firstElementChild) {
-      observer.observe(viewport.firstElementChild);
-    }
+    observer.observe(panelEl);
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
+      if (observedContentEl) {
+        observer.unobserve(observedContentEl);
+        observedContentEl = null;
+      }
       observer.disconnect();
     };
-  }, [hasContent, itemCount, expanded]);
+  }, [hasContent, itemCount, expanded, onContentHeightChange]);
 
   return (
     <section ref={panelRef} className="h-full p-2 flex flex-col gap-1.5 overflow-hidden bg-[#0b1118]">

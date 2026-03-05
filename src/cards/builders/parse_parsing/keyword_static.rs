@@ -999,21 +999,7 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[Token]) -> Option<StaticAb
             .windows(3)
             .any(|window| window == ["any", "color", "to"]);
     if is_once_each_turn_play_from_exile {
-        let mut text = "Once each turn, you may play a card from exile".to_string();
-        if words
-            .windows(3)
-            .any(|window| window == ["collection", "counter", "on"])
-        {
-            text.push_str(" with a collection counter on it");
-        }
-        if words
-            .windows(4)
-            .any(|window| window == ["if", "it", "was", "exiled"])
-        {
-            text.push_str(" if it was exiled by an ability you controlled");
-        }
-        text.push_str(", and you may spend mana as though it were mana of any color to cast it");
-        return Some(StaticAbility::rule_text_placeholder(text));
+        return None;
     }
 
     if words == ["you", "have", "shroud"] {
@@ -1622,8 +1608,9 @@ pub(crate) fn parse_choose_creature_type_as_enters_line(
         return Ok(None);
     }
 
-    Ok(Some(StaticAbility::rule_text_placeholder(
-        "As this enters, choose a creature type.".to_string(),
+    Err(CardTextError::ParseError(format!(
+        "unsupported choose-creature-type-as-enters clause (clause: '{}')",
+        words.join(" ")
     )))
 }
 
@@ -2891,8 +2878,9 @@ pub(crate) fn parse_spells_cost_modifier_line(
         && clause_words.contains(&"each")
         && clause_words.contains(&"turn")
     {
-        return Ok(Some(StaticAbility::rule_text_placeholder(
-            clause_words.join(" "),
+        return Err(CardTextError::ParseError(format!(
+            "unsupported first-spell-each-turn cost modifier (clause: '{}')",
+            clause_words.join(" ")
         )));
     }
 
@@ -3321,8 +3309,9 @@ pub(crate) fn parse_foretelling_cards_cost_modifier_line(
         return Ok(None);
     }
 
-    Ok(Some(StaticAbility::rule_text_placeholder(
-        clause_words.join(" "),
+    Err(CardTextError::ParseError(format!(
+        "unsupported foretelling cost modifier clause (clause: '{}')",
+        clause_words.join(" ")
     )))
 }
 
@@ -6094,6 +6083,12 @@ fn parse_triggered_granted_ability(tokens: &[Token]) -> Result<Option<Ability>, 
             max_triggers_per_turn,
         } => {
             let (compiled_effects, choices) = compile_trigger_effects(Some(&trigger), &effects)?;
+            if compiled_effects.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported empty triggered granted ability clause (clause: '{}')",
+                    words(&trigger_tokens).join(" ")
+                )));
+            }
             Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
                     trigger: compile_trigger_spec(trigger),
@@ -9031,6 +9026,12 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
             max_triggers_per_turn,
         } => {
             let (compiled_effects, choices) = compile_trigger_effects(Some(&trigger), &effects)?;
+            if compiled_effects.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported empty attached triggered grant clause (clause: '{}')",
+                    clause_text
+                )));
+            }
             Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
                     trigger: compile_trigger_spec(trigger),
@@ -9200,21 +9201,79 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
             line_words.join(" ")
         )));
     }
-    let ability_text = words(&ability_tokens).join(" ");
-    let ability = Ability {
-        kind: AbilityKind::Static(StaticAbility::rule_text_placeholder(ability_text.clone())),
-        functional_zones: vec![Zone::Battlefield],
-        text: Some(ability_text.clone()),
-    };
-    let subject = if is_enchanted {
-        "enchanted creature"
-    } else {
-        "equipped creature"
-    };
-    let display = format!("{subject} has {ability_text}");
-    let grant = StaticAbility::attached_ability_grant(ability, display);
 
-    Ok(Some(vec![anthem, grant]))
+    if let Some(actions) = parse_ability_line(&ability_tokens) {
+        reject_unimplemented_keyword_actions(&actions, &line_words.join(" "))?;
+        let mut out = vec![anthem.clone()];
+        let mut granted_any = false;
+        for action in actions {
+            if let Some(static_ability) = keyword_action_to_static_ability(action) {
+                out.push(grant_for_anthem_subject(&clause, static_ability));
+                granted_any = true;
+            }
+        }
+        if granted_any {
+            return Ok(Some(out));
+        }
+    }
+
+    let has_colon = ability_tokens
+        .iter()
+        .any(|token| matches!(token, Token::Colon(_)));
+    if let Some(parsed) = parse_activated_line(&ability_tokens)? {
+        let mut ability = parsed.ability;
+        let display = words(&ability_tokens).join(" ");
+        if ability.text.is_none() {
+            ability.text = Some(display.clone());
+        }
+        let grant = grant_object_ability_for_anthem_subject(&clause, ability, display);
+        return Ok(Some(vec![anthem, grant]));
+    }
+    if has_colon {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported attached activated-ability grant (clause: '{}')",
+            line_words.join(" ")
+        )));
+    }
+
+    if ability_tokens.first().is_some_and(|token| {
+        token.is_word("when") || token.is_word("whenever") || token.is_word("at")
+    }) && let LineAst::Triggered {
+        trigger,
+        effects,
+        max_triggers_per_turn,
+    } = parse_triggered_line(&ability_tokens)?
+    {
+        let (compiled_effects, choices) = compile_trigger_effects(Some(&trigger), &effects)?;
+        if compiled_effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported empty attached triggered grant clause (clause: '{}')",
+                line_words.join(" ")
+            )));
+        }
+        let mut intervening_if = None;
+        if let Some(max) = max_triggers_per_turn {
+            intervening_if = Some(crate::ConditionExpr::MaxTimesEachTurn(max));
+        }
+        let text = words(&ability_tokens).join(" ");
+        let triggered = Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: compile_trigger_spec(trigger),
+                effects: compiled_effects,
+                choices,
+                intervening_if,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: Some(text.clone()),
+        };
+        let grant = grant_object_ability_for_anthem_subject(&clause, triggered, text);
+        return Ok(Some(vec![anthem, grant]));
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "unsupported attached granted ability clause (clause: '{}')",
+        line_words.join(" ")
+    )))
 }
 
 pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
@@ -9318,8 +9377,9 @@ pub(crate) fn parse_untap_during_each_other_players_untap_step_line(
     if !is_untap_during_each_other_players_untap_step_words(&line_words) {
         return Ok(None);
     }
-    Ok(Some(StaticAbility::rule_text_placeholder(
-        line_words.join(" "),
+    Err(CardTextError::ParseError(format!(
+        "unsupported untap-during-each-other-players-untap-step clause (clause: '{}')",
+        line_words.join(" ")
     )))
 }
 
@@ -10064,8 +10124,9 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
                 7 - amount,
             )));
         }
-        return Ok(Some(StaticAbility::rule_text_placeholder(
-            line_words.join(" "),
+        return Err(CardTextError::ParseError(format!(
+            "unsupported maximum-hand-size increase clause (clause: '{}')",
+            line_words.join(" ")
         )));
     }
     Ok(None)
@@ -10632,6 +10693,12 @@ pub(crate) fn parse_filter_has_granted_ability_line(
             } => {
                 let (compiled_effects, choices) =
                     compile_trigger_effects(Some(&trigger), &effects)?;
+                if compiled_effects.is_empty() {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported empty granted triggered ability clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
                 granted_object_abilities.push(Ability {
                     kind: AbilityKind::Triggered(TriggeredAbility {
                         trigger: compile_trigger_spec(trigger),

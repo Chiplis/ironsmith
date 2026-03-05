@@ -160,9 +160,7 @@ pub(crate) fn parser_trace_enabled() -> bool {
 }
 
 pub(crate) fn parser_allow_unsupported_enabled() -> bool {
-    std::env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED")
-        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
-        .unwrap_or(false)
+    false
 }
 
 pub(crate) fn parser_trace(stage: &str, tokens: &[Token]) {

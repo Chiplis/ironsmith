@@ -192,18 +192,13 @@ fn parse_create_copy_tapped_attacking_that_player_or_planeswalker_they_control()
 }
 
 #[test]
-fn parse_line_look_top_card_any_time_is_rule_text_placeholder() {
-    let parsed = parse_line("You may look at the top card of your library any time.", 0)
-        .expect("parse static look-top-any-time line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        other => panic!("expected static ability line, got {other:?}"),
-    };
-    assert_eq!(ability.id(), StaticAbilityId::RuleFallbackText);
-    let display = ability.display();
+fn parse_line_look_top_card_any_time_is_rejected() {
+    let err = parse_line("You may look at the top card of your library any time.", 0)
+        .expect_err("look-top-any-time fallback line should be rejected");
+    let debug = format!("{err:?}");
     assert!(
-        display.eq_ignore_ascii_case("You may look at the top card of your library any time."),
-        "expected rule-text placeholder to preserve line text, got {display}"
+        debug.contains("unsupported static clause"),
+        "expected unsupported static clause error, got {debug}"
     );
 }
 

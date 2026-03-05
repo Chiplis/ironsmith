@@ -1,13 +1,43 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useDragActions } from "@/context/DragContext";
+import { useHoverActions } from "@/context/HoverContext";
 import TableCore from "@/components/board/TableCore";
 import RightRail from "@/components/right-rail/RightRail";
 import HandZone from "@/components/board/HandZone";
-import StackPanel from "@/components/right-rail/StackPanel";
 import DragOverlay from "@/components/overlays/DragOverlay";
 import CastParticles from "@/components/overlays/CastParticles";
 import ArrowOverlay from "@/components/overlays/ArrowOverlay";
+import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
+
+function objectExistsInState(state, objectId) {
+  if (!state || objectId == null) return false;
+  const needle = String(objectId);
+  const players = state?.players || [];
+
+  for (const player of players) {
+    const zones = [
+      player?.battlefield || [],
+      player?.hand_cards || [],
+      player?.graveyard_cards || [],
+      player?.exile_cards || [],
+    ];
+    for (const cards of zones) {
+      for (const card of cards) {
+        if (String(card?.id) === needle) return true;
+        if (Array.isArray(card?.member_ids) && card.member_ids.some((id) => String(id) === needle)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  for (const entry of state?.stack_objects || []) {
+    if (String(entry?.id) === needle) return true;
+  }
+
+  return false;
+}
 
 export default function Workspace({
   zoneViews,
@@ -17,75 +47,33 @@ export default function Workspace({
   onCancelDeckLoading,
 }) {
   const [selectedObjectId, setSelectedObjectId] = useState(null);
-  const [stackExpanded, setStackExpanded] = useState(false);
-  const [stackHeightCap, setStackHeightCap] = useState(520);
+  const [inspectorVisible, setInspectorVisible] = useState(false);
   const { state, dispatch, status } = useGame();
   const { endDrag } = useDragActions();
-  const workspaceRef = useRef(null);
-  const stackDockRef = useRef(null);
+  const { clearHover } = useHoverActions();
 
   const players = state?.players || [];
   const perspective = state?.perspective;
   const me = players.find((p) => p.id === perspective) || players[0];
   const handRowHeight = 140;
-  const stackObjectsCount = state?.stack_objects?.length || 0;
-  const stackPreviewCount = state?.stack_preview?.length || 0;
-  const stackCount = stackObjectsCount > 0 ? stackObjectsCount : stackPreviewCount;
-  const hasStackContent = stackCount > 0;
-  const stackCompactHeight = handRowHeight;
-  const stackItemHeight = stackObjectsCount > 0 ? 80 : 60;
-  const stackExpandedHeightUncapped = Math.max(
-    stackCompactHeight,
-    44 + (stackCount * stackItemHeight) + (Math.max(stackCount - 1, 0) * 6)
-  );
-  const stackExpandedHeight = Math.min(Math.max(stackCompactHeight, stackHeightCap), stackExpandedHeightUncapped);
-  const stackPanelHeight = stackExpanded ? stackExpandedHeight : stackCompactHeight;
-  const stackPanelWidth = "clamp(160px, 20vw, 280px)";
+  const actionBridgeHeight = 62;
+  const inspectorReservedWidth = "clamp(240px, 24vw, 360px)";
   const addCardError = status?.isError && typeof status?.msg === "string" && status.msg.startsWith("Add card failed:")
     ? status.msg
     : null;
   const [dismissedAddCardError, setDismissedAddCardError] = useState(false);
+  const selectedObjectIsValid = objectExistsInState(state, selectedObjectId);
+  const reserveInspectorSpace = inspectorVisible;
 
   useEffect(() => {
     if (addCardError) setDismissedAddCardError(false);
   }, [status, addCardError]);
 
   useEffect(() => {
-    if (!hasStackContent && stackExpanded) {
-      setStackExpanded(false);
-    }
-  }, [hasStackContent, stackExpanded]);
-
-  useLayoutEffect(() => {
-    const root = workspaceRef.current;
-    const stackDock = stackDockRef.current;
-    if (!root || !stackDock) return;
-
-    const recalcCap = () => {
-      const rootRect = root.getBoundingClientRect();
-      const stackRect = stackDock.getBoundingClientRect();
-      const opponentsZone = root.querySelector("[data-opponents-zones]");
-      const topLimit = opponentsZone
-        ? opponentsZone.getBoundingClientRect().top
-        : rootRect.top + 8;
-      const nextCap = Math.floor(stackRect.bottom - topLimit - 8);
-      const normalizedCap = Math.max(stackCompactHeight, nextCap);
-      setStackHeightCap((prev) => (Math.abs(prev - normalizedCap) > 1 ? normalizedCap : prev));
-    };
-
-    recalcCap();
-    const observer = new ResizeObserver(recalcCap);
-    observer.observe(root);
-    observer.observe(stackDock);
-    const opponentsZone = root.querySelector("[data-opponents-zones]");
-    if (opponentsZone) observer.observe(opponentsZone);
-    window.addEventListener("resize", recalcCap);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", recalcCap);
-    };
-  }, [stackCompactHeight, stackCount, zoneViews, deckLoadingMode, stackExpanded]);
+    if (selectedObjectId == null) return;
+    if (selectedObjectIsValid) return;
+    setSelectedObjectId(null);
+  }, [selectedObjectId, selectedObjectIsValid]);
 
   // Handle drag drop — if user drops on the battlefield area, dispatch the action
   useEffect(() => {
@@ -101,16 +89,23 @@ export default function Workspace({
         el.closest(".board-zone-bg")
       );
 
-      if (isOverTable) {
-        // If single action, dispatch immediately. If multiple, use first.
-        const action = ds.actions[0];
-        dispatch(
-          { type: "priority_action", action_index: action.index },
-          action.label
-        );
-        // Spawn particles at drop point
+      if (!isOverTable) return;
+
+      if (ds.actions.length === 1) {
+        const onlyAction = ds.actions[0];
         window.__castParticles?.(e.clientX, e.clientY, ds.glowKind || "spell");
+        dispatch(
+          { type: "priority_action", action_index: onlyAction.index },
+          onlyAction.label
+        );
+        if (ds.objectId != null) setSelectedObjectId(ds.objectId);
+        return;
       }
+
+      // Multiple possible actions: pin inspector to this card so choices
+      // are shown inside the card inspector (instead of a floating popover).
+      setSelectedObjectId(ds.objectId != null ? ds.objectId : null);
+      clearHover();
     };
 
     const onPointerCancel = () => {
@@ -129,20 +124,51 @@ export default function Workspace({
       document.removeEventListener("pointercancel", onPointerCancel);
       window.removeEventListener("blur", onWindowBlur);
     };
-  }, [endDrag, dispatch]);
+  }, [clearHover, dispatch, endDrag]);
+
+  useEffect(() => {
+    const onDeadZonePointerDown = (event) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-object-id]")) return;
+      if (target.closest("[data-inspector-action]")) return;
+      if (target.closest(".zone-viewer")) return;
+      if (target.closest(".priority-inline-panel")) return;
+      if (target.closest("button, input, label, a, [role='button']")) return;
+
+      const inDeadZone = (
+        target.closest("[data-drop-zone]")
+        || target.closest(".table-gradient")
+        || target.closest(".board-zone-bg")
+      );
+      if (!inDeadZone) return;
+
+      setSelectedObjectId(null);
+      clearHover();
+    };
+
+    document.addEventListener("pointerdown", onDeadZonePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDeadZonePointerDown, true);
+    };
+  }, [clearHover]);
 
   return (
     <section
-      ref={workspaceRef}
-      className="relative grid gap-2 min-h-0 h-full"
+      className="relative grid gap-2 min-h-0 h-full overflow-hidden"
       style={{
-        gridTemplateColumns: "clamp(143px,12vw,195px) minmax(0,1fr)",
-        gridTemplateRows: `minmax(0,1fr) ${handRowHeight}px`,
+        gridTemplateRows: `minmax(0,1fr) ${actionBridgeHeight}px ${handRowHeight}px`,
       }}
     >
       <DragOverlay />
       <CastParticles />
       <ArrowOverlay />
+      <RightRail
+        pinnedObjectId={selectedObjectId}
+        onVisibilityChange={setInspectorVisible}
+        onInspectObject={setSelectedObjectId}
+      />
       {addCardError && !dismissedAddCardError && (
         <button
           type="button"
@@ -153,34 +179,26 @@ export default function Workspace({
           {addCardError}
         </button>
       )}
-      <RightRail pinnedObjectId={selectedObjectId} />
-      <TableCore
-        selectedObjectId={selectedObjectId}
-        onInspect={setSelectedObjectId}
-        zoneViews={zoneViews}
-        setZoneViews={setZoneViews}
-        deckLoadingMode={deckLoadingMode}
-        onLoadDecks={onLoadDecks}
-        onCancelDeckLoading={onCancelDeckLoading}
-      />
-      <div className="col-span-2 flex min-h-0 h-full overflow-visible items-end">
-        <div className="flex-1 h-full min-w-0 overflow-visible">
-          <HandZone player={me} selectedObjectId={selectedObjectId} onInspect={setSelectedObjectId} />
-        </div>
-        <div
-          ref={stackDockRef}
-          className="relative z-20 ml-2 shrink-0 self-end rounded overflow-hidden border border-[#2a3647] bg-[#0b1118] shadow-[0_16px_34px_rgba(0,0,0,0.46)] transition-[height] duration-200 ease-out"
-          style={{
-            width: stackPanelWidth,
-            height: `${stackPanelHeight}px`,
-          }}
-        >
-          <StackPanel
-            onInspect={setSelectedObjectId}
-            expanded={stackExpanded}
-            onToggleExpanded={() => setStackExpanded((v) => !v)}
-          />
-        </div>
+      <div
+        className="min-h-0 h-full overflow-hidden transition-[padding-right] duration-250 ease-out"
+        style={{ paddingRight: reserveInspectorSpace ? inspectorReservedWidth : "0px" }}
+      >
+        <TableCore
+          selectedObjectId={selectedObjectId}
+          onInspect={setSelectedObjectId}
+          zoneViews={zoneViews}
+          setZoneViews={setZoneViews}
+          deckLoadingMode={deckLoadingMode}
+          onLoadDecks={onLoadDecks}
+          onCancelDeckLoading={onCancelDeckLoading}
+        />
+      </div>
+      <div className="relative z-20 flex items-center">
+        <div className="h-full w-full rounded border border-[#2b3f57]/65 bg-[linear-gradient(90deg,rgba(7,15,23,0.92),rgba(14,28,44,0.86),rgba(7,15,23,0.92))] shadow-[inset_0_1px_0_rgba(170,208,245,0.12),0_8px_18px_rgba(0,0,0,0.32)]" />
+        <DecisionPopupLayer priorityInline />
+      </div>
+      <div className="min-h-0 h-full overflow-visible">
+        <HandZone player={me} selectedObjectId={selectedObjectId} onInspect={setSelectedObjectId} />
       </div>
     </section>
   );

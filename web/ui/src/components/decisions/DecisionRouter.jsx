@@ -27,7 +27,7 @@ function decisionKey(decision) {
   return decision.description || "";
 }
 
-export default function DecisionRouter({ decision, canAct }) {
+export default function DecisionRouter({ decision, canAct, inspectorOracleTextHeight = 0 }) {
   if (!decision) return null;
 
   const key = decisionKey(decision);
@@ -36,15 +36,36 @@ export default function DecisionRouter({ decision, canAct }) {
     case "priority":
       return <PriorityDecision decision={decision} canAct={canAct} />;
     case "targets":
-      return <TargetsDecision key={key} decision={decision} canAct={canAct} />;
+      return (
+        <TargetsDecision
+          key={key}
+          decision={decision}
+          canAct={canAct}
+          inspectorOracleTextHeight={inspectorOracleTextHeight}
+        />
+      );
     case "attackers":
       return <AttackersDecision key={key} decision={decision} canAct={canAct} />;
     case "blockers":
       return <BlockersDecision key={key} decision={decision} canAct={canAct} />;
     case "select_objects":
-      return <SelectObjectsDecision key={key} decision={decision} canAct={canAct} />;
+      return (
+        <SelectObjectsDecision
+          key={key}
+          decision={decision}
+          canAct={canAct}
+          inspectorOracleTextHeight={inspectorOracleTextHeight}
+        />
+      );
     case "select_options":
-      return <SelectOptionsDecision key={key} decision={decision} canAct={canAct} />;
+      return (
+        <SelectOptionsDecision
+          key={key}
+          decision={decision}
+          canAct={canAct}
+          inspectorOracleTextHeight={inspectorOracleTextHeight}
+        />
+      );
     case "number":
       return <NumberDecision key={key} decision={decision} canAct={canAct} />;
     default:

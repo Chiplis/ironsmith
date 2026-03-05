@@ -1,7 +1,14 @@
 import { scryfallImageUrl } from "@/lib/scryfall";
 import { ManaCostIcons } from "@/lib/mana-symbols";
+import { cn } from "@/lib/utils";
 
-export default function StackCard({ entry, isNew = false, onClick }) {
+export default function StackCard({
+  entry,
+  isNew = false,
+  isActive = false,
+  className = "",
+  onClick,
+}) {
   const name = entry.name || `Object#${entry.id}`;
   const artUrl = scryfallImageUrl(name, "art_crop");
   const scryfallUrl = scryfallImageUrl(name);
@@ -13,7 +20,12 @@ export default function StackCard({ entry, isNew = false, onClick }) {
 
   return (
     <div
-      className={`game-card w-full min-w-0 min-h-[80px] text-[14px] bg-gradient-to-b from-[#132237] to-[#0d1726] cursor-pointer flex flex-col${isNew ? " card-enter" : ""}`}
+      className={cn(
+        "game-card w-full min-w-0 min-h-[80px] text-[14px] bg-gradient-to-b from-[#132237] to-[#0d1726] cursor-pointer flex flex-col",
+        isNew && "card-enter",
+        isActive && "ring-1 ring-[#8ec4ff] shadow-[0_0_0_1px_rgba(142,196,255,0.5),0_10px_22px_rgba(0,0,0,0.46)]",
+        className
+      )}
       data-object-id={entry.id}
       data-card-name={name}
       onClick={() => onClick?.(entry.id)}
@@ -84,7 +96,7 @@ export default function StackCard({ entry, isNew = false, onClick }) {
             {entry.ability_kind} ability
           </span>
         ) : entry.effect_text ? (
-          <span className="block text-[12px] text-[#8ab4e0] pt-0.5 leading-tight overflow-hidden text-ellipsis max-h-[3.6em]">
+          <span className="block text-[12px] text-[#8ab4e0] pt-0.5 leading-tight whitespace-pre-wrap break-words">
             {entry.effect_text}
           </span>
         ) : null}

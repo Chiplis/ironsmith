@@ -1,7 +1,5 @@
-import { useState } from "react";
 import { useGame } from "@/context/GameContext";
 import BattlefieldRow from "./BattlefieldRow";
-import ActionPopover from "@/components/overlays/ActionPopover";
 import ManaPool from "@/components/left-rail/ManaPool";
 import { cn } from "@/lib/utils";
 
@@ -76,8 +74,7 @@ export default function MyZone({
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
 }) {
-  const { state, dispatch } = useGame();
-  const [popover, setPopover] = useState(null);
+  const { state } = useGame();
 
   const zoneEntries = buildZoneEntries(player, zoneViews);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
@@ -113,7 +110,7 @@ export default function MyZone({
     }
   }
 
-  const handleCardClick = (e, card) => {
+  const handleCardClick = (_e, card) => {
     if (canPickTargetFromBoard) {
       const candidateObjectIds = [Number(card.id)];
       if (Array.isArray(card.member_ids)) {
@@ -134,21 +131,6 @@ export default function MyZone({
 
     // Always inspect
     onInspect?.(card.id);
-
-    // Show popover if activatable
-    const actions = activatableMap.get(Number(card.id)) || [];
-    if (actions.length > 0) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      setPopover({ anchorRect: rect, actions, objectId: card.id });
-    }
-  };
-
-  const handlePopoverAction = (action) => {
-    setPopover(null);
-    dispatch(
-      { type: "priority_action", action_index: action.index },
-      action.label
-    );
   };
 
   const handlePlayerTargetClick = () => {
@@ -238,14 +220,6 @@ export default function MyZone({
         })}
       </div>
 
-      {popover && (
-        <ActionPopover
-          anchorRect={popover.anchorRect}
-          actions={popover.actions}
-          onAction={handlePopoverAction}
-          onClose={() => setPopover(null)}
-        />
-      )}
     </section>
   );
 }

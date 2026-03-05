@@ -170,7 +170,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::keyword_action_from_source(action, player)
         }
         TriggerSpec::Expend { player, amount } => Trigger::expend(amount, player),
-        TriggerSpec::Custom(description) => Trigger::custom("unimplemented_trigger", description),
+        TriggerSpec::Custom(description) => {
+            panic!("unsupported custom trigger spec compiled: {description}");
+        }
         TriggerSpec::SagaChapter(chapters) => Trigger::saga_chapter(chapters),
         TriggerSpec::HauntedCreatureDies => Trigger::custom(
             "haunted_creature_dies",
@@ -179,6 +181,21 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::Either(left, right) => {
             Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right))
         }
+    }
+}
+
+pub(crate) fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTextError> {
+    match trigger {
+        TriggerSpec::Custom(description) => Err(CardTextError::ParseError(format!(
+            "unsupported trigger clause (clause: '{}')",
+            description
+        ))),
+        TriggerSpec::Either(left, right) => {
+            ensure_concrete_trigger_spec(left)?;
+            ensure_concrete_trigger_spec(right)?;
+            Ok(())
+        }
+        _ => Ok(()),
     }
 }
 
@@ -620,6 +637,9 @@ pub(crate) fn compile_trigger_effects_with_intervening_if(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>, Option<Condition>), CardTextError> {
+    if let Some(trigger) = trigger {
+        ensure_concrete_trigger_spec(trigger)?;
+    }
     let mut ctx = CompileContext::new();
     ctx.last_player_filter = trigger.and_then(inferred_trigger_player_filter);
     ctx.allow_life_event_value = trigger
@@ -663,6 +683,9 @@ pub(crate) fn compile_trigger_effects_seeded(
     effects: &[EffectAst],
     seed_last_object_tag: Option<String>,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    if let Some(trigger) = trigger {
+        ensure_concrete_trigger_spec(trigger)?;
+    }
     let mut ctx = CompileContext::new();
     ctx.last_object_tag = seed_last_object_tag;
     ctx.last_player_filter = trigger.and_then(inferred_trigger_player_filter);
@@ -4052,15 +4075,30 @@ fn compile_effect_inner(
             |filter| Effect::energy_counters_player(count.clone(), filter),
         ),
         EffectAst::May { effects } => {
+            if effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "empty may-effect branch is unsupported".to_string(),
+                ));
+            }
             if let Some(compiled) = lower_may_imprint_from_hand_effect(effects, ctx)? {
                 return Ok(compiled);
             }
             let (inner_effects, inner_choices) =
                 compile_effects_preserving_last_effect(effects, ctx)?;
+            if inner_effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "empty compiled may-effect branch is unsupported".to_string(),
+                ));
+            }
             let effect = Effect::may(inner_effects);
             Ok((vec![effect], inner_choices))
         }
         EffectAst::MayByPlayer { player, effects } => {
+            if effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "empty may-by-player effect branch is unsupported".to_string(),
+                ));
+            }
             if matches!(player, PlayerAst::You | PlayerAst::Implicit)
                 && let Some(compiled) = lower_may_imprint_from_hand_effect(effects, ctx)?
             {
@@ -4068,6 +4106,11 @@ fn compile_effect_inner(
             }
             let (inner_effects, inner_choices) =
                 compile_effects_preserving_last_effect(effects, ctx)?;
+            if inner_effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "empty compiled may-by-player effect branch is unsupported".to_string(),
+                ));
+            }
             let (player_filter, mut player_choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
             let effect = Effect::may_player(player_filter, inner_effects);
@@ -4143,8 +4186,19 @@ fn compile_effect_inner(
             Ok((vec![effect], choices))
         }
         EffectAst::MayByTaggedController { tag, effects } => {
+            if effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "empty may-by-tagged-controller effect branch is unsupported".to_string(),
+                ));
+            }
             let (inner_effects, inner_choices) =
                 compile_effects_preserving_last_effect(effects, ctx)?;
+            if inner_effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "empty compiled may-by-tagged-controller effect branch is unsupported"
+                        .to_string(),
+                ));
+            }
             let effect = Effect::for_each_controller_of_tagged(
                 tag.clone(),
                 vec![Effect::may(inner_effects)],
@@ -4936,8 +4990,10 @@ fn compile_effect_inner(
                 } else {
                     ctx.next_tag("targeted")
                 };
+                // Seed the tag from already-resolved spell targets without introducing an extra
+                // target declaration requirement in UI/cast-time target collection.
                 prelude.push(
-                    Effect::new(crate::effects::TargetOnlyEffect::new(choice)).tag(tag.clone()),
+                    Effect::new(crate::effects::SequenceEffect::new(Vec::new())).tag(tag.clone()),
                 );
                 condition_reference_tag = Some(tag);
             }
@@ -7693,14 +7749,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             && words.contains(&"greater")
             && words.contains(&"2")
         {
-            let text = if words.contains(&"saddles") && words.contains(&"mounts") {
-                "This token saddles Mounts and crews Vehicles as though its power were 2 greater."
-            } else {
-                "This token crews Vehicles as though its power were 2 greater."
-            };
-            builder = builder.with_ability(Ability::static_ability(
-                StaticAbility::rule_text_placeholder(text.to_string()),
-            ));
+            return None;
         }
         if words.contains(&"banding") {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::keyword_marker(

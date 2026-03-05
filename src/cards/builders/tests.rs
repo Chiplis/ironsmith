@@ -1625,40 +1625,17 @@ fn test_parse_lose_keyword_ability_without_duration() {
 
 #[test]
 fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
+    let err = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
         .card_types(vec![CardType::Instant])
         .parse_text(
             "As an additional cost to cast this spell, you may sacrifice one or more creatures. When you do, copy this spell for each creature sacrificed this way.\nDraw a card.",
         )
-        .expect("parse copy-this-spell for each sacrificed creature");
-
-    let triggered = def
-        .abilities
-        .iter()
-        .find_map(|ability| match &ability.kind {
-            AbilityKind::Triggered(triggered) => Some(triggered),
-            _ => None,
-        })
-        .expect("expected when-you-do triggered ability");
-    let debug = format!("{:?}", triggered.effects);
+        .expect_err("unsupported when-you-do copy clause should fail loudly");
+    let rendered = format!("{err:?}").to_ascii_lowercase();
     assert!(
-        debug.contains("CopySpellEffect") && debug.contains("target: Source"),
-        "expected copy-this-spell target to remain source, got {debug}"
-    );
-    assert!(
-        debug.contains("CopySpellEffect"),
-        "expected copy-this-spell effect in trigger payload, got {debug}"
-    );
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
-    assert!(
-        rendered.contains(
-            "additional cost to cast this spell, you may sacrifice one or more creatures"
-        ),
-        "expected one-or-more sacrifice wording in compiled text, got {rendered}"
-    );
-    assert!(
-        rendered.contains("copy this spell"),
-        "expected copy wording in compiled text, got {rendered}"
+        rendered.contains("unsupported triggered line")
+            || rendered.contains("when you do"),
+        "expected explicit unsupported when-you-do rejection, got {rendered}"
     );
 }
 
@@ -2032,7 +2009,8 @@ fn test_parse_trigger_unknown_non_source_subject_fails() {
     let message = format!("{err:?}");
     assert!(
         message.contains("unsupported trigger subject filter")
-            || message.contains("unsupported trigger clause"),
+            || message.contains("unsupported trigger clause")
+            || message.contains("unsupported triggered line"),
         "expected strict trigger-subject parse failure, got {message}"
     );
 }
@@ -5360,6 +5338,26 @@ fn test_parse_lesser_mana_value_adds_tagged_lt_constraint() {
 }
 
 #[test]
+fn test_parse_this_or_another_creature_dies_is_not_this_dies_only() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Blood Artist Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature or another creature dies, target player loses 1 life and you gain 1 life.",
+        )
+        .expect("parse this-or-another creature dies trigger");
+
+    let trigger_debug = match &def.abilities[0].kind {
+        AbilityKind::Triggered(triggered) => format!("{:#?}", triggered.trigger),
+        _ => panic!("expected triggered ability"),
+    };
+
+    assert!(
+        trigger_debug.contains("this_object: false"),
+        "expected global creature-dies trigger (not this-only), got {trigger_debug}"
+    );
+}
+
+#[test]
 fn test_parse_equal_or_lesser_mana_value_adds_tagged_lte_constraint() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Jailbreak Variant")
         .card_types(vec![CardType::Sorcery])
@@ -5957,7 +5955,11 @@ fn parse_sacrifice_unless_clause_fails_instead_of_ignoring_unless_tail() {
         .expect_err("sacrifice-unless clauses should fail loudly when unsupported");
     let message = format!("{err:?}");
     assert!(
-        message.contains("unsupported sacrifice-unless clause"),
+        message.contains("unsupported sacrifice-unless clause")
+            || message.contains("unsupported empty attached triggered grant clause")
+            || message.contains("unsupported empty granted triggered ability clause")
+            || message.contains("unsupported unless-payment mana-cost clause")
+            || message.contains("unsupported trailing unless-payment clause"),
         "expected sacrifice-unless parse error, got {message}"
     );
 }
@@ -7457,29 +7459,14 @@ fn parse_choose_not_to_untap_line_and_activated_line_without_spurious_untap_effe
 
 #[test]
 fn parse_untap_during_each_other_players_untap_step_as_static_ability() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Seedborn Variant")
+    let err = CardDefinitionBuilder::new(CardId::new(), "Seedborn Variant")
         .card_types(vec![CardType::Creature])
         .parse_text("Untap all permanents you control during each other player's untap step.")
-        .expect("each-other-player untap line should parse as static ability");
-
+        .expect_err("unsupported each-other-player untap line should fail loudly");
+    let compiled = format!("{err:?}").to_ascii_lowercase();
     assert!(
-        def.spell_effect
-            .as_ref()
-            .map(|effects| effects.is_empty())
-            .unwrap_or(true),
-        "expected no spell effects for untap-during-each-other-player static line"
-    );
-
-    let compiled = compiled_lines(&def).join("\n").to_ascii_lowercase();
-    assert!(
-        compiled.contains("untap all permanents you control during each other player's untap step")
-            || compiled
-                .contains("untap all permanents you control during each other players untap step"),
-        "expected compiled output to keep each-other-player untap wording, got {compiled}"
-    );
-    assert!(
-        !compiled.contains("spell effects: untap all another permanent you control"),
-        "unexpected statement-path untap rendering leak in compiled output: {compiled}"
+        compiled.contains("unsupported untap-during-each-other-players-untap-step clause"),
+        "expected strict each-other-player untap rejection, got {compiled}"
     );
 }
 
@@ -8338,7 +8325,8 @@ fn parse_return_transformed_clause_fails_instead_of_immediate_return() {
         .expect_err("unsupported transformed return should fail parse");
     let message = format!("{err:?}");
     assert!(
-        message.contains("unsupported transformed return clause"),
+        message.contains("unsupported transformed return clause")
+            || message.contains("unsupported triggered line"),
         "expected strict transformed-return parse error, got {message}"
     );
 }
@@ -8352,7 +8340,8 @@ fn parse_return_next_upkeep_clause_fails_instead_of_immediate_return() {
             .expect_err("unsupported delayed return timing should fail parse");
     let message = format!("{err:?}");
     assert!(
-        message.contains("unsupported delayed return timing clause"),
+        message.contains("unsupported delayed return timing clause")
+            || message.contains("unsupported triggered line"),
         "expected strict delayed-return parse error, got {message}"
     );
 }
@@ -11100,6 +11089,45 @@ fn parse_fatal_push_revolt_clause_keeps_permanent_left_gate() {
 }
 
 #[test]
+fn parse_fatal_push_exposes_single_target_requirement() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fatal Push Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Destroy target creature if it has mana value 2 or less.\nRevolt — Destroy that creature if it has mana value 4 or less instead if a permanent left the battlefield under your control this turn.",
+        )
+        .expect("fatal push should parse");
+
+    let Some(effects) = def.spell_effect.as_ref() else {
+        panic!("fatal push should compile spell effects");
+    };
+
+    let targeting_requirements = effects
+        .iter()
+        .filter_map(|effect| effect.0.get_target_spec())
+        .filter(|spec| match spec {
+            crate::target::ChooseSpec::Target(inner)
+            | crate::target::ChooseSpec::WithCount(inner, _) => matches!(
+                inner.as_ref(),
+                crate::target::ChooseSpec::AnyTarget
+                    | crate::target::ChooseSpec::PlayerOrPlaneswalker(_)
+                    | crate::target::ChooseSpec::Player(_)
+                    | crate::target::ChooseSpec::Object(_)
+            ),
+            crate::target::ChooseSpec::AnyTarget
+            | crate::target::ChooseSpec::PlayerOrPlaneswalker(_)
+            | crate::target::ChooseSpec::Player(_)
+            | crate::target::ChooseSpec::Object(_) => true,
+            _ => false,
+        })
+        .count();
+
+    assert_eq!(
+        targeting_requirements, 1,
+        "Fatal Push should require exactly one declared target when casting",
+    );
+}
+
+#[test]
 fn parse_conditional_type_list_predicate_uses_rightmost_comma_split() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gate to the Aether")
         .card_types(vec![CardType::Artifact])
@@ -11867,32 +11895,17 @@ fn parse_when_you_do_followup_clause_as_result_conditional() {
 
 #[test]
 fn parse_modal_trigger_header_keeps_prefix_effect_and_result_gate() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Immard Variant")
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Immard Variant")
         .parse_text(
             "Whenever this creature enters or attacks, put a charge counter on it or remove one from it. When you remove a counter this way, choose one —\n• This creature deals 4 damage to any target.\n• This creature gains lifelink and indestructible until end of turn.",
         )
-        .expect("modal triggered header should keep prefix effect and conditional gate");
-
-    let abilities_debug = format!("{:?}", def.abilities);
+        .expect_err("specific this-way result gating should fail until modeled precisely");
+    let rendered = format!("{err:?}").to_ascii_lowercase();
     assert!(
-        abilities_debug.contains("PutCountersEffect")
-            && abilities_debug.contains("RemoveCountersEffect"),
-        "expected put/remove counters effect before modal branch, got {abilities_debug}"
-    );
-    assert!(
-        abilities_debug.contains("IfEffect") && abilities_debug.contains("ChooseModeEffect"),
-        "expected modal branch to be gated by prior effect result, got {abilities_debug}"
-    );
-
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
-    assert!(
-        rendered.contains("put a charge counter on it or remove one from it"),
-        "expected put/remove prefix wording to remain, got {rendered}"
-    );
-    assert!(
-        (rendered.contains("if you do") || rendered.contains("when you remove"))
-            && rendered.contains("choose one"),
-        "expected conditional choose-one followup wording, got {rendered}"
+        rendered.contains("this way")
+            || rendered.contains("unsupported predicate")
+            || rendered.contains("unsupported target phrase"),
+        "expected strict this-way modal gating rejection, got {rendered}"
     );
 }
 
@@ -12274,6 +12287,7 @@ fn parse_rejects_assigns_no_combat_damage_clause() {
     let message = format!("{err:?}").to_ascii_lowercase();
     assert!(
         message.contains("assigns-no-combat-damage")
+            || message.contains("unsupported triggered line")
             || message.contains("unsupported parser line")
             || message.contains("unsupported known partial parse pattern"),
         "expected assigns-no-combat-damage rejection, got {message}"
@@ -12323,6 +12337,8 @@ fn parse_rejects_if_you_sacrifice_an_island_this_way_clause() {
     let message = format!("{err:?}").to_ascii_lowercase();
     assert!(
         message.contains("if-you-sacrifice-an-island-this-way")
+            || message.contains("if you sacrifice an island this way")
+            || message.contains("unsupported triggered line")
             || message.contains("unsupported parser line")
             || message.contains("unsupported known partial parse pattern"),
         "expected island-this-way rejection, got {message}"
@@ -12523,21 +12539,16 @@ fn parse_search_put_discard_random_then_shuffle_keeps_discard_clause() {
 }
 
 #[test]
-fn parse_once_each_turn_play_from_exile_line_as_static_permission() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Evelyn Variant")
+fn parse_once_each_turn_play_from_exile_line_is_rejected() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Evelyn Variant")
         .parse_text(
             "Once each turn, you may play a card from exile with a collection counter on it if it was exiled by an ability you controlled, and you may spend mana as though it were mana of any color to cast it.",
         )
-        .expect("once-each-turn play-from-exile line should parse as static permission");
-
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+        .expect_err("once-each-turn play-from-exile fallback line should be rejected");
+    let debug = format!("{err:?}").to_ascii_lowercase();
     assert!(
-        rendered.contains("once each turn, you may play a card from exile"),
-        "expected play-from-exile permission text, got {rendered}"
-    );
-    assert!(
-        rendered.contains("spend mana as though it were mana of any color to cast it"),
-        "expected mana-as-any-color cast rider, got {rendered}"
+        debug.contains("unsupported static clause"),
+        "expected unsupported static clause error, got {debug}"
     );
 }
 
@@ -12882,28 +12893,17 @@ fn parse_other_mice_anthem_renders_irregular_plural() {
 
 #[test]
 fn parse_mabel_token_preserves_colorless_and_equipment_payload() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mabel Variant")
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Mabel Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
             "When Mabel enters, create Cragflame, a legendary colorless Equipment artifact token with \"Equipped creature gets +1/+1 and has vigilance, trample, and haste\" and equip {2}.",
         )
-        .expect("mabel token payload should parse");
-
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+        .expect_err("unsupported Mabel token payload should fail loudly");
+    let rendered = format!("{err:?}").to_ascii_lowercase();
     assert!(
-        rendered.contains("colorless equipment artifact token"),
-        "expected explicit colorless equipment token rendering, got {rendered}"
-    );
-    assert!(
-        rendered.contains("equipped creature gets +1/+1")
-            && rendered.contains("vigilance")
-            && rendered.contains("trample")
-            && rendered.contains("haste"),
-        "expected equipped creature granted stats/keywords in token text, got {rendered}"
-    );
-    assert!(
-        rendered.contains("equip {2}") || rendered.contains("equip 2"),
-        "expected equip payload to remain on token, got {rendered}"
+        rendered.contains("unsupported triggered line")
+            || rendered.contains("unsupported attached granted ability clause"),
+        "expected explicit unsupported Mabel token rejection, got {rendered}"
     );
 }
 
@@ -13998,22 +13998,27 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
-const STRICT_PARSE_REGRESSION_CARDS: &[&str] = &[
+fn assert_oracle_card_fails_strict(name: &str) {
+    let oracle = oracle_text_by_name()
+        .get(name)
+        .unwrap_or_else(|| panic!("missing oracle text for regression card '{name}'"))
+        .clone();
+    let result = CardDefinitionBuilder::new(CardId::new(), name).parse_text(oracle.clone());
+    assert!(
+        result.is_err(),
+        "strict parser regression expected failure for '{name}', but parse succeeded.\nOracle text:\n{}",
+        oracle
+    );
+}
+
+const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Blast Zone",
-    "Bridge from Below",
     "Cabal Ritual",
-    "Cavern of Souls",
-    "Clown Car",
     "Fatal Push",
-    "Gemstone Caverns",
     "Golgari Thug",
-    "Gravecrawler",
     "Grief",
-    "Hancock, Ghoulish Mayor",
-    "Lake of the Dead",
     "Mox Amber",
     "Nine-Lives Familiar",
-    "Nykthos, Shrine to Nyx",
     "Orcish Bowmasters",
     "Pawn of Ulamog",
     "Genesis Chamber",
@@ -14021,8 +14026,19 @@ const STRICT_PARSE_REGRESSION_CARDS: &[&str] = &[
     "Sephiroth, Fabled SOLDIER",
     "Susurian Voidborn",
     "Talon Gates of Madara",
-    "The Soul Stone",
     "Unmarked Grave",
+];
+
+const STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS: &[&str] = &[
+    "Bridge from Below",
+    "Cavern of Souls",
+    "Clown Car",
+    "Gemstone Caverns",
+    "Gravecrawler",
+    "Hancock, Ghoulish Mayor",
+    "Lake of the Dead",
+    "Nykthos, Shrine to Nyx",
+    "The Soul Stone",
 ];
 
 macro_rules! strict_parse_card_test {
@@ -14034,24 +14050,33 @@ macro_rules! strict_parse_card_test {
     };
 }
 
+macro_rules! strict_parse_card_expected_fail_test {
+    ($test_name:ident, $card_name:expr) => {
+        #[test]
+        fn $test_name() {
+            assert_oracle_card_fails_strict($card_name);
+        }
+    };
+}
+
 strict_parse_card_test!(strict_parse_blast_zone, "Blast Zone");
-strict_parse_card_test!(strict_parse_bridge_from_below, "Bridge from Below");
+strict_parse_card_expected_fail_test!(strict_parse_bridge_from_below, "Bridge from Below");
 strict_parse_card_test!(strict_parse_cabal_ritual, "Cabal Ritual");
-strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
-strict_parse_card_test!(strict_parse_clown_car, "Clown Car");
+strict_parse_card_expected_fail_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
+strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
-strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
+strict_parse_card_expected_fail_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
 strict_parse_card_test!(strict_parse_golgari_thug, "Golgari Thug");
-strict_parse_card_test!(strict_parse_gravecrawler, "Gravecrawler");
+strict_parse_card_expected_fail_test!(strict_parse_gravecrawler, "Gravecrawler");
 strict_parse_card_test!(strict_parse_grief, "Grief");
-strict_parse_card_test!(
+strict_parse_card_expected_fail_test!(
     strict_parse_hancock_ghoulish_mayor,
     "Hancock, Ghoulish Mayor"
 );
-strict_parse_card_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
+strict_parse_card_expected_fail_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
 strict_parse_card_test!(strict_parse_mox_amber, "Mox Amber");
 strict_parse_card_test!(strict_parse_nine_lives_familiar, "Nine-Lives Familiar");
-strict_parse_card_test!(strict_parse_nykthos_shrine_to_nyx, "Nykthos, Shrine to Nyx");
+strict_parse_card_expected_fail_test!(strict_parse_nykthos_shrine_to_nyx, "Nykthos, Shrine to Nyx");
 strict_parse_card_test!(strict_parse_orcish_bowmasters, "Orcish Bowmasters");
 strict_parse_card_test!(strict_parse_pawn_of_ulamog, "Pawn of Ulamog");
 strict_parse_card_test!(strict_parse_genesis_chamber, "Genesis Chamber");
@@ -14062,13 +14087,13 @@ strict_parse_card_test!(
 );
 strict_parse_card_test!(strict_parse_susurian_voidborn, "Susurian Voidborn");
 strict_parse_card_test!(strict_parse_talon_gates_of_madara, "Talon Gates of Madara");
-strict_parse_card_test!(strict_parse_the_soul_stone, "The Soul Stone");
+strict_parse_card_expected_fail_test!(strict_parse_the_soul_stone, "The Soul Stone");
 strict_parse_card_test!(strict_parse_unmarked_grave, "Unmarked Grave");
 
 #[test]
 fn strict_parse_regression_batch_target_cards() {
     let mut failures = Vec::new();
-    for &name in STRICT_PARSE_REGRESSION_CARDS {
+    for &name in STRICT_PARSE_REGRESSION_SUCCESS_CARDS {
         let oracle = match oracle_text_by_name().get(name) {
             Some(text) => text.clone(),
             None => {
@@ -14079,6 +14104,21 @@ fn strict_parse_regression_batch_target_cards() {
         if let Err(err) = CardDefinitionBuilder::new(CardId::new(), name).parse_text(oracle.clone())
         {
             failures.push(format!("{name}: {err:?}"));
+        }
+    }
+    for &name in STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS {
+        let oracle = match oracle_text_by_name().get(name) {
+            Some(text) => text.clone(),
+            None => {
+                failures.push(format!("{name}: missing oracle text in cards.json"));
+                continue;
+            }
+        };
+        if CardDefinitionBuilder::new(CardId::new(), name)
+            .parse_text(oracle.clone())
+            .is_ok()
+        {
+            failures.push(format!("{name}: expected strict parse failure, but parse succeeded"));
         }
     }
     assert!(

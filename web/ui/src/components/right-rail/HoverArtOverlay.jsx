@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { scryfallImageUrl } from "@/lib/scryfall";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
+import DecisionRouter from "@/components/decisions/DecisionRouter";
+import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { Check, Copy } from "lucide-react";
 
 const ORACLE_TEXT_STYLE = {
@@ -12,6 +14,37 @@ const ORACLE_TEXT_STYLE = {
 const METADATA_TEXT_STYLE = {
   textShadow: "0 1px 2px rgba(0, 0, 0, 0.96), 0 2px 10px rgba(0, 0, 0, 0.84)",
 };
+
+function simplifyActionLabel(label = "") {
+  const activateMatch = String(label).match(/^Activate\s+.+?:\s*(.+)$/i);
+  if (activateMatch) return activateMatch[1];
+  return label;
+}
+
+function isInspectorDecision(decision) {
+  return (
+    !!decision
+    && decision.kind !== "priority"
+    && decision.kind !== "attackers"
+    && decision.kind !== "blockers"
+  );
+}
+
+function inspectorDecisionTitle(decision) {
+  if (!decision) return "Decision";
+  switch (decision.kind) {
+    case "targets":
+      return "Choose Targets";
+    case "select_objects":
+      return "Choose Objects";
+    case "select_options":
+      return "Choose Option";
+    case "number":
+      return "Choose Number";
+    default:
+      return "Decision";
+  }
+}
 
 function buildObjectNameMap(state) {
   const map = new Map();
@@ -71,11 +104,49 @@ function parseBattleHealth(details, oracleText) {
   return null;
 }
 
-export default function HoverArtOverlay({ objectId, suppressStableId = null }) {
-  const { state, game, inspectorDebug } = useGame();
+function buildObjectFamilyIds(state, objectIdNum) {
+  const ids = new Set();
+  if (!Number.isFinite(objectIdNum)) return ids;
+  ids.add(objectIdNum);
+
+  const players = state?.players || [];
+  for (const player of players) {
+    for (const card of player?.battlefield || []) {
+      const rootId = Number(card?.id);
+      const members = Array.isArray(card?.member_ids) ? card.member_ids : [];
+      const familyIds = [rootId, ...members.map((memberId) => Number(memberId))]
+        .filter((id) => Number.isFinite(id));
+      if (!familyIds.includes(objectIdNum)) continue;
+      for (const id of familyIds) ids.add(id);
+      return ids;
+    }
+  }
+  return ids;
+}
+
+function actionTargetsObjectName(action, lowerName) {
+  if (!lowerName) return false;
+  const label = String(action?.label || "").trim().toLowerCase();
+  if (!label) return false;
+  return (
+    label.startsWith(`activate ${lowerName}:`)
+    || label.startsWith(`cast ${lowerName}`)
+    || label.startsWith(`play ${lowerName}`)
+  );
+}
+
+export default function HoverArtOverlay({
+  objectId,
+  suppressStableId = null,
+  onProtectedTopChange = null,
+  onOracleTextHeightChange = null,
+}) {
+  const { state, game, inspectorDebug, dispatch } = useGame();
   const objectNameById = useMemo(() => buildObjectNameMap(state), [state]);
   const objectIdNum = objectId != null ? Number(objectId) : null;
   const objectIdKey = Number.isFinite(objectIdNum) ? String(objectIdNum) : null;
+  const topHeaderRef = useRef(null);
+  const oracleBodyRef = useRef(null);
 
   const [detailsCache, setDetailsCache] = useState({});
   const [failedImageUrl, setFailedImageUrl] = useState(null);
@@ -158,6 +229,10 @@ export default function HoverArtOverlay({ objectId, suppressStableId = null }) {
   const imageUrl = objectName ? scryfallImageUrl(objectName, "art_crop") : "";
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
   const decision = state?.decision || null;
+  const canAct = !!decision && decision.player === state?.perspective;
+  const inspectorDecision = isInspectorDecision(decision) && canAct
+    ? decision
+    : null;
   const decisionSourceName = decision && decision.kind !== "priority" && decision.kind !== "attackers" && decision.kind !== "blockers"
     ? decision.source_name || null
     : null;
@@ -170,7 +245,35 @@ export default function HoverArtOverlay({ objectId, suppressStableId = null }) {
     && details?.name
     && decisionSourceName === details.name
     && isBattlefieldSource
+  ) || !!inspectorDecision;
+  const selectedObjectNameLower = String(objectName || "").trim().toLowerCase();
+  const objectFamilyIds = useMemo(
+    () => buildObjectFamilyIds(state, objectIdNum),
+    [state, objectIdNum]
   );
+  const inspectorActions = useMemo(() => {
+    if (!decision || decision.kind !== "priority") return [];
+    if (decision.player !== state?.perspective) return [];
+    if (!Number.isFinite(objectIdNum) && !selectedObjectNameLower) return [];
+    const matched = [];
+    for (const action of decision.actions || []) {
+      if (action.kind === "pass_priority") continue;
+      const actionObjectId = Number(action.object_id);
+      if (Number.isFinite(actionObjectId) && objectFamilyIds.has(actionObjectId)) {
+        matched.push(action);
+        continue;
+      }
+      if (actionTargetsObjectName(action, selectedObjectNameLower)) {
+        matched.push(action);
+      }
+    }
+    const seen = new Set();
+    return matched.filter((action) => {
+      if (seen.has(action.index)) return false;
+      seen.add(action.index);
+      return true;
+    });
+  }, [decision, state?.perspective, objectIdNum, objectFamilyIds, selectedObjectNameLower]);
 
   const suppressObject =
     suppressStableId != null
@@ -223,40 +326,179 @@ export default function HoverArtOverlay({ objectId, suppressStableId = null }) {
     }
   }, [canCopyDebug, debugClipboardText]);
 
+  const triggerInspectorAction = useCallback((event, action) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!action) return;
+    dispatch(
+      { type: "priority_action", action_index: action.index },
+      action.label
+    );
+  }, [dispatch]);
+
   useEffect(() => {
     if (!copiedDebug) return;
     const timer = setTimeout(() => setCopiedDebug(false), 1400);
     return () => clearTimeout(timer);
   }, [copiedDebug]);
 
+  useLayoutEffect(() => {
+    if (typeof onProtectedTopChange !== "function") return undefined;
+    const node = topHeaderRef.current;
+    if (!node) {
+      onProtectedTopChange(null);
+      return undefined;
+    }
+
+    let rafId = null;
+    const publishProtectedTop = () => {
+      const nodeRect = node.getBoundingClientRect();
+      const overlayRect = node.parentElement?.getBoundingClientRect();
+      if (!overlayRect) {
+        onProtectedTopChange(null);
+        return;
+      }
+      onProtectedTopChange(nodeRect.bottom - overlayRect.top);
+    };
+
+    publishProtectedTop();
+    const observer = new ResizeObserver(() => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(publishProtectedTop);
+    });
+    observer.observe(node);
+    window.addEventListener("resize", publishProtectedTop);
+
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      observer.disconnect();
+      window.removeEventListener("resize", publishProtectedTop);
+      onProtectedTopChange(null);
+    };
+  }, [onProtectedTopChange, objectName, manaCost]);
+
+  useLayoutEffect(() => {
+    if (typeof onOracleTextHeightChange !== "function") return undefined;
+    const node = oracleBodyRef.current;
+    if (!node) {
+      onOracleTextHeightChange(0);
+      return undefined;
+    }
+
+    let rafId = null;
+    const publishOracleHeight = () => {
+      onOracleTextHeightChange(Math.ceil(node.scrollHeight));
+    };
+
+    publishOracleHeight();
+    const observer = new ResizeObserver(() => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(publishOracleHeight);
+    });
+    observer.observe(node);
+    window.addEventListener("resize", publishOracleHeight);
+
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      observer.disconnect();
+      window.removeEventListener("resize", publishOracleHeight);
+      onOracleTextHeightChange(0);
+    };
+  }, [onOracleTextHeightChange, oracleText, metadataText, statsText, hideOracleText]);
+
+  const inspectorDecisionSubtitle = inspectorDecision
+    ? (inspectorDecision.description || inspectorDecision.source_name || null)
+    : null;
+  const oracleTopPaddingClass = inspectorDecision
+    ? "pt-[382px]"
+    : inspectorActions.length > 0
+      ? "pt-[246px]"
+      : "pt-[164px]";
+
   if (!imageUrl || imageErrored || suppressObject) return null;
 
   return (
-    <div className="absolute inset-0 z-30 pointer-events-none overflow-hidden">
-      <img
-        key={imageUrl}
-        src={imageUrl}
-        alt={objectName || "Card art"}
-        className="hover-art-slice-in h-full w-full object-cover"
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setFailedImageUrl(imageUrl)}
-      />
+    <div
+      key={imageUrl}
+      className="hover-art-stage hover-art-drop-in absolute inset-0 z-30 pointer-events-none overflow-hidden"
+    >
+      <div className="hover-art-slice-in hover-art-media absolute inset-0">
+        <img
+          key={imageUrl}
+          src={imageUrl}
+          alt={objectName || "Card art"}
+          className="hover-art-pan h-full w-full object-cover"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailedImageUrl(imageUrl)}
+        />
+      </div>
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,8,14,0.05)_0%,rgba(4,8,14,0.2)_50%,rgba(4,8,14,0.66)_100%)]" />
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute inset-x-0 bottom-0 top-[30%] bg-[linear-gradient(180deg,rgba(4,8,14,0)_0%,rgba(4,8,14,0.76)_44%,rgba(4,8,14,0.96)_100%)] backdrop-blur-[1.6px]" />
-        <div className="absolute top-0 left-0 z-10 flex flex-col items-start gap-0">
+        <div ref={topHeaderRef} className="absolute top-0 left-0 z-10 flex flex-col items-start gap-0">
           {objectName && (
-            <div className="bg-[rgba(5,11,20,0.78)] px-2 py-1 text-[14px] font-bold leading-tight text-[#f3f8ff]">
+            <div className="bg-[rgba(5,11,20,0.8)] px-3 py-1.5 text-[22px] font-extrabold leading-[1.02] tracking-[0.02em] text-[#f3f8ff]">
               {objectName}
             </div>
           )}
           {manaCost && (
-            <div className="bg-[rgba(5,11,20,0.78)] px-2 py-1">
-              <ManaCostIcons cost={manaCost} size={15} />
+            <div className="bg-[rgba(5,11,20,0.8)] px-3 py-1.5">
+              <ManaCostIcons cost={manaCost} size={20} />
             </div>
           )}
         </div>
+        {inspectorActions.length > 0 && (
+          <div className="absolute top-[88px] left-2 right-2 z-[11] overflow-hidden rounded border border-[#5f7f9f] bg-[rgba(7,16,26,0.88)] shadow-[0_12px_26px_rgba(0,0,0,0.5)] pointer-events-auto backdrop-blur-[1.5px]">
+            <div className="border-b border-[#35506b] px-2.5 py-1.5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8cc4ff]">
+                Choose Action
+              </div>
+              <div className="text-[11px] text-[#b8d2ef]">
+                {inspectorActions.length} option{inspectorActions.length === 1 ? "" : "s"}
+              </div>
+            </div>
+            <div className="max-h-[152px] overflow-y-auto divide-y divide-[#2f4965]">
+              {inspectorActions.map((action) => (
+                <button
+                  key={action.index}
+                  type="button"
+                  data-inspector-action="true"
+                  className="w-full px-3 py-1.5 text-left transition-colors hover:bg-[rgba(18,35,54,0.9)]"
+                  onClick={(event) => triggerInspectorAction(event, action)}
+                >
+                  <SymbolText
+                    text={normalizeDecisionText(simplifyActionLabel(action.label || ""))}
+                    className="block text-[18px] font-extrabold leading-[1.12] text-[#f2f8ff]"
+                    style={ORACLE_TEXT_STYLE}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {inspectorDecision && (
+          <div className="absolute inset-x-2 top-[88px] bottom-[88px] z-[12] overflow-hidden rounded border border-[#5d7ea0] bg-[linear-gradient(180deg,rgba(6,14,22,0.76),rgba(6,14,22,0.9))] shadow-[0_16px_34px_rgba(0,0,0,0.55)] pointer-events-auto backdrop-blur-[2.2px]">
+            <div className="border-b border-[#3c5876] bg-[rgba(8,19,31,0.9)] px-2.5 py-1.5">
+              <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8cc4ff]">
+                {inspectorDecisionTitle(inspectorDecision)}
+              </div>
+              {inspectorDecisionSubtitle && (
+                <SymbolText
+                  text={normalizeDecisionText(inspectorDecisionSubtitle)}
+                  className="mt-0.5 block text-[13px] leading-snug text-[#d2e5fb]"
+                />
+              )}
+            </div>
+            <div className="h-full min-h-0 px-1.5 py-1">
+              <DecisionRouter
+                decision={inspectorDecision}
+                canAct={canAct}
+                inspectorOracleTextHeight={0}
+              />
+            </div>
+          </div>
+        )}
         {inspectorDebug && (
           <div className="absolute top-0 right-0 z-20 p-1 max-w-[66%] pointer-events-auto">
             <div className="rounded-sm border border-[#2f4662] bg-[rgba(5,11,20,0.84)] px-2 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
@@ -292,11 +534,11 @@ export default function HoverArtOverlay({ objectId, suppressStableId = null }) {
         )}
 
         <div className="absolute inset-0 overflow-y-auto">
-          <div className="relative z-10 min-h-full flex flex-col justify-end px-2 pt-[72px] pb-2">
-            <div className="space-y-1">
+          <div className={`relative z-10 min-h-full flex flex-col justify-end px-2.5 ${oracleTopPaddingClass} pb-2.5`}>
+            <div ref={oracleBodyRef} className="space-y-1">
               {statsText && (
                 <div
-                  className="text-[13px] font-bold leading-none text-[#f8d98e] tracking-wide text-right"
+                  className="text-[20px] font-extrabold leading-none text-[#f8d98e] tracking-wide text-right"
                   style={METADATA_TEXT_STYLE}
                 >
                   {statsText}
@@ -304,7 +546,7 @@ export default function HoverArtOverlay({ objectId, suppressStableId = null }) {
               )}
               {metadataText && (
                 <div
-                  className="text-[12px] leading-snug text-[#d1e2f6]"
+                  className="text-[15px] leading-snug text-[#d1e2f6]"
                   style={METADATA_TEXT_STYLE}
                 >
                   {metadataText}
@@ -313,7 +555,7 @@ export default function HoverArtOverlay({ objectId, suppressStableId = null }) {
               {oracleText && (
                 <SymbolText
                   text={hideOracleText ? "" : oracleText}
-                  className="text-[14px] leading-[1.38] text-[#ecf4ff] block"
+                  className="text-[18px] leading-[1.32] text-[#ecf4ff] block"
                   style={ORACLE_TEXT_STYLE}
                 />
               )}

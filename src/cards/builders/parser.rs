@@ -2279,7 +2279,7 @@ fn apply_instead_followup_statement_to_last_ability(
         Err(err) if allow_unsupported => {
             return Err(err);
         }
-        Err(_) => return Ok(false),
+        Err(err) => return Err(err),
     };
 
     if compiled.len() != 1 {

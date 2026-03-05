@@ -1198,25 +1198,28 @@ pub(crate) fn parse_keyword_mechanic_clause(
     }
 
     if clause_words.first() == Some(&"roll") && clause_words.contains(&"dice") {
-        return Ok(Some(EffectAst::May {
-            effects: Vec::new(),
-        }));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported roll-dice clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
     }
     if clause_words.starts_with(&["for", "each", "odd", "result"])
         || clause_words.starts_with(&["for", "each", "even", "result"])
     {
-        return Ok(Some(EffectAst::May {
-            effects: Vec::new(),
-        }));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported odd/even-result clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
     }
 
     if clause_words.first() == Some(&"dredge")
         || clause_words.first() == Some(&"warp")
         || clause_words.first() == Some(&"harness")
     {
-        return Ok(Some(EffectAst::May {
-            effects: Vec::new(),
-        }));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported keyword effect clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
     }
 
     if (clause_words.ends_with(&["phase", "out"]) || clause_words.ends_with(&["phases", "out"]))
@@ -1224,9 +1227,10 @@ pub(crate) fn parse_keyword_mechanic_clause(
     {
         let target_tokens = trim_commas(&clause_tokens[..clause_tokens.len() - 2]);
         if target_tokens.is_empty() {
-            return Ok(Some(EffectAst::May {
-                effects: Vec::new(),
-            }));
+            return Err(CardTextError::ParseError(format!(
+                "missing target in phase-out clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
         }
         let target = parse_target_phrase(&target_tokens)?;
         return Ok(Some(EffectAst::TargetOnly { target }));

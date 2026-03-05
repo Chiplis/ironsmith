@@ -807,6 +807,31 @@ pub(crate) fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPred
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
+    let is_result_verb = |word: &str| {
+        matches!(
+            word,
+            "remove"
+                | "removed"
+                | "sacrifice"
+                | "sacrificed"
+                | "discard"
+                | "discarded"
+                | "exile"
+                | "exiled"
+        )
+    };
+    let is_unqualified_this_way_result = |subject: &str| {
+        if words.len() < 4
+            || words[0] != subject
+            || !is_result_verb(words[1])
+            || words[words.len() - 2] != "this"
+            || words[words.len() - 1] != "way"
+        {
+            return false;
+        }
+        let qualifiers = &words[2..words.len() - 2];
+        matches!(qualifiers, [] | ["it"] | ["them"] | ["that"])
+    };
 
     if words.len() >= 2 && words[0] == "you" && words[1] == "do" {
         return Some(IfResultPredicate::Did);
@@ -835,40 +860,10 @@ pub(crate) fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPred
     {
         return Some(IfResultPredicate::Did);
     }
-    if words.len() >= 4
-        && words[0] == "you"
-        && matches!(
-            words[1],
-            "remove"
-                | "removed"
-                | "sacrifice"
-                | "sacrificed"
-                | "discard"
-                | "discarded"
-                | "exile"
-                | "exiled"
-        )
-        && words[words.len() - 2] == "this"
-        && words[words.len() - 1] == "way"
-    {
+    if is_unqualified_this_way_result("you") {
         return Some(IfResultPredicate::Did);
     }
-    if words.len() >= 4
-        && words[0] == "they"
-        && matches!(
-            words[1],
-            "remove"
-                | "removed"
-                | "sacrifice"
-                | "sacrificed"
-                | "discard"
-                | "discarded"
-                | "exile"
-                | "exiled"
-        )
-        && words[words.len() - 2] == "this"
-        && words[words.len() - 1] == "way"
-    {
+    if is_unqualified_this_way_result("they") {
         return Some(IfResultPredicate::Did);
     }
 

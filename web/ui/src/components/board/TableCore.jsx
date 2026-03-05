@@ -56,7 +56,11 @@ export default function TableCore({
   }, [state?.decision]);
 
   return (
-    <main className="table-gradient rounded grid gap-1.5 p-1.5 min-h-0 overflow-visible" data-drop-zone style={{ gridTemplateRows: "1.7fr auto 1fr auto" }}>
+    <main
+      className="table-gradient rounded grid gap-1.5 p-1.5 min-h-0 h-full overflow-hidden"
+      data-drop-zone
+      style={{ gridTemplateRows: "minmax(0,1.7fr) auto minmax(0,1fr) auto" }}
+    >
       <OpponentZone
         opponents={opponents}
         selectedObjectId={selectedObjectId}

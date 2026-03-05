@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHoveredObjectId } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { X, ArrowRight } from "lucide-react";
 
@@ -100,6 +99,8 @@ function pickBestTargetName({ target, legalName, targetName, objectNames, player
 function ActiveRequirementTargets({
   req,
   reqIdx,
+  header,
+  optionsMaxHeight = 360,
   canAct,
   isActive,
   canSelectMore,
@@ -118,8 +119,12 @@ function ActiveRequirementTargets({
 
   const hideTimerRef = useRef(null);
   const targetButtonRefs = useRef(new Map());
+  const panelContentRef = useRef(null);
+  const heightAnimationFrameRef = useRef(null);
   const [visibleTargets, setVisibleTargets] = useState(scopedTargets);
+  const [panelMaxHeight, setPanelMaxHeight] = useState(68);
   const showRows = scopedTargets.length > 0;
+  const MIN_OPTIONS_PANEL_HEIGHT = 68;
 
   useEffect(() => {
     if (hideTimerRef.current) {
@@ -138,9 +143,51 @@ function ActiveRequirementTargets({
         clearTimeout(hideTimerRef.current);
         hideTimerRef.current = null;
       }
+      if (heightAnimationFrameRef.current != null) {
+        cancelAnimationFrame(heightAnimationFrameRef.current);
+        heightAnimationFrameRef.current = null;
+      }
     },
     []
   );
+
+  useEffect(() => {
+    const contentNode = panelContentRef.current;
+    if (!contentNode) return undefined;
+
+    const publishPanelHeight = () => {
+      const measured = Math.ceil(contentNode.scrollHeight);
+      const nextHeight = Math.min(
+        optionsMaxHeight,
+        Math.max(MIN_OPTIONS_PANEL_HEIGHT, measured)
+      );
+      setPanelMaxHeight((prev) => (Math.abs(prev - nextHeight) > 1 ? nextHeight : prev));
+    };
+
+    const schedulePanelHeight = () => {
+      if (heightAnimationFrameRef.current != null) {
+        cancelAnimationFrame(heightAnimationFrameRef.current);
+      }
+      heightAnimationFrameRef.current = requestAnimationFrame(() => {
+        publishPanelHeight();
+        heightAnimationFrameRef.current = null;
+      });
+    };
+
+    schedulePanelHeight();
+    const observer = new ResizeObserver(schedulePanelHeight);
+    observer.observe(contentNode);
+    window.addEventListener("resize", schedulePanelHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", schedulePanelHeight);
+      if (heightAnimationFrameRef.current != null) {
+        cancelAnimationFrame(heightAnimationFrameRef.current);
+        heightAnimationFrameRef.current = null;
+      }
+    };
+  }, [showRows, showSkip, visibleTargets.length, optionsMaxHeight]);
 
   useEffect(() => {
     if (!hasHoverMatch || hoveredObjectId == null) return;
@@ -152,56 +199,70 @@ function ActiveRequirementTargets({
   }, [hasHoverMatch, hoveredObjectId, visibleTargets]);
 
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="w-full">
       <div
-        className={`flex flex-wrap gap-1 transition-all duration-200 ${
+        className={cn(
+          "-mx-1.5 transition-all duration-200",
           showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
-        }`}
+        )}
       >
-        {visibleTargets.map((target, tIdx) => {
-          const listKey = targetListKey(target);
-          const isSelected = selectedTargets.some((selection) => targetsMatch(selection, target));
-          const isHoveredTarget =
-            hoveredObjectId != null && listKey === `object:${String(hoveredObjectId)}`;
-          const isUnavailable = !isSelected && (!isActive || !canSelectMore);
-          const label =
-            target.kind === "player"
-              ? target.name || `Player ${target.player}`
-              : target.name || `Object ${target.object}`;
-          return (
-            <Button
-              key={`${listKey}:${tIdx}`}
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-6 rounded-full border border-[#325474] bg-[rgba(15,27,40,0.9)] text-[13px] px-2.5 text-[#c7dbf2] transition-all hover:border-[#4f7cad] hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
-                isSelected
-                  && "border-[#6cb0ff] bg-[rgba(29,56,84,0.95)] text-[#eaf4ff] shadow-[0_0_10px_rgba(100,169,255,0.45),inset_0_0_0_1px_rgba(170,215,255,0.35)]",
-                !isSelected && isHoveredTarget
-                  && "border-[#5e97d1] bg-[rgba(25,47,71,0.94)] text-[#d9ecff]",
-                isUnavailable
-                  && "border-[#2e445a] bg-[rgba(12,20,30,0.72)] text-[#647f99] hover:border-[#2e445a] hover:bg-[rgba(12,20,30,0.72)] hover:text-[#647f99]"
-              )}
-              disabled={!canAct || isUnavailable}
-              onClick={() => onSelectTarget(target, reqIdx, { toggleExisting: true, strictRequirement: true })}
-              ref={(node) => {
-                if (node) {
-                  targetButtonRefs.current.set(listKey, node);
-                } else {
-                  targetButtonRefs.current.delete(listKey);
-                }
-              }}
-            >
-              {label}
-            </Button>
-          );
-        })}
+        <div className="sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1">
+          {header}
+        </div>
+        <div
+          className="w-full overflow-y-auto overflow-x-hidden border-b border-[#2f4b67] bg-[rgba(10,20,30,0.45)] transition-[max-height] duration-300 ease-out"
+          style={{ maxHeight: `${panelMaxHeight}px` }}
+        >
+          <div ref={panelContentRef} className="w-full">
+            <div className="w-full divide-y divide-[#2f4b67]">
+              {visibleTargets.map((target, tIdx) => {
+                const listKey = targetListKey(target);
+                const isSelected = selectedTargets.some((selection) => targetsMatch(selection, target));
+                const isHoveredTarget =
+                  hoveredObjectId != null && listKey === `object:${String(hoveredObjectId)}`;
+                const isUnavailable = !isSelected && (!isActive || !canSelectMore);
+                const label =
+                  target.kind === "player"
+                    ? target.name || `Player ${target.player}`
+                    : target.name || `Object ${target.object}`;
+                return (
+                  <Button
+                    key={`${listKey}:${tIdx}`}
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "h-7 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 text-[13px] text-[#c7dbf2] transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+                      isSelected
+                        && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]",
+                      !isSelected && isHoveredTarget
+                        && "bg-[rgba(25,47,71,0.94)] text-[#d9ecff]",
+                      isUnavailable
+                        && "bg-[rgba(12,20,30,0.72)] text-[#647f99] hover:bg-[rgba(12,20,30,0.72)] hover:text-[#647f99]"
+                    )}
+                    disabled={!canAct || isUnavailable}
+                    onClick={() =>
+                      onSelectTarget(target, reqIdx, { toggleExisting: true, strictRequirement: true })}
+                    ref={(node) => {
+                      if (node) {
+                        targetButtonRefs.current.set(listKey, node);
+                      } else {
+                        targetButtonRefs.current.delete(listKey);
+                      }
+                    }}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
       {showSkip && (
         <Button
           variant="ghost"
           size="sm"
-          className="h-5 rounded-full border border-[#2a3d52] px-2 text-[12px] !text-[#9ab6d3] hover:border-[#3f5f83] hover:bg-[rgba(17,30,46,0.92)] hover:!text-[#ddecff]"
+          className="mt-1 h-6 w-full justify-start rounded-none border-x-0 border-y border-[#2a3d52] bg-[rgba(10,19,29,0.75)] px-2.5 text-[12px] !text-[#9ab6d3] hover:border-[#3f5f83] hover:bg-[rgba(17,30,46,0.92)] hover:!text-[#ddecff]"
           disabled={!canAct}
           onClick={onSkipRequirement}
         >
@@ -212,7 +273,11 @@ function ActiveRequirementTargets({
   );
 }
 
-export default function TargetsDecision({ decision, canAct }) {
+export default function TargetsDecision({
+  decision,
+  canAct,
+  inspectorOracleTextHeight = 0,
+}) {
   const { dispatch, state } = useGame();
   const hoveredObjectId = useHoveredObjectId();
   const requirements = decision.requirements || [];
@@ -247,6 +312,12 @@ export default function TargetsDecision({ decision, canAct }) {
 
   // Can submit: either all done cycling through, or all mins are met
   const canSubmit = allDone || allMinsMet;
+  const optionsMaxHeight = useMemo(() => {
+    const oracleHeight = Number(inspectorOracleTextHeight);
+    if (!Number.isFinite(oracleHeight) || oracleHeight <= 0) return 360;
+    const dynamicMax = Math.round(420 - (oracleHeight * 0.55));
+    return Math.max(180, Math.min(360, dynamicMax));
+  }, [inspectorOracleTextHeight]);
 
   const handleSelectTarget = (
     target,
@@ -382,13 +453,9 @@ export default function TargetsDecision({ decision, canAct }) {
   if (requirements.length === 0) return null;
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col gap-1.5">
-      <ScrollArea
-        className="min-h-0 w-full"
-        style={{ maxHeight: "calc(100% - 3.25rem)" }}
-      >
-        <div className="flex flex-col gap-1.5 pr-1">
-          <div className="grid gap-1.5">
+    <div className="flex w-full flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
+        <div className="grid gap-1.5">
           {requirements.map((req, reqIdx) => {
             const isActive = reqIdx === currentReqIdx && !allDone;
             const reqSelections = selectionsByReq[reqIdx] || [];
@@ -396,8 +463,18 @@ export default function TargetsDecision({ decision, canAct }) {
             const reqMax = req.max_targets ?? req.legal_targets?.length ?? 1;
             const isOptional = reqMin === 0;
             const canSelectMore = reqSelections.length < reqMax;
-            const shouldShowSelectedChips = reqSelections.length > 0 && !isActive;
-            const shouldShowTargetOptions = isActive;
+            const showCompletedOptions = allDone && reqSelections.length > 0;
+            const shouldShowSelectedChips = reqSelections.length > 0 && !isActive && !showCompletedOptions;
+            const shouldShowTargetOptions = isActive || showCompletedOptions;
+            const requirementHeader = (
+              <div className="text-[13px] text-[#b6cae1] leading-snug">
+                <span className="font-semibold text-[#d6e7fa]">Target {reqIdx + 1}:</span>{" "}
+                {req.description || "Choose a target"}
+                <span className="ml-1 text-[12px] text-[#8ba4c1]">
+                  ({reqMin}-{req.max_targets ?? req.legal_targets?.length ?? "?"}{isOptional ? ", optional" : ""})
+                </span>
+              </div>
+            );
 
             return (
               <div
@@ -407,13 +484,7 @@ export default function TargetsDecision({ decision, canAct }) {
                   isActive && "border-[#5f9ad6] bg-[rgba(18,34,52,0.56)] shadow-[inset_0_0_0_1px_rgba(95,154,214,0.2)]"
                 )}
               >
-                <div className="mb-1 text-[13px] text-[#b6cae1] leading-snug">
-                  <span className="font-semibold text-[#d6e7fa]">Target {reqIdx + 1}:</span>{" "}
-                  {req.description || "Choose a target"}
-                  <span className="ml-1 text-[12px] text-[#8ba4c1]">
-                    ({reqMin}-{req.max_targets ?? req.legal_targets?.length ?? "?"}{isOptional ? ", optional" : ""})
-                  </span>
-                </div>
+                {!shouldShowTargetOptions && <div className="mb-1">{requirementHeader}</div>}
 
                 {/* Show current selections for this requirement */}
                 {shouldShowSelectedChips && (
@@ -451,6 +522,8 @@ export default function TargetsDecision({ decision, canAct }) {
                   <ActiveRequirementTargets
                     req={req}
                     reqIdx={reqIdx}
+                    header={requirementHeader}
+                    optionsMaxHeight={optionsMaxHeight}
                     canAct={canAct}
                     isActive={isActive}
                     canSelectMore={canSelectMore}
@@ -465,9 +538,8 @@ export default function TargetsDecision({ decision, canAct }) {
               </div>
             );
           })}
-          </div>
         </div>
-      </ScrollArea>
+      </div>
 
       <div className="w-full shrink-0 pt-1">
         <Button

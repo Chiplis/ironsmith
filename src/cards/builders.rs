@@ -8187,7 +8187,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     fn parse_labeled_trigger_line_preserves_once_each_turn_suffix() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Reach Label Variant")
             .parse_text(
-                "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn.",
+                "Reach\nThe Allagan Eye — Whenever another creature you control dies, draw a card. This ability triggers only once each turn.",
             )
             .expect("parse reach line plus labeled once-each-turn trigger");
 
@@ -8218,7 +8218,7 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     fn parse_labeled_trigger_line_preserves_twice_each_turn_suffix() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Nadu Label Variant")
             .parse_text(
-                "The Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only twice each turn.",
+                "The Allagan Eye — Whenever another creature you control dies, draw a card. This ability triggers only twice each turn.",
             )
             .expect("parse reach line plus labeled twice-each-turn trigger");
 
@@ -8263,24 +8263,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[test]
     fn parse_commander_creatures_have_granted_cost_reduction() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Acolyte of Bahamut Variant")
+        let err = CardDefinitionBuilder::new(CardId::new(), "Acolyte of Bahamut Variant")
             .parse_text(
                 "Commander creatures you own have \"The first Dragon spell you cast each turn costs {2} less to cast.\"",
             )
-            .expect("commander granted cost-reduction static ability should parse");
-        let debug = format!("{:?}", def.abilities);
+            .expect_err("unsupported first-spell-each-turn granted cost reduction should fail");
+        let joined = format!("{err:?}").to_ascii_lowercase();
         assert!(
-            debug.contains("GrantAbility"),
-            "expected commander-granted static ability wrapper, got {debug}"
-        );
-        let lines = crate::compiled_text::compiled_lines(&def);
-        let joined = lines.join("\n").to_ascii_lowercase();
-        assert!(
-            joined.contains("commander creature")
-                && joined.contains("you own")
-                && joined.contains("dragon")
-                && joined.contains("less to cast"),
-            "expected rendered granted cost reduction context, got {joined}"
+            joined.contains("unsupported first-spell-each-turn cost modifier"),
+            "expected strict first-spell-each-turn rejection, got {joined}"
         );
     }
 

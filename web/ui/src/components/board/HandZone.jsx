@@ -1,10 +1,9 @@
-import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { useRef, useMemo, useEffect, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHoverActions } from "@/context/HoverContext";
 import { useDragActions } from "@/context/DragContext";
 import useNewCards from "@/hooks/useNewCards";
 import GameCard from "@/components/cards/GameCard";
-import ActionPopover from "@/components/overlays/ActionPopover";
 
 /** Map card_types array to a glow kind for hand display. */
 function handGlowFromTypes(cardTypes) {
@@ -100,10 +99,9 @@ function buildPlayableMaps(state, player) {
 }
 
 export default function HandZone({ player, selectedObjectId, onInspect }) {
-  const { state, dispatch } = useGame();
+  const { state } = useGame();
   const { hoverCard, clearHover } = useHoverActions();
   const { startDrag, updateDrag, endDrag } = useDragActions();
-  const [popover, setPopover] = useState(null);
   const dragThresholdRef = useRef(null);
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
@@ -128,26 +126,8 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
     return cards;
   }, [extraPlayable]);
 
-  const handleCardClick = (e, card, actionsOverride) => {
+  const handleCardClick = (_e, card) => {
     onInspect?.(card.id);
-    const plays = actionsOverride || handPlayable.get(Number(card.id)) || [];
-    if (plays.length > 0) {
-      // e.currentTarget may be document (from pointerup handler), so find the card element
-      const el = e.currentTarget?.closest?.(".game-card")
-        || e.target?.closest?.(".game-card")
-        || document.querySelector(`[data-object-id="${card.id}"]`);
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      setPopover({ anchorRect: rect, actions: plays, objectId: card.id });
-    }
-  };
-
-  const handlePopoverAction = (action) => {
-    setPopover(null);
-    dispatch(
-      { type: "priority_action", action_index: action.index },
-      action.label
-    );
   };
 
   const clearPendingDragListeners = () => {
@@ -203,7 +183,8 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
     activePointerIdRef.current = e.pointerId;
     const sx = e.clientX;
     const sy = e.clientY;
-    dragThresholdRef.current = { sx, sy, card, plays, glowKind, dragging: false };
+    const sourceRect = e.currentTarget?.closest?.(".game-card")?.getBoundingClientRect?.() || null;
+    dragThresholdRef.current = { sx, sy, card, plays, glowKind, sourceRect, dragging: false };
 
     const onMove = (me) => {
       if (activePointerIdRef.current != null && me.pointerId !== activePointerIdRef.current) {
@@ -215,7 +196,7 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
       const dy = me.clientY - dt.sy;
       if (!dt.dragging && (dx * dx + dy * dy) > 64) {
         dt.dragging = true;
-        startDrag(card.id, card.name, plays, glowKind, me.clientX, me.clientY);
+        startDrag(card.id, card.name, plays, glowKind, me.clientX, me.clientY, dt.sourceRect || null);
       }
       if (dt.dragging) {
         updateDrag(me.clientX, me.clientY);
@@ -317,8 +298,8 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
                   isNew
                   isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
                   onClick={plays.length === 0
-                    ? (e) => handleCardClick(e, card, plays)
-                    : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card, plays)}
+                    ? (e) => handleCardClick(e, card)
+                    : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card)}
                   onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, "extra") : undefined}
                   onMouseEnter={() => handleHoverEnter(extra.id)}
                   onMouseLeave={handleHoverLeave}
@@ -337,15 +318,6 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
             )}
           </div>
         </div>
-
-        {popover && (
-          <ActionPopover
-            anchorRect={popover.anchorRect}
-            actions={popover.actions}
-            onAction={handlePopoverAction}
-            onClose={() => setPopover(null)}
-          />
-        )}
       </section>
     );
   }

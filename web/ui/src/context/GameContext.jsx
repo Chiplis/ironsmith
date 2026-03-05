@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useWasmGame } from "@/hooks/useWasmGame";
+import { cardsMeetingThresholdFromStats, loadSemanticStats } from "@/lib/semanticCache";
 
 const GameContext = createContext(null);
 
@@ -111,6 +112,7 @@ export function GameProvider({ children }) {
   const [inspectorDebug, setInspectorDebug] = useState(false);
   const [semanticThreshold, setSemanticThresholdRaw] = useState(35);
   const [cardsMeetingThreshold, setCardsMeetingThreshold] = useState(0);
+  const [semanticStats, setSemanticStats] = useState(null);
   const logRef = useRef([]);
   const [logEntries, setLogEntries] = useState([]);
 
@@ -138,22 +140,56 @@ export function GameProvider({ children }) {
       if (game && typeof game.setSemanticThreshold === "function") {
         try {
           await game.setSemanticThreshold(value);
-          const count = await game.cardsMeetingThreshold();
-          setCardsMeetingThreshold(count);
         } catch (err) {
           console.warn("setSemanticThreshold failed:", err);
         }
       }
+
+      const localCount = cardsMeetingThresholdFromStats(value, semanticStats);
+      if (localCount !== null) {
+        setCardsMeetingThreshold(localCount);
+        return;
+      }
+
+      if (game && typeof game.cardsMeetingThreshold === "function") {
+        try {
+          const count = await game.cardsMeetingThreshold();
+          setCardsMeetingThreshold(count);
+        } catch (err) {
+          console.warn("cardsMeetingThreshold failed:", err);
+        }
+      }
     },
-    [game]
+    [game, semanticStats]
   );
 
   useEffect(() => {
+    let cancelled = false;
+    loadSemanticStats()
+      .then((stats) => {
+        if (cancelled) return;
+        setSemanticStats(stats);
+      })
+      .catch((err) => {
+        console.warn("semantic cache unavailable:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const localCount = cardsMeetingThresholdFromStats(semanticThreshold, semanticStats);
+    if (localCount !== null) {
+      setCardsMeetingThreshold(localCount);
+      return;
+    }
+
     if (!game || typeof game.cardsMeetingThreshold !== "function") return;
     game.cardsMeetingThreshold()
       .then((count) => setCardsMeetingThreshold(count))
       .catch(() => {});
-  }, [game, wasmRegistryCount, semanticThreshold]);
+  }, [game, wasmRegistryCount, semanticThreshold, semanticStats]);
 
   useEffect(() => {
     if (!game || typeof game.setAutoCleanupDiscard !== "function") return;

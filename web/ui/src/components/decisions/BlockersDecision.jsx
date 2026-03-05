@@ -144,29 +144,31 @@ export default function BlockersDecision({ decision, canAct }) {
                 )}>
                   {name}
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {validAttackers.map((attacker) => {
-                    const attackerId = Number(attacker.attacker);
-                    const attackerName = attacker.name;
-                    const blocking = isBlockingAttacker(blockerId, attackerId);
-                    return (
-                      <Button
-                        key={attackerId}
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "h-8 max-w-full min-w-0 overflow-hidden rounded-full border border-[#325474] bg-[rgba(15,27,40,0.9)] px-3 text-[13px] font-semibold text-[#c7dbf2] transition-all hover:border-[#4f7cad] hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
-                          blocking && "border-[rgba(105,181,247,0.95)] bg-[rgba(41,73,105,0.7)] text-[#e1f1ff]"
-                        )}
-                        disabled={!canAct}
-                        onClick={() => toggleBlocker(blockerId, attackerId)}
-                      >
-                        <span className="min-w-0 truncate">
-                          {blocking ? "[BLK] " : ""}Block {attackerName}
-                        </span>
-                      </Button>
-                    );
-                  })}
+                <div className="-mx-2 border-y border-[#2f4b67] bg-[rgba(10,20,30,0.45)]">
+                  <div className="w-full divide-y divide-[#2f4b67]">
+                    {validAttackers.map((attacker) => {
+                      const attackerId = Number(attacker.attacker);
+                      const attackerName = attacker.name;
+                      const blocking = isBlockingAttacker(blockerId, attackerId);
+                      return (
+                        <Button
+                          key={attackerId}
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "h-8 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 text-[13px] text-[#c7dbf2] transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+                            blocking && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]"
+                          )}
+                          disabled={!canAct}
+                          onClick={() => toggleBlocker(blockerId, attackerId)}
+                        >
+                          <span className="min-w-0 truncate">
+                            {blocking ? "[BLK] " : ""}Block {attackerName}
+                          </span>
+                        </Button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             );

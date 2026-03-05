@@ -174,7 +174,7 @@ function hoveredPriorityActionGroups(decision, hoveredObjectId, suppressBattlefi
   return grouped;
 }
 
-export default function DecisionPanel() {
+export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const { state, dispatch, cancelDecision, holdRule, setHoldRule } = useGame();
   const hoveredObjectId = useHoveredObjectId();
   const [cancelling, setCancelling] = useState(false);
@@ -259,7 +259,7 @@ export default function DecisionPanel() {
   }, [cancelDecision]);
 
   return (
-    <section className="relative z-30 h-full min-h-0 overflow-visible flex flex-col bg-[rgba(7,15,23,0.98)] backdrop-blur-[1.5px] border-t border-[#223247]/70">
+    <section className="relative z-30 flex h-full min-h-0 flex-1 flex-col overflow-visible border-t border-[#223247]/70 bg-[rgba(7,15,23,0.98)] backdrop-blur-[1.5px]">
       {/* Cancel flash overlay */}
       {cancelling && (
         <div
@@ -268,13 +268,17 @@ export default function DecisionPanel() {
         />
       )}
 
-      <div className="relative z-20 flex h-full min-h-0 flex-col overflow-visible">
+      <div className="relative z-20 flex h-full min-h-0 flex-1 flex-col overflow-visible">
         <div
-          className="w-full flex-1 min-h-0 overflow-visible px-1.5 pt-1.5"
+          className="w-full min-h-0 flex-1 overflow-visible px-1.5 pt-1.5"
           style={cancelling ? { animation: "cancel-slide-out 350ms ease-in forwards" } : undefined}
         >
           {decision ? (
-            <DecisionRouter decision={decision} canAct={canAct} />
+            <DecisionRouter
+              decision={decision}
+              canAct={canAct}
+              inspectorOracleTextHeight={inspectorOracleTextHeight}
+            />
           ) : (
             <div className="text-muted-foreground text-[13px] italic">
               Waiting...

@@ -42,6 +42,7 @@ export default function BattlefieldRow({
         row.style.removeProperty("--bf-cols");
         row.style.removeProperty("--bf-card-width");
         row.style.removeProperty("--bf-card-height");
+        row.style.removeProperty("--bf-card-overlap");
         row.style.overflowY = "visible";
         row.style.overflowX = "visible";
       }
@@ -84,6 +85,8 @@ export default function BattlefieldRow({
     row.style.setProperty("--bf-cols", String(best.cols));
     row.style.setProperty("--bf-card-width", `${best.cardWidth}px`);
     row.style.setProperty("--bf-card-height", `${best.cardHeight}px`);
+    const overlapPx = compact ? 0 : Math.min(14, Math.max(8, Math.floor(best.cardWidth * 0.11)));
+    row.style.setProperty("--bf-card-overlap", `${overlapPx}px`);
     syncOverflowMode({
       rows: best.rows,
       cardHeight: best.cardHeight,
@@ -175,9 +178,9 @@ export default function BattlefieldRow({
   return (
     <div
       ref={rowRef}
-      className="grid gap-1.5 content-start justify-start min-h-0 h-full"
+      className="battlefield-row grid gap-1.5 content-start justify-start min-h-0 h-full"
       style={{
-        gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, var(--bf-card-width, 124px)))`,
+        gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 124px) - var(--bf-card-overlap, 0px))))`,
         gridAutoRows: "var(--bf-card-height, 96px)",
         scrollbarGutter: allowVerticalScroll ? "stable" : "auto",
       }}

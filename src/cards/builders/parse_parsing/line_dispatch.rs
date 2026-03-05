@@ -35,7 +35,9 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
-    if normalized.starts_with("you may put a land card from among them into your hand") {
+    if normalized.contains("put a land card from among them into your hand")
+        || normalized.contains("put a card from among them into your hand")
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported put-from-among clause (line: '{}')",
             line
@@ -81,6 +83,12 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
+    if normalized.starts_with("this effect cant reduce the mana in that cost to less than")
+        || normalized.starts_with("this effect cant reduce the mana in those costs to less than")
+    {
+        // Reminder text for already-modeled cost-modifier clauses.
+        return Ok(LineAst::StaticAbilities(Vec::new()));
+    }
     if (normalized.starts_with("this creature enters with")
         || normalized.starts_with("this creature enters the battlefield with")
         || normalized.starts_with("it enters with")
@@ -92,21 +100,24 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             parser_trace("parse_line:branch=self-etb-counters", &tokens);
             return Ok(LineAst::StaticAbility(ability));
         }
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported self-enters-with-counters static clause (line: '{}')",
+            line
+        )));
     }
     if normalized.starts_with("activate only") {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported standalone activate-only restriction line (line: '{}')",
+            line
+        )));
     }
     if normalized.starts_with("you may cast this card from your graveyard as long as you control")
         || normalized.starts_with("you may cast this from your graveyard as long as you control")
     {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported graveyard cast-permission static clause (line: '{}')",
+            line
+        )));
     }
     if normalized.starts_with("if this card is in your opening hand")
         || normalized.contains("you may begin the game with")
@@ -114,16 +125,18 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             && normalized.contains("if you do")
             && normalized.contains("put this"))
     {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported pregame/replacement static clause (line: '{}')",
+            line
+        )));
     }
     if normalized.contains("gets +x/+x")
         && normalized.contains("where x is the number of counters on this")
     {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic gets-from-counters static clause (line: '{}')",
+            line
+        )));
     }
     let is_collective_restraint_domain_attack_tax = normalized_without_braces.starts_with(
         "creatures cant attack you unless their controller pays x for each creature they control thats attacking you",
@@ -146,9 +159,10 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             }
             return Ok(LineAst::StaticAbilities(abilities));
         }
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported this-cant-attack-unless static clause (line: '{}')",
+            line
+        )));
     }
     if normalized.starts_with("cast this spell only") {
         let tokens = tokenize_line(line, line_index);
@@ -156,14 +170,16 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             parser_trace("parse_line:branch=this-spell-cast-only-static", &tokens);
             return Ok(LineAst::StaticAbility(ability));
         }
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported cast-this-spell-only static clause (line: '{}')",
+            line
+        )));
     }
     if normalized.starts_with("foretelling cards from your hand costs") {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported foretell-cost modifier static clause (line: '{}')",
+            line
+        )));
     }
     if normalized.starts_with("creatures with power less than this creatures power cant block it") {
         let tokens = tokenize_line(line, line_index);
@@ -176,9 +192,10 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             }
             return Ok(LineAst::StaticAbilities(abilities));
         }
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported skulk-rules-text static clause (line: '{}')",
+            line
+        )));
     }
     if normalized == "play with the top card of your library revealed"
         || normalized.starts_with("gain the next level as a sorcery to add its ability")
@@ -189,10 +206,10 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         || normalized == "you may play lands and cast spells from the top of your library"
         || normalized == "play lands and cast spells from the top of your library"
         || normalized == "all mountains are plains"
-        || normalized.starts_with("this effect cant reduce the mana in that cost to less than")
-        || normalized.starts_with("this effect cant reduce the mana in those costs to less than")
         || normalized.starts_with("you may look at top card of your library any time")
         || normalized.starts_with("you may look at the top card of your library any time")
+        || normalized.starts_with("once each turn, you may play a card from exile")
+        || normalized.starts_with("once each turn you may play a card from exile")
         || (normalized.starts_with("creatures cant attack you unless")
             && !is_collective_restraint_domain_attack_tax
             && !is_fixed_attack_tax_per_attacker)
@@ -211,14 +228,16 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         || normalized.starts_with("if one or more +1/+1 counters would be put on")
         || normalized.starts_with("if an effect would create one or more tokens under your control")
     {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported static clause (line: '{}')",
+            line
+        )));
     }
     if normalized.starts_with("this ability triggers only") {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported standalone trigger-frequency restriction line (line: '{}')",
+            line
+        )));
     }
     if let Some((chapters, rest)) = parse_saga_chapter_prefix(&normalized) {
         let tokens = tokenize_line(rest, line_index);
@@ -237,9 +256,10 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     }
 
     if normalized.contains(": level ") {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported level marker static clause (line: '{}')",
+            line
+        )));
     }
 
     if tokens
@@ -286,9 +306,10 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     }
 
     if is_non_mana_additional_cost_modifier_line(&normalized) {
-        return Ok(LineAst::StaticAbility(
-            StaticAbility::rule_text_placeholder(line.trim().to_string()),
-        ));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported non-mana additional-cost modifier line (line: '{}')",
+            line
+        )));
     }
 
     if let Some(method) = parse_if_conditional_alternative_cost_line(&tokens, line)? {

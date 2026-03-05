@@ -6,10 +6,22 @@ const DragActionsContext = createContext(undefined);
 export function DragProvider({ children }) {
   const [dragState, setDragState] = useState(null);
   const dragStateRef = useRef(null);
-  // dragState shape: { objectId, cardName, actions, glowKind, startX, startY, currentX, currentY }
+  // dragState shape: {
+  //   objectId, cardName, actions, glowKind, startX, startY, currentX, currentY, sourceRect
+  // }
 
-  const startDrag = useCallback((objectId, cardName, actions, glowKind, x, y) => {
-    const next = { objectId, cardName, actions, glowKind, startX: x, startY: y, currentX: x, currentY: y };
+  const startDrag = useCallback((objectId, cardName, actions, glowKind, x, y, sourceRect = null) => {
+    const next = {
+      objectId,
+      cardName,
+      actions,
+      glowKind,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y,
+      sourceRect,
+    };
     dragStateRef.current = next;
     setDragState(next);
   }, []);

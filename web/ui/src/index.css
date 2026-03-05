@@ -281,6 +281,96 @@
   opacity: 0.88;
 }
 
+/* Battlefield cards: remove side blur and keep color inside the card bounds. */
+.game-card.field-card {
+  box-shadow:
+    0 9px 16px rgba(0, 0, 0, 0.46),
+    inset 0 0 8px 2px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.game-card.field-card .game-card-surface::before,
+.game-card.field-card::before,
+.game-card.field-card::after {
+  display: none !important;
+}
+
+.game-card.field-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .actionable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .inspected
+) {
+  box-shadow:
+    0 10px 18px rgba(0, 0, 0, 0.5),
+    inset 0 0 8px 2px rgba(var(--glow-rgb), 0.28),
+    inset 0 0 0 1px rgba(var(--glow-rgb), 0.52) !important;
+}
+
+.game-card.field-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .actionable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .inspected
+):hover,
+.game-card.field-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .actionable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .inspected
+).hovered {
+  transform: scale(1.03) translateY(-2px);
+  box-shadow:
+    0 14px 22px rgba(0, 0, 0, 0.52),
+    inset 0 0 9px 3px rgba(var(--glow-rgb), 0.36),
+    inset 0 0 0 1px rgba(var(--glow-rgb), 0.65) !important;
+}
+
 /* Card states — diffused neon glows (animated pulse, no solid border) */
 .game-card.glow-land {
   --glow-rgb: 88, 214, 166;
@@ -1394,21 +1484,143 @@
 }
 
 /* Hover inspector art reveal */
+.hover-art-stage {
+  isolation: isolate;
+}
+
+.hover-art-drop-in {
+  animation: hover-art-drop-in 360ms cubic-bezier(0.2, 0.9, 0.26, 1) both;
+  transform-origin: top center;
+  will-change: transform, opacity;
+}
+
 .hover-art-slice-in {
-  animation: hover-art-slice-in 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  transform-origin: left center;
+  animation: hover-art-slice-in 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  transform-origin: top center;
+  will-change: transform, opacity, clip-path;
+}
+
+.hover-art-media {
+  overflow: hidden;
+}
+
+.hover-art-media::before {
+  content: "";
+  position: absolute;
+  inset: -16%;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.18;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(52% 42% at 22% 30%, rgba(160, 208, 255, 0.46), transparent 76%),
+    radial-gradient(45% 36% at 78% 62%, rgba(255, 243, 201, 0.3), transparent 74%);
+  filter: blur(16px);
+  animation: hover-art-glow-drift 8.8s ease-in-out infinite alternate;
+}
+
+.hover-art-media::after {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0.1;
+  mix-blend-mode: overlay;
+  background:
+    repeating-linear-gradient(
+      116deg,
+      rgba(255, 255, 255, 0.18) 0 8px,
+      rgba(255, 255, 255, 0) 8px 22px
+    );
+  animation: hover-art-shimmer 15s linear infinite;
+}
+
+.hover-art-pan {
+  animation: hover-art-pan 13.5s cubic-bezier(0.42, 0, 0.31, 1) infinite alternate;
+  transform: translate3d(-2.5%, -1.4%, 0) scale(1.1);
+  transform-origin: center center;
+  will-change: transform, filter;
+}
+
+@keyframes hover-art-drop-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -36px, 0) scale(1.02);
+    filter: brightness(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: brightness(1);
+  }
 }
 
 @keyframes hover-art-slice-in {
   0% {
     opacity: 0;
-    transform: translateX(-18px) scale(1.015);
-    clip-path: inset(0 100% 0 0);
+    transform: translateY(-28px) scale(1.02);
+    clip-path: inset(0 0 100% 0);
   }
   100% {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateY(0) scale(1);
     clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes hover-art-pan {
+  0% {
+    transform: translate3d(-3.6%, -2.3%, 0) scale(1.13) rotate(-0.45deg);
+    filter: saturate(1.02) contrast(1.01);
+  }
+  25% {
+    transform: translate3d(2.1%, -1.4%, 0) scale(1.1) rotate(-0.12deg);
+    filter: saturate(1.08) contrast(1.03);
+  }
+  50% {
+    transform: translate3d(3.2%, 2.3%, 0) scale(1.15) rotate(0.28deg);
+    filter: saturate(1.11) contrast(1.02);
+  }
+  75% {
+    transform: translate3d(-1.3%, 2.8%, 0) scale(1.11) rotate(0.12deg);
+    filter: saturate(1.06) contrast(1.03);
+  }
+  100% {
+    transform: translate3d(-2.8%, -1.2%, 0) scale(1.12) rotate(-0.3deg);
+    filter: saturate(1.04) contrast(1.01);
+  }
+}
+
+@keyframes hover-art-glow-drift {
+  0% {
+    transform: translate3d(-1.4%, -2.1%, 0) scale(1);
+    opacity: 0.15;
+  }
+  100% {
+    transform: translate3d(1.9%, 2.6%, 0) scale(1.08);
+    opacity: 0.24;
+  }
+}
+
+@keyframes hover-art-shimmer {
+  0% {
+    transform: translate3d(-12%, -9%, 0) rotate(-3.5deg);
+  }
+  100% {
+    transform: translate3d(11%, 8%, 0) rotate(3.5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-art-drop-in,
+  .hover-art-slice-in,
+  .hover-art-pan,
+  .hover-art-media::before,
+  .hover-art-media::after {
+    animation: none !important;
+    transform: none !important;
+    filter: none !important;
   }
 }
 

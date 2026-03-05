@@ -26,6 +26,13 @@ function attackTargetLabel(target, players) {
   return target.name || `Planeswalker ${target.object}`;
 }
 
+function attackTargetsEqual(left, right) {
+  if (!left || !right) return false;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "player") return Number(left.player) === Number(right.player);
+  return Number(left.object) === Number(right.object);
+}
+
 /**
  * Given a drop point, try to resolve it to a valid attack target.
  * Checks planeswalker (exact card hit) first, then opponent zone (anywhere), then player target.
@@ -349,21 +356,30 @@ export default function AttackersDecision({ decision, canAct }) {
                 )}
 
                 {isSelected && validTargets.length > 1 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {validTargets.map((target, i) => (
-                      <Button
-                        key={`${creatureId}-target-${i}`}
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 max-w-full min-w-0 overflow-hidden rounded-full border border-[#325474] bg-[rgba(15,27,40,0.9)] px-3 text-[13px] font-semibold text-[#c7dbf2] transition-all hover:border-[#4f7cad] hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]"
-                        disabled={!canAct}
-                        onClick={() => selectTarget(creatureId, target)}
-                      >
-                        <span className="min-w-0 truncate">
-                          {attackTargetLabel(decodeAttackTargetChoice(target), players)}
-                        </span>
-                      </Button>
-                    ))}
+                  <div className="-mx-2 mt-1.5 border-y border-[#2f4b67] bg-[rgba(10,20,30,0.45)]">
+                    <div className="w-full divide-y divide-[#2f4b67]">
+                      {validTargets.map((target, i) => {
+                        const decodedTarget = decodeAttackTargetChoice(target);
+                        const isDeclaredTarget = attackTargetsEqual(decl?.target, decodedTarget);
+                        return (
+                          <Button
+                            key={`${creatureId}-target-${i}`}
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                              "h-8 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 text-[13px] text-[#c7dbf2] transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+                              isDeclaredTarget && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]"
+                            )}
+                            disabled={!canAct}
+                            onClick={() => selectTarget(creatureId, target)}
+                          >
+                            <span className="min-w-0 truncate">
+                              {attackTargetLabel(decodedTarget, players)}
+                            </span>
+                          </Button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

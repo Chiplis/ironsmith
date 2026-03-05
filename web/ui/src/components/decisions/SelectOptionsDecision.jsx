@@ -3,9 +3,9 @@ import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ChevronUp, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { SymbolText } from "@/lib/mana-symbols";
 import { normalizeDecisionText } from "./decisionText";
 
@@ -71,17 +71,28 @@ function HoverHint({ text }) {
   );
 }
 
-function OptionButton({ opt, canAct, onClick, isHighlighted, onMouseEnter, onMouseLeave }) {
+function OptionButton({
+  opt,
+  canAct,
+  onClick,
+  isHighlighted,
+  isSelected = false,
+  onMouseEnter,
+  onMouseLeave,
+}) {
   const disabled = !canAct || opt.legal === false;
 
   return (
     <Button
       variant="ghost"
       size="sm"
-      className={
-        "h-auto min-h-7 py-1 text-[13px] justify-start px-2 whitespace-normal text-left text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.1)] hover:shadow-[0_0_8px_rgba(100,169,255,0.15)]" +
-        (isHighlighted ? " text-foreground bg-[rgba(240,206,97,0.08)] shadow-[0_0_10px_rgba(240,206,97,0.25)]" : "")
-      }
+      className={cn(
+        "h-auto min-h-8 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 py-1.5 text-left text-[13px] text-[#c7dbf2] whitespace-normal transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+        isSelected && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]",
+        !isSelected && isHighlighted && "bg-[rgba(25,47,71,0.94)] text-[#d9ecff]",
+        disabled
+          && "bg-[rgba(12,20,30,0.72)] text-[#647f99] hover:bg-[rgba(12,20,30,0.72)] hover:text-[#647f99]"
+      )}
       disabled={disabled}
       onPointerDown={(e) => {
         if (disabled || e.button !== 0) return;
@@ -142,7 +153,11 @@ function Description({ text }) {
   );
 }
 
-export default function SelectOptionsDecision({ decision, canAct }) {
+export default function SelectOptionsDecision({
+  decision,
+  canAct,
+  inspectorOracleTextHeight = 0,
+}) {
   const reason = (decision.reason || "").toLowerCase();
 
   // Dispatch to sub-type based on decision metadata
@@ -167,7 +182,13 @@ export default function SelectOptionsDecision({ decision, canAct }) {
     return <SingleSelectDecision decision={decision} canAct={canAct} />;
   }
 
-  return <MultiSelectDecision decision={decision} canAct={canAct} />;
+  return (
+    <MultiSelectDecision
+      decision={decision}
+      canAct={canAct}
+      inspectorOracleTextHeight={inspectorOracleTextHeight}
+    />
+  );
 }
 
 function SingleSelectDecision({ decision, canAct }) {
@@ -178,65 +199,75 @@ function SingleSelectDecision({ decision, canAct }) {
     () => buildContextualOptions(options, hoveredObjectId),
     [options, hoveredObjectId]
   );
-  const showRows = contextual.options.length > 0;
-  const visibleOptions = useAnimatedRows(contextual.options, showRows);
+  const visibleOptions = useAnimatedRows(contextual.options, contextual.options.length > 0);
   const showHoverHint = contextual.waitingForHover && options.some((opt) => opt.object_id != null);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1">
       <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col gap-1 pr-1">
-          <Description text={decision.description} />
-          {showHoverHint && (
-            <HoverHint text="Hover a related card to show its available choices." />
-          )}
-          <div
-            className={`flex flex-col gap-0.5 transition-all duration-200 ${
-              showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
-            }`}
-          >
-            {visibleOptions.map((opt) => {
-              const objId = opt.object_id != null ? String(opt.object_id) : null;
-              return (
-                <OptionButton
-                  key={opt.index}
-                  opt={opt}
-                  canAct={canAct}
-                  isHighlighted={objId != null && hoveredObjectId === objId}
-                  onClick={() =>
-                    dispatch(
-                      { type: "select_options", option_indices: [opt.index] },
-                      opt.description
-                    )
-                  }
-                  onMouseEnter={() => objId && hoverCard(objId)}
-                  onMouseLeave={clearHover}
-                />
-              );
-            })}
+        <div className="flex flex-col gap-1">
+          <div className="transition-all duration-200">
+            <div className="sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1">
+              <Description text={decision.description} />
+              {showHoverHint && (
+                <HoverHint text="Hover a related card to show its available choices." />
+              )}
+            </div>
+            <div className="w-full border-b border-[#2f4b67] bg-[rgba(10,20,30,0.45)]">
+              <div className="w-full divide-y divide-[#2f4b67]">
+                {visibleOptions.map((opt) => {
+                  const objId = opt.object_id != null ? String(opt.object_id) : null;
+                  return (
+                    <OptionButton
+                      key={opt.index}
+                      opt={opt}
+                      canAct={canAct}
+                      isHighlighted={objId != null && hoveredObjectId === objId}
+                      onClick={() =>
+                        dispatch(
+                          { type: "select_options", option_indices: [opt.index] },
+                          opt.description
+                        )
+                      }
+                      onMouseEnter={() => objId && hoverCard(objId)}
+                      onMouseLeave={clearHover}
+                    />
+                  );
+                })}
+                {!showHoverHint && visibleOptions.length === 0 && (
+                  <div className="px-2.5 py-2 text-[12px] italic text-[#89a7c7]">No legal choices.</div>
+                )}
+              </div>
+            </div>
           </div>
-          {!showHoverHint && visibleOptions.length === 0 && (
-            <div className="text-[12px] italic text-muted-foreground px-1">No legal choices.</div>
-          )}
         </div>
       </ScrollArea>
     </div>
   );
 }
 
-function MultiSelectDecision({ decision, canAct }) {
+function MultiSelectDecision({
+  decision,
+  canAct,
+  inspectorOracleTextHeight = 0,
+}) {
   const { dispatch } = useGame();
   const { hoveredObjectId, hoverCard, clearHover } = useHover();
   const options = useMemo(() => decision.options || [], [decision.options]);
   const [selected, setSelected] = useState(new Set());
   const min = decision.min ?? 0;
   const max = decision.max ?? options.length;
+  const optionsMaxHeight = useMemo(() => {
+    const oracleHeight = Number(inspectorOracleTextHeight);
+    if (!Number.isFinite(oracleHeight) || oracleHeight <= 0) return 360;
+    const dynamicMax = Math.round(420 - (oracleHeight * 0.55));
+    return Math.max(180, Math.min(360, dynamicMax));
+  }, [inspectorOracleTextHeight]);
   const contextual = useMemo(
     () => buildContextualOptions(options, hoveredObjectId),
     [options, hoveredObjectId]
   );
-  const showRows = contextual.options.length > 0;
-  const visibleOptions = useAnimatedRows(contextual.options, showRows);
+  const visibleOptions = useAnimatedRows(contextual.options, contextual.options.length > 0);
   const visibleOptionIndexSet = useMemo(
     () => new Set(visibleOptions.map((opt) => opt.index)),
     [visibleOptions]
@@ -257,59 +288,54 @@ function MultiSelectDecision({ decision, canAct }) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1">
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col gap-1 pr-1">
+    <div className="flex w-full flex-col gap-1.5">
+      <div className="-mx-1.5 transition-all duration-200">
+        <div className="sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1">
           <Description text={decision.description} />
           <SectionHeader text={`Select ${min === max ? min : `${min}–${max}`}`} />
           {showHoverHint && (
             <HoverHint text="Hover a related card to show its choices. You can keep previous selections." />
           )}
-          <div
-            className={`flex flex-col gap-0.5 transition-all duration-200 ${
-              showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
-            }`}
-          >
+        </div>
+        <div
+          className="w-full overflow-y-auto overflow-x-hidden border-b border-[#2f4b67] bg-[rgba(10,20,30,0.45)] transition-[max-height] duration-300 ease-out"
+          style={{ maxHeight: `${optionsMaxHeight}px` }}
+        >
+          <div className="w-full divide-y divide-[#2f4b67]">
             {visibleOptions.map((opt) => {
               const objId = opt.object_id != null ? String(opt.object_id) : null;
               const isHighlighted = objId != null && hoveredObjectId === objId;
               const isSelected = selected.has(opt.index);
               return (
-                <label
+                <OptionButton
                   key={opt.index}
-                  className={`flex items-center gap-2 text-[13px] py-1 px-2 rounded-sm cursor-pointer transition-all ${
-                    opt.legal !== false ? "text-muted-foreground hover:text-foreground hover:bg-[rgba(100,169,255,0.1)] hover:shadow-[0_0_8px_rgba(100,169,255,0.15)]" : "opacity-50"
-                  } ${isSelected ? "text-foreground bg-[rgba(100,169,255,0.08)] shadow-[0_0_6px_rgba(100,169,255,0.2)]" : ""}${
-                    isHighlighted ? " text-foreground bg-[rgba(240,206,97,0.08)] shadow-[0_0_10px_rgba(240,206,97,0.25)]" : ""
-                  }`}
+                  opt={opt}
+                  canAct={canAct}
+                  isHighlighted={isHighlighted}
+                  isSelected={isSelected}
+                  onClick={() => opt.legal !== false && toggle(opt.index)}
                   onMouseEnter={() => objId && hoverCard(objId)}
                   onMouseLeave={clearHover}
-                >
-                  <Checkbox
-                    checked={isSelected}
-                    onCheckedChange={() => opt.legal !== false && toggle(opt.index)}
-                    disabled={!canAct || opt.legal === false}
-                    className="h-3.5 w-3.5"
-                  />
-                  <SymbolText text={normalizeDecisionText(opt.description)} />
-                </label>
+                />
               );
             })}
+            {hiddenSelectedCount > 0 && (
+              <div className="px-2.5 py-1 text-[12px] text-[#89a7c7]">
+                {hiddenSelectedCount} selected option(s) from other cards.
+              </div>
+            )}
+            {!showHoverHint && visibleOptions.length === 0 && (
+              <div className="px-2.5 py-2 text-[12px] italic text-[#89a7c7]">No legal choices.</div>
+            )}
           </div>
-          {hiddenSelectedCount > 0 && (
-            <div className="text-[12px] text-[#89a7c7] px-1">
-              {hiddenSelectedCount} selected option(s) from other cards.
-            </div>
-          )}
-          {!showHoverHint && visibleOptions.length === 0 && (
-            <div className="text-[12px] italic text-muted-foreground px-1">No legal choices.</div>
-          )}
         </div>
-      </ScrollArea>
-      <div className="shrink-0 border-t border-game-line-2/70 pt-1">
-        <SubmitButton
-          canAct={canAct}
-          disabled={selected.size < min || selected.size > max}
+      </div>
+      <div className="w-full shrink-0 pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full h-7 rounded-sm border border-[#315274] bg-[rgba(15,27,40,0.88)] px-3 text-[13px] font-semibold text-[#8ec4ff] transition-all hover:border-[#4f7cad] hover:bg-[rgba(24,43,64,0.95)] hover:text-[#d7ebff]"
+          disabled={!canAct || selected.size < min || selected.size > max}
           onClick={() =>
             dispatch(
               { type: "select_options", option_indices: Array.from(selected) },
@@ -318,7 +344,7 @@ function MultiSelectDecision({ decision, canAct }) {
           }
         >
           Submit ({selected.size})
-        </SubmitButton>
+        </Button>
       </div>
     </div>
   );

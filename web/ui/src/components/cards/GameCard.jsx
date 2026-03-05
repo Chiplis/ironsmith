@@ -53,6 +53,7 @@ export default function GameCard({
     <div
       className={cn(
         "game-card p-1.5 grid content-start",
+        variant === "battlefield" && "field-card",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
         !compact && variant === "hand" && "flex-1 basis-0 min-w-0 max-w-[124px] min-h-[100px]",
         !compact && variant !== "hand" && "w-[124px] min-w-[124px] min-h-[172px]",

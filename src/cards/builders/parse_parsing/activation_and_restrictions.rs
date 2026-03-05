@@ -2939,7 +2939,10 @@ pub(crate) fn parse_cost_reduction_line(
         };
         let tail = line_words[6..].join(" ");
         let text = format!("This cost is reduced by {amount_text} {tail}");
-        return Ok(Some(StaticAbility::rule_text_placeholder(text)));
+        return Err(CardTextError::ParseError(format!(
+            "unsupported cost-reduction static clause (clause: '{}')",
+            text
+        )));
     }
 
     if line_words.starts_with(&["activated", "abilities", "of"]) {
@@ -5905,23 +5908,30 @@ pub(crate) fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardText
             }
         }
 
-        let trigger = parse_trigger_clause(trigger_tokens)?;
-        let effects_tokens = rewrite_attached_controller_trigger_effect_tokens(
-            trigger_tokens,
-            &tokens[split_idx + 1..],
-        );
-        let effects = parse_effect_sentences(&effects_tokens)?;
-        let mut max_triggers_per_turn =
-            parse_triggered_times_each_turn_sentence(&split_on_period(&effects_tokens));
-        if let Some(max) = max_triggers_from_trigger_clause {
-            max_triggers_per_turn =
-                Some(max_triggers_per_turn.map_or(max, |existing| existing.min(max)));
+        if let Ok(trigger) = parse_trigger_clause(trigger_tokens)
+            && !matches!(trigger, TriggerSpec::Custom(_))
+        {
+            let effects_tokens = rewrite_attached_controller_trigger_effect_tokens(
+                trigger_tokens,
+                &tokens[split_idx + 1..],
+            );
+            match parse_effect_sentences(&effects_tokens) {
+                Ok(effects) => {
+                    let mut max_triggers_per_turn =
+                        parse_triggered_times_each_turn_sentence(&split_on_period(&effects_tokens));
+                    if let Some(max) = max_triggers_from_trigger_clause {
+                        max_triggers_per_turn =
+                            Some(max_triggers_per_turn.map_or(max, |existing| existing.min(max)));
+                    }
+                    return Ok(LineAst::Triggered {
+                        trigger,
+                        effects,
+                        max_triggers_per_turn,
+                    });
+                }
+                Err(err) => return Err(err),
+            }
         }
-        return Ok(LineAst::Triggered {
-            trigger,
-            effects,
-            max_triggers_per_turn,
-        });
     }
 
     // Some oracle lines omit the comma after the trigger clause.
@@ -5947,7 +5957,9 @@ pub(crate) fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardText
                 break;
             }
         }
-        if let Ok(trigger) = parse_trigger_clause(trigger_tokens) {
+        if let Ok(trigger) = parse_trigger_clause(trigger_tokens)
+            && !matches!(trigger, TriggerSpec::Custom(_))
+        {
             let rewritten_effects_tokens =
                 rewrite_attached_controller_trigger_effect_tokens(trigger_tokens, effects_tokens);
             if let Ok(effects) = parse_effect_sentences(&rewritten_effects_tokens) {
@@ -5968,7 +5980,7 @@ pub(crate) fn parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardText
     }
 
     Err(CardTextError::ParseError(format!(
-        "missing comma in triggered line (clause: '{}')",
+        "unsupported triggered line (clause: '{}')",
         words(tokens).join(" ")
     )))
 }
@@ -6422,9 +6434,10 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
                 _ => match parse_object_filter(&subject_tokens, false) {
                     Ok(filter) => filter,
                     Err(_) => {
-                        // Keep parse success by preserving this as an unimplemented trigger
-                        // if the card filter is more complex than we currently support.
-                        return Ok(TriggerSpec::Custom(words.join(" ")));
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported card filter in leave-your-graveyard trigger clause (clause: '{}')",
+                            words.join(" ")
+                        )));
                     }
                 },
             };
@@ -7607,12 +7620,39 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
                 &[]
             };
 
-            if subject_tokens.is_empty()
-                || subject_tokens
-                    .first()
-                    .is_some_and(|token| token.is_word("this"))
-            {
+            if subject_tokens.is_empty() {
                 return Ok(TriggerSpec::ThisDies);
+            }
+
+            if subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("this"))
+            {
+                let subject_words = self::words(subject_tokens);
+                if let Some(or_word_idx) = subject_words
+                    .windows(2)
+                    .position(|pair| pair == ["or", "another"])
+                {
+                    let rhs_word_idx = or_word_idx + 2;
+                    let rhs_token_idx = token_index_for_word_index(subject_tokens, rhs_word_idx)
+                        .unwrap_or(subject_tokens.len());
+                    if rhs_token_idx < subject_tokens.len() {
+                        let rhs_tokens =
+                            trim_edge_punctuation(&subject_tokens[rhs_token_idx..]);
+                        if !rhs_tokens.is_empty()
+                            && let Ok(filter) = parse_object_filter(&rhs_tokens, false)
+                        {
+                            return Ok(TriggerSpec::Dies(filter));
+                        }
+                    }
+                }
+                if is_source_reference_words(&subject_words) {
+                    return Ok(TriggerSpec::ThisDies);
+                }
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported this-prefixed dies trigger subject (clause: '{}')",
+                    words.join(" ")
+                )));
             }
 
             // Pattern: "the creature it haunts dies" or "the creature this card haunts dies"
@@ -7636,7 +7676,10 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
             }
 
             if subject_tokens.is_empty() {
-                return Ok(TriggerSpec::ThisDies);
+                return Err(CardTextError::ParseError(format!(
+                    "missing subject in dies trigger clause (clause: '{}')",
+                    words.join(" ")
+                )));
             }
 
             // Pattern: "a creature dealt damage by [this/equipped] creature this turn dies"
@@ -7729,8 +7772,30 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
             if let Ok(filter) = parse_object_filter(subject_tokens, other) {
                 return Ok(TriggerSpec::Dies(filter));
             }
+            let mut normalized_subject_tokens = Vec::with_capacity(subject_tokens.len());
+            let mut idx = 0usize;
+            while idx < subject_tokens.len() {
+                if subject_tokens[idx].is_word("and")
+                    && subject_tokens
+                        .get(idx + 1)
+                        .is_some_and(|token| token.is_word("or"))
+                {
+                    idx += 1;
+                    continue;
+                }
+                normalized_subject_tokens.push(subject_tokens[idx].clone());
+                idx += 1;
+            }
+            if normalized_subject_tokens.len() != subject_tokens.len()
+                && let Ok(filter) = parse_object_filter(&normalized_subject_tokens, other)
+            {
+                return Ok(TriggerSpec::Dies(filter));
+            }
 
-            Ok(TriggerSpec::ThisDies)
+            Err(CardTextError::ParseError(format!(
+                "unsupported dies trigger subject filter (clause: '{}')",
+                words.join(" ")
+            )))
         }
         _ if words.contains(&"beginning") && words.contains(&"end") && words.contains(&"step") => {
             Ok(TriggerSpec::BeginningOfEndStep(
@@ -7770,7 +7835,10 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
                 parse_possessive_clause_player_filter(&words),
             ))
         }
-        _ => Ok(TriggerSpec::Custom(words.join(" "))),
+        _ => Err(CardTextError::ParseError(format!(
+            "unsupported trigger clause (clause: '{}')",
+            words.join(" ")
+        ))),
     }
 }
 

@@ -3578,6 +3578,16 @@ pub(crate) fn try_build_unless(
     // Uses greedy mana parsing — collects mana symbols until first non-mana word,
     // then categorizes remaining tokens to decide whether to accept.
     if action_words.first() == Some(&"pay") || action_words.first() == Some(&"pays") {
+        if action_words
+            .windows(2)
+            .any(|window| window == ["mana", "cost"])
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported unless-payment mana-cost clause (clause: '{}')",
+                words(tokens).join(" ")
+            )));
+        }
+
         // Skip any non-word tokens between "pay" and mana
         let mana_start = action_tokens
             .iter()
