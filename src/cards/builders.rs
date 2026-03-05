@@ -33,7 +33,9 @@ use crate::zone::Zone;
 use std::collections::HashMap;
 
 use super::CardDefinition;
+mod effect_ast_normalization;
 mod effect_ast_traversal;
+mod effect_pipeline;
 mod parser;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1422,6 +1424,9 @@ pub(crate) use ability_lowering::*;
 
 mod parse_parsing;
 pub(crate) use parse_parsing::*;
+
+pub(crate) use effect_ast_normalization::*;
+pub(crate) use effect_pipeline::*;
 
 mod reference_resolution;
 pub(crate) use reference_resolution::*;

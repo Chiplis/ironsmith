@@ -1210,10 +1210,10 @@ fn apply_line_ast(
             } else {
                 None
             };
-            let resolved_effects =
-                bind_unresolved_it_references(&effects, seed_last_object_tag.as_deref());
-
-            let compiled = match compile_statement_effects(&resolved_effects) {
+            let compiled = match compile_statement_effects_with_seed(
+                &effects,
+                seed_last_object_tag.as_deref(),
+            ) {
                 Ok(compiled) => compiled,
                 Err(err) if allow_unsupported => {
                     return Ok(push_unsupported_marker(

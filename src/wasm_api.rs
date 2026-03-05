@@ -3875,7 +3875,7 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
                 .object(*source)
                 .and_then(|obj| obj.abilities.get(*ability_index))
                 .and_then(|ability| ability.text.as_deref())
-                .map(|text| truncate_text(text, 80));
+                .map(normalize_action_text);
             match ability_text {
                 Some(text) => format!("Activate {}: {}", name, text),
                 None => format!("Activate {} ability #{}", name, ability_index + 1),
@@ -3890,7 +3890,7 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
                 .object(*source)
                 .and_then(|obj| obj.abilities.get(*ability_index))
                 .and_then(|ability| ability.text.as_deref())
-                .map(|text| truncate_text(text, 80));
+                .map(normalize_action_text);
             match ability_text {
                 Some(text) => format!("Activate {}: {}", name, text),
                 None => format!(
@@ -4049,16 +4049,8 @@ fn decision_reason(ctx: &DecisionContext) -> Option<String> {
     }
 }
 
-fn truncate_text(text: &str, max_len: usize) -> String {
-    if text.len() <= max_len {
-        text.to_string()
-    } else {
-        let mut end = max_len.saturating_sub(3).min(text.len());
-        while end > 0 && !text.is_char_boundary(end) {
-            end -= 1;
-        }
-        format!("{}...", &text[..end])
-    }
+fn normalize_action_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn target_choice_view(game: &GameState, target: &Target) -> TargetChoiceView {

@@ -206,12 +206,25 @@ pub(crate) fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), 
 pub(crate) fn compile_statement_effects(
     effects: &[EffectAst],
 ) -> Result<Vec<Effect>, CardTextError> {
-    let resolved_effects = bind_unresolved_it_references(effects, None);
+    compile_statement_effects_with_seed(effects, None)
+}
+
+pub(crate) fn compile_statement_effects_with_seed(
+    effects: &[EffectAst],
+    seed_last_object_tag: Option<&str>,
+) -> Result<Vec<Effect>, CardTextError> {
+    let resolved_effects = prepare_effects_for_lowering(effects, seed_last_object_tag);
+    compile_statement_effects_prepared(&resolved_effects)
+}
+
+fn compile_statement_effects_prepared(
+    resolved_effects: &[EffectAst],
+) -> Result<Vec<Effect>, CardTextError> {
     let mut ctx = CompileContext::new();
     ctx.force_auto_tag_object_targets = true;
     ctx.allow_life_event_value = false;
-    let prelude = seed_attached_source_tag_prelude(&mut ctx, &resolved_effects);
-    let (compiled, _) = compile_effects(&resolved_effects, &mut ctx)?;
+    let prelude = seed_attached_source_tag_prelude(&mut ctx, resolved_effects);
+    let (compiled, _) = compile_effects(resolved_effects, &mut ctx)?;
     Ok(prepend_effect_prelude(compiled, prelude))
 }
 
@@ -367,7 +380,16 @@ pub(crate) fn compile_trigger_effects(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    let (effects, choices, _) = compile_trigger_effects_with_intervening_if(trigger, effects)?;
+    compile_trigger_effects_with_seed(trigger, effects, None)
+}
+
+pub(crate) fn compile_trigger_effects_with_seed(
+    trigger: Option<&TriggerSpec>,
+    effects: &[EffectAst],
+    seed_last_object_tag: Option<&str>,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let (effects, choices, _) =
+        compile_trigger_effects_with_intervening_if_seed(trigger, effects, seed_last_object_tag)?;
     Ok((effects, choices))
 }
 
@@ -634,6 +656,14 @@ pub(crate) fn compile_trigger_effects_with_intervening_if(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>, Option<Condition>), CardTextError> {
+    compile_trigger_effects_with_intervening_if_seed(trigger, effects, None)
+}
+
+pub(crate) fn compile_trigger_effects_with_intervening_if_seed(
+    trigger: Option<&TriggerSpec>,
+    effects: &[EffectAst],
+    seed_last_object_tag: Option<&str>,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>, Option<Condition>), CardTextError> {
     if let Some(trigger) = trigger {
         ensure_concrete_trigger_spec(trigger)?;
     }
@@ -642,7 +672,7 @@ pub(crate) fn compile_trigger_effects_with_intervening_if(
     ctx.allow_life_event_value = trigger
         .map(|trigger| trigger_supports_event_value(trigger, &EventValueSpec::Amount))
         .unwrap_or(false);
-    let resolved_effects = bind_unresolved_it_references(effects, None);
+    let resolved_effects = prepare_effects_for_lowering(effects, seed_last_object_tag);
     let prelude = seed_attached_source_tag_prelude(&mut ctx, &resolved_effects);
     maybe_seed_default_trigger_object_tag(&mut ctx, trigger, &resolved_effects);
     let mut intervening_if: Option<Condition> = None;
@@ -5573,7 +5603,10 @@ fn try_compile_continuous_and_modifier_effect(
             duration,
         } => {
             if abilities.is_empty() {
-                return Ok(Some((Vec::new(), Vec::new())));
+                return Err(CardTextError::InvariantViolation(
+                    "normalize_effects_ast should remove GrantAbilitiesAll with no abilities"
+                        .to_string(),
+                ));
             }
 
             let resolved_filter = resolve_it_tag(filter, ctx)?;
@@ -5598,7 +5631,10 @@ fn try_compile_continuous_and_modifier_effect(
             duration,
         } => {
             if abilities.is_empty() {
-                return Ok(Some((Vec::new(), Vec::new())));
+                return Err(CardTextError::InvariantViolation(
+                    "normalize_effects_ast should remove RemoveAbilitiesAll with no abilities"
+                        .to_string(),
+                ));
             }
 
             let resolved_filter = resolve_it_tag(filter, ctx)?;
@@ -5623,7 +5659,10 @@ fn try_compile_continuous_and_modifier_effect(
             duration,
         } => {
             if abilities.is_empty() {
-                return Ok(Some((Vec::new(), Vec::new())));
+                return Err(CardTextError::InvariantViolation(
+                    "normalize_effects_ast should remove GrantAbilitiesChoiceAll with no abilities"
+                        .to_string(),
+                ));
             }
             let resolved_filter = resolve_it_tag(filter, ctx)?;
             let modes = abilities
@@ -8781,5 +8820,18 @@ mod parse_compile_tests {
             effect_references_tag(&effect, "gamma"),
             "counter-unless-pays tagged target should be detected by tag reference checks"
         );
+    }
+
+    #[test]
+    fn compile_statement_effects_drops_empty_global_ability_grants() {
+        let effects = vec![EffectAst::GrantAbilitiesAll {
+            filter: ObjectFilter::default(),
+            abilities: Vec::new(),
+            duration: Until::EndOfTurn,
+        }];
+
+        let compiled =
+            compile_statement_effects(&effects).expect("normalization should remove empty grants");
+        assert!(compiled.is_empty());
     }
 }

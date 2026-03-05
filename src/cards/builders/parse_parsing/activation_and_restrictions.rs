@@ -319,8 +319,8 @@ pub(crate) fn parse_activated_line(
     let seed_tag = first_sacrifice_cost_choice_tag(&mana_cost)
         .or_else(|| last_exile_cost_choice_tag(&mana_cost))
         .map(|tag| tag.as_str().to_string());
-    let resolved_effects_ast = bind_unresolved_it_references(&effects_ast, seed_tag.as_deref());
-    let (effects, choices) = lower_activated_ability_effects(&resolved_effects_ast)?;
+    let (effects, choices) =
+        lower_activated_ability_effects_with_seed(&effects_ast, seed_tag.as_deref())?;
     let mana_cost = crate::ability::merge_cost_effects(mana_cost, cost_effects);
 
     Ok(Some(ParsedAbility {
@@ -342,7 +342,7 @@ pub(crate) fn parse_activated_line(
             apply_ability_label(&mut ability);
             ability
         },
-        effects_ast: Some(resolved_effects_ast),
+        effects_ast: Some(effects_ast),
     }))
 }
 
