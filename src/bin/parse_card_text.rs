@@ -126,6 +126,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let idx = failed_cards.len() - 1;
                 failed_by_type.entry(card_type).or_default().push(idx);
             }
+            Err(CardTextError::InvariantViolation(message)) => {
+                failed += 1;
+                let labeled = format!("invariant violation: {message}");
+                *parse_error_counts.entry(labeled).or_insert(0) += 1;
+                let card_type = type_line
+                    .as_deref()
+                    .map(classify_card_type)
+                    .unwrap_or_else(|| "Unknown".to_string());
+                failed_cards.push(FailedCard {
+                    len: text.len(),
+                    name: name.to_string(),
+                    text,
+                    card_type: card_type.clone(),
+                });
+                let idx = failed_cards.len() - 1;
+                failed_by_type.entry(card_type).or_default().push(idx);
+            }
             Err(CardTextError::UnsupportedLine(message)) => {
                 failed += 1;
                 if let Some(ref pattern) = pattern

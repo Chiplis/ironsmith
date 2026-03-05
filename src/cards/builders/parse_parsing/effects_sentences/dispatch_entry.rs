@@ -250,7 +250,20 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
             continue;
         }
 
-        let mut sentence_effects = parse_effect_sentence(&sentence_tokens)?;
+        let mut sentence_effects =
+            if let Some(followup) = parse_token_copy_followup_sentence(&sentence_tokens) {
+                if try_apply_token_copy_followup(&mut effects, followup)? {
+                    parser_trace(
+                        "parse_effect_sentences:token-copy-followup",
+                        &sentence_tokens,
+                    );
+                    sentence_idx += 1;
+                    continue;
+                }
+                lower_unapplied_token_copy_followup(sentence, &sentence_tokens, followup)?
+            } else {
+                parse_effect_sentence(&sentence_tokens)?
+            };
         if wraps_as_if_did_not {
             sentence_effects = vec![EffectAst::IfResult {
                 predicate: IfResultPredicate::DidNot,
@@ -272,14 +285,6 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
         if words(&sentence_tokens).first().copied() == Some("you") {
             carried_context = None;
         }
-        if try_apply_token_copy_followup(&mut effects, &sentence_effects)? {
-            parser_trace(
-                "parse_effect_sentences:token-copy-followup",
-                &sentence_tokens,
-            );
-            sentence_idx += 1;
-            continue;
-        }
         if sentence_effects.is_empty()
             && !is_round_up_each_time_sentence(&sentence_tokens)
             && !is_nonsemantic_restriction_sentence(&sentence_tokens)
@@ -288,47 +293,6 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
                 "sentence parsed to no semantic effects (clause: '{}')",
                 words(&sentence_tokens).join(" ")
             )));
-        }
-        // If a token-copy modifier sentinel didn't apply (no preceding CreateTokenCopy),
-        // convert it to a proper effect on the tagged "it" object.
-        for effect in &mut sentence_effects {
-            if matches!(effect, EffectAst::TokenCopyHasHaste) {
-                let span = span_from_tokens(&sentence);
-                *effect = EffectAst::GrantAbilitiesToTarget {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), span),
-                    abilities: vec![StaticAbility::haste()],
-                    duration: Until::Forever,
-                };
-            } else if matches!(effect, EffectAst::TokenCopyGainHasteUntilEot) {
-                let span = span_from_tokens(&sentence);
-                *effect = EffectAst::GrantAbilitiesToTarget {
-                    target: TargetAst::Tagged(TagKey::from(IT_TAG), span),
-                    abilities: vec![StaticAbility::haste()],
-                    duration: Until::EndOfTurn,
-                };
-            } else if matches!(effect, EffectAst::TokenCopySacrificeAtNextEndStep) {
-                *effect = EffectAst::DelayedUntilNextEndStep {
-                    player: PlayerFilter::Any,
-                    effects: vec![EffectAst::Sacrifice {
-                        filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                        player: PlayerAst::Implicit,
-                        count: 1,
-                    }],
-                };
-            } else if matches!(effect, EffectAst::TokenCopyExileAtNextEndStep) {
-                let span = span_from_tokens(&sentence);
-                *effect = EffectAst::DelayedUntilNextEndStep {
-                    player: PlayerFilter::Any,
-                    effects: vec![EffectAst::Exile {
-                        target: TargetAst::Object(
-                            ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                            span,
-                            None,
-                        ),
-                        face_down: false,
-                    }],
-                };
-            }
         }
         for effect in &mut sentence_effects {
             if let Some(context) = carried_context {
@@ -360,7 +324,11 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
                 sentence_effects.first(),
                 Some(EffectAst::Conditional { .. })
             ) {
-                let previous = effects.pop().expect("effects length checked above");
+                let Some(previous) = effects.pop() else {
+                    return Err(CardTextError::InvariantViolation(
+                        "expected previous effect for 'instead' conditional rewrite".to_string(),
+                    ));
+                };
                 let previous_target = primary_target_from_effect(&previous);
                 let previous_damage_target = primary_damage_target_from_effect(&previous);
                 if let Some(EffectAst::Conditional {
@@ -1095,27 +1063,65 @@ fn token_copy_followup_container_effects_mut(
     }
 }
 
+fn parse_token_copy_followup_sentence(tokens: &[Token]) -> Option<TokenCopyFollowup> {
+    parse_token_copy_modifier_sentence(tokens)
+        .or_else(|| {
+            is_exile_that_token_at_end_of_combat(tokens)
+                .then_some(TokenCopyFollowup::ExileAtEndOfCombat)
+        })
+        .or_else(|| {
+            is_sacrifice_that_token_at_end_of_combat(tokens)
+                .then_some(TokenCopyFollowup::SacrificeAtEndOfCombat)
+        })
+}
+
+fn lower_unapplied_token_copy_followup(
+    sentence: &[Token],
+    sentence_tokens: &[Token],
+    followup: TokenCopyFollowup,
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let span = span_from_tokens(sentence);
+    let effects = match followup {
+        TokenCopyFollowup::HasHaste => vec![EffectAst::GrantAbilitiesToTarget {
+            target: TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            abilities: vec![StaticAbility::haste()],
+            duration: Until::Forever,
+        }],
+        TokenCopyFollowup::GainHasteUntilEndOfTurn => vec![EffectAst::GrantAbilitiesToTarget {
+            target: TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            abilities: vec![StaticAbility::haste()],
+            duration: Until::EndOfTurn,
+        }],
+        TokenCopyFollowup::SacrificeAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
+            player: PlayerFilter::Any,
+            effects: vec![EffectAst::Sacrifice {
+                filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                player: PlayerAst::Implicit,
+                count: 1,
+            }],
+        }],
+        TokenCopyFollowup::ExileAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
+            player: PlayerFilter::Any,
+            effects: vec![EffectAst::Exile {
+                target: TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
+                face_down: false,
+            }],
+        }],
+        TokenCopyFollowup::ExileAtEndOfCombat | TokenCopyFollowup::SacrificeAtEndOfCombat => {
+            return Err(CardTextError::ParseError(format!(
+                "token followup requires preceding token creation effect (clause: '{}')",
+                words(sentence_tokens).join(" ")
+            )));
+        }
+    };
+    Ok(effects)
+}
+
 pub(crate) fn try_apply_token_copy_followup(
     effects: &mut [EffectAst],
-    sentence_effects: &[EffectAst],
+    followup: TokenCopyFollowup,
 ) -> Result<bool, CardTextError> {
-    if sentence_effects.len() != 1 {
-        return Ok(false);
-    }
-
     let Some(last) = effects.last_mut() else {
-        return Ok(false);
-    };
-
-    let Some((haste, sacrifice, exile_next_end_step, exile_end_of_combat)) =
-        (match sentence_effects.first() {
-            Some(EffectAst::TokenCopyHasHaste) => Some((true, false, false, false)),
-            Some(EffectAst::TokenCopySacrificeAtNextEndStep) => Some((false, true, false, false)),
-            Some(EffectAst::TokenCopyExileAtNextEndStep) => Some((false, false, true, false)),
-            Some(EffectAst::ExileThatTokenAtEndOfCombat) => Some((false, false, false, true)),
-            _ => None,
-        })
-    else {
         return Ok(false);
     };
 
@@ -1134,38 +1140,39 @@ pub(crate) fn try_apply_token_copy_followup(
             exile_at_next_end_step,
             ..
         } => {
-            if haste {
-                *has_haste = true;
-            }
-            if sacrifice {
-                *sacrifice_at_next_end_step = true;
-            }
-            if exile_next_end_step {
-                *exile_at_next_end_step = true;
-            }
-            if exile_end_of_combat {
-                *exile_at_end_of_combat = true;
+            match followup {
+                TokenCopyFollowup::HasHaste => *has_haste = true,
+                TokenCopyFollowup::SacrificeAtNextEndStep => *sacrifice_at_next_end_step = true,
+                TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
+                TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
+                TokenCopyFollowup::GainHasteUntilEndOfTurn
+                | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
             }
             Ok(true)
         }
         EffectAst::CreateTokenWithMods {
             exile_at_end_of_combat,
+            sacrifice_at_end_of_combat,
             ..
-        } if exile_end_of_combat => {
-            *exile_at_end_of_combat = true;
+        } => {
+            match followup {
+                TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
+                TokenCopyFollowup::SacrificeAtEndOfCombat => *sacrifice_at_end_of_combat = true,
+                TokenCopyFollowup::HasHaste
+                | TokenCopyFollowup::GainHasteUntilEndOfTurn
+                | TokenCopyFollowup::SacrificeAtNextEndStep
+                | TokenCopyFollowup::ExileAtNextEndStep => return Ok(false),
+            }
             Ok(true)
         }
         _ => {
-            if !exile_end_of_combat {
-                return Ok(false);
-            }
             let Some(nested_effects) = token_copy_followup_container_effects_mut(last) else {
                 return Ok(false);
             };
             if nested_effects.is_empty() {
                 return Ok(false);
             }
-            try_apply_token_copy_followup(nested_effects.as_mut_slice(), sentence_effects)
+            try_apply_token_copy_followup(nested_effects.as_mut_slice(), followup)
         }
     }
 }

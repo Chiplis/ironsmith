@@ -40,6 +40,7 @@ mod parser;
 pub enum CardTextError {
     UnsupportedLine(String),
     ParseError(String),
+    InvariantViolation(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1224,8 +1225,6 @@ pub(crate) enum EffectAst {
         sacrifice_at_next_end_step: bool,
         exile_at_next_end_step: bool,
     },
-    ExileThatTokenAtEndOfCombat,
-    SacrificeThatTokenAtEndOfCombat,
     Monstrosity {
         amount: Value,
     },
@@ -1377,10 +1376,6 @@ pub(crate) enum EffectAst {
         count: u32,
         optional: bool,
     },
-    TokenCopyHasHaste,
-    TokenCopyGainHasteUntilEot,
-    TokenCopySacrificeAtNextEndStep,
-    TokenCopyExileAtNextEndStep,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1421,6 +1416,9 @@ pub(crate) enum IfResultPredicate {
 }
 
 const IT_TAG: &str = "__it__";
+
+mod ability_lowering;
+pub(crate) use ability_lowering::*;
 
 mod parse_parsing;
 pub(crate) use parse_parsing::*;

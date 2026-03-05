@@ -194,8 +194,8 @@ impl EffectExecutor for DealDamageEffect {
                         DamageTarget::Object(object_id),
                         amount,
                         self.source_is_combat,
-                    ctx.provenance,
-                ));
+                        ctx.provenance,
+                    ));
                 }
                 return Ok(EffectOutcome::from_result(EffectResult::TargetInvalid));
             }
@@ -230,8 +230,8 @@ impl EffectExecutor for DealDamageEffect {
                         DamageTarget::Player(player_id),
                         amount,
                         self.source_is_combat,
-                    ctx.provenance,
-                ));
+                        ctx.provenance,
+                    ));
                 }
                 AttackEventTarget::Planeswalker(object_id) => {
                     if !game
@@ -247,8 +247,8 @@ impl EffectExecutor for DealDamageEffect {
                         DamageTarget::Object(object_id),
                         amount,
                         self.source_is_combat,
-                    ctx.provenance,
-                ));
+                        ctx.provenance,
+                    ));
                 }
             }
         }
@@ -263,8 +263,8 @@ impl EffectExecutor for DealDamageEffect {
                 DamageTarget::Player(controller),
                 amount,
                 self.source_is_combat,
-                    ctx.provenance,
-                ));
+                ctx.provenance,
+            ));
         }
 
         // Otherwise, use pre-resolved targets from ctx.targets
@@ -278,8 +278,8 @@ impl EffectExecutor for DealDamageEffect {
                         DamageTarget::Player(*player_id),
                         amount,
                         self.source_is_combat,
-                    ctx.provenance,
-                ));
+                        ctx.provenance,
+                    ));
                 }
                 ResolvedTarget::Object(object_id) => {
                     if let Some(obj) = game.object(*object_id) {
@@ -295,8 +295,8 @@ impl EffectExecutor for DealDamageEffect {
                             DamageTarget::Object(*object_id),
                             amount,
                             self.source_is_combat,
-                    ctx.provenance,
-                ));
+                            ctx.provenance,
+                        ));
                     }
                 }
             }

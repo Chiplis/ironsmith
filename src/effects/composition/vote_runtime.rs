@@ -199,10 +199,7 @@ fn queue_vote_events(
 
     game.queue_trigger_event(
         ctx.provenance,
-        TriggerEvent::new_with_provenance(
-            vote_action_event,
-            ctx.provenance,
-        ),
+        TriggerEvent::new_with_provenance(vote_action_event, ctx.provenance),
     );
     game.queue_trigger_event(
         ctx.provenance,

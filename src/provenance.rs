@@ -68,11 +68,12 @@ impl ProvenanceGraph {
     }
 
     pub fn alloc_child(&mut self, parent: ProvNodeId, kind: ProvenanceNodeKind) -> ProvNodeId {
-        let normalized_parent = if parent == ProvNodeId::default() || !self.nodes.contains_key(&parent) {
-            None
-        } else {
-            Some(parent)
-        };
+        let normalized_parent =
+            if parent == ProvNodeId::default() || !self.nodes.contains_key(&parent) {
+                None
+            } else {
+                Some(parent)
+            };
         self.alloc_node(normalized_parent, kind)
     }
 

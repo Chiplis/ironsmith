@@ -136,8 +136,10 @@ mod tests {
         let event_provenance = game
             .provenance_graph
             .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-        let event =
-            TriggerEvent::new_with_provenance(EnterBattlefieldEvent::new(entered, Zone::Hand), event_provenance);
+        let event = TriggerEvent::new_with_provenance(
+            EnterBattlefieldEvent::new(entered, Zone::Hand),
+            event_provenance,
+        );
         let mut ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
         let outcome = EvolveEffect::new()
             .execute(&mut game, &mut ctx)
@@ -165,8 +167,10 @@ mod tests {
         let event_provenance = game
             .provenance_graph
             .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-        let event =
-            TriggerEvent::new_with_provenance(EnterBattlefieldEvent::new(entered, Zone::Hand), event_provenance);
+        let event = TriggerEvent::new_with_provenance(
+            EnterBattlefieldEvent::new(entered, Zone::Hand),
+            event_provenance,
+        );
         let mut ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
         let outcome = EvolveEffect::new()
             .execute(&mut game, &mut ctx)

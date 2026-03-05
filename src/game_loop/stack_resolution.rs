@@ -221,10 +221,10 @@ fn resolve_stack_entry_full(
                             .provenance_graph
                             .alloc_root_event(crate::events::EventKind::EnterBattlefield);
                         let etb_event = if enters_tapped {
-                            TriggerEvent::new_with_provenance(EnterBattlefieldEvent::tapped(
-                                id,
-                                Zone::Stack,
-                            ), etb_event_provenance)
+                            TriggerEvent::new_with_provenance(
+                                EnterBattlefieldEvent::tapped(id, Zone::Stack),
+                                etb_event_provenance,
+                            )
                         } else {
                             TriggerEvent::new_with_provenance(
                                 EnterBattlefieldEvent::new(id, Zone::Stack),
@@ -296,15 +296,15 @@ fn resolve_stack_entry_full(
                         .provenance_graph
                         .alloc_root_event(crate::events::EventKind::EnterBattlefield);
                     let etb_event = if result.enters_tapped {
-                        TriggerEvent::new_with_provenance(EnterBattlefieldEvent::tapped(
-                            result.new_id,
-                            Zone::Stack,
-                        ), etb_event_provenance)
+                        TriggerEvent::new_with_provenance(
+                            EnterBattlefieldEvent::tapped(result.new_id, Zone::Stack),
+                            etb_event_provenance,
+                        )
                     } else {
-                        TriggerEvent::new_with_provenance(EnterBattlefieldEvent::new(
-                            result.new_id,
-                            Zone::Stack,
-                        ), etb_event_provenance)
+                        TriggerEvent::new_with_provenance(
+                            EnterBattlefieldEvent::new(result.new_id, Zone::Stack),
+                            etb_event_provenance,
+                        )
                     };
                     let etb_event = game.ensure_trigger_event_provenance(etb_event);
                     let etb_triggers = check_triggers(game, &etb_event);
@@ -403,6 +403,7 @@ fn resolve_stack_entry_full(
                         ability_source: None,
                         controller: entry.controller,
                         choices: vec![],
+                        tagged_objects: std::collections::HashMap::new(),
                     });
                 }
             } else if should_exile {

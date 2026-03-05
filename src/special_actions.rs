@@ -370,8 +370,8 @@ fn perform_turn_face_up(
         object.add_counters(crate::object::CounterType::PlusOnePlusOne, 1);
     }
 
-    let event_provenance =
-        game.alloc_child_event_provenance(action_provenance, crate::events::EventKind::TurnedFaceUp);
+    let event_provenance = game
+        .alloc_child_event_provenance(action_provenance, crate::events::EventKind::TurnedFaceUp);
     game.queue_trigger_event(
         action_provenance,
         TriggerEvent::new_with_provenance(
@@ -820,8 +820,10 @@ fn resolve_cost_choice(
                 }
                 EventOutcome::Proceed(result) => {
                     if result.final_zone == Zone::Graveyard {
-                        let event_provenance = game
-                            .alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::Sacrifice);
+                        let event_provenance = game.alloc_child_event_provenance(
+                            ctx.provenance,
+                            crate::events::EventKind::Sacrifice,
+                        );
                         game.queue_trigger_event(
                             ctx.provenance,
                             TriggerEvent::new_with_provenance(

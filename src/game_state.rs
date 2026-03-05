@@ -4217,12 +4217,13 @@ impl GameState {
     ) {
         let provenance = event.provenance();
         if provenance == ProvNodeId::default() || self.provenance_graph.node(provenance).is_none() {
-            let event_provenance =
-                if parent == ProvNodeId::default() || self.provenance_graph.node(parent).is_none() {
-                    self.provenance_graph.alloc_root_event(event.kind())
-                } else {
-                    self.alloc_child_event_provenance(parent, event.kind())
-                };
+            let event_provenance = if parent == ProvNodeId::default()
+                || self.provenance_graph.node(parent).is_none()
+            {
+                self.provenance_graph.alloc_root_event(event.kind())
+            } else {
+                self.alloc_child_event_provenance(parent, event.kind())
+            };
             event.set_provenance(event_provenance);
         }
 
@@ -4261,7 +4262,7 @@ impl GameState {
         event
     }
 
-    /// Allocate a provenance child event under `parent` (or a root when parent is unknown).
+    /// Allocate a provenance child event under `parent` (or a root when parent is unset/invalid).
     pub fn alloc_child_event_provenance(
         &mut self,
         parent: ProvNodeId,

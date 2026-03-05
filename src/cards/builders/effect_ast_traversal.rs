@@ -237,8 +237,6 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::CreateTokenCopy { .. } => {}
         EffectAst::CreateTokenCopyFromSource { .. } => {}
         EffectAst::CreateTokenWithMods { .. } => {}
-        EffectAst::ExileThatTokenAtEndOfCombat => {}
-        EffectAst::SacrificeThatTokenAtEndOfCombat => {}
         EffectAst::Monstrosity { .. } => {}
         EffectAst::RemoveUpToAnyCounters { .. } => {}
         EffectAst::RemoveCountersAll { .. } => {}
@@ -270,10 +268,6 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::VoteStart { .. } => {}
         EffectAst::VoteOption { .. } => {}
         EffectAst::VoteExtra { .. } => {}
-        EffectAst::TokenCopyHasHaste => {}
-        EffectAst::TokenCopyGainHasteUntilEot => {}
-        EffectAst::TokenCopySacrificeAtNextEndStep => {}
-        EffectAst::TokenCopyExileAtNextEndStep => {}
     }
 }
 

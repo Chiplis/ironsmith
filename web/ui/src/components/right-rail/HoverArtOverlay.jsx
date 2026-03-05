@@ -5,6 +5,7 @@ import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Check, Copy } from "lucide-react";
 
 const ORACLE_TEXT_STYLE = {
@@ -237,6 +238,7 @@ export default function HoverArtOverlay({
     ? decision
     : null;
   const topStackObject = (state?.stack_objects || [])[0] || null;
+  const hasStackEntries = (state?.stack_objects?.length || 0) > 0 || (state?.stack_preview?.length || 0) > 0;
   const decisionSourceName = decision && decision.kind !== "priority" && decision.kind !== "attackers" && decision.kind !== "blockers"
     ? decision.source_name || null
     : null;
@@ -515,7 +517,12 @@ export default function HoverArtOverlay({
           </div>
         )}
         {inspectorDecision && (
-          <div className="absolute inset-x-2 top-[88px] z-[12] max-h-[calc(100%-176px)] overflow-hidden rounded border border-[#5d7ea0] bg-[linear-gradient(180deg,rgba(6,14,22,0.76),rgba(6,14,22,0.9))] shadow-[0_16px_34px_rgba(0,0,0,0.55)] pointer-events-auto backdrop-blur-[2.2px]">
+          <div
+            className={cn(
+              "absolute inset-x-2 top-[88px] z-[12] min-h-0 overflow-hidden rounded border border-[#5d7ea0] bg-[linear-gradient(180deg,rgba(6,14,22,0.76),rgba(6,14,22,0.9))] shadow-[0_16px_34px_rgba(0,0,0,0.55)] pointer-events-auto backdrop-blur-[2.2px] flex flex-col",
+              hasStackEntries ? "bottom-[176px]" : "bottom-[8px]"
+            )}
+          >
             <div className="border-b border-[#3c5876] bg-[rgba(8,19,31,0.9)] px-2.5 py-1.5">
               <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8cc4ff]">
                 {inspectorDecisionTitle(inspectorDecision)}
@@ -527,7 +534,7 @@ export default function HoverArtOverlay({
                 />
               )}
             </div>
-            <div className="max-h-[320px] overflow-y-auto px-1.5 py-1">
+            <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1">
               <DecisionRouter
                 decision={inspectorDecision}
                 canAct={canAct}
@@ -537,7 +544,7 @@ export default function HoverArtOverlay({
                 hideDescription
               />
             </div>
-            <article className="border-t border-[#3c5876] bg-[rgba(8,18,30,0.88)] px-2 py-1.5">
+            <article className="shrink-0 border-t border-[#3c5876] bg-[rgba(8,18,30,0.88)] px-2 py-1.5">
               <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9dccff]">
                 Current Decision
               </div>

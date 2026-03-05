@@ -425,12 +425,6 @@ pub(crate) fn collapse_token_copy_end_of_combat_exile_followup(
                 | EffectAst::CreateTokenWithMods { .. },
                 EffectAst::Exile { target, .. },
             ) => target_is_generic_token_filter(target),
-            (
-                EffectAst::CreateTokenCopy { .. }
-                | EffectAst::CreateTokenCopyFromSource { .. }
-                | EffectAst::CreateTokenWithMods { .. },
-                EffectAst::ExileThatTokenAtEndOfCombat,
-            ) => true,
             _ => false,
         };
 

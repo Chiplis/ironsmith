@@ -727,7 +727,9 @@ pub fn execute_effect(
         );
         for event in &mut outcome.events {
             let provenance = event.provenance();
-            if provenance == ProvNodeId::default() || game.provenance_graph.node(provenance).is_none() {
+            if provenance == ProvNodeId::default()
+                || game.provenance_graph.node(provenance).is_none()
+            {
                 let node = game.alloc_child_event_provenance(execution_node, event.kind());
                 event.set_provenance(node);
             }

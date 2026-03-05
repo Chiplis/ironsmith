@@ -1,8 +1,12 @@
 //! Shared delayed-trigger queue primitives.
 
+use std::collections::HashMap;
+
 use crate::effect::Effect;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::triggers::{DelayedTrigger, Trigger};
 
 /// Config used to enqueue a delayed trigger.
@@ -18,6 +22,7 @@ pub(crate) struct DelayedTriggerConfig {
     pub controller: PlayerId,
     pub x_value: Option<u32>,
     pub choices: Vec<crate::target::ChooseSpec>,
+    pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
 }
 
 impl DelayedTriggerConfig {
@@ -39,6 +44,7 @@ impl DelayedTriggerConfig {
             controller,
             x_value: None,
             choices: Vec::new(),
+            tagged_objects: HashMap::new(),
         }
     }
 
@@ -64,6 +70,14 @@ impl DelayedTriggerConfig {
 
     pub fn with_choices(mut self, choices: Vec<crate::target::ChooseSpec>) -> Self {
         self.choices = choices;
+        self
+    }
+
+    pub fn with_tagged_objects(
+        mut self,
+        tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    ) -> Self {
+        self.tagged_objects = tagged_objects;
         self
     }
 }
@@ -99,6 +113,7 @@ pub(crate) struct DelayedTriggerTemplate {
     pub controller: PlayerId,
     pub x_value: Option<u32>,
     pub choices: Vec<crate::target::ChooseSpec>,
+    pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
 }
 
 impl DelayedTriggerTemplate {
@@ -118,6 +133,7 @@ impl DelayedTriggerTemplate {
             controller,
             x_value: None,
             choices: Vec::new(),
+            tagged_objects: HashMap::new(),
         }
     }
 
@@ -146,6 +162,14 @@ impl DelayedTriggerTemplate {
         self.choices = choices;
         self
     }
+
+    pub fn with_tagged_objects(
+        mut self,
+        tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    ) -> Self {
+        self.tagged_objects = tagged_objects;
+        self
+    }
 }
 
 /// Push a delayed trigger onto the game queue.
@@ -161,6 +185,7 @@ pub(crate) fn queue_delayed_trigger(game: &mut GameState, config: DelayedTrigger
         ability_source: config.ability_source,
         controller: config.controller,
         choices: config.choices,
+        tagged_objects: config.tagged_objects,
     });
 }
 
@@ -187,7 +212,8 @@ pub(crate) fn queue_delayed_from_template(
                 .with_expires_at_turn(template.expires_at_turn)
                 .with_ability_source(template.ability_source)
                 .with_x_value(template.x_value)
-                .with_choices(template.choices),
+                .with_choices(template.choices)
+                .with_tagged_objects(template.tagged_objects),
             );
             1
         }
@@ -207,7 +233,8 @@ pub(crate) fn queue_delayed_from_template(
                     .with_expires_at_turn(template.expires_at_turn)
                     .with_ability_source(template.ability_source)
                     .with_x_value(template.x_value)
-                    .with_choices(template.choices.clone()),
+                    .with_choices(template.choices.clone())
+                    .with_tagged_objects(template.tagged_objects.clone()),
                 );
                 queued += 1;
             }

@@ -3,6 +3,272 @@ use super::*;
 type ParsedAbilityRule = fn(&[Token]) -> Result<Option<ParsedAbility>, CardTextError>;
 type OptionalCostRule = fn(&[Token]) -> Result<Option<OptionalCost>, CardTextError>;
 type AlternativeCastRule = fn(&[Token]) -> Result<Option<AlternativeCastingMethod>, CardTextError>;
+type LineRejectPredicate = fn(&str, &str) -> bool;
+
+#[derive(Clone, Copy)]
+struct LineRejectRule {
+    id: &'static str,
+    heads: &'static [&'static str],
+    message: &'static str,
+    predicate: LineRejectPredicate,
+}
+
+const PRE_TOKEN_REJECT_RULES: [LineRejectRule; 10] = [
+    LineRejectRule {
+        id: "commander-cast-count",
+        heads: &["for"],
+        message: "unsupported commander-cast-count clause",
+        predicate: line_has_commander_cast_count_clause,
+    },
+    LineRejectRule {
+        id: "verb-leading-spell",
+        heads: &["sacrifice"],
+        message: "unsupported verb-leading spell clause",
+        predicate: line_has_verb_leading_spell_clause,
+    },
+    LineRejectRule {
+        id: "choose-leading-spell",
+        heads: &["choose"],
+        message: "unsupported choose-leading spell clause",
+        predicate: line_has_choose_leading_spell_clause,
+    },
+    LineRejectRule {
+        id: "put-from-among",
+        heads: &[],
+        message: "unsupported put-from-among clause",
+        predicate: line_has_put_from_among_clause,
+    },
+    LineRejectRule {
+        id: "standalone-token-reminder",
+        heads: &["it"],
+        message: "unsupported standalone token reminder clause",
+        predicate: line_has_standalone_token_reminder_clause,
+    },
+    LineRejectRule {
+        id: "multi-destination-put",
+        heads: &["put"],
+        message: "unsupported multi-destination put clause",
+        predicate: line_has_multi_destination_put_clause,
+    },
+    LineRejectRule {
+        id: "marker-keyword-tail",
+        heads: &["ninjutsu"],
+        message: "unsupported marker keyword tail clause",
+        predicate: line_has_marker_keyword_tail_clause,
+    },
+    LineRejectRule {
+        id: "aura-copy-attachment-fanout",
+        heads: &[],
+        message: "unsupported aura-copy attachment fanout clause",
+        predicate: line_has_aura_copy_attachment_fanout_clause,
+    },
+    LineRejectRule {
+        id: "defending-players-choice",
+        heads: &["of", "target"],
+        message: "unsupported defending-players-choice clause",
+        predicate: line_has_defending_players_choice_clause,
+    },
+    LineRejectRule {
+        id: "first-spell-cost-modifier",
+        heads: &["the"],
+        message: "unsupported first-spell cost modifier mechanic",
+        predicate: line_has_first_spell_cost_modifier_clause,
+    },
+];
+
+const STATIC_LINE_REJECT_RULES: [LineRejectRule; 7] = [
+    LineRejectRule {
+        id: "activate-only-standalone",
+        heads: &["activate"],
+        message: "unsupported standalone activate-only restriction line",
+        predicate: line_has_activate_only_standalone_clause,
+    },
+    LineRejectRule {
+        id: "graveyard-cast-permission",
+        heads: &["you"],
+        message: "unsupported graveyard cast-permission static clause",
+        predicate: line_has_graveyard_cast_permission_clause,
+    },
+    LineRejectRule {
+        id: "pregame-replacement",
+        heads: &["if", "you"],
+        message: "unsupported pregame/replacement static clause",
+        predicate: line_has_pregame_or_replacement_clause,
+    },
+    LineRejectRule {
+        id: "dynamic-gets-from-counters",
+        heads: &[],
+        message: "unsupported dynamic gets-from-counters static clause",
+        predicate: line_has_dynamic_gets_from_counters_clause,
+    },
+    LineRejectRule {
+        id: "foretell-cost-modifier",
+        heads: &["foretelling"],
+        message: "unsupported foretell-cost modifier static clause",
+        predicate: line_has_foretell_cost_modifier_clause,
+    },
+    LineRejectRule {
+        id: "trigger-frequency-standalone",
+        heads: &["this"],
+        message: "unsupported standalone trigger-frequency restriction line",
+        predicate: line_has_trigger_frequency_restriction_clause,
+    },
+    LineRejectRule {
+        id: "level-marker-static",
+        heads: &[],
+        message: "unsupported level marker static clause",
+        predicate: line_has_level_marker_clause,
+    },
+];
+
+fn normalized_line_head(normalized: &str) -> &str {
+    normalized.split_whitespace().next().unwrap_or("")
+}
+
+fn reject_rule_head_matches(head: &str, candidates: &[&str]) -> bool {
+    candidates.is_empty() || candidates.iter().any(|candidate| *candidate == head)
+}
+
+fn apply_line_reject_rules(
+    line: &str,
+    normalized: &str,
+    normalized_without_braces: &str,
+    rules: &[LineRejectRule],
+) -> Result<(), CardTextError> {
+    let head = normalized_line_head(normalized);
+    for rule in rules {
+        if !reject_rule_head_matches(head, rule.heads) {
+            continue;
+        }
+        if (rule.predicate)(normalized, normalized_without_braces) {
+            return Err(CardTextError::ParseError(format!(
+                "{} (line: '{}') [rule={}]",
+                rule.message, line, rule.id
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn line_has_commander_cast_count_clause(normalized: &str, _: &str) -> bool {
+    normalized.contains("for each time")
+        && normalized.contains("cast")
+        && normalized.contains("commander")
+        && normalized.contains("from the command zone")
+}
+
+fn line_has_verb_leading_spell_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("sacrifice x lands")
+        && normalized.contains("you may play x additional lands this turn")
+}
+
+fn line_has_choose_leading_spell_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("choose target land")
+        && normalized.contains("create three tokens that are copies of it")
+}
+
+fn line_has_put_from_among_clause(normalized: &str, _: &str) -> bool {
+    normalized.contains("put a land card from among them into your hand")
+        || normalized.contains("put a card from among them into your hand")
+}
+
+fn line_has_standalone_token_reminder_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("it has \"this token gets +1/+1 for each card named")
+        && normalized.contains("in each graveyard")
+}
+
+fn line_has_multi_destination_put_clause(normalized: &str, _: &str) -> bool {
+    normalized.contains("put one of them into your hand and the rest into your graveyard")
+}
+
+fn line_has_marker_keyword_tail_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("ninjutsu abilities you activate cost")
+}
+
+fn line_has_aura_copy_attachment_fanout_clause(normalized: &str, _: &str) -> bool {
+    normalized.contains("copy of that aura attached to that creature")
+}
+
+fn line_has_defending_players_choice_clause(normalized: &str, _: &str) -> bool {
+    normalized.contains("of defending players choice")
+}
+
+fn line_has_first_spell_cost_modifier_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("the first creature spell you cast each turn costs")
+        && normalized.contains("less to cast")
+}
+
+fn line_has_activate_only_standalone_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("activate only")
+}
+
+fn line_has_graveyard_cast_permission_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("you may cast this card from your graveyard as long as you control")
+        || normalized.starts_with("you may cast this from your graveyard as long as you control")
+}
+
+fn line_has_pregame_or_replacement_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("if this card is in your opening hand")
+        || normalized.contains("you may begin the game with")
+        || (normalized.starts_with("if this land would enter")
+            && normalized.contains("if you do")
+            && normalized.contains("put this"))
+}
+
+fn line_has_dynamic_gets_from_counters_clause(normalized: &str, _: &str) -> bool {
+    normalized.contains("gets +x/+x")
+        && normalized.contains("where x is the number of counters on this")
+}
+
+fn line_has_foretell_cost_modifier_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("foretelling cards from your hand costs")
+}
+
+fn line_has_trigger_frequency_restriction_clause(normalized: &str, _: &str) -> bool {
+    normalized.starts_with("this ability triggers only")
+}
+
+fn line_has_level_marker_clause(normalized: &str, _: &str) -> bool {
+    normalized.contains(": level ")
+}
+
+fn line_is_known_unsupported_static_clause(
+    normalized: &str,
+    is_collective_restraint_domain_attack_tax: bool,
+    is_fixed_attack_tax_per_attacker: bool,
+) -> bool {
+    normalized == "play with the top card of your library revealed"
+        || normalized.starts_with("gain the next level as a sorcery to add its ability")
+        || normalized.starts_with("when this class becomes level")
+        || normalized.starts_with("whenever you play a card")
+        || normalized.starts_with("when there are no creatures on the battlefield")
+        || normalized.starts_with("when there are no creatures on battlefield")
+        || normalized == "you may play lands and cast spells from the top of your library"
+        || normalized == "play lands and cast spells from the top of your library"
+        || normalized == "all mountains are plains"
+        || normalized.starts_with("you may look at top card of your library any time")
+        || normalized.starts_with("you may look at the top card of your library any time")
+        || normalized.starts_with("once each turn, you may play a card from exile")
+        || normalized.starts_with("once each turn you may play a card from exile")
+        || (normalized.starts_with("creatures cant attack you unless")
+            && !is_collective_restraint_domain_attack_tax
+            && !is_fixed_attack_tax_per_attacker)
+        || normalized.starts_with("this creature cant attack unless")
+        || normalized.starts_with("this creature cant attack if")
+        || normalized.starts_with("this creature cant block unless")
+        || normalized.starts_with("this creature cant block if")
+        || normalized == "this creature attacks or blocks each combat if able"
+        || normalized
+            .starts_with("players cant untap more than one artifact during their untap steps")
+        || normalized.starts_with("as long as equipped creature is a human")
+        || normalized
+            .starts_with("while an opponent is choosing targets as part of casting a spell")
+        || normalized.starts_with("it enters with") && normalized.contains("+1/+1 counter")
+        || normalized.starts_with("enchanted creature gets -x/-x")
+        || normalized.starts_with("if one or more +1/+1 counters would be put on")
+        || normalized.starts_with("if an effect would create one or more tokens under your control")
+}
 
 fn parse_first_parsed_ability_rule(
     tokens: &[Token],
@@ -89,80 +355,12 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     let normalized = normalized.replace('\'', "").replace('’', "");
     let normalized_without_braces = normalized.replace('{', "").replace('}', "");
     let normalized_without_braces = normalized_without_braces.trim_end_matches('.');
-    if normalized.contains("for each time")
-        && normalized.contains("cast")
-        && normalized.contains("commander")
-        && normalized.contains("from the command zone")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported commander-cast-count clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.starts_with("sacrifice x lands")
-        && normalized.contains("you may play x additional lands this turn")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported verb-leading spell clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.starts_with("choose target land")
-        && normalized.contains("create three tokens that are copies of it")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported choose-leading spell clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.contains("put a land card from among them into your hand")
-        || normalized.contains("put a card from among them into your hand")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported put-from-among clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.starts_with("it has \"this token gets +1/+1 for each card named")
-        && normalized.contains("in each graveyard")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported standalone token reminder clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.contains("put one of them into your hand and the rest into your graveyard") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported multi-destination put clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.starts_with("ninjutsu abilities you activate cost") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported marker keyword tail clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.contains("copy of that aura attached to that creature") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported aura-copy attachment fanout clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.contains("of defending players choice") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported defending-players-choice clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.starts_with("the first creature spell you cast each turn costs")
-        && normalized.contains("less to cast")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported first-spell cost modifier mechanic (line: '{}')",
-            line
-        )));
-    }
+    apply_line_reject_rules(
+        line,
+        &normalized,
+        normalized_without_braces,
+        &PRE_TOKEN_REJECT_RULES,
+    )?;
     if normalized.starts_with("this effect cant reduce the mana in that cost to less than")
         || normalized.starts_with("this effect cant reduce the mana in those costs to less than")
     {
@@ -185,39 +383,12 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
-    if normalized.starts_with("activate only") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported standalone activate-only restriction line (line: '{}')",
-            line
-        )));
-    }
-    if normalized.starts_with("you may cast this card from your graveyard as long as you control")
-        || normalized.starts_with("you may cast this from your graveyard as long as you control")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported graveyard cast-permission static clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.starts_with("if this card is in your opening hand")
-        || normalized.contains("you may begin the game with")
-        || (normalized.starts_with("if this land would enter")
-            && normalized.contains("if you do")
-            && normalized.contains("put this"))
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported pregame/replacement static clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.contains("gets +x/+x")
-        && normalized.contains("where x is the number of counters on this")
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported dynamic gets-from-counters static clause (line: '{}')",
-            line
-        )));
-    }
+    apply_line_reject_rules(
+        line,
+        &normalized,
+        normalized_without_braces,
+        &STATIC_LINE_REJECT_RULES,
+    )?;
     let is_collective_restraint_domain_attack_tax = normalized_without_braces.starts_with(
         "creatures cant attack you unless their controller pays x for each creature they control thats attacking you",
     ) && normalized_without_braces.contains("where x is the number of basic land type");
@@ -250,12 +421,6 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
-    if normalized.starts_with("foretelling cards from your hand costs") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported foretell-cost modifier static clause (line: '{}')",
-            line
-        )));
-    }
     if normalized.starts_with("creatures with power less than this creatures power cant block it") {
         let tokens = tokenize_line(line, line_index);
         if let Ok(Some(abilities)) = parse_static_ability_line(&tokens) {
@@ -267,45 +432,13 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
-    if normalized == "play with the top card of your library revealed"
-        || normalized.starts_with("gain the next level as a sorcery to add its ability")
-        || normalized.starts_with("when this class becomes level")
-        || normalized.starts_with("whenever you play a card")
-        || normalized.starts_with("when there are no creatures on the battlefield")
-        || normalized.starts_with("when there are no creatures on battlefield")
-        || normalized == "you may play lands and cast spells from the top of your library"
-        || normalized == "play lands and cast spells from the top of your library"
-        || normalized == "all mountains are plains"
-        || normalized.starts_with("you may look at top card of your library any time")
-        || normalized.starts_with("you may look at the top card of your library any time")
-        || normalized.starts_with("once each turn, you may play a card from exile")
-        || normalized.starts_with("once each turn you may play a card from exile")
-        || (normalized.starts_with("creatures cant attack you unless")
-            && !is_collective_restraint_domain_attack_tax
-            && !is_fixed_attack_tax_per_attacker)
-        || normalized.starts_with("this creature cant attack unless")
-        || normalized.starts_with("this creature cant attack if")
-        || normalized.starts_with("this creature cant block unless")
-        || normalized.starts_with("this creature cant block if")
-        || normalized == "this creature attacks or blocks each combat if able"
-        || normalized
-            .starts_with("players cant untap more than one artifact during their untap steps")
-        || normalized.starts_with("as long as equipped creature is a human")
-        || normalized
-            .starts_with("while an opponent is choosing targets as part of casting a spell")
-        || normalized.starts_with("it enters with") && normalized.contains("+1/+1 counter")
-        || normalized.starts_with("enchanted creature gets -x/-x")
-        || normalized.starts_with("if one or more +1/+1 counters would be put on")
-        || normalized.starts_with("if an effect would create one or more tokens under your control")
-    {
+    if line_is_known_unsupported_static_clause(
+        &normalized,
+        is_collective_restraint_domain_attack_tax,
+        is_fixed_attack_tax_per_attacker,
+    ) {
         return Err(CardTextError::ParseError(format!(
             "unsupported static clause (line: '{}')",
-            line
-        )));
-    }
-    if normalized.starts_with("this ability triggers only") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported standalone trigger-frequency restriction line (line: '{}')",
             line
         )));
     }
@@ -323,13 +456,6 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     let tokens = tokenize_line(line, line_index);
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty line".to_string()));
-    }
-
-    if normalized.contains(": level ") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported level marker static clause (line: '{}')",
-            line
-        )));
     }
 
     if tokens
@@ -542,8 +668,12 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     let effects = parse_effect_sentences(&tokens)?;
     if effects.is_empty() {
         parser_trace("parse_line:branch=statement-empty", &tokens);
+        let head = tokens
+            .first()
+            .and_then(Token::as_word)
+            .unwrap_or("unknown-head");
         return Err(CardTextError::ParseError(format!(
-            "unsupported line: {line}"
+            "unsupported line (no-line-rule-match, head='{head}'): {line}"
         )));
     }
 

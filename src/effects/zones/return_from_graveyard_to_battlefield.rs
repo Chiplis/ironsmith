@@ -296,6 +296,42 @@ mod tests {
     }
 
     #[test]
+    fn test_reanimate_tagged_target_with_stale_object_id_fails() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let creature_id = create_creature_on_battlefield(&mut game, "Griselbrand", alice);
+        let mut snapshot = ObjectSnapshot::from_object(
+            game.object(creature_id).expect("creature should exist"),
+            &game,
+        );
+
+        let first_graveyard_id = game
+            .move_object(creature_id, Zone::Graveyard)
+            .expect("move to graveyard should succeed");
+        assert_ne!(first_graveyard_id, creature_id);
+        snapshot.object_id = first_graveyard_id;
+
+        let interim_battlefield_id = game
+            .move_object(first_graveyard_id, Zone::Battlefield)
+            .expect("move back to battlefield should succeed");
+        let second_graveyard_id = game
+            .move_object(interim_battlefield_id, Zone::Graveyard)
+            .expect("move back to graveyard should succeed");
+        assert_ne!(second_graveyard_id, first_graveyard_id);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.tag_object("reanimate_target", snapshot);
+
+        let effect = ReturnFromGraveyardToBattlefieldEffect::new(
+            ChooseSpec::Tagged("reanimate_target".into()),
+            false,
+        );
+        let result = effect.execute(&mut game, &mut ctx);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_reanimate_clone_box() {
         let effect = ReturnFromGraveyardToBattlefieldEffect::creature();
         let cloned = effect.clone_box();

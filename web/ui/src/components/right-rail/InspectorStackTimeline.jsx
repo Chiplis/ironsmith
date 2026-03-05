@@ -18,7 +18,6 @@ export default function InspectorStackTimeline({
   stackObjects = [],
   stackPreview = [],
   selectedObjectId = null,
-  forceVisible = false,
   onInspectObject,
 }) {
   const focusedDecision = isFocusedDecision(decision) && canAct;
@@ -27,11 +26,11 @@ export default function InspectorStackTimeline({
   const { newIds } = useNewCards(stackIds);
   const itemCount = stackObjects.length || stackPreview.length;
 
-  if (!forceVisible && !focusedDecision && !hasStackEntries) return null;
+  if (!hasStackEntries) return null;
 
   return (
     <section
-      className="absolute inset-x-0 bottom-0 z-[36] min-h-[172px] max-h-[54%] overflow-hidden border-t border-[#35506c] bg-[linear-gradient(180deg,rgba(6,14,24,0.64),rgba(5,10,18,0.9))] backdrop-blur-[2.2px] pointer-events-auto"
+      className="absolute inset-x-0 bottom-0 z-[36] h-[176px] overflow-hidden border-t border-[#35506c] bg-[linear-gradient(180deg,rgba(6,14,24,0.64),rgba(5,10,18,0.9))] backdrop-blur-[2.2px] pointer-events-auto"
       data-inspector-stack-timeline
     >
       <header className="flex items-center justify-between gap-2 border-b border-[#2f4864] px-2.5 py-1.5">
@@ -73,16 +72,6 @@ export default function InspectorStackTimeline({
                 </div>
               ))}
 
-          {focusedDecision && !hasStackEntries && (
-            <div className="rounded border border-[#2e445c] bg-[rgba(7,15,25,0.74)] px-2.5 py-2 text-[12px] text-[#a9c0dc]">
-              Stack is empty. Once this action is committed, it will appear here.
-            </div>
-          )}
-          {!focusedDecision && !hasStackEntries && (
-            <div className="rounded border border-[#2e445c] bg-[rgba(7,15,25,0.74)] px-2.5 py-2 text-[12px] text-[#a9c0dc]">
-              Stack is empty. Cast or activate something and it will appear here.
-            </div>
-          )}
         </div>
       </ScrollArea>
     </section>

@@ -100,7 +100,7 @@ pub(crate) fn parse_activated_line(
                         continue;
                     }
                     let ast = parse_effect_sentence(sentence)?;
-                    let compiled = compile_statement_effects(&ast)?;
+                    let compiled = lower_activation_sentence_effects(&ast)?;
                     extra_effects.extend(compiled);
                     extra_effects_ast.extend(ast);
                 }
@@ -153,13 +153,7 @@ pub(crate) fn parse_activated_line(
                 || has_chosen_color
             {
                 let mana_ast = parse_add_mana(mana_tokens, None)?;
-                let mut compile_ctx = CompileContext::new();
-                let (mut effects, choices) = compile_effect(&mana_ast, &mut compile_ctx)?;
-                if !choices.is_empty() {
-                    return Err(CardTextError::ParseError(
-                        "unsupported target choice in mana ability".to_string(),
-                    ));
-                }
+                let mut effects = lower_activation_primary_mana_effect(&mana_ast)?;
                 effects.extend(extra_effects);
                 let mut ability = Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
@@ -186,13 +180,7 @@ pub(crate) fn parse_activated_line(
 
             if has_or_choice_mana && !extra_effects.is_empty() {
                 let mana_ast = parse_add_mana(mana_tokens, None)?;
-                let mut compile_ctx = CompileContext::new();
-                let (mut effects, choices) = compile_effect(&mana_ast, &mut compile_ctx)?;
-                if !choices.is_empty() {
-                    return Err(CardTextError::ParseError(
-                        "unsupported target choice in mana ability".to_string(),
-                    ));
-                }
+                let mut effects = lower_activation_primary_mana_effect(&mana_ast)?;
                 effects.extend(extra_effects);
                 let mut ability = Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
@@ -331,7 +319,7 @@ pub(crate) fn parse_activated_line(
     let seed_tag = first_sacrifice_cost_choice_tag(&mana_cost)
         .or_else(|| last_exile_cost_choice_tag(&mana_cost))
         .map(|tag| tag.as_str().to_string());
-    let (effects, choices) = compile_trigger_effects_seeded(None, &effects_ast, seed_tag)?;
+    let (effects, choices) = lower_activated_ability_effects_seeded(&effects_ast, seed_tag)?;
     let mana_cost = crate::ability::merge_cost_effects(mana_cost, cost_effects);
 
     Ok(Some(ParsedAbility {

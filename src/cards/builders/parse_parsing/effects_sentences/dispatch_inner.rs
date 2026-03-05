@@ -1,5 +1,477 @@
 use super::*;
 
+type SentenceRejectPredicate = fn(&[&str], &[Token]) -> bool;
+
+#[derive(Clone, Copy)]
+struct SentenceRejectRule {
+    id: &'static str,
+    heads: &'static [&'static str],
+    message: &'static str,
+    predicate: SentenceRejectPredicate,
+}
+
+const SENTENCE_REJECT_RULES: [SentenceRejectRule; 31] = [
+    SentenceRejectRule {
+        id: "each-player-lose-discard-sacrifice-chain",
+        heads: &["each"],
+        message: "unsupported each-player lose/discard/sacrifice chain clause",
+        predicate: sentence_has_each_player_lose_discard_sacrifice_chain,
+    },
+    SentenceRejectRule {
+        id: "each-player-exile-sacrifice-return-this-way",
+        heads: &["each"],
+        message: "unsupported each-player exile/sacrifice/return-this-way clause",
+        predicate: sentence_has_each_player_exile_sacrifice_return_exiled_clause,
+    },
+    SentenceRejectRule {
+        id: "lose-all-abilities-with-becomes",
+        heads: &["target", "that", "it", "this", "creatures"],
+        message: "unsupported loses-all-abilities with becomes clause",
+        predicate: sentence_has_loses_all_abilities_with_becomes_clause,
+    },
+    SentenceRejectRule {
+        id: "spent-to-cast-conditional",
+        heads: &["if", "unless", "when", "as"],
+        message: "unsupported spent-to-cast conditional clause",
+        predicate: sentence_has_spent_to_cast_this_spell_without_condition,
+    },
+    SentenceRejectRule {
+        id: "would-enter-instead",
+        heads: &["if", "that", "it", "this"],
+        message: "unsupported would-enter replacement clause",
+        predicate: sentence_has_would_enter_instead_replacement_clause,
+    },
+    SentenceRejectRule {
+        id: "different-mana-value-constraint",
+        heads: &[],
+        message: "unsupported different-mana-value constraint clause",
+        predicate: sentence_has_different_mana_value_constraint,
+    },
+    SentenceRejectRule {
+        id: "most-common-color-constraint",
+        heads: &["choose", "destroy", "exile", "return"],
+        message: "unsupported most-common-color constraint clause",
+        predicate: sentence_has_most_common_color_constraint,
+    },
+    SentenceRejectRule {
+        id: "power-vs-count-constraint",
+        heads: &["if", "target", "destroy", "exile", "return"],
+        message: "unsupported power-vs-count conditional clause",
+        predicate: sentence_has_power_vs_count_constraint,
+    },
+    SentenceRejectRule {
+        id: "put-into-graveyards-from-battlefield-this-turn",
+        heads: &["for", "choose", "target", "destroy"],
+        message: "unsupported put-into-graveyards-from-battlefield count clause",
+        predicate: sentence_has_put_into_graveyards_from_battlefield_this_turn,
+    },
+    SentenceRejectRule {
+        id: "phase-out-until-leaves",
+        heads: &["phase", "target", "it", "that"],
+        message: "unsupported phase-out-until-leaves clause",
+        predicate: sentence_has_phase_out_until_leaves_clause,
+    },
+    SentenceRejectRule {
+        id: "investigate-for-each",
+        heads: &["investigate", "for"],
+        message: "unsupported investigate-for-each clause",
+        predicate: sentence_has_unsupported_investigate_for_each_clause,
+    },
+    SentenceRejectRule {
+        id: "same-name-as-another-in-hand",
+        heads: &["target", "choose", "discard"],
+        message: "unsupported same-name-as-another-in-hand discard clause",
+        predicate: sentence_has_same_name_as_another_in_hand_clause,
+    },
+    SentenceRejectRule {
+        id: "for-each-mana-from-spent",
+        heads: &["for"],
+        message: "unsupported for-each-mana-from-spent clause",
+        predicate: sentence_has_for_each_mana_from_spent_to_cast_clause,
+    },
+    SentenceRejectRule {
+        id: "when-you-sacrifice-this-way",
+        heads: &["when"],
+        message: "unsupported when-you-sacrifice-this-way clause",
+        predicate: sentence_has_when_you_sacrifice_this_way_clause,
+    },
+    SentenceRejectRule {
+        id: "sacrifice-any-number-then-draw-that-many",
+        heads: &["sacrifice", "each", "target", "you"],
+        message: "unsupported sacrifice-any-number-then-draw-that-many clause",
+        predicate: sentence_has_sacrifice_any_number_then_draw_that_many_clause,
+    },
+    SentenceRejectRule {
+        id: "greatest-mana-value",
+        heads: &["choose", "destroy", "exile", "return"],
+        message: "unsupported greatest-mana-value selection clause",
+        predicate: sentence_has_greatest_mana_value_clause,
+    },
+    SentenceRejectRule {
+        id: "least-power-among-creatures",
+        heads: &["choose", "destroy", "exile", "return"],
+        message: "unsupported least-power-among-creatures selection clause",
+        predicate: sentence_has_least_power_among_creatures_clause,
+    },
+    SentenceRejectRule {
+        id: "villainous-choice",
+        heads: &["villainous"],
+        message: "unsupported villainous-choice clause",
+        predicate: sentence_has_villainous_choice_clause,
+    },
+    SentenceRejectRule {
+        id: "divided-evenly",
+        heads: &["divide", "deals", "deal", "distribute"],
+        message: "unsupported divided-evenly damage clause",
+        predicate: sentence_has_divided_evenly_clause,
+    },
+    SentenceRejectRule {
+        id: "different-names",
+        heads: &["choose", "target", "destroy", "exile"],
+        message: "unsupported different-names selection clause",
+        predicate: sentence_has_different_names_clause,
+    },
+    SentenceRejectRule {
+        id: "chosen-at-random",
+        heads: &["choose", "target", "discard", "exile"],
+        message: "unsupported chosen-at-random clause",
+        predicate: sentence_has_chosen_at_random_clause,
+    },
+    SentenceRejectRule {
+        id: "draw-for-each-card-exiled-from-hand-this-way",
+        heads: &["draw", "for"],
+        message: "unsupported draw-for-each-card-exiled-from-hand clause",
+        predicate: sentence_has_for_each_card_exiled_from_hand_this_way_clause,
+    },
+    SentenceRejectRule {
+        id: "defending-players-choice",
+        heads: &["defending", "target", "of"],
+        message: "unsupported defending-players-choice clause",
+        predicate: sentence_has_defending_players_choice_clause,
+    },
+    SentenceRejectRule {
+        id: "creature-token-player-planeswalker-target",
+        heads: &["target"],
+        message: "unsupported creature-token/player/planeswalker target clause",
+        predicate: sentence_has_target_creature_token_player_planeswalker_clause,
+    },
+    SentenceRejectRule {
+        id: "if-you-sacrifice-an-island-this-way",
+        heads: &["if"],
+        message: "unsupported if-you-sacrifice-an-island-this-way clause",
+        predicate: sentence_has_if_you_sacrifice_an_island_this_way_clause,
+    },
+    SentenceRejectRule {
+        id: "commander-cast-count",
+        heads: &["for"],
+        message: "unsupported commander-cast-count clause",
+        predicate: sentence_has_commander_cast_count_clause,
+    },
+    SentenceRejectRule {
+        id: "spent-to-cast-condition",
+        heads: &["if", "unless", "when", "as"],
+        message: "unsupported spent-to-cast condition clause",
+        predicate: sentence_has_spent_to_cast_clause,
+    },
+    SentenceRejectRule {
+        id: "face-down",
+        heads: &["face", "turn", "cast", "exile", "manifest"],
+        message: "unsupported face-down clause",
+        predicate: sentence_has_face_down_clause,
+    },
+    SentenceRejectRule {
+        id: "copy-spell-legendary-exception",
+        heads: &["copy"],
+        message: "unsupported copy-spell legendary-exception clause",
+        predicate: sentence_has_copy_spell_legendary_exception_clause,
+    },
+    SentenceRejectRule {
+        id: "return-each-creature-that-isnt-list",
+        heads: &["return"],
+        message: "unsupported return-each-creature-that-isnt-list clause",
+        predicate: sentence_has_return_each_creature_that_isnt_list_clause,
+    },
+    SentenceRejectRule {
+        id: "negated-untap",
+        heads: &["this", "that", "target", "it", "creatures", "players"],
+        message: "unsupported negated untap clause",
+        predicate: sentence_has_unsupported_negated_untap_clause,
+    },
+];
+
+fn sentence_head<'a>(words: &[&'a str]) -> &'a str {
+    words.first().copied().unwrap_or("")
+}
+
+fn sentence_reject_rule_head_matches(head: &str, candidates: &[&str]) -> bool {
+    candidates.is_empty() || candidates.iter().any(|candidate| *candidate == head)
+}
+
+fn find_sentence_reject_rule(
+    sentence_words: &[&str],
+    tokens: &[Token],
+) -> Option<&'static SentenceRejectRule> {
+    let head = sentence_head(sentence_words);
+    SENTENCE_REJECT_RULES.iter().find(|rule| {
+        sentence_reject_rule_head_matches(head, rule.heads)
+            && (rule.predicate)(sentence_words, tokens)
+    })
+}
+
+fn sentence_has_each_player_lose_discard_sacrifice_chain(words: &[&str], _: &[Token]) -> bool {
+    words.starts_with(&["each", "player"])
+        && words.contains(&"then")
+        && (words.contains(&"lose") || words.contains(&"loses"))
+        && (words.contains(&"discard") || words.contains(&"discards"))
+        && (words.contains(&"sacrifice") || words.contains(&"sacrifices"))
+}
+
+fn sentence_has_each_player_exile_sacrifice_return_exiled_clause(
+    words: &[&str],
+    _: &[Token],
+) -> bool {
+    words.starts_with(&["each", "player", "exiles", "all"])
+        && words.contains(&"sacrifices")
+        && words.contains(&"puts")
+        && words.contains(&"exiled")
+        && words.contains(&"this")
+        && words.contains(&"way")
+}
+
+fn sentence_has_loses_all_abilities_with_becomes_clause(words: &[&str], _: &[Token]) -> bool {
+    let has_loses_all_abilities = (words.contains(&"lose") || words.contains(&"loses"))
+        && words
+            .windows(2)
+            .any(|window| window == ["all", "abilities"]);
+    has_loses_all_abilities && words.contains(&"becomes")
+}
+
+fn sentence_has_spent_to_cast_this_spell_without_condition(words: &[&str], _: &[Token]) -> bool {
+    let has_spent_to_cast_this_spell = words
+        .windows(6)
+        .any(|window| window == ["was", "spent", "to", "cast", "this", "spell"]);
+    has_spent_to_cast_this_spell && !words.iter().any(|word| matches!(*word, "if" | "unless"))
+}
+
+fn sentence_has_would_enter_instead_replacement_clause(words: &[&str], _: &[Token]) -> bool {
+    words.iter().any(|word| *word == "would")
+        && words
+            .iter()
+            .any(|word| *word == "enter" || *word == "enters")
+        && words.iter().any(|word| *word == "instead")
+}
+
+fn sentence_has_different_mana_value_constraint(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(3)
+        .any(|window| window == ["different", "mana", "value"])
+}
+
+fn sentence_has_most_common_color_constraint(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(5)
+        .any(|window| window == ["most", "common", "color", "among", "all"])
+        && words.contains(&"permanents")
+}
+
+fn sentence_has_power_vs_count_constraint(words: &[&str], _: &[Token]) -> bool {
+    words.contains(&"power")
+        && words
+            .windows(8)
+            .any(|window| window == ["less", "than", "or", "equal", "to", "the", "number", "of"])
+}
+
+fn sentence_has_put_into_graveyards_from_battlefield_this_turn(
+    words: &[&str],
+    _: &[Token],
+) -> bool {
+    words.windows(8).any(|window| {
+        window
+            == [
+                "put",
+                "into",
+                "graveyards",
+                "from",
+                "the",
+                "battlefield",
+                "this",
+                "turn",
+            ]
+    })
+}
+
+fn sentence_has_phase_out_until_leaves_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .iter()
+        .any(|word| matches!(*word, "phase" | "phases" | "phased"))
+        && words.contains(&"until")
+        && words
+            .windows(3)
+            .any(|window| window == ["leaves", "the", "battlefield"])
+}
+
+fn sentence_has_unsupported_investigate_for_each_clause(words: &[&str], _: &[Token]) -> bool {
+    let is_for_each_vote_investigate = words.starts_with(&["for", "each"])
+        && words.iter().any(|word| *word == "vote" || *word == "votes")
+        && words
+            .iter()
+            .any(|word| *word == "investigate" || *word == "investigates");
+    !is_for_each_vote_investigate
+        && words
+            .iter()
+            .any(|word| *word == "investigate" || *word == "investigates")
+        && words.windows(2).any(|window| window == ["for", "each"])
+}
+
+fn sentence_has_same_name_as_another_in_hand_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(6)
+        .any(|window| window == ["same", "name", "as", "another", "card", "in"])
+        && words.contains(&"hand")
+}
+
+fn sentence_has_for_each_mana_from_spent_to_cast_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(4)
+        .any(|window| window == ["for", "each", "mana", "from"])
+        && words.contains(&"spent")
+        && words
+            .windows(4)
+            .any(|window| window == ["cast", "this", "spell", "create"])
+}
+
+fn sentence_has_when_you_sacrifice_this_way_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(3)
+        .any(|window| window == ["when", "you", "sacrifice"])
+        && words.windows(2).any(|window| window == ["this", "way"])
+}
+
+fn sentence_has_sacrifice_any_number_then_draw_that_many_clause(
+    words: &[&str],
+    _: &[Token],
+) -> bool {
+    words
+        .iter()
+        .any(|word| *word == "sacrifice" || *word == "sacrifices")
+        && words
+            .windows(3)
+            .any(|window| window == ["any", "number", "of"])
+        && words.iter().any(|word| *word == "draw" || *word == "draws")
+        && words.windows(2).any(|window| window == ["that", "many"])
+}
+
+fn sentence_has_greatest_mana_value_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(3)
+        .any(|window| window == ["greatest", "mana", "value"])
+}
+
+fn sentence_has_least_power_among_creatures_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(4)
+        .any(|window| window == ["least", "power", "among", "creatures"])
+}
+
+fn sentence_has_villainous_choice_clause(words: &[&str], _: &[Token]) -> bool {
+    words.contains(&"villainous") && words.contains(&"choice")
+}
+
+fn sentence_has_divided_evenly_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(2)
+        .any(|window| window == ["divided", "evenly"])
+}
+
+fn sentence_has_different_names_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(2)
+        .any(|window| window == ["different", "names"])
+}
+
+fn sentence_has_chosen_at_random_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(3)
+        .any(|window| window == ["chosen", "at", "random"])
+}
+
+fn sentence_has_for_each_card_exiled_from_hand_this_way_clause(
+    words: &[&str],
+    _: &[Token],
+) -> bool {
+    words
+        .windows(4)
+        .any(|window| window == ["for", "each", "card", "exiled"])
+        && words
+            .windows(3)
+            .any(|window| window == ["hand", "this", "way"])
+}
+
+fn sentence_has_defending_players_choice_clause(words: &[&str], _: &[Token]) -> bool {
+    words.contains(&"defending")
+        && words
+            .windows(3)
+            .any(|window| window == ["player's", "choice", "target"])
+        || words
+            .windows(3)
+            .any(|window| window == ["defending", "player's", "choice"])
+}
+
+fn sentence_has_target_creature_token_player_planeswalker_clause(
+    words: &[&str],
+    _: &[Token],
+) -> bool {
+    words.contains(&"target")
+        && words.contains(&"creature")
+        && words.contains(&"token")
+        && words.contains(&"player")
+        && words.contains(&"planeswalker")
+}
+
+fn sentence_has_if_you_sacrifice_an_island_this_way_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(5)
+        .any(|window| window == ["if", "you", "sacrifice", "an", "island"])
+        && words.windows(2).any(|window| window == ["this", "way"])
+}
+
+fn sentence_has_commander_cast_count_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(3)
+        .any(|window| window == ["for", "each", "time"])
+        && words.contains(&"cast")
+        && words.contains(&"commander")
+        && words
+            .windows(4)
+            .any(|window| window == ["from", "the", "command", "zone"])
+}
+
+fn sentence_has_spent_to_cast_clause(words: &[&str], _: &[Token]) -> bool {
+    words
+        .windows(3)
+        .any(|window| window == ["spent", "to", "cast"])
+}
+
+fn sentence_has_face_down_clause(words: &[&str], _: &[Token]) -> bool {
+    words.windows(2).any(|window| window == ["face", "down"])
+}
+
+fn sentence_has_copy_spell_legendary_exception_clause(words: &[&str], _: &[Token]) -> bool {
+    words.contains(&"copy")
+        && words.contains(&"spell")
+        && words.contains(&"legendary")
+        && (words.contains(&"except") || words.contains(&"isnt"))
+}
+
+fn sentence_has_return_each_creature_that_isnt_list_clause(words: &[&str], _: &[Token]) -> bool {
+    words.starts_with(&["return", "each", "creature", "that", "isnt"])
+        && words.iter().filter(|word| **word == "or").count() >= 1
+}
+
+fn sentence_has_unsupported_negated_untap_clause(words: &[&str], _: &[Token]) -> bool {
+    is_negated_untap_clause(words) && !words.contains(&"and")
+}
+
 pub(crate) fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
     // Generic support for trailing "where X is ..." clauses.
     //
@@ -107,354 +579,6 @@ pub(crate) fn parse_effect_sentence_inner(
     if is_trigger_only_restriction_sentence(tokens) {
         return Ok(Vec::new());
     }
-    let is_each_player_lose_discard_sacrifice_chain = sentence_words
-        .starts_with(&["each", "player"])
-        && sentence_words.contains(&"then")
-        && (sentence_words.contains(&"lose") || sentence_words.contains(&"loses"))
-        && (sentence_words.contains(&"discard") || sentence_words.contains(&"discards"))
-        && (sentence_words.contains(&"sacrifice") || sentence_words.contains(&"sacrifices"));
-    if is_each_player_lose_discard_sacrifice_chain {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported each-player lose/discard/sacrifice chain clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let is_each_player_exile_sacrifice_return_exiled = sentence_words
-        .starts_with(&["each", "player", "exiles", "all"])
-        && sentence_words.contains(&"sacrifices")
-        && sentence_words.contains(&"puts")
-        && sentence_words.contains(&"exiled")
-        && sentence_words.contains(&"this")
-        && sentence_words.contains(&"way");
-    if is_each_player_exile_sacrifice_return_exiled {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported each-player exile/sacrifice/return-this-way clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_loses_all_abilities = (sentence_words.contains(&"lose")
-        || sentence_words.contains(&"loses"))
-        && sentence_words
-            .windows(2)
-            .any(|window| window == ["all", "abilities"]);
-    if has_loses_all_abilities && sentence_words.contains(&"becomes") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported loses-all-abilities with becomes clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    // where-X clauses are handled by the parse_effect_sentence wrapper.
-    let has_spent_to_cast_this_spell = sentence_words
-        .windows(6)
-        .any(|window| window == ["was", "spent", "to", "cast", "this", "spell"]);
-    if has_spent_to_cast_this_spell
-        && !sentence_words
-            .iter()
-            .any(|word| matches!(*word, "if" | "unless"))
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported spent-to-cast conditional clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_would_enter_instead_replacement = sentence_words.iter().any(|word| *word == "would")
-        && sentence_words
-            .iter()
-            .any(|word| *word == "enter" || *word == "enters")
-        && sentence_words.iter().any(|word| *word == "instead");
-    if has_would_enter_instead_replacement {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported would-enter replacement clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_different_mana_value_constraint = sentence_words
-        .windows(3)
-        .any(|window| window == ["different", "mana", "value"]);
-    if has_different_mana_value_constraint {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported different-mana-value constraint clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_most_common_color_constraint = sentence_words
-        .windows(5)
-        .any(|window| window == ["most", "common", "color", "among", "all"])
-        && sentence_words.contains(&"permanents");
-    if has_most_common_color_constraint {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported most-common-color constraint clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_power_vs_count_constraint = sentence_words.contains(&"power")
-        && sentence_words
-            .windows(8)
-            .any(|window| window == ["less", "than", "or", "equal", "to", "the", "number", "of"]);
-    if has_power_vs_count_constraint {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported power-vs-count conditional clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_put_into_graveyards_from_battlefield_this_turn =
-        sentence_words.windows(8).any(|window| {
-            window
-                == [
-                    "put",
-                    "into",
-                    "graveyards",
-                    "from",
-                    "the",
-                    "battlefield",
-                    "this",
-                    "turn",
-                ]
-        });
-    if has_put_into_graveyards_from_battlefield_this_turn {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported put-into-graveyards-from-battlefield count clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_phase_out_until_leaves = sentence_words
-        .iter()
-        .any(|word| matches!(*word, "phase" | "phases" | "phased"))
-        && sentence_words.contains(&"until")
-        && sentence_words
-            .windows(3)
-            .any(|window| window == ["leaves", "the", "battlefield"]);
-    if has_phase_out_until_leaves {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported phase-out-until-leaves clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let is_for_each_vote_investigate = sentence_words.starts_with(&["for", "each"])
-        && (sentence_words
-            .iter()
-            .any(|word| *word == "vote" || *word == "votes"))
-        && sentence_words
-            .iter()
-            .any(|word| *word == "investigate" || *word == "investigates");
-    if !is_for_each_vote_investigate
-        && sentence_words
-            .iter()
-            .any(|word| *word == "investigate" || *word == "investigates")
-        && sentence_words
-            .windows(2)
-            .any(|window| window == ["for", "each"])
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported investigate-for-each clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_same_name_as_another_in_hand = sentence_words
-        .windows(6)
-        .any(|window| window == ["same", "name", "as", "another", "card", "in"])
-        && sentence_words.contains(&"hand");
-    if has_same_name_as_another_in_hand {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported same-name-as-another-in-hand discard clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_for_each_mana_from_spent_to_cast = sentence_words
-        .windows(4)
-        .any(|window| window == ["for", "each", "mana", "from"])
-        && sentence_words.contains(&"spent")
-        && sentence_words
-            .windows(4)
-            .any(|window| window == ["cast", "this", "spell", "create"]);
-    if has_for_each_mana_from_spent_to_cast {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported for-each-mana-from-spent clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_when_you_sacrifice_this_way = sentence_words
-        .windows(3)
-        .any(|window| window == ["when", "you", "sacrifice"])
-        && sentence_words
-            .windows(2)
-            .any(|window| window == ["this", "way"]);
-    if has_when_you_sacrifice_this_way {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported when-you-sacrifice-this-way clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_sacrifice_any_number_then_draw_that_many = sentence_words
-        .iter()
-        .any(|word| *word == "sacrifice" || *word == "sacrifices")
-        && sentence_words
-            .windows(3)
-            .any(|window| window == ["any", "number", "of"])
-        && sentence_words
-            .iter()
-            .any(|word| *word == "draw" || *word == "draws")
-        && sentence_words
-            .windows(2)
-            .any(|window| window == ["that", "many"]);
-    if has_sacrifice_any_number_then_draw_that_many {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported sacrifice-any-number-then-draw-that-many clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_greatest_mana_value_clause = sentence_words
-        .windows(3)
-        .any(|window| window == ["greatest", "mana", "value"]);
-    if has_greatest_mana_value_clause {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported greatest-mana-value selection clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_least_power_among = sentence_words
-        .windows(4)
-        .any(|window| window == ["least", "power", "among", "creatures"]);
-    if has_least_power_among {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported least-power-among-creatures selection clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_villainous_choice =
-        sentence_words.contains(&"villainous") && sentence_words.contains(&"choice");
-    if has_villainous_choice {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported villainous-choice clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_divided_evenly = sentence_words
-        .windows(2)
-        .any(|window| window == ["divided", "evenly"]);
-    if has_divided_evenly {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported divided-evenly damage clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_with_different_names = sentence_words
-        .windows(2)
-        .any(|window| window == ["different", "names"]);
-    if has_with_different_names {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported different-names selection clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_chosen_at_random = sentence_words
-        .windows(3)
-        .any(|window| window == ["chosen", "at", "random"]);
-    if has_chosen_at_random {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported chosen-at-random clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_for_each_card_exiled_from_hand_this_way = sentence_words
-        .windows(4)
-        .any(|window| window == ["for", "each", "card", "exiled"])
-        && sentence_words
-            .windows(3)
-            .any(|window| window == ["hand", "this", "way"]);
-    if has_for_each_card_exiled_from_hand_this_way {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported draw-for-each-card-exiled-from-hand clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_defending_players_choice_clause = sentence_words.contains(&"defending")
-        && sentence_words
-            .windows(3)
-            .any(|window| window == ["player's", "choice", "target"])
-        || sentence_words
-            .windows(3)
-            .any(|window| window == ["defending", "player's", "choice"]);
-    if has_defending_players_choice_clause {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported defending-players-choice clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_target_creature_token_player_planeswalker_clause = sentence_words.contains(&"target")
-        && sentence_words.contains(&"creature")
-        && sentence_words.contains(&"token")
-        && sentence_words.contains(&"player")
-        && sentence_words.contains(&"planeswalker");
-    if has_target_creature_token_player_planeswalker_clause {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported creature-token/player/planeswalker target clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_if_you_sacrifice_an_island_this_way = sentence_words
-        .windows(5)
-        .any(|window| window == ["if", "you", "sacrifice", "an", "island"])
-        && sentence_words
-            .windows(2)
-            .any(|window| window == ["this", "way"]);
-    if has_if_you_sacrifice_an_island_this_way {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported if-you-sacrifice-an-island-this-way clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_commander_cast_count_clause = sentence_words
-        .windows(3)
-        .any(|window| window == ["for", "each", "time"])
-        && sentence_words.contains(&"cast")
-        && sentence_words.contains(&"commander")
-        && sentence_words
-            .windows(4)
-            .any(|window| window == ["from", "the", "command", "zone"]);
-    if has_commander_cast_count_clause {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported commander-cast-count clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_spent_to_cast_clause = sentence_words
-        .windows(3)
-        .any(|window| window == ["spent", "to", "cast"]);
-    if has_spent_to_cast_clause {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported spent-to-cast condition clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_face_down_clause = sentence_words
-        .windows(2)
-        .any(|window| window == ["face", "down"]);
-    if has_face_down_clause {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported face-down clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_copy_spell_legendary_exception = sentence_words.contains(&"copy")
-        && sentence_words.contains(&"spell")
-        && sentence_words.contains(&"legendary")
-        && (sentence_words.contains(&"except") || sentence_words.contains(&"isnt"));
-    if has_copy_spell_legendary_exception {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported copy-spell legendary-exception clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    let has_return_each_creature_that_isnt_list = sentence_words
-        .starts_with(&["return", "each", "creature", "that", "isnt"])
-        && sentence_words.iter().filter(|word| **word == "or").count() >= 1;
-    if has_return_each_creature_that_isnt_list {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported return-each-creature-that-isnt-list clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
     if sentence_words.starts_with(&["round", "up", "each", "time"]) {
         // "Round up each time." is reminder text for half P/T copy effects.
         // The semantic behavior is represented by the underlying token-copy primitive.
@@ -503,12 +627,6 @@ pub(crate) fn parse_effect_sentence_inner(
     if let Some(effects) = run_sentence_primitives(tokens, POST_CONDITIONAL_SENTENCE_PRIMITIVES)? {
         return Ok(effects);
     }
-    if is_negated_untap_clause(&sentence_words) && !sentence_words.contains(&"and") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported negated untap clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
 
     if is_ring_tempts_sentence(tokens) {
         return Err(CardTextError::ParseError(format!(
@@ -523,7 +641,20 @@ pub(crate) fn parse_effect_sentence_inner(
         )));
     }
 
-    let mut effects = parse_effect_chain(tokens)?;
+    let mut effects = match parse_effect_chain(tokens) {
+        Ok(effects) => effects,
+        Err(parse_err) => {
+            if let Some(rule) = find_sentence_reject_rule(&sentence_words, tokens) {
+                return Err(CardTextError::ParseError(format!(
+                    "{} (clause: '{}') [rule={}]",
+                    rule.message,
+                    sentence_words.join(" "),
+                    rule.id
+                )));
+            }
+            return Err(parse_err);
+        }
+    };
     apply_where_x_to_damage_amounts(tokens, &mut effects)?;
     Ok(effects)
 }
@@ -606,7 +737,7 @@ pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
     has_untap && has_negation
 }
 
-pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<EffectAst> {
+pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<TokenCopyFollowup> {
     let filtered: Vec<&str> = words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
@@ -618,7 +749,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<Eff
             | ["they", "gain", "haste", "until", "end", "of", "turn"]
     );
     if is_gain_haste_until_eot {
-        return Some(EffectAst::TokenCopyGainHasteUntilEot);
+        return Some(TokenCopyFollowup::GainHasteUntilEndOfTurn);
     }
 
     let is_has_haste = matches!(
@@ -626,7 +757,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<Eff
         ["it", "has", "haste"] | ["they", "have", "haste"]
     );
     if is_has_haste {
-        return Some(EffectAst::TokenCopyHasHaste);
+        return Some(TokenCopyFollowup::HasHaste);
     }
 
     if filtered.starts_with(&["sacrifice", "it"]) || filtered.starts_with(&["sacrifice", "them"]) {
@@ -634,7 +765,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<Eff
             .windows(6)
             .any(|window| window == ["at", "beginning", "of", "next", "end", "step"]);
         if has_next_end_step {
-            return Some(EffectAst::TokenCopySacrificeAtNextEndStep);
+            return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
         }
     }
     if filtered.starts_with(&["exile", "it"]) || filtered.starts_with(&["exile", "them"]) {
@@ -642,7 +773,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<Eff
             .windows(6)
             .any(|window| window == ["at", "beginning", "of", "next", "end", "step"]);
         if has_next_end_step {
-            return Some(EffectAst::TokenCopyExileAtNextEndStep);
+            return Some(TokenCopyFollowup::ExileAtNextEndStep);
         }
     }
 
@@ -676,7 +807,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<Eff
         "sacrifice",
     ]);
     if starts_delayed_end_step_sacrifice {
-        return Some(EffectAst::TokenCopySacrificeAtNextEndStep);
+        return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
     }
     let starts_delayed_end_step_exile = filtered.starts_with(&[
         "at",
@@ -708,7 +839,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[Token]) -> Option<Eff
         "exile",
     ]);
     if starts_delayed_end_step_exile {
-        return Some(EffectAst::TokenCopyExileAtNextEndStep);
+        return Some(TokenCopyFollowup::ExileAtNextEndStep);
     }
 
     None

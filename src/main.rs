@@ -385,6 +385,12 @@ fn run_meta(card_names: &[String]) -> Result<(), String> {
                     Err(CardTextError::UnsupportedLine(message)) => {
                         eprintln!("Unsupported line for {}: {message}", resolved_name);
                     }
+                    Err(CardTextError::InvariantViolation(message)) => {
+                        eprintln!(
+                            "Parser invariant violation for {}: {message}",
+                            resolved_name
+                        );
+                    }
                 }
             }
             None => {

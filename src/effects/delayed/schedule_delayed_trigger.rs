@@ -104,6 +104,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 {
                     continue;
                 }
+                let mut tagged_objects = ctx.tagged_objects.clone();
+                tagged_objects.insert(tag.clone(), vec![snapshot.clone()]);
                 let delayed = DelayedTriggerTemplate::new(
                     self.trigger.clone(),
                     self.effects.clone(),
@@ -120,7 +122,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                     Some(game.turn.turn_number)
                 } else {
                     None
-                });
+                })
+                .with_tagged_objects(tagged_objects);
                 queue_delayed_from_template(
                     game,
                     DelayedWatcherIdentity::combined(vec![snapshot.object_id]),
@@ -147,7 +150,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             Some(game.turn.turn_number)
         } else {
             None
-        });
+        })
+        .with_tagged_objects(ctx.tagged_objects.clone());
         queue_delayed_from_template(
             game,
             DelayedWatcherIdentity::combined(self.target_objects.clone()),
@@ -155,5 +159,74 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         );
 
         Ok(EffectOutcome::resolved())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::Effect;
+    use crate::executor::ExecutionContext;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    fn setup_game() -> GameState {
+        crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn test_schedule_delayed_trigger_captures_tagged_objects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+
+        let card = CardBuilder::new(CardId::from_raw(991), "Tagged Creature")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let graveyard_id = game.create_object_from_card(&card, alice, Zone::Graveyard);
+        let snapshot = ObjectSnapshot::from_object(
+            game.object(graveyard_id)
+                .expect("graveyard object should exist"),
+            &game,
+        );
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.tag_object("triggering", snapshot.clone());
+
+        let effect = ScheduleDelayedTriggerEffect::new(
+            Trigger::beginning_of_end_step(PlayerFilter::Any),
+            vec![Effect::new(
+                crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
+                    crate::target::ChooseSpec::Tagged("triggering".into()),
+                    false,
+                ),
+            )],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        );
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("schedule should resolve");
+        assert_eq!(outcome.result, crate::effect::EffectResult::Resolved);
+        assert_eq!(game.delayed_triggers.len(), 1);
+
+        let delayed = &game.delayed_triggers[0];
+        let tagged = delayed
+            .tagged_objects
+            .get("triggering")
+            .expect("captured triggering tag");
+        assert_eq!(tagged.len(), 1);
+        assert_eq!(tagged[0].object_id, snapshot.object_id);
     }
 }

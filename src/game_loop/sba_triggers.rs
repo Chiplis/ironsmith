@@ -540,6 +540,9 @@ fn triggered_to_stack_entry(game: &GameState, trigger: &TriggeredAbilityEntry) -
     )
     .with_source_info(trigger.source_stable_id, trigger.source_name.clone())
     .with_triggering_event(trigger.triggering_event.clone());
+    if !trigger.tagged_objects.is_empty() {
+        entry = entry.with_tagged_objects(trigger.tagged_objects.clone());
+    }
     if let Some(snapshot) = source_snapshot {
         entry = entry.with_source_snapshot(snapshot);
     }

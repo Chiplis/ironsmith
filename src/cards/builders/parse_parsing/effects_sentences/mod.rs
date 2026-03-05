@@ -1,5 +1,15 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TokenCopyFollowup {
+    HasHaste,
+    GainHasteUntilEndOfTurn,
+    SacrificeAtNextEndStep,
+    ExileAtNextEndStep,
+    ExileAtEndOfCombat,
+    SacrificeAtEndOfCombat,
+}
+
 mod chain_carry;
 mod conditionals;
 mod dispatch_entry;

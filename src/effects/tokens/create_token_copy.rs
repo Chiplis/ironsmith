@@ -931,10 +931,7 @@ mod tests {
         assert_eq!(cleanup_trigger_count, 2);
 
         let mut trigger_queue = crate::triggers::TriggerQueue::new();
-        let event = TriggerEvent::new_with_provenance(
-            EndOfCombatEvent::new(),
-            ctx.provenance,
-        );
+        let event = TriggerEvent::new_with_provenance(EndOfCombatEvent::new(), ctx.provenance);
         for entry in crate::triggers::check_delayed_triggers(&mut game, &event) {
             trigger_queue.add(entry);
         }

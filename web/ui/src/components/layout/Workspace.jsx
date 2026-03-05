@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useDragActions } from "@/context/DragContext";
 import { useHoverActions } from "@/context/HoverContext";
@@ -63,6 +63,7 @@ export default function Workspace({
   const [dismissedAddCardError, setDismissedAddCardError] = useState(false);
   const selectedObjectIsValid = objectExistsInState(state, selectedObjectId);
   const decision = state?.decision || null;
+  const combatDeclarationActive = decision?.kind === "attackers" || decision?.kind === "blockers";
   const hasFocusedDecision = Boolean(
     decision
     && decision.kind !== "priority"
@@ -81,6 +82,19 @@ export default function Workspace({
     if (selectedObjectIsValid) return;
     setSelectedObjectId(null);
   }, [selectedObjectId, selectedObjectIsValid]);
+
+  useEffect(() => {
+    if (!combatDeclarationActive) return;
+    setSelectedObjectId(null);
+  }, [combatDeclarationActive]);
+
+  const handleInspectObject = useCallback(
+    (objectId) => {
+      if (combatDeclarationActive) return;
+      setSelectedObjectId(objectId);
+    },
+    [combatDeclarationActive]
+  );
 
   // Handle drag drop — if user drops on the battlefield area, dispatch the action
   useEffect(() => {
@@ -105,13 +119,15 @@ export default function Workspace({
           { type: "priority_action", action_index: onlyAction.index },
           onlyAction.label
         );
-        if (ds.objectId != null) setSelectedObjectId(ds.objectId);
+        if (!combatDeclarationActive && ds.objectId != null) setSelectedObjectId(ds.objectId);
         return;
       }
 
       // Multiple possible actions: pin inspector to this card so choices
       // are shown inside the card inspector (instead of a floating popover).
-      setSelectedObjectId(ds.objectId != null ? ds.objectId : null);
+      if (!combatDeclarationActive) {
+        setSelectedObjectId(ds.objectId != null ? ds.objectId : null);
+      }
       clearHover();
     };
 
@@ -131,7 +147,7 @@ export default function Workspace({
       document.removeEventListener("pointercancel", onPointerCancel);
       window.removeEventListener("blur", onWindowBlur);
     };
-  }, [clearHover, dispatch, endDrag]);
+  }, [clearHover, combatDeclarationActive, dispatch, endDrag]);
 
   useEffect(() => {
     const onDeadZonePointerDown = (event) => {
@@ -173,7 +189,7 @@ export default function Workspace({
       <ArrowOverlay />
       <RightRail
         pinnedObjectId={selectedObjectId}
-        onInspectObject={setSelectedObjectId}
+        onInspectObject={handleInspectObject}
       />
       {addCardError && !dismissedAddCardError && (
         <button
@@ -191,7 +207,7 @@ export default function Workspace({
       >
         <TableCore
           selectedObjectId={selectedObjectId}
-          onInspect={setSelectedObjectId}
+          onInspect={handleInspectObject}
           zoneViews={zoneViews}
           setZoneViews={setZoneViews}
           deckLoadingMode={deckLoadingMode}
@@ -204,7 +220,7 @@ export default function Workspace({
         <DecisionPopupLayer priorityInline />
       </div>
       <div className="min-h-0 h-full overflow-visible">
-        <HandZone player={me} selectedObjectId={selectedObjectId} onInspect={setSelectedObjectId} />
+        <HandZone player={me} selectedObjectId={selectedObjectId} onInspect={handleInspectObject} />
       </div>
     </section>
   );

@@ -225,18 +225,6 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
     ]))
 }
 
-pub(crate) fn parse_sentence_token_copy_modifier(
-    tokens: &[Token],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let effect = parse_token_copy_modifier_sentence(tokens);
-    if effect.is_some() && tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "token copy modifier sentence missing tokens".to_string(),
-        ));
-    }
-    Ok(effect.map(|effect| vec![effect]))
-}
-
 pub(crate) fn parse_sentence_sacrifice_it_next_end_step(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2548,24 +2536,6 @@ pub(crate) fn parse_sentence_distribute_counters(
     Ok(Some(effects))
 }
 
-pub(crate) fn parse_sentence_exile_that_token_at_end_of_combat(
-    tokens: &[Token],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if is_exile_that_token_at_end_of_combat(tokens) {
-        return Ok(Some(vec![EffectAst::ExileThatTokenAtEndOfCombat]));
-    }
-    Ok(None)
-}
-
-pub(crate) fn parse_sentence_sacrifice_that_token_at_end_of_combat(
-    tokens: &[Token],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if is_sacrifice_that_token_at_end_of_combat(tokens) {
-        return Ok(Some(vec![EffectAst::SacrificeThatTokenAtEndOfCombat]));
-    }
-    Ok(None)
-}
-
 pub(crate) fn parse_sentence_take_extra_turn(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -3812,10 +3782,6 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parser: parse_sentence_sacrifice_at_end_of_combat,
     },
     SentencePrimitive {
-        name: "token-copy-modifier",
-        parser: parse_sentence_token_copy_modifier,
-    },
-    SentencePrimitive {
         name: "each-player-choose-keep-rest-sacrifice",
         parser: parse_sentence_each_player_choose_and_sacrifice_rest,
     },
@@ -3945,14 +3911,6 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "for-each-counter-kind-put-or-remove",
         parser: parse_sentence_for_each_counter_kind_put_or_remove,
-    },
-    SentencePrimitive {
-        name: "exile-that-token-end-of-combat",
-        parser: parse_sentence_exile_that_token_at_end_of_combat,
-    },
-    SentencePrimitive {
-        name: "sacrifice-that-token-end-of-combat",
-        parser: parse_sentence_sacrifice_that_token_at_end_of_combat,
     },
     SentencePrimitive {
         name: "take-extra-turn",

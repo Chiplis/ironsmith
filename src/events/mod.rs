@@ -355,7 +355,10 @@ impl Event {
 
     /// Create a discard event from an effect.
     pub fn discard_from_effect(card: ObjectId, player: PlayerId) -> Self {
-        Self::new_with_provenance(DiscardEvent::from_effect(card, player), ProvNodeId::default())
+        Self::new_with_provenance(
+            DiscardEvent::from_effect(card, player),
+            ProvNodeId::default(),
+        )
     }
 
     /// Create a discard event as a cost.
@@ -396,7 +399,10 @@ impl Event {
 
     /// Create a sacrifice event.
     pub fn sacrifice(permanent: ObjectId, source: Option<ObjectId>) -> Self {
-        Self::new_with_provenance(SacrificeEvent::new(permanent, source), ProvNodeId::default())
+        Self::new_with_provenance(
+            SacrificeEvent::new(permanent, source),
+            ProvNodeId::default(),
+        )
     }
 }
 

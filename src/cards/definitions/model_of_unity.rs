@@ -132,8 +132,10 @@ mod tests {
         )
         .with_votes(votes);
 
-        let event =
-            TriggerEvent::new_with_provenance(voting_event, crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            voting_event,
+            crate::provenance::ProvNodeId::default(),
+        );
         let triggered = check_triggers(&game, &event);
 
         assert_eq!(
@@ -236,8 +238,10 @@ mod tests {
         )
         .with_votes(votes);
 
-        let event =
-            TriggerEvent::new_with_provenance(voting_event, crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            voting_event,
+            crate::provenance::ProvNodeId::default(),
+        );
         let triggered = check_triggers(&game, &event);
 
         assert_eq!(

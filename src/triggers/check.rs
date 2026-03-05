@@ -41,6 +41,9 @@ pub struct TriggeredAbilityEntry {
     pub source_stable_id: StableId,
     /// Name of the source for display purposes.
     pub source_name: String,
+    /// Tagged objects captured at trigger time for delayed/tagged follow-up effects.
+    pub tagged_objects:
+        std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     /// Structural identity of this trigger ability.
     pub trigger_identity: TriggerIdentity,
 }
@@ -69,6 +72,9 @@ pub struct DelayedTrigger {
     pub controller: PlayerId,
     /// Target choices for when the trigger resolves (e.g., haunt effects that target a player).
     pub choices: Vec<crate::target::ChooseSpec>,
+    /// Tagged objects captured when this delayed trigger was created.
+    pub tagged_objects:
+        std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
 /// Queue of triggered abilities waiting to be put on the stack.
@@ -258,6 +264,7 @@ pub fn check_triggers(
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
+                    tagged_objects: std::collections::HashMap::new(),
                     trigger_identity,
                 };
                 for _ in 0..trigger_count {
@@ -320,6 +327,7 @@ pub fn check_triggers(
                         triggering_event: trigger_event.clone(),
                         source_stable_id: snapshot.stable_id,
                         source_name: snapshot.name.clone(),
+                        tagged_objects: std::collections::HashMap::new(),
                         trigger_identity,
                     };
                     for _ in 0..trigger_count {
@@ -399,6 +407,7 @@ pub fn check_triggers(
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
+                    tagged_objects: std::collections::HashMap::new(),
                     trigger_identity,
                 });
             }
@@ -440,6 +449,7 @@ pub fn check_triggers(
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
+                tagged_objects: std::collections::HashMap::new(),
                 trigger_identity,
             });
         }
@@ -537,6 +547,7 @@ pub fn check_delayed_triggers(
                 triggering_event: trigger_event.clone(),
                 source_stable_id,
                 source_name,
+                tagged_objects: delayed.tagged_objects.clone(),
                 trigger_identity: compute_delayed_trigger_identity(delayed),
             });
 
@@ -609,6 +620,7 @@ fn check_triggers_in_zone(
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
+                tagged_objects: std::collections::HashMap::new(),
                 trigger_identity,
             };
             for _ in 0..trigger_count {

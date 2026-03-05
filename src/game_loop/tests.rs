@@ -55,12 +55,10 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let source = ObjectId::from_raw(200);
 
-        let event = TriggerEvent::new_with_provenance(DamageEvent::new(
-            source,
-            EventDamageTarget::Player(bob),
-            4,
-            false,
-        ), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            DamageEvent::new(source, EventDamageTarget::Player(bob), 4, false),
+            crate::provenance::ProvNodeId::default(),
+        );
         queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
 
         assert_eq!(game.damage_to_players_this_turn.get(&bob), Some(&4));
@@ -76,7 +74,10 @@ mod tests {
         let mut trigger_queue = TriggerQueue::new();
         let alice = PlayerId::from_index(0);
 
-        let event = TriggerEvent::new_with_provenance(LifeGainEvent::new(alice, 5), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            LifeGainEvent::new(alice, 5),
+            crate::provenance::ProvNodeId::default(),
+        );
         queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
 
         assert_eq!(game.life_gained_this_turn.get(&alice), Some(&5));
@@ -88,7 +89,10 @@ mod tests {
         let mut trigger_queue = TriggerQueue::new();
         let bob = PlayerId::from_index(1);
 
-        let event = TriggerEvent::new_with_provenance(LifeLossEvent::from_effect(bob, 3), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            LifeLossEvent::from_effect(bob, 3),
+            crate::provenance::ProvNodeId::default(),
+        );
         queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
 
         assert_eq!(game.life_lost_this_turn.get(&bob), Some(&3));
@@ -237,6 +241,7 @@ mod tests {
             ability_source: None,
             controller: alice,
             choices: vec![],
+            tagged_objects: std::collections::HashMap::new(),
         });
 
         let moved = game.move_object(stangg_id, Zone::Graveyard);
@@ -348,7 +353,10 @@ mod tests {
 
         for source in [stangg_a, stangg_b] {
             let mut dm = crate::decision::AutoPassDecisionMaker;
-            let event = TriggerEvent::new_with_provenance(EnterBattlefieldEvent::new(source, Zone::Hand), crate::provenance::ProvNodeId::default());
+            let event = TriggerEvent::new_with_provenance(
+                EnterBattlefieldEvent::new(source, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            );
             let mut ctx =
                 ExecutionContext::new(source, alice, &mut dm).with_triggering_event(event);
             for effect in &etb.effects {
@@ -1089,6 +1097,33 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
+    fn create_delayed_reanimator(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(9010), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let id = game.create_object_from_card(&card, owner, Zone::Battlefield);
+        if let Some(obj) = game.object_mut(id) {
+            obj.abilities.push(Ability::triggered(
+                Trigger::this_dies(),
+                vec![
+                    Effect::tag_triggering_object("triggering"),
+                    Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+                        Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
+                        vec![Effect::return_from_graveyard_to_battlefield(
+                            ChooseSpec::Tagged("triggering".into()),
+                            false,
+                        )],
+                        true,
+                        Vec::new(),
+                        crate::target::PlayerFilter::You,
+                    )),
+                ],
+            ));
+        }
+        id
+    }
+
     fn undying_effects() -> Vec<Effect> {
         let trigger_tag = "undying_trigger";
         let return_tag = "undying_return";
@@ -1234,6 +1269,100 @@ mod tests {
                     .is_some_and(|obj| obj.name == "Graveyard Target")
             }),
             "target card should be returned to battlefield"
+        );
+    }
+
+    #[test]
+    fn test_delayed_tagged_graveyard_return_resolves() {
+        let mut game = setup_game();
+        let mut trigger_queue = TriggerQueue::new();
+        let alice = PlayerId::from_index(0);
+        let reanimator_id = create_delayed_reanimator(&mut game, alice, "Delayed Reanimator");
+
+        let first_graveyard_id = game
+            .move_object(reanimator_id, Zone::Graveyard)
+            .expect("creature should move to graveyard");
+        drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        put_triggers_on_stack(&mut game, &mut trigger_queue).expect("put dies trigger on stack");
+        while !game.stack_is_empty() {
+            resolve_stack_entry(&mut game).expect("resolve dies trigger");
+        }
+        assert_eq!(game.delayed_triggers.len(), 1);
+        assert!(
+            game.players[0].graveyard.contains(&first_graveyard_id),
+            "creature should still be in graveyard before delayed trigger resolves"
+        );
+
+        let end_step_event = TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+            crate::provenance::ProvNodeId::default(),
+        );
+        for trigger in crate::triggers::check_delayed_triggers(&mut game, &end_step_event) {
+            trigger_queue.add(trigger);
+        }
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("put delayed end-step trigger on stack");
+        while !game.stack_is_empty() {
+            resolve_stack_entry(&mut game).expect("resolve delayed return");
+        }
+
+        assert!(
+            game.battlefield.iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.name == "Delayed Reanimator")
+            }),
+            "creature should return from graveyard at next end step"
+        );
+    }
+
+    #[test]
+    fn test_delayed_tagged_graveyard_return_does_not_follow_zone_hops() {
+        let mut game = setup_game();
+        let mut trigger_queue = TriggerQueue::new();
+        let alice = PlayerId::from_index(0);
+        let reanimator_id = create_delayed_reanimator(&mut game, alice, "Delayed Reanimator");
+
+        let first_graveyard_id = game
+            .move_object(reanimator_id, Zone::Graveyard)
+            .expect("creature should move to graveyard");
+        drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        put_triggers_on_stack(&mut game, &mut trigger_queue).expect("put dies trigger on stack");
+        while !game.stack_is_empty() {
+            resolve_stack_entry(&mut game).expect("resolve dies trigger");
+        }
+        assert_eq!(game.delayed_triggers.len(), 1);
+
+        let exile_id = game
+            .move_object(first_graveyard_id, Zone::Exile)
+            .expect("creature should move to exile");
+        let second_graveyard_id = game
+            .move_object(exile_id, Zone::Graveyard)
+            .expect("creature should move back to graveyard");
+        assert_ne!(second_graveyard_id, first_graveyard_id);
+
+        let end_step_event = TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+            crate::provenance::ProvNodeId::default(),
+        );
+        for trigger in crate::triggers::check_delayed_triggers(&mut game, &end_step_event) {
+            trigger_queue.add(trigger);
+        }
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("put delayed end-step trigger on stack");
+        while !game.stack_is_empty() {
+            resolve_stack_entry(&mut game).expect("resolve delayed return");
+        }
+
+        assert!(
+            game.players[0].graveyard.contains(&second_graveyard_id),
+            "creature should stay in graveyard after zone-hop (original instance is lost)"
+        );
+        assert!(
+            !game.battlefield.iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.name == "Delayed Reanimator")
+            }),
+            "delayed return should not follow a different graveyard instance"
         );
     }
 
@@ -1635,12 +1764,15 @@ mod tests {
         }
 
         // Simulate ETB event
-        let event = TriggerEvent::new_with_provenance(crate::events::zones::ZoneChangeEvent::new(
-            creature_id,
-            Zone::Stack,
-            Zone::Battlefield,
-            None,
-        ), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::new(
+                creature_id,
+                Zone::Stack,
+                Zone::Battlefield,
+                None,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
 
         let mut trigger_queue = TriggerQueue::new();
         let triggers = check_triggers(&game, &event);
@@ -2310,7 +2442,10 @@ mod tests {
         );
 
         // Simulate the BecameMonstrous event
-        let event = TriggerEvent::new_with_provenance(BecameMonstrousEvent::new(dragon_id, alice, 3), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            BecameMonstrousEvent::new(dragon_id, alice, 3),
+            crate::provenance::ProvNodeId::default(),
+        );
 
         // Check if triggers fire
         let triggers = check_triggers(&game, &event);
@@ -2428,10 +2563,10 @@ mod tests {
         game.remove_summoning_sickness(geist_id);
 
         // Simulate the attack event
-        let event = TriggerEvent::new_with_provenance(CreatureAttackedEvent::new(
-            geist_id,
-            AttackEventTarget::Player(bob),
-        ), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(geist_id, AttackEventTarget::Player(bob)),
+            crate::provenance::ProvNodeId::default(),
+        );
 
         // Check if triggers fire
         let triggers = check_triggers(&game, &event);
@@ -2620,7 +2755,10 @@ mod tests {
         execute_effect(&mut game, &effect, &mut ctx).unwrap();
 
         // Now simulate the BecameMonstrous event (which would be generated by the game loop)
-        let event = TriggerEvent::new_with_provenance(BecameMonstrousEvent::new(dragon_id, alice, 3), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            BecameMonstrousEvent::new(dragon_id, alice, 3),
+            crate::provenance::ProvNodeId::default(),
+        );
 
         // Check if the dragon's "becomes monstrous" trigger fires
         let triggers = check_triggers(&game, &event);
@@ -3065,12 +3203,15 @@ mod tests {
         );
 
         // Simulate death event
-        let event = TriggerEvent::new_with_provenance(ZoneChangeEvent::new(
-            creature_id,
-            Zone::Battlefield,
-            Zone::Graveyard,
-            Some(snapshot),
-        ), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::new(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
 
         // Check triggers - should generate an undying trigger
         let triggers = check_triggers(&game, &event);
@@ -3123,12 +3264,15 @@ mod tests {
         );
 
         // Simulate death event
-        let event = TriggerEvent::new_with_provenance(ZoneChangeEvent::new(
-            creature_id,
-            Zone::Battlefield,
-            Zone::Graveyard,
-            Some(snapshot),
-        ), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::new(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
 
         // Check triggers - should NOT generate an undying trigger
         let triggers = check_triggers(&game, &event);
@@ -3177,12 +3321,15 @@ mod tests {
         );
 
         // Simulate death event
-        let event = TriggerEvent::new_with_provenance(ZoneChangeEvent::new(
-            creature_id,
-            Zone::Battlefield,
-            Zone::Graveyard,
-            Some(snapshot),
-        ), crate::provenance::ProvNodeId::default());
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::new(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
 
         // Check triggers - should generate a persist trigger
         let triggers = check_triggers(&game, &event);
@@ -3217,12 +3364,15 @@ mod tests {
         let graveyard_id = game.player(alice).unwrap().graveyard[0];
 
         // Create triggering event with the snapshot
-        let trigger_event = TriggerEvent::new_with_provenance(ZoneChangeEvent::new(
-            creature_id,
-            Zone::Battlefield,
-            Zone::Graveyard,
-            Some(snapshot),
-        ), crate::provenance::ProvNodeId::default());
+        let trigger_event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::new(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
 
         let mut ctx = ExecutionContext::new_default(graveyard_id, alice);
         ctx.triggering_event = Some(trigger_event);
