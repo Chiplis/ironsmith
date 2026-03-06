@@ -6,6 +6,11 @@ pub(crate) struct PreparedEffectsForLowering {
     pub(crate) bindings: ReferenceBindings,
 }
 
+#[derive(Debug, Clone, Default)]
+struct LoweredCardState {
+    haunt_linkage: Option<(Vec<Effect>, Vec<ChooseSpec>)>,
+}
+
 pub(crate) fn prepare_effects_for_lowering(
     effects: &[EffectAst],
     seed_last_object_tag: Option<&str>,
@@ -43,12 +48,14 @@ pub(crate) fn lower_card_ast(
 
     let mut level_abilities = Vec::new();
     let mut last_restrictable_ability: Option<usize> = None;
+    let mut state = LoweredCardState::default();
 
     for item in items {
         match item {
             ParsedCardItem::Line(line) => {
                 lower_line_ast(
                     &mut builder,
+                    &mut state,
                     &mut annotations,
                     line,
                     allow_unsupported,
@@ -74,12 +81,13 @@ pub(crate) fn lower_card_ast(
         builder = builder.with_level_abilities(level_abilities);
     }
 
-    builder = finalize_lowered_card(builder);
+    builder = finalize_lowered_card(builder, &mut state);
     Ok((builder.build(), annotations))
 }
 
 fn lower_line_ast(
     builder: &mut CardDefinitionBuilder,
+    state: &mut LoweredCardState,
     annotations: &mut ParseAnnotations,
     line: ParsedLineAst,
     allow_unsupported: bool,
@@ -109,6 +117,7 @@ fn lower_line_ast(
         let abilities_before = builder.abilities.len();
         *builder = apply_line_ast(
             builder.clone(),
+            state,
             parsed,
             &info,
             allow_unsupported,
@@ -192,12 +201,15 @@ pub(crate) fn lower_parsed_modal(
     finalize_pending_modal(builder, modal, allow_unsupported)
 }
 
-pub(crate) fn finalize_lowered_card(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
+fn finalize_lowered_card(
+    mut builder: CardDefinitionBuilder,
+    state: &mut LoweredCardState,
+) -> CardDefinitionBuilder {
     builder = normalize_channel_spell_effect(builder);
     builder = normalize_chaotic_transformation_spell_effect(builder);
     builder = normalize_glimpse_of_nature_spell_effect(builder);
     builder = normalize_take_to_the_streets_spell_effect(builder);
-    finalize_haunt(builder)
+    apply_pending_mechanic_linkages(builder, state)
 }
 
 fn normalize_channel_spell_effect(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
@@ -765,8 +777,9 @@ fn infer_triggered_ability_functional_zones(
     zones
 }
 
-pub(crate) fn apply_line_ast(
+fn apply_line_ast(
     mut builder: CardDefinitionBuilder,
+    state: &mut LoweredCardState,
     parsed: LineAst,
     info: &LineInfo,
     allow_unsupported: bool,
@@ -1118,7 +1131,7 @@ pub(crate) fn apply_line_ast(
             if contains_haunted_creature_dies
                 && let AbilityKind::Triggered(triggered) = &parsed.ability.kind
             {
-                builder.haunt_delayed_effects =
+                state.haunt_linkage =
                     Some((triggered.effects.clone(), triggered.choices.clone()));
             }
             builder = builder.with_ability(parsed.ability);
@@ -1142,8 +1155,11 @@ fn push_unsupported_marker(
     )
 }
 
-fn finalize_haunt(mut builder: CardDefinitionBuilder) -> CardDefinitionBuilder {
-    let Some((haunt_effects, haunt_choices)) = builder.haunt_delayed_effects.take() else {
+fn apply_pending_mechanic_linkages(
+    mut builder: CardDefinitionBuilder,
+    state: &mut LoweredCardState,
+) -> CardDefinitionBuilder {
+    let Some((haunt_effects, haunt_choices)) = state.haunt_linkage.take() else {
         return builder;
     };
 

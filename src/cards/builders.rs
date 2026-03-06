@@ -1519,9 +1519,6 @@ pub struct CardDefinitionBuilder {
     /// For Auras: what this card can enchant (used for non-target attachments)
     aura_attach_filter: Option<ObjectFilter>,
 
-    /// Haunt delayed effects: stashed during parsing of "enters or the creature it haunts dies"
-    /// trigger lines, then consumed by finalize_haunt() to embed into the haunt exile effect.
-    haunt_delayed_effects: Option<(Vec<Effect>, Vec<ChooseSpec>)>,
 }
 
 impl CardDefinitionBuilder {
@@ -1615,7 +1612,6 @@ impl CardDefinitionBuilder {
             max_saga_chapter: None,
             additional_cost: TotalCost::free(),
             aura_attach_filter: None,
-            haunt_delayed_effects: None,
         }
     }
 
