@@ -7816,7 +7816,7 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     }
     if clause_words.contains(&"copy") {
         return Err(CardTextError::ParseError(format!(
-            "unsupported enters-as-copy replacement clause (clause: '{}')",
+            "unsupported enters-as-copy replacement clause (clause: '{}') [rule=enters-as-copy]",
             clause_words.join(" ")
         )));
     }

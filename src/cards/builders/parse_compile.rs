@@ -213,18 +213,26 @@ pub(crate) fn compile_statement_effects_with_seed(
     effects: &[EffectAst],
     seed_last_object_tag: Option<&str>,
 ) -> Result<Vec<Effect>, CardTextError> {
-    let resolved_effects = prepare_effects_for_lowering(effects, seed_last_object_tag);
-    compile_statement_effects_prepared(&resolved_effects)
+    let prepared = prepare_effects_for_lowering(effects, seed_last_object_tag);
+    compile_statement_effects_prepared(&prepared)
 }
 
 fn compile_statement_effects_prepared(
-    resolved_effects: &[EffectAst],
+    prepared: &PreparedEffectsForLowering,
 ) -> Result<Vec<Effect>, CardTextError> {
     let mut ctx = CompileContext::new();
     ctx.force_auto_tag_object_targets = true;
     ctx.allow_life_event_value = false;
-    let prelude = seed_attached_source_tag_prelude(&mut ctx, resolved_effects);
-    let (compiled, _) = compile_effects(resolved_effects, &mut ctx)?;
+    if prepared.bindings.seed_tag.as_str() != IT_TAG {
+        ctx.last_object_tag = Some(prepared.bindings.seed_tag.as_str().to_string());
+    }
+    let prelude = seed_attached_source_tag_prelude(&mut ctx, &prepared.effects);
+    let mut id_gen = ctx.id_gen_context();
+    let frame_in = ctx.lowering_frame();
+    let (compiled, _, frame_out) =
+        compile_effects_with_explicit_frame(&prepared.effects, &mut id_gen, frame_in)?;
+    ctx.apply_id_gen_context(id_gen);
+    ctx.apply_lowering_frame(frame_out);
     Ok(prepend_effect_prelude(compiled, prelude))
 }
 
@@ -672,18 +680,21 @@ pub(crate) fn compile_trigger_effects_with_intervening_if_seed(
     ctx.allow_life_event_value = trigger
         .map(|trigger| trigger_supports_event_value(trigger, &EventValueSpec::Amount))
         .unwrap_or(false);
-    let resolved_effects = prepare_effects_for_lowering(effects, seed_last_object_tag);
-    let prelude = seed_attached_source_tag_prelude(&mut ctx, &resolved_effects);
-    maybe_seed_default_trigger_object_tag(&mut ctx, trigger, &resolved_effects);
+    let prepared = prepare_effects_for_lowering(effects, seed_last_object_tag);
+    if prepared.bindings.seed_tag.as_str() != IT_TAG {
+        ctx.last_object_tag = Some(prepared.bindings.seed_tag.as_str().to_string());
+    }
+    let prelude = seed_attached_source_tag_prelude(&mut ctx, &prepared.effects);
+    maybe_seed_default_trigger_object_tag(&mut ctx, trigger, &prepared.effects);
     let mut intervening_if: Option<Condition> = None;
-    let mut effects_to_compile = resolved_effects.as_slice();
+    let mut effects_to_compile = prepared.effects.as_slice();
     let mut extracted_predicate: Option<&PredicateAst> = None;
-    if resolved_effects.len() == 1
+    if prepared.effects.len() == 1
         && let EffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } = &resolved_effects[0]
+        } = &prepared.effects[0]
         && if_false.is_empty()
         && !if_true.is_empty()
     {
@@ -700,10 +711,15 @@ pub(crate) fn compile_trigger_effects_with_intervening_if_seed(
         )?);
     }
 
-    let (compiled, choices) = compile_effects(effects_to_compile, &mut ctx)?;
+    let mut id_gen = ctx.id_gen_context();
+    let frame_in = ctx.lowering_frame();
+    let (compiled, choices, frame_out) =
+        compile_effects_with_explicit_frame(effects_to_compile, &mut id_gen, frame_in)?;
+    ctx.apply_id_gen_context(id_gen);
+    ctx.apply_lowering_frame(frame_out);
     let compiled = prepend_effect_prelude(compiled, prelude);
     let compiled =
-        prepend_trigger_tag_effects(compiled, &resolved_effects, ctx.last_object_tag.as_deref());
+        prepend_trigger_tag_effects(compiled, &prepared.effects, ctx.last_object_tag.as_deref());
     Ok((compiled, choices, intervening_if))
 }
 
@@ -1589,6 +1605,18 @@ pub(crate) fn compile_effects(
     Ok((compiled, choices))
 }
 
+pub(crate) fn compile_effects_with_explicit_frame(
+    effects: &[EffectAst],
+    id_gen: &mut IdGenContext,
+    frame: LoweringFrame,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>, LoweringFrame), CardTextError> {
+    let mut ctx = CompileContext::from_parts(id_gen.clone(), frame);
+    let (compiled, choices) = compile_effects(effects, &mut ctx)?;
+    *id_gen = ctx.id_gen_context();
+    let frame_out = ctx.lowering_frame();
+    Ok((compiled, choices, frame_out))
+}
+
 fn prepend_missing_target_choice_prelude(
     mut compiled: Vec<Effect>,
     choices: &[ChooseSpec],
@@ -2091,33 +2119,18 @@ pub(crate) fn compile_if_do_with_player_did(
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompileContextState {
-    iterated_player: bool,
-    last_effect_id: Option<EffectId>,
-    last_object_tag: Option<String>,
-    last_player_filter: Option<PlayerFilter>,
-    force_auto_tag_object_targets: bool,
-    bind_unbound_x_to_last_effect: bool,
+    frame: LoweringFrame,
 }
 
 impl CompileContextState {
     fn capture(ctx: &CompileContext) -> Self {
         Self {
-            iterated_player: ctx.iterated_player,
-            last_effect_id: ctx.last_effect_id,
-            last_object_tag: ctx.last_object_tag.clone(),
-            last_player_filter: ctx.last_player_filter.clone(),
-            force_auto_tag_object_targets: ctx.force_auto_tag_object_targets,
-            bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
+            frame: ctx.lowering_frame(),
         }
     }
 
     fn restore(self, ctx: &mut CompileContext) {
-        ctx.iterated_player = self.iterated_player;
-        ctx.last_effect_id = self.last_effect_id;
-        ctx.last_object_tag = self.last_object_tag;
-        ctx.last_player_filter = self.last_player_filter;
-        ctx.force_auto_tag_object_targets = self.force_auto_tag_object_targets;
-        ctx.bind_unbound_x_to_last_effect = self.bind_unbound_x_to_last_effect;
+        ctx.apply_lowering_frame(self.frame);
     }
 }
 
@@ -2141,10 +2154,14 @@ pub(crate) fn compile_effects_preserving_last_effect(
     effects: &[EffectAst],
     ctx: &mut CompileContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    let saved_last_effect = ctx.last_effect_id;
-    let result = compile_effects(effects, ctx);
-    ctx.last_effect_id = saved_last_effect;
-    result
+    let saved_frame = ctx.lowering_frame();
+    let mut id_gen = ctx.id_gen_context();
+    let (compiled, choices, mut frame_out) =
+        compile_effects_with_explicit_frame(effects, &mut id_gen, saved_frame.clone())?;
+    frame_out.last_effect_id = saved_frame.last_effect_id;
+    ctx.apply_id_gen_context(id_gen);
+    ctx.apply_lowering_frame(frame_out);
+    Ok((compiled, choices))
 }
 
 pub(crate) fn compile_effects_in_iterated_player_context(
@@ -2152,24 +2169,28 @@ pub(crate) fn compile_effects_in_iterated_player_context(
     ctx: &mut CompileContext,
     tagged_object: Option<String>,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    let saved = CompileContextState::capture(ctx);
-    ctx.iterated_player = true;
-    ctx.last_effect_id = None;
+    let saved_frame = ctx.lowering_frame();
+    let mut iterated_frame = saved_frame.clone();
+    iterated_frame.iterated_player = true;
+    iterated_frame.last_effect_id = None;
     if let Some(tag) = tagged_object.clone() {
-        ctx.last_object_tag = Some(tag);
+        iterated_frame.last_object_tag = Some(tag);
     }
 
-    let result = compile_effects(effects, ctx);
+    let mut id_gen = ctx.id_gen_context();
+    let (compiled, choices, frame_out) =
+        compile_effects_with_explicit_frame(effects, &mut id_gen, iterated_frame)?;
+    ctx.apply_id_gen_context(id_gen);
     let produced_last_tag = if tagged_object.is_none() {
-        ctx.last_object_tag.clone()
+        frame_out.last_object_tag.clone()
     } else {
         None
     };
-    saved.restore(ctx);
+    ctx.apply_lowering_frame(saved_frame);
     if let Some(tag) = produced_last_tag {
         ctx.last_object_tag = Some(tag);
     }
-    result
+    Ok((compiled, choices))
 }
 
 pub(crate) fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
@@ -2579,14 +2600,129 @@ type EffectCompileOutcome = (Vec<Effect>, Vec<ChooseSpec>);
 type EffectCompileHandler =
     fn(&EffectAst, &mut CompileContext) -> Result<Option<EffectCompileOutcome>, CardTextError>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EffectCompileRoute {
+    CombatAndDamage,
+    BoardState,
+    PlayerResourceAndChoice,
+    TimingAndControl,
+    FlowAndIteration,
+    DestroyAndExile,
+    VisibilityAndCardSelection,
+    StackAndCondition,
+    AttachmentAndSetup,
+    TokenGeneration,
+    ContinuousAndModifier,
+    SearchAndReorder,
+    ObjectZoneAndExchange,
+    PlayerTurnAndCounter,
+}
+
+const EFFECT_COMPILE_ROUTE_RULES: [KeyedRuleDef<EffectCompileRoute, EffectCompileHandler>; 14] = [
+    KeyedRuleDef {
+        id: "combat-and-damage",
+        key: EffectCompileRoute::CombatAndDamage,
+        priority: 100,
+        value: try_compile_combat_and_damage_effect,
+    },
+    KeyedRuleDef {
+        id: "board-state",
+        key: EffectCompileRoute::BoardState,
+        priority: 110,
+        value: try_compile_board_state_effect,
+    },
+    KeyedRuleDef {
+        id: "player-resource-and-choice",
+        key: EffectCompileRoute::PlayerResourceAndChoice,
+        priority: 120,
+        value: try_compile_player_resource_and_choice_effect,
+    },
+    KeyedRuleDef {
+        id: "timing-and-control",
+        key: EffectCompileRoute::TimingAndControl,
+        priority: 130,
+        value: try_compile_timing_and_control_effect,
+    },
+    KeyedRuleDef {
+        id: "flow-and-iteration",
+        key: EffectCompileRoute::FlowAndIteration,
+        priority: 140,
+        value: try_compile_flow_and_iteration_effect,
+    },
+    KeyedRuleDef {
+        id: "destroy-and-exile",
+        key: EffectCompileRoute::DestroyAndExile,
+        priority: 150,
+        value: try_compile_destroy_and_exile_effect,
+    },
+    KeyedRuleDef {
+        id: "visibility-and-card-selection",
+        key: EffectCompileRoute::VisibilityAndCardSelection,
+        priority: 160,
+        value: try_compile_visibility_and_card_selection_effect,
+    },
+    KeyedRuleDef {
+        id: "stack-and-condition",
+        key: EffectCompileRoute::StackAndCondition,
+        priority: 170,
+        value: try_compile_stack_and_condition_effect,
+    },
+    KeyedRuleDef {
+        id: "attachment-and-setup",
+        key: EffectCompileRoute::AttachmentAndSetup,
+        priority: 180,
+        value: try_compile_attachment_and_setup_effect,
+    },
+    KeyedRuleDef {
+        id: "token-generation",
+        key: EffectCompileRoute::TokenGeneration,
+        priority: 190,
+        value: try_compile_token_generation_effect,
+    },
+    KeyedRuleDef {
+        id: "continuous-and-modifier",
+        key: EffectCompileRoute::ContinuousAndModifier,
+        priority: 200,
+        value: try_compile_continuous_and_modifier_effect,
+    },
+    KeyedRuleDef {
+        id: "search-and-reorder",
+        key: EffectCompileRoute::SearchAndReorder,
+        priority: 210,
+        value: try_compile_search_and_reorder_effect,
+    },
+    KeyedRuleDef {
+        id: "object-zone-and-exchange",
+        key: EffectCompileRoute::ObjectZoneAndExchange,
+        priority: 220,
+        value: try_compile_object_zone_and_exchange_effect,
+    },
+    KeyedRuleDef {
+        id: "player-turn-and-counter",
+        key: EffectCompileRoute::PlayerTurnAndCounter,
+        priority: 230,
+        value: try_compile_player_turn_and_counter_effect,
+    },
+];
+
+const EFFECT_COMPILE_ROUTE_INDEX: KeyedRuleIndex<EffectCompileRoute, EffectCompileHandler> =
+    KeyedRuleIndex::new(&EFFECT_COMPILE_ROUTE_RULES);
+
 fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler> {
+    let route = effect_compile_route_for(effect)?;
+    EFFECT_COMPILE_ROUTE_INDEX
+        .first_for_key(route)
+        .map(|(_, handler)| handler)
+}
+
+fn effect_compile_route_for(effect: &EffectAst) -> Option<EffectCompileRoute> {
     match effect {
         EffectAst::DealDamage { .. }
         | EffectAst::DealDamageEqualToPower { .. }
         | EffectAst::Fight { .. }
         | EffectAst::FightIterated { .. }
         | EffectAst::Clash { .. }
-        | EffectAst::DealDamageEach { .. } => Some(try_compile_combat_and_damage_effect),
+        | EffectAst::DealDamageEach { .. } => Some(EffectCompileRoute::CombatAndDamage),
         EffectAst::PutCounters { .. }
         | EffectAst::PutOrRemoveCounters { .. }
         | EffectAst::ForEachCounterKindPutOrRemove { .. }
@@ -2608,7 +2744,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::Bolster { .. }
         | EffectAst::Support { .. }
         | EffectAst::Adapt { .. }
-        | EffectAst::CounterActivatedOrTriggeredAbility => Some(try_compile_board_state_effect),
+        | EffectAst::CounterActivatedOrTriggeredAbility => Some(EffectCompileRoute::BoardState),
         EffectAst::Draw { .. }
         | EffectAst::Counter { .. }
         | EffectAst::CounterUnlessPays { .. }
@@ -2641,7 +2777,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::BecomeColorChoice { .. }
         | EffectAst::Surveil { .. }
         | EffectAst::PayMana { .. }
-        | EffectAst::PayEnergy { .. } => Some(try_compile_player_resource_and_choice_effect),
+        | EffectAst::PayEnergy { .. } => Some(EffectCompileRoute::PlayerResourceAndChoice),
         EffectAst::Cant { .. }
         | EffectAst::PlayFromGraveyardUntilEot { .. }
         | EffectAst::GrantPlayTaggedUntilEndOfTurn { .. }
@@ -2658,7 +2794,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::DelayedUntilEndOfCombat { .. }
         | EffectAst::DelayedTriggerThisTurn { .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => {
-            Some(try_compile_timing_and_control_effect)
+            Some(EffectCompileRoute::TimingAndControl)
         }
         EffectAst::May { .. }
         | EffectAst::MayByPlayer { .. }
@@ -2676,7 +2812,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::ForEachOpponentDoesNot { .. }
         | EffectAst::ForEachPlayerDoesNot { .. }
         | EffectAst::ForEachOpponentDid { .. }
-        | EffectAst::ForEachPlayerDid { .. } => Some(try_compile_flow_and_iteration_effect),
+        | EffectAst::ForEachPlayerDid { .. } => Some(EffectCompileRoute::FlowAndIteration),
         EffectAst::Destroy { .. }
         | EffectAst::DestroyNoRegeneration { .. }
         | EffectAst::DestroyAllAttachedTo { .. }
@@ -2688,7 +2824,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::Exile { .. }
         | EffectAst::ExileWhenSourceLeaves { .. }
         | EffectAst::SacrificeSourceWhenLeaves { .. }
-        | EffectAst::ExileUntilSourceLeaves { .. } => Some(try_compile_destroy_and_exile_effect),
+        | EffectAst::ExileUntilSourceLeaves { .. } => Some(EffectCompileRoute::DestroyAndExile),
         EffectAst::LookAtHand { .. }
         | EffectAst::TargetOnly { .. }
         | EffectAst::RevealTop { .. }
@@ -2700,19 +2836,19 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::PutSomeIntoHandRestIntoGraveyard { .. }
         | EffectAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
         | EffectAst::PutRestOnBottomOfLibrary => {
-            Some(try_compile_visibility_and_card_selection_effect)
+            Some(EffectCompileRoute::VisibilityAndCardSelection)
         }
         EffectAst::CopySpell { .. }
         | EffectAst::RetargetStackObject { .. }
-        | EffectAst::Conditional { .. } => Some(try_compile_stack_and_condition_effect),
+        | EffectAst::Conditional { .. } => Some(EffectCompileRoute::StackAndCondition),
         EffectAst::Enchant { .. }
         | EffectAst::Attach { .. }
         | EffectAst::Investigate { .. }
-        | EffectAst::Amass { .. } => Some(try_compile_attachment_and_setup_effect),
+        | EffectAst::Amass { .. } => Some(EffectCompileRoute::AttachmentAndSetup),
         EffectAst::CreateTokenWithMods { .. }
         | EffectAst::CreateToken { .. }
         | EffectAst::CreateTokenCopy { .. }
-        | EffectAst::CreateTokenCopyFromSource { .. } => Some(try_compile_token_generation_effect),
+        | EffectAst::CreateTokenCopyFromSource { .. } => Some(EffectCompileRoute::TokenGeneration),
         EffectAst::Monstrosity { .. }
         | EffectAst::RemoveUpToAnyCounters { .. }
         | EffectAst::MoveAllCounters { .. }
@@ -2737,7 +2873,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::Transform { .. }
         | EffectAst::Flip { .. }
         | EffectAst::GrantAbilityToSource { .. } => {
-            Some(try_compile_continuous_and_modifier_effect)
+            Some(EffectCompileRoute::ContinuousAndModifier)
         }
         EffectAst::SearchLibrary { .. }
         | EffectAst::ShuffleGraveyardIntoLibrary { .. }
@@ -2746,7 +2882,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::ShuffleLibrary { .. }
         | EffectAst::VoteStart { .. }
         | EffectAst::VoteOption { .. }
-        | EffectAst::VoteExtra { .. } => Some(try_compile_search_and_reorder_effect),
+        | EffectAst::VoteExtra { .. } => Some(EffectCompileRoute::SearchAndReorder),
         EffectAst::ChooseObjects { .. }
         | EffectAst::Sacrifice { .. }
         | EffectAst::SacrificeAll { .. }
@@ -2762,7 +2898,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::ReturnAllToHand { .. }
         | EffectAst::ReturnAllToHandOfChosenColor { .. }
         | EffectAst::ReturnAllToBattlefield { .. }
-        | EffectAst::ExchangeControl { .. } => Some(try_compile_object_zone_and_exchange_effect),
+        | EffectAst::ExchangeControl { .. } => Some(EffectCompileRoute::ObjectZoneAndExchange),
         EffectAst::SetLifeTotal { .. }
         | EffectAst::SkipTurn { .. }
         | EffectAst::SkipCombatPhases { .. }
@@ -2772,7 +2908,7 @@ fn effect_compile_handler_for(effect: &EffectAst) -> Option<EffectCompileHandler
         | EffectAst::RegenerateAll { .. }
         | EffectAst::Mill { .. }
         | EffectAst::PoisonCounters { .. }
-        | EffectAst::EnergyCounters { .. } => Some(try_compile_player_turn_and_counter_effect),
+        | EffectAst::EnergyCounters { .. } => Some(EffectCompileRoute::PlayerTurnAndCounter),
     }
 }
 

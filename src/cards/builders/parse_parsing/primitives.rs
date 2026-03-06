@@ -501,6 +501,24 @@ pub(crate) fn parse_value(tokens: &[Token]) -> Option<(Value, usize)> {
     parse_value_expr(tokens)
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct IdGenContext {
+    pub(crate) next_effect_id: u32,
+    pub(crate) next_tag_id: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct LoweringFrame {
+    pub(crate) last_effect_id: Option<EffectId>,
+    pub(crate) last_object_tag: Option<String>,
+    pub(crate) last_player_filter: Option<PlayerFilter>,
+    pub(crate) iterated_player: bool,
+    pub(crate) auto_tag_object_targets: bool,
+    pub(crate) force_auto_tag_object_targets: bool,
+    pub(crate) allow_life_event_value: bool,
+    pub(crate) bind_unbound_x_to_last_effect: bool,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct CompileContext {
     pub(crate) next_effect_id: u32,
@@ -517,18 +535,58 @@ pub(crate) struct CompileContext {
 
 impl CompileContext {
     pub(crate) fn new() -> Self {
+        Self::from_parts(IdGenContext::default(), LoweringFrame::default())
+    }
+
+    pub(crate) fn from_parts(id_gen: IdGenContext, frame: LoweringFrame) -> Self {
         Self {
-            next_effect_id: 0,
-            next_tag_id: 0,
-            last_effect_id: None,
-            last_object_tag: None,
-            last_player_filter: None,
-            iterated_player: false,
-            auto_tag_object_targets: false,
-            force_auto_tag_object_targets: false,
-            allow_life_event_value: false,
-            bind_unbound_x_to_last_effect: false,
+            next_effect_id: id_gen.next_effect_id,
+            next_tag_id: id_gen.next_tag_id,
+            last_effect_id: frame.last_effect_id,
+            last_object_tag: frame.last_object_tag,
+            last_player_filter: frame.last_player_filter,
+            iterated_player: frame.iterated_player,
+            auto_tag_object_targets: frame.auto_tag_object_targets,
+            force_auto_tag_object_targets: frame.force_auto_tag_object_targets,
+            allow_life_event_value: frame.allow_life_event_value,
+            bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
         }
+    }
+
+    pub(crate) fn id_gen_context(&self) -> IdGenContext {
+        IdGenContext {
+            next_effect_id: self.next_effect_id,
+            next_tag_id: self.next_tag_id,
+        }
+    }
+
+    pub(crate) fn apply_id_gen_context(&mut self, id_gen: IdGenContext) {
+        self.next_effect_id = id_gen.next_effect_id;
+        self.next_tag_id = id_gen.next_tag_id;
+    }
+
+    pub(crate) fn lowering_frame(&self) -> LoweringFrame {
+        LoweringFrame {
+            last_effect_id: self.last_effect_id,
+            last_object_tag: self.last_object_tag.clone(),
+            last_player_filter: self.last_player_filter.clone(),
+            iterated_player: self.iterated_player,
+            auto_tag_object_targets: self.auto_tag_object_targets,
+            force_auto_tag_object_targets: self.force_auto_tag_object_targets,
+            allow_life_event_value: self.allow_life_event_value,
+            bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
+        }
+    }
+
+    pub(crate) fn apply_lowering_frame(&mut self, frame: LoweringFrame) {
+        self.last_effect_id = frame.last_effect_id;
+        self.last_object_tag = frame.last_object_tag;
+        self.last_player_filter = frame.last_player_filter;
+        self.iterated_player = frame.iterated_player;
+        self.auto_tag_object_targets = frame.auto_tag_object_targets;
+        self.force_auto_tag_object_targets = frame.force_auto_tag_object_targets;
+        self.allow_life_event_value = frame.allow_life_event_value;
+        self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
     }
 
     pub(crate) fn next_effect_id(&mut self) -> EffectId {

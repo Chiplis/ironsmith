@@ -1,214 +1,259 @@
 use super::*;
 
-type ParsedAbilityRule = fn(&[Token]) -> Result<Option<ParsedAbility>, CardTextError>;
-type OptionalCostRule = fn(&[Token]) -> Result<Option<OptionalCost>, CardTextError>;
-type AlternativeCastRule = fn(&[Token]) -> Result<Option<AlternativeCastingMethod>, CardTextError>;
-type LineRejectPredicate = fn(&str, &str) -> bool;
-
-#[derive(Clone, Copy)]
-struct LineRejectRule {
-    id: &'static str,
-    heads: &'static [&'static str],
-    message: &'static str,
-    predicate: LineRejectPredicate,
-}
-
-const PRE_TOKEN_REJECT_RULES: [LineRejectRule; 10] = [
-    LineRejectRule {
+const PRE_TOKEN_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 10] = [
+    UnsupportedRuleDef {
         id: "commander-cast-count",
+        priority: 100,
         heads: &["for"],
+        shape_mask: 0,
         message: "unsupported commander-cast-count clause",
         predicate: line_has_commander_cast_count_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "verb-leading-spell",
+        priority: 110,
         heads: &["sacrifice"],
+        shape_mask: 0,
         message: "unsupported verb-leading spell clause",
         predicate: line_has_verb_leading_spell_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "choose-leading-spell",
+        priority: 120,
         heads: &["choose"],
+        shape_mask: 0,
         message: "unsupported choose-leading spell clause",
         predicate: line_has_choose_leading_spell_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "put-from-among",
+        priority: 130,
         heads: &[],
+        shape_mask: 0,
         message: "unsupported put-from-among clause",
         predicate: line_has_put_from_among_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "standalone-token-reminder",
+        priority: 140,
         heads: &["it"],
+        shape_mask: 0,
         message: "unsupported standalone token reminder clause",
         predicate: line_has_standalone_token_reminder_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "multi-destination-put",
+        priority: 150,
         heads: &["put"],
+        shape_mask: 0,
         message: "unsupported multi-destination put clause",
         predicate: line_has_multi_destination_put_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "marker-keyword-tail",
+        priority: 160,
         heads: &["ninjutsu"],
+        shape_mask: 0,
         message: "unsupported marker keyword tail clause",
         predicate: line_has_marker_keyword_tail_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "aura-copy-attachment-fanout",
+        priority: 170,
         heads: &[],
+        shape_mask: 0,
         message: "unsupported aura-copy attachment fanout clause",
         predicate: line_has_aura_copy_attachment_fanout_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "defending-players-choice",
+        priority: 180,
         heads: &["of", "target"],
+        shape_mask: 0,
         message: "unsupported defending-players-choice clause",
         predicate: line_has_defending_players_choice_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "first-spell-cost-modifier",
+        priority: 190,
         heads: &["the"],
+        shape_mask: 0,
         message: "unsupported first-spell cost modifier mechanic",
         predicate: line_has_first_spell_cost_modifier_clause,
     },
 ];
 
-const STATIC_LINE_REJECT_RULES: [LineRejectRule; 7] = [
-    LineRejectRule {
+const STATIC_LINE_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 7] = [
+    UnsupportedRuleDef {
         id: "activate-only-standalone",
+        priority: 200,
         heads: &["activate"],
+        shape_mask: 0,
         message: "unsupported standalone activate-only restriction line",
         predicate: line_has_activate_only_standalone_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "graveyard-cast-permission",
+        priority: 210,
         heads: &["you"],
+        shape_mask: 0,
         message: "unsupported graveyard cast-permission static clause",
         predicate: line_has_graveyard_cast_permission_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "pregame-replacement",
+        priority: 220,
         heads: &["if", "you"],
+        shape_mask: 0,
         message: "unsupported pregame/replacement static clause",
         predicate: line_has_pregame_or_replacement_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "dynamic-gets-from-counters",
+        priority: 230,
         heads: &[],
+        shape_mask: 0,
         message: "unsupported dynamic gets-from-counters static clause",
         predicate: line_has_dynamic_gets_from_counters_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "foretell-cost-modifier",
+        priority: 240,
         heads: &["foretelling"],
+        shape_mask: 0,
         message: "unsupported foretell-cost modifier static clause",
         predicate: line_has_foretell_cost_modifier_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "trigger-frequency-standalone",
+        priority: 250,
         heads: &["this"],
+        shape_mask: 0,
         message: "unsupported standalone trigger-frequency restriction line",
         predicate: line_has_trigger_frequency_restriction_clause,
     },
-    LineRejectRule {
+    UnsupportedRuleDef {
         id: "level-marker-static",
+        priority: 260,
         heads: &[],
+        shape_mask: 0,
         message: "unsupported level marker static clause",
         predicate: line_has_level_marker_clause,
     },
 ];
 
-fn normalized_line_head(normalized: &str) -> &str {
-    normalized.split_whitespace().next().unwrap_or("")
+const PRE_TOKEN_DIAGNOSER: UnsupportedDiagnoser = UnsupportedDiagnoser::new(&PRE_TOKEN_DIAGNOSTIC_RULES);
+const STATIC_LINE_DIAGNOSER: UnsupportedDiagnoser =
+    UnsupportedDiagnoser::new(&STATIC_LINE_DIAGNOSTIC_RULES);
+
+fn normalized_line<'a>(view: &'a ClauseView<'a>) -> &'a str {
+    view.normalized
+        .or(view.raw)
+        .unwrap_or_default()
+        .trim()
 }
 
-fn reject_rule_head_matches(head: &str, candidates: &[&str]) -> bool {
-    candidates.is_empty() || candidates.iter().any(|candidate| *candidate == head)
+fn normalized_line_without_braces<'a>(view: &'a ClauseView<'a>) -> &'a str {
+    view.normalized_without_braces
+        .unwrap_or_else(|| normalized_line(view))
 }
 
-fn apply_line_reject_rules(
-    line: &str,
-    normalized: &str,
-    normalized_without_braces: &str,
-    rules: &[LineRejectRule],
-) -> Result<(), CardTextError> {
-    let head = normalized_line_head(normalized);
-    for rule in rules {
-        if !reject_rule_head_matches(head, rule.heads) {
-            continue;
-        }
-        if (rule.predicate)(normalized, normalized_without_braces) {
-            return Err(CardTextError::ParseError(format!(
-                "{} (line: '{}') [rule={}]",
-                rule.message, line, rule.id
-            )));
-        }
-    }
-
-    Ok(())
+fn diagnose_line_unsupported(
+    view: &ClauseView<'_>,
+    is_collective_restraint_domain_attack_tax: bool,
+    is_fixed_attack_tax_per_attacker: bool,
+) -> Option<CardTextError> {
+    PRE_TOKEN_DIAGNOSER
+        .diagnose(view, "line")
+        .or_else(|| STATIC_LINE_DIAGNOSER.diagnose(view, "line"))
+        .or_else(|| {
+            if line_is_known_unsupported_static_clause(
+                normalized_line_without_braces(view),
+                is_collective_restraint_domain_attack_tax,
+                is_fixed_attack_tax_per_attacker,
+            ) {
+                let text = view.display_text();
+                Some(CardTextError::ParseError(format!(
+                    "unsupported static clause (line: '{}') [rule=known-static-clause]",
+                    text
+                )))
+            } else {
+                None
+            }
+        })
 }
 
-fn line_has_commander_cast_count_clause(normalized: &str, _: &str) -> bool {
+fn line_has_commander_cast_count_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.contains("for each time")
         && normalized.contains("cast")
         && normalized.contains("commander")
         && normalized.contains("from the command zone")
 }
 
-fn line_has_verb_leading_spell_clause(normalized: &str, _: &str) -> bool {
+fn line_has_verb_leading_spell_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("sacrifice x lands")
         && normalized.contains("you may play x additional lands this turn")
 }
 
-fn line_has_choose_leading_spell_clause(normalized: &str, _: &str) -> bool {
+fn line_has_choose_leading_spell_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("choose target land")
         && normalized.contains("create three tokens that are copies of it")
 }
 
-fn line_has_put_from_among_clause(normalized: &str, _: &str) -> bool {
+fn line_has_put_from_among_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.contains("put a land card from among them into your hand")
         || normalized.contains("put a card from among them into your hand")
 }
 
-fn line_has_standalone_token_reminder_clause(normalized: &str, _: &str) -> bool {
+fn line_has_standalone_token_reminder_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("it has \"this token gets +1/+1 for each card named")
         && normalized.contains("in each graveyard")
 }
 
-fn line_has_multi_destination_put_clause(normalized: &str, _: &str) -> bool {
+fn line_has_multi_destination_put_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.contains("put one of them into your hand and the rest into your graveyard")
 }
 
-fn line_has_marker_keyword_tail_clause(normalized: &str, _: &str) -> bool {
+fn line_has_marker_keyword_tail_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("ninjutsu abilities you activate cost")
 }
 
-fn line_has_aura_copy_attachment_fanout_clause(normalized: &str, _: &str) -> bool {
+fn line_has_aura_copy_attachment_fanout_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.contains("copy of that aura attached to that creature")
 }
 
-fn line_has_defending_players_choice_clause(normalized: &str, _: &str) -> bool {
+fn line_has_defending_players_choice_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.contains("of defending players choice")
 }
 
-fn line_has_first_spell_cost_modifier_clause(normalized: &str, _: &str) -> bool {
+fn line_has_first_spell_cost_modifier_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("the first creature spell you cast each turn costs")
         && normalized.contains("less to cast")
 }
 
-fn line_has_activate_only_standalone_clause(normalized: &str, _: &str) -> bool {
+fn line_has_activate_only_standalone_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("activate only")
 }
 
-fn line_has_graveyard_cast_permission_clause(normalized: &str, _: &str) -> bool {
+fn line_has_graveyard_cast_permission_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("you may cast this card from your graveyard as long as you control")
         || normalized.starts_with("you may cast this from your graveyard as long as you control")
 }
 
-fn line_has_pregame_or_replacement_clause(normalized: &str, _: &str) -> bool {
+fn line_has_pregame_or_replacement_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("if this card is in your opening hand")
         || normalized.contains("you may begin the game with")
         || (normalized.starts_with("if this land would enter")
@@ -216,20 +261,24 @@ fn line_has_pregame_or_replacement_clause(normalized: &str, _: &str) -> bool {
             && normalized.contains("put this"))
 }
 
-fn line_has_dynamic_gets_from_counters_clause(normalized: &str, _: &str) -> bool {
+fn line_has_dynamic_gets_from_counters_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.contains("gets +x/+x")
         && normalized.contains("where x is the number of counters on this")
 }
 
-fn line_has_foretell_cost_modifier_clause(normalized: &str, _: &str) -> bool {
+fn line_has_foretell_cost_modifier_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("foretelling cards from your hand costs")
 }
 
-fn line_has_trigger_frequency_restriction_clause(normalized: &str, _: &str) -> bool {
+fn line_has_trigger_frequency_restriction_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.starts_with("this ability triggers only")
 }
 
-fn line_has_level_marker_clause(normalized: &str, _: &str) -> bool {
+fn line_has_level_marker_clause(view: &ClauseView<'_>) -> bool {
+    let normalized = normalized_line(view);
     normalized.contains(": level ")
 }
 
@@ -273,70 +322,226 @@ fn line_is_known_unsupported_static_clause(
 fn parse_first_parsed_ability_rule(
     tokens: &[Token],
 ) -> Result<Option<(&'static str, ParsedAbility)>, CardTextError> {
-    const RULES: [(&str, ParsedAbilityRule); 5] = [
-        ("equip", parse_equip_line),
-        ("level-up", parse_level_up_line),
-        ("reinforce", parse_reinforce_line),
-        ("cycling", parse_cycling_line),
-        ("morph", parse_morph_keyword_line),
-    ];
-
-    for (branch, rule) in RULES {
-        if let Some(ability) = rule(tokens)? {
-            return Ok(Some((branch, ability)));
-        }
+    fn parse_equip_rule(view: &ClauseView<'_>) -> Result<Option<ParsedAbility>, CardTextError> {
+        parse_equip_line(view.tokens)
     }
 
-    Ok(None)
+    fn parse_level_up_rule(view: &ClauseView<'_>) -> Result<Option<ParsedAbility>, CardTextError> {
+        parse_level_up_line(view.tokens)
+    }
+
+    fn parse_reinforce_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<ParsedAbility>, CardTextError> {
+        parse_reinforce_line(view.tokens)
+    }
+
+    fn parse_cycling_rule(view: &ClauseView<'_>) -> Result<Option<ParsedAbility>, CardTextError> {
+        parse_cycling_line(view.tokens)
+    }
+
+    fn parse_morph_rule(view: &ClauseView<'_>) -> Result<Option<ParsedAbility>, CardTextError> {
+        parse_morph_keyword_line(view.tokens)
+    }
+
+    const RULES: [RuleDef<ParsedAbility>; 5] = [
+        RuleDef {
+            id: "equip",
+            priority: 100,
+            heads: &["equip"],
+            shape_mask: RULE_SHAPE_HAS_COLON,
+            run: parse_equip_rule,
+        },
+        RuleDef {
+            id: "level-up",
+            priority: 110,
+            heads: &["level", "levelup"],
+            shape_mask: 0,
+            run: parse_level_up_rule,
+        },
+        RuleDef {
+            id: "reinforce",
+            priority: 120,
+            heads: &["reinforce"],
+            shape_mask: 0,
+            run: parse_reinforce_rule,
+        },
+        RuleDef {
+            id: "cycling",
+            priority: 130,
+            heads: &["cycling", "basic", "forestcycling", "mountaincycling", "swampcycling"],
+            shape_mask: 0,
+            run: parse_cycling_rule,
+        },
+        RuleDef {
+            id: "morph",
+            priority: 140,
+            heads: &["morph", "megamorph"],
+            shape_mask: 0,
+            run: parse_morph_rule,
+        },
+    ];
+    let view = ClauseView::from_tokens(tokens);
+    let index = RuleIndex::new(&RULES);
+    index.run_first(&view)
 }
 
 fn parse_first_optional_cost_rule(
     tokens: &[Token],
 ) -> Result<Option<(&'static str, OptionalCost)>, CardTextError> {
-    const RULES: [(&str, OptionalCostRule); 4] = [
-        ("buyback", parse_buyback_line),
-        ("kicker", parse_kicker_line),
-        ("multikicker", parse_multikicker_line),
-        ("entwine", parse_entwine_line),
-    ];
-
-    for (branch, rule) in RULES {
-        if let Some(cost) = rule(tokens)? {
-            return Ok(Some((branch, cost)));
-        }
+    fn parse_buyback_rule(view: &ClauseView<'_>) -> Result<Option<OptionalCost>, CardTextError> {
+        parse_buyback_line(view.tokens)
     }
 
-    Ok(None)
+    fn parse_kicker_rule(view: &ClauseView<'_>) -> Result<Option<OptionalCost>, CardTextError> {
+        parse_kicker_line(view.tokens)
+    }
+
+    fn parse_multikicker_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<OptionalCost>, CardTextError> {
+        parse_multikicker_line(view.tokens)
+    }
+
+    fn parse_entwine_rule(view: &ClauseView<'_>) -> Result<Option<OptionalCost>, CardTextError> {
+        parse_entwine_line(view.tokens)
+    }
+
+    const RULES: [RuleDef<OptionalCost>; 4] = [
+        RuleDef {
+            id: "buyback",
+            priority: 100,
+            heads: &["buyback"],
+            shape_mask: 0,
+            run: parse_buyback_rule,
+        },
+        RuleDef {
+            id: "kicker",
+            priority: 110,
+            heads: &["kicker"],
+            shape_mask: 0,
+            run: parse_kicker_rule,
+        },
+        RuleDef {
+            id: "multikicker",
+            priority: 120,
+            heads: &["multikicker"],
+            shape_mask: 0,
+            run: parse_multikicker_rule,
+        },
+        RuleDef {
+            id: "entwine",
+            priority: 130,
+            heads: &["entwine"],
+            shape_mask: 0,
+            run: parse_entwine_rule,
+        },
+    ];
+    let view = ClauseView::from_tokens(tokens);
+    let index = RuleIndex::new(&RULES);
+    index.run_first(&view)
 }
 
 fn parse_first_alternative_cast_rule(
     tokens: &[Token],
     line: &str,
 ) -> Result<Option<(&'static str, AlternativeCastingMethod)>, CardTextError> {
-    if let Some(method) = parse_if_conditional_alternative_cost_line(tokens, line)? {
-        return Ok(Some(("if-conditional-alternative-cost", method)));
-    }
-    if let Some(method) = parse_self_free_cast_alternative_cost_line(tokens) {
-        return Ok(Some(("self-free-cast-alternative-cost", method)));
-    }
-    if let Some(method) = parse_you_may_rather_than_spell_cost_line(tokens, line)? {
-        return Ok(Some(("alternative-cost", method)));
+    fn parse_if_conditional_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        parse_if_conditional_alternative_cost_line(view.tokens, view.raw.unwrap_or_default())
     }
 
-    const RULES: [(&str, AlternativeCastRule); 4] = [
-        ("escape", parse_escape_line),
-        ("bestow", parse_bestow_line),
-        ("flashback", parse_flashback_line),
-        ("madness", parse_madness_line),
+    fn parse_self_free_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        Ok(parse_self_free_cast_alternative_cost_line(view.tokens))
+    }
+
+    fn parse_you_may_rather_than_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        parse_you_may_rather_than_spell_cost_line(view.tokens, view.raw.unwrap_or_default())
+    }
+
+    fn parse_escape_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        parse_escape_line(view.tokens)
+    }
+
+    fn parse_bestow_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        parse_bestow_line(view.tokens)
+    }
+
+    fn parse_flashback_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        parse_flashback_line(view.tokens)
+    }
+
+    fn parse_madness_rule(
+        view: &ClauseView<'_>,
+    ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+        parse_madness_line(view.tokens)
+    }
+
+    const RULES: [RuleDef<AlternativeCastingMethod>; 7] = [
+        RuleDef {
+            id: "if-conditional-alternative-cost",
+            priority: 100,
+            heads: &["if"],
+            shape_mask: 0,
+            run: parse_if_conditional_rule,
+        },
+        RuleDef {
+            id: "self-free-cast-alternative-cost",
+            priority: 110,
+            heads: &["if", "you"],
+            shape_mask: 0,
+            run: parse_self_free_rule,
+        },
+        RuleDef {
+            id: "alternative-cost",
+            priority: 120,
+            heads: &["you"],
+            shape_mask: 0,
+            run: parse_you_may_rather_than_rule,
+        },
+        RuleDef {
+            id: "escape",
+            priority: 130,
+            heads: &["escape"],
+            shape_mask: 0,
+            run: parse_escape_rule,
+        },
+        RuleDef {
+            id: "bestow",
+            priority: 140,
+            heads: &["bestow"],
+            shape_mask: 0,
+            run: parse_bestow_rule,
+        },
+        RuleDef {
+            id: "flashback",
+            priority: 150,
+            heads: &["flashback"],
+            shape_mask: 0,
+            run: parse_flashback_rule,
+        },
+        RuleDef {
+            id: "madness",
+            priority: 160,
+            heads: &["madness"],
+            shape_mask: 0,
+            run: parse_madness_rule,
+        },
     ];
-
-    for (branch, rule) in RULES {
-        if let Some(method) = rule(tokens)? {
-            return Ok(Some((branch, method)));
-        }
-    }
-
-    Ok(None)
+    let view = ClauseView::from_line(line, line, line, tokens);
+    let index = RuleIndex::new(&RULES);
+    index.run_first(&view)
 }
 
 fn line_ast_from_static_abilities(abilities: Vec<StaticAbility>) -> LineAst {
@@ -355,12 +560,12 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     let normalized = normalized.replace('\'', "").replace('’', "");
     let normalized_without_braces = normalized.replace('{', "").replace('}', "");
     let normalized_without_braces = normalized_without_braces.trim_end_matches('.');
-    apply_line_reject_rules(
-        line,
-        &normalized,
-        normalized_without_braces,
-        &PRE_TOKEN_REJECT_RULES,
-    )?;
+    let tokens = tokenize_line(line, line_index);
+    if tokens.is_empty() {
+        return Err(CardTextError::ParseError("empty line".to_string()));
+    }
+    let line_view = ClauseView::from_line(line, &normalized, normalized_without_braces, &tokens);
+
     if normalized.starts_with("this effect cant reduce the mana in that cost to less than")
         || normalized.starts_with("this effect cant reduce the mana in those costs to less than")
     {
@@ -383,12 +588,6 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
-    apply_line_reject_rules(
-        line,
-        &normalized,
-        normalized_without_braces,
-        &STATIC_LINE_REJECT_RULES,
-    )?;
     let is_collective_restraint_domain_attack_tax = normalized_without_braces.starts_with(
         "creatures cant attack you unless their controller pays x for each creature they control thats attacking you",
     ) && normalized_without_braces.contains("where x is the number of basic land type");
@@ -396,6 +595,12 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         .strip_prefix("creatures cant attack you unless their controller pays ")
         .and_then(|rest| rest.strip_suffix(" for each creature they control thats attacking you"))
         .is_some_and(|amount| !amount.is_empty() && amount.chars().all(|ch| ch.is_ascii_digit()));
+    let unsupported_diagnostic = diagnose_line_unsupported(
+        &line_view,
+        is_collective_restraint_domain_attack_tax,
+        is_fixed_attack_tax_per_attacker,
+    );
+
     let is_this_cant_attack_unless_clause = normalized
         .starts_with("this creature cant attack unless")
         || normalized.starts_with("this cant attack unless");
@@ -432,16 +637,7 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             line
         )));
     }
-    if line_is_known_unsupported_static_clause(
-        &normalized,
-        is_collective_restraint_domain_attack_tax,
-        is_fixed_attack_tax_per_attacker,
-    ) {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported static clause (line: '{}')",
-            line
-        )));
-    }
+
     if let Some((chapters, rest)) = parse_saga_chapter_prefix(&normalized) {
         let tokens = tokenize_line(rest, line_index);
         parser_trace("parse_line:branch=saga", &tokens);
@@ -451,11 +647,6 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
             effects,
             max_triggers_per_turn: None,
         });
-    }
-
-    let tokens = tokenize_line(line, line_index);
-    if tokens.is_empty() {
-        return Err(CardTextError::ParseError("empty line".to_string()));
     }
 
     if tokens
@@ -655,6 +846,9 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     }
 
     if let Some(abilities) = parse_static_ability_line(&tokens)? {
+        if let Some(diag) = unsupported_diagnostic.clone() {
+            return Err(diag);
+        }
         parser_trace("parse_line:branch=static", &tokens);
         return Ok(line_ast_from_static_abilities(abilities));
     }
@@ -665,9 +859,20 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     }
 
     parser_trace("parse_line:branch=statement", &tokens);
-    let effects = parse_effect_sentences(&tokens)?;
+    let effects = match parse_effect_sentences(&tokens) {
+        Ok(effects) => effects,
+        Err(parse_err) => {
+            if let Some(diag) = unsupported_diagnostic.clone() {
+                return Err(diag);
+            }
+            return Err(parse_err);
+        }
+    };
     if effects.is_empty() {
         parser_trace("parse_line:branch=statement-empty", &tokens);
+        if let Some(diag) = unsupported_diagnostic {
+            return Err(diag);
+        }
         let head = tokens
             .first()
             .and_then(Token::as_word)

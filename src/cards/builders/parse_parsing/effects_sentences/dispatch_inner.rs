@@ -218,6 +218,31 @@ fn find_sentence_reject_rule(
     })
 }
 
+fn diagnose_sentence_unsupported(tokens: &[Token], sentence_words: &[&str]) -> Option<CardTextError> {
+    let clause = ClauseView::from_tokens(tokens).display_text();
+
+    if is_ring_tempts_sentence(tokens) {
+        return Some(CardTextError::ParseError(format!(
+            "unsupported ring tempts clause (clause: '{}') [rule=ring-tempts]",
+            clause
+        )));
+    }
+
+    if is_enters_as_copy_clause(sentence_words) {
+        return Some(CardTextError::ParseError(format!(
+            "unsupported enters-as-copy replacement clause (clause: '{}') [rule=enters-as-copy]",
+            clause
+        )));
+    }
+
+    find_sentence_reject_rule(sentence_words, tokens).map(|rule| {
+        CardTextError::ParseError(format!(
+            "{} (clause: '{}') [rule={}]",
+            rule.message, clause, rule.id
+        ))
+    })
+}
+
 fn sentence_has_each_player_lose_discard_sacrifice_chain(words: &[&str], _: &[Token]) -> bool {
     words.starts_with(&["each", "player"])
         && words.contains(&"then")
@@ -628,29 +653,11 @@ pub(crate) fn parse_effect_sentence_inner(
         return Ok(effects);
     }
 
-    if is_ring_tempts_sentence(tokens) {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported ring tempts clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-    if is_enters_as_copy_clause(&sentence_words) {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported enters-as-copy replacement clause (clause: '{}')",
-            sentence_words.join(" ")
-        )));
-    }
-
     let mut effects = match parse_effect_chain(tokens) {
         Ok(effects) => effects,
         Err(parse_err) => {
-            if let Some(rule) = find_sentence_reject_rule(&sentence_words, tokens) {
-                return Err(CardTextError::ParseError(format!(
-                    "{} (clause: '{}') [rule={}]",
-                    rule.message,
-                    sentence_words.join(" "),
-                    rule.id
-                )));
+            if let Some(diag) = diagnose_sentence_unsupported(tokens, &sentence_words) {
+                return Err(diag);
             }
             return Err(parse_err);
         }

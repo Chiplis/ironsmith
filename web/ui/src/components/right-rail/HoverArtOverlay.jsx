@@ -14,9 +14,21 @@ const METADATA_TEXT_STYLE = {
 };
 
 function stripInspectorAbilityPrefixes(text = "") {
+  const prefixPatterns = [
+    /^\s*(?:Triggered|Activated|Mana|Static)\s+ability(?:\s+\d+)?\s*:\s*/i,
+    /^\s*Spell\s+effects?\s*:\s*/i,
+    /^\s*Keyword\s+ability(?:\s+\{[^}]+\})*\s*:\s*/i,
+  ];
+
   return String(text)
     .split("\n")
-    .map((line) => line.replace(/^\s*(?:Triggered|Activated|Mana|Static)\s+ability(?:\s+\d+)?\s*:\s*/i, ""))
+    .map((line) => {
+      let cleaned = String(line || "");
+      for (const pattern of prefixPatterns) {
+        cleaned = cleaned.replace(pattern, "");
+      }
+      return cleaned;
+    })
     .join("\n");
 }
 
@@ -298,9 +310,13 @@ export default function HoverArtOverlay({
     context.font = `600 ${compact ? 11 : 13}px Rajdhani, "Segoe UI", "Inter", sans-serif`;
     maxTextWidth = Math.max(maxTextWidth, measureInspectorTextWidth(context, metadataText || ""));
 
+    const maxRuleLineMeasure = compact ? 320 : 460;
     context.font = `600 ${compact ? 15 : 18}px Rajdhani, "Segoe UI", "Inter", sans-serif`;
     for (const line of displayRulesLines) {
-      maxTextWidth = Math.max(maxTextWidth, measureInspectorTextWidth(context, line));
+      maxTextWidth = Math.max(
+        maxTextWidth,
+        Math.min(maxRuleLineMeasure, measureInspectorTextWidth(context, line))
+      );
     }
 
     const manaSymbols = String(manaCost || "").match(/\{[^}]+\}/g);
@@ -308,7 +324,7 @@ export default function HoverArtOverlay({
       maxTextWidth = Math.max(maxTextWidth, manaSymbols.length * (compact ? 16 : 20));
     }
 
-    const horizontalPadding = compact ? 76 : 98;
+    const horizontalPadding = compact ? 56 : 90;
     return Math.ceil(maxTextWidth + horizontalPadding);
   }, [compact, displayRulesLines, groupedCardCount, manaCost, metadataText, objectName, statsText]);
   const topStackMatchesInspectorObject = useMemo(() => {
@@ -532,16 +548,16 @@ export default function HoverArtOverlay({
     }
   }, [objectIdKey, highlightedRuleLineIndices, displayRulesText]);
 
-  const oracleTopPaddingClass = compact ? "pt-[72px]" : "pt-[164px]";
+  const oracleTopPaddingClass = compact ? "pt-[56px]" : "pt-[164px]";
   const oracleContainerClass = compact
-    ? `relative z-10 px-2.5 ${oracleTopPaddingClass} pb-2`
+    ? `relative z-10 px-2.5 ${oracleTopPaddingClass} pb-1.5`
     : `relative z-10 min-h-full flex flex-col justify-end px-2.5 ${oracleTopPaddingClass} pb-2.5`;
   const topMetadataTextClassName = compact
     ? "text-[11px] leading-snug text-[#d1e2f6] text-right"
     : "text-[13px] leading-snug text-[#d1e2f6] text-right";
   const rulesTextClassName = compact
-    ? "text-[15px] leading-[1.28] text-white font-extrabold"
-    : "text-[18px] leading-[1.32] text-white font-extrabold";
+    ? "text-[13px] leading-[1.28] text-white font-semibold text-right"
+    : "text-[17px] leading-[1.34] text-white font-semibold text-right";
 
   if (!imageUrl || imageErrored || suppressObject) return null;
 
@@ -669,15 +685,14 @@ export default function HoverArtOverlay({
                           ruleLineRefs.current.delete(lineIndex);
                         }
                       }}
-                      className={cn(
-                        "inline-block max-w-full"
-                      )}
+                      className="block w-full"
                     >
                       <SymbolText
                         text={line}
                         className={cn(
                           rulesTextClassName,
-                          "inspector-oracle-chip",
+                          "inspector-oracle-line",
+                          /^\s*[•*-]\s+/.test(String(line || "")) && "inspector-oracle-line-bullet",
                           highlightedRuleLineIndices.has(lineIndex)
                             ? "inspector-rule-highlight border-y"
                             : ""

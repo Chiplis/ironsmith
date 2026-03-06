@@ -24,6 +24,11 @@ export default function InspectorStackTimeline({
   embedded = false,
   selectedObjectId = null,
   onInspectObject,
+  title = "Stack",
+  collapsible = false,
+  collapsed = false,
+  onToggleCollapsed = null,
+  maxBodyHeight = null,
 }) {
   const [leavingEntries, setLeavingEntries] = useState([]);
   const previousStackRef = useRef([]);
@@ -86,58 +91,120 @@ export default function InspectorStackTimeline({
 
   if (!hasStackEntries) return null;
 
+  const embeddedExpandedMaxHeight = Number.isFinite(maxBodyHeight) && maxBodyHeight > 0
+    ? Math.max(96, Math.round(maxBodyHeight))
+    : 380;
+
   return (
     <section
       className={cn(
         embedded
-          ? "h-full min-h-0 overflow-hidden rounded-l rounded-r-sm border border-[#35506c] bg-[linear-gradient(180deg,rgba(6,14,24,0.84),rgba(5,10,18,0.95))] backdrop-blur-[2.2px] pointer-events-auto shadow-[0_14px_30px_rgba(0,0,0,0.45)] flex flex-col"
+          ? "w-full min-h-0 overflow-hidden rounded-l rounded-r-sm border border-[#35506c] bg-[linear-gradient(180deg,rgba(6,14,24,0.84),rgba(5,10,18,0.95))] backdrop-blur-[2.2px] pointer-events-auto shadow-[0_14px_30px_rgba(0,0,0,0.45)] flex flex-col"
           : "absolute inset-x-0 bottom-0 z-[36] overflow-hidden border-t border-[#35506c] bg-[linear-gradient(180deg,rgba(6,14,24,0.64),rgba(5,10,18,0.9))] backdrop-blur-[2.2px] pointer-events-auto"
       )}
       style={embedded ? undefined : { height: `${Math.max(0, timelineHeight)}px` }}
       data-inspector-stack-timeline
     >
       <header className="flex items-center justify-between gap-2 border-b border-[#2f4864] px-2.5 py-1.5">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8ec4ff]">
-          Stack Timeline
+        <div className="flex items-center gap-1.5">
+          {collapsible && typeof onToggleCollapsed === "function" && (
+            <button
+              type="button"
+              className="inline-flex h-4 w-4 items-center justify-center rounded-sm border border-[#3a5673] bg-[rgba(9,18,30,0.7)] text-[10px] text-[#9cc8f3] transition-colors hover:border-[#8ec4ff] hover:text-[#d8ecff]"
+              onClick={onToggleCollapsed}
+              aria-label={collapsed ? "Expand stack" : "Collapse stack"}
+              title={collapsed ? "Expand stack" : "Collapse stack"}
+            >
+              {collapsed ? "▸" : "▾"}
+            </button>
+          )}
+          <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8ec4ff]">
+            {title}
+          </div>
         </div>
         <div className="text-[11px] text-[#c5d9f2]">
           {focusedDecision ? `${itemCount} stack entr${itemCount === 1 ? "y" : "ies"}` : `${itemCount} entr${itemCount === 1 ? "y" : "ies"}`}
         </div>
       </header>
-      <ScrollArea className={embedded ? "flex-1 min-h-0" : "h-[calc(100%-38px)]"}>
-        <div className="grid gap-1.5 p-1.5">
-          {timelineEntries.length > 0
-            ? timelineEntries.map((entry, index) => (
-                <div key={entry.__timeline_key} className="relative">
-                  <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
-                    {index === 0
-                      ? (focusedDecision ? "Resolving" : "Top")
-                      : `#${timelineEntries.length - index}`}
-                  </span>
-                  <StackCard
-                    entry={entry}
-                    isNew={!entry.__leaving && newIds.has(entry.id)}
-                    isLeaving={entry.__leaving}
-                    isActive={!entry.__leaving && selectedObjectId != null && String(selectedObjectId) === String(entry.id)}
-                    className="pt-4"
-                    onClick={entry.__leaving ? undefined : onInspectObject}
-                  />
-                </div>
-              ))
-            : stackPreview.map((name, index) => (
-                <div
-                  key={`${name}-${index}`}
-                  className="rounded border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
-                >
-                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
-                    Preview
+      {embedded ? (
+        <div
+          className={cn(
+            "overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
+            collapsed ? "opacity-0" : "opacity-100"
+          )}
+          style={{ maxHeight: collapsed ? "0px" : `${embeddedExpandedMaxHeight}px` }}
+        >
+          <div
+            className="grid gap-1.5 p-1.5 overflow-y-auto overscroll-contain"
+            style={{ maxHeight: `${embeddedExpandedMaxHeight}px` }}
+          >
+            {timelineEntries.length > 0
+              ? timelineEntries.map((entry, index) => (
+                  <div key={entry.__timeline_key} className="relative transition-all duration-280 ease-out">
+                    <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
+                      {index === 0
+                        ? (focusedDecision ? "Resolving" : "Top")
+                        : `#${timelineEntries.length - index}`}
+                    </span>
+                    <StackCard
+                      entry={entry}
+                      isNew={!entry.__leaving && newIds.has(entry.id)}
+                      isLeaving={entry.__leaving}
+                      isActive={!entry.__leaving && selectedObjectId != null && String(selectedObjectId) === String(entry.id)}
+                      className="pt-4"
+                      onClick={entry.__leaving ? undefined : onInspectObject}
+                    />
                   </div>
-                  <div className="mt-0.5 leading-snug">{name}</div>
-                </div>
-              ))}
-
+                ))
+              : stackPreview.map((name, index) => (
+                  <div
+                    key={`${name}-${index}`}
+                    className="rounded border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
+                      Preview
+                    </div>
+                    <div className="mt-0.5 leading-snug">{name}</div>
+                  </div>
+                ))}
+          </div>
         </div>
-      </ScrollArea>
+      ) : (
+        <ScrollArea className="h-[calc(100%-38px)]">
+          <div className="grid gap-1.5 p-1.5">
+            {timelineEntries.length > 0
+              ? timelineEntries.map((entry, index) => (
+                  <div key={entry.__timeline_key} className="relative">
+                    <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
+                      {index === 0
+                        ? (focusedDecision ? "Resolving" : "Top")
+                        : `#${timelineEntries.length - index}`}
+                    </span>
+                    <StackCard
+                      entry={entry}
+                      isNew={!entry.__leaving && newIds.has(entry.id)}
+                      isLeaving={entry.__leaving}
+                      isActive={!entry.__leaving && selectedObjectId != null && String(selectedObjectId) === String(entry.id)}
+                      className="pt-4"
+                      onClick={entry.__leaving ? undefined : onInspectObject}
+                    />
+                  </div>
+                ))
+              : stackPreview.map((name, index) => (
+                  <div
+                    key={`${name}-${index}`}
+                    className="rounded border border-[#304760] bg-[linear-gradient(180deg,rgba(13,33,52,0.8),rgba(8,18,31,0.92))] px-2.5 py-2 text-[14px] text-[#d5e7fd]"
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
+                      Preview
+                    </div>
+                    <div className="mt-0.5 leading-snug">{name}</div>
+                  </div>
+                ))}
+
+          </div>
+        </ScrollArea>
+      )}
     </section>
   );
 }

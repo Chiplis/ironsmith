@@ -1,18 +1,44 @@
 use super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::*;
 
-pub(crate) fn bind_unresolved_it_references(
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReferenceBindings {
+    pub(crate) seed_tag: TagKey,
+    pub(crate) unresolved_it_before: usize,
+    pub(crate) unresolved_it_after: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BoundEffectsAst {
+    pub(crate) effects: Vec<EffectAst>,
+    pub(crate) bindings: ReferenceBindings,
+}
+
+pub(crate) fn bind_unresolved_it_references_with_bindings(
     effects: &[EffectAst],
     seed_last_object_tag: Option<&str>,
-) -> Vec<EffectAst> {
+) -> BoundEffectsAst {
     let seed_tag = seed_last_object_tag
         .map(TagKey::from)
         .unwrap_or_else(|| TagKey::from(IT_TAG));
+    let unresolved_it_before = count_unresolved_it_occurrences(effects);
     let mut resolved = effects.to_vec();
     for effect in &mut resolved {
         bind_unresolved_it_in_effect(effect, &seed_tag);
     }
-    resolved
+    let unresolved_it_after = count_unresolved_it_occurrences(&resolved);
+    BoundEffectsAst {
+        effects: resolved,
+        bindings: ReferenceBindings {
+            seed_tag,
+            unresolved_it_before,
+            unresolved_it_after,
+        },
+    }
+}
+
+fn count_unresolved_it_occurrences(effects: &[EffectAst]) -> usize {
+    format!("{effects:?}").matches(IT_TAG).count()
 }
 
 fn bind_unresolved_it_in_effect(effect: &mut EffectAst, seed_tag: &TagKey) {

@@ -29,14 +29,14 @@ pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTex
     let clause_words = words(tokens);
     if is_mana_replacement_clause_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
-            "unsupported mana replacement clause (clause: '{}')",
+            "unsupported mana replacement clause (clause: '{}') [rule=mana-replacement]",
             clause_words.join(" ")
         )));
     }
 
     if is_mana_trigger_additional_clause_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
-            "unsupported mana-triggered additional-mana clause (clause: '{}')",
+            "unsupported mana-triggered additional-mana clause (clause: '{}') [rule=mana-trigger-additional]",
             clause_words.join(" ")
         )));
     }
@@ -61,7 +61,7 @@ pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTex
             | ["you", "choose", "color"]
     ) {
         return Err(CardTextError::ParseError(format!(
-            "unsupported choose-color clause (clause: '{}')",
+            "unsupported choose-color clause (clause: '{}') [rule=choose-color]",
             clause_words.join(" ")
         )));
     }
@@ -101,7 +101,7 @@ pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTex
         let tail_words = words(&tail_tokens);
         if !tail_words.starts_with(&["no", "combat", "damage"]) {
             return Err(CardTextError::ParseError(format!(
-                "unsupported assigns-no-combat-damage clause (clause: '{}')",
+                "unsupported assigns-no-combat-damage clause (clause: '{}') [rule=assigns-no-combat-damage]",
                 clause_words.join(" ")
             )));
         }
@@ -114,7 +114,7 @@ pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTex
         }
         if idx != tail_words.len() {
             return Err(CardTextError::ParseError(format!(
-                "unsupported assigns-no-combat-damage clause tail (clause: '{}')",
+                "unsupported assigns-no-combat-damage clause tail (clause: '{}') [rule=assigns-no-combat-damage-tail]",
                 clause_words.join(" ")
             )));
         }
@@ -148,7 +148,7 @@ pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTex
             || clause_words.contains(&"blocks");
         if looks_like_restriction_clause {
             return Err(CardTextError::ParseError(format!(
-                "unsupported target-only restriction clause (clause: '{}')",
+                "unsupported target-only restriction clause (clause: '{}') [rule=target-only-restriction]",
                 clause_words.join(" ")
             )));
         }
@@ -345,7 +345,7 @@ pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTex
     let subject_words = words(subject_tokens);
     if is_target_player_dealt_damage_by_this_turn_subject(&subject_words) {
         return Err(CardTextError::ParseError(format!(
-            "unsupported combat-history player subject (clause: '{}')",
+            "unsupported combat-history player subject (clause: '{}') [rule=combat-history-player-subject]",
             words(tokens).join(" ")
         )));
     }

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const INSPECTOR_OVERLAY_WIDTH = "clamp(240px, 24vw, 360px)";
 const INSPECTOR_INLINE_MIN_WIDTH = 220;
 const INSPECTOR_INLINE_FALLBACK_WIDTH = 300;
-const INSPECTOR_INLINE_MAX_WIDTH = "40vw";
+const INSPECTOR_INLINE_MAX_WIDTH = "min(32vw, 420px)";
 const DEFAULT_INSPECTOR_BOTTOM_OFFSET = 8;
 
 function objectExistsInState(state, objectId) {

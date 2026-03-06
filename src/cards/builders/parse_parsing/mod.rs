@@ -8,6 +8,7 @@ mod lex;
 mod line_dispatch;
 mod object_filters;
 mod primitives;
+mod rule_engine;
 mod targets;
 
 pub(crate) use activation_and_restrictions::*;
@@ -18,4 +19,5 @@ pub(crate) use lex::*;
 pub(crate) use line_dispatch::*;
 pub(crate) use object_filters::*;
 pub(crate) use primitives::*;
+pub(crate) use rule_engine::*;
 pub(crate) use targets::*;

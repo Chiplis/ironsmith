@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import OpponentZone from "./OpponentZone";
 import MyZone from "./MyZone";
 import DeckLoadingView from "./DeckLoadingView";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
+import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 
 export default function TableCore({
   selectedObjectId,
@@ -14,6 +15,7 @@ export default function TableCore({
   onCancelDeckLoading,
 }) {
   const { state } = useGame();
+  const tableRef = useRef(null);
   if (!state?.players?.length) return <main className="table-gradient rail-gradient rounded min-h-0" />;
 
   if (deckLoadingMode) {
@@ -55,7 +57,8 @@ export default function TableCore({
 
   return (
     <main
-      className="table-gradient rounded grid gap-1.5 p-1.5 min-h-0 h-full overflow-hidden"
+      ref={tableRef}
+      className="table-gradient relative rounded grid gap-1.5 p-1.5 min-h-0 h-full overflow-hidden"
       data-drop-zone
       style={{ gridTemplateRows: "minmax(0,1.7fr) 62px minmax(0,1fr)" }}
     >
@@ -79,6 +82,12 @@ export default function TableCore({
         zoneViews={zoneViews}
         legalTargetPlayerIds={legalTargetPlayerIds}
         legalTargetObjectIds={legalTargetObjectIds}
+      />
+      <StackTimelineRail
+        floating
+        anchorRef={tableRef}
+        selectedObjectId={selectedObjectId}
+        onInspectObject={onInspect}
       />
     </main>
   );

@@ -187,7 +187,11 @@ export default function MyZone({
   };
 
   return (
-    <section className="board-zone-bg relative z-[2] p-2 min-h-[120px] overflow-visible grid gap-1" style={{ gridTemplateRows: "auto minmax(0,1fr)", alignContent: "stretch" }}>
+    <section
+      className="board-zone-bg relative z-[2] p-2 min-h-[120px] overflow-visible grid gap-1"
+      style={{ gridTemplateRows: "auto minmax(0,1fr)", alignContent: "stretch" }}
+      data-my-zone
+    >
       <div>
         <div className="relative -top-[5px] flex items-center gap-2">
           <span

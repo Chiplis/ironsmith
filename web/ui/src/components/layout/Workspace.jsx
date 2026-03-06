@@ -4,7 +4,6 @@ import { useDragActions } from "@/context/DragContext";
 import { useHoverActions } from "@/context/HoverContext";
 import TableCore from "@/components/board/TableCore";
 import RightRail from "@/components/right-rail/RightRail";
-import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import HandZone from "@/components/board/HandZone";
 import DragOverlay from "@/components/overlays/DragOverlay";
 import CastParticles from "@/components/overlays/CastParticles";
@@ -223,10 +222,6 @@ export default function Workspace({
         />
       </div>
       <div className="min-h-0 h-full overflow-hidden flex items-stretch gap-1.5">
-        <StackTimelineRail
-          selectedObjectId={selectedObjectId}
-          onInspectObject={handleInspectObject}
-        />
         <div className="min-w-0 flex-1 h-full overflow-visible">
           <HandZone player={me} selectedObjectId={selectedObjectId} onInspect={handleInspectObject} />
         </div>
