@@ -56,6 +56,12 @@ pub(crate) fn lower_additional_cost_choice_modes(
         .collect()
 }
 
+pub(crate) fn materialize_static_abilities_ast(
+    abilities: Vec<StaticAbilityAst>,
+) -> Result<Vec<StaticAbility>, CardTextError> {
+    lower_static_abilities_ast(abilities)
+}
+
 pub(crate) fn apply_instead_followup_statement_to_last_ability(
     builder: &mut CardDefinitionBuilder,
     last_restrictable_ability: Option<usize>,

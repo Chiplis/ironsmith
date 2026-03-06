@@ -1,7 +1,9 @@
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 #[allow(unused_imports)]
-use crate::cards::builders::ability_lowering::{lower_static_abilities_ast, parsed_triggered_ability};
+use crate::cards::builders::ability_lowering::{
+    materialize_static_abilities_ast, parsed_triggered_ability,
+};
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, GrantedAbilityAst, IT_TAG, KeywordAction, LineAst, ParsedAbility, TagKey,
@@ -647,7 +649,7 @@ pub(crate) fn parse_static_ability_line(
     let Some(abilities) = parse_static_ability_ast_line(tokens)? else {
         return Ok(None);
     };
-    Ok(Some(lower_static_abilities_ast(abilities)?))
+    Ok(Some(materialize_static_abilities_ast(abilities)?))
 }
 
 pub(crate) fn parse_activated_abilities_cant_be_activated_line(

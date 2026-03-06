@@ -1476,6 +1476,9 @@ const IT_TAG: &str = "__it__";
 mod ability_lowering;
 pub(crate) use ability_lowering::*;
 
+mod cost_effects;
+pub(crate) use cost_effects::*;
+
 mod parse_parsing;
 pub(crate) use parse_parsing::*;
 

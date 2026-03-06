@@ -284,7 +284,7 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
                     sentence_idx += 1;
                     continue;
                 }
-                lower_unapplied_token_copy_followup(sentence, &sentence_tokens, followup)?
+                apply_unapplied_token_copy_followup(sentence, &sentence_tokens, followup)?
             } else {
                 parse_effect_sentence(&sentence_tokens)?
             };
@@ -1099,7 +1099,7 @@ fn parse_token_copy_followup_sentence(tokens: &[Token]) -> Option<TokenCopyFollo
         })
 }
 
-fn lower_unapplied_token_copy_followup(
+fn apply_unapplied_token_copy_followup(
     sentence: &[Token],
     sentence_tokens: &[Token],
     followup: TokenCopyFollowup,

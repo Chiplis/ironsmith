@@ -1431,37 +1431,7 @@ pub(crate) fn alternative_cast_parts_from_total_cost(
 }
 
 pub(crate) fn normalize_alternative_cast_cost_effects(cost_effects: Vec<Effect>) -> Vec<Effect> {
-    use crate::filter::TaggedOpbjectRelation;
-
-    let mut out = Vec::new();
-    let mut idx = 0usize;
-    while idx < cost_effects.len() {
-        if idx + 1 < cost_effects.len()
-            && let Some(choose) =
-                cost_effects[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(sacrifice) =
-                cost_effects[idx + 1].downcast_ref::<crate::effects::SacrificeEffect>()
-            && sacrifice.player == PlayerFilter::You
-        {
-            let references_chosen = sacrifice.filter.tagged_constraints.len() == 1
-                && sacrifice.filter.tagged_constraints[0].tag == choose.tag
-                && sacrifice.filter.tagged_constraints[0].relation
-                    == TaggedOpbjectRelation::IsTaggedObject;
-            if references_chosen {
-                out.push(Effect::sacrifice(
-                    choose.filter.clone(),
-                    sacrifice.count.clone(),
-                ));
-                idx += 2;
-                continue;
-            }
-        }
-
-        out.push(cost_effects[idx].clone());
-        idx += 1;
-    }
-
-    out
+    crate::cards::builders::normalize_alternative_cast_cost_effects_runtime(cost_effects)
 }
 
 pub(crate) fn parse_mana_output_options_tokens(
