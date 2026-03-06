@@ -122,6 +122,163 @@ function tryBuildAutoResolveCommand(decision) {
   return null;
 }
 
+function buildPriorityActionDescriptor(action) {
+  return {
+    kind: String(action?.kind || ""),
+    label: String(action?.label || ""),
+    object_id: action?.object_id == null ? null : Number(action.object_id),
+    from_zone: action?.from_zone == null ? null : String(action.from_zone),
+    to_zone: action?.to_zone == null ? null : String(action.to_zone),
+  };
+}
+
+function samePriorityActionDescriptor(left, right) {
+  return (
+    left.kind === right.kind &&
+    left.label === right.label &&
+    left.object_id === right.object_id &&
+    left.from_zone === right.from_zone &&
+    left.to_zone === right.to_zone
+  );
+}
+
+function buildOptionDescriptor(option) {
+  return {
+    description: String(option?.description || ""),
+  };
+}
+
+function sameOptionDescriptor(left, right) {
+  return left.description === right.description;
+}
+
+function buildOrdinalDescriptor(items, targetIndex, buildDescriptor, sameDescriptor) {
+  const normalizedTargetIndex = Number(targetIndex);
+  let target = null;
+  for (const item of items || []) {
+    if (Number(item?.index) === normalizedTargetIndex) {
+      target = item;
+      break;
+    }
+  }
+  if (!target) return null;
+
+  const descriptor = buildDescriptor(target);
+  let ordinal = 0;
+  for (const item of items || []) {
+    if (Number(item?.index) === normalizedTargetIndex) break;
+    if (sameDescriptor(buildDescriptor(item), descriptor)) {
+      ordinal += 1;
+    }
+  }
+
+  return { ...descriptor, ordinal };
+}
+
+function resolveOrdinalDescriptor(items, descriptor, buildDescriptor, sameDescriptor) {
+  const expectedOrdinal = Math.max(0, Number(descriptor?.ordinal) || 0);
+  let ordinal = 0;
+  for (const item of items || []) {
+    if (!sameDescriptor(buildDescriptor(item), descriptor)) continue;
+    if (ordinal === expectedOrdinal) return item;
+    ordinal += 1;
+  }
+  return null;
+}
+
+function serializeMultiplayerCommand(command, currentState) {
+  if (!command || typeof command !== "object") return command;
+
+  if (command.type === "priority_action") {
+    const decision = currentState?.decision;
+    if (decision?.kind !== "priority") return command;
+    const action_ref = buildOrdinalDescriptor(
+      decision.actions,
+      command.action_index,
+      buildPriorityActionDescriptor,
+      samePriorityActionDescriptor
+    );
+    if (!action_ref) return command;
+    return {
+      type: "priority_action",
+      action_ref,
+    };
+  }
+
+  if (command.type === "select_options") {
+    const decision = currentState?.decision;
+    if (decision?.kind !== "select_options") return command;
+    const option_refs = (command.option_indices || [])
+      .map((optionIndex) =>
+        buildOrdinalDescriptor(
+          decision.options,
+          optionIndex,
+          buildOptionDescriptor,
+          sameOptionDescriptor
+        )
+      )
+      .filter(Boolean);
+    if (option_refs.length !== (command.option_indices || []).length) {
+      return command;
+    }
+    return {
+      type: "select_options",
+      option_refs,
+    };
+  }
+
+  return command;
+}
+
+function resolveSyncedCommand(command, currentState) {
+  if (!command || typeof command !== "object") return command;
+
+  if (command.type === "priority_action" && command.action_ref) {
+    const decision = currentState?.decision;
+    if (decision?.kind !== "priority") {
+      throw new Error("Expected a priority decision while syncing an action");
+    }
+    const match = resolveOrdinalDescriptor(
+      decision.actions,
+      command.action_ref,
+      buildPriorityActionDescriptor,
+      samePriorityActionDescriptor
+    );
+    if (!match) {
+      throw new Error(`Could not resolve synced priority action: ${command.action_ref.label}`);
+    }
+    return {
+      type: "priority_action",
+      action_index: Number(match.index),
+    };
+  }
+
+  if (command.type === "select_options" && Array.isArray(command.option_refs)) {
+    const decision = currentState?.decision;
+    if (decision?.kind !== "select_options") {
+      throw new Error("Expected an options decision while syncing a choice");
+    }
+    const option_indices = command.option_refs.map((optionRef) => {
+      const match = resolveOrdinalDescriptor(
+        decision.options,
+        optionRef,
+        buildOptionDescriptor,
+        sameOptionDescriptor
+      );
+      if (!match) {
+        throw new Error(`Could not resolve synced option: ${optionRef.description}`);
+      }
+      return Number(match.index);
+    });
+    return {
+      type: "select_options",
+      option_indices,
+    };
+  }
+
+  return command;
+}
+
 export function GameProvider({ children }) {
   const {
     game,
@@ -367,6 +524,7 @@ export function GameProvider({ children }) {
         : { state: st, resolved: 0 };
       st = autoResolved.state;
       setState(st);
+      stateRef.current = st;
 
       const parts = [];
       if (message) parts.push(message);
@@ -410,11 +568,12 @@ export function GameProvider({ children }) {
         throw new Error("WASM game is not ready");
       }
 
-      const st = await currentGame.dispatch(command);
+      const resolvedCommand = resolveSyncedCommand(command, stateRef.current);
+      const st = await currentGame.dispatch(resolvedCommand);
       return finalizeState(currentGame, st, {
         message: successMessage,
         allowOpponentAutomation: false,
-        allowTrivialAutomation: true,
+        allowTrivialAutomation: false,
       });
     },
     [finalizeState]
@@ -422,9 +581,11 @@ export function GameProvider({ children }) {
 
   const {
     multiplayer,
+    canStartHostedMatch,
     createLobby,
     joinLobby,
     leaveLobby,
+    startHostedMatch,
     updateLobbyDeck,
     submitMultiplayerCommand,
   } = usePeerLobby({
@@ -452,6 +613,7 @@ export function GameProvider({ children }) {
         let st = await game.uiState();
         if (multiplayer.matchStarted) {
           setState(st);
+          stateRef.current = st;
           if (message) setStatus(message);
           return;
         }
@@ -481,7 +643,8 @@ export function GameProvider({ children }) {
           return;
         }
         try {
-          await submitMultiplayerCommand(command, successMessage);
+          const syncedCommand = serializeMultiplayerCommand(command, currentState);
+          await submitMultiplayerCommand(syncedCommand, successMessage);
         } catch (err) {
           setStatus(`Sync failed: ${err}`, true);
           console.error(err);
@@ -565,9 +728,11 @@ export function GameProvider({ children }) {
       logEntries,
       pushLog,
       multiplayer,
+      canStartHostedMatch,
       createLobby,
       joinLobby,
       leaveLobby,
+      startHostedMatch,
       updateLobbyDeck,
     }),
     [
@@ -584,7 +749,7 @@ export function GameProvider({ children }) {
       dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, inspectorDebug,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,
-      multiplayer, createLobby, joinLobby, leaveLobby, updateLobbyDeck,
+      multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, startHostedMatch, updateLobbyDeck,
     ]
   );
 

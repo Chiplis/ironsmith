@@ -603,6 +603,15 @@ impl CompileContext {
         }
     }
 
+    pub(crate) fn apply_reference_frame(&mut self, frame: LoweringReferenceFrame) {
+        self.last_effect_id = frame.last_effect_id;
+        self.last_object_tag = frame.last_object_tag;
+        self.last_player_filter = frame.last_player_filter;
+        self.iterated_player = frame.iterated_player;
+        self.allow_life_event_value = frame.allow_life_event_value;
+        self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
+    }
+
     pub(crate) fn apply_lowering_frame(&mut self, frame: LoweringFrame) {
         self.last_effect_id = frame.last_effect_id;
         self.last_object_tag = frame.last_object_tag;

@@ -78,7 +78,7 @@ impl DestroyEffect {
         ctx: &mut ExecutionContext,
         object_id: crate::ids::ObjectId,
     ) -> Result<Option<EffectResult>, ExecutionError> {
-        let result = process_destroy(game, object_id, Some(ctx.source), &mut ctx.decision_maker);
+        let result = process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
 
         match result {
             EventOutcome::Proceed(_) => Ok(None), // Successfully destroyed
@@ -110,7 +110,7 @@ impl EffectExecutor for DestroyEffect {
             ObjectApplyResultPolicy::CountApplied,
             |game, ctx, object_id| {
                 let result =
-                    process_destroy(game, object_id, Some(ctx.source), &mut ctx.decision_maker);
+                    process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
                 Ok(matches!(result, EventOutcome::Proceed(_)))
             },
         ) {

@@ -66,7 +66,7 @@ impl DestroyNoRegenerationEffect {
             .remove_one_shot_effects_from_source(object_id);
         game.clear_regeneration_shields(object_id);
 
-        let result = process_destroy(game, object_id, Some(ctx.source), &mut ctx.decision_maker);
+        let result = process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
         match result {
             EventOutcome::Proceed(_) => Ok(None),
             EventOutcome::Prevented => Ok(Some(EffectResult::Protected)),
@@ -98,7 +98,7 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
                     .remove_one_shot_effects_from_source(object_id);
                 game.clear_regeneration_shields(object_id);
                 let result =
-                    process_destroy(game, object_id, Some(ctx.source), &mut ctx.decision_maker);
+                    process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
                 Ok(matches!(result, EventOutcome::Proceed(_)))
             },
         ) {

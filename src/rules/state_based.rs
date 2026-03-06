@@ -507,7 +507,7 @@ pub fn apply_state_based_actions(game: &mut GameState) -> bool {
 /// those interactively.
 pub fn apply_state_based_actions_with(
     game: &mut GameState,
-    decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> bool {
     let all_effects = game.all_continuous_effects();
     let actions = check_state_based_actions_with_effects(game, &all_effects);
@@ -518,7 +518,7 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
     game: &mut GameState,
     actions: Vec<StateBasedAction>,
     all_effects: &[crate::continuous::ContinuousEffect],
-    decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> bool {
     if actions.is_empty() {
         return false;
@@ -646,7 +646,7 @@ fn apply_single_sba_with_snapshots(
     game: &mut GameState,
     action: StateBasedAction,
     _pre_captured_snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
-    decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) {
     match action {
         StateBasedAction::ObjectDies(obj_id) => {

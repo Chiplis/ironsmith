@@ -22,6 +22,8 @@ const textareaClass =
   "min-h-[220px] w-full rounded-md border border-[#344a61] bg-[#0b1118] p-3 text-[14px] text-foreground outline-none focus:border-primary/60 font-mono resize-none";
 const commanderTextareaClass =
   "min-h-[108px] w-full rounded-md border border-[#344a61] bg-[#0b1118] p-3 text-[14px] text-foreground outline-none focus:border-primary/60 font-mono resize-none";
+const startButtonClass =
+  "w-full rounded-md border px-4 py-3 text-[13px] font-semibold uppercase tracking-[0.2em] transition-all disabled:cursor-not-allowed";
 
 function formatName(format) {
   return normalizeMatchFormat(format) === MATCH_FORMAT_COMMANDER
@@ -63,9 +65,11 @@ export default function LobbyOverlay({
 }) {
   const {
     multiplayer,
+    canStartHostedMatch,
     createLobby,
     joinLobby,
     leaveLobby,
+    startHostedMatch,
     updateLobbyDeck,
   } = useGame();
   const [mode, setMode] = useState("create");
@@ -268,7 +272,7 @@ export default function LobbyOverlay({
                     ) : null}
                     <span>{formatDeckRequirement(createFormat)}</span>
                     <span>
-                      The match auto-starts once every seat is filled and ready.
+                      The host can start the match once every seat is filled and ready.
                     </span>
                   </div>
                   <Badge
@@ -363,19 +367,23 @@ export default function LobbyOverlay({
                           : "-"
                       } is active.`
                     : startPending
-                      ? "All players are ready. Starting match."
+                      ? "Starting match."
                       : multiplayer.role === "host"
                         ? slotsRemaining > 0
                           ? `Share this code. ${slotsRemaining} slot${
                               slotsRemaining === 1 ? "" : "s"
                             } remaining.`
-                          : `Waiting for ${
-                              playerCount - readyPlayers
-                            } player${
-                              playerCount - readyPlayers === 1 ? "" : "s"
-                            } to submit a valid ${formatName(activeFormat)} deck.`
+                          : canStartHostedMatch
+                            ? "All players are ready. Start the match when you're ready."
+                            : `Waiting for ${
+                                playerCount - readyPlayers
+                              } player${
+                                playerCount - readyPlayers === 1 ? "" : "s"
+                              } to submit a valid ${formatName(activeFormat)} deck.`
                         : localReady
-                          ? "Ready. Waiting for the remaining players."
+                          ? readyPlayers === multiplayer.desiredPlayers
+                            ? "All players are ready. Waiting for the host to start."
+                            : "Ready. Waiting for the remaining players."
                           : formatDeckRequirement(activeFormat)}
                 </p>
               </div>
@@ -460,6 +468,23 @@ export default function LobbyOverlay({
                   </div>
                 ))}
               </div>
+
+              {!multiplayer.matchStarted && multiplayer.role === "host" ? (
+                <button
+                  type="button"
+                  disabled={!canStartHostedMatch || startPending}
+                  className={`${startButtonClass} ${
+                    canStartHostedMatch && !startPending
+                      ? "border-[#2d8a57] bg-[#11351f] text-[#d7ffe6] shadow-[0_0_26px_rgba(61,196,116,0.32)] hover:bg-[#174a2b]"
+                      : "border-[#2a3746] bg-[#101923] text-[#7f93a8]"
+                  }`}
+                  onClick={() => {
+                    void startHostedMatch();
+                  }}
+                >
+                  {startPending ? "Starting..." : "Start game"}
+                </button>
+              ) : null}
 
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[13px] text-muted-foreground">

@@ -22,7 +22,7 @@ pub fn check_and_apply_sbas(
 pub fn check_and_apply_sbas_with(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
-    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
     use crate::decisions::make_decision;
     use crate::rules::state_based::{

@@ -16,6 +16,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::ResolvedIfResult {
+                effects: $effects,
+                ..
+            }
             | EffectAst::IfResult {
                 effects: $effects,
                 ..
@@ -81,7 +85,13 @@ macro_rules! nested_effects_variants {
 }
 
 pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
+    let mut effect = effect;
+    while let EffectAst::ResolvedMetadata { effect: inner, .. } = effect {
+        effect = inner;
+    }
+
     match effect {
+        EffectAst::ResolvedMetadata { .. } => {}
         EffectAst::DealDamage { .. } => {}
         EffectAst::DealDamageEqualToPower { .. } => {}
         EffectAst::Fight { .. } => {}
@@ -203,6 +213,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::May { .. } => {}
         EffectAst::MayByPlayer { .. } => {}
         EffectAst::MayByTaggedController { .. } => {}
+        EffectAst::ResolvedIfResult { .. } => {}
         EffectAst::IfResult { .. } => {}
         EffectAst::ForEachOpponent { .. } => {}
         EffectAst::ForEachPlayersFiltered { .. } => {}
@@ -276,8 +287,13 @@ pub(super) fn for_each_nested_effects(
     include_unless_action_alternative: bool,
     mut visit: impl FnMut(&[EffectAst]),
 ) {
+    let mut effect = effect;
+    while let EffectAst::ResolvedMetadata { effect: inner, .. } = effect {
+        effect = inner;
+    }
     assert_effect_ast_variant_coverage(effect);
     match effect {
+        EffectAst::ResolvedMetadata { .. } => {}
         EffectAst::Conditional {
             if_true, if_false, ..
         } => {
@@ -306,8 +322,13 @@ pub(super) fn for_each_nested_effects_mut(
     include_unless_action_alternative: bool,
     mut visit: impl FnMut(&mut [EffectAst]),
 ) {
+    let mut effect = effect;
+    while let EffectAst::ResolvedMetadata { effect: inner, .. } = effect {
+        effect = inner;
+    }
     assert_effect_ast_variant_coverage(effect);
     match effect {
+        EffectAst::ResolvedMetadata { .. } => {}
         EffectAst::Conditional {
             if_true, if_false, ..
         } => {
@@ -336,8 +357,13 @@ pub(super) fn try_for_each_nested_effects_mut<E>(
     include_unless_action_alternative: bool,
     mut visit: impl FnMut(&mut [EffectAst]) -> Result<(), E>,
 ) -> Result<(), E> {
+    let mut effect = effect;
+    while let EffectAst::ResolvedMetadata { effect: inner, .. } = effect {
+        effect = inner;
+    }
     assert_effect_ast_variant_coverage(effect);
     match effect {
+        EffectAst::ResolvedMetadata { .. } => {}
         EffectAst::Conditional {
             if_true, if_false, ..
         } => {

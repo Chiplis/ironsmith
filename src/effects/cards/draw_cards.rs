@@ -87,7 +87,7 @@ impl EffectExecutor for DrawCardsEffect {
         };
 
         // Process through replacement effects with decision maker
-        match process_draw(game, player_id, count, is_first, &mut ctx.decision_maker) {
+        match process_draw(game, player_id, count, is_first, &mut *ctx.decision_maker) {
             EventOutcome::Prevented => Ok(EffectOutcome::from_result(EffectResult::Prevented)),
             EventOutcome::Proceed(final_count) => {
                 let drawn = game.draw_cards_with_dm(

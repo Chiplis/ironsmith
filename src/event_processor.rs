@@ -273,7 +273,7 @@ fn continue_interactive_replacement(
     redirect_zone: Zone,
     life_cost: Option<u32>,
     provenance: crate::provenance::ProvNodeId,
-    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    decision_maker: &mut dyn DecisionMaker,
 ) -> InteractiveReplacementResult {
     // Handle discard-or-redirect (Mox Diamond pattern)
     if let Some(filter) = filter {
@@ -307,7 +307,7 @@ fn handle_discard_or_redirect(
     filter: &crate::target::ObjectFilter,
     redirect_zone: Zone,
     provenance: crate::provenance::ProvNodeId,
-    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    decision_maker: &mut dyn DecisionMaker,
 ) -> InteractiveReplacementResult {
     match response {
         InteractiveReplacementResponse::Objects(cards) => {
@@ -1564,7 +1564,7 @@ pub fn process_destroy(
     game: &mut GameState,
     permanent: crate::ids::ObjectId,
     source: Option<crate::ids::ObjectId>,
-    dm: &mut (impl DecisionMaker + ?Sized),
+    dm: &mut dyn DecisionMaker,
 ) -> DestroyOutcome {
     use crate::executor::{ExecutionContext, execute_effect};
 
@@ -1734,7 +1734,7 @@ pub fn process_draw(
     player: PlayerId,
     count: u32,
     is_first_this_turn: bool,
-    dm: &mut (impl DecisionMaker + ?Sized),
+    dm: &mut dyn DecisionMaker,
 ) -> DrawOutcome {
     use crate::events::{DrawEvent, downcast_event};
 
@@ -2339,7 +2339,7 @@ pub fn process_etb_with_event_and_dm(
     game: &mut GameState,
     object: crate::ids::ObjectId,
     from: Zone,
-    dm: &mut (impl DecisionMaker + ?Sized),
+    dm: &mut dyn DecisionMaker,
 ) -> EtbEventResult {
     use crate::ability::AbilityKind;
     use crate::decisions::{

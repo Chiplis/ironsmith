@@ -108,6 +108,17 @@ function toPublicPlayers(players) {
   return reindexPlayers(players).map(toPublicPlayer);
 }
 
+function canHostedMatchStart(session) {
+  return (
+    session.role === "host" &&
+    !session.matchStarted &&
+    session.mode !== "starting" &&
+    session.players.length === session.desiredPlayers &&
+    session.players.length > 0 &&
+    session.players.every((player) => player.ready)
+  );
+}
+
 export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) {
   const [multiplayer, setMultiplayer] = useState(() => createEmptyState());
   const peerRef = useRef(null);
@@ -253,13 +264,9 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
 
   const startHostedMatch = useCallback(async () => {
     const session = multiplayerRef.current;
-    if (session.role !== "host" || session.matchStarted || session.mode === "starting") {
-      return;
-    }
-    if (session.players.length !== session.desiredPlayers) return;
+    if (!canHostedMatchStart(session)) return;
 
     const players = reindexPlayers(session.players);
-    if (!players.every((player) => player.ready)) return;
 
     const decks = players.map((player) => sanitizeCardList(player.deck));
     const format = normalizeMatchFormat(session.format);
@@ -292,16 +299,6 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
       setStatus(`Match start failed: ${err}`, true);
     }
   }, [applyMatchStart, broadcastToClients, setStatus, updateMultiplayer]);
-
-  const maybeStartHostedMatch = useCallback(() => {
-    const session = multiplayerRef.current;
-    if (session.role !== "host" || session.mode === "starting" || session.matchStarted) {
-      return;
-    }
-    if (session.players.length !== session.desiredPlayers) return;
-    if (!session.players.every((player) => player.ready)) return;
-    void startHostedMatch();
-  }, [startHostedMatch]);
 
   const handleHostDisconnect = useCallback(() => {
     updateMultiplayer((prev) => ({
@@ -513,7 +510,6 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           }));
           setStatus(`${name} joined lobby`);
           broadcastLobbyState();
-          maybeStartHostedMatch();
           return;
         }
         case "deck_update": {
@@ -535,7 +531,6 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
             ),
           }));
           broadcastLobbyState();
-          maybeStartHostedMatch();
           return;
         }
         case "player_action":
@@ -552,7 +547,6 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
     },
     [
       broadcastLobbyState,
-      maybeStartHostedMatch,
       sequenceHostedAction,
       setStatus,
       updateMultiplayer,
@@ -774,7 +768,6 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
 
       if (nextSession.role === "host") {
         broadcastLobbyState();
-        maybeStartHostedMatch();
         return;
       }
 
@@ -788,7 +781,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
         });
       }
     },
-    [broadcastLobbyState, maybeStartHostedMatch, updateMultiplayer]
+    [broadcastLobbyState, updateMultiplayer]
   );
 
   const submitMultiplayerCommand = useCallback(
@@ -850,9 +843,11 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
 
   return {
     multiplayer,
+    canStartHostedMatch: canHostedMatchStart(multiplayer),
     createLobby,
     joinLobby,
     leaveLobby,
+    startHostedMatch,
     updateLobbyDeck,
     submitMultiplayerCommand,
   };

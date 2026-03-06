@@ -1,4 +1,4 @@
-use super::effect_ast_traversal::for_each_nested_effects_mut;
+use super::effect_ast_traversal::{for_each_nested_effects_mut, try_for_each_nested_effects_mut};
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,6 +12,377 @@ pub(crate) struct ReferenceBindings {
 pub(crate) struct BoundEffectsAst {
     pub(crate) effects: Vec<EffectAst>,
     pub(crate) bindings: ReferenceBindings,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct EffectReferenceResolutionConfig {
+    pub(crate) allow_life_event_value: bool,
+    pub(crate) bind_unbound_x_to_last_effect: bool,
+    pub(crate) initial_last_effect_id: Option<EffectId>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EffectReferenceResolutionState {
+    last_effect_id: Option<EffectId>,
+    allow_life_event_value: bool,
+    bind_unbound_x_to_last_effect: bool,
+}
+
+pub(crate) fn resolve_effect_sequence_references(
+    effects: &[EffectAst],
+    config: EffectReferenceResolutionConfig,
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let mut next_effect_id = 0;
+    resolve_effect_sequence_references_with_state(
+        effects,
+        &mut next_effect_id,
+        EffectReferenceResolutionState {
+            last_effect_id: config.initial_last_effect_id,
+            allow_life_event_value: config.allow_life_event_value,
+            bind_unbound_x_to_last_effect: config.bind_unbound_x_to_last_effect,
+        },
+    )
+}
+
+pub(crate) fn annotate_effect_reference_frames(
+    effects: &[EffectAst],
+    id_gen: IdGenContext,
+    frame: LoweringFrame,
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let mut ctx = CompileContext::from_parts(id_gen, frame);
+    let mut annotated = Vec::with_capacity(effects.len());
+
+    for effect in effects {
+        let (stripped, auto_tag_object_targets, assigned_effect_id) =
+            resolved_metadata_parts(effect);
+        let reference_frame = ctx.reference_frame();
+        let annotated_effect = EffectAst::ResolvedMetadata {
+            effect: Box::new(stripped.clone()),
+            auto_tag_object_targets,
+            assigned_effect_id,
+            reference_frame: Some(reference_frame),
+        };
+
+        ctx.auto_tag_object_targets = ctx.force_auto_tag_object_targets || auto_tag_object_targets;
+        let (compiled_effects, _) = compile_effect(&stripped, &mut ctx)?;
+        if let Some(id) = assigned_effect_id {
+            if compiled_effects.is_empty() {
+                ctx.last_effect_id = None;
+            } else {
+                ctx.last_effect_id = Some(id);
+            }
+        }
+
+        annotated.push(annotated_effect);
+    }
+
+    Ok(annotated)
+}
+
+fn resolve_effect_sequence_references_with_state(
+    effects: &[EffectAst],
+    next_effect_id: &mut u32,
+    mut state: EffectReferenceResolutionState,
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let mut resolved = Vec::with_capacity(effects.len());
+
+    for (idx, effect) in effects.iter().enumerate() {
+        let mut effect =
+            resolve_effect_references_in_effect(effect.clone(), next_effect_id, state)?;
+        let remaining = if idx + 1 < effects.len() {
+            &effects[idx + 1..]
+        } else {
+            &[]
+        };
+
+        let auto_tag_object_targets =
+            effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
+        let assigned_effect_id = maybe_assign_effect_result_id(
+            effects,
+            idx,
+            next_effect_id,
+            state.allow_life_event_value,
+        );
+
+        if let Some(id) = assigned_effect_id {
+            state.last_effect_id = Some(id);
+        } else {
+            state.last_effect_id = None;
+        }
+
+        if auto_tag_object_targets || assigned_effect_id.is_some() {
+            effect = EffectAst::ResolvedMetadata {
+                effect: Box::new(effect),
+                auto_tag_object_targets,
+                assigned_effect_id,
+                reference_frame: None,
+            };
+        }
+        resolved.push(effect);
+    }
+
+    Ok(resolved)
+}
+
+fn maybe_assign_effect_result_id(
+    effects: &[EffectAst],
+    idx: usize,
+    next_effect_id: &mut u32,
+    allow_life_event_value: bool,
+) -> Option<EffectId> {
+    let next_is_if_result =
+        idx + 1 < effects.len() && matches!(effects[idx + 1], EffectAst::IfResult { .. });
+    let next_is_if_result_with_opponent_doesnt = next_is_if_result
+        && idx + 2 < effects.len()
+        && matches!(effects[idx + 2], EffectAst::ForEachOpponentDoesNot { .. });
+    let next_is_if_result_with_player_doesnt = next_is_if_result
+        && idx + 2 < effects.len()
+        && matches!(effects[idx + 2], EffectAst::ForEachPlayerDoesNot { .. });
+    let next_is_if_result_with_opponent_did = next_is_if_result
+        && idx + 2 < effects.len()
+        && matches!(effects[idx + 2], EffectAst::ForEachOpponentDid { .. });
+    let next_is_if_result_with_player_did = next_is_if_result
+        && idx + 2 < effects.len()
+        && matches!(effects[idx + 2], EffectAst::ForEachPlayerDid { .. });
+    let next_needs_event_derived_amount = !allow_life_event_value
+        && idx + 1 < effects.len()
+        && effect_references_event_derived_amount(&effects[idx + 1]);
+
+    if !(next_is_if_result_with_opponent_doesnt
+        || next_is_if_result_with_player_doesnt
+        || next_is_if_result_with_opponent_did
+        || next_is_if_result_with_player_did
+        || next_is_if_result
+        || next_needs_event_derived_amount)
+    {
+        return None;
+    }
+
+    let id = EffectId(*next_effect_id);
+    *next_effect_id += 1;
+    Some(id)
+}
+
+fn resolve_effect_references_in_effect(
+    mut effect: EffectAst,
+    next_effect_id: &mut u32,
+    state: EffectReferenceResolutionState,
+) -> Result<EffectAst, CardTextError> {
+    effect = strip_resolved_metadata(effect);
+
+    if let EffectAst::IfResult { predicate, effects } = effect {
+        let condition = state.last_effect_id.ok_or_else(|| {
+            CardTextError::ParseError("missing prior effect for if clause".to_string())
+        })?;
+        let effects = resolve_effect_sequence_references_with_state(
+            &effects,
+            next_effect_id,
+            EffectReferenceResolutionState {
+                last_effect_id: Some(condition),
+                allow_life_event_value: state.allow_life_event_value,
+                bind_unbound_x_to_last_effect: true,
+            },
+        )?;
+        return Ok(EffectAst::ResolvedIfResult {
+            condition,
+            predicate,
+            effects,
+        });
+    }
+
+    if let EffectAst::PumpByLastEffect {
+        power,
+        toughness,
+        target,
+        duration,
+    } = &effect
+        && let Some(id) = state.last_effect_id
+    {
+        return Ok(EffectAst::Pump {
+            power: if *power == 1 {
+                Value::EffectValue(id)
+            } else {
+                Value::Fixed(*power)
+            },
+            toughness: Value::Fixed(*toughness),
+            target: target.clone(),
+            duration: duration.clone(),
+            condition: None,
+        });
+    }
+
+    resolve_effect_result_values_in_fields(&mut effect, state)?;
+    try_for_each_nested_effects_mut(&mut effect, true, |nested| {
+        let resolved =
+            resolve_effect_sequence_references_with_state(nested, next_effect_id, state)?;
+        nested.clone_from_slice(&resolved);
+        Ok::<_, CardTextError>(())
+    })?;
+    Ok(effect)
+}
+
+fn strip_resolved_metadata(effect: EffectAst) -> EffectAst {
+    match effect {
+        EffectAst::ResolvedMetadata { effect, .. } => strip_resolved_metadata(*effect),
+        other => other,
+    }
+}
+
+fn resolved_metadata_parts(effect: &EffectAst) -> (EffectAst, bool, Option<EffectId>) {
+    match effect {
+        EffectAst::ResolvedMetadata {
+            effect,
+            auto_tag_object_targets,
+            assigned_effect_id,
+            ..
+        } => (
+            strip_resolved_metadata((**effect).clone()),
+            *auto_tag_object_targets,
+            *assigned_effect_id,
+        ),
+        other => (strip_resolved_metadata(other.clone()), false, None),
+    }
+}
+
+fn resolve_effect_result_values_in_fields(
+    effect: &mut EffectAst,
+    state: EffectReferenceResolutionState,
+) -> Result<(), CardTextError> {
+    match effect {
+        EffectAst::DealDamage { amount, .. }
+        | EffectAst::DealDamageEach { amount, .. }
+        | EffectAst::Draw { count: amount, .. }
+        | EffectAst::LoseLife { amount, .. }
+        | EffectAst::GainLife { amount, .. }
+        | EffectAst::Mill { count: amount, .. }
+        | EffectAst::SetLifeTotal { amount, .. }
+        | EffectAst::PoisonCounters { count: amount, .. }
+        | EffectAst::EnergyCounters { count: amount, .. }
+        | EffectAst::Monstrosity { amount }
+        | EffectAst::PreventDamage { amount, .. }
+        | EffectAst::RedirectNextDamageFromSourceToTarget { amount, .. }
+        | EffectAst::PreventDamageEach { amount, .. }
+        | EffectAst::AddManaScaled { amount, .. }
+        | EffectAst::AddManaAnyColor { amount, .. }
+        | EffectAst::AddManaAnyOneColor { amount, .. }
+        | EffectAst::AddManaChosenColor { amount, .. }
+        | EffectAst::AddManaCommanderIdentity { amount, .. }
+        | EffectAst::Scry { count: amount, .. }
+        | EffectAst::Discover { count: amount, .. }
+        | EffectAst::Surveil { count: amount, .. }
+        | EffectAst::PayEnergy { amount, .. }
+        | EffectAst::LookAtTopCards { count: amount, .. }
+        | EffectAst::CopySpell { count: amount, .. }
+        | EffectAst::CreateToken { count: amount, .. }
+        | EffectAst::Investigate { count: amount }
+        | EffectAst::CreateTokenCopy { count: amount, .. }
+        | EffectAst::CreateTokenCopyFromSource { count: amount, .. }
+        | EffectAst::RemoveUpToAnyCounters { amount, .. } => {
+            resolve_effect_result_value(amount, state)?;
+        }
+        EffectAst::PutCounters { count, .. } | EffectAst::PutCountersAll { count, .. } => {
+            resolve_effect_result_value(count, state)?;
+        }
+        EffectAst::PutOrRemoveCounters {
+            put_count,
+            remove_count,
+            ..
+        } => {
+            resolve_effect_result_value(put_count, state)?;
+            resolve_effect_result_value(remove_count, state)?;
+        }
+        EffectAst::RemoveCountersAll { amount, .. } => {
+            resolve_effect_result_value(amount, state)?;
+        }
+        EffectAst::CounterUnlessPays {
+            life,
+            additional_generic,
+            ..
+        } => {
+            if let Some(value) = life.as_mut() {
+                resolve_effect_result_value(value, state)?;
+            }
+            if let Some(value) = additional_generic.as_mut() {
+                resolve_effect_result_value(value, state)?;
+            }
+        }
+        EffectAst::AddManaFromLandCouldProduce { amount, .. } => {
+            resolve_effect_result_value(amount, state)?;
+        }
+        EffectAst::Discard { count, .. } => {
+            resolve_effect_result_value(count, state)?;
+        }
+        EffectAst::CreateTokenWithMods { count, .. } => {
+            resolve_effect_result_value(count, state)?;
+        }
+        EffectAst::Pump {
+            power, toughness, ..
+        }
+        | EffectAst::SetBasePowerToughness {
+            power, toughness, ..
+        }
+        | EffectAst::BecomeBasePtCreature {
+            power, toughness, ..
+        }
+        | EffectAst::PumpAll {
+            power, toughness, ..
+        } => {
+            resolve_effect_result_value(power, state)?;
+            resolve_effect_result_value(toughness, state)?;
+        }
+        EffectAst::SetBasePower { power, .. } => {
+            resolve_effect_result_value(power, state)?;
+        }
+        EffectAst::PumpForEach { count, .. } => {
+            resolve_effect_result_value(count, state)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn resolve_effect_result_value(
+    value: &mut Value,
+    state: EffectReferenceResolutionState,
+) -> Result<(), CardTextError> {
+    match value {
+        Value::X if state.bind_unbound_x_to_last_effect => {
+            let id = state.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError("missing prior effect for X binding".to_string())
+            })?;
+            *value = Value::EffectValue(id);
+        }
+        Value::Add(left, right) => {
+            resolve_effect_result_value(left, state)?;
+            resolve_effect_result_value(right, state)?;
+        }
+        Value::EventValue(EventValueSpec::Amount)
+        | Value::EventValue(EventValueSpec::LifeAmount)
+            if !state.allow_life_event_value =>
+        {
+            let id = state.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "event-derived amount requires a compatible trigger or prior effect"
+                        .to_string(),
+                )
+            })?;
+            *value = Value::EffectValue(id);
+        }
+        Value::EventValueOffset(EventValueSpec::Amount, offset)
+        | Value::EventValueOffset(EventValueSpec::LifeAmount, offset)
+            if !state.allow_life_event_value =>
+        {
+            let id = state.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "event-derived amount requires a compatible trigger or prior effect"
+                        .to_string(),
+                )
+            })?;
+            *value = Value::EffectValueOffset(id, *offset);
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 pub(crate) fn bind_unresolved_it_references_with_bindings(
@@ -563,5 +934,128 @@ mod tests {
         assert_eq!(bound.bindings.unresolved_it_before, 2);
         assert_eq!(bound.bindings.unresolved_it_after, 0);
         assert!(format!("{:?}", bound.effects).contains("bound_target"));
+    }
+
+    #[test]
+    fn resolves_if_result_to_explicit_condition_and_binds_x() {
+        let effects = vec![
+            EffectAst::Investigate {
+                count: Value::Fixed(1),
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: vec![EffectAst::Investigate { count: Value::X }],
+            },
+        ];
+
+        let resolved = resolve_effect_sequence_references(
+            &effects,
+            EffectReferenceResolutionConfig::default(),
+        )
+        .expect("resolve if-result references");
+
+        match &resolved[0] {
+            EffectAst::ResolvedMetadata {
+                assigned_effect_id, ..
+            } => assert_eq!(*assigned_effect_id, Some(EffectId(0))),
+            other => panic!("expected resolved metadata on antecedent, got {other:?}"),
+        }
+
+        match &resolved[1] {
+            EffectAst::ResolvedIfResult {
+                condition,
+                predicate,
+                effects,
+            } => {
+                assert_eq!(*condition, EffectId(0));
+                assert_eq!(*predicate, IfResultPredicate::Did);
+                assert_eq!(effects.len(), 1);
+                match &effects[0] {
+                    EffectAst::Investigate { count } => {
+                        assert_eq!(count, &Value::EffectValue(EffectId(0)));
+                    }
+                    other => panic!("expected investigate follow-up, got {other:?}"),
+                }
+            }
+            other => panic!("expected resolved if-result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolves_event_amount_to_prior_effect_value_when_trigger_context_disallows_it() {
+        let effects = vec![
+            EffectAst::Investigate {
+                count: Value::Fixed(1),
+            },
+            EffectAst::Draw {
+                count: Value::EventValue(EventValueSpec::Amount),
+                player: PlayerAst::You,
+            },
+        ];
+
+        let resolved = resolve_effect_sequence_references(
+            &effects,
+            EffectReferenceResolutionConfig {
+                allow_life_event_value: false,
+                ..Default::default()
+            },
+        )
+        .expect("resolve event-derived amount");
+
+        match &resolved[0] {
+            EffectAst::ResolvedMetadata {
+                assigned_effect_id, ..
+            } => assert_eq!(*assigned_effect_id, Some(EffectId(0))),
+            other => panic!("expected resolved metadata on antecedent, got {other:?}"),
+        }
+
+        match &resolved[1] {
+            EffectAst::Draw { count, .. } => {
+                assert_eq!(count, &Value::EffectValue(EffectId(0)));
+            }
+            other => panic!("expected draw effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn annotates_followup_effect_with_explicit_object_reference_frame() {
+        let effects = vec![
+            EffectAst::Destroy {
+                target: TargetAst::Object(
+                    ObjectFilter::creature(),
+                    Some(TextSpan::synthetic()),
+                    None,
+                ),
+            },
+            EffectAst::GrantPlayTaggedUntilEndOfTurn {
+                tag: TagKey::from(IT_TAG),
+                player: PlayerAst::You,
+            },
+        ];
+
+        let resolved = resolve_effect_sequence_references(
+            &effects,
+            EffectReferenceResolutionConfig::default(),
+        )
+        .expect("resolve sequence metadata");
+        let annotated = annotate_effect_reference_frames(
+            &resolved,
+            IdGenContext::default(),
+            LoweringFrame::default(),
+        )
+        .expect("annotate reference frames");
+
+        match &annotated[1] {
+            EffectAst::ResolvedMetadata {
+                reference_frame: Some(reference_frame),
+                ..
+            } => {
+                assert_eq!(
+                    reference_frame.last_object_tag.as_deref(),
+                    Some("destroyed_0")
+                );
+            }
+            other => panic!("expected annotated metadata on follow-up, got {other:?}"),
+        }
     }
 }

@@ -1096,6 +1096,12 @@ pub(crate) enum EffectAst {
         count: Value,
         player: PlayerAst,
     },
+    ResolvedMetadata {
+        effect: Box<EffectAst>,
+        auto_tag_object_targets: bool,
+        assigned_effect_id: Option<EffectId>,
+        reference_frame: Option<parse_parsing::LoweringReferenceFrame>,
+    },
     May {
         effects: Vec<EffectAst>,
     },
@@ -1105,6 +1111,11 @@ pub(crate) enum EffectAst {
     },
     MayByTaggedController {
         tag: TagKey,
+        effects: Vec<EffectAst>,
+    },
+    ResolvedIfResult {
+        condition: EffectId,
+        predicate: IfResultPredicate,
         effects: Vec<EffectAst>,
     },
     IfResult {

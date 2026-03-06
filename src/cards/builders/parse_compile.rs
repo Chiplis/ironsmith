@@ -220,17 +220,29 @@ pub(crate) fn compile_statement_effects_with_seed(
 fn compile_statement_effects_prepared(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<Vec<Effect>, CardTextError> {
+    let resolved_effects = resolve_effect_sequence_references(
+        &prepared.effects,
+        EffectReferenceResolutionConfig {
+            allow_life_event_value: false,
+            ..Default::default()
+        },
+    )?;
     let mut ctx = CompileContext::new();
     ctx.force_auto_tag_object_targets = true;
     ctx.allow_life_event_value = false;
     if prepared.bindings.seed_tag.as_str() != IT_TAG {
         ctx.last_object_tag = Some(prepared.bindings.seed_tag.as_str().to_string());
     }
-    let prelude = seed_attached_source_tag_prelude(&mut ctx, &prepared.effects);
+    let prelude = seed_attached_source_tag_prelude(&mut ctx, &resolved_effects);
+    let resolved_effects = annotate_effect_reference_frames(
+        &resolved_effects,
+        ctx.id_gen_context(),
+        ctx.lowering_frame(),
+    )?;
     let mut id_gen = ctx.id_gen_context();
     let frame_in = ctx.lowering_frame();
     let (compiled, _, frame_out) =
-        compile_effects_with_explicit_frame(&prepared.effects, &mut id_gen, frame_in)?;
+        compile_effects_with_explicit_frame(&resolved_effects, &mut id_gen, frame_in)?;
     ctx.apply_id_gen_context(id_gen);
     ctx.apply_lowering_frame(frame_out);
     Ok(prepend_effect_prelude(compiled, prelude))
@@ -681,20 +693,32 @@ pub(crate) fn compile_trigger_effects_with_intervening_if_seed(
         .map(|trigger| trigger_supports_event_value(trigger, &EventValueSpec::Amount))
         .unwrap_or(false);
     let prepared = prepare_effects_for_lowering(effects, seed_last_object_tag);
+    let resolved_effects = resolve_effect_sequence_references(
+        &prepared.effects,
+        EffectReferenceResolutionConfig {
+            allow_life_event_value: ctx.allow_life_event_value,
+            ..Default::default()
+        },
+    )?;
     if prepared.bindings.seed_tag.as_str() != IT_TAG {
         ctx.last_object_tag = Some(prepared.bindings.seed_tag.as_str().to_string());
     }
-    let prelude = seed_attached_source_tag_prelude(&mut ctx, &prepared.effects);
-    maybe_seed_default_trigger_object_tag(&mut ctx, trigger, &prepared.effects);
+    let prelude = seed_attached_source_tag_prelude(&mut ctx, &resolved_effects);
+    maybe_seed_default_trigger_object_tag(&mut ctx, trigger, &resolved_effects);
+    let resolved_effects = annotate_effect_reference_frames(
+        &resolved_effects,
+        ctx.id_gen_context(),
+        ctx.lowering_frame(),
+    )?;
     let mut intervening_if: Option<Condition> = None;
-    let mut effects_to_compile = prepared.effects.as_slice();
+    let mut effects_to_compile = resolved_effects.as_slice();
     let mut extracted_predicate: Option<&PredicateAst> = None;
-    if prepared.effects.len() == 1
+    if resolved_effects.len() == 1
         && let EffectAst::Conditional {
             predicate,
             if_true,
             if_false,
-        } = &prepared.effects[0]
+        } = strip_resolved_effect_metadata(&resolved_effects[0])
         && if_false.is_empty()
         && !if_true.is_empty()
     {
@@ -719,7 +743,7 @@ pub(crate) fn compile_trigger_effects_with_intervening_if_seed(
     ctx.apply_lowering_frame(frame_out);
     let compiled = prepend_effect_prelude(compiled, prelude);
     let compiled =
-        prepend_trigger_tag_effects(compiled, &prepared.effects, ctx.last_object_tag.as_deref());
+        prepend_trigger_tag_effects(compiled, &resolved_effects, ctx.last_object_tag.as_deref());
     Ok((compiled, choices, intervening_if))
 }
 
@@ -891,6 +915,7 @@ macro_rules! direct_target_effect_variants {
 }
 
 fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetAst)) {
+    let effect = strip_resolved_effect_metadata(effect);
     assert_effect_ast_variant_coverage(effect);
     match effect {
         EffectAst::Fight {
@@ -942,6 +967,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
 }
 
 fn direct_effect_targets_reference_tag(effect: &EffectAst, tag: &str) -> bool {
+    let effect = strip_resolved_effect_metadata(effect);
     let mut references = false;
     with_direct_effect_targets(effect, |target| {
         if !references {
@@ -959,6 +985,7 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
 }
 
 fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
+    let effect = strip_resolved_effect_metadata(effect);
     match effect {
         EffectAst::DealDamageEach { filter, .. }
         | EffectAst::PutCountersAll { filter, .. }
@@ -990,6 +1017,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
 }
 
 pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
+    let effect = strip_resolved_effect_metadata(effect);
     assert_effect_ast_variant_coverage(effect);
     if direct_effect_targets_reference_tag(effect, tag) {
         return true;
@@ -1153,6 +1181,7 @@ pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
 }
 
 pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
+    let effect = strip_resolved_effect_metadata(effect);
     assert_effect_ast_variant_coverage(effect);
     match effect {
         EffectAst::DealDamage { amount, .. }
@@ -1177,6 +1206,7 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
 }
 
 pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
+    let effect = strip_resolved_effect_metadata(effect);
     assert_effect_ast_variant_coverage(effect);
     match effect {
         EffectAst::Draw { player, .. }
@@ -1264,6 +1294,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
 }
 
 pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
+    let effect = strip_resolved_effect_metadata(effect);
     assert_effect_ast_variant_coverage(effect);
     if direct_effect_targets_reference_tag(effect, IT_TAG) {
         return true;
@@ -1441,8 +1472,11 @@ pub(crate) fn compile_effects(
         }
 
         if idx + 1 < effects.len()
-            && let Some((effect_sequence, effect_choices)) =
-                compile_if_do_with_opponent_doesnt(&effects[idx], &effects[idx + 1], ctx)?
+            && let Some((effect_sequence, effect_choices)) = compile_if_do_with_opponent_doesnt(
+                strip_resolved_effect_metadata(&effects[idx]),
+                strip_resolved_effect_metadata(&effects[idx + 1]),
+                ctx,
+            )?
         {
             compiled.extend(effect_sequence);
             for choice in effect_choices {
@@ -1453,8 +1487,11 @@ pub(crate) fn compile_effects(
         }
 
         if idx + 1 < effects.len()
-            && let Some((effect_sequence, effect_choices)) =
-                compile_if_do_with_player_doesnt(&effects[idx], &effects[idx + 1], ctx)?
+            && let Some((effect_sequence, effect_choices)) = compile_if_do_with_player_doesnt(
+                strip_resolved_effect_metadata(&effects[idx]),
+                strip_resolved_effect_metadata(&effects[idx + 1]),
+                ctx,
+            )?
         {
             compiled.extend(effect_sequence);
             for choice in effect_choices {
@@ -1465,8 +1502,11 @@ pub(crate) fn compile_effects(
         }
 
         if idx + 1 < effects.len()
-            && let Some((effect_sequence, effect_choices)) =
-                compile_if_do_with_opponent_did(&effects[idx], &effects[idx + 1], ctx)?
+            && let Some((effect_sequence, effect_choices)) = compile_if_do_with_opponent_did(
+                strip_resolved_effect_metadata(&effects[idx]),
+                strip_resolved_effect_metadata(&effects[idx + 1]),
+                ctx,
+            )?
         {
             compiled.extend(effect_sequence);
             for choice in effect_choices {
@@ -1477,8 +1517,11 @@ pub(crate) fn compile_effects(
         }
 
         if idx + 1 < effects.len()
-            && let Some((effect_sequence, effect_choices)) =
-                compile_if_do_with_player_did(&effects[idx], &effects[idx + 1], ctx)?
+            && let Some((effect_sequence, effect_choices)) = compile_if_do_with_player_did(
+                strip_resolved_effect_metadata(&effects[idx]),
+                strip_resolved_effect_metadata(&effects[idx + 1]),
+                ctx,
+            )?
         {
             compiled.extend(effect_sequence);
             for choice in effect_choices {
@@ -1488,44 +1531,53 @@ pub(crate) fn compile_effects(
             continue;
         }
 
+        let current_effect = strip_resolved_effect_metadata(&effects[idx]);
+        let current_hints = resolved_effect_lowering_hints(&effects[idx]);
+        if let Some(reference_frame) = current_hints.reference_frame.clone() {
+            ctx.apply_reference_frame(reference_frame);
+        }
         let remaining = if idx + 1 < effects.len() {
             &effects[idx + 1..]
         } else {
             &[]
         };
+        let next_effect = effects.get(idx + 1).map(strip_resolved_effect_metadata);
+        let next_next_effect = effects.get(idx + 2).map(strip_resolved_effect_metadata);
+        let fallback_auto_tag = !current_hints.is_present
+            && (effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining));
         ctx.auto_tag_object_targets = ctx.force_auto_tag_object_targets
-            || effects_reference_it_tag(remaining)
-            || effects_reference_its_controller(remaining);
+            || current_hints.auto_tag_object_targets
+            || fallback_auto_tag;
 
         let next_is_if_result =
-            idx + 1 < effects.len() && matches!(effects[idx + 1], EffectAst::IfResult { .. });
+            next_effect.is_some_and(|effect| matches!(effect, EffectAst::IfResult { .. }));
         let next_is_if_result_with_opponent_doesnt = next_is_if_result
-            && idx + 2 < effects.len()
-            && matches!(effects[idx + 2], EffectAst::ForEachOpponentDoesNot { .. });
+            && next_next_effect
+                .is_some_and(|effect| matches!(effect, EffectAst::ForEachOpponentDoesNot { .. }));
         let next_is_if_result_with_player_doesnt = next_is_if_result
-            && idx + 2 < effects.len()
-            && matches!(effects[idx + 2], EffectAst::ForEachPlayerDoesNot { .. });
+            && next_next_effect
+                .is_some_and(|effect| matches!(effect, EffectAst::ForEachPlayerDoesNot { .. }));
         let next_is_if_result_with_opponent_did = next_is_if_result
-            && idx + 2 < effects.len()
-            && matches!(effects[idx + 2], EffectAst::ForEachOpponentDid { .. });
+            && next_next_effect
+                .is_some_and(|effect| matches!(effect, EffectAst::ForEachOpponentDid { .. }));
         let next_is_if_result_with_player_did = next_is_if_result
-            && idx + 2 < effects.len()
-            && matches!(effects[idx + 2], EffectAst::ForEachPlayerDid { .. });
+            && next_next_effect
+                .is_some_and(|effect| matches!(effect, EffectAst::ForEachPlayerDid { .. }));
         if next_is_if_result_with_opponent_doesnt
             || next_is_if_result_with_player_doesnt
             || next_is_if_result_with_opponent_did
             || next_is_if_result_with_player_did
         {
-            let (mut effect_list, effect_choices) = compile_effect(&effects[idx], ctx)?;
+            let (mut effect_list, effect_choices) = compile_effect(current_effect, ctx)?;
             if !effect_list.is_empty() {
-                let id = ctx.next_effect_id();
-                let Some(last) = effect_list.pop() else {
-                    return Err(CardTextError::InvariantViolation(
-                        "missing final effect while assigning event id (if-result with opponent/player did|didn't)"
-                            .to_string(),
-                    ));
-                };
-                effect_list.push(Effect::with_id(id.0, last));
+                let id = current_hints
+                    .assigned_effect_id
+                    .unwrap_or_else(|| ctx.next_effect_id());
+                assign_effect_result_id(
+                    &mut effect_list,
+                    id,
+                    "missing final effect while assigning event id (if-result with opponent/player did|didn't)",
+                )?;
                 ctx.last_effect_id = Some(id);
             } else {
                 ctx.last_effect_id = None;
@@ -1540,15 +1592,16 @@ pub(crate) fn compile_effects(
         }
 
         if next_is_if_result {
-            let (mut effect_list, effect_choices) = compile_effect(&effects[idx], ctx)?;
+            let (mut effect_list, effect_choices) = compile_effect(current_effect, ctx)?;
             if !effect_list.is_empty() {
-                let id = ctx.next_effect_id();
-                let Some(last) = effect_list.pop() else {
-                    return Err(CardTextError::InvariantViolation(
-                        "missing final effect while assigning event id (if-result)".to_string(),
-                    ));
-                };
-                effect_list.push(Effect::with_id(id.0, last));
+                let id = current_hints
+                    .assigned_effect_id
+                    .unwrap_or_else(|| ctx.next_effect_id());
+                assign_effect_result_id(
+                    &mut effect_list,
+                    id,
+                    "missing final effect while assigning event id (if-result)",
+                )?;
                 ctx.last_effect_id = Some(id);
             } else {
                 ctx.last_effect_id = None;
@@ -1567,7 +1620,8 @@ pub(crate) fn compile_effects(
             ctx.auto_tag_object_targets = ctx.force_auto_tag_object_targets
                 || effects_reference_it_tag(if_remaining)
                 || effects_reference_its_controller(if_remaining);
-            let (if_effects, if_choices) = compile_effect(&effects[idx + 1], ctx)?;
+            let (if_effects, if_choices) =
+                compile_effect(strip_resolved_effect_metadata(&effects[idx + 1]), ctx)?;
             compiled.extend(if_effects);
             for choice in if_choices {
                 push_choice(&mut choices, choice);
@@ -1576,19 +1630,29 @@ pub(crate) fn compile_effects(
             continue;
         }
 
-        let next_needs_event_derived_amount =
-            idx + 1 < effects.len() && effect_references_event_derived_amount(&effects[idx + 1]);
-        let (mut effect_list, effect_choices) = compile_effect(&effects[idx], ctx)?;
-        if next_needs_event_derived_amount {
+        let next_needs_event_derived_amount = !current_hints.is_present
+            && idx + 1 < effects.len()
+            && effect_references_event_derived_amount(&effects[idx + 1]);
+        let (mut effect_list, effect_choices) = compile_effect(current_effect, ctx)?;
+        if let Some(id) = current_hints.assigned_effect_id {
+            if !effect_list.is_empty() {
+                assign_effect_result_id(
+                    &mut effect_list,
+                    id,
+                    "missing final effect while assigning event id (resolved metadata)",
+                )?;
+                ctx.last_effect_id = Some(id);
+            } else {
+                ctx.last_effect_id = None;
+            }
+        } else if next_needs_event_derived_amount {
             if !effect_list.is_empty() {
                 let id = ctx.next_effect_id();
-                let Some(last) = effect_list.pop() else {
-                    return Err(CardTextError::InvariantViolation(
-                        "missing final effect while assigning event id (event-derived amount)"
-                            .to_string(),
-                    ));
-                };
-                effect_list.push(Effect::with_id(id.0, last));
+                assign_effect_result_id(
+                    &mut effect_list,
+                    id,
+                    "missing final effect while assigning event id (event-derived amount)",
+                )?;
                 ctx.last_effect_id = Some(id);
             } else {
                 ctx.last_effect_id = None;
@@ -1603,6 +1667,50 @@ pub(crate) fn compile_effects(
 
     let compiled = prepend_missing_target_choice_prelude(compiled, &choices);
     Ok((compiled, choices))
+}
+
+#[derive(Debug, Clone, Default)]
+struct ResolvedEffectLoweringHints {
+    auto_tag_object_targets: bool,
+    assigned_effect_id: Option<EffectId>,
+    reference_frame: Option<LoweringReferenceFrame>,
+    is_present: bool,
+}
+
+fn resolved_effect_lowering_hints(effect: &EffectAst) -> ResolvedEffectLoweringHints {
+    match effect {
+        EffectAst::ResolvedMetadata {
+            auto_tag_object_targets,
+            assigned_effect_id,
+            reference_frame,
+            ..
+        } => ResolvedEffectLoweringHints {
+            auto_tag_object_targets: *auto_tag_object_targets,
+            assigned_effect_id: *assigned_effect_id,
+            reference_frame: reference_frame.clone(),
+            is_present: true,
+        },
+        _ => ResolvedEffectLoweringHints::default(),
+    }
+}
+
+fn strip_resolved_effect_metadata(effect: &EffectAst) -> &EffectAst {
+    match effect {
+        EffectAst::ResolvedMetadata { effect, .. } => strip_resolved_effect_metadata(effect),
+        other => other,
+    }
+}
+
+fn assign_effect_result_id(
+    effects: &mut Vec<Effect>,
+    id: EffectId,
+    error_message: &str,
+) -> Result<(), CardTextError> {
+    let Some(last) = effects.pop() else {
+        return Err(CardTextError::InvariantViolation(error_message.to_string()));
+    };
+    effects.push(Effect::with_id(id.0, last));
+    Ok(())
 }
 
 pub(crate) fn compile_effects_with_explicit_frame(
@@ -2579,7 +2687,7 @@ pub(crate) fn compile_effect(
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     // Keep dynamic stack growth for deeply nested recursive lowering paths.
     stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
-        compile_effect_inner(effect, ctx)
+        compile_effect_inner(strip_resolved_effect_metadata(effect), ctx)
     })
 }
 
@@ -4753,6 +4861,21 @@ fn try_compile_stack_and_condition_effect(
     ctx: &mut CompileContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
+        EffectAst::ResolvedIfResult {
+            condition,
+            predicate,
+            effects,
+        } => {
+            let (inner_effects, inner_choices) =
+                with_preserved_compile_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
+            let predicate = match predicate {
+                IfResultPredicate::Did => EffectPredicate::Happened,
+                IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
+                IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
+            };
+            let effect = Effect::if_then(*condition, predicate, inner_effects);
+            (vec![effect], inner_choices)
+        }
         EffectAst::CopySpell {
             target,
             count,
