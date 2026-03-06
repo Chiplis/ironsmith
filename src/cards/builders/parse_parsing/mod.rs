@@ -1,5 +1,3 @@
-use super::*;
-
 mod activation_and_restrictions;
 mod effects_clauses;
 mod effects_sentences;

@@ -1,5 +1,44 @@
-use super::*;
+#[allow(unused_imports)]
+use crate::cards::builders::{
+    CardTextError, ClashOpponentAst, EffectAst, GrantedAbilityAst, IT_TAG, LineAst, PlayerAst,
+    PredicateAst, RetargetModeAst, SubjectAst, TagKey, TargetAst, TextSpan, Token, TriggerSpec,
+    is_article, parse_effect_clause, parse_keyword_mechanic_clause, parse_predicate,
+    parse_subject, parse_target_phrase, parse_triggered_line, parse_value, span_from_tokens,
+    split_on_or, trim_commas, words,
+};
+use crate::cards::builders::ability_lowering::parsed_triggered_ability;
+use crate::cards::builders::parse_compile::effects_reference_it_tag;
+use crate::cards::builders::parse_parsing::{
+    is_token_creation_context, split_on_comma_or_semicolon, split_segments_on_comma_effect_head,
+    split_segments_on_comma_then,
+    starts_with_inline_token_rules_tail, starts_with_target_indicator,
+    starts_with_until_end_of_turn, target_ast_to_object_filter,
+    find_verb, has_effect_head_without_verb, parse_can_attack_as_though_no_defender_clause,
+    parse_can_block_additional_creature_this_turn_clause, parse_cant_effect_sentence,
+    parse_cast_or_play_tagged_clause, parse_choose_target_and_verb_clause,
+    parse_connive_clause, parse_copy_spell_clause, parse_distribute_counters_clause,
+    parse_double_counters_clause, parse_for_each_object_subject, parse_for_each_opponent_clause,
+    parse_for_each_player_clause, parse_for_each_target_players_clause,
+    parse_mana_symbol, parse_number, parse_prevent_all_damage_clause,
+    parse_prevent_next_damage_clause, parse_restriction_duration,
+    parse_search_library_sentence, parse_sentence_exile_source_with_counters,
+    parse_sentence_put_onto_battlefield_with_counters_on_it,
+    parse_sentence_return_with_counters_on_it, parse_simple_gain_ability_clause,
+    parse_simple_lose_ability_clause, parse_subject_object_filter,
+    parse_until_end_of_turn_may_play_tagged_clause,
+    parse_until_your_next_turn_may_play_tagged_clause, parse_verb_first_clause,
+    parse_win_the_game_clause, run_sentence_primitives, segment_has_effect_head,
+    split_effect_chain_on_and, POST_CONDITIONAL_SENTENCE_PRIMITIVES,
+    POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
+    PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+};
+use crate::cards::builders::parse_parsing::effects_sentences::TokenCopyFollowup;
 use crate::cards::builders::effect_ast_traversal::for_each_nested_effects_mut;
+use crate::effect::{ChoiceCount, Until};
+use crate::mana::ManaSymbol;
+use crate::target::{ObjectFilter, PlayerFilter};
+use crate::static_abilities::StaticAbility;
+use crate::zone::Zone;
 
 pub(crate) fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
     let words = words(tokens);

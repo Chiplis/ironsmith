@@ -1,4 +1,27 @@
-use super::*;
+#[allow(unused_imports)]
+use crate::cards::builders::{
+    CardTextError, EffectAst, IT_TAG, ObjectRefAst, PlayerAst, ReturnControllerAst,
+    PredicateAst, SharedTypeConstraintAst, SubjectAst, TagKey, TargetAst, Token, is_article,
+    parse_color, parse_counter_type_word, parse_object_filter, parse_predicate,
+    parse_target_phrase, parse_value, span_from_tokens, target_ast_to_object_filter,
+    token_index_for_word_index, trim_commas, words,
+};
+use crate::cards::builders::parse_parsing::{
+    controller_filter_for_token_player, extract_subject_player, find_color_choice_phrase,
+    intern_counter_name, parse_add_mana_equal_amount_value, parse_devotion_value_from_add_clause,
+    parse_dynamic_cost_modifier_value, parse_get_modifier_values_with_tail,
+    parse_mana_symbol, parse_mana_symbol_group, parse_number, parse_number_word_i32,
+    parse_pt_modifier, parse_pt_modifier_values, parse_restriction_duration,
+    parse_subtype_word, parse_value_expr_words, parse_where_x_is_number_of_filter_value,
+    parse_zone_word, parser_trace_stack, trim_edge_punctuation,
+};
+use crate::cards::builders::parse_parsing::keyword_static::parse_add_mana_that_much_value;
+use crate::effect::{Until, Value};
+use crate::mana::{ManaCost, ManaSymbol};
+use crate::object::CounterType;
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::types::{CardType, Subtype};
+use crate::zone::Zone;
 
 pub(crate) fn parse_tap(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {

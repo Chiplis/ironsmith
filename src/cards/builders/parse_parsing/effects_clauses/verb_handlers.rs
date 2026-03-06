@@ -1,4 +1,35 @@
-use super::*;
+#[allow(unused_imports)]
+use crate::cards::builders::{
+    CardTextError, ControlDurationAst, DelayedReturnTimingAst, EffectAst, EventValueSpec, IT_TAG,
+    ObjectRefAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst,
+    TextSpan, Token, Verb, is_article, is_source_reference_words, parse_card_type, parse_color,
+    parse_object_filter, parse_predicate, parse_target_phrase, parse_value,
+    parse_where_x_value_clause, replace_unbound_x_with_value, span_from_tokens,
+    token_index_for_word_index, trim_commas, value_contains_unbound_x, words,
+};
+use crate::cards::builders::parse_parsing::{
+    extract_subject_player, parse_add_mana_equal_amount_value,
+    parse_devotion_value_from_add_clause, parse_dynamic_cost_modifier_value, parse_mana_symbol,
+    parse_number, parse_subtype_word, parse_supertype_word, parse_target_count_range_prefix,
+    try_build_unless, wrap_target_count,
+};
+use crate::cards::builders::parse_parsing::effects_clauses::{
+    parse_add_mana, parse_become, parse_create, parse_delayed_return_timing_words,
+    parse_destroy,
+    parse_discard, parse_equal_to_aggregate_filter_value,
+    parse_equal_to_number_of_counters_on_reference_value,
+    parse_equal_to_number_of_filter_plus_or_minus_fixed_value,
+    parse_equal_to_number_of_filter_value, parse_equal_to_number_of_opponents_you_have_value,
+    parse_exchange, parse_exile, parse_flip, parse_get, parse_investigate, parse_mill,
+    parse_pay, parse_put_counters, parse_regenerate, parse_remove, parse_return, parse_sacrifice,
+    parse_scry, parse_skip, parse_surveil, parse_switch, parse_tap, parse_transform,
+    parse_untap, parse_who_did_this_way_predicate, wrap_return_with_delayed_timing,
+};
+use crate::effect::{ChoiceCount, Until, Value};
+use crate::mana::ManaSymbol;
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::types::{CardType, Subtype, Supertype};
+use crate::zone::Zone;
 
 pub(crate) fn parse_effect_with_verb(
     verb: Verb,

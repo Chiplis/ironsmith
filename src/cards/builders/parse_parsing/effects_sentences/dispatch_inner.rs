@@ -1,4 +1,27 @@
-use super::*;
+#[allow(unused_imports)]
+use crate::cards::builders::{
+    CardTextError, EffectAst, IT_TAG, LineAst, PlayerAst, SubjectAst, TagKey, TargetAst,
+    TextSpan, Token, TriggerSpec, Verb, is_article, is_source_reference_words, parse_card_type,
+    parse_object_filter, parse_subject, parse_target_phrase, parse_value,
+    target_ast_to_object_filter, token_index_for_word_index, words,
+};
+use crate::cards::builders::parse_parsing::{
+    parse_conditional_sentence, parse_effect_chain, parse_number, parse_prevent_next_time_damage_sentence,
+    parse_pt_modifier, parse_redirect_next_damage_sentence, parse_simple_gain_ability_clause,
+    parse_trigger_clause, parse_where_x_value_clause, parser_trace, find_verb, split_on_and,
+    split_on_comma, is_until_end_of_turn, RULE_SHAPE_STARTS_IF, UnsupportedDiagnoser,
+    is_activate_only_restriction_sentence, is_trigger_only_restriction_sentence,
+    apply_where_x_to_damage_amounts, parse_effect_chain_inner, replace_unbound_x_in_effects_anywhere,
+    run_sentence_primitives, split_until_source_leaves_tail, target_object_filter_mut,
+    ClauseView, RuleDef, RuleIndex, UnsupportedRuleDef,
+    POST_CONDITIONAL_SENTENCE_PRIMITIVES, POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+    PRE_CONDITIONAL_SENTENCE_PRIMITIVES, PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+};
+use crate::cards::builders::parse_parsing::effects_sentences::TokenCopyFollowup;
+use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::types::CardType;
+use crate::zone::Zone;
 
 const SENTENCE_PRIMITIVE_RULE_HEADS: &[&str] = &[
     "if",

@@ -1,5 +1,3 @@
-use super::*;
-
 mod clause_patterns;
 mod counters;
 mod creation;
