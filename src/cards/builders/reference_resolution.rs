@@ -1,5 +1,16 @@
-use super::effect_ast_traversal::{for_each_nested_effects_mut, try_for_each_nested_effects_mut};
-use super::*;
+use crate::cards::builders::effect_ast_traversal::{
+    for_each_nested_effects_mut, try_for_each_nested_effects_mut,
+};
+use crate::cards::builders::{
+    CardTextError, EffectAst, IdGenContext, LoweringFrame, LoweringReferenceFrame, ObjectRefAst,
+    NewTargetRestrictionAst, PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst,
+    RetargetModeAst, TargetAst, choose_spec_targets_object,
+    effect_references_event_derived_amount, effects_reference_it_tag,
+    effects_reference_its_controller, resolve_non_target_player_filter,
+    resolve_target_spec_with_choices, IT_TAG,
+};
+use crate::effect::{EffectId, EventValueSpec};
+use crate::{ChooseSpec, ObjectFilter, PlayerFilter, TagKey, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReferenceBindings {
