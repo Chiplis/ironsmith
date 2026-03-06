@@ -2,6 +2,7 @@ import { useEffect, useCallback, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { parseNames } from "@/lib/constants";
 import Topbar from "./Topbar";
+import LobbyOverlay from "./LobbyOverlay";
 import AddCardBar from "./AddCardBar";
 import Workspace from "./Workspace";
 import LogDrawer from "@/components/overlays/LogDrawer";
@@ -17,13 +18,21 @@ export default function Shell() {
     wasmRegistryCount,
     refresh,
     setStatus,
-    setState,
+    multiplayer,
   } = useGame();
   const [playerNames, setPlayerNames] = useState("Alice,Bob,Charlie,Diana");
   const [startingLife, setStartingLife] = useState(20);
   const [logOpen, setLogOpen] = useState(false);
+  const [lobbyOpen, setLobbyOpen] = useState(false);
   const [zoneViews, setZoneViews] = useState(["battlefield"]);
   const [deckLoadingMode, setDeckLoadingMode] = useState(false);
+
+  useEffect(() => {
+    if (multiplayer.matchStarted) {
+      setLobbyOpen(false);
+      setDeckLoadingMode(false);
+    }
+  }, [multiplayer.matchStarted]);
 
   // Initialize game when WASM loads
   useEffect(() => {
@@ -111,6 +120,10 @@ export default function Shell() {
 
   const handleReset = useCallback(async () => {
     if (!game) return;
+    if (multiplayer.mode !== "idle") {
+      setStatus("Reset is disabled while a lobby is active", true);
+      return;
+    }
     try {
       await game.reset(parseNames(playerNames), startingLife);
       setDeckLoadingMode(false);
@@ -118,21 +131,14 @@ export default function Shell() {
     } catch (err) {
       setStatus(`Reset failed: ${err}`, true);
     }
-  }, [game, playerNames, startingLife, refresh, setStatus]);
-
-  const handleLoadDemoDecks = useCallback(async () => {
-    if (!game) return;
-    try {
-      await game.loadDemoDecks();
-      setDeckLoadingMode(false);
-      await refresh("Demo decks loaded");
-    } catch (err) {
-      setStatus(`Load decks failed: ${err}`, true);
-    }
-  }, [game, refresh, setStatus]);
+  }, [game, multiplayer.mode, playerNames, startingLife, refresh, setStatus]);
 
   const handleLoadCustomDecks = useCallback(async (decks) => {
     if (!game) return;
+    if (multiplayer.mode !== "idle") {
+      setStatus("Deck loading is disabled while a lobby is active", true);
+      return;
+    }
     try {
       const result = await game.loadDecks(decks);
       setDeckLoadingMode(false);
@@ -150,11 +156,15 @@ export default function Shell() {
     } catch (err) {
       setStatus(`Load decks failed: ${err}`, true);
     }
-  }, [game, refresh, setStatus]);
+  }, [game, multiplayer.mode, refresh, setStatus]);
 
   const handleChangePerspective = useCallback(
     async (playerIndex) => {
       if (!game) return;
+      if (multiplayer.matchStarted) {
+        setStatus("Perspective is fixed during multiplayer matches", true);
+        return;
+      }
       try {
         await game.setPerspective(playerIndex);
         await refresh(`Viewing as player ${playerIndex}`);
@@ -162,7 +172,7 @@ export default function Shell() {
         setStatus(`Change player failed: ${err}`, true);
       }
     },
-    [game, refresh, setStatus]
+    [game, multiplayer.matchStarted, refresh, setStatus]
   );
 
   if (loading) {
@@ -235,6 +245,7 @@ export default function Shell() {
         onRefresh={() => refresh("Refreshed")}
         onToggleLog={() => setLogOpen((o) => !o)}
         onEnterDeckLoading={() => setDeckLoadingMode((m) => !m)}
+        onOpenLobby={() => setLobbyOpen(true)}
         deckLoadingMode={deckLoadingMode}
       />
       <AddCardBar zoneViews={zoneViews} setZoneViews={setZoneViews} />
@@ -245,6 +256,13 @@ export default function Shell() {
         onCancelDeckLoading={() => setDeckLoadingMode(false)}
       />
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
+      {lobbyOpen ? (
+        <LobbyOverlay
+          onClose={() => setLobbyOpen(false)}
+          defaultName={parseNames(playerNames)[0] || "Player"}
+          defaultStartingLife={startingLife}
+        />
+      ) : null}
     </div>
   );
 }

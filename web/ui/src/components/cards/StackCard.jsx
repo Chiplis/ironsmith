@@ -1,3 +1,5 @@
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { scryfallImageUrl } from "@/lib/scryfall";
 import { ManaCostIcons } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
@@ -18,14 +20,47 @@ export default function StackCard({
     || (entry.power != null && entry.toughness != null
       ? `${entry.power}/${entry.toughness}`
       : null);
+  const rootRef = useRef(null);
+  const motionRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const node = rootRef.current;
+    if (!node) return undefined;
+
+    cancelMotion(motionRef.current);
+    motionRef.current = null;
+
+    if (isLeaving) {
+      motionRef.current = animate(node, {
+        opacity: [1, 0],
+        y: [0, -14],
+        scale: [1, 0.97],
+        duration: 360,
+        ease: "out(2)",
+      });
+    } else if (isNew) {
+      motionRef.current = animate(node, {
+        opacity: [0, 1],
+        y: [18, 0],
+        scale: [0.92, 1],
+        duration: 380,
+        ease: uiSpring({ duration: 380, bounce: 0.18 }),
+      });
+    }
+  }, [isLeaving, isNew]);
+
+  useEffect(() => () => {
+    cancelMotion(motionRef.current);
+    motionRef.current = null;
+  }, []);
 
   return (
     <div
+      ref={rootRef}
       className={cn(
-        "game-card w-full min-w-0 min-h-[80px] text-[14px] bg-gradient-to-b from-[#132237] to-[#0d1726] cursor-pointer flex flex-col",
-        isNew && "card-enter",
+        "game-card stack-card w-full min-w-0 min-h-[96px] cursor-pointer overflow-hidden",
         isActive && "ring-1 ring-[#8ec4ff] shadow-[0_0_0_1px_rgba(142,196,255,0.5),0_10px_22px_rgba(0,0,0,0.46)]",
-        isLeaving && "stack-card-leave pointer-events-none",
+        isLeaving && "pointer-events-none",
         className
       )}
       data-object-id={entry.id}
@@ -33,24 +68,9 @@ export default function StackCard({
       onClick={() => onClick?.(entry.id)}
     >
       {artUrl && (
-        <div className="absolute inset-0 flex flex-col overflow-hidden z-0 pointer-events-none">
+        <div className="stack-card-art absolute inset-y-0 left-0 z-0 w-[102px] overflow-hidden pointer-events-none">
           <img
-            className="w-full block object-cover opacity-72 saturate-[1.05] contrast-[1.04] flex-[0_0_40%] object-[center_top]"
-            style={{
-              maskImage: "linear-gradient(to bottom, black 40%, transparent 100%)",
-              WebkitMaskImage: "linear-gradient(to bottom, black 40%, transparent 100%)",
-            }}
-            src={artUrl}
-            alt=""
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-          <img
-            className="w-full block object-cover opacity-72 saturate-[1.05] contrast-[1.04] flex-[0_0_80%] -mt-[20%] object-[center_bottom]"
-            style={{
-              maskImage: "linear-gradient(to bottom, transparent 0%, black 18%)",
-              WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 18%)",
-            }}
+            className="h-full w-full object-cover opacity-88 saturate-[1.08] contrast-[1.06]"
             src={artUrl}
             alt=""
             loading="lazy"
@@ -71,37 +91,57 @@ export default function StackCard({
         </a>
       )}
 
-      <div
-        className="relative z-2 mt-auto p-1.5 pt-3"
-        style={{
-          background: "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0.88) 100%)",
-        }}
-      >
-        <div className="flex items-start gap-1">
-          <span className="leading-[1.12] text-shadow-[0_1px_2px_rgba(0,0,0,0.95)] flex-1 min-w-0 break-words">{name}</span>
+      <div className="stack-card-body relative z-2 ml-[102px] flex min-h-[96px] flex-col px-2.5 py-2">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="stack-card-title break-words leading-[1.08] text-[#edf5ff]">
+              {name}
+            </div>
+            <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[#8ec4ff]">
+              <span>{isCastEntry ? "Spell" : "Ability"}</span>
+              {entry.ability_kind && (
+                <span className="text-[#c6dbf2]/80 normal-case tracking-normal">
+                  {entry.ability_kind}
+                </span>
+              )}
+            </div>
+          </div>
           {isCastEntry && entry.mana_cost && (
-            <span className="shrink-0 mt-px">
+            <span className="shrink-0 pt-0.5">
               <ManaCostIcons cost={entry.mana_cost} />
             </span>
           )}
         </div>
-        {isCastEntry && pt && (
-          <div className="flex items-center mt-0.5">
-            <span className="ml-auto text-[#f5d08b] text-[13px] font-bold tracking-wide shrink-0">
+        <div className="mt-2 flex items-center gap-2">
+          {pt && (
+            <span className="shrink-0 rounded-sm border border-[#f5d08b]/35 bg-[rgba(245,208,139,0.08)] px-1.5 py-0.5 text-[12px] font-bold leading-none tracking-wide text-[#f5d08b]">
               {pt}
             </span>
-          </div>
-        )}
+          )}
+          {entry.effect_text && !entry.ability_kind && (
+            <span className="text-[11px] uppercase tracking-[0.12em] text-[#7fa8d2]">
+              Effect
+            </span>
+          )}
+        </div>
 
         {entry.ability_kind ? (
-          <span className="block text-[12px] italic text-[#c0a060] pt-0.5 leading-tight">
-            {entry.ability_kind} ability
+          <span className="stack-card-effect mt-2 block text-[12px] leading-[1.32] text-[#d4e5f7]">
+            {entry.effect_text || `${entry.ability_kind} ability`}
           </span>
         ) : entry.effect_text ? (
-          <span className="block text-[12px] text-[#8ab4e0] pt-0.5 leading-tight whitespace-pre-wrap break-words">
+          <span className="stack-card-effect mt-2 block text-[12px] leading-[1.32] text-[#d4e5f7]">
             {entry.effect_text}
           </span>
-        ) : null}
+        ) : (
+          <div className="mt-auto" />
+        )}
+
+        {!entry.effect_text && isCastEntry && (
+          <div className="mt-auto pt-2 text-[11px] uppercase tracking-[0.12em] text-[#7fa8d2]">
+            Waiting to resolve
+          </div>
+        )}
       </div>
     </div>
   );

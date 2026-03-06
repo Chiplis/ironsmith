@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
+import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { SymbolText } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
 
@@ -204,6 +205,8 @@ function PriorityActionPillLabel({ text, viewportRef, carouselResetVersion = 0 }
   const displayText = useMemo(() => normalizeDecisionText(text), [text]);
   const containerRef = useRef(null);
   const measureRef = useRef(null);
+  const marqueeRef = useRef(null);
+  const marqueeAnimationRef = useRef(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const [travelDistance, setTravelDistance] = useState(0);
@@ -277,6 +280,32 @@ function PriorityActionPillLabel({ text, viewportRef, carouselResetVersion = 0 }
 
   const shouldAnimate = isOverflowing && isVisible;
 
+  useEffect(() => {
+    const marqueeEl = marqueeRef.current;
+    cancelMotion(marqueeAnimationRef.current);
+    marqueeAnimationRef.current = null;
+
+    if (!marqueeEl) return undefined;
+    marqueeEl.style.transform = "translateX(0px)";
+
+    if (!shouldAnimate || travelDistance <= 0 || travelDuration <= 0) {
+      return undefined;
+    }
+
+    const animation = animate(marqueeEl, {
+      x: -travelDistance,
+      ease: "linear",
+      duration: travelDuration * 1000,
+      delay: 750,
+      loop: true,
+    });
+    marqueeAnimationRef.current = animation;
+
+    return () => {
+      cancelMotion(animation);
+    };
+  }, [carouselResetVersion, shouldAnimate, travelDistance, travelDuration]);
+
   if (!shouldAnimate) {
     return (
       <span ref={containerRef} className="relative block min-w-0 overflow-hidden" style={{ textOverflow: "clip" }}>
@@ -296,15 +325,8 @@ function PriorityActionPillLabel({ text, viewportRef, carouselResetVersion = 0 }
         <SymbolText text={displayText} style={{ whiteSpace: "nowrap" }} />
       </span>
       <span
-        key={`carousel-${carouselResetVersion}`}
+        ref={marqueeRef}
         className="inline-flex whitespace-nowrap will-change-transform"
-        style={{
-          "--action-pill-carousel-distance": `${travelDistance}px`,
-          "--action-pill-carousel-duration": `${travelDuration.toFixed(2)}s`,
-          "--action-pill-carousel-delay": "0.75s",
-          animation:
-            "action-pill-carousel var(--action-pill-carousel-duration) linear var(--action-pill-carousel-delay) infinite",
-        }}
       >
         <span className="pr-7">
           <SymbolText text={displayText} style={{ whiteSpace: "nowrap" }} />
@@ -330,8 +352,10 @@ function PriorityActionStrip({
   const BASE_LOOP_CYCLES = 5;
   const viewportRef = useRef(null);
   const groupNodeRefs = useRef(new Map());
+  const displayNodeRefs = useRef(new Map());
   const previousHoveredGroupKeysRef = useRef(new Set());
   const previousSelectedGroupKeysRef = useRef(new Set());
+  const stripMotionRef = useRef(null);
   const [carouselResetByGroupKey, setCarouselResetByGroupKey] = useState({});
   const [isPointerInStrip, setIsPointerInStrip] = useState(false);
   const [loopEnabled, setLoopEnabled] = useState(false);
@@ -416,7 +440,30 @@ function PriorityActionStrip({
 
   useEffect(() => {
     groupNodeRefs.current = new Map();
+    displayNodeRefs.current = new Map();
   }, [groupKeysSignature, effectiveLoopCycles]);
+
+  useLayoutEffect(() => {
+    const nodes = displayGroups
+      .map(({ key }) => displayNodeRefs.current.get(key))
+      .filter(Boolean);
+    if (nodes.length === 0) return undefined;
+
+    cancelMotion(stripMotionRef.current);
+    stripMotionRef.current = animate(nodes, {
+      opacity: [0, 1],
+      y: [12, 0],
+      scale: [0.982, 1],
+      delay: stagger(18),
+      duration: 260,
+      ease: snappySpring({ duration: 260, bounce: 0.08 }),
+    });
+
+    return () => {
+      cancelMotion(stripMotionRef.current);
+      stripMotionRef.current = null;
+    };
+  }, [displayGroups, effectiveLoopCycles, groupKeysSignature]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -584,6 +631,7 @@ function PriorityActionStrip({
                 if (node) {
                   existing[cycle] = node;
                   groupNodeRefs.current.set(group.key, existing);
+                  displayNodeRefs.current.set(key, node);
                 } else if (existing.length > cycle) {
                   existing[cycle] = undefined;
                   if (existing.some(Boolean)) {
@@ -591,6 +639,7 @@ function PriorityActionStrip({
                   } else {
                     groupNodeRefs.current.delete(group.key);
                   }
+                  displayNodeRefs.current.delete(key);
                 }
               }}
               className={cn(

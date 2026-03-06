@@ -3646,7 +3646,7 @@ mod tests {
             source: bosh_id,
             ability_index,
         });
-        apply_priority_response_with_dm(
+        let progress = apply_priority_response_with_dm(
             &mut game,
             &mut trigger_queue,
             &mut state,
@@ -3655,15 +3655,12 @@ mod tests {
         )
         .expect("activation should start");
 
-        let choose_sacrifice = PriorityResponse::SacrificeTarget(relic_id);
-        apply_priority_response_with_dm(
-            &mut game,
-            &mut trigger_queue,
-            &mut state,
-            &choose_sacrifice,
-            &mut dm,
-        )
-        .expect("should choose sacrifice target");
+        match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_),
+            ) => {}
+            other => panic!("expected Bosh to prompt for targets first, got {:?}", other),
+        }
 
         let choose_target = PriorityResponse::Targets(vec![Target::Player(bob)]);
         apply_priority_response_with_dm(
@@ -3675,6 +3672,16 @@ mod tests {
         )
         .expect("should choose damage target");
 
+        let choose_sacrifice = PriorityResponse::SacrificeTarget(relic_id);
+        apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &choose_sacrifice,
+            &mut dm,
+        )
+        .expect("should choose sacrifice target");
+
         assert_eq!(game.stack.len(), 1, "Bosh ability should be on stack");
 
         resolve_stack_entry(&mut game).expect("Bosh ability should resolve");
@@ -3683,6 +3690,162 @@ mod tests {
             game.player(bob).expect("Bob exists").life,
             18,
             "Bosh should deal damage equal to the sacrificed artifact's mana value (2)"
+        );
+    }
+
+    #[test]
+    fn test_yawgmoth_sacrifice_activation_targets_before_paying_costs() {
+        use crate::decision::{DecisionMaker, LegalAction};
+
+        #[derive(Debug)]
+        struct YawgmothOrderingDecisionMaker {
+            alice: PlayerId,
+            sacrifice: ObjectId,
+            decision_order: Vec<&'static str>,
+            life_when_object_cost_chosen: Option<i32>,
+        }
+
+        impl DecisionMaker for YawgmothOrderingDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                game: &GameState,
+                _ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                self.decision_order.push("objects");
+                self.life_when_object_cost_chosen =
+                    game.player(self.alice).map(|player| player.life);
+                vec![self.sacrifice]
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let registry =
+            crate::cards::CardRegistry::with_builtin_cards_for_names(["Yawgmoth, Thran Physician"]);
+        let yawgmoth_def = registry
+            .get("Yawgmoth, Thran Physician")
+            .expect("Yawgmoth, Thran Physician should be present in registry");
+        let yawgmoth_id =
+            game.create_object_from_definition(yawgmoth_def, alice, Zone::Battlefield);
+
+        let fodder = CardBuilder::new(CardId::new(), "Fodder")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let fodder_id = game.create_object_from_card(&fodder, alice, Zone::Battlefield);
+
+        let target_creature = CardBuilder::new(CardId::new(), "Target Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let target_id = game.create_object_from_card(&target_creature, bob, Zone::Battlefield);
+
+        let sacrifice_ability_index = game
+            .object(yawgmoth_id)
+            .expect("Yawgmoth should exist")
+            .abilities
+            .iter()
+            .position(|ability| {
+                if let AbilityKind::Activated(activated) = &ability.kind {
+                    activated.life_cost_amount() == Some(1)
+                } else {
+                    false
+                }
+            })
+            .expect("Yawgmoth should have sacrifice ability");
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut state = PriorityLoopState::new(game.players_in_game());
+        let mut dm = YawgmothOrderingDecisionMaker {
+            alice,
+            sacrifice: fodder_id,
+            decision_order: Vec::new(),
+            life_when_object_cost_chosen: None,
+        };
+
+        let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source: yawgmoth_id,
+            ability_index: sacrifice_ability_index,
+        });
+        let progress = apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &activate,
+            &mut dm,
+        )
+        .expect("Yawgmoth sacrifice ability should activate");
+
+        let targets_ctx = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(ctx),
+            ) => ctx,
+            other => panic!(
+                "expected target prompt before paying Yawgmoth's costs, got {:?}",
+                other
+            ),
+        };
+
+        assert_eq!(
+            game.player(alice).expect("Alice exists").life,
+            20,
+            "life should not be paid before the target decision"
+        );
+        assert_eq!(
+            targets_ctx.requirements.len(),
+            1,
+            "Yawgmoth's first ability should prompt for its creature target before costs"
+        );
+
+        let choose_target = PriorityResponse::Targets(vec![Target::Object(target_id)]);
+        apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &choose_target,
+            &mut dm,
+        )
+        .expect("Yawgmoth target choice should continue activation");
+
+        assert_eq!(
+            dm.decision_order,
+            vec!["objects"],
+            "the sacrifice-side object choice should happen only after the target response"
+        );
+        assert_eq!(
+            dm.life_when_object_cost_chosen,
+            Some(19),
+            "life payment should happen after targets and before the sacrifice selection"
+        );
+        assert_eq!(
+            game.player(alice).expect("Alice exists").life,
+            19,
+            "Yawgmoth activation should pay 1 life"
+        );
+        assert!(
+            !game.battlefield.contains(&fodder_id),
+            "chosen creature should leave the battlefield as part of the activation cost"
+        );
+        assert!(
+            game.player(alice)
+                .expect("Alice exists")
+                .graveyard
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .any(|obj| obj.name == "Fodder"),
+            "chosen creature should appear in Alice's graveyard after being sacrificed"
+        );
+        assert_eq!(
+            game.stack.len(),
+            1,
+            "Yawgmoth ability should be on the stack"
         );
     }
 

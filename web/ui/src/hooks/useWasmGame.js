@@ -25,6 +25,7 @@ const WORKER_METHODS = [
   "setPerspective",
   "snapshot",
   "snapshotJson",
+  "startMatch",
   "switchPerspective",
   "uiState",
 ];

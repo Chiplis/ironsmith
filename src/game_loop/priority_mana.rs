@@ -746,8 +746,9 @@ fn execute_pip_payment_action(
         } => {
             tap_permanent_with_trigger(game, trigger_queue, *permanent_id);
             if let Some(source_id) = source {
-                let event_provenance =
-                    game.provenance_graph.alloc_root_event(crate::events::EventKind::KeywordAction);
+                let event_provenance = game
+                    .provenance_graph
+                    .alloc_root_event(crate::events::EventKind::KeywordAction);
                 let event = TriggerEvent::new_with_provenance(
                     KeywordActionEvent::new(
                         keyword_action_from_alternative_effect(*effect),
@@ -1536,6 +1537,22 @@ fn apply_sacrifice_target_response(
 
     match pending.stage {
         ActivationStage::ChoosingSacrifice => {
+            let filter = match pending.remaining_cost_steps.first() {
+                Some(ActivationCostStep::Sacrifice { filter, .. }) => filter.clone(),
+                _ => {
+                    return Err(GameLoopError::InvalidState(
+                        "No pending sacrifice cost for activation".to_string(),
+                    ));
+                }
+            };
+            let legal_targets =
+                get_legal_sacrifice_targets(game, pending.activator, pending.source, &filter);
+            if !legal_targets.contains(&target_id) {
+                return Err(GameLoopError::InvalidState(
+                    "Selected permanent is not a legal sacrifice cost choice".to_string(),
+                ));
+            }
+
             // Sacrifice the chosen permanent
             if game.object(target_id).is_some() {
                 let snapshot = game
@@ -1576,16 +1593,17 @@ fn apply_sacrifice_target_response(
                 drain_pending_trigger_events(game, trigger_queue);
             }
 
-            // Remove the satisfied sacrifice cost
-            if !pending.remaining_sacrifice_costs.is_empty() {
-                pending.remaining_sacrifice_costs.remove(0);
-            }
+            pending.remaining_cost_steps.remove(0);
+            pending.stage = ActivationStage::ProcessingCosts;
         }
         ActivationStage::ChoosingCardCost => {
             let next_cost = pending
-                .remaining_card_choice_costs
+                .remaining_cost_steps
                 .first()
-                .cloned()
+                .and_then(|step| match step {
+                    ActivationCostStep::CardChoice(choice) => Some(choice.clone()),
+                    _ => None,
+                })
                 .ok_or_else(|| {
                     GameLoopError::InvalidState(
                         "No pending card choice cost for activation".to_string(),
@@ -1730,7 +1748,8 @@ fn apply_sacrifice_target_response(
                 }
             }
 
-            pending.remaining_card_choice_costs.remove(0);
+            pending.remaining_cost_steps.remove(0);
+            pending.stage = ActivationStage::ProcessingCosts;
         }
         _ => {
             return Err(GameLoopError::InvalidState(
@@ -1819,10 +1838,12 @@ fn apply_casting_method_choice_response(
 
     // Move spell to stack immediately per MTG rule 601.2a
     let stack_id = propose_spell_cast(game, spell_id, from_zone, player, &casting_method)?;
-    let cast_provenance = game.provenance_graph.alloc_root(ProvenanceNodeKind::EffectExecution {
-        source: stack_id,
-        controller: player,
-    });
+    let cast_provenance = game
+        .provenance_graph
+        .alloc_root(ProvenanceNodeKind::EffectExecution {
+            source: stack_id,
+            controller: player,
+        });
 
     // Get the spell's mana cost and effects, considering casting method
     // Note: We use stack_id now since the spell has been moved to stack
@@ -2308,17 +2329,15 @@ fn finalize_spell_cast(
             .insert(caster, new_mana_spent_total);
 
         for threshold in (prev_mana_spent.saturating_add(1))..=new_mana_spent_total {
-            let expend_event_provenance =
-                game.alloc_child_event_provenance(provenance, crate::events::EventKind::KeywordAction);
+            let expend_event_provenance = game
+                .alloc_child_event_provenance(provenance, crate::events::EventKind::KeywordAction);
             queue_triggers_from_event(
                 game,
                 trigger_queue,
-                TriggerEvent::new_with_provenance(KeywordActionEvent::new(
-                    KeywordActionKind::Expend,
-                    caster,
-                    new_id,
-                    threshold,
-                ), expend_event_provenance),
+                TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(KeywordActionKind::Expend, caster, new_id, threshold),
+                    expend_event_provenance,
+                ),
                 true,
             );
         }
@@ -2731,10 +2750,15 @@ mod priority_mana_tests {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
-        let wall_id = game.create_object_from_definition(&wall_of_roots(), alice, Zone::Battlefield);
+        let wall_id =
+            game.create_object_from_definition(&wall_of_roots(), alice, Zone::Battlefield);
         let wall_mana_index = game
             .object(wall_id)
-            .and_then(|obj| obj.abilities.iter().position(|ability| ability.is_mana_ability()))
+            .and_then(|obj| {
+                obj.abilities
+                    .iter()
+                    .position(|ability| ability.is_mana_ability())
+            })
             .expect("wall of roots should have a mana ability");
         assert!(
             !mana_ability_is_undo_safe(&game, wall_id, wall_mana_index),
@@ -2745,19 +2769,22 @@ mod priority_mana_tests {
             game.create_object_from_definition(&blood_celebrant(), alice, Zone::Battlefield);
         let blood_celebrant_mana_index = game
             .object(blood_celebrant_id)
-            .and_then(|obj| obj.abilities.iter().position(|ability| ability.is_mana_ability()))
+            .and_then(|obj| {
+                obj.abilities
+                    .iter()
+                    .position(|ability| ability.is_mana_ability())
+            })
             .expect("blood celebrant should have a mana ability");
         assert!(
-            !mana_ability_is_undo_safe(
-                &game,
-                blood_celebrant_id,
-                blood_celebrant_mana_index
-            ),
+            !mana_ability_is_undo_safe(&game, blood_celebrant_id, blood_celebrant_mana_index),
             "mana abilities with non-mana side effects should not be undo-safe"
         );
 
-        let treasure_id =
-            game.create_object_from_definition(&treasure_token_definition(), alice, Zone::Battlefield);
+        let treasure_id = game.create_object_from_definition(
+            &treasure_token_definition(),
+            alice,
+            Zone::Battlefield,
+        );
         assert!(
             !mana_ability_is_undo_safe(&game, treasure_id, 0),
             "tap+sacrifice mana abilities should not be undo-safe"

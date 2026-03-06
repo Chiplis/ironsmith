@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useWasmGame } from "@/hooks/useWasmGame";
+import { usePeerLobby } from "@/hooks/usePeerLobby";
 import { cardsMeetingThresholdFromStats, loadSemanticStats } from "@/lib/semanticCache";
 
 const GameContext = createContext(null);
@@ -141,6 +142,9 @@ export function GameProvider({ children }) {
   const [semanticStats, setSemanticStats] = useState(null);
   const logRef = useRef([]);
   const [logEntries, setLogEntries] = useState([]);
+  const gameRef = useRef(game);
+  const stateRef = useRef(state);
+  const multiplayerActiveRef = useRef(false);
 
   const pushLog = useCallback((message, isError = false) => {
     const time = new Date().toLocaleTimeString([], {
@@ -159,6 +163,14 @@ export function GameProvider({ children }) {
     },
     [pushLog]
   );
+
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const setSemanticThreshold = useCallback(
     async (value) => {
@@ -207,7 +219,9 @@ export function GameProvider({ children }) {
   useEffect(() => {
     const localCount = cardsMeetingThresholdFromStats(semanticThreshold, semanticStats);
     if (localCount !== null) {
-      setCardsMeetingThreshold(localCount);
+      queueMicrotask(() => {
+        setCardsMeetingThreshold(localCount);
+      });
       return;
     }
 
@@ -216,13 +230,6 @@ export function GameProvider({ children }) {
       .then((count) => setCardsMeetingThreshold(count))
       .catch(() => {});
   }, [game, wasmRegistryCount, semanticThreshold, semanticStats]);
-
-  useEffect(() => {
-    if (!game || typeof game.setAutoCleanupDiscard !== "function") return;
-    game
-      .setAutoCleanupDiscard(autoPassEnabled)
-      .catch((err) => console.warn("setAutoCleanupDiscard failed:", err));
-  }, [game, autoPassEnabled]);
 
   const opponentHoldReason = useCallback(
     (decision, currentState) => {
@@ -248,7 +255,11 @@ export function GameProvider({ children }) {
 
   const settleOpponentPriority = useCallback(
     async (currentGame, currentState) => {
-      if (!currentState || !autoPassEnabled) {
+      if (!currentState) {
+        return { state: currentState, autoPasses: 0, autoDeclares: 0, phaseAdvances: 0, holdReason: null };
+      }
+
+      if (multiplayerActiveRef.current || !autoPassEnabled) {
         return { state: currentState, autoPasses: 0, autoDeclares: 0, phaseAdvances: 0, holdReason: null };
       }
 
@@ -323,60 +334,177 @@ export function GameProvider({ children }) {
     []
   );
 
+  const settleNoop = useCallback(async (_currentGame, currentState) => ({
+    state: currentState,
+    autoPasses: 0,
+    autoDeclares: 0,
+    phaseAdvances: 0,
+    holdReason: null,
+  }), []);
+
+  const finalizeState = useCallback(
+    async (
+      currentGame,
+      currentState,
+      {
+        message = "",
+        allowOpponentAutomation = true,
+        allowTrivialAutomation = true,
+      } = {}
+    ) => {
+      let st = currentState;
+      const autoResult = allowOpponentAutomation
+        ? await settleOpponentPriority(currentGame, st)
+        : await settleNoop(currentGame, st);
+      st = autoResult.state;
+
+      const autoResolved = allowTrivialAutomation
+        ? await autoResolveTrivialDecisions(
+          currentGame,
+          st,
+          allowOpponentAutomation ? settleOpponentPriority : settleNoop
+        )
+        : { state: st, resolved: 0 };
+      st = autoResolved.state;
+      setState(st);
+
+      const parts = [];
+      if (message) parts.push(message);
+      if (allowOpponentAutomation && autoResult.autoPasses > 0) {
+        parts.push(`auto-passed x${autoResult.autoPasses}`);
+      }
+      if (allowOpponentAutomation && autoResult.autoDeclares > 0) {
+        parts.push(`auto-declared x${autoResult.autoDeclares}`);
+      }
+      if (allowOpponentAutomation && autoResult.phaseAdvances > 0) {
+        parts.push(`auto-advanced x${autoResult.phaseAdvances}`);
+      }
+      if (
+        allowOpponentAutomation &&
+        autoResult.holdReason &&
+        st?.decision?.player !== st?.perspective
+      ) {
+        parts.push(`holding (${autoResult.holdReason})`);
+      }
+      if (allowTrivialAutomation && autoResolved.resolved > 0) {
+        parts.push(`${autoResolved.resolved} auto-resolved`);
+      }
+      if (parts.length > 0) {
+        setStatus(parts.join(" \u2022 "));
+      }
+
+      return st;
+    },
+    [
+      autoResolveTrivialDecisions,
+      settleNoop,
+      settleOpponentPriority,
+      setStatus,
+    ]
+  );
+
+  const applySyncedCommand = useCallback(
+    async (command, successMessage = "") => {
+      const currentGame = gameRef.current;
+      if (!currentGame) {
+        throw new Error("WASM game is not ready");
+      }
+
+      const st = await currentGame.dispatch(command);
+      return finalizeState(currentGame, st, {
+        message: successMessage,
+        allowOpponentAutomation: false,
+        allowTrivialAutomation: true,
+      });
+    },
+    [finalizeState]
+  );
+
+  const {
+    multiplayer,
+    createLobby,
+    joinLobby,
+    leaveLobby,
+    updateLobbyDeck,
+    submitMultiplayerCommand,
+  } = usePeerLobby({
+    game,
+    setState,
+    setStatus,
+    applySyncedCommand,
+  });
+
+  useEffect(() => {
+    multiplayerActiveRef.current = multiplayer.matchStarted;
+  }, [multiplayer.matchStarted]);
+
+  useEffect(() => {
+    if (!game || typeof game.setAutoCleanupDiscard !== "function") return;
+    game
+      .setAutoCleanupDiscard(autoPassEnabled && !multiplayer.matchStarted)
+      .catch((err) => console.warn("setAutoCleanupDiscard failed:", err));
+  }, [autoPassEnabled, game, multiplayer.matchStarted]);
+
   const refresh = useCallback(
     async (message) => {
       if (!game) return;
       try {
         let st = await game.uiState();
-        const autoResult = await settleOpponentPriority(game, st);
-        st = autoResult.state;
-        const autoResolved = await autoResolveTrivialDecisions(game, st, settleOpponentPriority);
-        st = autoResolved.state;
-        setState(st);
-
-        const parts = [];
-        if (message) parts.push(message);
-        if (autoResult.autoPasses > 0) parts.push(`auto-passed x${autoResult.autoPasses}`);
-        if (autoResult.autoDeclares > 0) parts.push(`auto-declared x${autoResult.autoDeclares}`);
-        if (autoResult.phaseAdvances > 0) parts.push(`auto-advanced x${autoResult.phaseAdvances}`);
-        if (autoResult.holdReason && st?.decision?.player !== st?.perspective)
-          parts.push(`holding (${autoResult.holdReason})`);
-        if (autoResolved.resolved > 0) parts.push(`${autoResolved.resolved} auto-resolved`);
-        if (parts.length) setStatus(parts.join(" \u2022 "));
+        if (multiplayer.matchStarted) {
+          setState(st);
+          if (message) setStatus(message);
+          return;
+        }
+        await finalizeState(game, st, {
+          message,
+          allowOpponentAutomation: true,
+          allowTrivialAutomation: true,
+        });
       } catch (err) {
         setStatus(`Refresh failed: ${err}`, true);
       }
     },
-    [game, settleOpponentPriority, autoResolveTrivialDecisions, setStatus]
+    [finalizeState, game, multiplayer.matchStarted, setStatus]
   );
 
   const dispatch = useCallback(
     async (command, successMessage) => {
       if (!game) return;
+      if (multiplayer.matchStarted) {
+        const currentState = stateRef.current;
+        if (!currentState?.decision) {
+          setStatus("No pending decision to submit", true);
+          return;
+        }
+        if (currentState.decision.player !== currentState.perspective) {
+          setStatus("Waiting for the active player");
+          return;
+        }
+        try {
+          await submitMultiplayerCommand(command, successMessage);
+        } catch (err) {
+          setStatus(`Sync failed: ${err}`, true);
+          console.error(err);
+        }
+        return;
+      }
+
       try {
         let st = await game.dispatch(command);
-        const autoResult = await settleOpponentPriority(game, st);
-        st = autoResult.state;
-        const autoResolved = await autoResolveTrivialDecisions(game, st, settleOpponentPriority);
-        st = autoResolved.state;
-        setState(st);
-
-        const parts = [];
-        if (successMessage) parts.push(successMessage);
-        if (autoResult.autoPasses > 0) parts.push(`auto-passed x${autoResult.autoPasses}`);
-        if (autoResult.phaseAdvances > 0) parts.push(`auto-advanced x${autoResult.phaseAdvances}`);
-        if (autoResolved.resolved > 0) parts.push(`${autoResolved.resolved} auto-resolved`);
-        if (parts.length) setStatus(parts.join(" \u2022 "));
+        await finalizeState(game, st, {
+          message: successMessage,
+          allowOpponentAutomation: true,
+          allowTrivialAutomation: true,
+        });
       } catch (err) {
         try {
           // Roll back to the replay checkpoint so the game returns to a
           // consistent state (e.g. before a multi-step decision chain).
           let st = await game.cancelDecision();
-          const autoResult = await settleOpponentPriority(game, st);
-          st = autoResult.state;
-          const autoResolved = await autoResolveTrivialDecisions(game, st, settleOpponentPriority);
-          st = autoResolved.state;
-          setState(st);
+          await finalizeState(game, st, {
+            allowOpponentAutomation: true,
+            allowTrivialAutomation: true,
+          });
         } catch {
           // keep original error
         }
@@ -384,26 +512,29 @@ export function GameProvider({ children }) {
         console.error(err);
       }
     },
-    [game, settleOpponentPriority, autoResolveTrivialDecisions, setStatus]
+    [finalizeState, game, multiplayer.matchStarted, setStatus, submitMultiplayerCommand]
   );
 
   const cancelDecision = useCallback(
     async () => {
       if (!game) return;
+      if (multiplayer.matchStarted) {
+        setStatus("Undo is disabled during multiplayer matches", true);
+        return;
+      }
       try {
         let st = await game.cancelDecision();
-        const autoResult = await settleOpponentPriority(game, st);
-        st = autoResult.state;
-        const autoResolved = await autoResolveTrivialDecisions(game, st, settleOpponentPriority);
-        st = autoResolved.state;
-        setState(st);
-        setStatus("Decision cancelled");
+        await finalizeState(game, st, {
+          message: "Decision cancelled",
+          allowOpponentAutomation: true,
+          allowTrivialAutomation: true,
+        });
       } catch (err) {
         setStatus(`Cancel failed: ${err}`, true);
         console.error(err);
       }
     },
-    [game, settleOpponentPriority, autoResolveTrivialDecisions, setStatus]
+    [finalizeState, game, multiplayer.matchStarted, setStatus]
   );
 
   const value = useMemo(
@@ -433,6 +564,11 @@ export function GameProvider({ children }) {
       cardsMeetingThreshold,
       logEntries,
       pushLog,
+      multiplayer,
+      createLobby,
+      joinLobby,
+      leaveLobby,
+      updateLobbyDeck,
     }),
     [
       game,
@@ -448,6 +584,7 @@ export function GameProvider({ children }) {
       dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, inspectorDebug,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,
+      multiplayer, createLobby, joinLobby, leaveLobby, updateLobbyDeck,
     ]
   );
 

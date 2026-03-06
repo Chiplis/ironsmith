@@ -13,7 +13,16 @@ export default function AddCardBar({
   zoneViews = ["battlefield"],
   setZoneViews,
 }) {
-  const { game, state, refresh, setStatus, semanticThreshold, setSemanticThreshold, cardsMeetingThreshold } = useGame();
+  const {
+    game,
+    state,
+    refresh,
+    setStatus,
+    semanticThreshold,
+    setSemanticThreshold,
+    cardsMeetingThreshold,
+    multiplayer,
+  } = useGame();
   const [cardName, setCardName] = useState("");
   const [zone, setZone] = useState("battlefield");
   const [playerIndex, setPlayerIndex] = useState(0);
@@ -21,8 +30,13 @@ export default function AddCardBar({
 
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
+  const addLocked = multiplayer.mode !== "idle";
 
   const handleAdd = useCallback(async () => {
+    if (addLocked) {
+      setStatus("Card injection is disabled while a lobby is active", true);
+      return;
+    }
     const name = cardName.trim();
     if (!name) {
       setStatus("Enter a card name to add", true);
@@ -39,16 +53,23 @@ export default function AddCardBar({
     } catch (err) {
       setStatus(`Add card failed: ${err}`, true);
     }
-  }, [cardName, game, playerIndex, perspective, zone, skipTriggers, refresh, setStatus]);
+  }, [addLocked, cardName, game, playerIndex, perspective, zone, skipTriggers, refresh, setStatus]);
 
   return (
     <div className="panel-gradient flex items-center gap-1.5 rounded px-2.5 py-1">
-      <Badge variant="secondary" className={pill} onClick={handleAdd}>Add</Badge>
+      <Badge
+        variant="secondary"
+        className={`${pill} ${addLocked ? "pointer-events-none opacity-45" : ""}`}
+        onClick={addLocked ? undefined : handleAdd}
+      >
+        Add
+      </Badge>
 
       <input
         className={`${inputPill} w-36`}
         placeholder="Card name"
         value={cardName}
+        disabled={addLocked}
         onChange={(e) => setCardName(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -61,6 +82,7 @@ export default function AddCardBar({
       <select
         className={selectPill}
         value={playerIndex || perspective}
+        disabled={addLocked}
         onChange={(e) => setPlayerIndex(Number(e.target.value))}
       >
         {players.map((p) => (
@@ -73,6 +95,7 @@ export default function AddCardBar({
       <select
         className={selectPill}
         value={zone}
+        disabled={addLocked}
         onChange={(e) => setZone(e.target.value)}
       >
         <option value="battlefield">Battlefield</option>
@@ -85,6 +108,7 @@ export default function AddCardBar({
         <input
           type="checkbox"
           checked={skipTriggers}
+          disabled={addLocked}
           onChange={(e) => setSkipTriggers(e.target.checked)}
           className="h-3 w-3"
         />

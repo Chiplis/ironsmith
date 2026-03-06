@@ -1,27 +1,9 @@
 import { useState, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { Badge } from "@/components/ui/badge";
+import { parseDeckList } from "@/lib/decklists";
 
 const pill = "text-[13px] uppercase cursor-pointer hover:brightness-125 transition-all select-none";
-
-function parseDeckList(text) {
-  const cards = [];
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
-    if (/^(Deck|Sideboard|Commander|Companion|Maybeboard)$/i.test(trimmed)) continue;
-    const match = trimmed.match(/^(\d+)x?\s+(.+)$/);
-    if (match) {
-      const count = parseInt(match[1], 10);
-      // Strip set code + collector number: "Card Name (SET) 123" → "Card Name"
-      const name = match[2].replace(/\s*\([A-Z0-9]+\)\s*\d*\*?\s*$/, "").trim();
-      for (let i = 0; i < count; i++) {
-        cards.push(name);
-      }
-    }
-  }
-  return cards;
-}
 
 export default function DeckLoadingView({ onLoad, onCancel }) {
   const { state } = useGame();

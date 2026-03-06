@@ -76,8 +76,6 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use rand::seq::SliceRandom;
-
         let mut returned = Vec::new();
 
         if self.random {
@@ -112,7 +110,7 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
                 })
                 .collect();
 
-            candidates.shuffle(&mut rand::rng());
+            game.shuffle_slice(&mut candidates);
             for id in candidates.into_iter().take(requested) {
                 if let Some(new_id) = Self::return_object(game, ctx, id) {
                     returned.push(new_id);

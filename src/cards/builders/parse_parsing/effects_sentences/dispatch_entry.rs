@@ -1084,12 +1084,12 @@ fn lower_unapplied_token_copy_followup(
     let effects = match followup {
         TokenCopyFollowup::HasHaste => vec![EffectAst::GrantAbilitiesToTarget {
             target: TargetAst::Tagged(TagKey::from(IT_TAG), span),
-            abilities: vec![StaticAbility::haste()],
+            abilities: vec![StaticAbility::haste().into()],
             duration: Until::Forever,
         }],
         TokenCopyFollowup::GainHasteUntilEndOfTurn => vec![EffectAst::GrantAbilitiesToTarget {
             target: TargetAst::Tagged(TagKey::from(IT_TAG), span),
-            abilities: vec![StaticAbility::haste()],
+            abilities: vec![StaticAbility::haste().into()],
             duration: Until::EndOfTurn,
         }],
         TokenCopyFollowup::SacrificeAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {

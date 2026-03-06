@@ -4,8 +4,6 @@
 //! mana value is exiled, lets you cast it without paying its mana cost, then
 //! puts all other exiled cards on the bottom of your library in random order.
 
-use rand::seq::SliceRandom;
-
 use crate::alternative_cast::CastingMethod;
 use crate::cost::OptionalCostsPaid;
 use crate::effect::{EffectOutcome, EffectResult};
@@ -159,7 +157,7 @@ impl EffectExecutor for CascadeEffect {
         if let Some((casted_from_exile, _)) = casted_card {
             to_bottom.retain(|id| *id != casted_from_exile);
         }
-        to_bottom.shuffle(&mut rand::rng());
+        game.shuffle_slice(&mut to_bottom);
 
         for exiled_id in to_bottom {
             if let Some(new_id) = game.move_object(exiled_id, Zone::Library) {

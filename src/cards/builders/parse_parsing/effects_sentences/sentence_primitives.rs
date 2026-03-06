@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::LazyLock;
 
 pub(crate) type SentencePrimitiveParser =
     fn(&[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
@@ -8,37 +9,94 @@ pub(crate) struct SentencePrimitive {
     pub(crate) parser: SentencePrimitiveParser,
 }
 
+pub(crate) struct SentencePrimitiveIndex {
+    by_head: std::collections::HashMap<&'static str, Vec<usize>>,
+}
+
+fn sentence_primitive_head_hints(name: &'static str) -> Vec<&'static str> {
+    let Some(first) = name.split('-').next() else {
+        return Vec::new();
+    };
+    match first {
+        "if" | "you" | "target" | "each" | "for" | "return" | "destroy" | "exile" | "counter"
+        | "draw" | "put" | "gets" | "sacrifice" | "take" | "earthbend" | "enchant" | "cant"
+        | "prevent" | "gain" | "search" | "shuffle" | "look" | "play" | "vote" | "after"
+        | "reveal" | "damage" | "unless" | "monstrosity" => {
+            vec![first]
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn build_sentence_primitive_index(
+    primitives: &'static [SentencePrimitive],
+) -> SentencePrimitiveIndex {
+    let mut by_head = std::collections::HashMap::<&'static str, Vec<usize>>::new();
+    for (idx, primitive) in primitives.iter().enumerate() {
+        for head in sentence_primitive_head_hints(primitive.name) {
+            by_head.entry(head).or_default().push(idx);
+        }
+    }
+    SentencePrimitiveIndex { by_head }
+}
+
+fn run_sentence_primitive(
+    primitive: &SentencePrimitive,
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    match (primitive.parser)(tokens) {
+        Ok(Some(effects)) => {
+            let stage = format!("parse_effect_sentence:primitive-hit:{}", primitive.name);
+            parser_trace(&stage, tokens);
+            if effects.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "primitive '{}' produced empty effects (clause: '{}')",
+                    primitive.name,
+                    words(tokens).join(" ")
+                )));
+            }
+            Ok(Some(effects))
+        }
+        Ok(None) => Ok(None),
+        Err(err) => {
+            if parser_trace_enabled() {
+                eprintln!(
+                    "[parser-flow] stage=parse_effect_sentence:primitive-error primitive={} clause='{}' error={err:?}",
+                    primitive.name,
+                    words(tokens).join(" ")
+                );
+            }
+            Err(err)
+        }
+    }
+}
+
 pub(crate) fn run_sentence_primitives(
     tokens: &[Token],
-    primitives: &[SentencePrimitive],
+    primitives: &'static [SentencePrimitive],
+    index: &SentencePrimitiveIndex,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    for primitive in primitives {
-        match (primitive.parser)(tokens) {
-            Ok(Some(effects)) => {
-                let stage = format!("parse_effect_sentence:primitive-hit:{}", primitive.name);
-                parser_trace(&stage, tokens);
-                if effects.is_empty() {
-                    return Err(CardTextError::ParseError(format!(
-                        "primitive '{}' produced empty effects (clause: '{}')",
-                        primitive.name,
-                        words(tokens).join(" ")
-                    )));
-                }
+    let head = words(tokens).first().copied().unwrap_or("");
+    let mut tried = vec![false; primitives.len()];
+
+    if let Some(candidate_indices) = index.by_head.get(head) {
+        for &idx in candidate_indices {
+            tried[idx] = true;
+            if let Some(effects) = run_sentence_primitive(&primitives[idx], tokens)? {
                 return Ok(Some(effects));
-            }
-            Ok(None) => {}
-            Err(err) => {
-                if parser_trace_enabled() {
-                    eprintln!(
-                        "[parser-flow] stage=parse_effect_sentence:primitive-error primitive={} clause='{}' error={err:?}",
-                        primitive.name,
-                        words(tokens).join(" ")
-                    );
-                }
-                return Err(err);
             }
         }
     }
+
+    for (idx, primitive) in primitives.iter().enumerate() {
+        if tried[idx] {
+            continue;
+        }
+        if let Some(effects) = run_sentence_primitive(primitive, tokens)? {
+            return Ok(Some(effects));
+        }
+    }
+
     Ok(None)
 }
 
@@ -3799,6 +3857,9 @@ pub(crate) const PRE_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     },
 ];
 
+pub(crate) static PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX: LazyLock<SentencePrimitiveIndex> =
+    LazyLock::new(|| build_sentence_primitive_index(PRE_CONDITIONAL_SENTENCE_PRIMITIVES));
+
 pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "exile-target-creature-with-greatest-power",
@@ -4085,3 +4146,6 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
         parser: parse_sentence_unless_pays,
     },
 ];
+
+pub(crate) static POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX: LazyLock<SentencePrimitiveIndex> =
+    LazyLock::new(|| build_sentence_primitive_index(POST_CONDITIONAL_SENTENCE_PRIMITIVES));

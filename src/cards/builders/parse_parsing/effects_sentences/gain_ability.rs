@@ -1,9 +1,13 @@
 use super::*;
 
-fn grants_protection_from_everything(ability: &StaticAbility) -> bool {
+fn grants_protection_from_everything(ability: &GrantedAbilityAst) -> bool {
     matches!(
-        ability.protection_from(),
-        Some(crate::ability::ProtectionFrom::Everything)
+        ability,
+        GrantedAbilityAst::Static(static_ability)
+            if matches!(
+                static_ability.protection_from(),
+                Some(crate::ability::ProtectionFrom::Everything)
+            )
     )
 }
 
@@ -121,6 +125,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         actions
             .into_iter()
             .filter_map(keyword_action_to_static_ability)
+            .map(GrantedAbilityAst::from)
             .collect::<Vec<_>>()
     } else {
         Vec::new()
@@ -354,6 +359,7 @@ pub(crate) fn parse_gain_ability_sentence(
         actions
             .into_iter()
             .filter_map(keyword_action_to_static_ability)
+            .map(GrantedAbilityAst::from)
             .collect::<Vec<_>>()
     } else if let Some(actions) = parse_choice_of_abilities(&ability_tokens) {
         grant_is_choice = true;
@@ -361,6 +367,7 @@ pub(crate) fn parse_gain_ability_sentence(
         actions
             .into_iter()
             .filter_map(keyword_action_to_static_ability)
+            .map(GrantedAbilityAst::from)
             .collect::<Vec<_>>()
     } else {
         Vec::new()
@@ -375,7 +382,7 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(None);
     }
     if grants_must_attack {
-        abilities.push(StaticAbility::must_attack());
+        abilities.push(StaticAbility::must_attack().into());
     }
 
     // Check for "gets +X/+Y and gains/has ..." pattern - if there's a pump modifier
@@ -568,7 +575,7 @@ pub(crate) fn parse_gain_ability_sentence(
 pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
     ability_tokens: &[Token],
     clause_words: &[&str],
-) -> Result<Option<StaticAbility>, CardTextError> {
+) -> Result<Option<GrantedAbilityAst>, CardTextError> {
     if ability_tokens.is_empty() {
         return Ok(None);
     }
@@ -588,31 +595,29 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         return Ok(None);
     }
 
-    let mut ability = if has_colon {
+    let display = words(ability_tokens).join(" ");
+    let parsed_ability = if has_colon {
         let Some(parsed) = parse_activated_line(ability_tokens)? else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported granted activated/triggered ability clause (clause: '{}')",
                 clause_words.join(" ")
             )));
         };
-        lower_parsed_ability(parsed)?.ability
+        parsed
     } else {
         match parse_triggered_line(ability_tokens)? {
             LineAst::Triggered {
                 trigger,
                 effects,
                 max_triggers_per_turn,
-            } => {
-                lower_parsed_ability(parsed_triggered_ability(
-                    trigger,
-                    effects,
-                    vec![Zone::Battlefield],
-                    None,
-                    max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
-                    None,
-                ))?
-                .ability
-            }
+            } => parsed_triggered_ability(
+                trigger,
+                effects,
+                vec![Zone::Battlefield],
+                Some(display.clone()),
+                max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+                None,
+            ),
             _ => {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported granted activated/triggered ability clause (clause: '{}')",
@@ -622,15 +627,10 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         }
     };
 
-    if ability.text.is_none() {
-        ability.text = Some(words(ability_tokens).join(" "));
-    }
-
-    Ok(Some(StaticAbility::grant_object_ability_for_filter(
-        ObjectFilter::source(),
-        ability,
-        words(ability_tokens).join(" "),
-    )))
+    Ok(Some(GrantedAbilityAst::ParsedObjectAbility {
+        ability: parsed_ability,
+        display,
+    }))
 }
 
 pub(crate) fn append_gain_ability_trailing_effects(
@@ -720,9 +720,100 @@ pub(crate) fn parse_gain_ability_to_source_sentence(
 
     let ability_tokens = &tokens[gain_idx + 1..];
     if let Some(parsed) = parse_activated_line(ability_tokens)? {
-        let ability = lower_parsed_ability(parsed)?.ability;
-        return Ok(Some(EffectAst::GrantAbilityToSource { ability }));
+        return Ok(Some(EffectAst::GrantAbilityToSource { ability: parsed }));
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gain_ability_to_source_keeps_parsed_ability_until_lowering() {
+        let tokens = tokenize_line("This creature gains {T}: Draw a card.", 0);
+        let effect = parse_gain_ability_to_source_sentence(&tokens)
+            .expect("gain-to-source sentence should parse")
+            .expect("gain-to-source sentence should produce an effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            debug.contains("GrantAbilityToSource"),
+            "expected source grant effect, got {debug}"
+        );
+        assert!(
+            debug.contains("effects_ast: Some"),
+            "expected parsed ability to remain unlowered in the AST, got {debug}"
+        );
+
+        let compiled = crate::cards::builders::compile_statement_effects(&[effect])
+            .expect("grant-to-source effect should lower");
+        assert!(
+            format!("{compiled:?}").contains("GrantObjectAbilityEffect"),
+            "expected source grant effect after lowering, got {compiled:?}"
+        );
+    }
+
+    #[test]
+    fn target_gain_activated_ability_stays_unlowered_until_compile() {
+        let tokens = tokenize_line(
+            "Target creature gains {T}: Draw a card until end of turn.",
+            0,
+        );
+        let effect = parse_simple_gain_ability_clause(&tokens)
+            .expect("target gain clause should parse")
+            .expect("target gain clause should produce an effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            debug.contains("ParsedObjectAbility"),
+            "expected parsed granted ability in AST, got {debug}"
+        );
+        assert!(
+            debug.contains("effects_ast: Some"),
+            "expected granted ability to remain unlowered in AST, got {debug}"
+        );
+
+        let compiled = crate::cards::builders::compile_statement_effects(&[effect])
+            .expect("target gain clause should lower");
+        let compiled_debug = format!("{compiled:?}");
+        assert!(
+            compiled_debug.contains("GrantObjectAbilityForFilter"),
+            "expected lowered granted object ability, got {compiled_debug}"
+        );
+    }
+
+    #[test]
+    fn target_lose_activated_ability_stays_unlowered_until_compile() {
+        let tokens = tokenize_line(
+            "Target creature loses {T}: Draw a card until end of turn.",
+            0,
+        );
+        let effect = parse_simple_lose_ability_clause(&tokens)
+            .expect("target lose clause should parse")
+            .expect("target lose clause should produce an effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            debug.contains("ParsedObjectAbility"),
+            "expected parsed removed ability in AST, got {debug}"
+        );
+        assert!(
+            debug.contains("effects_ast: Some"),
+            "expected removed ability to remain unlowered in AST, got {debug}"
+        );
+
+        let compiled = crate::cards::builders::compile_statement_effects(&[effect])
+            .expect("target lose clause should lower");
+        let compiled_debug = format!("{compiled:?}");
+        assert!(
+            compiled_debug.contains("RemoveAbility"),
+            "expected lowered remove-ability effect, got {compiled_debug}"
+        );
+        assert!(
+            compiled_debug.contains("GrantObjectAbilityForFilter"),
+            "expected removed granted object ability after lowering, got {compiled_debug}"
+        );
+    }
 }

@@ -101,8 +101,10 @@ pub(super) fn parse_text_with_annotations(
                     continue;
                 }
 
-                if let Some(abilities) = parse_static_ability_line(&tokens)? {
-                    level.abilities.extend(abilities);
+                if let Some(abilities) = parse_static_ability_ast_line(&tokens)? {
+                    level
+                        .abilities
+                        .extend(lower_static_abilities_ast(abilities)?);
                     idx += 1;
                     continue;
                 }
@@ -260,7 +262,7 @@ pub(super) fn parse_text_with_annotations(
                             info.raw_line.trim(),
                             short_reason,
                         );
-                        LineAst::StaticAbility(marker)
+                        LineAst::StaticAbility(marker.into())
                     }
                     Err(err) => return Err(err),
                 };
@@ -1104,6 +1106,17 @@ fn apply_line_ast(
             }
         }
         LineAst::StaticAbility(ability) => {
+            let ability = match lower_static_ability_ast(ability) {
+                Ok(ability) => ability,
+                Err(err) if allow_unsupported => {
+                    return Ok(push_unsupported_marker(
+                        builder,
+                        info.raw_line.as_str(),
+                        format!("{err:?}"),
+                    ));
+                }
+                Err(err) => return Err(err),
+            };
             let mut compiled = Ability::static_ability(ability).with_text(info.raw_line.as_str());
             if let AbilityKind::Static(static_ability) = &compiled.kind
                 && matches!(
@@ -1129,6 +1142,17 @@ fn apply_line_ast(
             builder = builder.with_ability(compiled);
         }
         LineAst::StaticAbilities(abilities) => {
+            let abilities = match lower_static_abilities_ast(abilities) {
+                Ok(abilities) => abilities,
+                Err(err) if allow_unsupported => {
+                    return Ok(push_unsupported_marker(
+                        builder,
+                        info.raw_line.as_str(),
+                        format!("{err:?}"),
+                    ));
+                }
+                Err(err) => return Err(err),
+            };
             for ability in abilities {
                 let mut compiled =
                     Ability::static_ability(ability).with_text(info.raw_line.as_str());

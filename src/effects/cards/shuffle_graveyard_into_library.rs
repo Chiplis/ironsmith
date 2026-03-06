@@ -39,9 +39,7 @@ impl EffectExecutor for ShuffleGraveyardIntoLibraryEffect {
             let _ = game.move_object(card_id, Zone::Library);
         }
 
-        if let Some(player) = game.player_mut(player_id) {
-            player.shuffle_library();
-        }
+        game.shuffle_player_library(player_id);
 
         Ok(EffectOutcome::resolved())
     }

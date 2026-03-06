@@ -5,12 +5,79 @@ import { useGame } from "@/context/GameContext";
 import useNewCards from "@/hooks/useNewCards";
 import GameCard from "@/components/cards/GameCard";
 
+const PAPER_ROW_GROUPS = [
+  {
+    id: "front",
+    lanes: ["creatures", "enchantments", "planeswalkers", "battles", "other"],
+  },
+  {
+    id: "back",
+    lanes: ["lands", "artifacts"],
+  },
+];
+const ALL_PAPER_LANES = PAPER_ROW_GROUPS.flatMap((row) => row.lanes);
+const BOTTOM_BATTLEFIELD_SAFE_INSET = 60;
+
+function normalizeBattlefieldLane(lane) {
+  const normalized = String(lane || "").toLowerCase();
+  return ALL_PAPER_LANES.includes(normalized) ? normalized : "other";
+}
+
+function buildPaperBattlefieldLayout(cards, battlefieldSide) {
+  const rowGroups = battlefieldSide === "top"
+    ? [...PAPER_ROW_GROUPS].reverse()
+    : PAPER_ROW_GROUPS;
+  const buckets = new Map(ALL_PAPER_LANES.map((lane) => [lane, []]));
+
+  for (const card of cards) {
+    const lane = normalizeBattlefieldLane(card?.lane);
+    buckets.get(lane).push(card);
+  }
+
+  const occupiedRows = rowGroups
+    .map((row) => ({
+      id: row.id,
+      cards: row.lanes.flatMap((lane) => buckets.get(lane) || []),
+      signature: row.lanes.map((lane) => `${lane}:${(buckets.get(lane) || []).length}`).join(","),
+    }))
+    .filter((row) => row.cards.length > 0);
+  const orderedCards = [];
+  const gridPositionById = new Map();
+  const maxCols = Math.max(1, ...occupiedRows.map((row) => row.cards.length));
+
+  occupiedRows.forEach((row, rowIndex) => {
+    const startColumn = row.id === "back"
+      ? 1
+      : Math.floor((maxCols - row.cards.length) / 2) + 1;
+
+    row.cards.forEach((card, columnIndex) => {
+      orderedCards.push(card);
+      gridPositionById.set(String(card.id), {
+        row: rowIndex + 1,
+        column: startColumn + columnIndex,
+      });
+    });
+  });
+
+  return {
+    orderedCards,
+    gridPositionById,
+    rowCount: Math.max(occupiedRows.length, 1),
+    maxCols,
+    signature: occupiedRows
+      .map((row) => `${row.id}:${row.signature}`)
+      .join("|"),
+  };
+}
+
 export default function BattlefieldRow({
   cards = [],
   compact = false,
+  battlefieldSide = "bottom",
   selectedObjectId,
   onInspect,
   onCardClick,
+  onExpandInspector,
   activatableMap,
   legalTargetObjectIds = new Set(),
   allowVerticalScroll = false,
@@ -19,6 +86,12 @@ export default function BattlefieldRow({
   const { state } = useGame();
   const { hoverCard, clearHover, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const { combatMode, combatModeRef, dragArrow, startDragArrow, updateDragArrow, endDragArrow } = useCombatArrows();
+  const isPaperBattlefieldLayout = !compact;
+  const paperLayout = useMemo(
+    () => buildPaperBattlefieldLayout(cards, battlefieldSide),
+    [battlefieldSide, cards]
+  );
+  const displayCards = isPaperBattlefieldLayout ? paperLayout.orderedCards : cards;
   const priorityActionObjectIds = useMemo(() => {
     const ids = new Set();
     const decision = state?.decision;
@@ -31,7 +104,7 @@ export default function BattlefieldRow({
     }
     return ids;
   }, [state?.decision, state?.perspective]);
-  const cardIds = useMemo(() => cards.map((c) => c.id), [cards]);
+  const cardIds = useMemo(() => displayCards.map((c) => c.id), [displayCards]);
   const { newIds, bumpedIds } = useNewCards(cardIds);
   const dragRef = useRef(null);
   const fitRafRef = useRef(null);
@@ -42,6 +115,7 @@ export default function BattlefieldRow({
     cardsLength: -1,
     compact: null,
     allowVerticalScroll: null,
+    layoutSignature: "",
   });
   const syncOverflowMode = useCallback((layout) => {
     const row = rowRef.current;
@@ -62,6 +136,7 @@ export default function BattlefieldRow({
     if (!row || !cards.length) {
       if (row) {
         row.style.removeProperty("--bf-cols");
+        row.style.removeProperty("--bf-rows");
         row.style.removeProperty("--bf-card-width");
         row.style.removeProperty("--bf-card-height");
         row.style.removeProperty("--bf-card-overlap");
@@ -79,43 +154,89 @@ export default function BattlefieldRow({
     const gap = 6;
     const minWidth = compact ? 30 : 44;
     const minHeight = compact ? 42 : 34;
-    const maxRows = Math.min(cards.length, compact ? 8 : 10);
-
+    const effectiveHeight = Math.max(
+      minHeight,
+      height - (
+        isPaperBattlefieldLayout && battlefieldSide === "bottom"
+          ? BOTTOM_BATTLEFIELD_SAFE_INSET
+          : 0
+      )
+    );
     let best = null;
-    for (let rows = 1; rows <= maxRows; rows++) {
-      const cols = Math.ceil(cards.length / rows);
+
+    if (isPaperBattlefieldLayout) {
+      const rows = paperLayout.rowCount;
+      const cols = paperLayout.maxCols;
       const widthLimit = (width - (cols - 1) * gap) / cols;
-      const heightLimit = ((height - (rows - 1) * gap) / rows) * aspect;
+      const heightLimit = ((effectiveHeight - (rows - 1) * gap) / rows) * aspect;
       const cardWidth = Math.floor(Math.min(widthLimit, heightLimit));
       const cardHeight = Math.floor(cardWidth / aspect);
-      if (!Number.isFinite(cardWidth) || !Number.isFinite(cardHeight)) continue;
-      if (cardWidth < minWidth || cardHeight < minHeight) continue;
-      if (!best || cardWidth > best.cardWidth) {
-        best = { rows, cols, cardWidth, cardHeight };
+      if (Number.isFinite(cardWidth) && Number.isFinite(cardHeight)) {
+        best = {
+          rows,
+          cols,
+          cardWidth: Math.max(22, cardWidth),
+          cardHeight: Math.max(minHeight, cardHeight),
+        };
+      }
+    } else {
+      const maxRows = Math.min(cards.length, compact ? 8 : 10);
+      for (let rows = 1; rows <= maxRows; rows++) {
+        const cols = Math.ceil(cards.length / rows);
+        const widthLimit = (width - (cols - 1) * gap) / cols;
+        const heightLimit = ((effectiveHeight - (rows - 1) * gap) / rows) * aspect;
+        const cardWidth = Math.floor(Math.min(widthLimit, heightLimit));
+        const cardHeight = Math.floor(cardWidth / aspect);
+        if (!Number.isFinite(cardWidth) || !Number.isFinite(cardHeight)) continue;
+        if (cardWidth < minWidth || cardHeight < minHeight) continue;
+        if (!best || cardWidth > best.cardWidth) {
+          best = { rows, cols, cardWidth, cardHeight };
+        }
       }
     }
 
     if (!best) {
-      const cols = Math.max(1, Math.floor((width + gap) / (minWidth + gap)));
-      const rows = Math.ceil(cards.length / cols);
-      const widthLimit = (width - (cols - 1) * gap) / cols;
-      const cardWidth = Math.max(22, Math.floor(widthLimit));
-      const cardHeight = Math.max(minHeight, Math.floor(cardWidth / aspect));
-      best = { rows, cols, cardWidth, cardHeight };
+      if (isPaperBattlefieldLayout) {
+        const cols = Math.max(1, paperLayout.maxCols);
+        const rows = Math.max(1, paperLayout.rowCount);
+        const widthLimit = (width - (cols - 1) * gap) / cols;
+        const heightLimit = ((effectiveHeight - (rows - 1) * gap) / rows) * aspect;
+        const cardWidth = Math.max(22, Math.floor(Math.min(widthLimit, heightLimit)));
+        const cardHeight = Math.max(minHeight, Math.floor(cardWidth / aspect));
+        best = { rows, cols, cardWidth, cardHeight };
+      } else {
+        const cols = Math.max(1, Math.floor((width + gap) / (minWidth + gap)));
+        const rows = Math.ceil(cards.length / cols);
+        const widthLimit = (width - (cols - 1) * gap) / cols;
+        const cardWidth = Math.max(22, Math.floor(widthLimit));
+        const cardHeight = Math.max(minHeight, Math.floor(cardWidth / aspect));
+        best = { rows, cols, cardWidth, cardHeight };
+      }
     }
 
     row.style.setProperty("--bf-cols", String(best.cols));
+    row.style.setProperty("--bf-rows", String(best.rows));
     row.style.setProperty("--bf-card-width", `${best.cardWidth}px`);
     row.style.setProperty("--bf-card-height", `${best.cardHeight}px`);
-    const overlapPx = compact ? 0 : Math.min(14, Math.max(8, Math.floor(best.cardWidth * 0.11)));
+    const overlapPx = (compact || isPaperBattlefieldLayout)
+      ? 0
+      : Math.min(14, Math.max(8, Math.floor(best.cardWidth * 0.11)));
     row.style.setProperty("--bf-card-overlap", `${overlapPx}px`);
     syncOverflowMode({
       rows: best.rows,
       cardHeight: best.cardHeight,
       gap,
-      viewportHeight: height,
+      viewportHeight: effectiveHeight,
     });
-  }, [cards.length, compact, syncOverflowMode]);
+  }, [
+    battlefieldSide,
+    cards.length,
+    compact,
+    isPaperBattlefieldLayout,
+    paperLayout.maxCols,
+    paperLayout.rowCount,
+    syncOverflowMode,
+  ]);
 
   const scheduleFitCards = useCallback((force = false) => {
     pendingForceFitRef.current = pendingForceFitRef.current || force;
@@ -134,6 +255,7 @@ export default function BattlefieldRow({
         || prev.cardsLength !== cards.length
         || prev.compact !== compact
         || prev.allowVerticalScroll !== allowVerticalScroll
+        || prev.layoutSignature !== paperLayout.signature
       );
       const forceNow = pendingForceFitRef.current;
       pendingForceFitRef.current = false;
@@ -145,10 +267,11 @@ export default function BattlefieldRow({
         cardsLength: cards.length,
         compact,
         allowVerticalScroll,
+        layoutSignature: paperLayout.signature,
       };
       fitCards();
     });
-  }, [allowVerticalScroll, cards.length, compact, fitCards]);
+  }, [allowVerticalScroll, cards.length, compact, fitCards, paperLayout.signature]);
 
   useLayoutEffect(() => {
     scheduleFitCards(true);
@@ -245,14 +368,17 @@ export default function BattlefieldRow({
   return (
     <div
       ref={rowRef}
-      className="battlefield-row grid gap-1.5 content-start justify-start min-h-0 h-full"
+      className="battlefield-row grid gap-1.5 content-start justify-center min-h-0 h-full"
       style={{
         gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 124px) - var(--bf-card-overlap, 0px))))`,
-        gridAutoRows: "var(--bf-card-height, 96px)",
+        gridTemplateRows: isPaperBattlefieldLayout
+          ? `repeat(var(--bf-rows, 1), var(--bf-card-height, 96px))`
+          : undefined,
+        gridAutoRows: isPaperBattlefieldLayout ? undefined : "var(--bf-card-height, 96px)",
         scrollbarGutter: allowVerticalScroll ? "stable" : "auto",
       }}
     >
-      {cards.map((card, i) => {
+      {displayCards.map((card, i) => {
         const isActivatable = activatableMap?.has(Number(card.id));
         const cardObjectIds = [Number(card.id)];
         if (Array.isArray(card.member_ids)) {
@@ -266,8 +392,8 @@ export default function BattlefieldRow({
         const isBumped = bumpedIds.has(card.id);
         let bumpDir = 0;
         if (isBumped) {
-          if (i > 0 && newIds.has(cards[i - 1].id)) bumpDir = 1;
-          else if (i < cards.length - 1 && newIds.has(cards[i + 1].id)) bumpDir = -1;
+          if (i > 0 && newIds.has(displayCards[i - 1].id)) bumpDir = 1;
+          else if (i < displayCards.length - 1 && newIds.has(displayCards[i + 1].id)) bumpDir = -1;
         }
 
         const isCombatCandidate = combatMode?.candidates?.has(Number(card.id));
@@ -320,6 +446,9 @@ export default function BattlefieldRow({
             : isAttackHoverTarget
               ? "attack-selected"
               : (isCombatCandidate ? combatGlowKind : abilityGlow);
+        const paperGridPosition = isPaperBattlefieldLayout
+          ? paperLayout.gridPositionById.get(String(card.id))
+          : null;
 
         return (
           <GameCard
@@ -333,11 +462,22 @@ export default function BattlefieldRow({
             isNew={isNew}
             isBumped={isBumped}
             bumpDirection={bumpDir}
+            onContextMenu={!compact && onExpandInspector ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onExpandInspector(card.id);
+            } : undefined}
             onClick={onCardClick ? (e) => onCardClick(e, card) : () => onInspect?.(card.id)}
             onPointerDown={isCombatCandidate ? (e) => handleCombatPointerDown(e, card) : undefined}
             onMouseEnter={() => hoverCard(card.id)}
             onMouseLeave={clearHover}
             style={{
+              ...(paperGridPosition
+                ? {
+                  gridRow: String(paperGridPosition.row),
+                  gridColumn: String(paperGridPosition.column),
+                }
+                : undefined),
               width: "var(--bf-card-width, 124px)",
               minWidth: "var(--bf-card-width, 124px)",
               height: "var(--bf-card-height, 96px)",

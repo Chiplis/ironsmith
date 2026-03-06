@@ -145,9 +145,7 @@ impl EffectExecutor for SearchLibraryEffect {
                         p.library.retain(|&id| id != card_id);
                     }
                     // Shuffle the remaining library
-                    if let Some(p) = game.player_mut(player_id) {
-                        p.shuffle_library();
-                    }
+                    game.shuffle_player_library(player_id);
                     // Now put the card on top (push adds to end, which is the top)
                     if let Some(p) = game.player_mut(player_id) {
                         p.library.push(card_id);
@@ -174,9 +172,7 @@ impl EffectExecutor for SearchLibraryEffect {
 
                 if let Some(new_id) = new_id {
                     // Shuffle the library after searching
-                    if let Some(p) = game.player_mut(player_id) {
-                        p.shuffle_library();
-                    }
+                    game.shuffle_player_library(player_id);
                     return Ok(EffectOutcome::from_result(EffectResult::Objects(vec![
                         new_id,
                     ])));
@@ -185,9 +181,7 @@ impl EffectExecutor for SearchLibraryEffect {
         }
 
         // No card found or chosen - still shuffle (searching always shuffles)
-        if let Some(p) = game.player_mut(player_id) {
-            p.shuffle_library();
-        }
+        game.shuffle_player_library(player_id);
 
         Ok(EffectOutcome::count(0))
     }

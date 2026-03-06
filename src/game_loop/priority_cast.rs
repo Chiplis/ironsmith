@@ -1074,14 +1074,13 @@ fn continue_spell_cast_mana_payment(
         )?;
 
         // Generate SpellCast event and check for triggers
-        let event = TriggerEvent::new_with_provenance(SpellCastEvent::new(
-            result.new_id,
-            result.caster,
-            result.from_zone,
-        ), game.alloc_child_event_provenance(
-            pending.provenance,
-            crate::events::EventKind::SpellCast,
-        ));
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(result.new_id, result.caster, result.from_zone),
+            game.alloc_child_event_provenance(
+                pending.provenance,
+                crate::events::EventKind::SpellCast,
+            ),
+        );
         let triggers = check_triggers(game, &event);
         for trigger in triggers {
             trigger_queue.add(trigger);
@@ -1675,6 +1674,161 @@ fn collect_cast_card_choice_costs(
     card_choice_costs
 }
 
+fn activation_stage_after_targets(pending: &PendingActivation) -> ActivationStage {
+    if !pending.remaining_cost_steps.is_empty() {
+        ActivationStage::ProcessingCosts
+    } else if pending.mana_cost_to_pay.is_some() || !pending.remaining_mana_pips.is_empty() {
+        ActivationStage::PayingMana
+    } else {
+        ActivationStage::ReadyToFinalize
+    }
+}
+
+fn activation_stage_after_announcements(pending: &PendingActivation) -> ActivationStage {
+    if !pending.remaining_requirements.is_empty() {
+        ActivationStage::ChoosingTargets
+    } else {
+        activation_stage_after_targets(pending)
+    }
+}
+
+fn continue_activation_cost_payment(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut pending: PendingActivation,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    let Some(step) = pending.remaining_cost_steps.first().cloned() else {
+        pending.stage = activation_stage_after_targets(&pending);
+        return continue_activation(game, trigger_queue, state, pending, decision_maker);
+    };
+
+    match step {
+        ActivationCostStep::Cost(cost) => {
+            let mut cost_ctx =
+                CostContext::new(pending.source, pending.activator, &mut *decision_maker)
+                    .with_provenance(pending.provenance);
+            cost_ctx.tagged_objects = pending.tagged_objects.clone();
+            cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
+
+            match cost.pay(game, &mut cost_ctx).map_err(|err| {
+                GameLoopError::InvalidState(format!(
+                    "Failed to pay deferred activation cost {}: {err:?}",
+                    cost.display()
+                ))
+            })? {
+                crate::costs::CostPaymentResult::Paid => {
+                    record_immediate_cost_payment(
+                        &mut pending.payment_trace,
+                        &cost,
+                        pending.source,
+                    );
+                    pending.tagged_objects = cost_ctx.tagged_objects;
+                    pending.remaining_cost_steps.remove(0);
+                    drain_pending_trigger_events(game, trigger_queue);
+                    continue_activation_cost_payment(
+                        game,
+                        trigger_queue,
+                        state,
+                        pending,
+                        decision_maker,
+                    )
+                }
+                crate::costs::CostPaymentResult::NeedsChoice(description) => {
+                    Err(GameLoopError::InvalidState(format!(
+                        "Deferred activation cost unexpectedly requires staged choice: {} ({})",
+                        cost.display(),
+                        description
+                    )))
+                }
+            }
+        }
+        ActivationCostStep::Sacrifice {
+            ref filter,
+            ref description,
+        } => {
+            let legal_targets =
+                get_legal_sacrifice_targets(game, pending.activator, pending.source, filter);
+
+            if legal_targets.is_empty() {
+                return Err(GameLoopError::InvalidState(
+                    "No valid sacrifice targets".to_string(),
+                ));
+            }
+
+            let player = pending.activator;
+            let source = pending.source;
+            pending.stage = ActivationStage::ChoosingSacrifice;
+            state.pending_activation = Some(pending);
+
+            let candidates: Vec<crate::decisions::context::SelectableObject> = legal_targets
+                .iter()
+                .map(|&id| {
+                    let name = game
+                        .object(id)
+                        .map(|o| o.name.clone())
+                        .unwrap_or_else(|| format!("Permanent #{}", id.0));
+                    crate::decisions::context::SelectableObject::new(id, name)
+                })
+                .collect();
+            let ctx = crate::decisions::context::SelectObjectsContext::new(
+                player,
+                Some(source),
+                format!("Choose a creature to sacrifice: {}", description),
+                candidates,
+                1,
+                Some(1),
+            );
+            Ok(GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ))
+        }
+        ActivationCostStep::CardChoice(card_choice_cost) => {
+            let (description, legal_cards) = card_cost_choice_description_and_candidates(
+                game,
+                pending.activator,
+                pending.source,
+                &card_choice_cost,
+                &[],
+            );
+
+            if legal_cards.is_empty() {
+                return Err(GameLoopError::InvalidState(
+                    "No valid cards available for activation cost choice".to_string(),
+                ));
+            }
+
+            let player = pending.activator;
+            let source = pending.source;
+            pending.stage = ActivationStage::ChoosingCardCost;
+            state.pending_activation = Some(pending);
+
+            let candidates: Vec<crate::decisions::context::SelectableObject> = legal_cards
+                .iter()
+                .map(|&id| {
+                    let name = game
+                        .object(id)
+                        .map(|o| o.name.clone())
+                        .unwrap_or_else(|| format!("Card #{}", id.0));
+                    crate::decisions::context::SelectableObject::new(id, name)
+                })
+                .collect();
+            let ctx = crate::decisions::context::SelectObjectsContext::new(
+                player,
+                Some(source),
+                description,
+                candidates,
+                1,
+                Some(1),
+            );
+            Ok(GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ))
+        }
+    }
+}
+
 /// Continue the activation process based on current stage.
 fn continue_activation(
     game: &mut GameState,
@@ -1684,8 +1838,8 @@ fn continue_activation(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     // Activation legality has already been checked and ability data is captured in
-    // PendingActivation. Immediate costs are already paid; choice-based costs are
-    // handled by the stage machine below.
+    // PendingActivation. Targets are chosen before activation costs are actually paid,
+    // then deferred non-mana costs are processed in original cost order.
 
     match pending.stage {
         ActivationStage::ChoosingX => {
@@ -1710,174 +1864,14 @@ fn continue_activation(
                 crate::decisions::context::DecisionContext::Number(ctx),
             ))
         }
-        ActivationStage::ChoosingSacrifice => {
-            // Get the next sacrifice cost to pay
-            if let Some((filter, description)) = pending.remaining_sacrifice_costs.first().cloned()
-            {
-                let legal_targets =
-                    get_legal_sacrifice_targets(game, pending.activator, pending.source, &filter);
-
-                if legal_targets.is_empty() {
-                    // No valid targets - this shouldn't happen if can_pay_cost was checked
-                    return Err(GameLoopError::InvalidState(
-                        "No valid sacrifice targets".to_string(),
-                    ));
-                }
-
-                let player = pending.activator;
-                let source = pending.source;
-                state.pending_activation = Some(pending);
-
-                // Convert to SelectObjectsContext for sacrifice selection
-                let candidates: Vec<crate::decisions::context::SelectableObject> = legal_targets
-                    .iter()
-                    .map(|&id| {
-                        let name = game
-                            .object(id)
-                            .map(|o| o.name.clone())
-                            .unwrap_or_else(|| format!("Permanent #{}", id.0));
-                        crate::decisions::context::SelectableObject::new(id, name)
-                    })
-                    .collect();
-                let ctx = crate::decisions::context::SelectObjectsContext::new(
-                    player,
-                    Some(source),
-                    format!("Choose a creature to sacrifice: {}", description),
-                    candidates,
-                    1,
-                    Some(1),
-                );
-                Ok(GameProgress::NeedsDecisionCtx(
-                    crate::decisions::context::DecisionContext::SelectObjects(ctx),
-                ))
-            } else {
-                if !pending.remaining_card_choice_costs.is_empty() {
-                    pending.stage = ActivationStage::ChoosingCardCost;
-                    return continue_activation(
-                        game,
-                        trigger_queue,
-                        state,
-                        pending,
-                        decision_maker,
-                    );
-                }
-
-                // No more object-choice costs - recompute target requirements with current game state.
-                // This ensures zone-changing costs are reflected in legal targets.
-                pending.remaining_requirements = extract_target_requirements(
-                    game,
-                    &pending.effects,
-                    pending.activator,
-                    Some(pending.source),
-                );
-
-                // Per MTG rule 602.2b (which references 601.2b), check for hybrid/Phyrexian pips
-                // These must be announced BEFORE targets are chosen
-                if pending.hybrid_choices.is_empty()
-                    && let Some(ref mana_cost) = pending.mana_cost_to_pay
-                {
-                    let pips_to_announce = get_pips_requiring_announcement(mana_cost);
-                    if !pips_to_announce.is_empty() {
-                        pending.pending_hybrid_pips = pips_to_announce;
-                        pending.stage = ActivationStage::AnnouncingCost;
-                        return continue_activation(
-                            game,
-                            trigger_queue,
-                            state,
-                            pending,
-                            decision_maker,
-                        );
-                    }
-                }
-
-                // Move to next stage
-                if !pending.remaining_requirements.is_empty() {
-                    pending.stage = ActivationStage::ChoosingTargets;
-                } else if pending.mana_cost_to_pay.is_some() {
-                    pending.stage = ActivationStage::PayingMana;
-                } else {
-                    pending.stage = ActivationStage::ReadyToFinalize;
-                }
-                continue_activation(game, trigger_queue, state, pending, decision_maker)
-            }
+        ActivationStage::ProcessingCosts => {
+            continue_activation_cost_payment(game, trigger_queue, state, pending, decision_maker)
         }
-        ActivationStage::ChoosingCardCost => {
-            if let Some(card_choice_cost) = pending.remaining_card_choice_costs.first().cloned() {
-                let (description, legal_cards) = card_cost_choice_description_and_candidates(
-                    game,
-                    pending.activator,
-                    pending.source,
-                    &card_choice_cost,
-                    &[],
-                );
-
-                if legal_cards.is_empty() {
-                    return Err(GameLoopError::InvalidState(
-                        "No valid cards available for activation cost choice".to_string(),
-                    ));
-                }
-
-                let player = pending.activator;
-                let source = pending.source;
-                state.pending_activation = Some(pending);
-
-                let candidates: Vec<crate::decisions::context::SelectableObject> = legal_cards
-                    .iter()
-                    .map(|&id| {
-                        let name = game
-                            .object(id)
-                            .map(|o| o.name.clone())
-                            .unwrap_or_else(|| format!("Card #{}", id.0));
-                        crate::decisions::context::SelectableObject::new(id, name)
-                    })
-                    .collect();
-                let ctx = crate::decisions::context::SelectObjectsContext::new(
-                    player,
-                    Some(source),
-                    description,
-                    candidates,
-                    1,
-                    Some(1),
-                );
-                Ok(GameProgress::NeedsDecisionCtx(
-                    crate::decisions::context::DecisionContext::SelectObjects(ctx),
-                ))
-            } else {
-                // No more object-choice costs - recompute target requirements with current game state.
-                pending.remaining_requirements = extract_target_requirements(
-                    game,
-                    &pending.effects,
-                    pending.activator,
-                    Some(pending.source),
-                );
-
-                // Per MTG rule 602.2b (which references 601.2b), check for hybrid/Phyrexian pips.
-                if pending.hybrid_choices.is_empty()
-                    && let Some(ref mana_cost) = pending.mana_cost_to_pay
-                {
-                    let pips_to_announce = get_pips_requiring_announcement(mana_cost);
-                    if !pips_to_announce.is_empty() {
-                        pending.pending_hybrid_pips = pips_to_announce;
-                        pending.stage = ActivationStage::AnnouncingCost;
-                        return continue_activation(
-                            game,
-                            trigger_queue,
-                            state,
-                            pending,
-                            decision_maker,
-                        );
-                    }
-                }
-
-                if !pending.remaining_requirements.is_empty() {
-                    pending.stage = ActivationStage::ChoosingTargets;
-                } else if pending.mana_cost_to_pay.is_some() {
-                    pending.stage = ActivationStage::PayingMana;
-                } else {
-                    pending.stage = ActivationStage::ReadyToFinalize;
-                }
-                continue_activation(game, trigger_queue, state, pending, decision_maker)
-            }
+        ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost => {
+            state.pending_activation = Some(pending);
+            Err(GameLoopError::InvalidState(
+                "Activation object-cost stage requires a SelectObjects response".to_string(),
+            ))
         }
         ActivationStage::AnnouncingCost => {
             // Handle hybrid/Phyrexian mana announcement (per MTG rule 601.2b via 602.2b)
@@ -1910,14 +1904,7 @@ fn continue_activation(
                     }
                 }
 
-                // All hybrid pips announced, move to targets
-                if !pending.remaining_requirements.is_empty() {
-                    pending.stage = ActivationStage::ChoosingTargets;
-                } else if pending.mana_cost_to_pay.is_some() {
-                    pending.stage = ActivationStage::PayingMana;
-                } else {
-                    pending.stage = ActivationStage::ReadyToFinalize;
-                }
+                pending.stage = activation_stage_after_announcements(&pending);
                 return continue_activation(game, trigger_queue, state, pending, decision_maker);
             }
 
@@ -1957,12 +1944,7 @@ fn continue_activation(
         }
         ActivationStage::ChoosingTargets => {
             if pending.remaining_requirements.is_empty() {
-                // No more targets needed
-                if pending.mana_cost_to_pay.is_some() {
-                    pending.stage = ActivationStage::PayingMana;
-                } else {
-                    pending.stage = ActivationStage::ReadyToFinalize;
-                }
+                pending.stage = activation_stage_after_targets(&pending);
                 continue_activation(game, trigger_queue, state, pending, decision_maker)
             } else {
                 let requirements = pending.remaining_requirements.clone();

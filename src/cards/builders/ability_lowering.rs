@@ -184,3 +184,59 @@ pub(crate) fn lower_parsed_ability(
     activated.choices = choices;
     Ok(parsed)
 }
+
+pub(crate) fn lower_static_ability_ast(
+    ability: StaticAbilityAst,
+) -> Result<StaticAbility, CardTextError> {
+    match ability {
+        StaticAbilityAst::Static(ability) => Ok(ability),
+        StaticAbilityAst::GrantObjectAbility {
+            filter,
+            ability,
+            display,
+            condition,
+        } => {
+            let mut lowered = lower_parsed_ability(ability)?.ability;
+            if lowered.text.is_none() {
+                lowered.text = Some(display.clone());
+            }
+            let mut grant =
+                crate::static_abilities::GrantObjectAbilityForFilter::new(filter, lowered, display);
+            if let Some(condition) = condition {
+                grant = grant.with_condition(condition);
+            }
+            Ok(StaticAbility::new(grant))
+        }
+        StaticAbilityAst::AttachedObjectAbilityGrant {
+            ability,
+            display,
+            condition,
+        } => {
+            let mut lowered = lower_parsed_ability(ability)?.ability;
+            if lowered.text.is_none() {
+                lowered.text = Some(display.clone());
+            }
+            let mut grant = crate::static_abilities::AttachedAbilityGrant::new(lowered, display);
+            if let Some(condition) = condition {
+                grant = grant.with_condition(condition);
+            }
+            Ok(StaticAbility::new(grant))
+        }
+        StaticAbilityAst::SoulbondSharedObjectAbility { ability, display } => {
+            let mut lowered = lower_parsed_ability(ability)?.ability;
+            if lowered.text.is_none() {
+                lowered.text = Some(display);
+            }
+            Ok(StaticAbility::soulbond_shared_object_ability(lowered))
+        }
+    }
+}
+
+pub(crate) fn lower_static_abilities_ast(
+    abilities: Vec<StaticAbilityAst>,
+) -> Result<Vec<StaticAbility>, CardTextError> {
+    abilities
+        .into_iter()
+        .map(lower_static_ability_ast)
+        .collect()
+}

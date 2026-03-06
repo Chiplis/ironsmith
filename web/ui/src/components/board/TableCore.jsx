@@ -9,6 +9,7 @@ import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 export default function TableCore({
   selectedObjectId,
   onInspect,
+  onExpandInspector,
   zoneViews,
   deckLoadingMode,
   onLoadDecks,
@@ -66,6 +67,7 @@ export default function TableCore({
         opponents={opponents}
         selectedObjectId={selectedObjectId}
         onInspect={onInspect}
+        onExpandInspector={onExpandInspector}
         zoneViews={zoneViews}
         legalTargetPlayerIds={legalTargetPlayerIds}
         legalTargetObjectIds={legalTargetObjectIds}
@@ -79,6 +81,7 @@ export default function TableCore({
         player={me}
         selectedObjectId={selectedObjectId}
         onInspect={onInspect}
+        onExpandInspector={onExpandInspector}
         zoneViews={zoneViews}
         legalTargetPlayerIds={legalTargetPlayerIds}
         legalTargetObjectIds={legalTargetObjectIds}

@@ -145,8 +145,11 @@ impl<T: 'static> RuleIndex<T> {
 }
 
 fn rule_matches_view<T>(rule: &RuleDef<T>, view: &ClauseView<'_>) -> bool {
-    let head_matches =
-        rule.heads.is_empty() || rule.heads.iter().any(|candidate| *candidate == view.key.head);
+    let head_matches = rule.heads.is_empty()
+        || rule
+            .heads
+            .iter()
+            .any(|candidate| *candidate == view.key.head);
     if !head_matches {
         return false;
     }
@@ -207,8 +210,11 @@ impl UnsupportedDiagnoser {
 }
 
 fn unsupported_rule_matches_view(rule: &UnsupportedRuleDef, view: &ClauseView<'_>) -> bool {
-    let head_matches =
-        rule.heads.is_empty() || rule.heads.iter().any(|candidate| *candidate == view.key.head);
+    let head_matches = rule.heads.is_empty()
+        || rule
+            .heads
+            .iter()
+            .any(|candidate| *candidate == view.key.head);
     if !head_matches {
         return false;
     }

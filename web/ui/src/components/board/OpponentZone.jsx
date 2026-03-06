@@ -107,6 +107,7 @@ export default function OpponentZone({
   opponents,
   selectedObjectId,
   onInspect,
+  onExpandInspector,
   zoneViews = ["battlefield"],
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
@@ -130,6 +131,7 @@ export default function OpponentZone({
             player={player}
             selectedObjectId={selectedObjectId}
             onInspect={onInspect}
+            onExpandInspector={onExpandInspector}
             zoneViews={zoneViews}
             state={state}
             dispatch={dispatch}
@@ -146,6 +148,7 @@ function OpponentSlot({
   player,
   selectedObjectId,
   onInspect,
+  onExpandInspector,
   zoneViews,
   state,
   dispatch,
@@ -320,8 +323,10 @@ function OpponentSlot({
                 <BattlefieldRow
                   cards={entry.cards}
                   compact={entry.zone !== "battlefield"}
+                  battlefieldSide="top"
                   selectedObjectId={selectedObjectId}
                   onCardClick={handleCardClick}
+                  onExpandInspector={entry.zone === "battlefield" ? onExpandInspector : undefined}
                   legalTargetObjectIds={legalTargetObjectIds}
                   allowVerticalScroll={entry.zone === "hand"}
                 />

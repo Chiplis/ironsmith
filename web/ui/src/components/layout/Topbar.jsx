@@ -19,6 +19,7 @@ export default function Topbar({
   onRefresh,
   onToggleLog,
   onEnterDeckLoading,
+  onOpenLobby,
   deckLoadingMode,
 }) {
   const {
@@ -31,11 +32,14 @@ export default function Topbar({
     setHoldRule,
     inspectorDebug,
     setInspectorDebug,
+    multiplayer,
   } = useGame();
 
   const players = state?.players || [];
   const perspective = state?.perspective;
   const me = players.find((p) => p.id === perspective) || players[0];
+  const lobbyBusy = multiplayer.mode !== "idle";
+  const matchLocked = multiplayer.matchStarted;
   const compiledLabel =
     Number.isFinite(wasmRegistryCount) && wasmRegistryCount >= 0 && wasmRegistryTotal > 0
       ? wasmRegistryTotal > 0
@@ -52,6 +56,7 @@ export default function Topbar({
       <input
         className={`${inputPill} min-w-[60px] w-auto`}
         value={playerNames}
+        disabled={lobbyBusy}
         onChange={(e) => setPlayerNames(e.target.value)}
       />
       <input
@@ -59,12 +64,28 @@ export default function Topbar({
         type="number"
         value={startingLife}
         min={1}
+        disabled={lobbyBusy}
         onChange={(e) => setStartingLife(Number(e.target.value) || 20)}
       />
 
-      <Badge variant="secondary" className={pill} onClick={onReset}>Reset</Badge>
-      <Badge variant="secondary" className={pill} onClick={onEnterDeckLoading}>
+      <Badge
+        variant="secondary"
+        className={`${pill} ${lobbyBusy ? "pointer-events-none opacity-45" : ""}`}
+        onClick={lobbyBusy ? undefined : onReset}
+      >
+        Reset
+      </Badge>
+      <Badge
+        variant="secondary"
+        className={`${pill} ${lobbyBusy ? "pointer-events-none opacity-45" : ""}`}
+        onClick={lobbyBusy ? undefined : onEnterDeckLoading}
+      >
         {deckLoadingMode ? "Cancel Load" : "Load Decks"}
+      </Badge>
+      <Badge variant="secondary" className={pill} onClick={onOpenLobby}>
+        {lobbyBusy
+          ? `Lobby ${multiplayer.players.length}/${multiplayer.desiredPlayers || 0}`
+          : "Create Lobby"}
       </Badge>
 
       <Separator orientation="vertical" className="h-4.5 mx-0.5" />
@@ -75,6 +96,7 @@ export default function Topbar({
       <select
         className={selectPill}
         value={perspective ?? ""}
+        disabled={matchLocked}
         onChange={(e) => onChangePerspective(Number(e.target.value))}
       >
         {players.map((p) => (
@@ -90,6 +112,7 @@ export default function Topbar({
       <select
         className={selectPill}
         value={holdRule}
+        disabled={matchLocked}
         onChange={(e) => setHoldRule(e.target.value)}
       >
         <option value="never">Never</option>
@@ -103,6 +126,7 @@ export default function Topbar({
       <label className="flex items-center gap-1 text-muted-foreground text-[13px] whitespace-nowrap cursor-pointer uppercase">
         <Checkbox
           checked={autoPassEnabled}
+          disabled={matchLocked}
           onCheckedChange={(v) => setAutoPassEnabled(!!v)}
           className="h-3.5 w-3.5"
         />

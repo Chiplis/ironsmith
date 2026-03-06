@@ -23,7 +23,9 @@ use crate::game_loop::{
     apply_priority_response_with_dm,
 };
 use crate::game_state::{GameState, Target};
-use crate::ids::{ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
+use crate::ids::{
+    ObjectId, PlayerId, reset_runtime_id_counters, restore_id_counters, snapshot_id_counters,
+};
 use crate::mana::ManaSymbol;
 use crate::triggers::TriggerQueue;
 use crate::types::CardType;
@@ -1544,7 +1546,6 @@ pub struct WasmGame {
     pending_replay_action: Option<PendingReplayAction>,
     game_over: Option<GameResult>,
     perspective: PlayerId,
-    deck_generation_nonce: u64,
     /// The unified turn state machine. Created lazily on first advance.
     runner: Option<crate::turn_runner::TurnRunner>,
     /// True when the TurnRunner has yielded RunPriority and we're inside
@@ -1577,6 +1578,18 @@ struct RegistryPreloadStatus {
     done: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MatchSetupInput {
+    player_names: Vec<String>,
+    starting_life: i32,
+    seed: u64,
+    #[serde(default)]
+    decks: Option<Vec<Vec<String>>>,
+    #[serde(default)]
+    opening_hand_size: Option<usize>,
+}
+
 #[wasm_bindgen(start)]
 pub fn wasm_start() {
     console_error_panic_hook::set_once();
@@ -1598,7 +1611,6 @@ impl WasmGame {
             pending_replay_action: None,
             game_over: None,
             perspective: PlayerId::from_index(0),
-            deck_generation_nonce: 0,
             runner: None,
             runner_awaiting_priority: false,
             runner_pending_decision: false,
@@ -1624,11 +1636,38 @@ impl WasmGame {
             return Err(JsValue::from_str("player_names cannot be empty"));
         }
 
-        self.game = GameState::new(names, starting_life);
-        self.load_demo_decks()?;
-        self.reset_runtime_state();
-        self.recompute_ui_decision()?;
-        Ok(())
+        let seed = self.generate_match_seed();
+        self.initialize_empty_match(names, starting_life, seed);
+        self.populate_demo_libraries()?;
+        self.finish_match_setup(7)
+    }
+
+    /// Start a fully specified match from a synchronized lobby payload.
+    #[wasm_bindgen(js_name = startMatch)]
+    pub fn start_match(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
+        let config: MatchSetupInput = serde_wasm_bindgen::from_value(config)
+            .map_err(|e| JsValue::from_str(&format!("invalid match config: {e}")))?;
+
+        if config.player_names.is_empty() {
+            return Err(JsValue::from_str("player_names cannot be empty"));
+        }
+
+        let opening_hand_size = config.opening_hand_size.unwrap_or(7);
+        self.initialize_empty_match(config.player_names, config.starting_life, config.seed);
+
+        if let Some(decks) = config.decks {
+            if decks.len() != self.game.players.len() {
+                return Err(JsValue::from_str(
+                    "deck count must match number of players in game",
+                ));
+            }
+            self.populate_explicit_libraries(&decks)?;
+        } else {
+            self.populate_demo_libraries()?;
+        }
+
+        self.finish_match_setup(opening_hand_size)?;
+        self.snapshot()
     }
 
     /// Return a JS object snapshot of public game state.
@@ -1924,26 +1963,9 @@ impl WasmGame {
     pub fn load_demo_decks(&mut self) -> Result<(), JsValue> {
         let names: Vec<String> = self.game.players.iter().map(|p| p.name.clone()).collect();
         let starting_life = self.game.players.first().map_or(20, |p| p.life);
-        self.game = GameState::new(names, starting_life);
-
-        let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
-
-        for player_id in player_ids {
-            // 60-card random deck with 24-land color-aware basic manabase.
-            let deck = self.build_random_demo_deck_names(60, 24)?;
-            self.populate_player_library(player_id, &deck)?;
-        }
-
-        self.reset_runtime_state();
-
-        // Draw opening hands (7 cards each)
-        let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
-        for player_id in player_ids {
-            let _ = self.game.draw_cards(player_id, 7);
-        }
-
-        self.recompute_ui_decision()?;
-        Ok(())
+        self.initialize_empty_match(names, starting_life, self.generate_match_seed());
+        self.populate_demo_libraries()?;
+        self.finish_match_setup(7)
     }
 
     /// Load explicit decks by card name. JS format: `string[][]`.
@@ -1964,7 +1986,7 @@ impl WasmGame {
 
         let names: Vec<String> = self.game.players.iter().map(|p| p.name.clone()).collect();
         let starting_life = self.game.players.first().map_or(20, |p| p.life);
-        self.game = GameState::new(names, starting_life);
+        self.initialize_empty_match(names, starting_life, self.generate_match_seed());
 
         let mut loaded: u32 = 0;
         let mut failed: Vec<String> = Vec::new();
@@ -1987,19 +2009,10 @@ impl WasmGame {
                 }
             }
 
-            if let Some(player) = self.game.player_mut(player_id) {
-                player.shuffle_library();
-            }
+            self.game.shuffle_player_library(player_id);
         }
 
-        self.reset_runtime_state();
-
-        // Draw opening hands (7 cards each)
-        for &pid in &player_ids {
-            let _ = self.game.draw_cards(pid, 7);
-        }
-
-        self.recompute_ui_decision()?;
+        self.finish_match_setup(7)?;
 
         // Return { loaded, failed } to JS
         let result = js_sys::Object::new();
@@ -2658,9 +2671,7 @@ impl WasmGame {
     }
 
     fn next_deck_seed(&mut self) -> u64 {
-        self.deck_generation_nonce = self.deck_generation_nonce.wrapping_add(1);
-        let random_bits = (js_sys::Math::random() * (u64::MAX as f64)) as u64;
-        random_bits ^ self.deck_generation_nonce.rotate_left(17)
+        self.game.next_random_u64()
     }
 
     fn basic_land_name_for_symbol(symbol: ManaSymbol) -> &'static str {
@@ -2693,9 +2704,7 @@ impl WasmGame {
             );
         }
 
-        if let Some(player) = self.game.player_mut(player_id) {
-            player.shuffle_library();
-        }
+        self.game.shuffle_player_library(player_id);
         Ok(())
     }
 
@@ -2705,6 +2714,47 @@ impl WasmGame {
                 .all()
                 .find(|def| def.name().eq_ignore_ascii_case(query))
         })
+    }
+
+    fn initialize_empty_match(&mut self, player_names: Vec<String>, starting_life: i32, seed: u64) {
+        reset_runtime_id_counters();
+        self.game = GameState::new(player_names, starting_life);
+        self.game.set_random_seed(seed);
+    }
+
+    fn populate_demo_libraries(&mut self) -> Result<(), JsValue> {
+        let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
+        for player_id in player_ids {
+            let deck = self.build_random_demo_deck_names(60, 24)?;
+            self.populate_player_library(player_id, &deck)?;
+        }
+        Ok(())
+    }
+
+    fn populate_explicit_libraries(&mut self, decks: &[Vec<String>]) -> Result<(), JsValue> {
+        let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
+        for (&player_id, deck) in player_ids.iter().zip(decks.iter()) {
+            self.populate_player_library(player_id, deck)?;
+        }
+        Ok(())
+    }
+
+    fn finish_match_setup(&mut self, opening_hand_size: usize) -> Result<(), JsValue> {
+        self.reset_runtime_state();
+        let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
+        for player_id in player_ids {
+            let _ = self.game.draw_cards(player_id, opening_hand_size);
+        }
+        self.recompute_ui_decision()
+    }
+
+    fn generate_match_seed(&self) -> u64 {
+        let bits = (js_sys::Math::random() * (u64::MAX as f64)) as u64;
+        if bits == 0 {
+            0x9e37_79b9_7f4a_7c15
+        } else {
+            bits
+        }
     }
 
     fn reset_runtime_state(&mut self) {
@@ -2779,14 +2829,13 @@ impl WasmGame {
                         if self.should_auto_resolve_cleanup_discard(&ctx)
                             && let DecisionContext::SelectObjects(ref obj) = ctx
                         {
-                            use rand::seq::SliceRandom;
                             let mut ids: Vec<_> = obj
                                 .candidates
                                 .iter()
                                 .filter(|c| c.legal)
                                 .map(|c| c.id)
                                 .collect();
-                            ids.shuffle(&mut rand::rng());
+                            self.game.shuffle_slice(&mut ids);
                             ids.truncate(obj.min);
                             self.runner.as_mut().unwrap().respond_discard(ids);
                             continue;

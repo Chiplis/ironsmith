@@ -3,6 +3,7 @@
 //! This module extends the CardBuilder with methods for adding abilities,
 //! making it easy to define cards with their complete gameplay mechanics.
 
+use crate::ConditionExpr;
 use crate::ability::{
     self, Ability, AbilityKind, ActivatedAbility, ActivationTiming, LevelAbility, TriggeredAbility,
 };
@@ -213,8 +214,8 @@ impl Token {
 #[derive(Debug, Clone)]
 pub(crate) enum LineAst {
     Abilities(Vec<KeywordAction>),
-    StaticAbility(StaticAbility),
-    StaticAbilities(Vec<StaticAbility>),
+    StaticAbility(StaticAbilityAst),
+    StaticAbilities(Vec<StaticAbilityAst>),
     Ability(ParsedAbility),
     Triggered {
         trigger: TriggerSpec,
@@ -246,6 +247,47 @@ pub(crate) struct ParsedAbility {
     effects_ast: Option<Vec<EffectAst>>,
     seed_last_object_tag: Option<String>,
     trigger_spec: Option<TriggerSpec>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum StaticAbilityAst {
+    Static(StaticAbility),
+    GrantObjectAbility {
+        filter: ObjectFilter,
+        ability: ParsedAbility,
+        display: String,
+        condition: Option<ConditionExpr>,
+    },
+    AttachedObjectAbilityGrant {
+        ability: ParsedAbility,
+        display: String,
+        condition: Option<ConditionExpr>,
+    },
+    SoulbondSharedObjectAbility {
+        ability: ParsedAbility,
+        display: String,
+    },
+}
+
+impl From<StaticAbility> for StaticAbilityAst {
+    fn from(ability: StaticAbility) -> Self {
+        Self::Static(ability)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum GrantedAbilityAst {
+    Static(StaticAbility),
+    ParsedObjectAbility {
+        ability: ParsedAbility,
+        display: String,
+    },
+}
+
+impl From<StaticAbility> for GrantedAbilityAst {
+    fn from(ability: StaticAbility) -> Self {
+        Self::Static(ability)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1316,36 +1358,36 @@ pub(crate) enum EffectAst {
     },
     GrantAbilitiesAll {
         filter: ObjectFilter,
-        abilities: Vec<StaticAbility>,
+        abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
     RemoveAbilitiesAll {
         filter: ObjectFilter,
-        abilities: Vec<StaticAbility>,
+        abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
     GrantAbilitiesChoiceAll {
         filter: ObjectFilter,
-        abilities: Vec<StaticAbility>,
+        abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
     GrantAbilitiesToTarget {
         target: TargetAst,
-        abilities: Vec<StaticAbility>,
+        abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
     RemoveAbilitiesFromTarget {
         target: TargetAst,
-        abilities: Vec<StaticAbility>,
+        abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
     GrantAbilitiesChoiceToTarget {
         target: TargetAst,
-        abilities: Vec<StaticAbility>,
+        abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
     GrantAbilityToSource {
-        ability: Ability,
+        ability: ParsedAbility,
     },
     SearchLibrary {
         filter: ObjectFilter,

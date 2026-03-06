@@ -5,8 +5,6 @@
 //! its mana cost or put it into your hand. Put the rest on the bottom of your
 //! library in a random order.
 
-use rand::seq::SliceRandom;
-
 use crate::alternative_cast::CastingMethod;
 use crate::cost::OptionalCostsPaid;
 use crate::effect::{EffectOutcome, EffectResult, Value};
@@ -155,7 +153,7 @@ impl EffectExecutor for DiscoverEffect {
         if let Some(candidate_id) = candidate {
             to_bottom.retain(|id| *id != candidate_id);
         }
-        to_bottom.shuffle(&mut rand::rng());
+        game.shuffle_slice(&mut to_bottom);
 
         for exiled_id in to_bottom {
             if let Some(new_id) = game.move_object(exiled_id, Zone::Library) {

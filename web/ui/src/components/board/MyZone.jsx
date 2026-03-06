@@ -105,6 +105,7 @@ export default function MyZone({
   player,
   selectedObjectId,
   onInspect,
+  onExpandInspector,
   zoneViews = ["battlefield"],
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
@@ -252,8 +253,10 @@ export default function MyZone({
                 <BattlefieldRow
                   cards={entry.cards}
                   compact={entry.zone !== "battlefield"}
+                  battlefieldSide="bottom"
                   selectedObjectId={selectedObjectId}
                   onCardClick={handleCardClick}
+                  onExpandInspector={entry.zone === "battlefield" ? onExpandInspector : undefined}
                   activatableMap={activatableMap}
                   legalTargetObjectIds={legalTargetObjectIds}
                   allowVerticalScroll={entry.zone === "hand"}

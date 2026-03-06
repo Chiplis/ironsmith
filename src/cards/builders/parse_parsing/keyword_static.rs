@@ -263,151 +263,201 @@ pub(crate) fn keyword_action_to_static_ability(action: KeywordAction) -> Option<
 }
 
 #[derive(Clone, Copy)]
-enum StaticAbilityLineRule {
-    Single(fn(&[Token]) -> Result<Option<StaticAbility>, CardTextError>),
-    SingleInfallible(fn(&[Token]) -> Option<StaticAbility>),
-    Multi(fn(&[Token]) -> Result<Option<Vec<StaticAbility>>, CardTextError>),
+enum StaticAbilityLineRuleAst {
+    Single(fn(&[Token]) -> Result<Option<StaticAbilityAst>, CardTextError>),
+    SingleInfallible(fn(&[Token]) -> Option<StaticAbilityAst>),
+    Multi(fn(&[Token]) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError>),
 }
 
-fn run_static_ability_line_rule(
-    rule: StaticAbilityLineRule,
+fn run_static_ability_ast_line_rule(
+    rule: StaticAbilityLineRuleAst,
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     match rule {
-        StaticAbilityLineRule::Single(parse) => Ok(parse(tokens)?.map(|ability| vec![ability])),
-        StaticAbilityLineRule::SingleInfallible(parse) => {
+        StaticAbilityLineRuleAst::Single(parse) => Ok(parse(tokens)?.map(|ability| vec![ability])),
+        StaticAbilityLineRuleAst::SingleInfallible(parse) => {
             Ok(parse(tokens).map(|ability| vec![ability]))
         }
-        StaticAbilityLineRule::Multi(parse) => parse(tokens),
+        StaticAbilityLineRuleAst::Multi(parse) => parse(tokens),
     }
 }
 
-fn static_ability_line_rules() -> &'static [StaticAbilityLineRule] {
-    use StaticAbilityLineRule::{Multi, Single, SingleInfallible};
+macro_rules! single_static_ability_ast_rule {
+    ($parse:ident) => {
+        StaticAbilityLineRuleAst::Single(|tokens| Ok($parse(tokens)?.map(StaticAbilityAst::from)))
+    };
+}
 
+macro_rules! single_static_ability_ast_infallible_rule {
+    ($parse:ident) => {
+        StaticAbilityLineRuleAst::SingleInfallible(|tokens| {
+            $parse(tokens).map(StaticAbilityAst::from)
+        })
+    };
+}
+
+macro_rules! multi_static_ability_ast_rule {
+    ($parse:ident) => {
+        StaticAbilityLineRuleAst::Multi(|tokens| {
+            Ok($parse(tokens)?.map(|abilities| {
+                abilities
+                    .into_iter()
+                    .map(StaticAbilityAst::from)
+                    .collect::<Vec<_>>()
+            }))
+        })
+    };
+}
+
+fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleAst] {
     &[
-        Single(parse_ward_static_ability_line),
-        Single(parse_skulk_rules_text_line),
-        Single(parse_filter_dont_untap_during_controllers_untap_steps_line),
-        Single(parse_conditional_source_spell_keyword_line),
-        Single(parse_choose_basic_land_type_as_enters_line),
-        Single(parse_choose_creature_type_as_enters_line),
-        Single(parse_enchanted_land_is_chosen_type_line),
-        SingleInfallible(parse_static_text_marker_line),
-        Multi(parse_enters_tapped_with_choose_color_line),
-        Single(parse_damage_not_removed_cleanup_line),
-        Single(parse_prevent_damage_to_source_remove_counter_line),
-        Single(parse_choose_color_as_enters_line),
-        Single(parse_damage_redirect_to_source_line),
-        Single(parse_no_more_than_creatures_can_attack_or_block_each_combat_line),
-        Single(parse_characteristic_defining_pt_line),
-        Single(parse_no_maximum_hand_size_line),
-        Single(parse_reduced_maximum_hand_size_line),
-        Single(parse_library_of_leng_discard_replacement_line),
-        Single(parse_draw_replace_exile_top_face_down_line),
-        Single(parse_toph_first_metalbender_line),
-        Single(parse_discard_or_redirect_replacement_line),
-        Single(parse_pay_life_or_enter_tapped_line),
-        Single(parse_copy_activated_abilities_line),
-        Single(parse_players_spend_mana_as_any_color_line),
-        Single(parse_source_activation_spend_mana_as_any_color_line),
-        Single(parse_enchanted_has_activated_ability_line),
-        Multi(parse_has_base_power_toughness_and_granted_keywords_static_line),
-        Multi(parse_filter_has_granted_ability_line),
-        Multi(parse_equipped_gets_and_has_activated_ability_line),
-        Single(parse_shuffle_into_library_from_graveyard_line),
-        Single(parse_permanents_enter_tapped_line),
-        Single(parse_creatures_entering_dont_cause_abilities_to_trigger_line),
-        Single(parse_creatures_assign_combat_damage_using_toughness_line),
-        Single(parse_players_cant_cycle_line),
-        Single(parse_starting_life_bonus_line),
-        Single(parse_buyback_cost_reduction_line),
-        Single(parse_spell_cost_increase_per_target_beyond_first_line),
-        Single(parse_flashback_cost_modifier_line),
-        Single(parse_spells_cost_modifier_line),
-        Single(parse_foretelling_cards_cost_modifier_line),
-        Single(parse_players_skip_upkeep_line),
-        Single(parse_legend_rule_doesnt_apply_line),
-        Single(parse_all_permanents_are_artifacts_line),
-        Single(parse_all_permanents_colorless_line),
-        Single(parse_all_cards_spells_permanents_colorless_line),
-        Multi(parse_all_are_color_and_type_addition_line),
-        Single(parse_all_creatures_are_color_line),
-        Single(parse_blood_moon_line),
-        Single(parse_land_type_addition_line),
-        Multi(parse_lands_are_pt_creatures_still_lands_line),
-        Single(parse_remove_snow_line),
-        Multi(parse_attached_is_legendary_gets_and_has_keywords_line),
-        Multi(parse_soulbond_shared_line),
-        Multi(parse_granted_keyword_static_line),
-        Multi(parse_lose_all_abilities_and_transform_base_pt_line),
-        Multi(parse_lose_all_abilities_and_base_pt_line),
-        Single(parse_all_creatures_lose_flying_line),
-        Single(parse_each_creature_cant_be_blocked_by_more_than_line),
-        Single(parse_each_creature_can_block_additional_creature_each_combat_line),
-        Multi(parse_anthem_and_type_color_addition_line),
-        Multi(parse_anthem_and_keyword_line),
-        Multi(parse_anthem_and_granted_ability_line),
-        Single(parse_all_have_indestructible_line),
-        Single(parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line),
-        Single(parse_subject_cant_be_blocked_as_long_as_condition_line),
-        Single(parse_subject_cant_be_blocked_line),
-        Single(parse_may_choose_not_to_untap_during_untap_step_line),
-        Single(parse_untap_during_each_other_players_untap_step_line),
-        Single(parse_doesnt_untap_during_untap_step_line),
-        Multi(parse_equipped_creature_has_line),
-        Multi(parse_enchanted_creature_has_line),
-        Single(parse_you_control_attached_creature_line),
-        Single(parse_attached_cant_attack_or_block_line),
-        Single(parse_attached_prevent_all_damage_dealt_by_attached_line),
-        Multi(parse_attached_gets_and_cant_block_line),
-        Multi(parse_attached_has_keywords_and_triggered_ability_line),
-        Multi(parse_attached_gets_and_has_ability_line),
-        Multi(parse_anthem_with_trailing_segments_line),
-        Multi(parse_gets_and_attacks_each_combat_if_able_line),
-        Single(parse_conditional_all_creatures_able_to_block_line),
-        Single(parse_as_long_as_condition_can_attack_as_though_no_defender_line),
-        Single(parse_source_can_attack_as_though_no_defender_as_long_as_line),
-        Single(parse_attacks_each_combat_if_able_line),
-        Single(parse_source_must_be_blocked_if_able_line),
-        Multi(parse_composed_anthem_effects_line),
-        Single(parse_has_base_power_toughness_static_line),
-        Single(parse_isnt_creature_line),
-        Single(parse_anthem_line),
-        Single(parse_flying_restriction_line),
-        Single(parse_can_block_only_flying_line),
-        Single(parse_assign_damage_as_unblocked_line),
-        Single(parse_grant_flash_to_noncreature_spells_line),
-        Single(parse_prevent_all_combat_damage_to_source_line),
-        Single(parse_prevent_all_damage_to_source_by_creatures_line),
-        Single(parse_prevent_all_damage_dealt_to_creatures_line),
-        Single(parse_creatures_cant_block_line),
-        Multi(parse_enters_tapped_with_counters_line),
-        Single(parse_enters_with_counters_line),
-        Single(parse_enters_with_additional_counter_for_filter_line),
-        Single(parse_reveal_from_hand_or_enters_tapped_line),
-        Single(parse_conditional_enters_tapped_unless_line),
-        Single(parse_enters_tapped_for_filter_line),
-        Single(parse_enters_tapped_line),
-        Multi(parse_additional_land_play_line),
-        Single(parse_play_lands_from_graveyard_line),
-        Single(parse_cost_reduction_line),
-        Single(parse_can_block_additional_creature_each_combat_line),
-        Single(parse_all_creatures_able_to_block_source_line),
-        Single(parse_activated_abilities_cant_be_activated_line),
-        Multi(parse_cant_clauses),
+        single_static_ability_ast_rule!(parse_ward_static_ability_line),
+        single_static_ability_ast_rule!(parse_skulk_rules_text_line),
+        single_static_ability_ast_rule!(
+            parse_filter_dont_untap_during_controllers_untap_steps_line
+        ),
+        single_static_ability_ast_rule!(parse_conditional_source_spell_keyword_line),
+        single_static_ability_ast_rule!(parse_choose_basic_land_type_as_enters_line),
+        single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
+        single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
+        single_static_ability_ast_infallible_rule!(parse_static_text_marker_line),
+        multi_static_ability_ast_rule!(parse_enters_tapped_with_choose_color_line),
+        single_static_ability_ast_rule!(parse_damage_not_removed_cleanup_line),
+        single_static_ability_ast_rule!(parse_prevent_damage_to_source_remove_counter_line),
+        single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
+        single_static_ability_ast_rule!(parse_damage_redirect_to_source_line),
+        single_static_ability_ast_rule!(
+            parse_no_more_than_creatures_can_attack_or_block_each_combat_line
+        ),
+        single_static_ability_ast_rule!(parse_characteristic_defining_pt_line),
+        single_static_ability_ast_rule!(parse_no_maximum_hand_size_line),
+        single_static_ability_ast_rule!(parse_reduced_maximum_hand_size_line),
+        single_static_ability_ast_rule!(parse_library_of_leng_discard_replacement_line),
+        single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
+        single_static_ability_ast_rule!(parse_toph_first_metalbender_line),
+        single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
+        single_static_ability_ast_rule!(parse_pay_life_or_enter_tapped_line),
+        single_static_ability_ast_rule!(parse_copy_activated_abilities_line),
+        single_static_ability_ast_rule!(parse_players_spend_mana_as_any_color_line),
+        single_static_ability_ast_rule!(parse_source_activation_spend_mana_as_any_color_line),
+        StaticAbilityLineRuleAst::Single(parse_enchanted_has_activated_ability_line),
+        multi_static_ability_ast_rule!(
+            parse_has_base_power_toughness_and_granted_keywords_static_line
+        ),
+        StaticAbilityLineRuleAst::Multi(parse_filter_has_granted_ability_line),
+        StaticAbilityLineRuleAst::Multi(parse_equipped_gets_and_has_activated_ability_line),
+        single_static_ability_ast_rule!(parse_shuffle_into_library_from_graveyard_line),
+        single_static_ability_ast_rule!(parse_permanents_enter_tapped_line),
+        single_static_ability_ast_rule!(
+            parse_creatures_entering_dont_cause_abilities_to_trigger_line
+        ),
+        single_static_ability_ast_rule!(parse_creatures_assign_combat_damage_using_toughness_line),
+        single_static_ability_ast_rule!(parse_players_cant_cycle_line),
+        single_static_ability_ast_rule!(parse_starting_life_bonus_line),
+        single_static_ability_ast_rule!(parse_buyback_cost_reduction_line),
+        single_static_ability_ast_rule!(parse_spell_cost_increase_per_target_beyond_first_line),
+        single_static_ability_ast_rule!(parse_flashback_cost_modifier_line),
+        single_static_ability_ast_rule!(parse_spells_cost_modifier_line),
+        single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
+        single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
+        single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
+        single_static_ability_ast_rule!(parse_all_permanents_are_artifacts_line),
+        single_static_ability_ast_rule!(parse_all_permanents_colorless_line),
+        single_static_ability_ast_rule!(parse_all_cards_spells_permanents_colorless_line),
+        multi_static_ability_ast_rule!(parse_all_are_color_and_type_addition_line),
+        single_static_ability_ast_rule!(parse_all_creatures_are_color_line),
+        single_static_ability_ast_rule!(parse_blood_moon_line),
+        single_static_ability_ast_rule!(parse_land_type_addition_line),
+        multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
+        single_static_ability_ast_rule!(parse_remove_snow_line),
+        multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
+        StaticAbilityLineRuleAst::Multi(parse_soulbond_shared_line),
+        StaticAbilityLineRuleAst::Multi(parse_granted_keyword_static_line),
+        multi_static_ability_ast_rule!(parse_lose_all_abilities_and_transform_base_pt_line),
+        multi_static_ability_ast_rule!(parse_lose_all_abilities_and_base_pt_line),
+        single_static_ability_ast_rule!(parse_all_creatures_lose_flying_line),
+        single_static_ability_ast_rule!(parse_each_creature_cant_be_blocked_by_more_than_line),
+        single_static_ability_ast_rule!(
+            parse_each_creature_can_block_additional_creature_each_combat_line
+        ),
+        multi_static_ability_ast_rule!(parse_anthem_and_type_color_addition_line),
+        StaticAbilityLineRuleAst::Multi(parse_anthem_and_keyword_line),
+        multi_static_ability_ast_rule!(parse_anthem_and_granted_ability_line),
+        single_static_ability_ast_rule!(parse_all_have_indestructible_line),
+        single_static_ability_ast_rule!(
+            parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line
+        ),
+        single_static_ability_ast_rule!(parse_subject_cant_be_blocked_as_long_as_condition_line),
+        single_static_ability_ast_rule!(parse_subject_cant_be_blocked_line),
+        single_static_ability_ast_rule!(parse_may_choose_not_to_untap_during_untap_step_line),
+        single_static_ability_ast_rule!(parse_untap_during_each_other_players_untap_step_line),
+        single_static_ability_ast_rule!(parse_doesnt_untap_during_untap_step_line),
+        multi_static_ability_ast_rule!(parse_equipped_creature_has_line),
+        multi_static_ability_ast_rule!(parse_enchanted_creature_has_line),
+        single_static_ability_ast_rule!(parse_you_control_attached_creature_line),
+        single_static_ability_ast_rule!(parse_attached_cant_attack_or_block_line),
+        single_static_ability_ast_rule!(parse_attached_prevent_all_damage_dealt_by_attached_line),
+        multi_static_ability_ast_rule!(parse_attached_gets_and_cant_block_line),
+        StaticAbilityLineRuleAst::Multi(parse_attached_has_keywords_and_triggered_ability_line),
+        StaticAbilityLineRuleAst::Multi(parse_attached_gets_and_has_ability_line),
+        StaticAbilityLineRuleAst::Multi(parse_anthem_with_trailing_segments_line),
+        multi_static_ability_ast_rule!(parse_gets_and_attacks_each_combat_if_able_line),
+        single_static_ability_ast_rule!(parse_conditional_all_creatures_able_to_block_line),
+        single_static_ability_ast_rule!(
+            parse_as_long_as_condition_can_attack_as_though_no_defender_line
+        ),
+        single_static_ability_ast_rule!(
+            parse_source_can_attack_as_though_no_defender_as_long_as_line
+        ),
+        single_static_ability_ast_rule!(parse_attacks_each_combat_if_able_line),
+        single_static_ability_ast_rule!(parse_source_must_be_blocked_if_able_line),
+        StaticAbilityLineRuleAst::Multi(parse_composed_anthem_effects_line),
+        single_static_ability_ast_rule!(parse_has_base_power_toughness_static_line),
+        single_static_ability_ast_rule!(parse_isnt_creature_line),
+        single_static_ability_ast_rule!(parse_anthem_line),
+        single_static_ability_ast_rule!(parse_flying_restriction_line),
+        single_static_ability_ast_rule!(parse_can_block_only_flying_line),
+        single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
+        single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
+        single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
+        single_static_ability_ast_rule!(parse_prevent_all_damage_to_source_by_creatures_line),
+        single_static_ability_ast_rule!(parse_prevent_all_damage_dealt_to_creatures_line),
+        single_static_ability_ast_rule!(parse_creatures_cant_block_line),
+        multi_static_ability_ast_rule!(parse_enters_tapped_with_counters_line),
+        single_static_ability_ast_rule!(parse_enters_with_counters_line),
+        single_static_ability_ast_rule!(parse_enters_with_additional_counter_for_filter_line),
+        single_static_ability_ast_rule!(parse_reveal_from_hand_or_enters_tapped_line),
+        single_static_ability_ast_rule!(parse_conditional_enters_tapped_unless_line),
+        single_static_ability_ast_rule!(parse_enters_tapped_for_filter_line),
+        single_static_ability_ast_rule!(parse_enters_tapped_line),
+        multi_static_ability_ast_rule!(parse_additional_land_play_line),
+        single_static_ability_ast_rule!(parse_play_lands_from_graveyard_line),
+        single_static_ability_ast_rule!(parse_cost_reduction_line),
+        single_static_ability_ast_rule!(parse_can_block_additional_creature_each_combat_line),
+        single_static_ability_ast_rule!(parse_all_creatures_able_to_block_source_line),
+        single_static_ability_ast_rule!(parse_activated_abilities_cant_be_activated_line),
+        multi_static_ability_ast_rule!(parse_cant_clauses),
     ]
+}
+
+pub(crate) fn parse_static_ability_ast_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    for rule in static_ability_ast_line_rules() {
+        if let Some(abilities) = run_static_ability_ast_line_rule(*rule, tokens)? {
+            return Ok(Some(abilities));
+        }
+    }
+    Ok(None)
 }
 
 pub(crate) fn parse_static_ability_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
-    for rule in static_ability_line_rules() {
-        if let Some(abilities) = run_static_ability_line_rule(*rule, tokens)? {
-            return Ok(Some(abilities));
-        }
-    }
-    Ok(None)
+    let Some(abilities) = parse_static_ability_ast_line(tokens)? else {
+        return Ok(None);
+    };
+    Ok(Some(lower_static_abilities_ast(abilities)?))
 }
 
 pub(crate) fn parse_activated_abilities_cant_be_activated_line(
@@ -691,7 +741,7 @@ pub(crate) fn format_ward_marker_tail(tokens: &[Token]) -> String {
 
 pub(crate) fn parse_composed_anthem_effects_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = words(tokens);
     if contains_until_end_of_turn(&clause_words) {
         return Ok(None);
@@ -707,7 +757,7 @@ pub(crate) fn parse_composed_anthem_effects_line(
         if words(&where_tail).starts_with(&["where", "x", "is"])
             && let Some(ability) = parse_anthem_line(tokens)?
         {
-            return Ok(Some(vec![ability]));
+            return Ok(Some(vec![ability.into()]));
         }
     }
 
@@ -763,13 +813,13 @@ pub(crate) fn parse_composed_anthem_effects_line(
 
         let parsed_segment =
             if let Some(abilities) = parse_anthem_and_type_color_addition_line(&segment)? {
-                abilities
+                abilities.into_iter().map(StaticAbilityAst::from).collect()
             } else if let Some(abilities) = parse_anthem_and_keyword_line(&segment)? {
                 abilities
             } else if let Some(abilities) = parse_granted_keyword_static_line(&segment)? {
                 abilities
             } else if let Some(ability) = parse_anthem_line(&segment)? {
-                vec![ability]
+                vec![ability.into()]
             } else {
                 return Ok(None);
             };
@@ -3876,7 +3926,7 @@ pub(crate) fn parse_lands_are_pt_creatures_still_lands_line(
 
 pub(crate) fn parse_granted_keyword_static_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words
         .iter()
@@ -4067,9 +4117,9 @@ pub(crate) fn parse_granted_keyword_static_line(
             AnthemSubjectAst::Source => {
                 if let Some(condition) = &condition {
                     let granted = GrantAbility::source(ability).with_condition(condition.clone());
-                    compiled.push(StaticAbility::new(granted));
+                    compiled.push(StaticAbility::new(granted).into());
                 } else {
-                    compiled.push(ability);
+                    compiled.push(ability.into());
                 }
             }
             AnthemSubjectAst::Filter(filter) => {
@@ -4078,7 +4128,7 @@ pub(crate) fn parse_granted_keyword_static_line(
                 } else {
                     GrantAbility::new(filter.clone(), ability)
                 };
-                compiled.push(StaticAbility::new(granted));
+                compiled.push(StaticAbility::new(granted).into());
             }
         }
     }
@@ -5463,7 +5513,7 @@ pub(crate) fn is_type_scope_qualifier_word(word: &str) -> bool {
 
 pub(crate) fn parse_soulbond_shared_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["as", "long", "as"]) {
         return Ok(None);
@@ -5528,9 +5578,9 @@ pub(crate) fn parse_soulbond_shared_line(
                 clause_words.join(" ")
             ))
         })?;
-        return Ok(Some(vec![StaticAbility::soulbond_shared_power_toughness(
-            power, toughness,
-        )]));
+        return Ok(Some(vec![
+            StaticAbility::soulbond_shared_power_toughness(power, toughness).into(),
+        ]));
     }
 
     let ability_start = if rest_words.starts_with(&["both", "creatures", "have"]) {
@@ -5565,17 +5615,18 @@ pub(crate) fn parse_soulbond_shared_line(
             let shared = abilities
                 .into_iter()
                 .map(StaticAbility::soulbond_shared_ability)
+                .map(StaticAbilityAst::from)
                 .collect();
             return Ok(Some(shared));
         }
 
-        if let Some(granted) =
+        if let Some(GrantedAbilityAst::ParsedObjectAbility { ability, display }) =
             parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
-            && let Some(inline_ability) = granted.granted_inline_ability()
         {
-            return Ok(Some(vec![StaticAbility::soulbond_shared_object_ability(
-                inline_ability.clone(),
-            )]));
+            return Ok(Some(vec![StaticAbilityAst::SoulbondSharedObjectAbility {
+                ability,
+                display,
+            }]));
         }
 
         return Err(CardTextError::ParseError(format!(
@@ -5656,7 +5707,7 @@ pub(crate) fn parse_anthem_and_type_color_addition_line(
 
 pub(crate) fn parse_anthem_and_keyword_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = words(tokens);
     let get_idx = tokens
         .iter()
@@ -5726,7 +5777,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
     }
 
     let mut abilities: Vec<StaticAbility> = Vec::new();
-    let mut granted_activated_ability: Option<Ability> = None;
+    let mut granted_activated_ability: Option<ParsedAbility> = None;
     let mut granted_activated_display: Option<String> = None;
 
     let and_has_idx = (0..ability_tokens.len().saturating_sub(1)).find(|idx| {
@@ -5762,14 +5813,9 @@ pub(crate) fn parse_anthem_and_keyword_line(
                 }
                 return Ok(None);
             };
-            let parsed = lower_parsed_ability(parsed)?;
-            let mut ability = parsed.ability;
             let display = words(&ability_tail_tokens).join(" ");
-            if ability.text.is_none() {
-                ability.text = Some(display.clone());
-            }
             granted_activated_display = Some(display);
-            granted_activated_ability = Some(ability);
+            granted_activated_ability = Some(parsed);
         }
     } else if let Some(actions) = parse_ability_line(&ability_tokens) {
         reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
@@ -5804,7 +5850,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
         }
         clause.condition = Some(condition);
     }
-    let mut result = vec![build_anthem_static_ability(&clause)];
+    let mut result = vec![build_anthem_static_ability(&clause).into()];
     for ability in abilities {
         let granted = match &clause.subject {
             AnthemSubjectAst::Source => GrantAbility::source(ability),
@@ -5815,23 +5861,15 @@ pub(crate) fn parse_anthem_and_keyword_line(
         } else {
             granted
         };
-        result.push(StaticAbility::new(granted));
+        result.push(StaticAbility::new(granted).into());
     }
 
     if let Some(ability) = granted_activated_ability {
-        let filter = match &clause.subject {
-            AnthemSubjectAst::Source => ObjectFilter::source(),
-            AnthemSubjectAst::Filter(filter) => filter.clone(),
-        };
-        let mut granted = crate::static_abilities::GrantObjectAbilityForFilter::new(
-            filter,
+        result.push(grant_object_ability_for_anthem_subject(
+            &clause,
             ability,
             granted_activated_display.unwrap_or_else(|| clause_words.join(" ")),
-        );
-        if let Some(condition) = &clause.condition {
-            granted = granted.with_condition(condition.clone());
-        }
-        result.push(StaticAbility::new(granted));
+        ));
     }
 
     Ok(Some(result))
@@ -5850,24 +5888,29 @@ fn grant_for_anthem_subject(clause: &ParsedAnthemClause, ability: StaticAbility)
     StaticAbility::new(granted)
 }
 
-fn grant_object_ability_for_anthem_subject(
-    clause: &ParsedAnthemClause,
-    ability: Ability,
-    display: String,
-) -> StaticAbility {
-    let filter = match &clause.subject {
+fn anthem_subject_filter(subject: &AnthemSubjectAst) -> ObjectFilter {
+    match subject {
         AnthemSubjectAst::Source => ObjectFilter::source(),
         AnthemSubjectAst::Filter(filter) => filter.clone(),
-    };
-    let mut granted =
-        crate::static_abilities::GrantObjectAbilityForFilter::new(filter, ability, display);
-    if let Some(condition) = &clause.condition {
-        granted = granted.with_condition(condition.clone());
     }
-    StaticAbility::new(granted)
 }
 
-fn parse_triggered_granted_ability(tokens: &[Token]) -> Result<Option<Ability>, CardTextError> {
+fn grant_object_ability_for_anthem_subject(
+    clause: &ParsedAnthemClause,
+    ability: ParsedAbility,
+    display: String,
+) -> StaticAbilityAst {
+    StaticAbilityAst::GrantObjectAbility {
+        filter: anthem_subject_filter(&clause.subject),
+        ability,
+        display,
+        condition: clause.condition.clone(),
+    }
+}
+
+fn parse_triggered_granted_ability(
+    tokens: &[Token],
+) -> Result<Option<ParsedAbility>, CardTextError> {
     let trigger_tokens = trim_edge_punctuation(tokens);
     if trigger_tokens.is_empty() {
         return Ok(None);
@@ -5885,36 +5928,31 @@ fn parse_triggered_granted_ability(tokens: &[Token]) -> Result<Option<Ability>, 
             trigger,
             effects,
             max_triggers_per_turn,
-        } => {
-            let parsed = parsed_triggered_ability(
-                trigger,
-                effects,
-                vec![Zone::Battlefield],
-                Some(words(&trigger_tokens).join(" ")),
-                max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
-                None,
-            );
-            let parsed = lower_parsed_ability(parsed)?;
-            let ability = parsed.ability;
-            if matches!(
-                &ability.kind,
-                AbilityKind::Triggered(triggered) if triggered.effects.is_empty()
-            ) {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported empty triggered granted ability clause (clause: '{}')",
-                    words(&trigger_tokens).join(" ")
-                )));
-            }
-            ability
-        }
+        } => parsed_triggered_ability(
+            trigger,
+            effects,
+            vec![Zone::Battlefield],
+            Some(words(&trigger_tokens).join(" ")),
+            max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+            None,
+        ),
         _ => return Ok(None),
     };
+    if matches!(
+        &ability.ability.kind,
+        AbilityKind::Triggered(triggered) if triggered.effects.is_empty()
+    ) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported empty triggered granted ability clause (clause: '{}')",
+            words(&trigger_tokens).join(" ")
+        )));
+    }
     Ok(Some(ability))
 }
 
 pub(crate) fn parse_anthem_with_trailing_segments_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = words(tokens);
     if contains_until_end_of_turn(&clause_words) {
         return Ok(None);
@@ -5951,7 +5989,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
         return Ok(None);
     }
 
-    let mut extras = Vec::new();
+    let mut extras: Vec<StaticAbilityAst> = Vec::new();
     for raw_segment in split_on_comma(&tail_tokens) {
         let mut segment = trim_commas(&raw_segment).to_vec();
         while segment.first().is_some_and(|token| token.is_word("and")) {
@@ -5963,19 +6001,13 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
 
         let segment_words = normalize_cant_words(&segment);
         if segment_words.as_slice() == ["cant", "block"] {
-            extras.push(grant_for_anthem_subject(
-                &clause,
-                StaticAbility::cant_block(),
-            ));
+            extras.push(grant_for_anthem_subject(&clause, StaticAbility::cant_block()).into());
             continue;
         }
         if segment_words.as_slice() == ["attacks", "each", "combat", "if", "able"]
             || segment_words.as_slice() == ["attack", "each", "combat", "if", "able"]
         {
-            extras.push(grant_for_anthem_subject(
-                &clause,
-                StaticAbility::must_attack(),
-            ));
+            extras.push(grant_for_anthem_subject(&clause, StaticAbility::must_attack()).into());
             continue;
         }
         if segment_words.starts_with(&["cant", "be", "blocked", "by", "more", "than"]) {
@@ -5987,10 +6019,13 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
             if tail.as_slice() != ["creature"] && tail.as_slice() != ["creatures"] {
                 return Ok(None);
             }
-            extras.push(grant_for_anthem_subject(
-                &clause,
-                StaticAbility::cant_be_blocked_by_more_than(count as usize),
-            ));
+            extras.push(
+                grant_for_anthem_subject(
+                    &clause,
+                    StaticAbility::cant_be_blocked_by_more_than(count as usize),
+                )
+                .into(),
+            );
             continue;
         }
         if segment_words.len() == 2 && segment_words[0] == "is" {
@@ -6005,7 +6040,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
             if let Some(condition) = &clause.condition {
                 set_colors = set_colors.with_condition(condition.clone());
             }
-            extras.push(StaticAbility::new(set_colors));
+            extras.push(StaticAbility::new(set_colors).into());
             continue;
         }
 
@@ -6029,10 +6064,13 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
                 return Ok(None);
             }
             for ability in removed {
-                extras.push(grant_for_anthem_subject(
-                    &clause,
-                    StaticAbility::remove_ability(ObjectFilter::source(), ability),
-                ));
+                extras.push(
+                    grant_for_anthem_subject(
+                        &clause,
+                        StaticAbility::remove_ability(ObjectFilter::source(), ability),
+                    )
+                    .into(),
+                );
             }
             continue;
         }
@@ -6064,7 +6102,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
                 grant_must_attack = true;
             }
 
-            let mut granted_activated: Option<Ability> = None;
+            let mut granted_activated: Option<ParsedAbility> = None;
             let mut granted_activated_display: Option<String> = None;
             let actions = if let Some(actions) = parse_ability_line(&ability_tokens) {
                 Some(actions)
@@ -6104,14 +6142,9 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
                     }
                     return Ok(None);
                 };
-                let parsed = lower_parsed_ability(parsed)?;
-                let mut ability = parsed.ability;
                 let display = words(&activated_tail).join(" ");
-                if ability.text.is_none() {
-                    ability.text = Some(display.clone());
-                }
                 granted_activated_display = Some(display);
-                granted_activated = Some(ability);
+                granted_activated = Some(parsed);
                 Some(actions)
             } else {
                 None
@@ -6136,7 +6169,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
                     return Ok(None);
                 }
                 for ability in granted {
-                    extras.push(grant_for_anthem_subject(&clause, ability));
+                    extras.push(grant_for_anthem_subject(&clause, ability).into());
                 }
 
                 if let Some(activated) = granted_activated {
@@ -6151,10 +6184,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
             }
 
             if grant_must_attack {
-                extras.push(grant_for_anthem_subject(
-                    &clause,
-                    StaticAbility::must_attack(),
-                ));
+                extras.push(grant_for_anthem_subject(&clause, StaticAbility::must_attack()).into());
             }
             continue;
         }
@@ -6178,7 +6208,7 @@ pub(crate) fn parse_anthem_with_trailing_segments_line(
         return Ok(None);
     }
 
-    let mut result = vec![build_anthem_static_ability(&clause)];
+    let mut result = vec![build_anthem_static_ability(&clause).into()];
     result.extend(extras);
     Ok(Some(result))
 }
@@ -8750,7 +8780,7 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
 
 pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let line_words = words(tokens);
     if line_words.len() < 6 {
         return Ok(None);
@@ -8796,24 +8826,27 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
 
     let clause_text = line_words.join(" ");
     let mut keyword_statics = Vec::new();
-    let mut extra_grants = Vec::new();
+    let mut extra_grants: Vec<StaticAbilityAst> = Vec::new();
     let Some(actions) = parse_ability_line(&keyword_tokens) else {
         return Ok(None);
     };
     for action in actions {
         reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
         if let KeywordAction::Annihilator(amount) = action {
-            extra_grants.push(StaticAbility::attached_ability_grant(
-                annihilator_granted_ability(amount),
-                format!(
-                    "{} has annihilator {amount}",
-                    if is_equipped {
-                        "equipped creature"
-                    } else {
-                        "enchanted creature"
-                    }
-                ),
-            ));
+            extra_grants.push(
+                StaticAbility::attached_ability_grant(
+                    annihilator_granted_ability(amount),
+                    format!(
+                        "{} has annihilator {amount}",
+                        if is_equipped {
+                            "equipped creature"
+                        } else {
+                            "enchanted creature"
+                        }
+                    ),
+                )
+                .into(),
+            );
         } else if let Some(static_ability) = keyword_action_to_static_ability(action) {
             keyword_statics.push(static_ability);
         }
@@ -8831,28 +8864,14 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
             trigger,
             effects,
             max_triggers_per_turn,
-        } => {
-            let parsed = parsed_triggered_ability(
-                trigger,
-                effects,
-                vec![Zone::Battlefield],
-                Some(words(&trigger_tokens).join(" ")),
-                max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
-                None,
-            );
-            let parsed = lower_parsed_ability(parsed)?;
-            let ability = parsed.ability;
-            if matches!(
-                &ability.kind,
-                AbilityKind::Triggered(triggered) if triggered.effects.is_empty()
-            ) {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported empty attached triggered grant clause (clause: '{}')",
-                    clause_text
-                )));
-            }
-            ability
-        }
+        } => parsed_triggered_ability(
+            trigger,
+            effects,
+            vec![Zone::Battlefield],
+            Some(words(&trigger_tokens).join(" ")),
+            max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+            None,
+        ),
         _ => {
             return Err(CardTextError::ParseError(format!(
                 "unsupported attached triggered grant clause (clause: '{}')",
@@ -8860,6 +8879,15 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
             )));
         }
     };
+    if matches!(
+        &triggered.ability.kind,
+        AbilityKind::Triggered(triggered) if triggered.effects.is_empty()
+    ) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported empty attached triggered grant clause (clause: '{}')",
+            clause_text
+        )));
+    }
 
     let subject = match parse_anthem_subject(&tokens[..has_idx]) {
         Ok(subject) => subject,
@@ -8872,12 +8900,16 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
 
     let mut static_abilities = Vec::new();
     for ability in keyword_statics {
-        static_abilities.push(StaticAbility::grant_ability(filter.clone(), ability));
+        static_abilities.push(StaticAbility::grant_ability(filter.clone(), ability).into());
     }
     static_abilities.extend(extra_grants);
     let subject_text = words(&tokens[..has_idx]).join(" ");
     let display = format!("{subject_text} has {}", words(&trigger_tokens).join(" "));
-    static_abilities.push(StaticAbility::attached_ability_grant(triggered, display));
+    static_abilities.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+        ability: triggered,
+        display,
+        condition: None,
+    });
 
     Ok(Some(static_abilities))
 }
@@ -8973,7 +9005,7 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
 
 pub(crate) fn parse_attached_gets_and_has_ability_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let line_words = words(tokens);
     if line_words.len() < 6 {
         return Ok(None);
@@ -9013,11 +9045,11 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
 
     if let Some(actions) = parse_ability_line(&ability_tokens) {
         reject_unimplemented_keyword_actions(&actions, &line_words.join(" "))?;
-        let mut out = vec![anthem.clone()];
+        let mut out = vec![anthem.clone().into()];
         let mut granted_any = false;
         for action in actions {
             if let Some(static_ability) = keyword_action_to_static_ability(action) {
-                out.push(grant_for_anthem_subject(&clause, static_ability));
+                out.push(grant_for_anthem_subject(&clause, static_ability).into());
                 granted_any = true;
             }
         }
@@ -9030,14 +9062,9 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
         .iter()
         .any(|token| matches!(token, Token::Colon(_)));
     if let Some(parsed) = parse_activated_line(&ability_tokens)? {
-        let parsed = lower_parsed_ability(parsed)?;
-        let mut ability = parsed.ability;
         let display = words(&ability_tokens).join(" ");
-        if ability.text.is_none() {
-            ability.text = Some(display.clone());
-        }
-        let grant = grant_object_ability_for_anthem_subject(&clause, ability, display);
-        return Ok(Some(vec![anthem, grant]));
+        let grant = grant_object_ability_for_anthem_subject(&clause, parsed, display);
+        return Ok(Some(vec![anthem.into(), grant]));
     }
     if has_colon {
         return Err(CardTextError::ParseError(format!(
@@ -9062,10 +9089,8 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
             max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
             None,
         );
-        let parsed = lower_parsed_ability(parsed)?;
-        let triggered = parsed.ability;
         if matches!(
-            &triggered.kind,
+            &parsed.ability.kind,
             AbilityKind::Triggered(inner) if inner.effects.is_empty()
         ) {
             return Err(CardTextError::ParseError(format!(
@@ -9074,8 +9099,8 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
             )));
         }
         let text = words(&ability_tokens).join(" ");
-        let grant = grant_object_ability_for_anthem_subject(&clause, triggered, text);
-        return Ok(Some(vec![anthem, grant]));
+        let grant = grant_object_ability_for_anthem_subject(&clause, parsed, text);
+        return Ok(Some(vec![anthem.into(), grant]));
     }
 
     Err(CardTextError::ParseError(format!(
@@ -9086,7 +9111,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
 
 pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let line_words = words(tokens);
     if line_words.len() < 4 || line_words[0] != "equipped" || line_words[1] != "creature" {
         return Ok(None);
@@ -9111,8 +9136,6 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
         }
         return Ok(None);
     };
-    let parsed = lower_parsed_ability(parsed)?;
-
     let mut static_abilities = Vec::new();
     if let Some(get_idx) = tokens
         .iter()
@@ -9129,17 +9152,14 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
             has_idx
         };
         let clause = parse_anthem_clause(tokens, get_idx, clause_tail_end)?;
-        static_abilities.push(build_anthem_static_ability(&clause));
+        static_abilities.push(build_anthem_static_ability(&clause).into());
     }
 
-    let mut ability = parsed.ability;
-    if ability.text.is_none() {
-        ability.text = Some(words(ability_tokens).join(" "));
-    }
-    static_abilities.push(StaticAbility::attached_ability_grant(
-        ability,
-        line_words.join(" "),
-    ));
+    static_abilities.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+        ability: parsed,
+        display: line_words.join(" "),
+        condition: None,
+    });
 
     Ok(Some(static_abilities))
 }
@@ -10266,7 +10286,7 @@ pub(crate) fn parse_source_activation_spend_mana_as_any_color_line(
 
 pub(crate) fn parse_enchanted_has_activated_ability_line(
     tokens: &[Token],
-) -> Result<Option<StaticAbility>, CardTextError> {
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let token_words = words(tokens);
     if !token_words.starts_with(&["enchanted"]) || !token_words.contains(&"has") {
         return Ok(None);
@@ -10279,18 +10299,12 @@ pub(crate) fn parse_enchanted_has_activated_ability_line(
     let Some(parsed) = parse_activated_line(ability_tokens)? else {
         return Ok(None);
     };
-    let parsed = lower_parsed_ability(parsed)?;
 
-    let mut ability = parsed.ability;
-    if ability.text.is_none() {
-        let text_words = words(ability_tokens).join(" ");
-        ability.text = Some(text_words);
-    }
-
-    Ok(Some(StaticAbility::attached_ability_grant(
-        ability,
-        token_words.join(" "),
-    )))
+    Ok(Some(StaticAbilityAst::AttachedObjectAbilityGrant {
+        ability: parsed,
+        display: token_words.join(" "),
+        condition: None,
+    }))
 }
 
 pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
@@ -10401,7 +10415,7 @@ pub(crate) fn parse_has_base_power_toughness_and_granted_keywords_static_line(
 
 pub(crate) fn parse_filter_has_granted_ability_line(
     tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let clause_words = words(tokens);
     if clause_words.is_empty() {
         return Ok(None);
@@ -10483,7 +10497,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                     .is_some_and(|next| next.is_word("the")))
     });
     let mut granted_static: Vec<StaticAbility> = Vec::new();
-    let mut granted_object_abilities: Vec<Ability> = Vec::new();
+    let mut granted_object_abilities: Vec<ParsedAbility> = Vec::new();
     if has_colon {
         let Some(parsed) = parse_activated_line(ability_tokens)? else {
             return Err(CardTextError::ParseError(format!(
@@ -10491,10 +10505,9 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 clause_words.join(" ")
             )));
         };
-        let parsed = lower_parsed_ability(parsed)?;
-        granted_object_abilities.push(parsed.ability);
+        granted_object_abilities.push(parsed);
     } else if let Some(parsed) = parse_cycling_line(ability_tokens)? {
-        granted_object_abilities.push(parsed.ability);
+        granted_object_abilities.push(parsed);
     } else if looks_like_trigger {
         match parse_triggered_line(ability_tokens)? {
             LineAst::Triggered {
@@ -10510,7 +10523,6 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                     max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
                     None,
                 );
-                let parsed = lower_parsed_ability(parsed)?;
                 if matches!(
                     &parsed.ability.kind,
                     AbilityKind::Triggered(inner) if inner.effects.is_empty()
@@ -10520,7 +10532,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                         clause_words.join(" ")
                     )));
                 }
-                granted_object_abilities.push(parsed.ability);
+                granted_object_abilities.push(parsed);
             }
             _ => {
                 return Err(CardTextError::ParseError(format!(
@@ -10540,11 +10552,16 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         else {
             return Ok(None);
         };
-        granted_object_abilities.push(cumulative_upkeep_granted_ability(
-            mana_symbols_per_counter.clone(),
-            *life_per_counter,
-            text.clone(),
-        ));
+        granted_object_abilities.push(ParsedAbility {
+            ability: cumulative_upkeep_granted_ability(
+                mana_symbols_per_counter.clone(),
+                *life_per_counter,
+                text.clone(),
+            ),
+            effects_ast: None,
+            seed_last_object_tag: None,
+            trigger_spec: None,
+        });
     } else if let Some(abilities) = parse_static_ability_line(ability_tokens)? {
         granted_static = abilities;
     } else {
@@ -10554,7 +10571,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         Ok(subject) => subject,
         Err(_) => return Ok(None),
     };
-    let mut granted = Vec::new();
+    let mut granted: Vec<StaticAbilityAst> = Vec::new();
     if !granted_static.is_empty() {
         for ability in granted_static {
             let granted_ability = match &subject {
@@ -10566,7 +10583,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
             } else {
                 granted_ability
             };
-            granted.push(StaticAbility::new(granted_ability));
+            granted.push(StaticAbility::new(granted_ability).into());
         }
     }
 
@@ -10577,28 +10594,21 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         AnthemSubjectAst::Filter(filter) => filter.clone(),
         AnthemSubjectAst::Source => ObjectFilter::source(),
     };
-    for mut ability in granted_object_abilities {
-        if ability.text.is_none() {
-            ability.text = Some(words(ability_tokens).join(" "));
-        }
+    for ability in granted_object_abilities {
         if attached_subject {
-            let mut attached =
-                crate::static_abilities::AttachedAbilityGrant::new(ability, clause_words.join(" "));
-            if let Some(condition) = &condition {
-                attached = attached.with_condition(condition.clone());
-            }
-            granted.push(StaticAbility::new(attached));
+            granted.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+                ability,
+                display: clause_words.join(" "),
+                condition: condition.clone(),
+            });
             continue;
         }
-        let mut grant = crate::static_abilities::GrantObjectAbilityForFilter::new(
-            filter.clone(),
+        granted.push(StaticAbilityAst::GrantObjectAbility {
+            filter: filter.clone(),
             ability,
-            clause_words.join(" "),
-        );
-        if let Some(condition) = &condition {
-            grant = grant.with_condition(condition.clone());
-        }
-        granted.push(StaticAbility::new(grant));
+            display: clause_words.join(" "),
+            condition: condition.clone(),
+        });
     }
     if granted.is_empty() {
         return Ok(None);

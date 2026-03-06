@@ -56,9 +56,7 @@ impl EffectExecutor for ShuffleLibraryEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        if let Some(p) = game.player_mut(player_id) {
-            p.shuffle_library();
-        }
+        game.shuffle_player_library(player_id);
 
         Ok(EffectOutcome::resolved())
     }

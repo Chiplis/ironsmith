@@ -1,6 +1,24 @@
 use super::*;
 
-use super::*;
+fn extract_single_static_ability_ast(abilities: Vec<StaticAbilityAst>) -> StaticAbilityAst {
+    match abilities.as_slice() {
+        [ability] => ability.clone(),
+        _ => panic!("expected single static ability AST, got {abilities:?}"),
+    }
+}
+
+fn extract_single_static_ability(parsed: LineAst) -> StaticAbility {
+    match parsed {
+        LineAst::StaticAbility(ability) => {
+            lower_static_ability_ast(ability).expect("single static ability should lower")
+        }
+        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
+            lower_static_ability_ast(abilities.pop().expect("single static ability"))
+                .expect("single static ability should lower")
+        }
+        other => panic!("expected static ability parse, got {other:?}"),
+    }
+}
 
 #[test]
 fn parse_investigate_defaults_to_one() {
@@ -209,13 +227,7 @@ fn parse_line_collective_restraint_domain_attack_tax_prefers_typed_static() {
         0,
     )
     .expect("parse collective restraint domain attack tax line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(
         ability.id(),
         StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
@@ -229,13 +241,7 @@ fn parse_line_fixed_attack_tax_prefers_typed_static() {
         0,
     )
     .expect("parse fixed attack tax line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(
         ability.id(),
         StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttacker
@@ -249,13 +255,7 @@ fn parse_line_cant_attack_unless_defending_player_controls_island_prefers_typed_
         0,
     )
     .expect("parse cant-attack-unless-defending-player-controls-island line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -266,13 +266,7 @@ fn parse_line_cant_attack_unless_cast_creature_spell_this_turn_prefers_typed_sta
         0,
     )
     .expect("parse cant-attack-unless-cast-creature-spell line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(
         ability.id(),
         StaticAbilityId::CantAttackUnlessControllerCastCreatureSpellThisTurn
@@ -286,13 +280,7 @@ fn parse_line_cant_attack_unless_cast_noncreature_spell_this_turn_prefers_typed_
         0,
     )
     .expect("parse cant-attack-unless-cast-noncreature-spell line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(
         ability.id(),
         StaticAbilityId::CantAttackUnlessControllerCastNonCreatureSpellThisTurn
@@ -307,13 +295,7 @@ fn parse_line_cant_attack_unless_control_more_creatures_than_defending_player_pr
         0,
     )
     .expect("parse cant-attack-unless-control-more-creatures line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -324,13 +306,7 @@ fn parse_line_cant_attack_unless_defending_player_is_poisoned_prefers_typed_stat
         0,
     )
     .expect("parse cant-attack-unless-defending-player-is-poisoned line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -341,13 +317,7 @@ fn parse_line_cant_attack_unless_an_opponent_was_dealt_damage_prefers_typed_stat
         0,
     )
     .expect("parse cant-attack-unless-opponent-damaged line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -358,13 +328,7 @@ fn parse_line_cant_attack_unless_black_or_green_creature_also_attacks_prefers_ty
         0,
     )
     .expect("parse cant-attack-unless-black-or-green-creature-attacks line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -372,13 +336,7 @@ fn parse_line_cant_attack_unless_black_or_green_creature_also_attacks_prefers_ty
 fn parse_line_cant_attack_unless_sacrifice_a_land_prefers_typed_static() {
     let parsed = parse_line("This creature can't attack unless you sacrifice a land.", 0)
         .expect("parse cant-attack-unless-sacrifice-a-land line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -389,13 +347,7 @@ fn parse_line_cant_attack_unless_sacrifice_two_islands_prefers_typed_static() {
         0,
     )
     .expect("parse cant-attack-unless-sacrifice-two-islands line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -406,13 +358,7 @@ fn parse_line_cant_attack_unless_return_enchantment_to_owners_hand_prefers_typed
         0,
     )
     .expect("parse cant-attack-unless-return-enchantment line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -423,13 +369,7 @@ fn parse_line_cant_attack_unless_pay_for_each_plus_one_plus_one_counter_prefers_
         0,
     )
     .expect("parse cant-attack-unless-pay-for-each-counter line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -440,13 +380,7 @@ fn parse_line_cant_attack_unless_defending_player_is_the_monarch_prefers_typed_s
         0,
     )
     .expect("parse cant-attack-unless-defending-player-is-the-monarch line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::CantAttackUnlessCondition);
 }
 
@@ -461,6 +395,53 @@ fn parse_attached_prevent_all_damage_dealt_by_enchanted_creature() {
         .expect("expected static ability");
     assert_eq!(abilities.len(), 1);
     assert_eq!(abilities[0].id(), StaticAbilityId::AttachedAbilityGrant);
+}
+
+#[test]
+fn parse_static_ast_keeps_attached_activated_grant_unlowered() {
+    let tokens = tokenize_line("Enchanted creature has {T}: Draw a card.", 0);
+    let abilities = parse_static_ability_ast_line(&tokens)
+        .expect("parse static ability AST line")
+        .expect("expected static ability AST");
+    let ability = extract_single_static_ability_ast(abilities.clone());
+    let debug = format!("{ability:?}");
+    assert!(
+        debug.contains("AttachedObjectAbilityGrant"),
+        "expected attached object-ability grant AST, got {debug}"
+    );
+    assert!(
+        debug.contains("effects_ast: Some"),
+        "expected attached grant to remain parsed until lowering, got {debug}"
+    );
+
+    let lowered = lower_static_abilities_ast(abilities).expect("static ability AST should lower");
+    assert_eq!(lowered.len(), 1);
+    assert_eq!(lowered[0].id(), StaticAbilityId::AttachedAbilityGrant);
+}
+
+#[test]
+fn parse_static_ast_keeps_filter_activated_grant_unlowered() {
+    let tokens = tokenize_line("Creatures you control have {T}: Draw a card.", 0);
+    let abilities = parse_static_ability_ast_line(&tokens)
+        .expect("parse static ability AST line")
+        .expect("expected static ability AST");
+    let ability = extract_single_static_ability_ast(abilities.clone());
+    let debug = format!("{ability:?}");
+    assert!(
+        debug.contains("GrantObjectAbility"),
+        "expected filter object-ability grant AST, got {debug}"
+    );
+    assert!(
+        debug.contains("effects_ast: Some"),
+        "expected filter grant to remain parsed until lowering, got {debug}"
+    );
+
+    let lowered = lower_static_abilities_ast(abilities).expect("static ability AST should lower");
+    assert_eq!(lowered.len(), 1);
+    assert_eq!(
+        lowered[0].id(),
+        StaticAbilityId::GrantObjectAbilityForFilter
+    );
 }
 
 #[test]
@@ -502,13 +483,7 @@ fn parse_line_prevent_all_damage_to_source_by_creatures_prefers_static() {
         0,
     )
     .expect("parse line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(
         ability.id(),
         StaticAbilityId::PreventAllDamageToSelfByCreatures
@@ -519,13 +494,7 @@ fn parse_line_prevent_all_damage_to_source_by_creatures_prefers_static() {
 fn parse_line_prevent_damage_to_source_remove_counter_prefers_static() {
     let line = "If damage would be dealt to this creature, prevent that damage. Remove a +1/+1 counter from this creature.";
     let parsed = parse_line(line, 0).expect("parse line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(
         ability.id(),
         StaticAbilityId::PreventDamageToSelfRemoveCounter
@@ -555,13 +524,7 @@ fn parse_line_prevent_all_combat_damage_to_source_prefers_static() {
         0,
     )
     .expect("parse line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::PreventAllCombatDamageToSelf);
 }
 
@@ -592,13 +555,7 @@ fn parse_line_creatures_with_power_or_greater_dont_untap_prefers_static() {
         0,
     )
     .expect("parse line");
-    let ability = match parsed {
-        LineAst::StaticAbility(ability) => ability,
-        LineAst::StaticAbilities(mut abilities) if abilities.len() == 1 => {
-            abilities.pop().expect("single static ability")
-        }
-        other => panic!("expected static ability parse, got {other:?}"),
-    };
+    let ability = extract_single_static_ability(parsed);
     assert_eq!(ability.id(), StaticAbilityId::RuleRestriction);
 }
 
@@ -1728,7 +1685,10 @@ fn parse_trigger_clause_commander_enters_or_attacks_keeps_shared_subject() {
 
     match *left {
         TriggerSpec::EntersBattlefield(filter) => {
-            assert!(filter.is_commander, "expected commander marker on ETB branch");
+            assert!(
+                filter.is_commander,
+                "expected commander marker on ETB branch"
+            );
             assert_eq!(filter.owner, Some(PlayerFilter::You));
         }
         other => panic!("expected EntersBattlefield trigger, got {other:?}"),
@@ -1736,7 +1696,10 @@ fn parse_trigger_clause_commander_enters_or_attacks_keeps_shared_subject() {
 
     match *right {
         TriggerSpec::Attacks(filter) => {
-            assert!(filter.is_commander, "expected commander marker on attack branch");
+            assert!(
+                filter.is_commander,
+                "expected commander marker on attack branch"
+            );
             assert_eq!(filter.owner, Some(PlayerFilter::You));
             assert!(filter.card_types.contains(&CardType::Creature));
         }

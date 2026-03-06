@@ -142,15 +142,13 @@ const STATIC_LINE_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 7] = [
     },
 ];
 
-const PRE_TOKEN_DIAGNOSER: UnsupportedDiagnoser = UnsupportedDiagnoser::new(&PRE_TOKEN_DIAGNOSTIC_RULES);
+const PRE_TOKEN_DIAGNOSER: UnsupportedDiagnoser =
+    UnsupportedDiagnoser::new(&PRE_TOKEN_DIAGNOSTIC_RULES);
 const STATIC_LINE_DIAGNOSER: UnsupportedDiagnoser =
     UnsupportedDiagnoser::new(&STATIC_LINE_DIAGNOSTIC_RULES);
 
 fn normalized_line<'a>(view: &'a ClauseView<'a>) -> &'a str {
-    view.normalized
-        .or(view.raw)
-        .unwrap_or_default()
-        .trim()
+    view.normalized.or(view.raw).unwrap_or_default().trim()
 }
 
 fn normalized_line_without_braces<'a>(view: &'a ClauseView<'a>) -> &'a str {
@@ -330,9 +328,7 @@ fn parse_first_parsed_ability_rule(
         parse_level_up_line(view.tokens)
     }
 
-    fn parse_reinforce_rule(
-        view: &ClauseView<'_>,
-    ) -> Result<Option<ParsedAbility>, CardTextError> {
+    fn parse_reinforce_rule(view: &ClauseView<'_>) -> Result<Option<ParsedAbility>, CardTextError> {
         parse_reinforce_line(view.tokens)
     }
 
@@ -369,7 +365,13 @@ fn parse_first_parsed_ability_rule(
         RuleDef {
             id: "cycling",
             priority: 130,
-            heads: &["cycling", "basic", "forestcycling", "mountaincycling", "swampcycling"],
+            heads: &[
+                "cycling",
+                "basic",
+                "forestcycling",
+                "mountaincycling",
+                "swampcycling",
+            ],
             shape_mask: 0,
             run: parse_cycling_rule,
         },
@@ -544,7 +546,7 @@ fn parse_first_alternative_cast_rule(
     index.run_first(&view)
 }
 
-fn line_ast_from_static_abilities(abilities: Vec<StaticAbility>) -> LineAst {
+fn line_ast_from_static_abilities(abilities: Vec<StaticAbilityAst>) -> LineAst {
     match abilities.as_slice() {
         [ability] => LineAst::StaticAbility(ability.clone()),
         _ => LineAst::StaticAbilities(abilities),
@@ -581,7 +583,7 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         let tokens = tokenize_line(line, line_index);
         if let Ok(Some(ability)) = parse_enters_with_counters_line(&tokens) {
             parser_trace("parse_line:branch=self-etb-counters", &tokens);
-            return Ok(LineAst::StaticAbility(ability));
+            return Ok(LineAst::StaticAbility(ability.into()));
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported self-enters-with-counters static clause (line: '{}')",
@@ -606,7 +608,7 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         || normalized.starts_with("this cant attack unless");
     if is_this_cant_attack_unless_clause {
         let tokens = tokenize_line(line, line_index);
-        if let Ok(Some(abilities)) = parse_static_ability_line(&tokens) {
+        if let Ok(Some(abilities)) = parse_static_ability_ast_line(&tokens) {
             parser_trace("parse_line:branch=this-cant-attack-unless-static", &tokens);
             return Ok(line_ast_from_static_abilities(abilities));
         }
@@ -619,7 +621,7 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         let tokens = tokenize_line(line, line_index);
         if let Ok(Some(ability)) = parse_cast_this_spell_only_line(&tokens) {
             parser_trace("parse_line:branch=this-spell-cast-only-static", &tokens);
-            return Ok(LineAst::StaticAbility(ability));
+            return Ok(LineAst::StaticAbility(ability.into()));
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported cast-this-spell-only static clause (line: '{}')",
@@ -628,7 +630,7 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     }
     if normalized.starts_with("creatures with power less than this creatures power cant block it") {
         let tokens = tokenize_line(line, line_index);
-        if let Ok(Some(abilities)) = parse_static_ability_line(&tokens) {
+        if let Ok(Some(abilities)) = parse_static_ability_ast_line(&tokens) {
             parser_trace("parse_line:branch=skulk-rules-text-static", &tokens);
             return Ok(line_ast_from_static_abilities(abilities));
         }
@@ -779,7 +781,7 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         && let Some(ability) = parse_if_this_spell_costs_less_to_cast_line(&tokens)?
     {
         parser_trace("parse_line:branch=if-this-spell-costs-less", &tokens);
-        return Ok(LineAst::StaticAbility(ability));
+        return Ok(LineAst::StaticAbility(ability.into()));
     }
 
     let starts_with_statement_effect_head = find_verb(&tokens).is_some_and(|(_, idx)| idx == 0)
@@ -845,7 +847,7 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
         }
     }
 
-    if let Some(abilities) = parse_static_ability_line(&tokens)? {
+    if let Some(abilities) = parse_static_ability_ast_line(&tokens)? {
         if let Some(diag) = unsupported_diagnostic.clone() {
             return Err(diag);
         }

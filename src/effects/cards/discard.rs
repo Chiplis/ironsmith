@@ -108,8 +108,6 @@ impl EffectExecutor for DiscardEffect {
         use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
         use crate::event_processor::execute_discard;
-        use rand::seq::SliceRandom;
-
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         let mut discarded = 0;
@@ -132,7 +130,7 @@ impl EffectExecutor for DiscardEffect {
         }
 
         let cards_to_discard = if self.random {
-            hand_cards.shuffle(&mut rand::rng());
+            game.shuffle_slice(&mut hand_cards);
             hand_cards.into_iter().take(required).collect::<Vec<_>>()
         } else {
             let spec = ChooseObjectsSpec::new(

@@ -1,5 +1,6 @@
-import { useState, useLayoutEffect, useEffect, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useCombatArrows } from "@/context/CombatArrowContext";
+import { animate, cancelMotion, createDrawable } from "@/lib/motion/anime";
 import { getCardRect, getPlayerTargetRect, centerOf } from "@/hooks/useCardPositions";
 
 function curvedArrowPath(x1, y1, x2, y2) {
@@ -69,10 +70,11 @@ function pointBeforeRect(from, rect, gap = 10) {
 
 export default function ArrowOverlay() {
   const { arrows, dragArrow } = useCombatArrows();
-  const [paths, setPaths] = useState([]);
-  const [tick, setTick] = useState(0);
-
-  const computePaths = useCallback(() => {
+  const [, setTick] = useState(0);
+  const pathRefs = useRef(new Map());
+  const drawAnimationsRef = useRef(new Map());
+  const animatedKeysRef = useRef(new Set());
+  const paths = (() => {
     const result = [];
     for (const arrow of arrows) {
       const fromRect = getCardRect(arrow.fromId);
@@ -89,13 +91,10 @@ export default function ArrowOverlay() {
         ? pointBeforeRect(from, toRect, 9)
         : centerOf(toRect);
       const d = curvedArrowPath(from.x, from.y, to.x, to.y);
-      const len = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2) * 1.15;
-      result.push({ d, color: arrow.color || "#ff3b30", key: arrow.key, len });
+      result.push({ d, color: arrow.color || "#ff3b30", key: arrow.key });
     }
-    setPaths(result);
-  }, [arrows]);
-
-  useLayoutEffect(computePaths, [computePaths]);
+    return result;
+  })();
 
   useEffect(() => {
     if (arrows.length === 0) return;
@@ -109,8 +108,39 @@ export default function ArrowOverlay() {
   }, [arrows.length]);
 
   useLayoutEffect(() => {
-    if (tick > 0) computePaths();
-  }, [tick, computePaths]);
+    const animationStore = drawAnimationsRef.current;
+    const nextKeys = new Set(paths.map((path) => path.key));
+
+    for (const [key, animation] of animationStore.entries()) {
+      if (nextKeys.has(key)) continue;
+      cancelMotion(animation);
+      animationStore.delete(key);
+      animatedKeysRef.current.delete(key);
+      pathRefs.current.delete(key);
+    }
+
+    for (const path of paths) {
+      if (animatedKeysRef.current.has(path.key)) continue;
+      const node = pathRefs.current.get(path.key);
+      if (!node) continue;
+
+      const [drawable] = createDrawable(node);
+      const animation = animate(drawable, {
+        draw: ["0 0", "0 1"],
+        ease: "out(3)",
+        duration: 420,
+      });
+      animationStore.set(path.key, animation);
+      animatedKeysRef.current.add(path.key);
+    }
+
+    return () => {
+      for (const animation of animationStore.values()) {
+        cancelMotion(animation);
+      }
+      animationStore.clear();
+    };
+  }, [paths]);
 
   // Build live drag arrow path
   let dragPath = null;
@@ -176,6 +206,13 @@ export default function ArrowOverlay() {
       {paths.map((p) => (
         <path
           key={p.key}
+          ref={(node) => {
+            if (node) {
+              pathRefs.current.set(p.key, node);
+            } else {
+              pathRefs.current.delete(p.key);
+            }
+          }}
           d={p.d}
           fill="none"
           stroke={p.color}
@@ -183,11 +220,6 @@ export default function ArrowOverlay() {
           strokeLinecap="round"
           filter="url(#arrow-glow)"
           markerEnd={p.color.includes("3b82f6") ? "url(#arrowhead-blue)" : "url(#arrowhead-red)"}
-          style={{
-            strokeDasharray: p.len,
-            strokeDashoffset: p.len,
-            animation: `draw-arrow 400ms ease-out forwards`,
-          }}
         />
       ))}
 

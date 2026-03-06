@@ -1,5 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use rand::seq::SliceRandom;
+use rand::{SeedableRng, rngs::StdRng};
+
 use crate::alternative_cast::CastingMethod;
 use crate::card::Card;
 use crate::continuous::{ContinuousEffect, ContinuousEffectManager};
@@ -1415,6 +1418,9 @@ pub struct GameState {
 
     /// Monotonic ID generator for linked exile groups.
     pub next_linked_exile_group_id: u64,
+
+    /// Deterministic match RNG state used for shuffles and other random gameplay effects.
+    random_state: u64,
 }
 
 impl GameState {
@@ -1522,7 +1528,51 @@ impl GameState {
             exiled_with_source: HashMap::new(),
             linked_exile_groups: HashMap::new(),
             next_linked_exile_group_id: 0,
+            random_state: Self::normalize_random_seed(0),
         }
+    }
+
+    fn normalize_random_seed(seed: u64) -> u64 {
+        if seed == 0 {
+            0x9e37_79b9_7f4a_7c15
+        } else {
+            seed
+        }
+    }
+
+    /// Set the deterministic RNG seed for this match.
+    pub fn set_random_seed(&mut self, seed: u64) {
+        self.random_state = Self::normalize_random_seed(seed);
+    }
+
+    /// Return the current deterministic RNG state.
+    pub fn random_seed(&self) -> u64 {
+        self.random_state
+    }
+
+    /// Advance the deterministic RNG and return the next 64 random bits.
+    pub fn next_random_u64(&mut self) -> u64 {
+        let mut z = self.random_state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        self.random_state = z;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+
+    /// Shuffle a slice using the deterministic match RNG.
+    pub fn shuffle_slice<T>(&mut self, values: &mut [T]) {
+        let mut rng = StdRng::seed_from_u64(self.next_random_u64());
+        values.shuffle(&mut rng);
+    }
+
+    /// Shuffle a player's library using the deterministic match RNG.
+    pub fn shuffle_player_library(&mut self, player_id: PlayerId) {
+        let seed = self.next_random_u64();
+        let Some(index) = self.players.iter().position(|player| player.id == player_id) else {
+            return;
+        };
+        let mut rng = StdRng::seed_from_u64(seed);
+        self.players[index].library.shuffle(&mut rng);
     }
 
     /// Generates a new unique object ID.

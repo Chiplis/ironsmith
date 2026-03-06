@@ -218,7 +218,10 @@ fn find_sentence_reject_rule(
     })
 }
 
-fn diagnose_sentence_unsupported(tokens: &[Token], sentence_words: &[&str]) -> Option<CardTextError> {
+fn diagnose_sentence_unsupported(
+    tokens: &[Token],
+    sentence_words: &[&str],
+) -> Option<CardTextError> {
     let clause = ClauseView::from_tokens(tokens).display_text();
 
     if is_ring_tempts_sentence(tokens) {
@@ -628,7 +631,11 @@ pub(crate) fn parse_effect_sentence_inner(
         parser_trace("parse_effect_sentence:double-target-power", tokens);
         return Ok(effects);
     }
-    if let Some(effects) = run_sentence_primitives(tokens, PRE_CONDITIONAL_SENTENCE_PRIMITIVES)? {
+    if let Some(effects) = run_sentence_primitives(
+        tokens,
+        PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
+        &PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+    )? {
         return Ok(effects);
     }
     if sentence_words.starts_with(&["if", "you", "cast", "a", "spell", "this", "way"])
@@ -649,7 +656,11 @@ pub(crate) fn parse_effect_sentence_inner(
         parser_trace("parse_effect_sentence:conditional", tokens);
         return parse_conditional_sentence(tokens);
     }
-    if let Some(effects) = run_sentence_primitives(tokens, POST_CONDITIONAL_SENTENCE_PRIMITIVES)? {
+    if let Some(effects) = run_sentence_primitives(
+        tokens,
+        POST_CONDITIONAL_SENTENCE_PRIMITIVES,
+        &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+    )? {
         return Ok(effects);
     }
 

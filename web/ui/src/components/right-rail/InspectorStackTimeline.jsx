@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import useNewCards from "@/hooks/useNewCards";
 import StackCard from "@/components/cards/StackCard";
+import { stagger } from "@/lib/motion/anime";
+import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { cn } from "@/lib/utils";
 
 const STACK_LEAVE_ANIMATION_MS = 360;
@@ -33,6 +35,7 @@ export default function InspectorStackTimeline({
   const [leavingEntries, setLeavingEntries] = useState([]);
   const previousStackRef = useRef([]);
   const leaveTimeoutsRef = useRef(new Map());
+  const bodyRef = useRef(null);
   const focusedDecision = isFocusedDecision(decision) && canAct;
   const hasStackEntries = stackObjects.length > 0 || leavingEntries.length > 0 || stackPreview.length > 0;
   const stackIds = useMemo(() => stackObjects.map((entry) => entry.id), [stackObjects]);
@@ -53,6 +56,7 @@ export default function InspectorStackTimeline({
     [leavingEntries, stackObjects]
   );
   const itemCount = stackObjects.length || leavingEntries.length || stackPreview.length;
+  const timelineSignature = timelineEntries.map((entry) => entry.__timeline_key).join("|");
 
   useEffect(() => {
     const previousStack = previousStackRef.current || [];
@@ -64,10 +68,12 @@ export default function InspectorStackTimeline({
         key: `leaving-${entry.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         entry,
       }));
-      setLeavingEntries((prev) => {
-        const existing = new Set(prev.map((item) => String(item.entry.id)));
-        const deduped = additions.filter((item) => !existing.has(String(item.entry.id)));
-        return deduped.length > 0 ? [...deduped, ...prev] : prev;
+      queueMicrotask(() => {
+        setLeavingEntries((prev) => {
+          const existing = new Set(prev.map((item) => String(item.entry.id)));
+          const deduped = additions.filter((item) => !existing.has(String(item.entry.id)));
+          return deduped.length > 0 ? [...deduped, ...prev] : prev;
+        });
       });
 
       for (const addition of additions) {
@@ -88,6 +94,16 @@ export default function InspectorStackTimeline({
     }
     leaveTimeoutsRef.current.clear();
   }, []);
+
+  useLayoutReflow(bodyRef, timelineSignature, {
+    children: ".stack-timeline-entry",
+    disabled: collapsed || timelineEntries.length === 0,
+    delay: stagger(34),
+    duration: 320,
+    bounce: 0.12,
+    enterFrom: { opacity: 0, y: 16, scale: 0.97 },
+    leaveTo: { opacity: 0, y: -14, scale: 0.96 },
+  });
 
   if (!hasStackEntries) return null;
 
@@ -128,6 +144,7 @@ export default function InspectorStackTimeline({
       </header>
       {embedded ? (
         <div
+          ref={bodyRef}
           className={cn(
             "overflow-hidden transition-[max-height,opacity] duration-300 ease-out",
             collapsed ? "opacity-0" : "opacity-100"
@@ -140,7 +157,10 @@ export default function InspectorStackTimeline({
           >
             {timelineEntries.length > 0
               ? timelineEntries.map((entry, index) => (
-                  <div key={entry.__timeline_key} className="relative transition-all duration-280 ease-out">
+                  <div
+                    key={entry.__timeline_key}
+                    className="stack-timeline-entry relative"
+                  >
                     <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
                       {index === 0
                         ? (focusedDecision ? "Resolving" : "Top")
@@ -171,10 +191,13 @@ export default function InspectorStackTimeline({
         </div>
       ) : (
         <ScrollArea className="h-[calc(100%-38px)]">
-          <div className="grid gap-1.5 p-1.5">
+          <div ref={bodyRef} className="grid gap-1.5 p-1.5">
             {timelineEntries.length > 0
               ? timelineEntries.map((entry, index) => (
-                  <div key={entry.__timeline_key} className="relative">
+                  <div
+                    key={entry.__timeline_key}
+                    className="stack-timeline-entry relative"
+                  >
                     <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 rounded bg-[rgba(8,18,30,0.86)] px-1 py-[2px] text-[10px] font-bold uppercase tracking-[0.12em] text-[#8ec4ff]">
                       {index === 0
                         ? (focusedDecision ? "Resolving" : "Top")

@@ -1,19 +1,13 @@
-/// Apply a player's response to a decision during the priority loop, with an optional decision maker.
-///
-/// The decision maker is used for ETB replacement effects that require player input
-/// (like Mox Diamond asking whether to discard a land).
-fn next_sacrifice_cost_tag_index(
-    tags: &std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
-) -> usize {
-    tags.keys()
-        .filter_map(|tag| {
-            tag.as_str()
-                .strip_prefix("sacrifice_cost_")
-                .and_then(|suffix| suffix.parse::<usize>().ok())
-                .map(|idx| idx + 1)
-        })
-        .max()
-        .unwrap_or(0)
+fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
+    if !pending.remaining_requirements.is_empty() {
+        ActivationStage::ChoosingTargets
+    } else if !pending.remaining_cost_steps.is_empty() {
+        ActivationStage::ProcessingCosts
+    } else if pending.mana_cost_to_pay.is_some() || !pending.remaining_mana_pips.is_empty() {
+        ActivationStage::PayingMana
+    } else {
+        ActivationStage::ReadyToFinalize
+    }
 }
 
 pub fn apply_priority_response_with_dm(
@@ -273,8 +267,9 @@ pub fn apply_priority_response_with_dm(
                 // Drain pending ZoneChangeEvent emitted by ETB move processing.
                 drain_pending_trigger_events(game, trigger_queue);
 
-                let etb_event_provenance =
-                    game.provenance_graph.alloc_root_event(crate::events::EventKind::EnterBattlefield);
+                let etb_event_provenance = game
+                    .provenance_graph
+                    .alloc_root_event(crate::events::EventKind::EnterBattlefield);
                 let etb_event = if result.enters_tapped {
                     TriggerEvent::new_with_provenance(
                         EnterBattlefieldEvent::tapped(new_id, old_zone),
@@ -362,12 +357,12 @@ pub fn apply_priority_response_with_dm(
             // Move spell to stack immediately per MTG rule 601.2a
             // This happens at the start of proposal, before any choices are made
             let stack_id = propose_spell_cast(game, *spell_id, *from_zone, player, casting_method)?;
-            let cast_provenance = game.provenance_graph.alloc_root(
-                ProvenanceNodeKind::EffectExecution {
-                    source: stack_id,
-                    controller: player,
-                },
-            );
+            let cast_provenance =
+                game.provenance_graph
+                    .alloc_root(ProvenanceNodeKind::EffectExecution {
+                        source: stack_id,
+                        controller: player,
+                    });
 
             // Get the spell's mana cost and effects, considering casting method
             // Note: We use stack_id now since the spell has been moved to stack
@@ -589,102 +584,29 @@ pub fn apply_priority_response_with_dm(
             let cost = crate::decision::calculate_effective_activation_total_cost(
                 game, player, *source, &base_cost,
             );
-            let activation_provenance = game.provenance_graph.alloc_root(
-                ProvenanceNodeKind::EffectExecution {
-                    source: *source,
-                    controller: player,
-                },
-            );
+            let activation_provenance =
+                game.provenance_graph
+                    .alloc_root(ProvenanceNodeKind::EffectExecution {
+                        source: *source,
+                        controller: player,
+                    });
 
-            // Pay immediate costs and collect costs that need choices
+            // Defer non-mana activation costs until after target selection.
             let mut mana_cost_to_pay: Option<crate::mana::ManaCost> = None;
-            let mut sacrifice_costs: Vec<(ObjectFilter, String)> = Vec::new();
-            let mut card_choice_costs: Vec<ActivationCardCostChoice> = Vec::new();
-            let mut payment_trace: Vec<CostStep> = Vec::new();
-
-            let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
-                .with_provenance(activation_provenance);
+            let mut remaining_cost_steps = Vec::new();
+            let payment_trace: Vec<CostStep> = Vec::new();
 
             for cost_component in cost.costs() {
-                use crate::costs::CostProcessingMode;
-                let mode = cost_component.processing_mode();
-                if append_card_choice_costs_from_processing_mode(&mode, &mut card_choice_costs) {
-                    continue;
-                }
-
-                match mode {
-                    CostProcessingMode::InlineWithTriggers => {
-                        // Sacrifice self - handle inline for trigger detection
-                        if game.object(*source).is_some() {
-                            let snapshot = game
-                                .object(*source)
-                                .map(|obj| ObjectSnapshot::from_object(obj, game));
-                            let sacrificing_player = snapshot
-                                .as_ref()
-                                .map(|snap| snap.controller)
-                                .or(Some(player));
-                            game.move_object(*source, Zone::Graveyard);
-                            game.queue_trigger_event(
-                                activation_provenance,
-                                TriggerEvent::new_with_provenance(
-                                    SacrificeEvent::new(*source, Some(*source))
-                                        .with_snapshot(snapshot, sacrificing_player),
-                                    activation_provenance,
-                                ),
-                            );
-                            drain_pending_trigger_events(game, trigger_queue);
-
-                            #[cfg(feature = "net")]
-                            {
-                                // Record sacrifice payment for deterministic trace
-                                payment_trace.push(CostStep::Payment(CostPayment::Sacrifice {
-                                    objects: vec![GameObjectId(source.0)],
-                                }));
-                            }
-                        }
-                    }
-                    CostProcessingMode::ManaPayment { cost } => {
-                        // Save mana cost for later payment through mana payment UI
+                match cost_component.processing_mode() {
+                    crate::costs::CostProcessingMode::ManaPayment { cost } => {
                         mana_cost_to_pay = Some(cost);
                     }
-                    CostProcessingMode::SacrificeTarget { ref filter } => {
-                        // Collect sacrifice costs that need target selection
-                        let desc = mode.display();
-                        sacrifice_costs.push((filter.clone(), desc));
-                    }
-                    CostProcessingMode::Immediate => {
-                        // Immediate costs (tap, untap, life, remove counters, etc.)
-                        match cost_component.pay(game, &mut cost_ctx).map_err(|err| {
-                            GameLoopError::InvalidState(format!(
-                                "Failed to pay immediate activation cost: {err:?}"
-                            ))
-                        })? {
-                            crate::costs::CostPaymentResult::Paid => {
-                                record_immediate_cost_payment(
-                                    &mut payment_trace,
-                                    cost_component,
-                                    *source,
-                                );
-                            }
-                            crate::costs::CostPaymentResult::NeedsChoice(description) => {
-                                return Err(GameLoopError::InvalidState(format!(
-                                    "Immediate cost unexpectedly requires choice: {} ({})",
-                                    cost_component.display(),
-                                    description
-                                )));
-                            }
-                        }
-                    }
-                    CostProcessingMode::DiscardCards { .. }
-                    | CostProcessingMode::ExileFromHand { .. }
-                    | CostProcessingMode::ExileFromGraveyard { .. }
-                    | CostProcessingMode::RevealFromHand { .. }
-                    | CostProcessingMode::ReturnToHandTarget { .. } => unreachable!(
-                        "card/object choice costs are handled before the primary activation-cost match"
+                    _ => append_activation_cost_steps_from_cost(
+                        cost_component,
+                        &mut remaining_cost_steps,
                     ),
                 }
             }
-            drain_pending_trigger_events(game, trigger_queue);
 
             // Extract target requirements from the ability effects
             let target_requirements =
@@ -705,25 +627,22 @@ pub fn apply_priority_response_with_dm(
 
             // Create pending activation if there are choices to make
             if has_x
-                || !sacrifice_costs.is_empty()
-                || !card_choice_costs.is_empty()
+                || !remaining_cost_steps.is_empty()
                 || has_hybrid_pips
                 || !target_requirements.is_empty()
                 || mana_cost_to_pay.is_some()
             {
                 // Determine starting stage (per MTG rule 602.2b, follows 601.2b-h order)
-                // Order: X value → Sacrifice → Hand card cost choices → Hybrid/Phyrexian
-                // announcement → Targets → Mana payment
+                // Order: X value → Hybrid/Phyrexian announcement → Targets → non-mana costs
+                // → Mana payment.
                 let stage = if has_x {
                     ActivationStage::ChoosingX
-                } else if !sacrifice_costs.is_empty() {
-                    ActivationStage::ChoosingSacrifice
-                } else if !card_choice_costs.is_empty() {
-                    ActivationStage::ChoosingCardCost
                 } else if has_hybrid_pips {
                     ActivationStage::AnnouncingCost
                 } else if !target_requirements.is_empty() {
                     ActivationStage::ChoosingTargets
+                } else if !remaining_cost_steps.is_empty() {
+                    ActivationStage::ProcessingCosts
                 } else {
                     ActivationStage::PayingMana
                 };
@@ -738,10 +657,9 @@ pub fn apply_priority_response_with_dm(
                     target_requirements,
                     mana_cost_to_pay,
                     payment_trace,
-                    sacrifice_costs,
-                    card_choice_costs,
-                    cost_ctx.tagged_objects.clone(),
-                    next_sacrifice_cost_tag_index(&cost_ctx.tagged_objects),
+                    remaining_cost_steps,
+                    std::collections::HashMap::new(),
+                    0,
                     is_turn_capped,
                     source_stable_id,
                     source_snapshot,
@@ -760,7 +678,7 @@ pub fn apply_priority_response_with_dm(
                 let entry = StackEntry::ability(*source, player, effects.to_vec())
                     .with_source_info(source_stable_id, source_name)
                     .with_source_snapshot(source_snapshot)
-                    .with_tagged_objects(cost_ctx.tagged_objects.clone());
+                    .with_tagged_objects(std::collections::HashMap::new());
                 game.push_to_stack(entry);
                 queue_ability_activated_event(
                     game,
@@ -816,12 +734,12 @@ pub fn apply_priority_response_with_dm(
                 } else {
                     true // No mana cost
                 };
-                let mana_ability_provenance = game.provenance_graph.alloc_root(
-                    ProvenanceNodeKind::EffectExecution {
-                        source: *source,
-                        controller: player,
-                    },
-                );
+                let mana_ability_provenance =
+                    game.provenance_graph
+                        .alloc_root(ProvenanceNodeKind::EffectExecution {
+                            source: *source,
+                            controller: player,
+                        });
 
                 if can_pay_mana {
                     // Pay all costs immediately
@@ -1145,12 +1063,7 @@ fn apply_targets_response(
         pending.chosen_targets.extend(targets.iter().cloned());
         pending.remaining_requirements.clear();
 
-        // Move to next stage
-        if pending.mana_cost_to_pay.is_some() {
-            pending.stage = ActivationStage::PayingMana;
-        } else {
-            pending.stage = ActivationStage::ReadyToFinalize;
-        }
+        pending.stage = stage_after_activation_announcements(&pending);
 
         return continue_activation(game, trigger_queue, state, pending, decision_maker);
     }
@@ -1188,13 +1101,8 @@ fn apply_x_value_response(
         pending.x_value = Some(x_value as usize);
 
         // Move to next stage (per MTG rule 602.2b, follows 601.2b-h order)
-        // After X: Sacrifice → Hand card cost choices → Hybrid/Phyrexian announcement
-        // → Targets → Mana payment
-        if !pending.remaining_sacrifice_costs.is_empty() {
-            pending.stage = ActivationStage::ChoosingSacrifice;
-        } else if !pending.remaining_card_choice_costs.is_empty() {
-            pending.stage = ActivationStage::ChoosingCardCost;
-        } else if !pending.pending_hybrid_pips.is_empty() {
+        // After X: Hybrid/Phyrexian announcement → Targets → non-mana costs → mana payment
+        if !pending.pending_hybrid_pips.is_empty() {
             // Hybrid pips were populated at activation start
             pending.stage = ActivationStage::AnnouncingCost;
         } else if pending.hybrid_choices.is_empty() {
@@ -1213,20 +1121,8 @@ fn apply_x_value_response(
                     );
                 }
             }
-            // No hybrid pips, continue to targets
-            if !pending.remaining_requirements.is_empty() {
-                pending.stage = ActivationStage::ChoosingTargets;
-            } else if pending.mana_cost_to_pay.is_some() {
-                pending.stage = ActivationStage::PayingMana;
-            } else {
-                pending.stage = ActivationStage::ReadyToFinalize;
-            }
-        } else if !pending.remaining_requirements.is_empty() {
-            pending.stage = ActivationStage::ChoosingTargets;
-        } else if pending.mana_cost_to_pay.is_some() {
-            pending.stage = ActivationStage::PayingMana;
         } else {
-            pending.stage = ActivationStage::ReadyToFinalize;
+            pending.stage = stage_after_activation_announcements(&pending);
         }
 
         return continue_activation(game, trigger_queue, state, pending, decision_maker);

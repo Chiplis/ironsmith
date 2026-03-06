@@ -3,6 +3,7 @@ import { useGame } from "@/context/GameContext";
 import { scryfallImageUrl } from "@/lib/scryfall";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
+import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { Check, Copy } from "lucide-react";
 
 const ORACLE_TEXT_STYLE = {
@@ -12,6 +13,7 @@ const ORACLE_TEXT_STYLE = {
 const METADATA_TEXT_STYLE = {
   textShadow: "0 1px 2px rgba(0, 0, 0, 0.96), 0 2px 10px rgba(0, 0, 0, 0.84)",
 };
+const INSPECTOR_ART_SWAP_MS = 240;
 
 function stripInspectorAbilityPrefixes(text = "") {
   const prefixPatterns = [
@@ -151,11 +153,200 @@ function buildObjectFamilyIds(state, objectIdNum) {
   return ids;
 }
 
+function InspectorArtImageLayers({
+  imageUrl,
+  objectName,
+  fullArt = false,
+  onError,
+}) {
+  const [activeImageUrl, setActiveImageUrl] = useState(imageUrl || "");
+  const [outgoingImageUrl, setOutgoingImageUrl] = useState(null);
+  const activeImageUrlRef = useRef(imageUrl || "");
+  const preloadRequestIdRef = useRef(0);
+  const swapTimerRef = useRef(null);
+  const activeLayerRef = useRef(null);
+  const outgoingLayerRef = useRef(null);
+  const activeMotionRef = useRef(null);
+  const outgoingMotionRef = useRef(null);
+
+  useEffect(() => {
+    activeImageUrlRef.current = activeImageUrl;
+  }, [activeImageUrl]);
+
+  useEffect(() => {
+    if (!imageUrl) {
+      activeImageUrlRef.current = "";
+      return undefined;
+    }
+
+    if (imageUrl === activeImageUrlRef.current) {
+      return undefined;
+    }
+
+    const commitImageSwap = () => {
+      const previousImageUrl = activeImageUrlRef.current;
+      activeImageUrlRef.current = imageUrl;
+      setOutgoingImageUrl(previousImageUrl && previousImageUrl !== imageUrl ? previousImageUrl : null);
+      setActiveImageUrl(imageUrl);
+    };
+
+    if (typeof Image === "undefined") {
+      queueMicrotask(commitImageSwap);
+      return undefined;
+    }
+
+    const requestId = preloadRequestIdRef.current + 1;
+    preloadRequestIdRef.current = requestId;
+    let disposed = false;
+    const preloader = new Image();
+    preloader.decoding = "async";
+    preloader.referrerPolicy = "no-referrer";
+    preloader.onload = () => {
+      if (disposed || preloadRequestIdRef.current !== requestId) return;
+      commitImageSwap();
+    };
+    preloader.onerror = () => {
+      if (disposed || preloadRequestIdRef.current !== requestId) return;
+      if (typeof onError === "function") {
+        onError(imageUrl);
+      }
+    };
+    preloader.src = imageUrl;
+
+    return () => {
+      disposed = true;
+      preloader.onload = null;
+      preloader.onerror = null;
+    };
+  }, [imageUrl, onError]);
+
+  useEffect(() => {
+    if (!outgoingImageUrl) return undefined;
+    if (swapTimerRef.current) {
+      clearTimeout(swapTimerRef.current);
+    }
+    swapTimerRef.current = setTimeout(() => {
+      setOutgoingImageUrl((currentImageUrl) => (
+        currentImageUrl === outgoingImageUrl ? null : currentImageUrl
+      ));
+      swapTimerRef.current = null;
+    }, INSPECTOR_ART_SWAP_MS + 60);
+
+    return () => {
+      if (swapTimerRef.current) {
+        clearTimeout(swapTimerRef.current);
+        swapTimerRef.current = null;
+      }
+    };
+  }, [outgoingImageUrl]);
+
+  useEffect(() => () => {
+    if (swapTimerRef.current) {
+      clearTimeout(swapTimerRef.current);
+      swapTimerRef.current = null;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    const node = activeLayerRef.current;
+    if (!node) return undefined;
+
+    cancelMotion(activeMotionRef.current);
+    if (!outgoingImageUrl) {
+      node.style.opacity = "1";
+      node.style.transform = "translate3d(0,0,0) scale(1)";
+      return undefined;
+    }
+
+    activeMotionRef.current = animate(node, {
+      opacity: [0, 1],
+      scale: [fullArt ? 1.012 : 1.028, 1],
+      duration: INSPECTOR_ART_SWAP_MS,
+      ease: uiSpring({ duration: INSPECTOR_ART_SWAP_MS, bounce: 0.04 }),
+    });
+
+    return () => {
+      cancelMotion(activeMotionRef.current);
+      activeMotionRef.current = null;
+    };
+  }, [activeImageUrl, fullArt, outgoingImageUrl]);
+
+  useLayoutEffect(() => {
+    const node = outgoingLayerRef.current;
+    if (!node || !outgoingImageUrl) return undefined;
+
+    cancelMotion(outgoingMotionRef.current);
+    outgoingMotionRef.current = animate(node, {
+      opacity: [1, 0],
+      scale: [1, fullArt ? 1.02 : 1.036],
+      duration: INSPECTOR_ART_SWAP_MS,
+      ease: "out(3)",
+    });
+
+    return () => {
+      cancelMotion(outgoingMotionRef.current);
+      outgoingMotionRef.current = null;
+    };
+  }, [fullArt, outgoingImageUrl]);
+
+  if (!activeImageUrl && !outgoingImageUrl) return null;
+
+  const renderImageLayer = (src, ref, layerClassName) => {
+    if (!src) return null;
+
+    if (fullArt) {
+      return (
+        <div ref={ref} className={cn("absolute inset-[14px] flex items-center justify-center", layerClassName)}>
+          <img
+            src={src}
+            alt={objectName || "Card art"}
+            className="h-full w-full object-contain drop-shadow-[0_22px_24px_rgba(0,0,0,0.4)]"
+            loading="eager"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => {
+              if (typeof onError === "function") {
+                onError(src);
+              }
+            }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div ref={ref} className={cn("hover-art-media absolute inset-0", layerClassName)}>
+        <img
+          src={src}
+          alt={objectName || "Card art"}
+          className="hover-art-pan h-full w-full object-cover"
+          loading="eager"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => {
+            if (typeof onError === "function") {
+              onError(src);
+            }
+          }}
+        />
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {renderImageLayer(outgoingImageUrl, outgoingLayerRef, "z-0 pointer-events-none")}
+      {renderImageLayer(activeImageUrl, activeLayerRef, "z-[1] pointer-events-none")}
+    </>
+  );
+}
+
 export default function HoverArtOverlay({
   objectId,
   suppressStableId = null,
   stackTimelineHeight = 0,
   compact = false,
+  displayMode = "inspector",
   onProtectedTopChange = null,
   onOracleTextHeightChange = null,
   onPreferredWidthChange = null,
@@ -204,6 +395,7 @@ export default function HoverArtOverlay({
     () => (state?.stack_objects || []).find((entry) => String(entry.id) === String(objectIdNum)),
     [state?.stack_objects, objectIdNum]
   );
+  const isFullArtMode = displayMode === "full-art";
 
   const objectName = details?.name
     || (Number.isFinite(objectIdNum) ? objectNameById.get(objectIdNum) : null)
@@ -561,23 +753,82 @@ export default function HoverArtOverlay({
 
   if (!imageUrl || imageErrored || suppressObject) return null;
 
+  if (isFullArtMode) {
+    return (
+      <div
+        className="hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-hidden pointer-events-auto"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(92%_92%_at_50%_14%,rgba(80,145,232,0.32),rgba(8,13,20,0)_62%),linear-gradient(180deg,rgba(4,8,14,0.96),rgba(5,9,14,0.98))]" />
+        <div className="absolute inset-[10px] overflow-hidden rounded-[18px] border border-[#5fa8ff]/35 bg-[rgba(4,8,14,0.92)] shadow-[0_0_0_1px_rgba(95,168,255,0.12),0_0_28px_rgba(68,149,246,0.2),0_28px_52px_rgba(0,0,0,0.48)]">
+          <div className="absolute inset-0 bg-[radial-gradient(78%_62%_at_50%_24%,rgba(98,170,255,0.14),rgba(6,10,16,0)_62%)]" />
+          <div className="absolute inset-[10px] rounded-[14px] border border-white/6 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))]" />
+          <InspectorArtImageLayers
+            imageUrl={imageUrl}
+            objectName={objectName}
+            fullArt
+            onError={setFailedImageUrl}
+          />
+        </div>
+        <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-2">
+          {objectName && (
+            <div
+              className="max-w-[72%] rounded-full border border-[#6eb4ff]/38 bg-[rgba(7,14,24,0.8)] px-3 py-1.5 text-[13px] font-extrabold leading-none tracking-[0.08em] text-[#edf6ff] shadow-[0_0_18px_rgba(58,140,245,0.18)] backdrop-blur-[10px]"
+              style={METADATA_TEXT_STYLE}
+            >
+              <span className="inline-flex items-center gap-2">
+                {groupedCardCount > 1 && (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-[#f5d08b]/70 bg-[rgba(0,0,0,0.45)] px-1 text-[11px] font-bold leading-none tracking-wide text-[#f5d08b]">
+                    x{groupedCardCount}
+                  </span>
+                )}
+                <span className="truncate">{objectName}</span>
+              </span>
+            </div>
+          )}
+          {(manaCost || statsText) && (
+            <div className="flex flex-col items-end gap-1">
+              {manaCost && (
+                <div className="rounded-full border border-[#6eb4ff]/28 bg-[rgba(7,14,24,0.78)] px-2.5 py-1 shadow-[0_0_16px_rgba(58,140,245,0.16)] backdrop-blur-[10px]">
+                  <ManaCostIcons cost={manaCost} size={16} />
+                </div>
+              )}
+              {statsText && (
+                <div
+                  className="rounded-full border border-[#f5d08b]/34 bg-[rgba(7,14,24,0.78)] px-2.5 py-1 text-[14px] font-extrabold leading-none tracking-[0.08em] text-[#f8d98e] shadow-[0_0_16px_rgba(245,208,139,0.12)] backdrop-blur-[10px]"
+                  style={METADATA_TEXT_STYLE}
+                >
+                  {statsText}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {metadataText && (
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex justify-end">
+            <div
+              className="max-w-[84%] rounded-full border border-[#6eb4ff]/24 bg-[rgba(7,14,24,0.76)] px-3 py-1.5 text-right text-[12px] font-semibold leading-tight text-[#d3e8ff] shadow-[0_0_18px_rgba(58,140,245,0.14)] backdrop-blur-[10px]"
+              style={METADATA_TEXT_STYLE}
+            >
+              {metadataText}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
-      key={imageUrl}
       className={cn(
         "hover-art-stage hover-art-drop-in absolute inset-0 z-30 overflow-hidden",
         compact ? "pointer-events-auto" : "pointer-events-none"
       )}
     >
-      <div className="hover-art-slice-in hover-art-media absolute inset-0">
-        <img
-          key={imageUrl}
-          src={imageUrl}
-          alt={objectName || "Card art"}
-          className="hover-art-pan h-full w-full object-cover"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={() => setFailedImageUrl(imageUrl)}
+      <div className="hover-art-slice-in absolute inset-0">
+        <InspectorArtImageLayers
+          imageUrl={imageUrl}
+          objectName={objectName}
+          onError={setFailedImageUrl}
         />
       </div>
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.16)_48%,rgba(0,0,0,0.3)_100%)]" />

@@ -4,6 +4,8 @@ import { useHover } from "@/context/HoverContext";
 import { useDragActions } from "@/context/DragContext";
 import useNewCards from "@/hooks/useNewCards";
 import GameCard from "@/components/cards/GameCard";
+import { stagger } from "@/lib/motion/anime";
+import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 
 /** Map card_types array to a glow kind for hand display. */
 function handGlowFromTypes(cardTypes) {
@@ -106,7 +108,11 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
   const hoverClearTimerRef = useRef(null);
-  const handCards = (player?.can_view_hand && player?.hand_cards) || [];
+  const handListRef = useRef(null);
+  const handCards = useMemo(
+    () => (player?.can_view_hand && player?.hand_cards) || [],
+    [player?.can_view_hand, player?.hand_cards]
+  );
   const handCardIds = handCards.map((c) => c.id);
   const { newIds, bumpedIds } = useNewCards(handCardIds);
 
@@ -137,6 +143,22 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
     }
     return cards;
   }, [extraPlayable]);
+  const handLayoutSignature = useMemo(
+    () => [
+      handCards.map((card) => card.id).join("|"),
+      extraCards.map((card) => `extra-${card.id}`).join("|"),
+    ].join("::"),
+    [extraCards, handCards]
+  );
+
+  useLayoutReflow(handListRef, handLayoutSignature, {
+    children: ".game-card",
+    delay: stagger(24),
+    duration: 360,
+    bounce: 0.14,
+    enterFrom: { opacity: 0, x: 22, scale: 0.95 },
+    leaveTo: { opacity: 0, x: -20, scale: 0.94 },
+  });
 
   const handleCardClick = (_e, card) => {
     onInspect?.(card.id);
@@ -249,10 +271,10 @@ export default function HandZone({ player, selectedObjectId, onInspect }) {
 
     return (
       <section
-        className="bg-[#10161f] px-2 pt-1 pb-0.5 h-full min-h-0 overflow-hidden"
+        className="hand-zone-surface w-max max-w-full bg-transparent px-2 py-1 h-full min-h-0 overflow-hidden"
       >
-        <div className="min-h-0 h-full -mx-2 px-2 overflow-x-auto overflow-y-hidden pb-0.5">
-          <div className="flex gap-1.5 flex-nowrap items-center h-full w-max pl-1 pr-2">
+        <div className="hand-zone-scroll min-h-0 h-full -mx-2 px-2 overflow-x-auto overflow-y-hidden pb-0.5">
+          <div ref={handListRef} className="hand-zone-row flex gap-1.5 flex-nowrap items-start h-full w-max pl-1 pr-2">
             {/* Regular hand cards */}
             {handCards.map((card, i) => {
               const plays = handPlayable.get(Number(card.id)) || [];

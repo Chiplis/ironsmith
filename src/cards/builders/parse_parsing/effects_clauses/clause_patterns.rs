@@ -717,7 +717,7 @@ pub(crate) fn parse_can_attack_as_though_no_defender_clause(
 
     Ok(Some(EffectAst::GrantAbilitiesToTarget {
         target,
-        abilities: vec![StaticAbility::can_attack_as_though_no_defender()],
+        abilities: vec![StaticAbility::can_attack_as_though_no_defender().into()],
         duration: Until::EndOfTurn,
     }))
 }
@@ -769,9 +769,9 @@ pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
 
     Ok(Some(EffectAst::GrantAbilitiesToTarget {
         target,
-        abilities: vec![StaticAbility::can_block_additional_creature_each_combat(
-            additional,
-        )],
+        abilities: vec![
+            StaticAbility::can_block_additional_creature_each_combat(additional).into(),
+        ],
         duration: Until::EndOfTurn,
     }))
 }

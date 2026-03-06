@@ -156,14 +156,16 @@ impl PendingCast {
 pub enum ActivationStage {
     /// Need to choose X value for abilities with X in cost.
     ChoosingX,
-    /// Need to choose sacrifice targets.
-    ChoosingSacrifice,
-    /// Need to choose cards in hand for discard/exile-from-hand costs.
-    ChoosingCardCost,
     /// Need to announce hybrid/Phyrexian mana payment choices (per MTG rule 601.2b via 602.2b).
     AnnouncingCost,
     /// Need to choose ability targets.
     ChoosingTargets,
+    /// Need to pay deferred non-mana costs in activation-cost order.
+    ProcessingCosts,
+    /// Need to choose sacrifice targets.
+    ChoosingSacrifice,
+    /// Need to choose cards in hand for discard/exile-from-hand costs.
+    ChoosingCardCost,
     /// Need to pay mana costs (player can activate mana abilities).
     PayingMana,
     /// Ready to finalize (costs paid, ability goes on stack).
@@ -198,6 +200,20 @@ pub enum ActivationCardCostChoice {
         filter: ObjectFilter,
         description: String,
     },
+}
+
+/// Ordered activation-cost step that still needs to be paid after targets are chosen.
+#[derive(Debug, Clone)]
+pub enum ActivationCostStep {
+    /// A cost that can be paid directly through the cost payer.
+    Cost(crate::costs::Cost),
+    /// A sacrifice choice that must be surfaced through SelectObjects.
+    Sacrifice {
+        filter: ObjectFilter,
+        description: String,
+    },
+    /// A card/object choice that must be surfaced through SelectObjects.
+    CardChoice(ActivationCardCostChoice),
 }
 
 /// Expand a cost processing mode into pending card/object-choice steps.
@@ -262,6 +278,80 @@ pub(crate) fn append_card_choice_costs_from_processing_mode(
     out.len() > before_len
 }
 
+/// Expand an activation cost into ordered post-target cost-payment steps.
+pub(crate) fn append_activation_cost_steps_from_cost(
+    cost: &crate::costs::Cost,
+    out: &mut Vec<ActivationCostStep>,
+) {
+    use crate::costs::CostProcessingMode;
+
+    let mode = cost.processing_mode();
+    let description = mode.display();
+    match mode {
+        CostProcessingMode::Immediate | CostProcessingMode::InlineWithTriggers => {
+            out.push(ActivationCostStep::Cost(cost.clone()));
+        }
+        CostProcessingMode::SacrificeTarget { filter } => {
+            out.push(ActivationCostStep::Sacrifice {
+                filter,
+                description,
+            });
+        }
+        CostProcessingMode::DiscardCards { count, card_types } => {
+            for _ in 0..count {
+                out.push(ActivationCostStep::CardChoice(
+                    ActivationCardCostChoice::Discard {
+                        card_types: card_types.clone(),
+                        description: description.clone(),
+                    },
+                ));
+            }
+        }
+        CostProcessingMode::ExileFromHand {
+            count,
+            color_filter,
+        } => {
+            for _ in 0..count {
+                out.push(ActivationCostStep::CardChoice(
+                    ActivationCardCostChoice::ExileFromHand {
+                        color_filter,
+                        description: description.clone(),
+                    },
+                ));
+            }
+        }
+        CostProcessingMode::ExileFromGraveyard { count, card_type } => {
+            for _ in 0..count {
+                out.push(ActivationCostStep::CardChoice(
+                    ActivationCardCostChoice::ExileFromGraveyard {
+                        card_type,
+                        description: description.clone(),
+                    },
+                ));
+            }
+        }
+        CostProcessingMode::RevealFromHand { count, card_type } => {
+            for _ in 0..count {
+                out.push(ActivationCostStep::CardChoice(
+                    ActivationCardCostChoice::RevealFromHand {
+                        card_type,
+                        description: description.clone(),
+                    },
+                ));
+            }
+        }
+        CostProcessingMode::ReturnToHandTarget { filter } => {
+            out.push(ActivationCostStep::CardChoice(
+                ActivationCardCostChoice::ReturnToHand {
+                    filter,
+                    description,
+                },
+            ));
+        }
+        CostProcessingMode::ManaPayment { .. } => {}
+    }
+}
+
 /// An activated ability being activated that needs decisions.
 #[derive(Debug, Clone)]
 pub struct PendingActivation {
@@ -291,10 +381,8 @@ pub struct PendingActivation {
     /// Remaining mana pips to pay (pip-by-pip payment flow).
     /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
     pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
-    /// Remaining sacrifice costs to pay: (filter, description).
-    pub remaining_sacrifice_costs: Vec<(ObjectFilter, String)>,
-    /// Remaining card-in-hand choice costs to pay.
-    pub remaining_card_choice_costs: Vec<ActivationCardCostChoice>,
+    /// Remaining non-mana activation costs to pay, in original cost order.
+    pub remaining_cost_steps: Vec<ActivationCostStep>,
     /// Tagged object snapshots captured while paying activation costs.
     ///
     /// This preserves cost-time references such as `sacrifice_cost_0` for
@@ -332,8 +420,7 @@ impl PendingActivation {
         remaining_requirements: Vec<TargetRequirement>,
         mana_cost_to_pay: Option<crate::mana::ManaCost>,
         payment_trace: Vec<CostStep>,
-        remaining_sacrifice_costs: Vec<(ObjectFilter, String)>,
-        remaining_card_choice_costs: Vec<ActivationCardCostChoice>,
+        remaining_cost_steps: Vec<ActivationCostStep>,
         tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
         next_sacrifice_cost_tag_index: usize,
         is_once_per_turn: bool,
@@ -356,8 +443,7 @@ impl PendingActivation {
             payment_trace,
             undo_locked_by_mana: false,
             remaining_mana_pips: Vec::new(),
-            remaining_sacrifice_costs,
-            remaining_card_choice_costs,
+            remaining_cost_steps,
             tagged_objects,
             next_sacrifice_cost_tag_index,
             is_once_per_turn,

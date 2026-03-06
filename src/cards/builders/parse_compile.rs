@@ -2583,6 +2583,29 @@ pub(crate) fn compile_effect(
     })
 }
 
+fn lower_granted_ability_ast(ability: &GrantedAbilityAst) -> Result<StaticAbility, CardTextError> {
+    match ability {
+        GrantedAbilityAst::Static(ability) => Ok(ability.clone()),
+        GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
+            let mut lowered = lower_parsed_ability(ability.clone())?.ability;
+            if lowered.text.is_none() {
+                lowered.text = Some(display.clone());
+            }
+            Ok(StaticAbility::grant_object_ability_for_filter(
+                ObjectFilter::source(),
+                lowered,
+                display.clone(),
+            ))
+        }
+    }
+}
+
+fn lower_granted_abilities_ast(
+    abilities: &[GrantedAbilityAst],
+) -> Result<Vec<StaticAbility>, CardTextError> {
+    abilities.iter().map(lower_granted_ability_ast).collect()
+}
+
 fn compile_effect_inner(
     effect: &EffectAst,
     ctx: &mut CompileContext,
@@ -2872,9 +2895,7 @@ fn effect_compile_route_for(effect: &EffectAst) -> Option<EffectCompileRoute> {
         | EffectAst::GrantAbilitiesChoiceToTarget { .. }
         | EffectAst::Transform { .. }
         | EffectAst::Flip { .. }
-        | EffectAst::GrantAbilityToSource { .. } => {
-            Some(EffectCompileRoute::ContinuousAndModifier)
-        }
+        | EffectAst::GrantAbilityToSource { .. } => Some(EffectCompileRoute::ContinuousAndModifier),
         EffectAst::SearchLibrary { .. }
         | EffectAst::ShuffleGraveyardIntoLibrary { .. }
         | EffectAst::ReorderGraveyard { .. }
@@ -5738,6 +5759,7 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
+            let abilities = lower_granted_abilities_ast(abilities)?;
             if abilities.is_empty() {
                 return Err(CardTextError::InvariantViolation(
                     "normalize_effects_ast should remove GrantAbilitiesAll with no abilities"
@@ -5766,6 +5788,7 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
+            let abilities = lower_granted_abilities_ast(abilities)?;
             if abilities.is_empty() {
                 return Err(CardTextError::InvariantViolation(
                     "normalize_effects_ast should remove RemoveAbilitiesAll with no abilities"
@@ -5794,6 +5817,7 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
+            let abilities = lower_granted_abilities_ast(abilities)?;
             if abilities.is_empty() {
                 return Err(CardTextError::InvariantViolation(
                     "normalize_effects_ast should remove GrantAbilitiesChoiceAll with no abilities"
@@ -5819,6 +5843,7 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
+            let abilities = lower_granted_abilities_ast(abilities)?;
             let Some(first_ability) = abilities.first() else {
                 return Ok(Some(compile_tagged_effect_for_target(
                     target,
@@ -5849,6 +5874,7 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
+            let abilities = lower_granted_abilities_ast(abilities)?;
             let Some(first_ability) = abilities.first() else {
                 return Ok(Some(compile_tagged_effect_for_target(
                     target,
@@ -5879,6 +5905,7 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
+            let abilities = lower_granted_abilities_ast(abilities)?;
             if abilities.is_empty() {
                 return Ok(Some(compile_tagged_effect_for_target(
                     target,
@@ -5918,10 +5945,13 @@ fn try_compile_continuous_and_modifier_effect(
         EffectAst::Flip { target } => {
             compile_tagged_effect_for_target(target, ctx, "flipped", Effect::flip)?
         }
-        EffectAst::GrantAbilityToSource { ability } => (
-            vec![Effect::grant_object_ability_to_source(ability.clone())],
-            Vec::new(),
-        ),
+        EffectAst::GrantAbilityToSource { ability } => {
+            let lowered = lower_parsed_ability(ability.clone())?;
+            (
+                vec![Effect::grant_object_ability_to_source(lowered.ability)],
+                Vec::new(),
+            )
+        }
         _ => return Ok(None),
     };
 

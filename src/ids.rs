@@ -129,6 +129,16 @@ pub fn restore_id_counters(snapshot: IdCountersSnapshot) {
     CARD_ID_COUNTER.store(snapshot.card, Ordering::SeqCst);
 }
 
+/// Reset runtime player/object counters while preserving card definition identity space.
+///
+/// This is used when starting a fresh match so gameplay object IDs are stable across
+/// deterministic replays and synchronized peers, without invalidating any card
+/// definitions that have already been loaded into the registry.
+pub fn reset_runtime_id_counters() {
+    PLAYER_ID_COUNTER.store(0, Ordering::SeqCst);
+    OBJECT_ID_COUNTER.store(1, Ordering::SeqCst);
+}
+
 /// Reset all ID counters to their initial state (for testing).
 /// This should only be used in tests to ensure deterministic behavior.
 #[cfg(test)]

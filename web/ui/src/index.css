@@ -266,6 +266,13 @@
   background: linear-gradient(180deg, rgba(4, 8, 14, 0.08), rgba(4, 8, 14, 0.45));
 }
 
+.game-card.field-card .game-card-shade,
+.battlefield-card-shade {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(8, 12, 18, 0.08) 22%, rgba(6, 10, 16, 0.18) 100%),
+    radial-gradient(68% 54% at 50% 28%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 74%);
+}
+
 .game-card:hover {
   transform: scale(1.04) translateY(-2px);
   z-index: 5;
@@ -281,18 +288,96 @@
   opacity: 0.88;
 }
 
+.game-card.field-card.tapped,
+.game-card.field-card.tapped:hover {
+  opacity: 1;
+}
+
 /* Battlefield cards: remove side blur and keep color inside the card bounds. */
 .game-card.field-card {
   box-shadow:
-    0 9px 16px rgba(0, 0, 0, 0.46),
-    inset 0 0 8px 2px rgba(0, 0, 0, 0.32),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    0 9px 16px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(218, 231, 246, 0.08),
+    inset 0 0 6px 1px rgba(0, 0, 0, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .game-card.field-card .game-card-surface::before,
 .game-card.field-card::before,
 .game-card.field-card::after {
   display: none !important;
+}
+
+.game-card.stack-card {
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(11, 18, 28, 0.98), rgba(8, 13, 20, 0.98));
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px rgba(151, 184, 219, 0.12);
+  transition: border-color 140ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.game-card.stack-card::before,
+.game-card.stack-card::after,
+.game-card.stack-card .game-card-surface::before {
+  display: none !important;
+}
+
+.game-card.stack-card:hover {
+  transform: none;
+  z-index: auto;
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.38),
+    inset 0 0 0 1px rgba(170, 205, 242, 0.18);
+}
+
+.stack-card-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(6, 10, 16, 0.12) 0%, rgba(6, 10, 16, 0.18) 58%, rgba(8, 13, 20, 0.92) 100%),
+    linear-gradient(180deg, rgba(6, 10, 16, 0.08), rgba(6, 10, 16, 0.34));
+}
+
+.stack-card-body {
+  background:
+    linear-gradient(180deg, rgba(8, 13, 20, 0.72), rgba(8, 13, 20, 0.92));
+}
+
+.stack-card-title {
+  font-size: 16px;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.stack-card-effect {
+  display: -webkit-box;
+  overflow: hidden;
+  text-wrap: pretty;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.game-card.hand-card {
+  --aura-glow-radius: 18px;
+  --aura-scale-1-min: 0.96;
+  --aura-scale-1-max: 1.01;
+  --aura-scale-2-min: 0.95;
+  --aura-scale-2-max: 1.02;
+}
+
+.game-card.hand-card .game-card-surface::before {
+  inset: -12% 6% 3% 6%;
+}
+
+.game-card.hand-card::before {
+  inset: -8px 12px -2px 12px;
+}
+
+.game-card.hand-card::after {
+  inset: -10px 14px -3px 14px;
 }
 
 .game-card.field-card:is(
@@ -626,6 +711,33 @@
 .game-card.playable {
   --aura-ring-1-strength: 1.08;
   --aura-ring-2-strength: 1.04;
+}
+
+.game-card.hand-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .action-link,
+  .inspected
+) {
+  box-shadow:
+    0 0 6px 1px rgba(var(--glow-rgb), 0.4),
+    0 0 12px 3px rgba(var(--glow-rgb), 0.16),
+    inset 0 0 5px 1px rgba(var(--glow-rgb), 0.18);
 }
 
 .game-card.glow-instant,
@@ -1543,6 +1655,102 @@
   }
 }
 
+.hand-reveal-shell {
+  isolation: isolate;
+  display: inline-flex;
+  align-items: stretch;
+  width: fit-content;
+  max-width: min(100%, calc(100vw - 168px));
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  will-change: height;
+  transition: none;
+}
+
+.hand-reveal-shell[data-open="true"] {
+  background: transparent;
+}
+
+.hand-reveal-body {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  transform: translateY(14px);
+  will-change: transform;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.hand-reveal-shell[data-open="true"] .hand-reveal-body {
+  transform: translateY(0);
+}
+
+.hand-reveal-shell[data-open="false"] .game-card.hand-card::before {
+  top: -16px;
+}
+
+.hand-reveal-shell[data-open="false"] .game-card.hand-card::after {
+  top: -18px;
+}
+
+.hand-card-header {
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, rgba(10, 16, 25, 0.9) 0%, rgba(10, 16, 25, 0.72) 78%, rgba(10, 16, 25, 0.34) 100%);
+}
+
+.hand-card-title {
+  font-size: 11px;
+  line-height: 1.05;
+  color: #e2eefc;
+}
+
+.hand-card-peek-meta {
+  max-height: 16px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 140ms ease, transform 140ms ease, max-height 140ms ease;
+}
+
+.hand-reveal-shell[data-open="true"] .hand-card-peek-meta {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-3px);
+  overflow: hidden;
+}
+
+.hand-reveal-shell .hand-zone-surface {
+  background: transparent;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.hand-reveal-shell .hand-zone-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(112, 150, 190, 0.4) transparent;
+}
+
+.hand-reveal-shell .hand-zone-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.hand-reveal-shell .hand-zone-scroll::-webkit-scrollbar-thumb {
+  background: rgba(112, 150, 190, 0.4);
+  border-radius: 999px;
+}
+
+.hand-reveal-shell[data-open="true"] .hand-zone-surface {
+  padding-bottom: 0;
+}
+
+.hand-reveal-shell[data-open="true"] .hand-zone-scroll {
+  padding-bottom: 0;
+}
+
+.hand-reveal-shell[data-open="true"] .hand-zone-row {
+  align-items: flex-end;
+}
+
 .inspector-rule-highlight {
   border-top-color: rgba(242, 206, 138, 0.48);
   border-bottom-color: rgba(242, 206, 138, 0.48);
@@ -1611,9 +1819,78 @@
   display: none;
 }
 
+.hand-inspector-inline-shell {
+  --hand-inspector-peek-height: 136px;
+  isolation: isolate;
+  border-radius: 14px 14px 8px 8px;
+  transform-origin: bottom center;
+  clip-path: inset(calc(100% - var(--hand-inspector-peek-height)) 0 0 0 round 14px 14px 8px 8px);
+  opacity: 0;
+  transform: perspective(1400px) rotateX(76deg) translate3d(0, 28px, 0) scale(0.92);
+  filter: brightness(0.82) saturate(0.86);
+  transition:
+    clip-path 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 320ms ease,
+    opacity 220ms ease;
+  will-change: transform, clip-path, filter;
+}
+
+.hand-inspector-inline-shell.is-open {
+  clip-path: inset(0 0 0 0 round 14px);
+  opacity: 1;
+  transform: perspective(1400px) rotateX(0deg) translate3d(0, 0, 0) scale(1);
+  filter: brightness(1) saturate(1);
+}
+
+.hand-inspector-inline-shell.is-closed {
+  clip-path: inset(calc(100% - var(--hand-inspector-peek-height)) 0 0 0 round 14px 14px 8px 8px);
+  opacity: 0;
+  transform: perspective(1400px) rotateX(76deg) translate3d(0, 28px, 0) scale(0.92);
+  filter: brightness(0.82) saturate(0.86);
+}
+
+.hand-inspector-inline-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 16%, rgba(255, 255, 255, 0) 28%),
+    linear-gradient(180deg, rgba(6, 10, 16, 0) 0%, rgba(6, 10, 16, 0.12) 68%, rgba(6, 10, 16, 0.44) 100%);
+  transition: opacity 220ms ease;
+}
+
+.hand-inspector-inline-shell::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--hand-inspector-peek-height) - 1px);
+  z-index: 3;
+  height: 22px;
+  pointer-events: none;
+  border-top: 1px solid rgba(222, 233, 245, 0.22);
+  background: linear-gradient(180deg, rgba(194, 212, 235, 0.12) 0%, rgba(6, 10, 16, 0) 100%);
+  box-shadow:
+    0 -8px 16px rgba(0, 0, 0, 0.24),
+    inset 0 8px 14px rgba(255, 255, 255, 0.05);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.hand-inspector-inline-shell.is-open::before,
+.hand-inspector-inline-shell.is-open::after {
+  opacity: 1;
+}
+
 /* Hover inspector art reveal */
 .hover-art-stage {
   isolation: isolate;
+  background:
+    radial-gradient(78% 58% at 50% 18%, rgba(88, 148, 218, 0.18), rgba(8, 13, 20, 0) 68%),
+    linear-gradient(180deg, rgba(11, 17, 25, 0.96), rgba(6, 10, 16, 0.98));
 }
 
 .hover-art-drop-in {
@@ -1741,6 +2018,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hand-inspector-inline-shell,
   .hover-art-drop-in,
   .hover-art-slice-in,
   .hover-art-pan,
@@ -1749,6 +2027,10 @@
     animation: none !important;
     transform: none !important;
     filter: none !important;
+  }
+
+  .hand-inspector-inline-shell {
+    clip-path: inset(0 0 0 0 round 14px);
   }
 }
 

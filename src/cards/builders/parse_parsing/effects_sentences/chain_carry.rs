@@ -104,10 +104,18 @@ pub(crate) fn parse_or_action_clause(tokens: &[Token]) -> Result<Option<EffectAs
 pub(crate) fn parse_effect_chain_with_sentence_primitives(
     tokens: &[Token],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if let Some(effects) = run_sentence_primitives(tokens, PRE_CONDITIONAL_SENTENCE_PRIMITIVES)? {
+    if let Some(effects) = run_sentence_primitives(
+        tokens,
+        PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
+        &PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+    )? {
         return Ok(effects);
     }
-    if let Some(effects) = run_sentence_primitives(tokens, POST_CONDITIONAL_SENTENCE_PRIMITIVES)? {
+    if let Some(effects) = run_sentence_primitives(
+        tokens,
+        POST_CONDITIONAL_SENTENCE_PRIMITIVES,
+        &POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+    )? {
         return Ok(effects);
     }
     parse_effect_chain_inner(tokens)
@@ -1613,7 +1621,10 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
     } else {
         parse_target_phrase(&subject_tokens)?
     };
-    let abilities = vec![StaticAbility::must_attack(), StaticAbility::must_block()];
+    let abilities = vec![
+        StaticAbility::must_attack().into(),
+        StaticAbility::must_block().into(),
+    ];
 
     if subject_tokens.is_empty() || starts_with_target_indicator(&subject_tokens) {
         return Ok(Some(EffectAst::GrantAbilitiesToTarget {
@@ -1662,7 +1673,7 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
     } else {
         parse_target_phrase(&subject_tokens)?
     };
-    let ability = StaticAbility::must_attack();
+    let ability: GrantedAbilityAst = StaticAbility::must_attack().into();
 
     if subject_tokens.is_empty() || starts_with_target_indicator(&subject_tokens) {
         return Ok(Some(EffectAst::GrantAbilitiesToTarget {
@@ -1759,7 +1770,7 @@ pub(crate) fn parse_must_block_if_able_clause(
             return Ok(None);
         }
         let target = parse_target_phrase(&subject_tokens)?;
-        let ability = StaticAbility::must_block();
+        let ability: GrantedAbilityAst = StaticAbility::must_block().into();
 
         if starts_with_target_indicator(&subject_tokens) {
             return Ok(Some(EffectAst::GrantAbilitiesToTarget {
@@ -1919,20 +1930,17 @@ pub(crate) fn parse_until_duration_triggered_clause(
     };
 
     let trigger_text = trigger_words.join(" ");
-    let ability = lower_parsed_ability(parsed_triggered_ability(
-        trigger,
-        effects,
-        vec![Zone::Battlefield],
-        Some(trigger_text.clone()),
-        max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
-        None,
-    ))?
-    .ability;
-    let granted = StaticAbility::grant_object_ability_for_filter(
-        ObjectFilter::source(),
-        ability,
-        trigger_text,
-    );
+    let granted = GrantedAbilityAst::ParsedObjectAbility {
+        ability: parsed_triggered_ability(
+            trigger,
+            effects,
+            vec![Zone::Battlefield],
+            Some(trigger_text.clone()),
+            max_triggers_per_turn.map(crate::ConditionExpr::MaxTimesEachTurn),
+            None,
+        ),
+        display: trigger_text,
+    };
 
     Ok(Some(EffectAst::GrantAbilitiesToTarget {
         target: TargetAst::Source(span_from_tokens(tokens)),
