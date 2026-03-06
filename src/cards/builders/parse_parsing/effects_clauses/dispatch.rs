@@ -1,4 +1,22 @@
-use super::*;
+use crate::cards::builders::{
+    CardTextError, EffectAst, IT_TAG, TargetAst, Token, Verb, bind_implicit_player_context,
+    contains_until_end_of_turn, extract_subject_player,
+    find_negation_span, find_verb, has_demonstrative_object_reference,
+    is_mana_replacement_clause_words, is_mana_trigger_additional_clause_words,
+    is_target_player_dealt_damage_by_this_turn_subject, parse_card_type, parse_color,
+    parse_effect_chain_with_sentence_primitives, parse_effect_with_verb,
+    parse_for_each_object_subject, parse_get_for_each_count_value,
+    parse_get_modifier_values_with_tail, parse_has_base_power_clause,
+    parse_has_base_power_toughness_clause, parse_leading_player_may, parse_object_filter,
+    parse_pt_modifier, parse_pt_modifier_values, parse_put_counters,
+    parse_restriction_duration, parse_simple_gain_ability_clause,
+    parse_simple_lose_ability_clause, parse_subject, parse_subtype_word,
+    parse_target_phrase, parse_target_player_choose_objects_clause,
+    parse_you_choose_objects_clause, parse_value, parser_trace, parser_trace_stack,
+    remove_first_word, remove_through_first_word, run_clause_primitives, span_from_tokens,
+    starts_with_until_end_of_turn, trim_commas, words,
+};
+use crate::{ChooseSpec, ObjectFilter, TagKey, Until, Value};
 
 pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
