@@ -60,8 +60,9 @@ fn strip_cfg_test_modules(content: &str) -> String {
 
     while idx < lines.len() {
         let trimmed = lines[idx].trim();
-        let inline_cfg_test_mod =
-            trimmed.starts_with("#[cfg(test)]") && trimmed.contains("mod ") && trimmed.contains('{');
+        let inline_cfg_test_mod = trimmed.starts_with("#[cfg(test)]")
+            && trimmed.contains("mod ")
+            && trimmed.contains('{');
         if inline_cfg_test_mod {
             let mut depth = brace_delta(lines[idx]);
             idx += 1;
@@ -203,6 +204,31 @@ fn parse_modules_do_not_downcast_compiled_effects() {
         violations.is_empty(),
         "compiled-effect downcasts remain in parse modules:\n{}",
         violations.join("\n\n")
+    );
+}
+
+#[test]
+fn ability_lowering_avoids_raw_compile_effect_entrypoints() {
+    let path = builders_dir().join("ability_lowering.rs");
+    let content = stripped_file(&path);
+    let forbidden = [
+        "compile_statement_effects(",
+        "compile_statement_effects_with_imports(",
+        "compile_trigger_effects(",
+        "compile_trigger_effects_with_imports(",
+        "compile_trigger_effects_with_intervening_if(",
+        "compile_trigger_effects_with_intervening_if_imports(",
+    ];
+
+    let hits: Vec<&str> = forbidden
+        .into_iter()
+        .filter(|needle| content.contains(needle))
+        .collect();
+
+    assert!(
+        hits.is_empty(),
+        "ability_lowering.rs still calls raw compile entrypoints:\n{}",
+        hits.join("\n")
     );
 }
 

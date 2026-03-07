@@ -4,8 +4,8 @@ use ironsmith::{
     continuous::Modification,
     effect::Value,
     effects::{
-        continuous::RuntimeModification, ApplyContinuousEffect, ForEachTaggedEffect,
-        HauntExileEffect, ScheduleDelayedTriggerEffect,
+        ApplyContinuousEffect, ForEachTaggedEffect, HauntExileEffect, ScheduleDelayedTriggerEffect,
+        continuous::RuntimeModification,
     },
     ids::CardId,
     static_abilities::StaticAbilityId,
@@ -69,7 +69,9 @@ fn parser_feature_smoke_spell_trigger_line_becomes_delayed_effect() {
         .expect("spell delayed trigger smoke should parse");
 
     assert!(def.abilities.is_empty());
-    let effects = def.spell_effect.expect("spell should lower to spell effects");
+    let effects = def
+        .spell_effect
+        .expect("spell should lower to spell effects");
     assert_eq!(effects.len(), 1);
     let delayed = effects[0]
         .downcast_ref::<ScheduleDelayedTriggerEffect>()
@@ -79,8 +81,7 @@ fn parser_feature_smoke_spell_trigger_line_becomes_delayed_effect() {
 
 #[test]
 fn parser_feature_smoke_channel_remains_explicitly_unsupported() {
-    let text =
-        "Until end of turn, any time you could activate a mana ability, you may pay 1 life. If you do, add {C}.";
+    let text = "Until end of turn, any time you could activate a mana ability, you may pay 1 life. If you do, add {C}.";
     let err = CardDefinitionBuilder::new(CardId::new(), "Channel Smoke")
         .card_types(vec![CardType::Sorcery])
         .parse_text(text)
@@ -100,7 +101,9 @@ fn parser_feature_smoke_take_to_the_streets_merges_citizen_bonus() {
         .parse_text(text)
         .expect("take to the streets smoke should parse");
 
-    let effects = def.spell_effect.expect("take to the streets should lower to spell effects");
+    let effects = def
+        .spell_effect
+        .expect("take to the streets should lower to spell effects");
     let apply = effects[1]
         .downcast_ref::<ApplyContinuousEffect>()
         .expect("citizen rider should lower to a continuous effect");
