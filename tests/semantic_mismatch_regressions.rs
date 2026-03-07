@@ -1346,3 +1346,25 @@ fn regression_semantic_mismatch_blink_dog_phase_out() {
         "phase-out clause should not collapse to target-only selection, got {rendered}"
     );
 }
+
+#[test]
+fn regression_semantic_mismatch_skola_grovedancer_graveyard_ownership() {
+    let rendered = rendered_lines(
+        "Whenever a land card is put into your graveyard from anywhere, you gain 1 life.\n{2}{G}: Mill a card.",
+        "Skola Grovedancer",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("whenever a nontoken land you own is put into a graveyard"),
+        "expected graveyard trigger to remain ownership-based rather than controller-based, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("land you control"),
+        "graveyard trigger should not narrow to lands you control, got {rendered}"
+    );
+    assert!(
+        rendered.contains("{2}{g}: you mill a card"),
+        "expected activated mill ability to remain intact, got {rendered}"
+    );
+}

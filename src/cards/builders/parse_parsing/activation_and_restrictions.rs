@@ -6463,13 +6463,24 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
             let subject_tokens = token_index_for_word_index(tokens, subject_word_len)
                 .map(|idx| &tokens[..idx])
                 .unwrap_or_default();
+            let subject_words = self::words(subject_tokens);
             let mut filter = parse_object_filter(subject_tokens, false).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported card filter in put-into-your-graveyard trigger clause (clause: '{}')",
                     words.join(" ")
                 ))
             })?;
-            filter.controller = Some(PlayerFilter::You);
+            filter.zone = None;
+            filter.controller = None;
+            if filter.owner.is_none() {
+                filter.owner = Some(PlayerFilter::You);
+            }
+            if subject_words
+                .iter()
+                .any(|word| matches!(*word, "card" | "cards"))
+            {
+                filter.nontoken = true;
+            }
             return Ok(TriggerSpec::PutIntoGraveyard(filter));
         }
     }
