@@ -585,6 +585,32 @@ fn regression_semantic_mismatch_tangle_tumbler_token_tap_animation() {
 }
 
 #[test]
+fn regression_semantic_mismatch_telim_tors_edict_owner_or_controller_target() {
+    let rendered = rendered_lines(
+        "Exile target permanent you own or control.\nDraw a card at the beginning of the next turn's upkeep.",
+        "Telim'Tor's Edict",
+        &[CardType::Sorcery],
+    );
+
+    assert!(
+        rendered.contains("target permanent you own"),
+        "expected the owner branch of the exile target to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you control"),
+        "expected the controller branch of the exile target to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("next turn's upkeep"),
+        "expected the delayed draw timing to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("exile target permanent you own. at the beginning"),
+        "the exile target should not collapse to owner-only wording, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_dwarven_thaumaturgist_switch_pt() {
     let rendered = rendered_lines(
         "{T}: Switch target creature's power and toughness until end of turn.",

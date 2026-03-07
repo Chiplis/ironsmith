@@ -2296,6 +2296,73 @@ pub(crate) fn parse_object_filter(
         filter = disjunction;
     }
 
+    let owner_or_controller_player = all_words
+        .windows(4)
+        .find_map(|window| match window {
+            ["you", "own", "or", "control"]
+            | ["you", "owns", "or", "controls"]
+            | ["you", "control", "or", "own"]
+            | ["you", "controls", "or", "owns"] => Some(PlayerFilter::You),
+            ["opponent", "own", "or", "control"]
+            | ["opponent", "owns", "or", "controls"]
+            | ["opponents", "own", "or", "control"]
+            | ["opponents", "owns", "or", "controls"]
+            | ["opponent", "control", "or", "own"]
+            | ["opponent", "controls", "or", "owns"]
+            | ["opponents", "control", "or", "own"]
+            | ["opponents", "controls", "or", "owns"] => Some(PlayerFilter::Opponent),
+            ["they", "own", "or", "control"]
+            | ["they", "owns", "or", "controls"]
+            | ["they", "control", "or", "own"]
+            | ["they", "controls", "or", "owns"] => Some(pronoun_player_filter.clone()),
+            _ => None,
+        })
+        .or_else(|| {
+            all_words.windows(5).find_map(|window| match window {
+                ["your", "team", "own", "or", "control"]
+                | ["your", "team", "owns", "or", "controls"]
+                | ["your", "team", "control", "or", "own"]
+                | ["your", "team", "controls", "or", "owns"] => Some(PlayerFilter::You),
+                ["that", "player", "own", "or", "control"]
+                | ["that", "player", "owns", "or", "controls"]
+                | ["that", "player", "control", "or", "own"]
+                | ["that", "player", "controls", "or", "owns"] => {
+                    Some(PlayerFilter::IteratedPlayer)
+                }
+                ["target", "player", "own", "or", "control"]
+                | ["target", "player", "owns", "or", "controls"]
+                | ["target", "player", "control", "or", "own"]
+                | ["target", "player", "controls", "or", "owns"] => {
+                    Some(PlayerFilter::target_player())
+                }
+                ["target", "opponent", "own", "or", "control"]
+                | ["target", "opponent", "owns", "or", "controls"]
+                | ["target", "opponent", "control", "or", "own"]
+                | ["target", "opponent", "controls", "or", "owns"] => {
+                    Some(PlayerFilter::target_opponent())
+                }
+                _ => None,
+            })
+        });
+    if let Some(player_filter) = owner_or_controller_player
+        && filter.any_of.is_empty()
+    {
+        let mut base = filter.clone();
+        base.any_of.clear();
+        base.owner = None;
+        base.controller = None;
+
+        let mut owner_branch = base.clone();
+        owner_branch.owner = Some(player_filter.clone());
+
+        let mut controller_branch = base;
+        controller_branch.controller = Some(player_filter);
+
+        let mut disjunction = ObjectFilter::default();
+        disjunction.any_of = vec![owner_branch, controller_branch];
+        filter = disjunction;
+    }
+
     let has_constraints = !filter.card_types.is_empty()
         || !filter.all_card_types.is_empty()
         || !filter.supertypes.is_empty()
