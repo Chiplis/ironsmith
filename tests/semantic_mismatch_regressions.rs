@@ -320,6 +320,34 @@ fn regression_semantic_mismatch_errand_rider_then_if_negative_control() {
 }
 
 #[test]
+fn regression_semantic_mismatch_formidable_speaker_if_you_do_search() {
+    let rendered = rendered_lines(
+        "When this creature enters, you may discard a card. If you do, search your library for a creature card, reveal it, put it into your hand, then shuffle.\n{1}, {T}: Untap another target permanent.",
+        "Formidable Speaker",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains(
+            "you may discard a card. if you do, search your library for a creature card"
+        ),
+        "expected the discard and search clauses to stay linked by the if-you-do gate, got {rendered}"
+    );
+    assert!(
+        rendered.contains("put it into your hand") && rendered.contains("shuffle"),
+        "expected the full search tail to remain after the if-you-do gate, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("you may discard a card. search your library"),
+        "search clause should not become unconditional after the optional discard, got {rendered}"
+    );
+    assert!(
+        rendered.contains("untap another target permanent"),
+        "expected the activated ability to remain unchanged, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_spider_ham_animal_may_ham_subtypes() {
     let rendered = rendered_lines(
         "When Spider-Ham enters, create a Food token.\nAnimal May-Ham — Other Spiders, Boars, Bats, Bears, Birds, Cats, Dogs, Frogs, Jackals, Lizards, Mice, Otters, Rabbits, Raccoons, Rats, Squirrels, Turtles, and Wolves you control get +1/+1.",

@@ -4,9 +4,9 @@ use crate::cards::builders::{
     apply_shuffle_subject_graveyard_owner_context, ends_with_until_end_of_turn, find_negation_span,
     find_verb, is_article, maybe_apply_carried_player, maybe_apply_carried_player_with_clause,
     parse_cant_restrictions, parse_effect_chain, parse_effect_chain_with_sentence_primitives,
-    parse_effect_clause, parse_number, parse_object_filter, parse_subject, parse_target_phrase,
-    parse_zone_word, span_from_tokens, split_on_or, starts_with_until_end_of_turn,
-    token_index_for_word_index, tokenize_line, trim_commas, words,
+    parse_effect_clause, parse_if_result_predicate, parse_number, parse_object_filter,
+    parse_subject, parse_target_phrase, parse_zone_word, span_from_tokens, split_on_or,
+    starts_with_until_end_of_turn, token_index_for_word_index, tokenize_line, trim_commas, words,
 };
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
@@ -156,6 +156,18 @@ pub(crate) fn parse_search_library_sentence(
         .is_some_and(|token| token.is_word("may"));
     if sentence_has_direct_may {
         subject_tokens = &subject_tokens[..subject_tokens.len().saturating_sub(1)];
+    }
+    let mut if_result_prefix = None;
+    let trimmed_subject_tokens = trim_commas(subject_tokens);
+    if trimmed_subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if"))
+    {
+        let predicate_tokens = trim_commas(&trimmed_subject_tokens[1..]);
+        if_result_prefix = parse_if_result_predicate(&predicate_tokens);
+        if if_result_prefix.is_some() {
+            subject_tokens = &[];
+        }
     }
     let mut leading_effects = Vec::new();
     if !subject_tokens.is_empty() && find_verb(subject_tokens).is_some() {
@@ -802,6 +814,9 @@ pub(crate) fn parse_search_library_sentence(
         } else {
             EffectAst::MayByPlayer { player, effects }
         }];
+    }
+    if let Some(predicate) = if_result_prefix {
+        effects = vec![EffectAst::IfResult { predicate, effects }];
     }
 
     if !leading_effects.is_empty() {
