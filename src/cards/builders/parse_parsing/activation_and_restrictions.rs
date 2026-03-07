@@ -6716,6 +6716,20 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
         .iter()
         .position(|token| token.is_word("enters") || token.is_word("enter"))
     {
+        if words.ends_with(&["enters", "or", "leaves", "the", "battlefield"])
+            || words.ends_with(&["enter", "or", "leave", "the", "battlefield"])
+        {
+            let subject_tokens = &tokens[..enters_idx];
+            if subject_tokens
+                .first()
+                .is_some_and(|token| token.is_word("this"))
+            {
+                return Ok(TriggerSpec::Either(
+                    Box::new(TriggerSpec::ThisEntersBattlefield),
+                    Box::new(TriggerSpec::ThisLeavesBattlefield),
+                ));
+            }
+        }
         let enters_origin = parse_enters_origin_clause(&tokens[enters_idx + 1..]);
         if enters_idx == 0 {
             return Ok(if let Some((from, owner)) = enters_origin.clone() {

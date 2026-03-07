@@ -1433,3 +1433,21 @@ fn regression_semantic_mismatch_shambleshark_evolve_keyword_rendering() {
         "evolve should render as the keyword, not as the overly broad trigger shell, got {rendered}"
     );
 }
+
+#[test]
+fn regression_semantic_mismatch_brandywine_farmer_enters_or_leaves() {
+    let rendered = rendered_lines(
+        "When this creature enters or leaves the battlefield, create a Food token.",
+        "Brandywine Farmer",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("enters") && rendered.contains("leaves the battlefield"),
+        "expected both halves of the enters-or-leaves trigger to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("when this permanent enters, create a food token"),
+        "trigger should not collapse to only the enters-the-battlefield half, got {rendered}"
+    );
+}
