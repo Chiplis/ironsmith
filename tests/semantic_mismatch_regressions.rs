@@ -468,6 +468,32 @@ fn regression_semantic_mismatch_fear_of_falling_shared_duration() {
 }
 
 #[test]
+fn regression_semantic_mismatch_campfire_commanders_from_public_zones() {
+    let rendered = rendered_lines(
+        "{1}: You gain 2 life.\n{2}, {T}: Add one mana of any color.\n{4}, {T}, Exile this artifact: Choose all commanders you own from the battlefield and from your graveyard, reveal them, and put them into your hand. Then shuffle your graveyard into your library.",
+        "Campfire",
+        &[CardType::Artifact],
+    );
+
+    assert!(
+        rendered.contains("commander"),
+        "expected commander selection to remain in the activated ability, got {rendered}"
+    );
+    assert!(
+        rendered.contains("battlefield") && rendered.contains("graveyard"),
+        "expected both public zones to remain in the commander-return effect, got {rendered}"
+    );
+    assert!(
+        rendered.contains("hand") && rendered.contains("shuffle your graveyard into your library"),
+        "expected hand return plus graveyard shuffle to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("reveal it. return it to its owner's hand"),
+        "campfire should not collapse to returning the exiled source, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_contagious_vorrac_if_not_into_hand_followup() {
     let rendered = rendered_lines(
         "When this creature enters, look at the top four cards of your library. You may reveal a land card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you didn't put a card into your hand this way, proliferate.",

@@ -2330,6 +2330,84 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
     ]))
 }
 
+pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["choose", "all"]) {
+        return Ok(None);
+    }
+    if !(clause_words.contains(&"battlefield")
+        && clause_words.contains(&"graveyard")
+        && clause_words.contains(&"put")
+        && clause_words.contains(&"hand"))
+    {
+        return Ok(None);
+    }
+
+    let Some(from_idx) = clause_words.iter().position(|word| *word == "from") else {
+        return Ok(None);
+    };
+    let Some(and_idx) = clause_words[from_idx..]
+        .windows(2)
+        .position(|window| window == ["and", "from"])
+        .map(|idx| from_idx + idx)
+    else {
+        return Ok(None);
+    };
+    let Some(put_idx) = clause_words.iter().position(|word| *word == "put") else {
+        return Ok(None);
+    };
+    if from_idx <= 2 || and_idx <= from_idx || put_idx <= and_idx {
+        return Ok(None);
+    }
+
+    let Some(from_token_idx) = token_index_for_word_index(tokens, from_idx) else {
+        return Ok(None);
+    };
+    let Some(put_token_idx) = token_index_for_word_index(tokens, put_idx) else {
+        return Ok(None);
+    };
+
+    let filter_tokens = trim_commas(&tokens[2..from_token_idx]);
+    if filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing object filter in choose-all battlefield/graveyard clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let tail_words = words(&tokens[put_token_idx..]);
+    if !tail_words.starts_with(&["put", "them", "into", "your", "hand"])
+        && !tail_words.starts_with(&["put", "them", "in", "your", "hand"])
+    {
+        return Ok(None);
+    }
+
+    let mut base_filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported object filter in choose-all battlefield/graveyard clause (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    base_filter.controller = None;
+
+    let mut battlefield_filter = base_filter.clone();
+    battlefield_filter.zone = Some(Zone::Battlefield);
+
+    let mut graveyard_filter = base_filter;
+    graveyard_filter.zone = Some(Zone::Graveyard);
+
+    Ok(Some(vec![
+        EffectAst::ReturnAllToHand {
+            filter: battlefield_filter,
+        },
+        EffectAst::ReturnAllToHand {
+            filter: graveyard_filter,
+        },
+    ]))
+}
+
 pub(crate) fn return_segment_mentions_zone(tokens: &[Token]) -> bool {
     let segment_words = words(tokens);
     segment_words.contains(&"graveyard")
@@ -3969,6 +4047,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "return-multiple-targets",
         parser: parse_sentence_return_multiple_targets,
+    },
+    SentencePrimitive {
+        name: "choose-all-battlefield-graveyard-to-hand",
+        parser: parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand,
     },
     SentencePrimitive {
         name: "for-each-of-target-objects",
