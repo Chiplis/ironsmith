@@ -528,6 +528,13 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 Condition::TargetMatches(filter)
             }
         }
+        PredicateAst::ItIsSoulbondPaired => {
+            if let Some(tag) = saved_last_tag.clone() {
+                Condition::TaggedObjectIsSoulbondPaired(tag.into())
+            } else {
+                Condition::TargetIsSoulbondPaired
+            }
+        }
         PredicateAst::ItMatches(filter) => {
             let mut resolved = filter.clone();
             resolved.zone = None;
@@ -1452,7 +1459,9 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         } => {
             matches!(
                 predicate,
-                PredicateAst::ItIsLandCard | PredicateAst::ItMatches(_)
+                PredicateAst::ItIsLandCard
+                    | PredicateAst::ItIsSoulbondPaired
+                    | PredicateAst::ItMatches(_)
             ) || matches!(predicate, PredicateAst::TaggedMatches(t, _) if t.as_str() == IT_TAG)
                 || matches!(
                     predicate,
@@ -5559,7 +5568,9 @@ fn try_compile_stack_and_condition_effect(
             let (false_effects, false_choices) = compile_effects(if_false, ctx)?;
             let predicate_references_it = matches!(
                 predicate,
-                PredicateAst::ItIsLandCard | PredicateAst::ItMatches(_)
+                PredicateAst::ItIsLandCard
+                    | PredicateAst::ItIsSoulbondPaired
+                    | PredicateAst::ItMatches(_)
             ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == IT_TAG)
                 || matches!(
                     predicate,

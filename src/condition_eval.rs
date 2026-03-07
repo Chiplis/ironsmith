@@ -216,8 +216,10 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(..) => {}
         Condition::YouControlCommander => {}
         Condition::TaggedObjectMatches(..) => {}
+        Condition::TaggedObjectIsSoulbondPaired(..) => {}
         Condition::EnchantedPermanentAttackedThisTurn => {}
         Condition::TargetMatches(..) => {}
+        Condition::TargetIsSoulbondPaired => {}
         Condition::PlayerTaggedObjectMatches { .. } => {}
         Condition::PlayerOwnsCardNamedInZones { .. } => {}
         Condition::FirstTimeThisTurn => {}
@@ -798,8 +800,10 @@ pub fn evaluate_condition_external(
 
         // Conditions requiring targets / effect execution context are not evaluable here.
         Condition::TaggedObjectMatches(_, _)
+        | Condition::TaggedObjectIsSoulbondPaired(_)
         | Condition::EnchantedPermanentAttackedThisTurn
         | Condition::TargetMatches(_)
+        | Condition::TargetIsSoulbondPaired
         | Condition::PlayerTaggedObjectMatches { .. }
         | Condition::TargetIsTapped
         | Condition::TargetIsAttacking
@@ -1318,8 +1322,10 @@ fn evaluate_condition_simple(
         | Condition::SourceIsSoulbondPaired
         | Condition::XValueAtLeast(_) => false,
         Condition::TaggedObjectMatches(_, _) => false,
+        Condition::TaggedObjectIsSoulbondPaired(_) => false,
         Condition::EnchantedPermanentAttackedThisTurn => false,
         Condition::TargetMatches(_) => false,
+        Condition::TargetIsSoulbondPaired => false,
         Condition::PlayerTaggedObjectMatches { .. } => false,
         // Target-dependent conditions default to false during casting
         Condition::TargetIsTapped
@@ -1864,6 +1870,10 @@ fn evaluate_condition(
             }
             Ok(false)
         }
+        Condition::TaggedObjectIsSoulbondPaired(tag) => {
+            let tagged_id = ctx.get_tagged(tag.as_str()).map(|snapshot| snapshot.object_id);
+            Ok(tagged_id.is_some_and(|id| game.is_soulbond_paired(id)))
+        }
         Condition::EnchantedPermanentAttackedThisTurn => Ok(game
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to)
@@ -1880,6 +1890,13 @@ fn evaluate_condition(
                 return Ok(filter.matches_snapshot(snapshot, &filter_ctx, game));
             }
             Ok(false)
+        }
+        Condition::TargetIsSoulbondPaired => {
+            let target_id = ctx.targets.iter().find_map(|target| match target {
+                crate::executor::ResolvedTarget::Object(id) => Some(*id),
+                _ => None,
+            });
+            Ok(target_id.is_some_and(|id| game.is_soulbond_paired(id)))
         }
         Condition::PlayerTaggedObjectMatches {
             player,

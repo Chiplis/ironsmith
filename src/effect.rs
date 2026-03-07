@@ -1694,11 +1694,17 @@ pub enum Condition {
     /// A tagged object matches a filter.
     TaggedObjectMatches(TagKey, ObjectFilter),
 
+    /// A tagged object is currently paired with another creature via soulbond.
+    TaggedObjectIsSoulbondPaired(TagKey),
+
     /// The permanent enchanted by this source attacked this turn.
     EnchantedPermanentAttackedThisTurn,
 
     /// The first object target matches a filter.
     TargetMatches(ObjectFilter),
+
+    /// The first object target is currently paired with another creature via soulbond.
+    TargetIsSoulbondPaired,
 
     /// A tagged object matching a filter was controlled by the given player.
     PlayerTaggedObjectMatches {

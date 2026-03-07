@@ -1530,6 +1530,17 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
         filtered[0] = "it";
     }
 
+    let is_it_soulbond_paired = matches!(
+        filtered.as_slice(),
+        ["it", "paired", "with", "creature"]
+            | ["it", "paired", "with", "another", "creature"]
+            | ["it", "s", "paired", "with", "creature"]
+            | ["it", "s", "paired", "with", "another", "creature"]
+    );
+    if is_it_soulbond_paired {
+        return Ok(PredicateAst::ItIsSoulbondPaired);
+    }
+
     if filtered.len() >= 2 {
         let tag = if filtered.starts_with(&["equipped", "creature"]) {
             Some("equipped")

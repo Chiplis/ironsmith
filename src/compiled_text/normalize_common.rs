@@ -7202,6 +7202,9 @@ fn describe_condition(condition: &Condition) -> String {
                 format!("the target matches {desc}")
             }
         }
+        Condition::TargetIsSoulbondPaired => {
+            "the target is paired with another creature".to_string()
+        }
         Condition::TaggedObjectMatches(tag, filter) => {
             let desc = filter.description();
             if is_implicit_reference_tag(tag.as_str()) {
@@ -7311,6 +7314,16 @@ fn describe_condition(condition: &Condition) -> String {
 	            }
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
             }
+        Condition::TaggedObjectIsSoulbondPaired(tag) => {
+            if is_implicit_reference_tag(tag.as_str()) {
+                "it's paired with another creature".to_string()
+            } else {
+                format!(
+                    "the tagged object '{}' is paired with another creature",
+                    tag.as_str()
+                )
+            }
+        }
         Condition::PlayerTaggedObjectMatches { player, tag, filter } => {
             if let Some(action) = tag_action_from_name(tag.as_str()) {
                 let object_text = describe_player_tagged_object_text(tag, filter);

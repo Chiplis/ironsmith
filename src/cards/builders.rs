@@ -500,6 +500,7 @@ pub(crate) enum ObjectRefAst {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PredicateAst {
     ItIsLandCard,
+    ItIsSoulbondPaired,
     ItMatches(ObjectFilter),
     TaggedMatches(TagKey, ObjectFilter),
     EnchantedPermanentAttackedThisTurn,

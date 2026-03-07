@@ -1451,3 +1451,30 @@ fn regression_semantic_mismatch_brandywine_farmer_enters_or_leaves() {
         "trigger should not collapse to only the enters-the-battlefield half, got {rendered}"
     );
 }
+
+#[test]
+fn regression_semantic_mismatch_joint_assault_paired_condition() {
+    let text =
+        "Target creature gets +2/+2 until end of turn. If it's paired with a creature, that creature also gets +2/+2 until end of turn.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Joint Assault")
+        .parse_text(text)
+        .expect("Joint Assault should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("if it's paired with another creature")
+            || rendered.contains("if the target is paired with another creature"),
+        "expected soulbond pairing condition to remain explicit, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("if it's a creature card"),
+        "paired-state predicate should not degrade into a creature-card check, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("taggedobjectissoulbondpaired")
+            || debug.contains("targetissoulbondpaired"),
+        "expected lowered predicate to use a soulbond-paired condition, got {debug}"
+    );
+}
