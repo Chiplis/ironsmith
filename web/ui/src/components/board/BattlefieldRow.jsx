@@ -1,9 +1,13 @@
-import { useRef, useLayoutEffect, useEffect, useCallback, useMemo } from "react";
+import { useRef, useLayoutEffect, useEffect, useCallback, useMemo, useState } from "react";
+import { Undo2 } from "lucide-react";
 import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/CombatArrowContext";
 import { useGame } from "@/context/GameContext";
 import useNewCards from "@/hooks/useNewCards";
+import useLayoutReflow from "@/lib/motion/useLayoutReflow";
+import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import GameCard from "@/components/cards/GameCard";
+import { Button } from "@/components/ui/button";
 
 const PAPER_ROW_GROUPS = [
   {
@@ -17,6 +21,8 @@ const PAPER_ROW_GROUPS = [
 ];
 const ALL_PAPER_LANES = PAPER_ROW_GROUPS.flatMap((row) => row.lanes);
 const BOTTOM_BATTLEFIELD_SAFE_INSET = 60;
+const LIVE_DAMAGE_ANIMATION_MS = 300;
+const GHOST_BASE_ANIMATION_MS = 520;
 
 function normalizeBattlefieldLane(lane) {
   const normalized = String(lane || "").toLowerCase();
@@ -70,6 +76,257 @@ function buildPaperBattlefieldLayout(cards, battlefieldSide) {
   };
 }
 
+function stableIdsForCard(card) {
+  if (Array.isArray(card?.member_stable_ids) && card.member_stable_ids.length > 0) {
+    return card.member_stable_ids.map((stableId) => String(stableId));
+  }
+  if (card?.stable_id != null) return [String(card.stable_id)];
+  if (card?.id != null) return [String(card.id)];
+  return [];
+}
+
+function buildAnimationSignature(cards) {
+  return cards
+    .map((card) => [
+      card.id,
+      card.stable_id,
+      card.tapped ? 1 : 0,
+      card.count ?? 1,
+      stableIdsForCard(card).join(","),
+    ].join(":"))
+    .join("|");
+}
+
+function indexCardsByStableId(cards) {
+  const index = new Map();
+  for (const card of cards || []) {
+    for (const stableId of stableIdsForCard(card)) {
+      index.set(String(stableId), card);
+    }
+  }
+  return index;
+}
+
+function groupBattlefieldTransitions(transitions) {
+  const grouped = new Map();
+  for (const transition of transitions || []) {
+    const stableId = transition?.stable_id == null ? null : String(transition.stable_id);
+    if (!stableId) continue;
+    const entry = grouped.get(stableId) || {
+      stableId,
+      damaged: false,
+      leaveKind: null,
+    };
+    if (transition.kind === "damaged") {
+      entry.damaged = true;
+    } else if (
+      transition.kind === "destroyed"
+      || transition.kind === "sacrificed"
+      || transition.kind === "exiled"
+    ) {
+      entry.leaveKind = transition.kind;
+    }
+    grouped.set(stableId, entry);
+  }
+  return grouped;
+}
+
+function cloneLeavingCard(card, stableId) {
+  return {
+    ...card,
+    stable_id: Number(stableId),
+    member_stable_ids: [Number(stableId)],
+    count: 1,
+  };
+}
+
+function resetLiveCardFxVars(node) {
+  if (!node) return;
+  node.style.removeProperty("--card-jolt-x");
+  node.style.removeProperty("--card-jolt-y");
+  node.style.removeProperty("--card-jolt-scale");
+  node.style.removeProperty("--card-flash-brightness");
+  node.style.removeProperty("--card-flash-saturate");
+}
+
+function findCardElementForStableId(row, stableId) {
+  if (!row || stableId == null) return null;
+  const needle = String(stableId);
+  const nodes = row.querySelectorAll(".battlefield-row-card[data-member-stable-ids]");
+  for (const node of nodes) {
+    const stableIds = String(node.dataset.memberStableIds || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (stableIds.includes(needle)) return node;
+  }
+  return null;
+}
+
+function measureLiveCardPositions(row) {
+  const positions = new Map();
+  if (!row) return positions;
+  const rowRect = row.getBoundingClientRect();
+  const nodes = row.querySelectorAll(".battlefield-row-card[data-member-stable-ids]");
+  for (const node of nodes) {
+    const rect = node.getBoundingClientRect();
+    const stableIds = String(node.dataset.memberStableIds || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const position = {
+      left: rect.left - rowRect.left + row.scrollLeft,
+      top: rect.top - rowRect.top + row.scrollTop,
+      width: rect.width,
+      height: rect.height,
+    };
+    for (const stableId of stableIds) {
+      positions.set(stableId, position);
+    }
+  }
+  return positions;
+}
+
+function playLiveDamageAnimation(node, motionStore, stableId) {
+  if (!node || stableId == null) return;
+  const key = String(stableId);
+  cancelMotion(motionStore.get(key));
+  resetLiveCardFxVars(node);
+
+  const motion = createTimeline({ autoplay: true })
+    .add(node, {
+      keyframes: [
+        {
+          "--card-flash-brightness": 1.55,
+          "--card-flash-saturate": 1.45,
+          "--card-jolt-scale": 1.045,
+          duration: 90,
+        },
+        {
+          "--card-flash-brightness": 1,
+          "--card-flash-saturate": 1,
+          "--card-jolt-scale": 1,
+          duration: 210,
+        },
+      ],
+      ease: uiSpring({ duration: LIVE_DAMAGE_ANIMATION_MS, bounce: 0.16 }),
+    })
+    .add(node, {
+      keyframes: [
+        { "--card-jolt-x": "-6px", "--card-jolt-y": "-1px", duration: 54 },
+        { "--card-jolt-x": "5px", "--card-jolt-y": "1px", duration: 64 },
+        { "--card-jolt-x": "-3px", "--card-jolt-y": "0px", duration: 72 },
+        { "--card-jolt-x": "0px", "--card-jolt-y": "0px", duration: 110 },
+      ],
+      ease: "out(3)",
+      onComplete: () => {
+        resetLiveCardFxVars(node);
+        motionStore.delete(key);
+      },
+    }, 0);
+
+  motionStore.set(key, motion);
+}
+
+function BattlefieldGhostCard({ ghost, compact, onDone }) {
+  const shellRef = useRef(null);
+  const motionRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const node = shellRef.current;
+    if (!node) return undefined;
+
+    cancelMotion(motionRef.current);
+    node.style.opacity = "";
+    node.style.transform = "";
+    node.style.filter = "";
+
+    const timeline = createTimeline({ autoplay: true });
+    if (ghost.includeDamage) {
+      timeline.add(node, {
+        keyframes: [
+          { scale: 1.05, filter: "brightness(1.6) saturate(1.45)", duration: 80 },
+          { scale: 1, filter: "brightness(1.12) saturate(1.15)", duration: 100 },
+        ],
+        ease: "out(3)",
+      });
+    }
+
+    if (ghost.kind === "sacrificed") {
+      timeline.add(node, {
+        keyframes: [
+          { translateY: -4, scale: 1.02, duration: 100 },
+          { translateY: 26, scale: 0.62, rotateZ: 7, opacity: 0, duration: ghost.duration },
+        ],
+        ease: uiSpring({ duration: ghost.duration, bounce: 0.08 }),
+      });
+    } else if (ghost.kind === "destroyed") {
+      timeline.add(node, {
+        keyframes: [
+          { scale: 1.07, duration: 85 },
+          {
+            translateY: -16,
+            scale: 0.74,
+            rotateZ: -9,
+            opacity: 0,
+            filter: "brightness(1.7) saturate(0.38) blur(2px)",
+            duration: ghost.duration,
+          },
+        ],
+        ease: "out(4)",
+      });
+    } else {
+      timeline.add(node, {
+        keyframes: [
+          { translateY: -10, scale: 1.03, duration: 95 },
+          {
+            translateY: -32,
+            scale: 0.82,
+            opacity: 0,
+            filter: "brightness(1.9) saturate(0.18) blur(2.2px)",
+            duration: ghost.duration,
+          },
+        ],
+        ease: "out(3)",
+      });
+    }
+
+    motionRef.current = timeline;
+    const timeout = window.setTimeout(() => onDone?.(ghost.key), ghost.totalDuration);
+    return () => {
+      window.clearTimeout(timeout);
+      cancelMotion(motionRef.current);
+      motionRef.current = null;
+    };
+  }, [ghost, onDone]);
+
+  return (
+    <div
+      ref={shellRef}
+      className="pointer-events-none absolute z-[18]"
+      style={{
+        left: `${ghost.left}px`,
+        top: `${ghost.top}px`,
+        width: `${ghost.width}px`,
+        height: `${ghost.height}px`,
+        transformOrigin: "50% 50%",
+      }}
+    >
+      <GameCard
+        card={ghost.card}
+        compact={compact}
+        className="battlefield-ghost-card"
+        style={{
+          width: "100%",
+          minWidth: "100%",
+          height: "100%",
+          minHeight: "100%",
+        }}
+      />
+    </div>
+  );
+}
+
 export default function BattlefieldRow({
   cards = [],
   compact = false,
@@ -83,15 +340,25 @@ export default function BattlefieldRow({
   allowVerticalScroll = false,
 }) {
   const rowRef = useRef(null);
-  const { state } = useGame();
+  const previousCardsRef = useRef(cards);
+  const previousPositionsRef = useRef(new Map());
+  const lastProcessedSnapshotIdRef = useRef(null);
+  const liveDamageMotionsRef = useRef(new Map());
+  const { state, cancelDecision } = useGame();
   const { hoverCard, clearHover, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const { combatMode, combatModeRef, dragArrow, startDragArrow, updateDragArrow, endDragArrow } = useCombatArrows();
+  const [ghosts, setGhosts] = useState([]);
   const isPaperBattlefieldLayout = !compact;
+  const canShowBattlefieldUndo = isPaperBattlefieldLayout && battlefieldSide === "bottom";
   const paperLayout = useMemo(
     () => buildPaperBattlefieldLayout(cards, battlefieldSide),
     [battlefieldSide, cards]
   );
   const displayCards = isPaperBattlefieldLayout ? paperLayout.orderedCards : cards;
+  const layoutAnimationSignature = useMemo(
+    () => buildAnimationSignature(displayCards),
+    [displayCards]
+  );
   const priorityActionObjectIds = useMemo(() => {
     const ids = new Set();
     const decision = state?.decision;
@@ -104,6 +371,11 @@ export default function BattlefieldRow({
     }
     return ids;
   }, [state?.decision, state?.perspective]);
+  const undoTargetStableId = canShowBattlefieldUndo
+    && state?.cancelable
+    && state?.undo_land_stable_id != null
+    ? String(state.undo_land_stable_id)
+    : null;
   const cardIds = useMemo(() => displayCards.map((c) => c.id), [displayCards]);
   const { newIds, bumpedIds } = useNewCards(cardIds);
   const dragRef = useRef(null);
@@ -130,6 +402,9 @@ export default function BattlefieldRow({
     row.style.overflowY = contentHeight > (layout.viewportHeight + 1) ? "auto" : "visible";
     row.style.overflowX = "visible";
   }, [allowVerticalScroll]);
+  const handleGhostDone = useCallback((ghostKey) => {
+    setGhosts((existing) => existing.filter((entry) => entry.key !== ghostKey));
+  }, []);
 
   const fitCards = useCallback(() => {
     const row = rowRef.current;
@@ -302,6 +577,88 @@ export default function BattlefieldRow({
     }
   }, []);
 
+  useLayoutReflow(rowRef, `${paperLayout.signature}|${layoutAnimationSignature}`, {
+    children: ".battlefield-row-card",
+    disabled: !isPaperBattlefieldLayout || displayCards.length === 0,
+    duration: 320,
+    bounce: 0.12,
+    enterFrom: { opacity: 0, y: 14, scale: 0.97 },
+    leaveTo: { opacity: 0, y: -12, scale: 0.94 },
+  });
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const snapshotId = state?.snapshot_id ?? null;
+    if (!row || snapshotId == null || lastProcessedSnapshotIdRef.current === snapshotId) {
+      return;
+    }
+    if (!isPaperBattlefieldLayout) {
+      previousPositionsRef.current = new Map();
+      previousCardsRef.current = displayCards;
+      lastProcessedSnapshotIdRef.current = snapshotId;
+      return;
+    }
+
+    const previousCards = previousCardsRef.current || [];
+    const previousCardsByStableId = indexCardsByStableId(previousCards);
+    const currentCardsByStableId = indexCardsByStableId(displayCards);
+    const transitionGroups = groupBattlefieldTransitions(state?.battlefield_transitions);
+    const ghostsToAdd = [];
+    const offsetsByCardId = new Map();
+
+    for (const transition of transitionGroups.values()) {
+      const stableId = transition.stableId;
+      if (transition.leaveKind) {
+        const previousCard = previousCardsByStableId.get(stableId);
+        const previousPosition = previousPositionsRef.current.get(stableId);
+        if (previousCard && previousPosition) {
+          const offsetIndex = offsetsByCardId.get(previousCard.id) || 0;
+          offsetsByCardId.set(previousCard.id, offsetIndex + 1);
+          ghostsToAdd.push({
+            key: `ghost-${snapshotId}-${stableId}-${transition.leaveKind}`,
+            card: cloneLeavingCard(previousCard, stableId),
+            kind: transition.leaveKind,
+            includeDamage: transition.damaged,
+            duration: GHOST_BASE_ANIMATION_MS,
+            totalDuration: GHOST_BASE_ANIMATION_MS + (transition.damaged ? 180 : 0),
+            left: previousPosition.left + (offsetIndex * 5),
+            top: previousPosition.top - (offsetIndex * 3),
+            width: previousPosition.width,
+            height: previousPosition.height,
+          });
+        }
+        continue;
+      }
+
+      if (!transition.damaged) continue;
+      if (!currentCardsByStableId.has(stableId)) continue;
+      const node = findCardElementForStableId(row, stableId);
+      if (node) {
+        playLiveDamageAnimation(node, liveDamageMotionsRef.current, stableId);
+      }
+    }
+
+    if (ghostsToAdd.length > 0) {
+      setGhosts((existing) => [...existing, ...ghostsToAdd]);
+    }
+
+    previousPositionsRef.current = measureLiveCardPositions(row);
+    previousCardsRef.current = displayCards;
+    lastProcessedSnapshotIdRef.current = snapshotId;
+  }, [
+    displayCards,
+    isPaperBattlefieldLayout,
+    state?.battlefield_transitions,
+    state?.snapshot_id,
+  ]);
+
+  useEffect(() => () => {
+    for (const motion of liveDamageMotionsRef.current.values()) {
+      cancelMotion(motion);
+    }
+    liveDamageMotionsRef.current.clear();
+  }, []);
+
   // Combat drag handlers
   const handleCombatPointerDown = useCallback((e, card) => {
     const cm = combatModeRef.current;
@@ -368,7 +725,7 @@ export default function BattlefieldRow({
   return (
     <div
       ref={rowRef}
-      className="battlefield-row grid gap-1.5 content-start justify-center min-h-0 h-full"
+      className="battlefield-row relative grid gap-1.5 content-start justify-center min-h-0 h-full"
       style={{
         gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 124px) - var(--bf-card-overlap, 0px))))`,
         gridTemplateRows: isPaperBattlefieldLayout
@@ -449,12 +806,17 @@ export default function BattlefieldRow({
         const paperGridPosition = isPaperBattlefieldLayout
           ? paperLayout.gridPositionById.get(String(card.id))
           : null;
+        const showsUndoOverlay = canShowBattlefieldUndo
+          && undoTargetStableId != null
+          && card?.tapped
+          && stableIdsForCard(card).includes(String(undoTargetStableId));
 
         return (
           <GameCard
             key={card.id}
             card={card}
             compact={compact}
+            className="battlefield-row-card"
             isInspected={isInteractable && selectedObjectId === card.id}
             isPlayable={isInteractable}
             glowKind={appliedGlowKind}
@@ -471,6 +833,23 @@ export default function BattlefieldRow({
             onPointerDown={isCombatCandidate ? (e) => handleCombatPointerDown(e, card) : undefined}
             onMouseEnter={() => hoverCard(card.id)}
             onMouseLeave={clearHover}
+            centerOverlay={showsUndoOverlay ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="decision-neon-button decision-neon-button--danger decision-cancel-button h-8 w-8 rounded-none p-0"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  cancelDecision();
+                }}
+                title="Undo"
+                aria-label={`Undo tap of ${card.name || "land"}`}
+              >
+                <Undo2 className="h-4 w-4" />
+              </Button>
+            ) : null}
             style={{
               ...(paperGridPosition
                 ? {
@@ -487,6 +866,14 @@ export default function BattlefieldRow({
           />
         );
       })}
+      {ghosts.map((ghost) => (
+        <BattlefieldGhostCard
+          key={ghost.key}
+          ghost={ghost}
+          compact={compact}
+          onDone={handleGhostDone}
+        />
+      ))}
     </div>
   );
 }

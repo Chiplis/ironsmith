@@ -16,7 +16,7 @@
 use crate::DecisionMaker;
 use crate::events::{Event, EventContext, EventKind};
 use crate::game_event::DamageTarget;
-use crate::game_state::GameState;
+use crate::game_state::{GameState, UiBattlefieldTransitionKind};
 use crate::ids::PlayerId;
 use crate::object::CounterType;
 use crate::replacement::{
@@ -1614,6 +1614,14 @@ pub fn process_destroy(
             match zone_result {
                 EventOutcome::Prevented => EventOutcome::Prevented,
                 EventOutcome::Proceed(final_zone) => {
+                    if final_zone == Zone::Graveyard
+                        && let Some(stable_id) = game.object(permanent).map(|obj| obj.stable_id)
+                    {
+                        game.record_ui_battlefield_transition(
+                            UiBattlefieldTransitionKind::Destroyed,
+                            stable_id,
+                        );
+                    }
                     game.move_object(permanent, final_zone);
                     EventOutcome::Proceed(final_zone)
                 }

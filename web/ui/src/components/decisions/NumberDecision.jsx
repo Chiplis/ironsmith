@@ -97,7 +97,7 @@ export default function NumberDecision({
             variant="ghost"
             size="sm"
             className={cn(
-              "decision-neon-button h-7 rounded-sm px-3 text-[13px] font-semibold uppercase",
+              "decision-neon-button decision-submit-button h-6 rounded-sm px-2 text-[13px] font-semibold uppercase",
               stripLayout ? "w-auto" : "w-full"
             )}
             disabled={!canAct}

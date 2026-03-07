@@ -116,9 +116,13 @@ fn looks_like_reminder_quote(content: &str) -> bool {
         .trim_end_matches('.')
         .to_ascii_lowercase();
     lower.starts_with("{t}, sacrifice this artifact: add one mana of any color")
+        || lower.starts_with("sacrifice this artifact: add one mana of any color")
         || lower.starts_with("sacrifice this token: add {c}")
         || lower.starts_with("sacrifice this creature: add {c}")
+        || lower.starts_with("{2}, {t}, sacrifice this token: you gain 3 life")
+        || lower.starts_with("{2}, {t}, sacrifice this artifact: you gain 3 life")
         || lower.starts_with("{2}, {t}, sacrifice this token: draw a card")
+        || lower.starts_with("{2}, sacrifice this artifact: draw a card")
         || lower.starts_with("{2}, sacrifice this token: you gain 3 life")
         || lower.starts_with("when this token dies")
         || lower.starts_with("when this token leaves the battlefield")
@@ -201,8 +205,47 @@ fn strip_inline_token_reminders(text: &str) -> String {
         " It has \"{T}, Sacrifice this artifact: Add one mana of any color.\"",
         "",
     )
+    .replace(
+        " It has \"Sacrifice this artifact: Add one mana of any color.\"",
+        "",
+    )
     .replace(" It has \"Sacrifice this token: Add {C}.\"", "")
     .replace(" It has \"Sacrifice this creature: Add {C}.\"", "")
+    .replace(
+        " It has \"{2}, {T}, Sacrifice this token: You gain 3 life.\"",
+        "",
+    )
+    .replace(
+        " It has \"{2}, {T}, Sacrifice this artifact: You gain 3 life.\"",
+        "",
+    )
+    .replace(" It has \"{2}, Sacrifice this artifact: Draw a card.\"", "")
+}
+
+pub fn strip_reminder_text_for_comparison(text: &str) -> String {
+    text.lines()
+        .filter_map(|raw_line| {
+            let trimmed = raw_line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            if trimmed.starts_with('(') && trimmed.ends_with(')') {
+                return None;
+            }
+
+            let no_parenthetical = strip_parenthetical(raw_line);
+            let no_inline_reminder = strip_inline_token_reminders(&no_parenthetical);
+            let no_quote_reminder = strip_reminder_like_quotes(&no_inline_reminder);
+            let normalized = normalize_clause_line(&no_quote_reminder);
+
+            if normalized.is_empty() {
+                None
+            } else {
+                Some(normalized)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn strip_not_named_phrase(text: &str) -> String {
@@ -2720,13 +2763,40 @@ pub fn compare_semantics(
 
 #[cfg(test)]
 mod tests {
-    use super::{EmbeddingConfig, compare_semantics_scored, semantic_clauses};
+    use super::{
+        EmbeddingConfig, compare_semantics_scored, semantic_clauses,
+        strip_reminder_text_for_comparison,
+    };
 
     fn strict_embedding() -> Option<EmbeddingConfig> {
         Some(EmbeddingConfig {
             dims: 384,
             mismatch_threshold: 0.99,
         })
+    }
+
+    #[test]
+    fn strip_reminder_text_removes_parenthetical_mana_lines() {
+        let text = "({T}: Add {W} or {B}.)\nThis land enters tapped.";
+        assert_eq!(
+            strip_reminder_text_for_comparison(text),
+            "This land enters tapped."
+        );
+    }
+
+    #[test]
+    fn strip_reminder_text_removes_standard_token_reminder_quotes() {
+        let text = "Create a Treasure token. It has \"{T}, Sacrifice this artifact: Add one mana of any color.\"";
+        assert_eq!(
+            strip_reminder_text_for_comparison(text),
+            "Create a Treasure token."
+        );
+    }
+
+    #[test]
+    fn strip_reminder_text_preserves_semantic_token_abilities() {
+        let text = "Create a Snake token with \"Whenever this creature deals damage to a player, that player gets a poison counter.\"";
+        assert_eq!(strip_reminder_text_for_comparison(text), text);
     }
 
     #[test]

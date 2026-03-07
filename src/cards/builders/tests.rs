@@ -10683,6 +10683,50 @@ fn parse_spells_cost_modifier_keeps_power_qualifier() {
 }
 
 #[test]
+fn parse_spells_cost_modifier_target_clause_does_not_add_spell_type() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Killian Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Spells you cast that target a creature cost {2} less to cast.")
+        .expect("parse target-qualified spell cost reduction");
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.cost_reduction(),
+            _ => None,
+        })
+        .expect("expected CostReduction static ability");
+
+    assert!(
+        reduction.filter.card_types.is_empty(),
+        "target clause should not constrain the spell type, got {:?}",
+        reduction.filter.card_types
+    );
+    assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
+    let target_filter = reduction
+        .filter
+        .targets_object
+        .as_deref()
+        .expect("expected target object filter");
+    assert!(
+        target_filter.card_types.contains(&CardType::Creature),
+        "expected target filter to keep creature qualifier, got {:?}",
+        target_filter.card_types
+    );
+
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("spells you cast that target creature cost {2} less to cast"),
+        "expected rendered text to keep the target clause without adding a spell type, got {joined}"
+    );
+    assert!(
+        !joined.contains("creature spells you cast that target creature"),
+        "target clause should not render as a creature-spell restriction, got {joined}"
+    );
+}
+
+#[test]
 fn parse_spells_cost_modifier_keeps_noncreature_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Glowrider Variant")
         .card_types(vec![CardType::Creature])

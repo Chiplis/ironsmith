@@ -151,7 +151,7 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
           <Button
             variant="ghost"
             size="sm"
-            className="decision-neon-button w-[176px] shrink-0 self-stretch rounded-none px-3 text-[13px] font-bold uppercase"
+            className="decision-neon-button decision-submit-button w-[176px] shrink-0 self-stretch rounded-none px-2 py-1 text-[13px] font-bold uppercase"
             disabled={!canAct}
             onClick={() =>
               dispatch(
@@ -250,7 +250,7 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
         <Button
           variant="ghost"
           size="sm"
-          className="decision-neon-button h-10 w-full rounded-sm px-3 text-[16px] font-bold uppercase"
+          className="decision-neon-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
           disabled={!canAct}
           onClick={() =>
             dispatch(

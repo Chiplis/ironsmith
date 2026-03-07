@@ -27,7 +27,7 @@ pub fn check_and_apply_sbas_with(
     use crate::decisions::make_decision;
     use crate::rules::state_based::{
         apply_legend_rule_choice, apply_state_based_actions_from_actions_with,
-        check_state_based_actions_with_effects, legend_rule_specs_from_actions,
+        check_state_based_actions_with_view, legend_rule_specs_from_actions,
     };
 
     // Refresh continuous state (static ability effects and "can't" effect tracking)
@@ -35,8 +35,10 @@ pub fn check_and_apply_sbas_with(
     game.refresh_continuous_state();
 
     loop {
-        let all_effects = game.all_continuous_effects();
-        let actions = check_state_based_actions_with_effects(game, &all_effects);
+        let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+        let all_effects = view.effects().to_vec();
+        let actions = check_state_based_actions_with_view(game, &view);
+        drop(view);
         if actions.is_empty() {
             break;
         }
@@ -52,9 +54,10 @@ pub fn check_and_apply_sbas_with(
         // Apply the SBAs (legend rule already handled above)
         // Use the decision maker version to allow interactive replacement effect choices
         let applied = if had_legend_decisions {
-            let post_legend_effects = game.all_continuous_effects();
-            let post_legend_actions =
-                check_state_based_actions_with_effects(game, &post_legend_effects);
+            let post_legend_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+            let post_legend_effects = post_legend_view.effects().to_vec();
+            let post_legend_actions = check_state_based_actions_with_view(game, &post_legend_view);
+            drop(post_legend_view);
             apply_state_based_actions_from_actions_with(
                 game,
                 post_legend_actions,

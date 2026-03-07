@@ -293,6 +293,7 @@ export function GameProvider({ children }) {
   const [status, setStatusRaw] = useState({ msg: "Loading WASM...", isError: false });
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
   const [holdRule, setHoldRule] = useState("never");
+  const [confirmEnabled, setConfirmEnabled] = useState(false);
   const [inspectorDebug, setInspectorDebug] = useState(false);
   const [semanticThreshold, setSemanticThresholdRaw] = useState(96);
   const [cardsMeetingThreshold, setCardsMeetingThreshold] = useState(0);
@@ -720,6 +721,8 @@ export function GameProvider({ children }) {
       setAutoPassEnabled,
       holdRule,
       setHoldRule,
+      confirmEnabled,
+      setConfirmEnabled,
       inspectorDebug,
       setInspectorDebug,
       semanticThreshold,
@@ -746,7 +749,7 @@ export function GameProvider({ children }) {
       wasmRegistryTotal,
       status,
       setStatus,
-      dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, inspectorDebug,
+      dispatch, cancelDecision, refresh, autoPassEnabled, holdRule, confirmEnabled, inspectorDebug,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
       logEntries, pushLog,
       multiplayer, canStartHostedMatch, createLobby, joinLobby, leaveLobby, startHostedMatch, updateLobbyDeck,

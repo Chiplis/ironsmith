@@ -109,34 +109,68 @@ function measureInspectorTextWidth(ctx, text = "") {
   return ctx.measureText(normalized).width;
 }
 
-function buildObjectNameMap(state) {
-  const map = new Map();
+function setObjectName(map, key, name, options = {}) {
+  const parsedKey = Number(key);
+  if (!Number.isFinite(parsedKey)) return;
+  if (!name) return;
+  if (options.onlyIfMissing && map.has(parsedKey)) return;
+  map.set(parsedKey, name);
+}
+
+function preferredStackStableId(stackObject) {
+  const stableId = Number(stackObject?.stable_id);
+  if (Number.isFinite(stableId)) return stableId;
+  const sourceStableId = Number(stackObject?.source_stable_id);
+  if (Number.isFinite(sourceStableId)) return sourceStableId;
+  return null;
+}
+
+function stackStableIdCandidates(stackObject) {
+  const candidates = [];
+  const stableId = Number(stackObject?.stable_id);
+  const sourceStableId = Number(stackObject?.source_stable_id);
+  if (Number.isFinite(stableId)) {
+    candidates.push(stableId);
+  }
+  if (Number.isFinite(sourceStableId) && sourceStableId !== stableId) {
+    candidates.push(sourceStableId);
+  }
+  return candidates;
+}
+
+function buildObjectNameMaps(state) {
+  const byId = new Map();
+  const byStableId = new Map();
   const players = state?.players || [];
 
   for (const player of players) {
     for (const card of player?.hand_cards || []) {
-      map.set(Number(card.id), card.name);
+      setObjectName(byId, card.id, card.name);
+      setObjectName(byStableId, card.stable_id, card.name);
     }
     for (const card of player?.graveyard_cards || []) {
-      map.set(Number(card.id), card.name);
+      setObjectName(byId, card.id, card.name);
+      setObjectName(byStableId, card.stable_id, card.name);
     }
     for (const card of player?.exile_cards || []) {
-      map.set(Number(card.id), card.name);
+      setObjectName(byId, card.id, card.name);
+      setObjectName(byStableId, card.stable_id, card.name);
     }
     for (const card of player?.command_cards || []) {
-      map.set(Number(card.id), card.name);
+      setObjectName(byId, card.id, card.name);
+      setObjectName(byStableId, card.stable_id, card.name);
     }
     for (const card of player?.battlefield || []) {
-      const cardId = Number(card.id);
-      if (Number.isFinite(cardId)) {
-        map.set(cardId, card.name);
-      }
+      setObjectName(byId, card.id, card.name);
+      setObjectName(byStableId, card.stable_id, card.name);
       if (Array.isArray(card.member_ids)) {
         for (const memberId of card.member_ids) {
-          const parsed = Number(memberId);
-          if (Number.isFinite(parsed)) {
-            map.set(parsed, card.name);
-          }
+          setObjectName(byId, memberId, card.name);
+        }
+      }
+      if (Array.isArray(card.member_stable_ids)) {
+        for (const memberStableId of card.member_stable_ids) {
+          setObjectName(byStableId, memberStableId, card.name);
         }
       }
     }
@@ -144,14 +178,13 @@ function buildObjectNameMap(state) {
 
   for (const stackObject of state?.stack_objects || []) {
     for (const candidateId of [stackObject.id, stackObject.inspect_object_id]) {
-      const cardId = Number(candidateId);
-      if (Number.isFinite(cardId)) {
-        map.set(cardId, stackObject.name);
-      }
+      setObjectName(byId, candidateId, stackObject.name);
     }
+    setObjectName(byStableId, stackObject.stable_id, stackObject.name, { onlyIfMissing: true });
+    setObjectName(byStableId, stackObject.source_stable_id, stackObject.name, { onlyIfMissing: true });
   }
 
-  return map;
+  return { byId, byStableId };
 }
 
 function parseBattleHealth(details, oracleText) {
@@ -394,7 +427,10 @@ export default function HoverArtOverlay({
   onPreferredInspectorWidthChange = null,
 }) {
   const { state, game, inspectorDebug } = useGame();
-  const objectNameById = useMemo(() => buildObjectNameMap(state), [state]);
+  const { byId: objectNameById, byStableId: objectNameByStableId } = useMemo(
+    () => buildObjectNameMaps(state),
+    [state]
+  );
   const objectIdNum = objectId != null ? Number(objectId) : null;
   const objectIdKey = Number.isFinite(objectIdNum) ? String(objectIdNum) : null;
   const topHeaderRef = useRef(null);
@@ -448,6 +484,18 @@ export default function HoverArtOverlay({
     [state?.stack_objects, objectIdNum]
   );
   const isFullArtMode = displayMode === "full-art";
+  const artStackObject = useMemo(() => {
+    if (hoveredStackObject) return hoveredStackObject;
+    return null;
+  }, [hoveredStackObject]);
+  const artStableId = useMemo(
+    () => preferredStackStableId(artStackObject),
+    [artStackObject]
+  );
+  const stableLinkedObjectName = useMemo(
+    () => (Number.isFinite(artStableId) ? objectNameByStableId.get(artStableId) : null),
+    [artStableId, objectNameByStableId]
+  );
 
   const objectName = details?.name
     || (Number.isFinite(objectIdNum) ? objectNameById.get(objectIdNum) : null)
@@ -491,7 +539,8 @@ export default function HoverArtOverlay({
     if (countersText) parts.push(countersText);
     return parts.length > 0 ? parts.join(" \u00b7 ") : null;
   }, [details, countersText]);
-  const imageUrl = objectName ? scryfallImageUrl(objectName, "art_crop") : "";
+  const artObjectName = stableLinkedObjectName || objectName;
+  const imageUrl = artObjectName ? scryfallImageUrl(artObjectName, "art_crop") : "";
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
   const topStackObject = (state?.stack_objects || [])[0] || null;
   const detailAbilities = Array.isArray(details?.abilities) ? details.abilities : null;
@@ -499,7 +548,7 @@ export default function HoverArtOverlay({
   const topStackId = topStackObject?.inspect_object_id != null
     ? String(topStackObject.inspect_object_id)
     : (topStackObject?.id != null ? String(topStackObject.id) : null);
-  const topStackStableId = topStackObject?.stable_id != null ? String(topStackObject.stable_id) : null;
+  const topStackStableIds = stackStableIdCandidates(topStackObject).map((stableId) => String(stableId));
   const topStackName = topStackObject?.name != null ? String(topStackObject.name) : "";
   const hoveredStackAbilityText = String(hoveredStackObject?.ability_text || "");
   const hoveredStackEffectText = String(hoveredStackObject?.effect_text || "");
@@ -699,12 +748,12 @@ export default function HoverArtOverlay({
   const topStackMatchesInspectorObject = useMemo(() => {
     if (!topStackObject) return false;
     if (objectIdNum != null && topStackId === String(objectIdNum)) return true;
-    if (detailStableId != null && topStackStableId != null) {
-      if (topStackStableId === detailStableId) return true;
+    if (detailStableId != null && topStackStableIds.length > 0) {
+      if (topStackStableIds.includes(detailStableId)) return true;
     }
     if (objectName && topStackName && topStackName === String(objectName)) return true;
     return false;
-  }, [topStackObject, objectIdNum, topStackId, detailStableId, topStackStableId, objectName, topStackName]);
+  }, [topStackObject, objectIdNum, topStackId, detailStableId, topStackStableIds, objectName, topStackName]);
   const highlightedStackObject = useMemo(() => {
     if (hoveredStackObject) return hoveredStackObject;
     if (topStackMatchesInspectorObject) return topStackObject;

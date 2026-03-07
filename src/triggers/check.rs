@@ -120,13 +120,13 @@ pub fn compute_trigger_identity(trigger_ability: &TriggeredAbility) -> TriggerId
     trigger_ability.choices.len().hash(&mut hasher);
     trigger_ability.intervening_if.is_some().hash(&mut hasher);
     for effect in &trigger_ability.effects {
-        format!("{:?}", effect).hash(&mut hasher);
+        let _ = crate::trigger_identity::hash_debug(&mut hasher, effect);
     }
     for choice in &trigger_ability.choices {
-        format!("{:?}", choice).hash(&mut hasher);
+        let _ = crate::trigger_identity::hash_debug(&mut hasher, choice);
     }
     if let Some(condition) = &trigger_ability.intervening_if {
-        format!("{:?}", condition).hash(&mut hasher);
+        let _ = crate::trigger_identity::hash_debug(&mut hasher, condition);
     }
     TriggerIdentity(hasher.finish())
 }
@@ -141,7 +141,7 @@ pub fn compute_delayed_trigger_identity(delayed: &DelayedTrigger) -> TriggerIden
     delayed.expires_at_turn.hash(&mut hasher);
     delayed.controller.hash(&mut hasher);
     for effect in &delayed.effects {
-        format!("{:?}", effect).hash(&mut hasher);
+        let _ = crate::trigger_identity::hash_debug(&mut hasher, effect);
     }
     TriggerIdentity(hasher.finish())
 }
@@ -151,12 +151,21 @@ fn battlefield_has_static_ability_with_effects(
     ability_id: StaticAbilityId,
     all_effects: &[ContinuousEffect],
 ) -> bool {
+    let view = crate::derived_view::DerivedGameView::from_effects(game, all_effects.to_vec());
+    battlefield_has_static_ability_with_view(game, ability_id, &view)
+}
+
+fn battlefield_has_static_ability_with_view(
+    game: &GameState,
+    ability_id: StaticAbilityId,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
     game.battlefield.iter().any(|&obj_id| {
         let Some(obj) = game.object(obj_id) else {
             return false;
         };
-        let static_abilities = game
-            .calculated_characteristics_with_effects(obj_id, all_effects)
+        let static_abilities = view
+            .calculated_characteristics(obj_id)
             .map(|chars| chars.static_abilities)
             .unwrap_or_else(|| {
                 obj.abilities
@@ -230,8 +239,16 @@ pub fn check_triggers(
     game: &GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
-    let all_effects = game.all_continuous_effects();
-    if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(&all_effects)) {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    check_triggers_with_view(game, trigger_event, &view)
+}
+
+pub(crate) fn check_triggers_with_view(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<TriggeredAbilityEntry> {
+    if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects())) {
         return Vec::new();
     }
 
@@ -246,9 +263,8 @@ pub fn check_triggers(
         let ctx = TriggerContext::for_source(obj_id, obj.controller, game);
 
         // Get calculated abilities (after continuous effects like Humility, Blood Moon)
-        let calculated_abilities = game
-            .calculated_characteristics_with_effects(obj_id, &all_effects)
-            .map(|c| c.abilities)
+        let calculated_abilities = view
+            .abilities(obj_id)
             .unwrap_or_else(|| obj.abilities.clone());
 
         // Check each ability on the permanent

@@ -414,9 +414,29 @@ fn effect_mode_has_legal_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    effect_mode_has_legal_targets_with_view(game, mode, caster, source_id, &view)
+}
+
+fn effect_mode_has_legal_targets_with_view(
+    game: &GameState,
+    mode: &crate::effect::EffectMode,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
     mode.effects
         .iter()
-        .all(|effect| spell_effect_has_legal_targets(game, effect, caster, source_id, None))
+        .all(|effect| {
+            spell_effect_has_legal_targets_with_view(
+                game,
+                effect,
+                caster,
+                source_id,
+                None,
+                view,
+            )
+        })
 }
 
 fn choose_mode_has_legal_targets(
@@ -425,6 +445,25 @@ fn choose_mode_has_legal_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
+) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    choose_mode_has_legal_targets_with_view(
+        game,
+        choose_mode,
+        caster,
+        source_id,
+        chosen_modes,
+        &view,
+    )
+}
+
+fn choose_mode_has_legal_targets_with_view(
+    game: &GameState,
+    choose_mode: &crate::effects::ChooseModeEffect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
     let (min_modes, max_modes) = resolve_modal_mode_counts(choose_mode);
     if min_modes > max_modes {
@@ -447,7 +486,7 @@ fn choose_mode_has_legal_targets(
                 return false;
             }
 
-            if !effect_mode_has_legal_targets(game, mode, caster, source_id) {
+            if !effect_mode_has_legal_targets_with_view(game, mode, caster, source_id, view) {
                 return false;
             }
             selected_count += 1;
@@ -459,7 +498,7 @@ fn choose_mode_has_legal_targets(
     let legal_mode_count = choose_mode
         .modes
         .iter()
-        .filter(|mode| effect_mode_has_legal_targets(game, mode, caster, source_id))
+        .filter(|mode| effect_mode_has_legal_targets_with_view(game, mode, caster, source_id, view))
         .count();
 
     if min_modes == 0 {
@@ -480,14 +519,27 @@ fn spell_effect_has_legal_targets(
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
 ) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    spell_effect_has_legal_targets_with_view(game, effect, caster, source_id, chosen_modes, &view)
+}
+
+fn spell_effect_has_legal_targets_with_view(
+    game: &GameState,
+    effect: &Effect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
     let mut consumed_modal_selection = false;
-    spell_effect_has_legal_targets_internal(
+    spell_effect_has_legal_targets_internal_with_view(
         game,
         effect,
         caster,
         source_id,
         chosen_modes,
         &mut consumed_modal_selection,
+        view,
     )
 }
 
@@ -499,6 +551,27 @@ fn spell_effect_has_legal_targets_internal(
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
 ) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    spell_effect_has_legal_targets_internal_with_view(
+        game,
+        effect,
+        caster,
+        source_id,
+        chosen_modes,
+        consumed_modal_selection,
+        &view,
+    )
+}
+
+fn spell_effect_has_legal_targets_internal_with_view(
+    game: &GameState,
+    effect: &Effect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    consumed_modal_selection: &mut bool,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
         let modes_for_this_choose_mode = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
@@ -506,12 +579,13 @@ fn spell_effect_has_legal_targets_internal(
         } else {
             None
         };
-        return choose_mode_has_legal_targets(
+        return choose_mode_has_legal_targets_with_view(
             game,
             choose_mode,
             caster,
             source_id,
             modes_for_this_choose_mode,
+            view,
         );
     }
 
@@ -522,7 +596,9 @@ fn spell_effect_has_legal_targets_internal(
         if extracted.min_targets == 0 {
             return true;
         }
-        let legal_targets = compute_legal_targets(game, extracted.spec, caster, source_id);
+        let legal_targets = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+            game, extracted.spec, caster, source_id, None, view,
+        );
         return legal_targets.len() >= extracted.min_targets;
     }
 
@@ -628,15 +704,35 @@ pub(crate) fn spell_has_legal_targets_with_modes(
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
 ) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    spell_has_legal_targets_with_modes_and_view(
+        game,
+        effects,
+        caster,
+        source_id,
+        chosen_modes,
+        &view,
+    )
+}
+
+pub(crate) fn spell_has_legal_targets_with_modes_and_view(
+    game: &GameState,
+    effects: &[Effect],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
     let mut consumed_modal_selection = false;
     for effect in effects {
-        if !spell_effect_has_legal_targets_internal(
+        if !spell_effect_has_legal_targets_internal_with_view(
             game,
             effect,
             caster,
             source_id,
             chosen_modes,
             &mut consumed_modal_selection,
+            view,
         ) {
             return false;
         }
@@ -654,7 +750,8 @@ pub fn spell_has_legal_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> bool {
-    spell_has_legal_targets_with_modes(game, effects, caster, source_id, None)
+    let view = crate::derived_view::DerivedGameView::new(game);
+    spell_has_legal_targets_with_modes_and_view(game, effects, caster, source_id, None, &view)
 }
 
 /// Compute legal targets for a given ChooseSpec.

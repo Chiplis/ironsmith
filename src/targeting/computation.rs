@@ -7,7 +7,6 @@ use crate::ability::extract_static_abilities;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
-use crate::object_query::candidate_ids_for_filter;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
@@ -32,6 +31,17 @@ pub fn can_target_object(
     source_id: ObjectId,
     caster: PlayerId,
 ) -> TargetingResult {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    can_target_object_with_view(game, target_id, source_id, caster, &view)
+}
+
+pub(crate) fn can_target_object_with_view(
+    game: &GameState,
+    target_id: ObjectId,
+    source_id: ObjectId,
+    caster: PlayerId,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> TargetingResult {
     let Some(target) = game.object(target_id) else {
         return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
     };
@@ -50,7 +60,7 @@ pub fn can_target_object(
     }
 
     // Get calculated abilities for the target (to account for effects like Humility)
-    let target_abilities = game
+    let target_abilities = view
         .calculated_characteristics(target_id)
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| extract_static_abilities(&target.abilities));
@@ -75,7 +85,7 @@ pub fn can_target_object(
     }
 
     // Check for protection
-    if has_protection_from_source(game, target_id, source_id) {
+    if has_protection_from_source_with_view(game, target_id, source_id, view) {
         return TargetingResult::Invalid(TargetingInvalidReason::HasProtection);
     }
 
@@ -111,6 +121,16 @@ pub fn has_protection_from_source(
     target_id: ObjectId,
     source_id: ObjectId,
 ) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    has_protection_from_source_with_view(game, target_id, source_id, &view)
+}
+
+pub(crate) fn has_protection_from_source_with_view(
+    game: &GameState,
+    target_id: ObjectId,
+    source_id: ObjectId,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
     let Some(target) = game.object(target_id) else {
         return false;
     };
@@ -119,7 +139,7 @@ pub fn has_protection_from_source(
     };
 
     // Get calculated abilities for the target
-    let target_abilities = game
+    let target_abilities = view
         .calculated_characteristics(target_id)
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| extract_static_abilities(&target.abilities));
@@ -127,7 +147,7 @@ pub fn has_protection_from_source(
     for ability in target_abilities {
         if ability.has_protection()
             && let Some(protection_from) = ability.protection_from()
-            && source_matches_protection(source, protection_from, game)
+            && source_matches_protection_with_view(source, protection_from, game, view)
         {
             return true;
         }
@@ -142,14 +162,24 @@ pub fn source_matches_protection(
     protection: &crate::ability::ProtectionFrom,
     game: &GameState,
 ) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    source_matches_protection_with_view(source, protection, game, &view)
+}
+
+pub(crate) fn source_matches_protection_with_view(
+    source: &Object,
+    protection: &crate::ability::ProtectionFrom,
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
     use crate::ability::ProtectionFrom;
 
     // Get calculated characteristics for the source
-    let source_colors = game
+    let source_colors = view
         .calculated_characteristics(source.id)
         .map(|c| c.colors)
         .unwrap_or_else(|| source.colors());
-    let source_types = game
+    let source_types = view
         .calculated_characteristics(source.id)
         .map(|c| c.card_types)
         .unwrap_or_else(|| source.card_types.clone());
@@ -188,7 +218,8 @@ pub fn compute_legal_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> Vec<Target> {
-    compute_legal_targets_with_tagged_objects(game, spec, caster, source_id, None)
+    let view = crate::derived_view::DerivedGameView::new(game);
+    compute_legal_targets_with_tagged_objects_with_view(game, spec, caster, source_id, None, &view)
 }
 
 /// Compute legal targets with optional tagged-object filter context.
@@ -204,31 +235,54 @@ pub fn compute_legal_targets_with_tagged_objects(
         &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     >,
 ) -> Vec<Target> {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    compute_legal_targets_with_tagged_objects_with_view(
+        game,
+        spec,
+        caster,
+        source_id,
+        tagged_objects,
+        &view,
+    )
+}
+
+pub(crate) fn compute_legal_targets_with_tagged_objects_with_view(
+    game: &GameState,
+    spec: &ChooseSpec,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    tagged_objects: Option<
+        &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    >,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
     match spec {
         // Target wrapper - recursively compute targets from inner spec
-        ChooseSpec::Target(inner) => compute_legal_targets_with_tagged_objects(
+        ChooseSpec::Target(inner) => compute_legal_targets_with_tagged_objects_with_view(
             game,
             inner,
             caster,
             source_id,
             tagged_objects,
+            view,
         ),
         // WithCount wrapper - recursively compute targets from inner spec
-        ChooseSpec::WithCount(inner, _) => compute_legal_targets_with_tagged_objects(
+        ChooseSpec::WithCount(inner, _) => compute_legal_targets_with_tagged_objects_with_view(
             game,
             inner,
             caster,
             source_id,
             tagged_objects,
+            view,
         ),
-        ChooseSpec::AnyTarget => compute_any_targets(game, caster, source_id),
+        ChooseSpec::AnyTarget => compute_any_targets_with_view(game, caster, source_id, view),
         ChooseSpec::PlayerOrPlaneswalker(filter) => {
-            compute_player_or_planeswalker_targets(game, filter, caster, source_id)
+            compute_player_or_planeswalker_targets_with_view(game, filter, caster, source_id, view)
         }
         ChooseSpec::AttackedPlayerOrPlaneswalker => Vec::new(),
         ChooseSpec::Player(filter) => compute_player_targets(game, filter, caster),
         ChooseSpec::Object(filter) => {
-            compute_object_targets(game, filter, caster, source_id, tagged_objects)
+            compute_object_targets_with_view(game, filter, caster, source_id, tagged_objects, view)
         }
         // These don't require selection - they're resolved at execution time
         ChooseSpec::Source
@@ -250,18 +304,29 @@ fn compute_player_or_planeswalker_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> Vec<Target> {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    compute_player_or_planeswalker_targets_with_view(game, player_filter, caster, source_id, &view)
+}
+
+fn compute_player_or_planeswalker_targets_with_view(
+    game: &GameState,
+    player_filter: &PlayerFilter,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
     let mut targets = compute_player_targets(game, player_filter, caster);
 
     for &obj_id in &game.battlefield {
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
-        if !obj.has_card_type(CardType::Planeswalker) {
+        if !view.object_has_card_type(obj_id, CardType::Planeswalker) {
             continue;
         }
 
         if let Some(src_id) = source_id {
-            match can_target_object(game, obj_id, src_id, caster) {
+            match can_target_object_with_view(game, obj_id, src_id, caster, view) {
                 TargetingResult::Legal { .. } => targets.push(Target::Object(obj_id)),
                 TargetingResult::Invalid(_) => {}
             }
@@ -283,6 +348,16 @@ fn compute_any_targets(
     caster: PlayerId,
     source_id: Option<ObjectId>,
 ) -> Vec<Target> {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    compute_any_targets_with_view(game, caster, source_id, &view)
+}
+
+fn compute_any_targets_with_view(
+    game: &GameState,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
     let mut targets = Vec::new();
 
     // All players in the game
@@ -295,14 +370,15 @@ fn compute_any_targets(
     // All creatures and planeswalkers on battlefield
     for &obj_id in &game.battlefield {
         if let Some(obj) = game.object(obj_id) {
-            if !obj.has_card_type(CardType::Creature) && !obj.has_card_type(CardType::Planeswalker)
+            if !view.object_has_card_type(obj_id, CardType::Creature)
+                && !view.object_has_card_type(obj_id, CardType::Planeswalker)
             {
                 continue;
             }
 
             // Check targeting legality
             if let Some(src_id) = source_id {
-                match can_target_object(game, obj_id, src_id, caster) {
+                match can_target_object_with_view(game, obj_id, src_id, caster, view) {
                     TargetingResult::Legal { .. } => targets.push(Target::Object(obj_id)),
                     TargetingResult::Invalid(_) => {}
                 }
@@ -362,6 +438,20 @@ fn compute_object_targets(
         &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     >,
 ) -> Vec<Target> {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    compute_object_targets_with_view(game, filter, caster, source_id, tagged_objects, &view)
+}
+
+fn compute_object_targets_with_view(
+    game: &GameState,
+    filter: &ObjectFilter,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    tagged_objects: Option<
+        &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    >,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
     let mut targets = Vec::new();
 
     // Build filter context
@@ -370,7 +460,7 @@ fn compute_object_targets(
         filter_ctx = filter_ctx.with_tagged_objects(tagged);
     }
 
-    let candidate_ids = candidate_ids_for_filter(game, filter);
+    let candidate_ids = view.candidate_ids_for_filter(filter);
     for object_id in candidate_ids {
         let Some(object) = game.object(object_id) else {
             continue;
@@ -380,7 +470,7 @@ fn compute_object_targets(
         }
 
         if let Some(src_id) = source_id {
-            if can_target_object(game, object_id, src_id, caster).is_legal() {
+            if can_target_object_with_view(game, object_id, src_id, caster, view).is_legal() {
                 targets.push(Target::Object(object_id));
             }
             continue;

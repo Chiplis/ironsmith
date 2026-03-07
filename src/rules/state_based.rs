@@ -82,13 +82,21 @@ pub enum LoseReason {
 /// This should be called whenever a player would receive priority.
 /// State-based actions happen simultaneously.
 pub fn check_state_based_actions(game: &GameState) -> Vec<StateBasedAction> {
-    let all_effects = game.all_continuous_effects();
-    check_state_based_actions_with_effects(game, &all_effects)
+    let view = crate::derived_view::DerivedGameView::new(game);
+    check_state_based_actions_with_view(game, &view)
 }
 
 pub(crate) fn check_state_based_actions_with_effects(
     game: &GameState,
     all_effects: &[crate::continuous::ContinuousEffect],
+) -> Vec<StateBasedAction> {
+    let view = crate::derived_view::DerivedGameView::from_effects(game, all_effects.to_vec());
+    check_state_based_actions_with_view(game, &view)
+}
+
+pub(crate) fn check_state_based_actions_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<StateBasedAction> {
     let mut actions = Vec::new();
 
@@ -97,10 +105,10 @@ pub(crate) fn check_state_based_actions_with_effects(
     check_commander_zone_sbas(game, &mut actions);
 
     // Check permanent state-based actions
-    check_permanent_sbas(game, &all_effects, &mut actions);
+    check_permanent_sbas_with_view(game, view, &mut actions);
 
     // Check Role Aura uniqueness (one Role Aura per controller per permanent)
-    check_role_sbas(game, &all_effects, &mut actions);
+    check_role_sbas_with_view(game, view, &mut actions);
 
     // Check token/copy cleanup
     check_token_cleanup(game, &mut actions);
@@ -170,35 +178,29 @@ fn check_commander_zone_sbas(game: &GameState, actions: &mut Vec<StateBasedActio
 }
 
 /// Check permanent-related state-based actions.
-fn check_permanent_sbas(
+fn check_permanent_sbas_with_view(
     game: &GameState,
-    all_effects: &[crate::continuous::ContinuousEffect],
+    view: &crate::derived_view::DerivedGameView<'_>,
     actions: &mut Vec<StateBasedAction>,
 ) {
     for &obj_id in &game.battlefield {
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
-        let calculated_subtypes = game.calculated_subtypes_with_effects(obj_id, all_effects);
+        let calculated_subtypes = view.calculated_subtypes(obj_id);
 
         // Creature with 0 or less toughness dies (unless indestructible)
         // Check both:
         // 1. CantEffectTracker (catches indestructibility from external sources)
         // 2. Direct ability check (in case tracker hasn't been refreshed)
         // IMPORTANT: Use calculated_toughness to account for counters and effects!
-        if game.object_has_card_type_with_effects(obj_id, CardType::Creature, all_effects) {
+        if view.object_has_card_type(obj_id, CardType::Creature) {
             let is_indestructible = !game.can_be_destroyed(obj_id)
-                || game
-                    .calculated_characteristics_with_effects(obj.id, all_effects)
-                    .is_some_and(|c| {
-                        c.static_abilities
-                            .iter()
-                            .any(|ability| ability.id() == StaticAbilityId::Indestructible)
-                    })
+                || view.object_has_static_ability_id(obj.id, StaticAbilityId::Indestructible)
                 || game.object_has_static_ability_id(obj.id, StaticAbilityId::Indestructible);
 
             // Use calculated toughness to include -1/-1 counters, pump effects, etc.
-            if let Some(toughness) = game.calculated_toughness_with_effects(obj_id, all_effects)
+            if let Some(toughness) = view.calculated_toughness(obj_id)
                 && toughness <= 0
                 && !is_indestructible
             {
@@ -208,8 +210,8 @@ fn check_permanent_sbas(
 
             // Creature with lethal damage dies (unless indestructible)
             let damage_marked = game.damage_on(obj_id);
-            let toughness_for_lethal = game
-                .calculated_toughness_with_effects(obj_id, all_effects)
+            let toughness_for_lethal = view
+                .calculated_toughness(obj_id)
                 .or_else(|| obj.toughness());
             if toughness_for_lethal
                 .is_some_and(|toughness| toughness > 0 && damage_marked >= toughness as u32)
@@ -221,7 +223,7 @@ fn check_permanent_sbas(
         }
 
         // Planeswalker with 0 or less loyalty
-        if game.object_has_card_type_with_effects(obj_id, CardType::Planeswalker, all_effects) {
+        if view.object_has_card_type(obj_id, CardType::Planeswalker) {
             let loyalty_counters = obj
                 .counters
                 .get(&CounterType::Loyalty)
@@ -234,7 +236,7 @@ fn check_permanent_sbas(
         }
 
         // Aura not attached to anything or attached to illegal permanent
-        if game.object_has_card_type_with_effects(obj_id, CardType::Enchantment, all_effects)
+        if view.object_has_card_type(obj_id, CardType::Enchantment)
             && calculated_subtypes.contains(&Subtype::Aura)
         {
             if obj.attached_to.is_none() {
@@ -270,16 +272,12 @@ fn check_permanent_sbas(
         }
 
         // Equipment not attached to a creature
-        if game.object_has_card_type_with_effects(obj_id, CardType::Artifact, all_effects)
+        if view.object_has_card_type(obj_id, CardType::Artifact)
             && calculated_subtypes.contains(&Subtype::Equipment)
             && let Some(attached_id) = obj.attached_to
         {
             if game.object(attached_id).is_some() {
-                if !game.object_has_card_type_with_effects(
-                    attached_id,
-                    CardType::Creature,
-                    all_effects,
-                ) {
+                if !view.object_has_card_type(attached_id, CardType::Creature) {
                     actions.push(StateBasedAction::EquipmentFallsOff(obj_id));
                 }
             } else {
@@ -315,6 +313,15 @@ fn check_role_sbas(
     all_effects: &[crate::continuous::ContinuousEffect],
     actions: &mut Vec<StateBasedAction>,
 ) {
+    let view = crate::derived_view::DerivedGameView::from_effects(game, all_effects.to_vec());
+    check_role_sbas_with_view(game, &view, actions);
+}
+
+fn check_role_sbas_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    actions: &mut Vec<StateBasedAction>,
+) {
     use std::collections::HashMap;
 
     let mut roles_by_target_and_controller: HashMap<(ObjectId, PlayerId), Vec<ObjectId>> =
@@ -324,10 +331,10 @@ fn check_role_sbas(
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
-        if !game.object_has_card_type_with_effects(obj_id, CardType::Enchantment, all_effects) {
+        if !view.object_has_card_type(obj_id, CardType::Enchantment) {
             continue;
         }
-        let calculated_subtypes = game.calculated_subtypes_with_effects(obj_id, all_effects);
+        let calculated_subtypes = view.calculated_subtypes(obj_id);
         if !calculated_subtypes.contains(&Subtype::Aura)
             || !calculated_subtypes.contains(&Subtype::Role)
         {

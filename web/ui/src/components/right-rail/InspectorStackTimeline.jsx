@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 
 const STACK_LEAVE_ANIMATION_MS = 360;
 const HORIZONTAL_STACK_ENTRY_WIDTH = "clamp(180px, 17vw, 230px)";
+const HORIZONTAL_STACK_ENTRY_MIN_HEIGHT = 50;
+const HORIZONTAL_STACK_BADGE_TOP = 27;
 
 function isFocusedDecision(decision) {
   return (
@@ -52,12 +54,15 @@ function HorizontalStackEntry({
   return (
     <div
       className="stack-timeline-entry relative shrink-0"
-      style={{ width: HORIZONTAL_STACK_ENTRY_WIDTH }}
+      style={{
+        width: HORIZONTAL_STACK_ENTRY_WIDTH,
+        minHeight: `${HORIZONTAL_STACK_ENTRY_MIN_HEIGHT}px`,
+      }}
     >
       <button
         type="button"
         className={cn(
-          "relative grid min-h-[74px] w-full grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-1.5 overflow-hidden bg-[linear-gradient(180deg,rgba(7,16,27,0.94),rgba(6,12,21,0.98))] px-2 py-2 text-left transition-[background,box-shadow,transform] duration-150",
+          "relative grid h-full w-full grid-cols-[24px_minmax(0,1fr)] items-start gap-x-1.5 gap-y-0 overflow-hidden bg-[linear-gradient(180deg,rgba(7,16,27,0.94),rgba(6,12,21,0.98))] px-2 py-[5px] text-left transition-[background,box-shadow,transform] duration-150",
           showLeadingBorder && "shadow-[inset_1px_0_0_rgba(53,80,108,0.65),0_10px_18px_rgba(0,0,0,0.22)]",
           showLeadingBorder && !isActive && "hover:shadow-[inset_1px_0_0_rgba(127,190,244,0.92),-10px_0_18px_-14px_rgba(127,190,244,0.95),0_10px_18px_rgba(0,0,0,0.22)]",
           !showLeadingBorder && "shadow-[0_10px_18px_rgba(0,0,0,0.22)]",
@@ -65,9 +70,13 @@ function HorizontalStackEntry({
           isActive && showLeadingBorder && "bg-[linear-gradient(180deg,rgba(10,22,37,0.98),rgba(7,16,28,1))] shadow-[inset_1px_0_0_rgba(142,196,255,0.95),-10px_0_18px_-14px_rgba(142,196,255,0.98),0_12px_22px_rgba(0,0,0,0.3)]",
           isActive && !showLeadingBorder && "bg-[linear-gradient(180deg,rgba(10,22,37,0.98),rgba(7,16,28,1))] shadow-[0_12px_22px_rgba(0,0,0,0.3)]"
         )}
+        style={{ minHeight: `${HORIZONTAL_STACK_ENTRY_MIN_HEIGHT}px` }}
         onClick={() => onClick?.(stackInspectObjectId(entry))}
       >
-        <span className="pointer-events-none absolute left-2 top-[34px] rounded bg-[rgba(8,18,30,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#8ec4ff]">
+        <span
+          className="pointer-events-none absolute left-2 rounded bg-[rgba(8,18,30,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#8ec4ff]"
+          style={{ top: `${HORIZONTAL_STACK_BADGE_TOP}px` }}
+        >
           {positionLabel}
         </span>
         <div className="relative h-6 w-6 shrink-0 overflow-hidden rounded-md border border-[#29425b]/75 bg-[#0b121b]">
@@ -81,25 +90,27 @@ function HorizontalStackEntry({
             />
           )}
         </div>
-        <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold leading-[1.02] text-[#edf5ff]">
-            {name}
+        <div className="relative h-6 min-w-0">
+          <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-1.5">
+            <div className="min-w-0 truncate pr-1 text-[13px] font-semibold leading-[1.02] text-[#edf5ff]">
+              {name}
+            </div>
+            <div className="flex shrink-0 items-start gap-1 pt-[1px]">
+              {isSpell && entry?.mana_cost && (
+                <span className="shrink-0 scale-[0.82] origin-top-right">
+                  <ManaCostIcons cost={entry.mana_cost} />
+                </span>
+              )}
+              {pt && (
+                <span className="rounded-sm border border-[#f5d08b]/35 bg-[rgba(245,208,139,0.08)] px-1 py-0.5 text-[10px] font-bold leading-none tracking-wide text-[#f5d08b]">
+                  {pt}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="mt-0.5 truncate text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-[#8ec4ff]">
+          <div className="absolute inset-x-0 bottom-0 truncate text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-[#8ec4ff]">
             {kindLabel}
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1 self-center">
-          {isSpell && entry?.mana_cost && (
-            <span className="shrink-0 scale-[0.86] origin-right">
-              <ManaCostIcons cost={entry.mana_cost} />
-            </span>
-          )}
-          {pt && (
-            <span className="rounded-sm border border-[#f5d08b]/35 bg-[rgba(245,208,139,0.08)] px-1 py-0.5 text-[10px] font-bold leading-none tracking-wide text-[#f5d08b]">
-              {pt}
-            </span>
-          )}
         </div>
       </button>
     </div>
@@ -152,14 +163,8 @@ export default function InspectorStackTimeline({
   const itemCount = stackObjects.length || leavingEntries.length || stackPreview.length;
   const timelineSignature = timelineEntries.map((entry) => entry.__timeline_key).join("|");
   const isHorizontal = layout === "horizontal";
-  const horizontalEntries = useMemo(
-    () => (isHorizontal ? [...timelineEntries].reverse() : timelineEntries),
-    [isHorizontal, timelineEntries]
-  );
-  const horizontalPreviewEntries = useMemo(
-    () => (isHorizontal ? [...stackPreview].reverse() : stackPreview),
-    [isHorizontal, stackPreview]
-  );
+  const horizontalEntries = timelineEntries;
+  const horizontalPreviewEntries = stackPreview;
 
   useEffect(() => {
     const previousStack = previousStackRef.current || [];
@@ -215,18 +220,18 @@ export default function InspectorStackTimeline({
     if (!scroller || !content) return;
 
     let rafId = null;
-    const syncToRightEdge = () => {
+    const syncToLeftEdge = () => {
       if (rafId != null) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         rafId = null;
-        scroller.scrollLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+        scroller.scrollLeft = 0;
       });
     };
 
-    syncToRightEdge();
+    syncToLeftEdge();
 
     const observer = typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver(syncToRightEdge)
+      ? new ResizeObserver(syncToLeftEdge)
       : null;
     observer?.observe(scroller);
     observer?.observe(content);
@@ -246,7 +251,8 @@ export default function InspectorStackTimeline({
   if (isHorizontal) {
     return (
       <section
-        className="relative flex min-h-[74px] items-stretch overflow-visible rounded-[14px] border border-[#35506c]/80 bg-[linear-gradient(180deg,rgba(6,14,24,0.86),rgba(5,10,18,0.98))] backdrop-blur-[2.2px] shadow-[0_14px_30px_rgba(0,0,0,0.38)]"
+        className="relative flex items-stretch overflow-visible rounded-[14px] border border-[#35506c]/80 bg-[linear-gradient(180deg,rgba(6,14,24,0.86),rgba(5,10,18,0.98))] backdrop-blur-[2.2px] shadow-[0_14px_30px_rgba(0,0,0,0.38)]"
+        style={{ minHeight: `${HORIZONTAL_STACK_ENTRY_MIN_HEIGHT + 2}px` }}
         data-inspector-stack-timeline
       >
         <div
@@ -255,15 +261,15 @@ export default function InspectorStackTimeline({
         >
           <div
             ref={bodyRef}
-            className="flex w-max min-w-full items-stretch justify-end overflow-visible"
+            className="flex w-max min-w-full items-stretch justify-start overflow-visible"
           >
             {horizontalEntries.length > 0
               ? horizontalEntries.map((entry, index) => (
                 <HorizontalStackEntry
                   key={entry.__timeline_key}
                   entry={entry}
-                  positionLabel={index === horizontalEntries.length - 1 ? "Top" : `#${index + 1}`}
-                  showLeadingBorder={index < horizontalEntries.length - 1}
+                  positionLabel={index === 0 ? "Top" : `#${horizontalEntries.length - index}`}
+                  showLeadingBorder={index > 0}
                   isActive={
                     !entry.__leaving
                     && topLiveEntryId != null
@@ -277,11 +283,14 @@ export default function InspectorStackTimeline({
                   key={`${name}-${index}`}
                   className={cn(
                     "stack-timeline-entry relative flex h-full shrink-0 items-center bg-[linear-gradient(180deg,rgba(13,33,52,0.84),rgba(8,18,31,0.96))] px-3 text-[13px] font-semibold text-[#d5e7fd]",
-                    index < horizontalPreviewEntries.length - 1
+                    index > 0
                       ? "shadow-[inset_1px_0_0_rgba(53,80,108,0.65)]"
                       : ""
                   )}
-                  style={{ width: HORIZONTAL_STACK_ENTRY_WIDTH }}
+                  style={{
+                    width: HORIZONTAL_STACK_ENTRY_WIDTH,
+                    minHeight: `${HORIZONTAL_STACK_ENTRY_MIN_HEIGHT}px`,
+                  }}
                 >
                   <span className="truncate">{name}</span>
                 </div>

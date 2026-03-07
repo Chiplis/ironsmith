@@ -239,7 +239,11 @@ fn grouped_battlefield_for_player(
             members.sort_unstable_by_key(|obj| obj.id.0);
             let representative = members.first().copied();
             let member_ids: Vec<u64> = members.iter().map(|obj| obj.id.0).collect();
+            let member_stable_ids: Vec<u64> = members.iter().map(|obj| obj.stable_id.0.0).collect();
             let id = representative.map(|obj| obj.id.0).unwrap_or_default();
+            let stable_id = representative
+                .map(|obj| obj.stable_id.0.0)
+                .unwrap_or_default();
             let name = representative
                 .map(|obj| obj.name.clone())
                 .unwrap_or_else(|| key.name.clone());
@@ -250,16 +254,21 @@ fn grouped_battlefield_for_player(
                     .or_else(|| obj.toughness())?;
                 Some(format!("{p}/{t}"))
             });
+            let mana_cost =
+                representative.and_then(|obj| obj.mana_cost.as_ref().map(|mc| mc.to_oracle()));
             let counters = representative
                 .map(counter_snapshots_for_object)
                 .unwrap_or_default();
             PermanentSnapshot {
                 id,
+                stable_id,
                 name,
                 tapped: key.tapped,
                 count: member_ids.len().max(1),
                 member_ids,
+                member_stable_ids,
                 lane: key.lane.as_str().to_string(),
+                mana_cost,
                 power_toughness,
                 counters,
             }
@@ -313,11 +322,14 @@ fn should_surface_zone_card_in_pseudo_hand(
 #[derive(Debug, Clone, Serialize)]
 struct PermanentSnapshot {
     id: u64,
+    stable_id: u64,
     name: String,
     tapped: bool,
     count: usize,
     member_ids: Vec<u64>,
+    member_stable_ids: Vec<u64>,
     lane: String,
+    mana_cost: Option<String>,
     power_toughness: Option<String>,
     counters: Vec<CounterSnapshot>,
 }
@@ -356,6 +368,7 @@ struct PlayerSnapshot {
 #[derive(Debug, Clone, Serialize)]
 struct HandCardSnapshot {
     id: u64,
+    stable_id: u64,
     name: String,
     mana_cost: Option<String>,
     power_toughness: Option<String>,
@@ -365,6 +378,7 @@ struct HandCardSnapshot {
 #[derive(Debug, Clone, Serialize)]
 struct ZoneCardSnapshot {
     id: u64,
+    stable_id: u64,
     name: String,
     show_in_pseudo_hand: bool,
 }
@@ -374,6 +388,7 @@ struct StackObjectSnapshot {
     id: u64,
     inspect_object_id: Option<u64>,
     stable_id: Option<u64>,
+    source_stable_id: Option<u64>,
     name: String,
     mana_cost: Option<String>,
     effect_text: Option<String>,
@@ -387,6 +402,21 @@ struct StackObjectSnapshot {
 struct CounterSnapshot {
     kind: String,
     amount: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum BattlefieldTransitionKindSnapshot {
+    Damaged,
+    Destroyed,
+    Sacrificed,
+    Exiled,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct BattlefieldTransitionSnapshot {
+    stable_id: u64,
+    kind: BattlefieldTransitionKindSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -413,6 +443,7 @@ struct ObjectDetailsSnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 struct GameSnapshot {
+    snapshot_id: u64,
     perspective: u8,
     turn_number: u32,
     active_player: u8,
@@ -425,11 +456,16 @@ struct GameSnapshot {
     battlefield_size: usize,
     exile_size: usize,
     players: Vec<PlayerSnapshot>,
+    battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
     decision: Option<DecisionView>,
     game_over: Option<GameOverView>,
     /// True when the current decision chain can be cancelled (user-initiated
     /// action like casting a spell, NOT triggered ability resolution).
     cancelable: bool,
+    /// Stable id of the most recent reversible land-for-mana tap in the current
+    /// priority epoch. Only surfaced while the perspective player is back on
+    /// priority and the tap can still be undone.
+    undo_land_stable_id: Option<u64>,
 }
 
 impl GameSnapshot {
@@ -439,7 +475,10 @@ impl GameSnapshot {
         decision: Option<&DecisionContext>,
         game_over: Option<&GameResult>,
         pending_cast_stack_id: Option<ObjectId>,
+        battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
         cancelable: bool,
+        undo_land_stable_id: Option<u64>,
+        snapshot_id: u64,
     ) -> Self {
         let protected_ids = protected_object_ids_for_decision(decision);
         let players = game
@@ -464,6 +503,7 @@ impl GameSnapshot {
                                 };
                                 HandCardSnapshot {
                                     id: o.id.0,
+                                    stable_id: o.stable_id.0.0,
                                     name: o.name.clone(),
                                     mana_cost,
                                     power_toughness,
@@ -485,6 +525,7 @@ impl GameSnapshot {
                         .filter_map(|id| game.object(*id))
                         .map(|o| ZoneCardSnapshot {
                             id: o.id.0,
+                            stable_id: o.stable_id.0.0,
                             name: o.name.clone(),
                             show_in_pseudo_hand: is_perspective_player
                                 && should_surface_zone_card_in_pseudo_hand(
@@ -503,6 +544,7 @@ impl GameSnapshot {
                         .filter(|o| o.owner == p.id)
                         .map(|o| ZoneCardSnapshot {
                             id: o.id.0,
+                            stable_id: o.stable_id.0.0,
                             name: o.name.clone(),
                             show_in_pseudo_hand: is_perspective_player
                                 && should_surface_zone_card_in_pseudo_hand(
@@ -521,6 +563,7 @@ impl GameSnapshot {
                         .filter(|o| o.owner == p.id)
                         .map(|o| ZoneCardSnapshot {
                             id: o.id.0,
+                            stable_id: o.stable_id.0.0,
                             name: o.name.clone(),
                             show_in_pseudo_hand: is_perspective_player
                                 && should_surface_zone_card_in_pseudo_hand(
@@ -583,6 +626,7 @@ impl GameSnapshot {
             .rev()
             .map(|entry| {
                 let obj = game.object(entry.object_id);
+                let source_stable_id = entry.source_stable_id.map(|stable_id| stable_id.0.0);
                 let inspect_object_id = if entry.is_ability {
                     entry
                         .source_stable_id
@@ -593,10 +637,7 @@ impl GameSnapshot {
                     obj.map(|o| o.id.0)
                 };
                 let stable_id = if entry.is_ability {
-                    entry
-                        .source_stable_id
-                        .or_else(|| obj.map(|o| o.stable_id))
-                        .map(|stable_id| stable_id.0.0)
+                    obj.map(|o| o.stable_id.0.0)
                 } else {
                     obj.map(|o| o.stable_id.0.0)
                 };
@@ -619,6 +660,7 @@ impl GameSnapshot {
                         id: entry.object_id.0,
                         inspect_object_id,
                         stable_id,
+                        source_stable_id,
                         name,
                         mana_cost: None,
                         effect_text: None,
@@ -640,6 +682,7 @@ impl GameSnapshot {
                         id: entry.object_id.0,
                         inspect_object_id,
                         stable_id,
+                        source_stable_id,
                         name,
                         mana_cost: obj.and_then(|o| o.mana_cost.as_ref().map(|mc| mc.to_oracle())),
                         effect_text,
@@ -672,6 +715,7 @@ impl GameSnapshot {
                     id: stack_id.0,
                     inspect_object_id: Some(stack_id.0),
                     stable_id: Some(obj.stable_id.0.0),
+                    source_stable_id: None,
                     name: obj.name.clone(),
                     mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
                     effect_text: pending_effect_text,
@@ -682,6 +726,7 @@ impl GameSnapshot {
             stack_size += 1;
         }
         Self {
+            snapshot_id,
             perspective: perspective.0,
             turn_number: game.turn.turn_number,
             active_player: game.turn.active_player.0,
@@ -694,9 +739,11 @@ impl GameSnapshot {
             battlefield_size: game.battlefield.len(),
             exile_size: game.exile.len(),
             players,
+            battlefield_transitions,
             decision: decision.map(|ctx| DecisionView::from_context(game, ctx)),
             game_over: game_over.map(|r| GameOverView::from_result(game, r)),
             cancelable,
+            undo_land_stable_id,
         }
     }
 }
@@ -1641,8 +1688,13 @@ pub struct WasmGame {
     /// Latched for the current priority epoch when an irreversible mana ability
     /// activation has occurred (for example sacrifice/counter/life side effects).
     priority_epoch_undo_locked_by_mana: bool,
+    /// Stable id of the most recent reversible land-for-mana tap committed in
+    /// the current priority epoch.
+    priority_epoch_undo_land_stable_id: Option<u64>,
     /// User-configured minimum semantic threshold for card addition (0.0 = no filter).
     semantic_threshold: f32,
+    /// Monotonic UI snapshot sequence so the frontend can process one-shot batches once.
+    snapshot_serial: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1706,7 +1758,9 @@ impl WasmGame {
             priority_epoch_checkpoint: None,
             priority_epoch_has_undoable_action: false,
             priority_epoch_undo_locked_by_mana: false,
+            priority_epoch_undo_land_stable_id: None,
             semantic_threshold: 0.0,
+            snapshot_serial: 0,
         }
     }
 
@@ -1783,20 +1837,48 @@ impl WasmGame {
 
     /// Return a JS object snapshot of public game state.
     #[wasm_bindgen]
-    pub fn snapshot(&self) -> Result<JsValue, JsValue> {
+    pub fn snapshot(&mut self) -> Result<JsValue, JsValue> {
         let pending_cast_stack_id = self
             .priority_state
             .pending_cast
             .as_ref()
             .map(|p| p.stack_id);
         let cancelable = self.is_cancelable();
+        let undo_land_stable_id = self.visible_undo_land_stable_id(cancelable);
+        self.snapshot_serial = self.snapshot_serial.saturating_add(1);
+        let snapshot_id = self.snapshot_serial;
+        let battlefield_transitions = self
+            .game
+            .take_ui_battlefield_transitions()
+            .into_iter()
+            .map(|transition| BattlefieldTransitionSnapshot {
+                stable_id: transition.stable_id.0.0,
+                kind: match transition.kind {
+                    crate::game_state::UiBattlefieldTransitionKind::Damaged => {
+                        BattlefieldTransitionKindSnapshot::Damaged
+                    }
+                    crate::game_state::UiBattlefieldTransitionKind::Destroyed => {
+                        BattlefieldTransitionKindSnapshot::Destroyed
+                    }
+                    crate::game_state::UiBattlefieldTransitionKind::Sacrificed => {
+                        BattlefieldTransitionKindSnapshot::Sacrificed
+                    }
+                    crate::game_state::UiBattlefieldTransitionKind::Exiled => {
+                        BattlefieldTransitionKindSnapshot::Exiled
+                    }
+                },
+            })
+            .collect();
         let snap = GameSnapshot::from_game(
             &self.game,
             self.perspective,
             self.pending_decision.as_ref(),
             self.game_over.as_ref(),
             pending_cast_stack_id,
+            battlefield_transitions,
             cancelable,
+            undo_land_stable_id,
+            snapshot_id,
         );
         serde_wasm_bindgen::to_value(&snap)
             .map_err(|e| JsValue::from_str(&format!("snapshot encode failed: {e}")))
@@ -1804,7 +1886,7 @@ impl WasmGame {
 
     /// Return the current UI state from the selected player perspective.
     #[wasm_bindgen(js_name = uiState)]
-    pub fn ui_state(&self) -> Result<JsValue, JsValue> {
+    pub fn ui_state(&mut self) -> Result<JsValue, JsValue> {
         self.snapshot()
     }
 
@@ -1847,20 +1929,48 @@ impl WasmGame {
 
     /// Return game snapshot as pretty JSON.
     #[wasm_bindgen(js_name = snapshotJson)]
-    pub fn snapshot_json(&self) -> Result<String, JsValue> {
+    pub fn snapshot_json(&mut self) -> Result<String, JsValue> {
         let pending_cast_stack_id = self
             .priority_state
             .pending_cast
             .as_ref()
             .map(|p| p.stack_id);
         let cancelable = self.is_cancelable();
+        let undo_land_stable_id = self.visible_undo_land_stable_id(cancelable);
+        self.snapshot_serial = self.snapshot_serial.saturating_add(1);
+        let snapshot_id = self.snapshot_serial;
+        let battlefield_transitions = self
+            .game
+            .take_ui_battlefield_transitions()
+            .into_iter()
+            .map(|transition| BattlefieldTransitionSnapshot {
+                stable_id: transition.stable_id.0.0,
+                kind: match transition.kind {
+                    crate::game_state::UiBattlefieldTransitionKind::Damaged => {
+                        BattlefieldTransitionKindSnapshot::Damaged
+                    }
+                    crate::game_state::UiBattlefieldTransitionKind::Destroyed => {
+                        BattlefieldTransitionKindSnapshot::Destroyed
+                    }
+                    crate::game_state::UiBattlefieldTransitionKind::Sacrificed => {
+                        BattlefieldTransitionKindSnapshot::Sacrificed
+                    }
+                    crate::game_state::UiBattlefieldTransitionKind::Exiled => {
+                        BattlefieldTransitionKindSnapshot::Exiled
+                    }
+                },
+            })
+            .collect();
         let snap = GameSnapshot::from_game(
             &self.game,
             self.perspective,
             self.pending_decision.as_ref(),
             self.game_over.as_ref(),
             pending_cast_stack_id,
+            battlefield_transitions,
             cancelable,
+            undo_land_stable_id,
+            snapshot_id,
         );
         serde_json::to_string_pretty(&snap)
             .map_err(|e| JsValue::from_str(&format!("json encode failed: {e}")))
@@ -2260,6 +2370,7 @@ impl WasmGame {
         self.pending_action_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_land_stable_id = None;
         self.recompute_ui_decision()?;
         self.snapshot()
     }
@@ -2323,9 +2434,16 @@ impl WasmGame {
                     if Self::replay_root_starts_undoable_action(&replay.root) {
                         self.priority_epoch_has_undoable_action = true;
                     }
-                    if self.replay_chain_has_irreversible_mana_activation(&replay) {
+                    if self.replay_chain_has_irreversible_mana_activation(&replay)
+                        || self.replay_root_mana_activation_added_to_stack(
+                            &replay.checkpoint,
+                            &replay.root,
+                        )
+                    {
                         self.priority_epoch_undo_locked_by_mana = true;
                     }
+                    self.priority_epoch_undo_land_stable_id =
+                        self.committed_undo_land_stable_id(&replay.checkpoint, &replay.root);
                     if let GameProgress::NeedsDecisionCtx(next_ctx) = progress {
                         // Follow-up contexts produced directly by GameProgress
                         // continue on the committed game state, but Undo should
@@ -2382,9 +2500,13 @@ impl WasmGame {
                     if Self::replay_root_starts_undoable_action(&root) {
                         self.priority_epoch_has_undoable_action = true;
                     }
-                    if Self::replay_root_has_irreversible_mana_activation(&checkpoint.game, &root) {
+                    if Self::replay_root_has_irreversible_mana_activation(&checkpoint.game, &root)
+                        || self.replay_root_mana_activation_added_to_stack(&checkpoint, &root)
+                    {
                         self.priority_epoch_undo_locked_by_mana = true;
                     }
+                    self.priority_epoch_undo_land_stable_id =
+                        self.committed_undo_land_stable_id(&checkpoint, &root);
                     if let GameProgress::NeedsDecisionCtx(next_ctx) = progress {
                         // Follow-up contexts produced directly by GameProgress
                         // continue on the committed game state, but Undo should
@@ -2539,6 +2661,21 @@ impl WasmGame {
                 .is_some_and(|pending| pending.undo_locked_by_mana)
     }
 
+    fn visible_undo_land_stable_id(&self, cancelable: bool) -> Option<u64> {
+        if !cancelable {
+            return None;
+        }
+
+        let Some(DecisionContext::Priority(ctx)) = self.pending_decision.as_ref() else {
+            return None;
+        };
+        if ctx.player != self.perspective {
+            return None;
+        }
+
+        self.priority_epoch_undo_land_stable_id
+    }
+
     fn replay_root_has_irreversible_mana_activation(game: &GameState, root: &ReplayRoot) -> bool {
         if let ReplayRoot::Response(PriorityResponse::PriorityAction(action)) = root {
             return Self::legal_action_has_irreversible_mana_ability(game, action);
@@ -2554,6 +2691,55 @@ impl WasmGame {
             ReplayRoot::Response(_) => true,
             ReplayRoot::Advance => false,
         }
+    }
+
+    fn replay_root_is_mana_activation(root: &ReplayRoot) -> bool {
+        matches!(
+            root,
+            ReplayRoot::Response(PriorityResponse::PriorityAction(
+                LegalAction::ActivateManaAbility { .. }
+            ))
+        )
+    }
+
+    fn replay_root_land_mana_source_stable_id(game: &GameState, root: &ReplayRoot) -> Option<u64> {
+        let ReplayRoot::Response(PriorityResponse::PriorityAction(
+            LegalAction::ActivateManaAbility { source, .. },
+        )) = root
+        else {
+            return None;
+        };
+
+        let object = game.object(*source)?;
+        object
+            .has_card_type(CardType::Land)
+            .then_some(object.stable_id.0.0)
+    }
+
+    fn stack_grew_since(&self, checkpoint: &ReplayCheckpoint) -> bool {
+        self.game.stack.len() > checkpoint.game.stack.len()
+    }
+
+    fn replay_root_mana_activation_added_to_stack(
+        &self,
+        checkpoint: &ReplayCheckpoint,
+        root: &ReplayRoot,
+    ) -> bool {
+        Self::replay_root_is_mana_activation(root) && self.stack_grew_since(checkpoint)
+    }
+
+    fn committed_undo_land_stable_id(
+        &self,
+        checkpoint: &ReplayCheckpoint,
+        root: &ReplayRoot,
+    ) -> Option<u64> {
+        if Self::replay_root_has_irreversible_mana_activation(&checkpoint.game, root)
+            || self.replay_root_mana_activation_added_to_stack(checkpoint, root)
+        {
+            return None;
+        }
+
+        Self::replay_root_land_mana_source_stable_id(&checkpoint.game, root)
     }
 
     fn replay_chain_has_irreversible_mana_activation(&self, replay: &PendingReplayAction) -> bool {
@@ -3016,6 +3202,7 @@ impl WasmGame {
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_land_stable_id = None;
         self.game_over = None;
         self.runner = None;
         self.runner_awaiting_priority = false;
@@ -3034,6 +3221,7 @@ impl WasmGame {
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_land_stable_id = None;
         if self.game_over.is_some() {
             return Ok(());
         }
@@ -3137,6 +3325,7 @@ impl WasmGame {
                 self.priority_epoch_checkpoint = Some(self.capture_replay_checkpoint());
                 self.priority_epoch_has_undoable_action = false;
                 self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_land_stable_id = None;
             }
             let checkpoint = self.capture_replay_checkpoint();
             let outcome = self.execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])?;
@@ -3166,6 +3355,7 @@ impl WasmGame {
                         self.priority_epoch_checkpoint = None;
                         self.priority_epoch_has_undoable_action = false;
                         self.priority_epoch_undo_locked_by_mana = false;
+                        self.priority_epoch_undo_land_stable_id = None;
                         self.pending_decision = None;
                         continue;
                     }
@@ -3175,6 +3365,7 @@ impl WasmGame {
                         self.priority_epoch_checkpoint = None;
                         self.priority_epoch_has_undoable_action = false;
                         self.priority_epoch_undo_locked_by_mana = false;
+                        self.priority_epoch_undo_land_stable_id = None;
                         continue;
                     }
                     GameProgress::GameOver(result) => {
@@ -3208,6 +3399,7 @@ impl WasmGame {
                 self.priority_epoch_checkpoint = None;
                 self.priority_epoch_has_undoable_action = false;
                 self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_land_stable_id = None;
                 self.pending_decision = None;
                 self.advance_until_decision()
             }
@@ -3222,6 +3414,7 @@ impl WasmGame {
                 self.priority_epoch_checkpoint = None;
                 self.priority_epoch_has_undoable_action = false;
                 self.priority_epoch_undo_locked_by_mana = false;
+                self.priority_epoch_undo_land_stable_id = None;
                 self.pending_decision = None;
                 self.advance_until_decision()
             }
@@ -4734,6 +4927,8 @@ mod tests {
         GameSnapshot, PendingReplayAction, ReplayOutcome, ReplayRoot, WasmGame,
         build_object_details_snapshot,
     };
+    use crate::ability::Ability;
+    use crate::card::CardBuilder;
     use crate::cards::definitions::{
         basic_mountain, emrakul_the_promised_end, grizzly_bears, lightning_bolt, urzas_saga,
     };
@@ -4743,14 +4938,15 @@ mod tests {
     use crate::decisions::context::{
         BooleanContext, DecisionContext, PriorityContext, SelectObjectsContext, SelectableObject,
     };
-    use crate::effect::Until;
+    use crate::effect::{Effect, Until};
     use crate::events::spells::SpellCastEvent;
     use crate::game_loop::{PendingManaAbility, PriorityResponse};
     use crate::game_state::{GameState, Phase, StackEntry, Step};
-    use crate::ids::{ObjectId, PlayerId};
+    use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;
-    use crate::triggers::{TriggerEvent, check_triggers};
+    use crate::triggers::{Trigger, TriggerEvent, check_triggers};
+    use crate::types::CardType;
     use crate::zone::Zone;
     use serde_json::json;
 
@@ -4901,7 +5097,17 @@ mod tests {
             "playing Urza's Saga as a land should give it its initial lore counter"
         );
 
-        let snapshot = GameSnapshot::from_game(&wasm.game, alice, None, None, None, false);
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            alice,
+            None,
+            None,
+            None,
+            Vec::new(),
+            false,
+            None,
+            0,
+        );
         let me = snapshot
             .players
             .iter()
@@ -5104,6 +5310,197 @@ mod tests {
     }
 
     #[test]
+    fn dispatch_disables_cancel_when_mana_tap_trigger_adds_stack_object() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let swamp_card = CardBuilder::new(CardId::new(), "Undo Probe Swamp")
+            .card_types(vec![CardType::Land])
+            .build();
+        let swamp_id = wasm
+            .game
+            .create_object_from_card(&swamp_card, alice, Zone::Battlefield);
+        if let Some(swamp) = wasm.game.object_mut(swamp_id) {
+            swamp.abilities.push(Ability::mana(
+                crate::cost::TotalCost::free(),
+                vec![ManaSymbol::Black],
+            ));
+        }
+
+        let trigger_source = CardBuilder::new(CardId::new(), "Undo Probe Trigger")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let trigger_source_id =
+            wasm.game
+                .create_object_from_card(&trigger_source, alice, Zone::Battlefield);
+        if let Some(source) = wasm.game.object_mut(trigger_source_id) {
+            source.abilities.push(Ability::triggered(
+                Trigger::player_taps_for_mana(
+                    crate::target::PlayerFilter::Any,
+                    crate::filter::ObjectFilter::land(),
+                ),
+                vec![Effect::lose_life_player(
+                    1,
+                    crate::target::PlayerFilter::Specific(alice),
+                )],
+            ));
+        }
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        let priority_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(ctx)) => ctx,
+            other => panic!("expected priority decision, got {other:?}"),
+        };
+        let action_index = priority_ctx
+            .actions
+            .iter()
+            .position(|action| {
+                matches!(
+                    action,
+                    LegalAction::ActivateManaAbility { source, .. } if *source == swamp_id
+                )
+            })
+            .expect("expected tap-for-mana action");
+
+        wasm.dispatch(
+            serde_wasm_bindgen::to_value(&json!({
+                "type": "priority_action",
+                "action_index": action_index,
+            }))
+            .expect("priority action should serialize"),
+        )
+        .expect("tapping swamp for mana should succeed");
+
+        assert_eq!(
+            wasm.game.stack.len(),
+            1,
+            "non-mana tap-for-mana trigger should add an object to the stack"
+        );
+        assert!(
+            !wasm.is_cancelable(),
+            "undo should be disabled once tapping for mana creates a stack object"
+        );
+    }
+
+    #[test]
+    fn snapshot_surfaces_undo_land_stable_id_for_reversible_land_tap() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let swamp_card = CardBuilder::new(CardId::new(), "Undo Probe Swamp")
+            .card_types(vec![CardType::Land])
+            .build();
+        let swamp_id = wasm
+            .game
+            .create_object_from_card(&swamp_card, alice, Zone::Battlefield);
+        if let Some(swamp) = wasm.game.object_mut(swamp_id) {
+            swamp.abilities.push(Ability::mana(
+                crate::cost::TotalCost::free(),
+                vec![ManaSymbol::Black],
+            ));
+        }
+        let swamp_stable_id = wasm
+            .game
+            .object(swamp_id)
+            .expect("swamp should exist")
+            .stable_id
+            .0
+            .0;
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        let priority_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(ctx)) => ctx,
+            other => panic!("expected priority decision, got {other:?}"),
+        };
+        let action_index = priority_ctx
+            .actions
+            .iter()
+            .position(|action| {
+                matches!(
+                    action,
+                    LegalAction::ActivateManaAbility { source, .. } if *source == swamp_id
+                )
+            })
+            .expect("expected tap-for-mana action");
+
+        wasm.dispatch(
+            serde_wasm_bindgen::to_value(&json!({
+                "type": "priority_action",
+                "action_index": action_index,
+            }))
+            .expect("priority action should serialize"),
+        )
+        .expect("tapping swamp for mana should succeed");
+
+        assert!(
+            wasm.is_cancelable(),
+            "plain land tap should remain undoable"
+        );
+        assert_eq!(
+            wasm.priority_epoch_undo_land_stable_id,
+            Some(swamp_stable_id),
+            "the current undoable land tap should be tracked by stable id"
+        );
+
+        let pending_cast_stack_id = wasm
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .map(|p| p.stack_id);
+        let cancelable = wasm.is_cancelable();
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            wasm.perspective,
+            wasm.pending_decision.as_ref(),
+            wasm.game_over.as_ref(),
+            pending_cast_stack_id,
+            Vec::new(),
+            cancelable,
+            wasm.visible_undo_land_stable_id(cancelable),
+            0,
+        );
+        assert_eq!(
+            snapshot.undo_land_stable_id,
+            Some(swamp_stable_id),
+            "snapshot should expose the reversible tapped land for the UI"
+        );
+        let me = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("perspective player should exist");
+        let swamp = me
+            .battlefield
+            .iter()
+            .find(|perm| perm.stable_id == swamp_stable_id)
+            .expect("snapshot should still include the tapped swamp");
+        assert!(
+            swamp.tapped,
+            "tracked undo land should be tapped in the snapshot"
+        );
+    }
+
+    #[test]
     fn cleanup_auto_discard_only_applies_for_non_perspective_player() {
         let mut wasm = WasmGame::new();
         wasm.game.turn.step = Some(Step::Cleanup);
@@ -5191,7 +5588,10 @@ mod tests {
             wasm.pending_decision.as_ref(),
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
+            Vec::new(),
             wasm.is_cancelable(),
+            None,
+            0,
         );
         let me = snapshot
             .players
@@ -5236,7 +5636,10 @@ mod tests {
             wasm.pending_decision.as_ref(),
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
+            Vec::new(),
             wasm.is_cancelable(),
+            None,
+            0,
         );
         let me = snapshot
             .players
@@ -5249,6 +5652,47 @@ mod tests {
             grouped_total, me.battlefield_total,
             "battlefield_total must equal sum of grouped permanent counts"
         );
+    }
+
+    #[test]
+    fn snapshot_grouped_battlefield_includes_mana_cost() {
+        let mut wasm = WasmGame::new();
+        wasm.add_card_to_zone(
+            0,
+            "Ornithopter".to_string(),
+            "battlefield".to_string(),
+            true,
+        )
+        .expect("adding ornithopter to battlefield should succeed");
+
+        let pending_cast_stack_id = wasm
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .map(|p| p.stack_id);
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            wasm.perspective,
+            wasm.pending_decision.as_ref(),
+            wasm.game_over.as_ref(),
+            pending_cast_stack_id,
+            Vec::new(),
+            wasm.is_cancelable(),
+            None,
+            0,
+        );
+        let me = snapshot
+            .players
+            .iter()
+            .find(|p| p.id == wasm.perspective.0)
+            .expect("perspective player should exist in snapshot");
+        let ornithopter = me
+            .battlefield
+            .iter()
+            .find(|perm| perm.name == "Ornithopter")
+            .expect("expected ornithopter on battlefield");
+
+        assert_eq!(ornithopter.mana_cost.as_deref(), Some("{0}"));
     }
 
     #[test]

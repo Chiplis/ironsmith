@@ -8,6 +8,7 @@
 use crate::alternative_cast::CastingMethod;
 use crate::combat_state::{AttackTarget, CombatState};
 use crate::cost::can_pay_cost;
+use crate::derived_view::DerivedGameView;
 use crate::effects::helpers::resolve_value;
 use crate::executor::ExecutionContext;
 use crate::game_state::{GameState, Phase, Target};
@@ -391,6 +392,7 @@ fn append_granted_play_from_actions_for_card(
     card_id: ObjectId,
     card: &crate::object::Object,
     source_zone: Zone,
+    view: &DerivedGameView<'_>,
 ) {
     let play_from_grants =
         game.grant_registry
@@ -401,13 +403,14 @@ fn append_granted_play_from_actions_for_card(
 
         if !card.is_land()
             && let Some(mana_cost) = &card.mana_cost
-            && can_cast_with_cost(
+            && can_cast_with_cost_with_view(
                 game,
                 player,
                 card,
                 card_id,
                 Some(mana_cost),
                 &AdditionalCastRequirements::default(),
+                view,
             )
         {
             actions.push(LegalAction::CastSpell {
@@ -423,7 +426,9 @@ fn append_granted_play_from_actions_for_card(
 
         for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
             if alt_cast.cast_from_zone() == Zone::Hand
-                && can_cast_with_alternative_from_hand(game, player, card, card_id, alt_cast)
+                && can_cast_with_alternative_from_hand_with_view(
+                    game, player, card, card_id, alt_cast, view,
+                )
             {
                 actions.push(LegalAction::CastSpell {
                     spell_id: card_id,
@@ -442,7 +447,7 @@ fn append_granted_play_from_actions_for_card(
             .granted_alternative_casts_for_card(game, card_id, from_zone, player);
         let base_alt_idx = card.alternative_casts.len();
         for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
-            if can_cast_with_alternative(game, player, card, &granted_alt.method) {
+            if can_cast_with_alternative_with_view(game, player, card, &granted_alt.method, view) {
                 actions.push(LegalAction::CastSpell {
                     spell_id: card_id,
                     from_zone,
@@ -464,10 +469,11 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
     card_id: ObjectId,
     card: &crate::object::Object,
     from_zone: Zone,
+    view: &DerivedGameView<'_>,
 ) {
     for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
         if alt_cast.cast_from_zone() == from_zone
-            && can_cast_with_alternative(game, player, card, alt_cast)
+            && can_cast_with_alternative_with_view(game, player, card, alt_cast, view)
         {
             actions.push(LegalAction::CastSpell {
                 spell_id: card_id,
@@ -484,6 +490,7 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
     player: PlayerId,
     card_id: ObjectId,
     card: &crate::object::Object,
+    view: &DerivedGameView<'_>,
 ) {
     let granted_casts = game.grant_registry.granted_alternative_casts_for_card(
         game,
@@ -497,7 +504,15 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
         let requirements = build_requirements_for_method(method);
         let mana_cost = get_mana_cost_for_method(method, card);
 
-        if !can_cast_with_cost(game, player, card, card_id, mana_cost, &requirements) {
+        if !can_cast_with_cost_with_view(
+            game,
+            player,
+            card,
+            card_id,
+            mana_cost,
+            &requirements,
+            view,
+        ) {
             continue;
         }
 
@@ -529,16 +544,19 @@ fn append_cast_actions_from_zone_for_card(
     card_id: ObjectId,
     card: &crate::object::Object,
     from_zone: Zone,
+    view: &DerivedGameView<'_>,
 ) {
     append_native_alternative_cast_actions_for_card_from_zone(
-        game, actions, player, card_id, card, from_zone,
+        game, actions, player, card_id, card, from_zone, view,
     );
     if from_zone == Zone::Graveyard {
         append_graveyard_granted_alternative_cast_actions_for_card(
-            game, actions, player, card_id, card,
+            game, actions, player, card_id, card, view,
         );
     }
-    append_granted_play_from_actions_for_card(game, actions, player, card_id, card, from_zone);
+    append_granted_play_from_actions_for_card(
+        game, actions, player, card_id, card, from_zone, view,
+    );
 }
 
 /// Compute legal actions for a player who has priority.
@@ -549,6 +567,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     use crate::special_actions::{SpecialAction, can_perform_check};
 
     let mut actions = Vec::new();
+    let view = DerivedGameView::new(game);
 
     // Can always pass priority
     actions.push(LegalAction::PassPriority);
@@ -590,7 +609,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     if let Some(player_obj) = game.player(player) {
         for &card_id in player_obj.hand.clone().iter() {
             if let Some(card) = game.object(card_id)
-                && can_cast_spell(game, player, card, &CastingMethod::Normal)
+                && can_cast_spell_with_view(game, player, card, &CastingMethod::Normal, &view)
             {
                 actions.push(LegalAction::CastSpell {
                     spell_id: card_id,
@@ -613,6 +632,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                     card_id,
                     card,
                     Zone::Graveyard,
+                    &view,
                 );
             }
         }
@@ -630,6 +650,7 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
             card_id,
             card,
             Zone::Exile,
+            &view,
         );
     }
 
@@ -655,8 +676,8 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                 if !has_normal_cast {
                     for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
                         if alt_cast.cast_from_zone() == Zone::Hand
-                            && can_cast_with_alternative_from_hand(
-                                game, player, card, card_id, alt_cast,
+                            && can_cast_with_alternative_from_hand_with_view(
+                                game, player, card, card_id, alt_cast, &view,
                             )
                         {
                             actions.push(LegalAction::CastSpell {
@@ -713,7 +734,13 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                         continue;
                     }
                     // Validate the ability's cost can be paid
-                    if can_pay_ability_cost(game, perm_id, player, &activated.mana_cost) {
+                    if can_pay_ability_cost_with_view(
+                        game,
+                        perm_id,
+                        player,
+                        &activated.mana_cost,
+                        &view,
+                    ) {
                         if can_activate_ability_with_restrictions(game, perm_id, i, activated) {
                             actions.push(LegalAction::ActivateAbility {
                                 source: perm_id,
@@ -780,7 +807,13 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                     if !game.can_activate_non_mana_abilities(player) {
                         continue;
                     }
-                    if !can_pay_ability_cost(game, source_id, player, &activated.mana_cost) {
+                    if !can_pay_ability_cost_with_view(
+                        game,
+                        source_id,
+                        player,
+                        &activated.mana_cost,
+                        &view,
+                    ) {
                         continue;
                     }
 
@@ -890,6 +923,7 @@ pub(crate) fn can_activate_ability_with_restrictions(
 /// via 'C' input rather than numeric indices.
 pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<LegalAction> {
     let mut actions = Vec::new();
+    let view = DerivedGameView::new(game);
 
     // Check for commanders that can be cast from command zone
     if let Some(player_obj) = game.player(player) {
@@ -899,7 +933,13 @@ pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<Lega
             {
                 // Only if the commander is in the command zone
                 if commander.zone == Zone::Command
-                    && can_cast_spell(game, player, commander, &CastingMethod::Normal)
+                    && can_cast_spell_with_view(
+                        game,
+                        player,
+                        commander,
+                        &CastingMethod::Normal,
+                        &view,
+                    )
                 {
                     actions.push(LegalAction::CastSpell {
                         spell_id: current_id,
@@ -938,7 +978,19 @@ fn can_pay_ability_cost(
     player: PlayerId,
     cost: &crate::cost::TotalCost,
 ) -> bool {
-    let effective_cost = calculate_effective_activation_total_cost(game, player, source_id, cost);
+    let view = DerivedGameView::new(game);
+    can_pay_ability_cost_with_view(game, source_id, player, cost, &view)
+}
+
+fn can_pay_ability_cost_with_view(
+    game: &GameState,
+    source_id: ObjectId,
+    player: PlayerId,
+    cost: &crate::cost::TotalCost,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let effective_cost =
+        calculate_effective_activation_total_cost_with_view(game, player, source_id, cost, view);
     if can_pay_cost(game, source_id, player, &effective_cost).is_ok() {
         return true;
     }
@@ -1145,14 +1197,32 @@ pub fn calculate_effective_activation_total_cost(
     ability_source: ObjectId,
     cost: &crate::cost::TotalCost,
 ) -> crate::cost::TotalCost {
+    let view = DerivedGameView::new(game);
+    calculate_effective_activation_total_cost_with_view(
+        game,
+        activator,
+        ability_source,
+        cost,
+        &view,
+    )
+}
+
+fn calculate_effective_activation_total_cost_with_view(
+    game: &GameState,
+    activator: PlayerId,
+    ability_source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    view: &DerivedGameView<'_>,
+) -> crate::cost::TotalCost {
     let mut costs = Vec::with_capacity(cost.costs().len());
     for component in cost.costs() {
         if let Some(mana_cost) = component.mana_cost_ref() {
-            let reduced = calculate_effective_activation_mana_cost(
+            let reduced = calculate_effective_activation_mana_cost_with_view(
                 game,
                 activator,
                 ability_source,
                 mana_cost,
+                view,
             );
             costs.push(crate::costs::Cost::mana(reduced));
         } else {
@@ -1169,6 +1239,23 @@ pub fn calculate_effective_activation_mana_cost(
     ability_source: ObjectId,
     base_cost: &crate::mana::ManaCost,
 ) -> crate::mana::ManaCost {
+    let view = DerivedGameView::new(game);
+    calculate_effective_activation_mana_cost_with_view(
+        game,
+        _activator,
+        ability_source,
+        base_cost,
+        &view,
+    )
+}
+
+fn calculate_effective_activation_mana_cost_with_view(
+    game: &GameState,
+    _activator: PlayerId,
+    ability_source: ObjectId,
+    base_cost: &crate::mana::ManaCost,
+    view: &DerivedGameView<'_>,
+) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
     use crate::filter::FilterContext;
 
@@ -1184,7 +1271,6 @@ pub fn calculate_effective_activation_mana_cost(
     let Some(ability_source_object) = game.object(ability_source) else {
         return adjusted;
     };
-    let all_effects = game.all_continuous_effects();
 
     for &perm_id in &game.battlefield {
         let Some(perm) = game.object(perm_id) else {
@@ -1196,8 +1282,8 @@ pub fn calculate_effective_activation_mana_cost(
             .with_active_player(game.turn.active_player)
             .with_opponents(opponents_of(game, controller));
 
-        let static_abilities = game
-            .calculated_characteristics_with_effects(perm_id, &all_effects)
+        let static_abilities = view
+            .calculated_characteristics(perm_id)
             .map(|c| c.static_abilities)
             .unwrap_or_else(|| {
                 perm.abilities
@@ -1691,7 +1777,17 @@ pub fn can_cast_spell(
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
 ) -> bool {
-    use crate::game_loop::spell_has_legal_targets;
+    let view = DerivedGameView::new(game);
+    can_cast_spell_with_view(game, player, spell, casting_method, &view)
+}
+
+fn can_cast_spell_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
     // Check "can't cast [matching] spells" style restrictions.
     if violates_any_cant_cast_restriction(game, player, spell) {
         return false;
@@ -1721,19 +1817,27 @@ pub fn can_cast_spell(
     // Check mana availability with cost reductions applied
     if let Some(base_cost) = base_mana_cost.as_ref() {
         // Calculate effective cost after applying cost reductions (Affinity, etc.)
-        let effective_cost = calculate_effective_mana_cost(game, player, spell, base_cost);
+        let effective_cost =
+            calculate_effective_mana_cost_with_view(game, player, spell, base_cost, view);
 
         // For X spells, check if they can pay at least X=0
         // For non-X spells, check if they can pay the full cost (x_value=0)
         // Use potential mana (current pool + untapped mana sources)
-        if !can_potentially_pay(game, player, &effective_cost, 0) {
+        if !view.can_potentially_pay(player, &effective_cost, 0) {
             return false;
         }
     }
 
     // Check if legal targets exist for targeted spells
     let effects = spell.spell_effect.as_deref().unwrap_or(&[]);
-    if !spell_has_legal_targets(game, effects, player, Some(spell.id)) {
+    if !crate::game_loop::spell_has_legal_targets_with_modes_and_view(
+        game,
+        effects,
+        player,
+        Some(spell.id),
+        None,
+        view,
+    ) {
         return false;
     }
 
@@ -1772,7 +1876,27 @@ fn can_cast_with_cost(
     mana_cost: Option<&crate::mana::ManaCost>,
     requirements: &AdditionalCastRequirements,
 ) -> bool {
-    use crate::game_loop::spell_has_legal_targets;
+    let view = DerivedGameView::new(game);
+    can_cast_with_cost_with_view(
+        game,
+        player,
+        spell,
+        spell_id,
+        mana_cost,
+        requirements,
+        &view,
+    )
+}
+
+fn can_cast_with_cost_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    spell_id: crate::ids::ObjectId,
+    mana_cost: Option<&crate::mana::ManaCost>,
+    requirements: &AdditionalCastRequirements,
+    view: &DerivedGameView<'_>,
+) -> bool {
     use crate::types::CardType;
 
     // Check "can't cast [matching] spells" style restrictions.
@@ -1808,7 +1932,7 @@ fn can_cast_with_cost(
 
     // Check mana availability (using potential mana from untapped sources)
     if let Some(cost) = mana_cost
-        && !can_potentially_pay(game, player, cost, 0)
+        && !view.can_potentially_pay(player, cost, 0)
     {
         return false;
     }
@@ -1849,7 +1973,14 @@ fn can_cast_with_cost(
 
     // Check if legal targets exist
     let effects = spell.spell_effect.as_deref().unwrap_or(&[]);
-    if !spell_has_legal_targets(game, effects, player, Some(spell_id)) {
+    if !crate::game_loop::spell_has_legal_targets_with_modes_and_view(
+        game,
+        effects,
+        player,
+        Some(spell_id),
+        None,
+        view,
+    ) {
         return false;
     }
 
@@ -1884,9 +2015,28 @@ fn can_cast_with_alternative(
     spell: &crate::object::Object,
     method: &crate::alternative_cast::AlternativeCastingMethod,
 ) -> bool {
+    let view = DerivedGameView::new(game);
+    can_cast_with_alternative_with_view(game, player, spell, method, &view)
+}
+
+fn can_cast_with_alternative_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
     let requirements = build_requirements_for_method(method);
     let mana_cost = get_mana_cost_for_method(method, spell);
-    if !can_cast_with_cost(game, player, spell, spell.id, mana_cost, &requirements) {
+    if !can_cast_with_cost_with_view(
+        game,
+        player,
+        spell,
+        spell.id,
+        mana_cost,
+        &requirements,
+        view,
+    ) {
         return false;
     }
 
@@ -1912,6 +2062,18 @@ pub fn can_cast_with_alternative_from_hand(
     spell_id: crate::ids::ObjectId,
     method: &crate::alternative_cast::AlternativeCastingMethod,
 ) -> bool {
+    let view = DerivedGameView::new(game);
+    can_cast_with_alternative_from_hand_with_view(game, player, spell, spell_id, method, &view)
+}
+
+fn can_cast_with_alternative_from_hand_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    spell_id: crate::ids::ObjectId,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
     use crate::alternative_cast::AlternativeCastingMethod;
 
     match method {
@@ -1930,13 +2092,14 @@ pub fn can_cast_with_alternative_from_hand(
             let mana_cost = method.mana_cost();
             // Check mana cost if present
             if let Some(mana) = mana_cost
-                && !can_cast_with_cost(
+                && !can_cast_with_cost_with_view(
                     game,
                     player,
                     spell,
                     spell_id,
                     Some(mana),
                     &AdditionalCastRequirements::default(),
+                    view,
                 )
             {
                 return false;
@@ -1952,11 +2115,15 @@ pub fn can_cast_with_alternative_from_hand(
                     return false;
                 }
             }
-
-            // Check if legal targets exist for targeted spells
-            use crate::game_loop::spell_has_legal_targets;
             let effects = spell.spell_effect.as_deref().unwrap_or(&[]);
-            if !spell_has_legal_targets(game, effects, player, Some(spell_id)) {
+            if !crate::game_loop::spell_has_legal_targets_with_modes_and_view(
+                game,
+                effects,
+                player,
+                Some(spell_id),
+                None,
+                view,
+            ) {
                 return false;
             }
 
@@ -1967,13 +2134,14 @@ pub fn can_cast_with_alternative_from_hand(
                 return false;
             };
 
-            if !can_cast_with_cost(
+            if !can_cast_with_cost_with_view(
                 game,
                 player,
                 spell,
                 spell_id,
                 Some(cost),
                 &AdditionalCastRequirements::default(),
+                view,
             ) {
                 return false;
             }
@@ -1991,7 +2159,14 @@ pub fn can_cast_with_alternative_from_hand(
 
             let bestow_spec = ChooseSpec::Object(crate::target::ObjectFilter::creature());
             let bestow_targets =
-                crate::game_loop::compute_legal_targets(game, &bestow_spec, player, Some(spell_id));
+                crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+                    game,
+                    &bestow_spec,
+                    player,
+                    Some(spell_id),
+                    None,
+                    view,
+                );
             !bestow_targets.is_empty()
         }
         AlternativeCastingMethod::MindbreakTrap {
@@ -2002,13 +2177,14 @@ pub fn can_cast_with_alternative_from_hand(
                 return false;
             }
             // Check if player can pay the trap cost (usually {0})
-            can_cast_with_cost(
+            can_cast_with_cost_with_view(
                 game,
                 player,
                 spell,
                 spell_id,
                 Some(cost),
                 &AdditionalCastRequirements::default(),
+                view,
             )
         }
         _ => false,
@@ -2120,7 +2296,36 @@ pub fn calculate_effective_mana_cost(
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
 ) -> crate::mana::ManaCost {
-    calculate_effective_mana_cost_with_targets(game, player, spell, base_cost, 1)
+    let view = DerivedGameView::new(game);
+    calculate_effective_mana_cost_with_targets_internal(
+        game,
+        player,
+        spell,
+        base_cost,
+        1,
+        &[],
+        true,
+        &view,
+    )
+}
+
+fn calculate_effective_mana_cost_with_view(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    view: &DerivedGameView<'_>,
+) -> crate::mana::ManaCost {
+    calculate_effective_mana_cost_with_targets_internal(
+        game,
+        player,
+        spell,
+        base_cost,
+        1,
+        &[],
+        true,
+        view,
+    )
 }
 
 /// Calculate the effective mana cost with explicit chosen target count.
@@ -2131,6 +2336,7 @@ pub fn calculate_effective_mana_cost_with_targets(
     base_cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
 ) -> crate::mana::ManaCost {
+    let view = DerivedGameView::new(game);
     calculate_effective_mana_cost_with_targets_internal(
         game,
         player,
@@ -2139,6 +2345,7 @@ pub fn calculate_effective_mana_cost_with_targets(
         chosen_target_count,
         &[],
         true,
+        &view,
     )
 }
 
@@ -2150,6 +2357,7 @@ pub fn calculate_effective_mana_cost_with_chosen_targets(
     base_cost: &crate::mana::ManaCost,
     chosen_targets: &[Target],
 ) -> crate::mana::ManaCost {
+    let view = DerivedGameView::new(game);
     calculate_effective_mana_cost_with_targets_internal(
         game,
         player,
@@ -2158,6 +2366,7 @@ pub fn calculate_effective_mana_cost_with_chosen_targets(
         chosen_targets.len(),
         chosen_targets,
         true,
+        &view,
     )
 }
 
@@ -2170,6 +2379,7 @@ pub fn calculate_effective_mana_cost_for_payment_with_targets(
     base_cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
 ) -> crate::mana::ManaCost {
+    let view = DerivedGameView::new(game);
     calculate_effective_mana_cost_with_targets_internal(
         game,
         player,
@@ -2178,6 +2388,7 @@ pub fn calculate_effective_mana_cost_for_payment_with_targets(
         chosen_target_count,
         &[],
         false,
+        &view,
     )
 }
 
@@ -2189,6 +2400,7 @@ pub fn calculate_effective_mana_cost_for_payment_with_chosen_targets(
     base_cost: &crate::mana::ManaCost,
     chosen_targets: &[Target],
 ) -> crate::mana::ManaCost {
+    let view = DerivedGameView::new(game);
     calculate_effective_mana_cost_with_targets_internal(
         game,
         player,
@@ -2197,6 +2409,7 @@ pub fn calculate_effective_mana_cost_for_payment_with_chosen_targets(
         chosen_targets.len(),
         chosen_targets,
         false,
+        &view,
     )
 }
 
@@ -2208,6 +2421,7 @@ fn calculate_effective_mana_cost_with_targets_internal(
     chosen_target_count: usize,
     chosen_targets: &[Target],
     include_convoke_improvise_reductions: bool,
+    view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
 
@@ -2224,7 +2438,7 @@ fn calculate_effective_mana_cost_with_targets_internal(
 
     if has_affinity {
         // Count artifacts controlled by the player
-        let artifact_count = count_artifacts_controlled(game, player);
+        let artifact_count = count_artifacts_controlled_with_view(game, player, view);
         current_cost = current_cost.reduce_generic(artifact_count);
     }
 
@@ -2245,6 +2459,7 @@ fn calculate_effective_mana_cost_with_targets_internal(
         spell,
         &current_cost,
         chosen_target_count,
+        view,
     );
 
     // Check for Delve
@@ -2421,6 +2636,7 @@ fn apply_battlefield_spell_cost_modifiers(
     spell: &crate::object::Object,
     cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
+    view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
     use crate::filter::FilterContext;
@@ -2473,7 +2689,7 @@ fn apply_battlefield_spell_cost_modifiers(
             .with_active_player(game.turn.active_player)
             .with_opponents(opponents_of(game, controller));
 
-        let static_abilities = game
+        let static_abilities = view
             .calculated_characteristics(perm_id)
             .map(|c| c.static_abilities)
             .unwrap_or_else(|| {
@@ -2749,11 +2965,21 @@ pub fn calculate_delve_exile_count_with_targets(
 
 /// Count the number of artifacts controlled by a player.
 pub fn count_artifacts_controlled(game: &GameState, player: PlayerId) -> u32 {
+    let view = DerivedGameView::new(game);
+    count_artifacts_controlled_with_view(game, player, &view)
+}
+
+fn count_artifacts_controlled_with_view(
+    game: &GameState,
+    player: PlayerId,
+    view: &DerivedGameView<'_>,
+) -> u32 {
     game.battlefield
         .iter()
         .filter(|&&id| {
             if let Some(obj) = game.object(id) {
-                obj.controller == player && obj.has_card_type(crate::types::CardType::Artifact)
+                obj.controller == player
+                    && view.object_has_card_type(id, crate::types::CardType::Artifact)
             } else {
                 false
             }
@@ -3263,6 +3489,7 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
     let mut options = Vec::new();
     let active_player = game.turn.active_player;
     let mut attack_capable = Vec::new();
+    let view = DerivedGameView::new(game);
 
     for &perm_id in &game.battlefield {
         let Some(perm) = game.object(perm_id) else {
@@ -3271,10 +3498,10 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
         if perm.controller != active_player {
             continue;
         }
-        if !game.object_has_card_type(perm_id, crate::types::CardType::Creature) {
+        if !view.object_has_card_type(perm_id, crate::types::CardType::Creature) {
             continue;
         }
-        if crate::rules::combat::can_attack(perm, game) {
+        if crate::rules::combat::can_attack_with_view(perm, game, &view) {
             attack_capable.push(perm_id);
         }
     }
@@ -3300,8 +3527,12 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
 
         for opponent in &game.players {
             if opponent.id != active_player && opponent.is_in_game() {
-                let can_attack =
-                    crate::rules::combat::can_attack_defending_player(perm, opponent.id, game);
+                let can_attack = crate::rules::combat::can_attack_defending_player_with_view(
+                    perm,
+                    opponent.id,
+                    game,
+                    &view,
+                );
                 if can_attack {
                     let target = AttackTarget::Player(opponent.id);
                     if goaded_by.contains(&opponent.id) {
@@ -3317,11 +3548,12 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
         for &other_perm_id in &game.battlefield {
             if let Some(other_perm) = game.object(other_perm_id)
                 && other_perm.controller != active_player
-                && game.object_has_card_type(other_perm_id, crate::types::CardType::Planeswalker)
-                && crate::rules::combat::can_attack_defending_player(
+                && view.object_has_card_type(other_perm_id, crate::types::CardType::Planeswalker)
+                && crate::rules::combat::can_attack_defending_player_with_view(
                     perm,
                     other_perm.controller,
                     game,
+                    &view,
                 )
             {
                 let target = AttackTarget::Planeswalker(other_perm_id);
@@ -3339,7 +3571,7 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
             valid_targets.extend(goad_targets);
         }
 
-        let must_attack = crate::rules::combat::must_attack_with_game(perm, game);
+        let must_attack = crate::rules::combat::must_attack_with_view(perm, game, &view);
 
         if !valid_targets.is_empty() {
             options.push(AttackerOption {
@@ -3363,6 +3595,7 @@ pub fn compute_legal_blockers(
 
     let mut options = Vec::new();
     let mut potential_blockers = HashSet::new();
+    let view = DerivedGameView::new(game);
 
     // For each attacker, find creatures that can block it
     for attacker_info in &combat.attackers {
@@ -3383,18 +3616,18 @@ pub fn compute_legal_blockers(
                 continue;
             }
 
-            if !game.object_has_card_type(perm_id, crate::types::CardType::Creature) {
+            if !view.object_has_card_type(perm_id, crate::types::CardType::Creature) {
                 continue;
             }
 
             // Check if this creature can block this attacker
-            if crate::rules::combat::can_block(attacker, blocker, game) {
+            if crate::rules::combat::can_block_with_view(attacker, blocker, game, &view) {
                 valid_blockers.push(perm_id);
                 potential_blockers.insert(perm_id);
             }
         }
 
-        let min_blockers = crate::rules::combat::minimum_blockers_with_game(attacker, game);
+        let min_blockers = crate::rules::combat::minimum_blockers_with_view(attacker, &view);
 
         options.push(BlockerOption {
             attacker: attacker_id,

@@ -155,7 +155,7 @@ function SubmitButton({ canAct, disabled, onClick, children }) {
     <Button
       variant="ghost"
       size="sm"
-      className="decision-neon-button group h-auto min-h-7 shrink-0 justify-start px-3 py-1.5 text-left text-[14px] font-bold uppercase whitespace-normal"
+      className="decision-neon-button decision-submit-button group h-auto min-h-6 shrink-0 justify-start px-2 py-1 text-left text-[14px] font-bold uppercase whitespace-normal"
       disabled={!canAct || disabled}
       onClick={onClick}
     >
@@ -576,7 +576,7 @@ function MultiSelectDecision({
             variant="ghost"
             size="sm"
             className={cn(
-              "decision-neon-button h-7 rounded-sm px-3 text-[13px] font-semibold uppercase",
+              "decision-neon-button decision-submit-button h-6 rounded-sm px-2 text-[13px] font-semibold uppercase",
               stripLayout ? "w-auto ml-1" : "w-full"
             )}
             disabled={!canSubmit}

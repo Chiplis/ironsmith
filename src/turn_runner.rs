@@ -686,15 +686,17 @@ impl TurnRunner {
         use crate::decisions::make_decision;
         use crate::rules::state_based::{
             StateBasedAction, apply_legend_rule_choice,
-            apply_state_based_actions_from_actions_with, check_state_based_actions_with_effects,
+            apply_state_based_actions_from_actions_with, check_state_based_actions_with_view,
             legend_rule_specs_from_actions,
         };
 
         game.refresh_continuous_state();
 
         loop {
-            let all_effects = game.all_continuous_effects();
-            let actions = check_state_based_actions_with_effects(game, &all_effects);
+            let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+            let all_effects = view.effects().to_vec();
+            let actions = check_state_based_actions_with_view(game, &view);
+            drop(view);
             if actions.is_empty() {
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;

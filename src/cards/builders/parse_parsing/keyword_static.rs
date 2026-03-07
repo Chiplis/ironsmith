@@ -2993,12 +2993,12 @@ pub(crate) fn parse_spells_cost_modifier_line(
             if descriptor_tokens.is_empty() {
                 continue;
             }
-            let extra_filter = parse_spell_filter(&descriptor_tokens);
+            let extra_filter = parse_spell_filter(strip_relative_target_clause(&descriptor_tokens));
             if spell_filter_has_identity(&extra_filter) {
                 merge_spell_filters(&mut filter, extra_filter);
             }
         }
-        let between_filter = parse_spell_filter(between_tokens);
+        let between_filter = parse_spell_filter(strip_relative_target_clause(between_tokens));
         if spell_filter_has_identity(&between_filter) {
             merge_spell_filters(&mut filter, between_filter);
         }
@@ -3216,6 +3216,16 @@ pub(crate) fn parse_spells_cost_modifier_line(
         ability = ability.with_condition(condition);
     }
     Ok(Some(StaticAbility::new(ability)))
+}
+
+fn strip_relative_target_clause(tokens: &[Token]) -> &[Token] {
+    let Some(target_clause_idx) = tokens.windows(2).position(|window| {
+        window[0].is_word("that") && (window[1].is_word("target") || window[1].is_word("targets"))
+    }) else {
+        return tokens;
+    };
+
+    &tokens[..target_clause_idx]
 }
 
 pub(crate) fn parse_trailing_targets_condition_in_cost_modifier(

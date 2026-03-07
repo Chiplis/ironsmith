@@ -710,8 +710,54 @@ function resolveDecisionTitle(decision) {
   }
 }
 
+function PriorityControlStack({
+  actionCount = 0,
+  holdEnabled = false,
+  confirmEnabled = false,
+  onHoldChange,
+  onConfirmChange,
+  className = "",
+}) {
+  const checkboxLabelClass =
+    "flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer text-[#9db7d5] hover:text-[#d7e8fb] transition-colors";
+
+  return (
+    <div className={cn("flex shrink-0 flex-col items-start justify-center py-1.5", className)}>
+      <div className="pointer-events-none pl-[18px] text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
+          {actionCount} actions
+      </div>
+      <div className="flex items-center gap-3">
+        <label className={checkboxLabelClass}>
+          <Checkbox
+            checked={holdEnabled}
+            onCheckedChange={(value) => onHoldChange?.(Boolean(value))}
+            className="h-3 w-3"
+          />
+          Hold
+        </label>
+        <label className={checkboxLabelClass}>
+          <Checkbox
+            checked={confirmEnabled}
+            onCheckedChange={(value) => onConfirmChange?.(Boolean(value))}
+            className="h-3 w-3"
+          />
+          Confirm
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function PriorityBar({ anchor = null, inline = false, selectedObjectId = null }) {
-  const { state, dispatch, holdRule, setHoldRule, cancelDecision } = useGame();
+  const {
+    state,
+    dispatch,
+    holdRule,
+    setHoldRule,
+    confirmEnabled,
+    setConfirmEnabled,
+    cancelDecision,
+  } = useGame();
   const {
     hoveredObjectId,
     hoverCard,
@@ -746,6 +792,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     () => buildPriorityActionGroups(otherActions, battlefieldFamilies),
     [otherActions, battlefieldFamilies]
   );
+  const priorityActionCount = otherActions.length;
   const objectNameById = useMemo(
     () => buildObjectNameById(state?.players, state?.stack_objects),
     [state?.players, state?.stack_objects]
@@ -830,30 +877,20 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="decision-neon-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                  className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
                   disabled={!canAct}
                   onClick={() => triggerPriorityAction(passAction)}
                 >
                   {passLabel}
                 </Button>
-                <label className="flex h-full items-center gap-1.5 shrink-0 px-1 text-[11px] uppercase tracking-wider cursor-pointer text-[#9db7d5] hover:text-[#d7e8fb] transition-colors">
-                  <Checkbox
-                    checked={holdRule === "always"}
-                    onCheckedChange={(v) => setHoldRule(v ? "always" : "never")}
-                    className="h-3 w-3"
-                  />
-                  Hold
-                </label>
-                <div className="min-w-[86px] self-stretch flex flex-col justify-center py-1.5">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
-                    {canAct ? "Actions" : "Opponent Priority"}
-                  </div>
-                  {actionGroups.length > 0 && canAct && (
-                    <div className="mt-0.5 text-[11px] text-[#d2e5fb]">
-                      {actionGroups.length} available
-                    </div>
-                  )}
-                </div>
+                <PriorityControlStack
+                  actionCount={priorityActionCount}
+                  holdEnabled={holdRule === "always"}
+                  confirmEnabled={confirmEnabled}
+                  onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                  onConfirmChange={setConfirmEnabled}
+                  className="min-w-[104px]"
+                />
               </div>
               <PriorityActionStrip
                 groups={actionGroups}
@@ -872,7 +909,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="decision-neon-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                  className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
                   disabled={!canSubmitFocused}
                   onClick={() => {
                     if (!canSubmitFocused) return;
@@ -885,7 +922,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="decision-neon-button decision-neon-button--danger h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
+                  className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
                   disabled={!canAct}
                   onClick={() => {
                     if (!canAct) return;
@@ -951,24 +988,21 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               >
                 {passLabel}
               </Button>
-              <label className="flex h-full items-center gap-1.5 shrink-0 px-1 text-[11px] uppercase tracking-wider cursor-pointer text-[#9db7d5] hover:text-[#d7e8fb] transition-colors">
-                <Checkbox
-                  checked={holdRule === "always"}
-                  onCheckedChange={(v) => setHoldRule(v ? "always" : "never")}
-                  className="h-3 w-3"
-                />
-                Hold
-              </label>
-              <div className="self-stretch flex flex-col justify-center py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
-                {canAct ? "Actions" : "Opponent Priority"}
-              </div>
+              <PriorityControlStack
+                actionCount={priorityActionCount}
+                holdEnabled={holdRule === "always"}
+                confirmEnabled={confirmEnabled}
+                onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                onConfirmChange={setConfirmEnabled}
+                className="min-w-[104px]"
+              />
             </>
           ) : (
             <>
               <Button
                 variant="ghost"
                 size="sm"
-                className="decision-neon-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
                 disabled={!canSubmitFocused}
                 onClick={() => {
                   if (!canSubmitFocused) return;
@@ -981,7 +1015,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="decision-neon-button decision-neon-button--danger h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
+                className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
                 disabled={!canAct}
                 onClick={() => {
                   if (!canAct) return;
@@ -996,11 +1030,6 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             </>
           )}
         </div>
-        {isPriorityDecision && actionGroups.length > 0 && canAct && (
-          <div className="mt-0.5 text-[12px] text-[#d2e5fb]">
-            {actionGroups.length} available
-          </div>
-        )}
       </div>
       <div className="border-b border-[#2f4662]/70 px-2 py-1.5">
         {isPriorityDecision ? (
@@ -1063,10 +1092,10 @@ export default function DecisionPopupLayer({ anchor = null, priorityInline = fal
   const canAct = !!decision && state?.perspective === decision.player;
 
   if (!decision) return null;
-  if (decision.kind === "priority") {
+  if (decision?.kind === "priority") {
     return <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;
   }
-  if (decision.kind === "attackers" || decision.kind === "blockers") {
+  if (decision?.kind === "attackers" || decision?.kind === "blockers") {
     return <CombatBar anchor={anchor} inline={priorityInline} decision={decision} canAct={canAct} />;
   }
   return <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;

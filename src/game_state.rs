@@ -57,6 +57,22 @@ pub struct LinkedExileGroup {
     pub return_under_owner_control: bool,
 }
 
+/// One-shot battlefield transition hints for the UI animation layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiBattlefieldTransitionKind {
+    Damaged,
+    Destroyed,
+    Sacrificed,
+    Exiled,
+}
+
+/// A UI-only battlefield transition record keyed by stable object identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UiBattlefieldTransition {
+    pub stable_id: StableId,
+    pub kind: UiBattlefieldTransitionKind,
+}
+
 /// Key type for extensible per-turn counters.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TurnCounterKey {
@@ -1141,6 +1157,8 @@ pub struct GameState {
     /// Effects (like VoteEffect) can push events here, and the game loop
     /// processes them after effect resolution.
     pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
+    /// One-shot battlefield transition hints consumed by the UI snapshot layer.
+    pub ui_battlefield_transitions: Vec<UiBattlefieldTransition>,
     /// Event provenance graph for this game.
     pub provenance_graph: ProvenanceGraph,
 
@@ -1462,6 +1480,7 @@ impl GameState {
             mana_spend_effects: ManaSpendEffectTracker::new(),
             delayed_triggers: Vec::new(),
             pending_trigger_events: Vec::new(),
+            ui_battlefield_transitions: Vec::new(),
             provenance_graph: ProvenanceGraph::new(),
             combat: None,
             is_night: false,
@@ -2764,6 +2783,29 @@ impl GameState {
     /// - Static abilities on permanents (generated dynamically)
     pub fn all_continuous_effects(&self) -> Vec<ContinuousEffect> {
         crate::static_ability_processor::get_all_continuous_effects(self)
+    }
+
+    /// Combine registered and cached static-ability continuous effects.
+    ///
+    /// Unlike `all_continuous_effects`, this does not regenerate static-ability
+    /// effects dynamically. Callers must only use this after
+    /// `refresh_continuous_state` (or `update_static_ability_effects`) for the
+    /// current state.
+    pub(crate) fn cached_continuous_effects_snapshot(&self) -> Vec<ContinuousEffect> {
+        let mut effects: Vec<ContinuousEffect> = self
+            .continuous_effects
+            .effects_sorted()
+            .into_iter()
+            .cloned()
+            .collect();
+        effects.reserve(self.continuous_effects.static_ability_effects().len());
+        effects.extend(
+            self.continuous_effects
+                .static_ability_effects()
+                .iter()
+                .cloned(),
+        );
+        effects
     }
 
     /// Calculate all characteristics for an object using precomputed continuous effects.
@@ -4432,6 +4474,59 @@ impl GameState {
         parent: ProvNodeId,
         mut event: crate::triggers::TriggerEvent,
     ) {
+        use crate::events::DamageEvent;
+        use crate::events::permanents::SacrificeEvent;
+        use crate::events::zones::ZoneChangeEvent;
+        use crate::game_event::DamageTarget;
+
+        if let Some(damage) = event.downcast::<DamageEvent>()
+            && let DamageTarget::Object(object_id) = damage.target
+            && let Some(obj) = self.object(object_id)
+            && obj.zone == Zone::Battlefield
+        {
+            self.record_ui_battlefield_transition(
+                UiBattlefieldTransitionKind::Damaged,
+                obj.stable_id,
+            );
+        }
+
+        if let Some(sacrifice) = event.downcast::<SacrificeEvent>() {
+            let stable_id = sacrifice
+                .snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.stable_id)
+                .or_else(|| self.object(sacrifice.permanent).map(|obj| obj.stable_id));
+            if let Some(stable_id) = stable_id {
+                self.record_ui_battlefield_transition(
+                    UiBattlefieldTransitionKind::Sacrificed,
+                    stable_id,
+                );
+            }
+        }
+
+        if let Some(zone_change) = event.downcast::<ZoneChangeEvent>()
+            && zone_change.from == Zone::Battlefield
+            && zone_change.to == Zone::Exile
+        {
+            let stable_id = zone_change
+                .snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.stable_id)
+                .or_else(|| {
+                    zone_change
+                        .objects
+                        .first()
+                        .and_then(|object_id| self.object(*object_id))
+                        .map(|obj| obj.stable_id)
+                });
+            if let Some(stable_id) = stable_id {
+                self.record_ui_battlefield_transition(
+                    UiBattlefieldTransitionKind::Exiled,
+                    stable_id,
+                );
+            }
+        }
+
         let provenance = event.provenance();
         if provenance == ProvNodeId::default() || self.provenance_graph.node(provenance).is_none() {
             let event_provenance = if parent == ProvNodeId::default()
@@ -4454,6 +4549,26 @@ impl GameState {
     /// Take all pending trigger events (empties the queue).
     pub fn take_pending_trigger_events(&mut self) -> Vec<crate::triggers::TriggerEvent> {
         std::mem::take(&mut self.pending_trigger_events)
+    }
+
+    pub fn record_ui_battlefield_transition(
+        &mut self,
+        kind: UiBattlefieldTransitionKind,
+        stable_id: StableId,
+    ) {
+        if self
+            .ui_battlefield_transitions
+            .iter()
+            .any(|entry| entry.kind == kind && entry.stable_id == stable_id)
+        {
+            return;
+        }
+        self.ui_battlefield_transitions
+            .push(UiBattlefieldTransition { stable_id, kind });
+    }
+
+    pub fn take_ui_battlefield_transitions(&mut self) -> Vec<UiBattlefieldTransition> {
+        std::mem::take(&mut self.ui_battlefield_transitions)
     }
 
     /// Ensure a replacement-event envelope has provenance.

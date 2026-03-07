@@ -7,6 +7,7 @@
 
 use crate::ability::{ProtectionFrom, extract_static_abilities};
 use crate::color::Color;
+use crate::derived_view::DerivedGameView;
 use crate::object::Object;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::FilterContext;
@@ -60,14 +61,24 @@ fn get_static_abilities(object: &Object) -> Vec<crate::static_abilities::StaticA
 ///
 /// Takes `GameState` to check abilities granted by continuous effects (like protection from Akroma's Will).
 pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::GameState) -> bool {
+    let view = DerivedGameView::new(game);
+    can_block_with_view(attacker, blocker, game, &view)
+}
+
+pub(crate) fn can_block_with_view(
+    attacker: &Object,
+    blocker: &Object,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
     if !game.can_block_attacker(blocker.id, attacker.id) {
         return false;
     }
 
     // Get calculated abilities for both creatures (includes continuous effects)
     // Fall back to the object's base abilities if not in game state (for unit tests)
-    let attacker_chars = game.calculated_characteristics(attacker.id);
-    let blocker_chars = game.calculated_characteristics(blocker.id);
+    let attacker_chars = view.calculated_characteristics(attacker.id);
+    let blocker_chars = view.calculated_characteristics(blocker.id);
 
     let attacker_abilities = attacker_chars
         .as_ref()
@@ -159,11 +170,13 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
 
     // Skulk: can't be blocked by creatures with greater power.
     if attacker_has(StaticAbilityId::Skulk) {
-        let attacker_power = game
-            .calculated_power(attacker.id)
+        let attacker_power = attacker_chars
+            .as_ref()
+            .and_then(|c| c.power)
             .or_else(|| attacker.power());
-        let blocker_power = game
-            .calculated_power(blocker.id)
+        let blocker_power = blocker_chars
+            .as_ref()
+            .and_then(|c| c.power)
             .or_else(|| blocker.power());
         if let (Some(attacker_power), Some(blocker_power)) = (attacker_power, blocker_power)
             && blocker_power > attacker_power
@@ -176,7 +189,7 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
     // Check both the object's base abilities AND abilities from continuous effects
     for ability in &attacker_abilities {
         if let Some(prot) = ability.protection_from()
-            && protection_prevents_blocking(prot, blocker, attacker, game)
+            && protection_prevents_blocking_with_view(prot, blocker, attacker, game, view)
         {
             return false;
         }
@@ -193,8 +206,9 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
         .filter_map(|ability| ability.blocked_by_power_or_less_threshold())
         .max()
     {
-        let blocker_power = game
-            .calculated_power(blocker.id)
+        let blocker_power = blocker_chars
+            .as_ref()
+            .and_then(|c| c.power)
             .or_else(|| blocker.power());
         if blocker_power.is_some_and(|power| power <= max_blocker_power) {
             return false;
@@ -207,8 +221,9 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
         .filter_map(|ability| ability.blocked_by_power_or_greater_threshold())
         .min()
     {
-        let blocker_power = game
-            .calculated_power(blocker.id)
+        let blocker_power = blocker_chars
+            .as_ref()
+            .and_then(|c| c.power)
             .or_else(|| blocker.power());
         if blocker_power.is_some_and(|power| power >= min_blocker_power) {
             return false;
@@ -226,8 +241,8 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
             .filter_map(|&id| game.object(id))
             .any(|obj| {
                 obj.controller == blocker.controller
-                    && game.object_has_card_type(obj.id, CardType::Land)
-                    && game
+                    && view.object_has_card_type(obj.id, CardType::Land)
+                    && view
                         .calculated_subtypes(obj.id)
                         .contains(&required_land_subtype)
             });
@@ -246,7 +261,7 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
             .filter_map(|&id| game.object(id))
             .any(|obj| {
                 obj.controller == blocker.controller
-                    && game.object_has_card_type(obj.id, required_card_type)
+                    && view.object_has_card_type(obj.id, required_card_type)
             });
         if defending_controls_required_type {
             return false;
@@ -265,7 +280,7 @@ pub fn can_block(attacker: &Object, blocker: &Object, game: &crate::game_state::
                 obj.controller == blocker.controller
                     && required_card_types
                         .iter()
-                        .all(|required_type| game.object_has_card_type(obj.id, *required_type))
+                        .all(|required_type| view.object_has_card_type(obj.id, *required_type))
             });
         if defending_controls_required_types {
             return false;
@@ -287,7 +302,18 @@ fn protection_prevents_blocking(
     attacker: &Object,
     game: &crate::game_state::GameState,
 ) -> bool {
-    let blocker_chars = game.calculated_characteristics(blocker.id);
+    let view = DerivedGameView::new(game);
+    protection_prevents_blocking_with_view(protection, blocker, attacker, game, &view)
+}
+
+fn protection_prevents_blocking_with_view(
+    protection: &ProtectionFrom,
+    blocker: &Object,
+    attacker: &Object,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let blocker_chars = view.calculated_characteristics(blocker.id);
     let blocker_colors = blocker_chars
         .as_ref()
         .map(|c| c.colors.clone())
@@ -327,7 +353,12 @@ pub fn minimum_blockers(attacker: &Object) -> usize {
 /// Returns the minimum number of blockers required to block an attacker,
 /// accounting for granted abilities from continuous effects.
 pub fn minimum_blockers_with_game(attacker: &Object, game: &crate::game_state::GameState) -> usize {
-    if game.object_has_static_ability_id(attacker.id, StaticAbilityId::Menace) {
+    let view = DerivedGameView::new(game);
+    minimum_blockers_with_view(attacker, &view)
+}
+
+pub(crate) fn minimum_blockers_with_view(attacker: &Object, view: &DerivedGameView<'_>) -> usize {
+    if view.object_has_static_ability_id(attacker.id, StaticAbilityId::Menace) {
         2
     } else {
         1
@@ -336,7 +367,15 @@ pub fn minimum_blockers_with_game(attacker: &Object, game: &crate::game_state::G
 
 /// Returns the maximum number of blockers allowed for an attacker, if restricted.
 pub fn maximum_blockers(attacker: &Object, game: &crate::game_state::GameState) -> Option<usize> {
-    let abilities = game
+    let view = DerivedGameView::new(game);
+    maximum_blockers_with_view(attacker, &view)
+}
+
+pub(crate) fn maximum_blockers_with_view(
+    attacker: &Object,
+    view: &DerivedGameView<'_>,
+) -> Option<usize> {
+    let abilities = view
         .calculated_characteristics(attacker.id)
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| get_static_abilities(attacker));
@@ -352,6 +391,15 @@ pub fn maximum_blockers(attacker: &Object, game: &crate::game_state::GameState) 
 /// - Summoning sickness (unless it has haste)
 /// - "Can't attack" abilities
 pub fn can_attack(creature: &Object, game: &crate::game_state::GameState) -> bool {
+    let view = DerivedGameView::new(game);
+    can_attack_with_view(creature, game, &view)
+}
+
+pub(crate) fn can_attack_with_view(
+    creature: &Object,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
     if !game.can_attack(creature.id) {
         return false;
     }
@@ -362,9 +410,9 @@ pub fn can_attack(creature: &Object, game: &crate::game_state::GameState) -> boo
     }
 
     // Defender prevents attacking
-    if game.object_has_static_ability_id(creature.id, StaticAbilityId::Defender) {
+    if view.object_has_static_ability_id(creature.id, StaticAbilityId::Defender) {
         // Unless it has "can attack as though it didn't have defender"
-        if !game
+        if !view
             .object_has_static_ability_id(creature.id, StaticAbilityId::CanAttackAsThoughNoDefender)
         {
             return false;
@@ -373,13 +421,13 @@ pub fn can_attack(creature: &Object, game: &crate::game_state::GameState) -> boo
 
     // Summoning sickness prevents attacking (unless haste)
     if game.is_summoning_sick(creature.id)
-        && !game.object_has_static_ability_id(creature.id, StaticAbilityId::Haste)
+        && !view.object_has_static_ability_id(creature.id, StaticAbilityId::Haste)
     {
         return false;
     }
 
     // "Can't attack" ability
-    if game.object_has_static_ability_id(creature.id, StaticAbilityId::CantAttack) {
+    if view.object_has_static_ability_id(creature.id, StaticAbilityId::CantAttack) {
         return false;
     }
 
@@ -395,11 +443,21 @@ pub fn can_attack_defending_player(
     defending_player: crate::ids::PlayerId,
     game: &crate::game_state::GameState,
 ) -> bool {
-    if !can_attack(creature, game) {
+    let view = DerivedGameView::new(game);
+    can_attack_defending_player_with_view(creature, defending_player, game, &view)
+}
+
+pub(crate) fn can_attack_defending_player_with_view(
+    creature: &Object,
+    defending_player: crate::ids::PlayerId,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if !can_attack_with_view(creature, game, view) {
         return false;
     }
 
-    let abilities = game
+    let abilities = view
         .calculated_characteristics(creature.id)
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| get_static_abilities(creature));
@@ -428,7 +486,16 @@ pub fn must_attack(creature: &Object) -> bool {
 
 /// Check if a creature must attack this turn if able, with continuous effects applied.
 pub fn must_attack_with_game(creature: &Object, game: &crate::game_state::GameState) -> bool {
-    game.object_has_static_ability_id(creature.id, StaticAbilityId::MustAttack)
+    let view = DerivedGameView::new(game);
+    must_attack_with_view(creature, game, &view)
+}
+
+pub(crate) fn must_attack_with_view(
+    creature: &Object,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    view.object_has_static_ability_id(creature.id, StaticAbilityId::MustAttack)
         || game.is_goaded(creature.id)
 }
 
@@ -449,7 +516,12 @@ pub fn has_vigilance(creature: &Object) -> bool {
 
 /// Check if a creature has vigilance (doesn't tap to attack), with continuous effects applied.
 pub fn has_vigilance_with_game(creature: &Object, game: &crate::game_state::GameState) -> bool {
-    game.object_has_static_ability_id(creature.id, StaticAbilityId::Vigilance)
+    let view = DerivedGameView::new(game);
+    has_vigilance_with_view(creature, &view)
+}
+
+pub(crate) fn has_vigilance_with_view(creature: &Object, view: &DerivedGameView<'_>) -> bool {
+    view.object_has_static_ability_id(creature.id, StaticAbilityId::Vigilance)
 }
 
 /// Check if a creature has first strike.
