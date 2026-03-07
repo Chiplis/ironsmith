@@ -537,33 +537,17 @@ pub(crate) struct LoweringFrame {
 pub(crate) struct CompileContext {
     pub(crate) next_effect_id: u32,
     pub(crate) next_tag_id: u32,
-    frame: LoweringFrame,
-}
-
-impl Deref for CompileContext {
-    type Target = LoweringFrame;
-
-    fn deref(&self) -> &Self::Target {
-        &self.frame
-    }
-}
-
-impl DerefMut for CompileContext {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.frame
-    }
 }
 
 impl CompileContext {
     pub(crate) fn new() -> Self {
-        Self::from_parts(IdGenContext::default(), LoweringFrame::default())
+        Self::from_id_gen(IdGenContext::default())
     }
 
-    pub(crate) fn from_parts(id_gen: IdGenContext, frame: LoweringFrame) -> Self {
+    pub(crate) fn from_id_gen(id_gen: IdGenContext) -> Self {
         Self {
             next_effect_id: id_gen.next_effect_id,
             next_tag_id: id_gen.next_tag_id,
-            frame,
         }
     }
 
@@ -577,6 +561,62 @@ impl CompileContext {
     pub(crate) fn apply_id_gen_context(&mut self, id_gen: IdGenContext) {
         self.next_effect_id = id_gen.next_effect_id;
         self.next_tag_id = id_gen.next_tag_id;
+    }
+
+    pub(crate) fn next_effect_id(&mut self) -> EffectId {
+        let id = EffectId(self.next_effect_id);
+        self.next_effect_id += 1;
+        id
+    }
+
+    pub(crate) fn next_tag(&mut self, prefix: &str) -> String {
+        let tag = format!("{prefix}_{}", self.next_tag_id);
+        self.next_tag_id += 1;
+        tag
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EffectLoweringContext {
+    ids: CompileContext,
+    frame: LoweringFrame,
+}
+
+impl Deref for EffectLoweringContext {
+    type Target = LoweringFrame;
+
+    fn deref(&self) -> &Self::Target {
+        &self.frame
+    }
+}
+
+impl DerefMut for EffectLoweringContext {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.frame
+    }
+}
+
+impl EffectLoweringContext {
+    pub(crate) fn new() -> Self {
+        Self {
+            ids: CompileContext::new(),
+            frame: LoweringFrame::default(),
+        }
+    }
+
+    pub(crate) fn from_parts(id_gen: IdGenContext, frame: LoweringFrame) -> Self {
+        Self {
+            ids: CompileContext::from_id_gen(id_gen),
+            frame,
+        }
+    }
+
+    pub(crate) fn id_gen_context(&self) -> IdGenContext {
+        self.ids.id_gen_context()
+    }
+
+    pub(crate) fn apply_id_gen_context(&mut self, id_gen: IdGenContext) {
+        self.ids.apply_id_gen_context(id_gen);
     }
 
     pub(crate) fn lowering_frame(&self) -> LoweringFrame {
@@ -605,14 +645,10 @@ impl CompileContext {
     }
 
     pub(crate) fn next_effect_id(&mut self) -> EffectId {
-        let id = EffectId(self.next_effect_id);
-        self.next_effect_id += 1;
-        id
+        self.ids.next_effect_id()
     }
 
     pub(crate) fn next_tag(&mut self, prefix: &str) -> String {
-        let tag = format!("{prefix}_{}", self.next_tag_id);
-        self.next_tag_id += 1;
-        tag
+        self.ids.next_tag(prefix)
     }
 }

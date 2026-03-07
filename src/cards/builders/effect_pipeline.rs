@@ -8,14 +8,15 @@ use crate::cards::builders::{
     ParsedModalHeader, ParsedRestrictions, PredicateAst, ReferenceEnv, ReferenceExports,
     ReferenceImports, StaticAbilityAst, TriggerSpec, annotate_effect_sequence,
     apply_instead_followup_statement_to_last_ability, collect_tag_spans_from_effects_with_context,
-    combine_mana_activation_condition, keyword_action_to_static_ability,
-    lower_prepared_additional_cost_choice_modes_with_exports, lower_prepared_ability,
+    combine_mana_activation_condition, effects_reference_it_tag, effects_reference_its_controller,
+    effects_reference_tag, ensure_concrete_trigger_spec, inferred_trigger_player_filter,
+    keyword_action_to_static_ability, lower_prepared_ability,
+    lower_prepared_additional_cost_choice_modes_with_exports,
     lower_prepared_effects_with_trigger_context, lower_prepared_statement_effects,
     lower_static_abilities_ast, lower_static_ability_ast, normalize_effects_ast,
     parse_activate_only_timing, parse_activation_condition, parse_mana_output_options_for_line,
     parse_triggered_times_each_turn_from_words, parsed_triggered_ability, tokenize_line,
-    trigger_supports_event_value, words, ensure_concrete_trigger_spec, effects_reference_it_tag,
-    effects_reference_its_controller, effects_reference_tag, inferred_trigger_player_filter,
+    trigger_supports_event_value, words,
 };
 use crate::color::ColorSet;
 use crate::cost::OptionalCost;
@@ -212,7 +213,10 @@ fn prepare_effects_from_normalized(
                 .as_ref()
                 .is_some_and(|tag| tag.as_str() == "triggering")
         {
-            prelude.insert(0, EffectPreludeTag::TriggeringObject(TagKey::from("triggering")));
+            prelude.insert(
+                0,
+                EffectPreludeTag::TriggeringObject(TagKey::from("triggering")),
+            );
         }
         if effects_reference_tag(reference_effects, "damaged")
             || imports
@@ -234,12 +238,8 @@ fn prepare_effects_from_normalized(
         config.bind_unbound_x_to_last_effect,
         config.initial_last_effect_id,
     );
-    let annotated = annotate_effect_sequence(
-        &semantic_effects,
-        &imports,
-        config,
-        Default::default(),
-    )?;
+    let annotated =
+        annotate_effect_sequence(&semantic_effects, &imports, config, Default::default())?;
     let exports = ReferenceExports::from_env(&annotated.final_env);
 
     Ok(PreparedEffectsForLowering {
@@ -281,18 +281,20 @@ pub(crate) fn prepare_effects_with_trigger_context_for_lowering(
     let default_last_object_tag = if imports.last_object_tag.is_none()
         && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
     {
-        Some(TagKey::from(if matches!(
-            trigger,
-            Some(
-                TriggerSpec::ThisDealsDamageTo(_)
-                    | TriggerSpec::ThisDealsCombatDamageTo(_)
-                    | TriggerSpec::DealsCombatDamageTo { .. }
-            )
-        ) {
-            "damaged"
-        } else {
-            "triggering"
-        }))
+        Some(TagKey::from(
+            if matches!(
+                trigger,
+                Some(
+                    TriggerSpec::ThisDealsDamageTo(_)
+                        | TriggerSpec::ThisDealsCombatDamageTo(_)
+                        | TriggerSpec::DealsCombatDamageTo { .. }
+                )
+            ) {
+                "damaged"
+            } else {
+                "triggering"
+            },
+        ))
     } else {
         None
     };
@@ -346,16 +348,18 @@ pub(crate) fn prepare_triggered_effects_for_lowering(
         },
         inferred_trigger_player_filter(trigger),
         if effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized) {
-            Some(TagKey::from(if matches!(
-                trigger,
-                TriggerSpec::ThisDealsDamageTo(_)
-                    | TriggerSpec::ThisDealsCombatDamageTo(_)
-                    | TriggerSpec::DealsCombatDamageTo { .. }
-            ) {
-                "damaged"
-            } else {
-                "triggering"
-            }))
+            Some(TagKey::from(
+                if matches!(
+                    trigger,
+                    TriggerSpec::ThisDealsDamageTo(_)
+                        | TriggerSpec::ThisDealsCombatDamageTo(_)
+                        | TriggerSpec::DealsCombatDamageTo { .. }
+                ) {
+                    "damaged"
+                } else {
+                    "triggering"
+                },
+            ))
         } else {
             None
         },
@@ -394,7 +398,9 @@ pub(crate) fn normalize_card_ast(ast: ParsedCardAst) -> Result<NormalizedCardAst
     let mut normalized_items = Vec::with_capacity(items.len());
     for item in items {
         normalized_items.push(match item {
-            ParsedCardItem::Line(line) => NormalizedCardItem::Line(normalize_line_ast(line, &mut state)?),
+            ParsedCardItem::Line(line) => {
+                NormalizedCardItem::Line(normalize_line_ast(line, &mut state)?)
+            }
             ParsedCardItem::Modal(modal) => NormalizedCardItem::Modal(normalize_modal_ast(modal)?),
             ParsedCardItem::LevelAbility(level) => NormalizedCardItem::LevelAbility(level),
         });
@@ -472,7 +478,9 @@ fn normalize_line_ast(
             LineAst::Abilities(actions) => NormalizedLineChunk::Abilities(actions),
             LineAst::StaticAbility(ability) => NormalizedLineChunk::StaticAbility(ability),
             LineAst::StaticAbilities(abilities) => NormalizedLineChunk::StaticAbilities(abilities),
-            LineAst::Ability(parsed) => NormalizedLineChunk::Ability(normalize_parsed_ability(parsed)?),
+            LineAst::Ability(parsed) => {
+                NormalizedLineChunk::Ability(normalize_parsed_ability(parsed)?)
+            }
             LineAst::Triggered {
                 trigger,
                 effects,
@@ -500,8 +508,7 @@ fn normalize_line_ast(
                 }
             }
             LineAst::AdditionalCost { effects } => {
-                let prepared =
-                    prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+                let prepared = prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
                 state.latest_additional_cost_exports = prepared.exports.clone();
                 NormalizedLineChunk::AdditionalCost {
                     effects_ast: effects,
@@ -551,19 +558,21 @@ fn normalize_parsed_ability(
 ) -> Result<NormalizedParsedAbility, CardTextError> {
     let prepared = match parsed.effects_ast.as_ref() {
         None => None,
-        Some(_) if matches!(
-            &parsed.ability.kind,
-            AbilityKind::Activated(activated)
-                if !activated.effects.is_empty() || !activated.choices.is_empty()
-        ) =>
+        Some(_)
+            if matches!(
+                &parsed.ability.kind,
+                AbilityKind::Activated(activated)
+                    if !activated.effects.is_empty() || !activated.choices.is_empty()
+            ) =>
         {
             None
         }
-        Some(_) if matches!(
-            &parsed.ability.kind,
-            AbilityKind::Triggered(triggered)
-                if !triggered.effects.is_empty() || !triggered.choices.is_empty()
-        ) =>
+        Some(_)
+            if matches!(
+                &parsed.ability.kind,
+                AbilityKind::Triggered(triggered)
+                    if !triggered.effects.is_empty() || !triggered.choices.is_empty()
+            ) =>
         {
             None
         }
@@ -610,7 +619,8 @@ fn normalize_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, Card
 
     let mut modes = Vec::with_capacity(modal.modes.len());
     for mode in modal.modes {
-        let prepared = prepare_effects_for_lowering(&mode.effects_ast, ReferenceImports::default())?;
+        let prepared =
+            prepare_effects_for_lowering(&mode.effects_ast, ReferenceImports::default())?;
         modes.push(NormalizedModalModeAst {
             info: mode.info,
             description: mode.description,
@@ -1355,16 +1365,16 @@ fn apply_line_ast(
             }
             let (modes, exports) =
                 match lower_prepared_additional_cost_choice_modes_with_exports(&options) {
-                Ok(outputs) => outputs,
-                Err(err) if allow_unsupported => {
-                    return Ok(push_unsupported_marker(
-                        builder,
-                        info.raw_line.as_str(),
-                        format!("{err:?}"),
-                    ));
-                }
-                Err(err) => return Err(err),
-            };
+                    Ok(outputs) => outputs,
+                    Err(err) if allow_unsupported => {
+                        return Ok(push_unsupported_marker(
+                            builder,
+                            info.raw_line.as_str(),
+                            format!("{err:?}"),
+                        ));
+                    }
+                    Err(err) => return Err(err),
+                };
             state.latest_additional_cost_exports = exports;
             builder.additional_cost = crate::ability::merge_cost_effects(
                 builder.additional_cost,

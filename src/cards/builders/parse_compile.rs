@@ -19,7 +19,7 @@ use crate::cards::builders::effect_pipeline::{
 };
 #[allow(unused_imports)]
 use crate::cards::builders::parse_parsing::{
-    CompileContext, IdGenContext, LoweringFrame, NormalizedLine, contains_until_end_of_turn,
+    EffectLoweringContext, IdGenContext, LoweringFrame, NormalizedLine, contains_until_end_of_turn,
     map_span_to_original, parse_card_type, parse_number_word_i32, parse_subtype_word,
 };
 #[allow(unused_imports)]
@@ -289,7 +289,7 @@ pub(crate) fn compile_statement_effects_with_imports(
 pub(crate) fn materialize_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    let mut ctx = CompileContext::new();
+    let mut ctx = EffectLoweringContext::new();
     ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, _) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
@@ -303,10 +303,11 @@ pub(crate) fn materialize_prepared_statement_effects(
 pub(crate) fn materialize_prepared_effects_with_trigger_context(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    let mut ctx = CompileContext::new();
+    let mut ctx = EffectLoweringContext::new();
     ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
     ctx.apply_reference_env(&prepared.initial_env);
-    let (compiled, choices) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
+    let (compiled, choices) =
+        compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
     Ok(LoweredEffects {
         effects: prepend_effect_prelude(compiled, compile_effect_prelude_tags(&prepared.prelude)),
         choices,
@@ -344,7 +345,7 @@ pub(crate) fn compile_condition_from_predicate_ast_with_env(
     refs: &ReferenceEnv,
     saved_last_object_tag: Option<&TagKey>,
 ) -> Result<Condition, CardTextError> {
-    let mut ctx = CompileContext::new();
+    let mut ctx = EffectLoweringContext::new();
     ctx.apply_reference_env(refs);
     let saved_last_tag = saved_last_object_tag.map(|tag| tag.as_str().to_string());
     compile_condition_from_predicate_ast(predicate, &mut ctx, &saved_last_tag)
@@ -474,7 +475,7 @@ pub(crate) fn compile_trigger_effects_with_imports(
 
 pub(crate) fn compile_condition_from_predicate_ast(
     predicate: &PredicateAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
     saved_last_tag: &Option<String>,
 ) -> Result<Condition, CardTextError> {
     let refs = current_reference_env(ctx);
@@ -1529,7 +1530,7 @@ pub(crate) fn restriction_references_tag(
 
 pub(crate) fn compile_effects(
     effects: &[EffectAst],
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let annotated = annotate_effect_sequence(
         effects,
@@ -1548,7 +1549,7 @@ pub(crate) fn compile_effects(
 
 pub(crate) fn compile_annotated_effects_with_context(
     annotated: &AnnotatedEffectSequence,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let mut compiled = Vec::new();
     let mut choices = Vec::new();
@@ -1680,7 +1681,7 @@ pub(crate) fn compile_effects_with_explicit_frame(
     id_gen: &mut IdGenContext,
     frame: LoweringFrame,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>, LoweringFrame), CardTextError> {
-    let mut ctx = CompileContext::from_parts(id_gen.clone(), frame);
+    let mut ctx = EffectLoweringContext::from_parts(id_gen.clone(), frame);
     let (compiled, choices) = compile_effects(effects, &mut ctx)?;
     *id_gen = ctx.id_gen_context();
     let frame_out = ctx.lowering_frame();
@@ -1808,7 +1809,7 @@ pub(crate) fn collect_tag_spans_from_target(
 pub(crate) fn compile_if_do_with_opponent_doesnt(
     first: &EffectAst,
     second: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let EffectAst::ForEachOpponentDoesNot {
         effects: second_effects,
@@ -1910,7 +1911,7 @@ pub(crate) fn compile_if_do_with_opponent_doesnt(
 pub(crate) fn compile_if_do_with_player_doesnt(
     first: &EffectAst,
     second: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let EffectAst::ForEachPlayerDoesNot {
         effects: second_effects,
@@ -1985,7 +1986,7 @@ pub(crate) fn compile_if_do_with_player_doesnt(
 pub(crate) fn compile_if_do_with_opponent_did(
     first: &EffectAst,
     second: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let EffectAst::ForEachOpponentDid {
         effects: second_effects,
@@ -2137,7 +2138,7 @@ pub(crate) fn compile_if_do_with_opponent_did(
 pub(crate) fn compile_if_do_with_player_did(
     first: &EffectAst,
     second: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let EffectAst::ForEachPlayerDid {
         effects: second_effects,
@@ -2244,32 +2245,32 @@ pub(crate) fn compile_if_do_with_player_did(
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CompileContextState {
+pub(crate) struct EffectLoweringContextState {
     frame: LoweringFrame,
 }
 
-impl CompileContextState {
-    fn capture(ctx: &CompileContext) -> Self {
+impl EffectLoweringContextState {
+    fn capture(ctx: &EffectLoweringContext) -> Self {
         Self {
             frame: ctx.lowering_frame(),
         }
     }
 
-    fn restore(self, ctx: &mut CompileContext) {
+    fn restore(self, ctx: &mut EffectLoweringContext) {
         ctx.apply_lowering_frame(self.frame);
     }
 }
 
-pub(crate) fn with_preserved_compile_context<T, Configure, Run>(
-    ctx: &mut CompileContext,
+pub(crate) fn with_preserved_lowering_context<T, Configure, Run>(
+    ctx: &mut EffectLoweringContext,
     configure: Configure,
     run: Run,
 ) -> Result<T, CardTextError>
 where
-    Configure: FnOnce(&mut CompileContext),
-    Run: FnOnce(&mut CompileContext) -> Result<T, CardTextError>,
+    Configure: FnOnce(&mut EffectLoweringContext),
+    Run: FnOnce(&mut EffectLoweringContext) -> Result<T, CardTextError>,
 {
-    let saved = CompileContextState::capture(ctx);
+    let saved = EffectLoweringContextState::capture(ctx);
     configure(ctx);
     let result = run(ctx);
     saved.restore(ctx);
@@ -2278,7 +2279,7 @@ where
 
 pub(crate) fn compile_effects_preserving_last_effect(
     effects: &[EffectAst],
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let saved_frame = ctx.lowering_frame();
     let mut id_gen = ctx.id_gen_context();
@@ -2292,7 +2293,7 @@ pub(crate) fn compile_effects_preserving_last_effect(
 
 pub(crate) fn compile_effects_in_iterated_player_context(
     effects: &[EffectAst],
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
     tagged_object: Option<String>,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let saved_frame = ctx.lowering_frame();
@@ -2339,7 +2340,7 @@ pub(crate) fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]
 
 pub(crate) fn compile_vote_sequence(
     effects: &[AnnotatedEffect],
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>, usize)>, CardTextError> {
     let Some(first) = effects.first() else {
         return Ok(None);
@@ -2378,7 +2379,7 @@ pub(crate) fn compile_vote_sequence(
         }
     }
 
-    let (vote_options, choices) = with_preserved_compile_context(
+    let (vote_options, choices) = with_preserved_lowering_context(
         ctx,
         |ctx| {
             ctx.iterated_player = true;
@@ -2523,7 +2524,7 @@ fn preserve_chooser_relative_player_filters(
 
 pub(crate) fn hand_exile_filter_and_count(
     target: &TargetAst,
-    ctx: &CompileContext,
+    ctx: &EffectLoweringContext,
 ) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
     let (filter, count) = match target {
         TargetAst::Object(filter, _, _) => (filter, ChoiceCount::exactly(1)),
@@ -2544,7 +2545,7 @@ pub(crate) fn hand_exile_filter_and_count(
 pub(crate) fn lower_hand_exile_target(
     target: &TargetAst,
     face_down: bool,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let Some((mut filter, count)) = hand_exile_filter_and_count(target, ctx)? else {
         return Ok(None);
@@ -2586,7 +2587,7 @@ pub(crate) fn lower_hand_exile_target(
 pub(crate) fn lower_counted_non_target_exile_target(
     target: &TargetAst,
     face_down: bool,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let (filter, count) = match target {
         TargetAst::WithCount(inner, count) => match inner.as_ref() {
@@ -2650,7 +2651,7 @@ pub(crate) fn lower_counted_non_target_exile_target(
 pub(crate) fn lower_single_non_target_exile_target(
     target: &TargetAst,
     face_down: bool,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let (filter, count) = match target {
         TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
@@ -2710,7 +2711,7 @@ pub(crate) fn lower_single_non_target_exile_target(
 
 pub(crate) fn lower_may_imprint_from_hand_effect(
     effects: &[EffectAst],
-    ctx: &CompileContext,
+    ctx: &EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     if effects.len() != 1 {
         return Ok(None);
@@ -2740,7 +2741,7 @@ pub(crate) fn lower_may_imprint_from_hand_effect(
 
 pub(crate) fn compile_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     // Keep dynamic stack growth for deeply nested recursive lowering paths.
     stacker::maybe_grow(1024 * 1024, 2 * 1024 * 1024, || {
@@ -2773,7 +2774,7 @@ fn lower_granted_abilities_ast(
 
 fn compile_effect_inner(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     if let Some(compiled) = try_compile_effect_via_handlers(effect, ctx)? {
         return Ok(compiled);
@@ -2785,8 +2786,10 @@ fn compile_effect_inner(
 }
 
 type EffectCompileOutcome = (Vec<Effect>, Vec<ChooseSpec>);
-type EffectCompileHandler =
-    fn(&EffectAst, &mut CompileContext) -> Result<Option<EffectCompileOutcome>, CardTextError>;
+type EffectCompileHandler = fn(
+    &EffectAst,
+    &mut EffectLoweringContext,
+) -> Result<Option<EffectCompileOutcome>, CardTextError>;
 
 #[derive(Clone, Copy)]
 struct EffectCompileHandlerDef {
@@ -2840,7 +2843,7 @@ const EFFECT_COMPILE_HANDLERS: [EffectCompileHandlerDef; 14] = [
 
 fn try_compile_effect_via_handlers(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<EffectCompileOutcome>, CardTextError> {
     for EffectCompileHandlerDef { run, .. } in EFFECT_COMPILE_HANDLERS {
         if let Some(compiled) = run(effect, ctx)? {
@@ -2852,7 +2855,7 @@ fn try_compile_effect_via_handlers(
 
 pub(crate) fn resolve_effect_player_filter(
     player: PlayerAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
     allow_target: bool,
     allow_target_opponent: bool,
     track_last_player_filter: bool,
@@ -2880,7 +2883,7 @@ pub(crate) fn resolve_effect_player_filter(
 
 pub(crate) fn compile_player_effect<YouBuilder, OtherBuilder>(
     player: PlayerAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
     allow_target: bool,
     build_you: YouBuilder,
     build_other: OtherBuilder,
@@ -2912,7 +2915,7 @@ where
 
 pub(crate) fn compile_player_effect_from_filter<Builder>(
     player: PlayerAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
     allow_target: bool,
     build: Builder,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError>
@@ -2936,13 +2939,13 @@ where
     Ok((effects, choices))
 }
 
-fn current_reference_env(ctx: &CompileContext) -> ReferenceEnv {
+fn current_reference_env(ctx: &EffectLoweringContext) -> ReferenceEnv {
     ctx.reference_env()
 }
 
 fn try_compile_combat_and_damage_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::DealDamage { amount, target } => {
@@ -3068,7 +3071,7 @@ fn try_compile_combat_and_damage_effect(
 
 fn try_compile_board_state_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     use crate::effect::EffectMode;
 
@@ -3353,7 +3356,7 @@ fn try_compile_board_state_effect(
 
 fn try_compile_player_resource_and_choice_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::Draw { count, player } => {
@@ -3735,7 +3738,7 @@ fn try_compile_player_resource_and_choice_effect(
 
 fn try_compile_timing_and_control_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::Cant {
@@ -4057,7 +4060,7 @@ fn try_compile_timing_and_control_effect(
 
 fn try_compile_flow_and_iteration_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::May { effects } => {
@@ -4201,7 +4204,7 @@ fn try_compile_flow_and_iteration_effect(
             let condition = ctx.last_effect_id.ok_or_else(|| {
                 CardTextError::ParseError("missing prior effect for if clause".to_string())
             })?;
-            let (inner_effects, inner_choices) = with_preserved_compile_context(
+            let (inner_effects, inner_choices) = with_preserved_lowering_context(
                 ctx,
                 |ctx| {
                     ctx.last_effect_id = Some(condition);
@@ -4251,7 +4254,7 @@ fn try_compile_flow_and_iteration_effect(
         }
         EffectAst::ForEachObject { filter, effects } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let (inner_effects, inner_choices) = with_preserved_compile_context(
+            let (inner_effects, inner_choices) = with_preserved_lowering_context(
                 ctx,
                 |ctx| {
                     ctx.last_effect_id = None;
@@ -4315,7 +4318,7 @@ fn try_compile_flow_and_iteration_effect(
 
 fn try_compile_destroy_and_exile_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::Destroy { target } => {
@@ -4592,7 +4595,7 @@ fn try_compile_destroy_and_exile_effect(
 
 fn try_compile_visibility_and_card_selection_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::LookAtHand { target } => {
@@ -4895,7 +4898,7 @@ fn try_compile_visibility_and_card_selection_effect(
 
 fn try_compile_stack_and_condition_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::ResolvedIfResult {
@@ -4904,7 +4907,7 @@ fn try_compile_stack_and_condition_effect(
             effects,
         } => {
             let (inner_effects, inner_choices) =
-                with_preserved_compile_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
+                with_preserved_lowering_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
             let predicate = match predicate {
                 IfResultPredicate::Did => EffectPredicate::Happened,
                 IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
@@ -5088,7 +5091,7 @@ fn try_compile_stack_and_condition_effect(
 
 fn try_compile_attachment_and_setup_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::Enchant { filter } => {
@@ -5125,7 +5128,7 @@ fn try_compile_attachment_and_setup_effect(
 
 fn try_compile_token_generation_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::CreateTokenWithMods {
@@ -5419,7 +5422,7 @@ fn try_compile_token_generation_effect(
 
 fn try_compile_continuous_and_modifier_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::Monstrosity { amount } => {
@@ -5879,7 +5882,7 @@ fn try_compile_continuous_and_modifier_effect(
 
 fn try_compile_search_and_reorder_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::SearchLibrary {
@@ -6018,7 +6021,7 @@ fn try_compile_search_and_reorder_effect(
 
 fn try_compile_object_zone_and_exchange_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::ChooseObjects {
@@ -6421,7 +6424,7 @@ fn try_compile_object_zone_and_exchange_effect(
 
 fn try_compile_player_turn_and_counter_effect(
     effect: &EffectAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::SetLifeTotal { amount, player } => {
@@ -6510,7 +6513,7 @@ pub(crate) fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -
 pub(crate) fn tag_object_target_effect(
     effect: Effect,
     spec: &ChooseSpec,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
     prefix: &str,
 ) -> Effect {
     if ctx.auto_tag_object_targets && choose_spec_targets_object(spec) {
@@ -8319,7 +8322,7 @@ pub(crate) fn target_mentions_graveyard(target: &TargetAst) -> bool {
 
 pub(crate) fn compile_effect_for_target<Builder>(
     target: &TargetAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
     build: Builder,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError>
 where
@@ -8333,7 +8336,7 @@ where
 
 pub(crate) fn compile_tagged_effect_for_target<Builder>(
     target: &TargetAst,
-    ctx: &mut CompileContext,
+    ctx: &mut EffectLoweringContext,
     tag_prefix: &str,
     build: Builder,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError>
@@ -8364,7 +8367,7 @@ mod parse_compile_tests {
 
     #[test]
     fn compile_investigate_uses_ast_count() {
-        let mut ctx = CompileContext::new();
+        let mut ctx = EffectLoweringContext::new();
         let (effects, choices) = compile_effect(
             &EffectAst::Investigate {
                 count: Value::Fixed(2),

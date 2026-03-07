@@ -1,20 +1,19 @@
 use crate::cards::builders::{
     AdditionalCostChoiceOptionAst, CardTextError, ClauseView, KeywordAction, LineAst,
-    ParsedAbility, RuleDef, RuleIndex, StaticAbilityAst, Token, TriggerSpec,
-    UnsupportedDiagnoser, UnsupportedRuleDef, RULE_SHAPE_HAS_COLON,
-    unsupported_rule_error_for_view,
-    dash_labeled_remainder_starts_with_trigger, find_verb,
-    is_non_mana_additional_cost_modifier_line, is_untap_during_each_other_players_untap_step_words,
-    leading_mana_symbols_to_oracle, parse_ability_line, parse_activated_line,
-    parse_activation_cost, parse_buyback_line, parse_cast_this_spell_only_line,
-    parse_cycling_line, parse_effect_sentences, parse_enters_with_counters_line,
-    parse_entwine_line, parse_escape_line, parse_equip_line,
+    ParsedAbility, RULE_SHAPE_HAS_COLON, RuleDef, RuleIndex, StaticAbilityAst, Token, TriggerSpec,
+    UnsupportedDiagnoser, UnsupportedRuleDef, dash_labeled_remainder_starts_with_trigger,
+    find_verb, is_non_mana_additional_cost_modifier_line,
+    is_untap_during_each_other_players_untap_step_words, leading_mana_symbols_to_oracle,
+    parse_ability_line, parse_activated_line, parse_activation_cost, parse_buyback_line,
+    parse_cast_this_spell_only_line, parse_cycling_line, parse_effect_sentences,
+    parse_enters_with_counters_line, parse_entwine_line, parse_equip_line, parse_escape_line,
     parse_if_this_spell_costs_less_to_cast_line, parse_kicker_line, parse_level_up_line,
-    parse_madness_line, parse_mana_symbol, parse_mana_symbol_group,
-    parse_morph_keyword_line, parse_multikicker_line, parse_reinforce_line,
-    parse_saga_chapter_prefix, parse_scryfall_mana_cost, parse_static_ability_ast_line,
-    parse_this_spell_cost_condition, parse_triggered_line, parser_trace, parser_trace_line,
-    split_on_or, starts_with_until_end_of_turn, tokenize_line, trim_commas, words,
+    parse_madness_line, parse_mana_symbol, parse_mana_symbol_group, parse_morph_keyword_line,
+    parse_multikicker_line, parse_reinforce_line, parse_saga_chapter_prefix,
+    parse_scryfall_mana_cost, parse_static_ability_ast_line, parse_this_spell_cost_condition,
+    parse_triggered_line, parser_trace, parser_trace_line, split_on_or,
+    starts_with_until_end_of_turn, tokenize_line, trim_commas, unsupported_rule_error_for_view,
+    words,
 };
 use crate::{AlternativeCastingMethod, OptionalCost, TotalCost};
 
@@ -631,9 +630,8 @@ fn line_has_this_attack_or_block_restriction_clause(view: &ClauseView<'_>) -> bo
 }
 
 fn line_has_single_artifact_untap_clause(view: &ClauseView<'_>) -> bool {
-    normalized_line_without_braces(view).starts_with(
-        "players cant untap more than one artifact during their untap steps",
-    )
+    normalized_line_without_braces(view)
+        .starts_with("players cant untap more than one artifact during their untap steps")
 }
 
 fn line_has_equipped_human_condition_clause(view: &ClauseView<'_>) -> bool {
@@ -655,7 +653,8 @@ fn line_has_enchanted_creature_gets_negative_x_clause(view: &ClauseView<'_>) -> 
 }
 
 fn line_has_plus_one_counter_replacement_clause(view: &ClauseView<'_>) -> bool {
-    normalized_line_without_braces(view).starts_with("if one or more +1/+1 counters would be put on")
+    normalized_line_without_braces(view)
+        .starts_with("if one or more +1/+1 counters would be put on")
 }
 
 fn line_has_token_replacement_clause(view: &ClauseView<'_>) -> bool {
@@ -1063,7 +1062,9 @@ fn parse_replicate_line_rule(view: &ClauseView<'_>) -> Result<Option<LineAst>, C
     )))
 }
 
-fn parse_additional_cost_line_rule(view: &ClauseView<'_>) -> Result<Option<LineAst>, CardTextError> {
+fn parse_additional_cost_line_rule(
+    view: &ClauseView<'_>,
+) -> Result<Option<LineAst>, CardTextError> {
     if !normalized_line(view).starts_with("as an additional cost to cast this spell") {
         return Ok(None);
     }
@@ -1094,7 +1095,9 @@ fn parse_additional_cost_line_rule(view: &ClauseView<'_>) -> Result<Option<LineA
     Ok(Some(LineAst::AdditionalCost { effects }))
 }
 
-fn parse_alternative_cast_line_rule(view: &ClauseView<'_>) -> Result<Option<LineAst>, CardTextError> {
+fn parse_alternative_cast_line_rule(
+    view: &ClauseView<'_>,
+) -> Result<Option<LineAst>, CardTextError> {
     let line = view.raw.unwrap_or_default();
     if let Some((branch, method)) = parse_first_alternative_cast_rule(view.tokens, line)? {
         let stage = format!("parse_line:branch={branch}");
@@ -1195,7 +1198,10 @@ fn parse_token_mana_reminder_statement_rule(
     if let Ok(effects) = parse_effect_sentences(view.tokens)
         && !effects.is_empty()
     {
-        parser_trace("parse_line:branch=statement-token-mana-reminder", view.tokens);
+        parser_trace(
+            "parse_line:branch=statement-token-mana-reminder",
+            view.tokens,
+        );
         return Ok(Some(LineAst::Statement { effects }));
     }
     Ok(None)
@@ -1222,7 +1228,10 @@ fn parse_this_cant_attack_unless_static_rule(
     }
     match parse_static_ability_ast_line(view.tokens) {
         Ok(Some(abilities)) => {
-            parser_trace("parse_line:branch=this-cant-attack-unless-static", view.tokens);
+            parser_trace(
+                "parse_line:branch=this-cant-attack-unless-static",
+                view.tokens,
+            );
             Ok(Some(line_ast_from_static_abilities(abilities)))
         }
         _ => Err(line_rule_unsupported(
@@ -1302,7 +1311,9 @@ fn parse_static_line_rule(view: &ClauseView<'_>) -> Result<Option<LineAst>, Card
     Ok(Some(line_ast_from_static_abilities(abilities)))
 }
 
-fn parse_keyword_ability_line_rule(view: &ClauseView<'_>) -> Result<Option<LineAst>, CardTextError> {
+fn parse_keyword_ability_line_rule(
+    view: &ClauseView<'_>,
+) -> Result<Option<LineAst>, CardTextError> {
     if let Some(actions) = parse_ability_line(view.tokens) {
         parser_trace("parse_line:branch=keyword-ability-line", view.tokens);
         return Ok(Some(LineAst::Abilities(actions)));
@@ -1525,8 +1536,13 @@ pub(crate) fn parse_line(line: &str, line_index: usize) -> Result<LineAst, CardT
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty line".to_string()));
     }
-    let line_view =
-        ClauseView::from_line(line, &normalized, normalized_without_braces, &tokens, line_index);
+    let line_view = ClauseView::from_line(
+        line,
+        &normalized,
+        normalized_without_braces,
+        &tokens,
+        line_index,
+    );
     let (_, ast) = run_line_parse_rules(&line_view)?;
     Ok(ast)
 }

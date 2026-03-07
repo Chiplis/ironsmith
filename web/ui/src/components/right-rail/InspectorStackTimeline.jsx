@@ -57,7 +57,7 @@ function HorizontalStackEntry({
       <button
         type="button"
         className={cn(
-          "relative grid min-h-[74px] w-full grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-1.5 overflow-hidden bg-[linear-gradient(180deg,rgba(7,16,27,0.94),rgba(6,12,21,0.98))] px-2 py-2 pb-5 text-left transition-[background,box-shadow,transform] duration-150",
+          "relative grid min-h-[74px] w-full grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-1.5 overflow-hidden bg-[linear-gradient(180deg,rgba(7,16,27,0.94),rgba(6,12,21,0.98))] px-2 py-2 text-left transition-[background,box-shadow,transform] duration-150",
           showLeadingBorder && "shadow-[inset_1px_0_0_rgba(53,80,108,0.65),0_10px_18px_rgba(0,0,0,0.22)]",
           showLeadingBorder && !isActive && "hover:shadow-[inset_1px_0_0_rgba(127,190,244,0.92),-10px_0_18px_-14px_rgba(127,190,244,0.95),0_10px_18px_rgba(0,0,0,0.22)]",
           !showLeadingBorder && "shadow-[0_10px_18px_rgba(0,0,0,0.22)]",
@@ -67,7 +67,7 @@ function HorizontalStackEntry({
         )}
         onClick={() => onClick?.(stackInspectObjectId(entry))}
       >
-        <span className="pointer-events-none absolute bottom-1 left-1.5 rounded bg-[rgba(8,18,30,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#8ec4ff]">
+        <span className="pointer-events-none absolute left-2 top-[34px] rounded bg-[rgba(8,18,30,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#8ec4ff]">
           {positionLabel}
         </span>
         <div className="relative h-6 w-6 shrink-0 overflow-hidden rounded-md border border-[#29425b]/75 bg-[#0b121b]">
@@ -251,7 +251,7 @@ export default function InspectorStackTimeline({
       >
         <div
           ref={horizontalScrollRef}
-          className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-1 py-0 [scrollbar-width:thin]"
+          className="stack-timeline-scroll min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-1 py-0"
         >
           <div
             ref={bodyRef}
@@ -333,7 +333,7 @@ export default function InspectorStackTimeline({
           style={{ maxHeight: collapsed ? "0px" : `${embeddedExpandedMaxHeight}px` }}
         >
           <div
-            className="grid gap-1.5 p-1.5 overflow-y-auto overscroll-contain"
+            className="stack-timeline-scroll grid gap-1.5 overflow-y-auto overscroll-contain p-1.5"
             style={{ maxHeight: `${embeddedExpandedMaxHeight}px` }}
           >
             {timelineEntries.length > 0

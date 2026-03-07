@@ -247,7 +247,7 @@ export default function StackTimelineRail({
     <aside
       ref={railRef}
       className={cn(
-        "pointer-events-none absolute right-0 z-[18] overflow-visible transition-[width,transform,opacity] duration-220 ease-out",
+        "pointer-events-none absolute right-0 z-[72] overflow-visible transition-[width,transform,opacity] duration-220 ease-out",
         shouldShowRail ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0"
       )}
       style={{

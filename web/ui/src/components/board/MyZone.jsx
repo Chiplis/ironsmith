@@ -195,7 +195,7 @@ export default function MyZone({
 
   return (
     <section
-      className="board-zone-bg relative z-[2] min-h-[120px] overflow-visible grid px-2 pb-2 pt-0"
+      className="board-zone-bg relative z-[28] min-h-[120px] overflow-visible grid px-2 pb-2 pt-0"
       style={{ gridTemplateRows: `${MY_ZONE_HEADER_HEIGHT}px minmax(0,1fr)`, alignContent: "stretch" }}
       data-my-zone
     >

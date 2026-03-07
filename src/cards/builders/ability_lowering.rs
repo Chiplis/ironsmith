@@ -65,10 +65,7 @@ pub(crate) fn lower_additional_cost_choice_modes_with_exports(
         prepared_options.push(NormalizedAdditionalCostChoiceOptionAst {
             description: option.description.clone(),
             effects_ast: option.effects.clone(),
-            prepared: prepare_effects_for_lowering(
-                &option.effects,
-                ReferenceImports::default(),
-            )?,
+            prepared: prepare_effects_for_lowering(&option.effects, ReferenceImports::default())?,
         });
     }
     lower_prepared_additional_cost_choice_modes_with_exports(&prepared_options)
@@ -174,8 +171,10 @@ fn lower_parsed_ability_internal(
             triggered.trigger = compile_trigger_spec(trigger);
             triggered.effects = lowered.effects;
             triggered.choices = lowered.choices;
-            triggered.intervening_if =
-                merge_intervening_conditions(triggered.intervening_if.take(), parsed_intervening_if);
+            triggered.intervening_if = merge_intervening_conditions(
+                triggered.intervening_if.take(),
+                parsed_intervening_if,
+            );
             return Ok(parsed);
         }
         return Ok(parsed);
@@ -293,9 +292,7 @@ pub(crate) fn parsed_triggered_ability(
     }
 }
 
-pub(crate) fn lower_parsed_ability(
-    parsed: ParsedAbility,
-) -> Result<ParsedAbility, CardTextError> {
+pub(crate) fn lower_parsed_ability(parsed: ParsedAbility) -> Result<ParsedAbility, CardTextError> {
     lower_parsed_ability_internal(parsed, None)
 }
 

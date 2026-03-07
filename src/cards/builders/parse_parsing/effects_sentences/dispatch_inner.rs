@@ -1,10 +1,4 @@
-#[allow(unused_imports)]
-use crate::cards::builders::{
-    CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, LineAst, PlayerAst, SubjectAst, TagKey,
-    TargetAst, TextSpan, Token, TriggerSpec, Verb, is_article, is_source_reference_words,
-    parse_card_type, parse_object_filter, parse_subject, parse_target_phrase, parse_value,
-    target_ast_to_object_filter, token_index_for_word_index, words,
-};
+use crate::cards::builders::parse_parsing::effects_sentences::TokenCopyFollowup;
 use crate::cards::builders::parse_parsing::{
     ClauseView, POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, POST_CONDITIONAL_SENTENCE_PRIMITIVES,
     PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
@@ -18,9 +12,17 @@ use crate::cards::builders::parse_parsing::{
     parser_trace, replace_unbound_x_in_effects_anywhere, run_sentence_primitives, split_on_and,
     split_on_comma, split_until_source_leaves_tail, target_object_filter_mut,
 };
-use crate::cards::builders::parse_parsing::effects_sentences::TokenCopyFollowup;
+#[allow(unused_imports)]
+use crate::cards::builders::{
+    CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, LineAst, PlayerAst, SubjectAst, TagKey,
+    TargetAst, TextSpan, Token, TriggerSpec, Verb, is_article, is_source_reference_words,
+    parse_card_type, parse_object_filter, parse_subject, parse_target_phrase, parse_value,
+    target_ast_to_object_filter, token_index_for_word_index, words,
+};
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::target::{
+    ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+};
 use crate::types::CardType;
 use crate::zone::Zone;
 
