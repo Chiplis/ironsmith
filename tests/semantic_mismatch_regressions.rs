@@ -347,3 +347,27 @@ fn regression_semantic_mismatch_strongarm_tactics_discarded_creature_followup() 
         "discard qualifier should not collapse into a generic result predicate, got {rendered}"
     );
 }
+
+#[test]
+fn regression_semantic_mismatch_westvale_abbey_transform_then_untap() {
+    let rendered = rendered_lines(
+        "{T}: Add {C}.\n{5}, {T}, Pay 1 life: Create a 1/1 white and black Human Cleric creature token.\n{5}, {T}, Sacrifice five creatures: Transform this land, then untap it.",
+        "Westvale Abbey // Ormendahl, Profane Prince",
+        &[CardType::Land],
+    );
+
+    assert!(
+        rendered.contains("sacrifice five creatures"),
+        "expected sacrifice activation cost to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("transform this land")
+            || rendered.contains("transform this permanent")
+            || rendered.contains("transform it"),
+        "expected transform self-reference to remain explicit, got {rendered}"
+    );
+    assert!(
+        rendered.contains("untap it"),
+        "expected untap follow-up to remain attached to the transformed land, got {rendered}"
+    );
+}

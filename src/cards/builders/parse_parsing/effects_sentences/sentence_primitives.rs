@@ -31,7 +31,7 @@ use crate::cards::builders::parse_parsing::{
     parse_for_each_targeted_object_subject, parse_get_modifier_values_with_tail, parse_number,
     parse_pt_modifier_values, parse_put_counters, parse_sentence_put_multiple_counters_on_target,
     parse_sentence_target_player_chooses_then_puts_on_top_of_library,
-    parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield,
+    parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield, parse_transform,
     parse_where_x_value_clause, parser_trace, parser_trace_enabled, split_on_and, split_on_comma,
 };
 #[allow(unused_imports)]
@@ -2675,6 +2675,40 @@ pub(crate) fn parse_sentence_earthbend(
     Ok(Some(effects))
 }
 
+pub(crate) fn parse_sentence_transform_with_followup(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens
+        .first()
+        .is_some_and(|token| token.is_word("transform"))
+    {
+        return Ok(None);
+    }
+
+    let mut head_tokens = tokens.to_vec();
+    let mut tail_tokens: Vec<Token> = Vec::new();
+    if let Some(comma_then_idx) = tokens
+        .windows(2)
+        .position(|window| matches!(window[0], Token::Comma(_)) && window[1].is_word("then"))
+    {
+        head_tokens = tokens[..comma_then_idx].to_vec();
+        tail_tokens = trim_commas(&tokens[comma_then_idx + 2..]).to_vec();
+    } else if let Some(then_idx) = tokens.iter().position(|token| token.is_word("then")) {
+        head_tokens = tokens[..then_idx].to_vec();
+        tail_tokens = trim_commas(&tokens[then_idx + 1..]).to_vec();
+    }
+
+    let target_tokens = trim_commas(&head_tokens[1..]);
+    let transform = parse_transform(&target_tokens)?;
+    if tail_tokens.is_empty() {
+        return Ok(Some(vec![transform]));
+    }
+
+    let mut effects = vec![transform];
+    effects.extend(parse_effect_chain(&tail_tokens)?);
+    Ok(Some(effects))
+}
+
 pub(crate) fn parse_sentence_enchant(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4031,6 +4065,10 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "earthbend",
         parser: parse_sentence_earthbend,
+    },
+    SentencePrimitive {
+        name: "transform-with-followup",
+        parser: parse_sentence_transform_with_followup,
     },
     SentencePrimitive {
         name: "enchant",

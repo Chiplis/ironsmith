@@ -920,6 +920,7 @@ pub(crate) fn parse_transform(tokens: &[Token]) -> Result<EffectAst, CardTextErr
     if target_words == ["it"]
         || target_words == ["this"]
         || target_words == ["this", "creature"]
+        || target_words == ["this", "land"]
         || target_words == ["this", "permanent"]
     {
         return Ok(EffectAst::Transform {
