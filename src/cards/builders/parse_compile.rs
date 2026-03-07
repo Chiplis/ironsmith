@@ -1424,6 +1424,9 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         EffectAst::PutIntoHand { object, .. } => {
             matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == IT_TAG)
         }
+        EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { filter, .. } => {
+            filter_references_tag(filter, IT_TAG)
+        }
         EffectAst::PutRestOnBottomOfLibrary => true,
         EffectAst::RetargetStackObject {
             new_target_restriction,
@@ -4701,8 +4704,13 @@ fn try_compile_visibility_and_card_selection_effect(
         EffectAst::LookAtTopCards { player, count, tag } => {
             let (player_filter, choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
-            ctx.last_object_tag = Some(tag.as_str().to_string());
-            let effect = Effect::look_at_top_cards(player_filter, count.clone(), tag.clone());
+            let resolved_tag = if tag.as_str() == IT_TAG {
+                TagKey::from(ctx.next_tag("revealed").as_str())
+            } else {
+                tag.clone()
+            };
+            ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
+            let effect = Effect::look_at_top_cards(player_filter, count.clone(), resolved_tag);
             (vec![effect], choices)
         }
         EffectAst::RevealHand { player } => {
@@ -4852,6 +4860,89 @@ fn try_compile_visibility_and_card_selection_effect(
             );
 
             (vec![choose, move_chosen, move_rest], choices)
+        }
+        EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
+            player,
+            filter,
+            reveal,
+        } => {
+            use crate::effect::Condition;
+            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+
+            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "unable to resolve looked-at cards without prior reference".to_string(),
+                )
+            })?;
+
+            let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, false)?;
+
+            let mut choose_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            choose_filter.zone = Some(Zone::Library);
+            choose_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from(looked_tag.as_str()),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+
+            let chosen_tag = ctx.next_tag("chosen");
+            let chosen_tag_key: TagKey = chosen_tag.as_str().into();
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    choose_filter,
+                    ChoiceCount::up_to(1),
+                    chooser,
+                    chosen_tag_key.clone(),
+                )
+                .in_zone(Zone::Library),
+            );
+
+            let mut compiled = vec![choose];
+            if *reveal {
+                compiled.push(Effect::for_each_tagged(
+                    chosen_tag.clone(),
+                    vec![Effect::new(crate::effects::RevealTaggedEffect::new(
+                        chosen_tag.clone(),
+                    ))],
+                ));
+            }
+            compiled.push(Effect::for_each_tagged(
+                chosen_tag.clone(),
+                vec![Effect::move_to_zone(
+                    ChooseSpec::Iterated,
+                    Zone::Hand,
+                    false,
+                )],
+            ));
+
+            let mut membership_filter = ObjectFilter::default();
+            membership_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from("__it__"),
+                    relation: TaggedOpbjectRelation::SameStableId,
+                });
+            let in_chosen = Condition::PlayerTaggedObjectMatches {
+                player: PlayerFilter::IteratedPlayer,
+                tag: chosen_tag_key,
+                filter: membership_filter,
+            };
+            compiled.push(Effect::for_each_tagged(
+                looked_tag,
+                vec![Effect::conditional(
+                    in_chosen,
+                    Vec::new(),
+                    vec![Effect::move_to_zone(
+                        ChooseSpec::Iterated,
+                        Zone::Library,
+                        false,
+                    )],
+                )],
+            ));
+
+            ctx.last_object_tag = Some(chosen_tag);
+            (compiled, choices)
         }
         EffectAst::PutRestOnBottomOfLibrary => {
             use crate::effect::Condition;

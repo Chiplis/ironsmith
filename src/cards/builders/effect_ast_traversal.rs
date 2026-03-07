@@ -172,6 +172,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PutIntoHand { .. } => {}
         EffectAst::PutSomeIntoHandRestIntoGraveyard { .. } => {}
         EffectAst::PutSomeIntoHandRestOnBottomOfLibrary { .. } => {}
+        EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. } => {}
         EffectAst::PutRestOnBottomOfLibrary => {}
         EffectAst::CopySpell { .. } => {}
         EffectAst::RetargetStackObject { .. } => {}

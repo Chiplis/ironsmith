@@ -255,6 +255,10 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ShuffleLibrary { player } => {
             track_effect_player(player.clone(), frame, true, true)?;
         }
+        EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { player, .. } => {
+            track_effect_player(player.clone(), frame, true, true)?;
+            frame.last_object_tag = Some(next_reference_tag(id_gen, "chosen"));
+        }
         EffectAst::RevealTop { player } => {
             track_effect_player(player.clone(), frame, true, true)?;
             frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
@@ -339,12 +343,19 @@ fn advance_reference_frame_for_effect(
                 frame.last_object_tag = Some(next_reference_tag(id_gen, "moved"));
             }
         }
-        EffectAst::RevealTagged { tag } | EffectAst::LookAtTopCards { tag, .. } => {
+        EffectAst::RevealTagged { tag } => {
             frame.last_object_tag = Some(if tag.as_str() == IT_TAG {
                 frame
                     .last_object_tag
                     .clone()
                     .unwrap_or_else(|| next_reference_tag(id_gen, "revealed"))
+            } else {
+                tag.as_str().to_string()
+            });
+        }
+        EffectAst::LookAtTopCards { tag, .. } => {
+            frame.last_object_tag = Some(if tag.as_str() == IT_TAG {
+                next_reference_tag(id_gen, "revealed")
             } else {
                 tag.as_str().to_string()
             });

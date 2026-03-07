@@ -268,6 +268,29 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 3;
             continue;
         }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(move_to_hand) =
+                filtered[idx + 3].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(rest) =
+                filtered[idx + 4].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) = describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
+                look_at_top,
+                choose,
+                Some(reveal),
+                move_to_hand,
+                rest,
+            )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -2206,6 +2229,169 @@ fn describe_look_at_top_then_choose_exile_text(
     let face_down_suffix = if face_down { " face down" } else { "" };
     Some(format!(
         "Look at the top {count_text} {noun} of {owner} library, then exile {exile_ref}{face_down_suffix}"
+    ))
+}
+
+fn for_each_reveals_tag(for_each: &crate::effects::ForEachTaggedEffect, tag: &str) -> bool {
+    if for_each.tag.as_str() != tag || for_each.effects.len() != 1 {
+        return false;
+    }
+    matches!(
+        for_each.effects[0].downcast_ref::<crate::effects::RevealTaggedEffect>(),
+        Some(reveal) if reveal.tag.as_str() == tag
+    )
+}
+
+fn for_each_moves_tag_to_hand(for_each: &crate::effects::ForEachTaggedEffect, tag: &str) -> bool {
+    if for_each.tag.as_str() != tag || for_each.effects.len() != 1 {
+        return false;
+    }
+    matches!(
+        for_each.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>(),
+        Some(move_to_zone)
+            if move_to_zone.zone == Zone::Hand
+                && matches!(move_to_zone.target, ChooseSpec::Iterated)
+    )
+}
+
+fn filter_is_membership_test_for_chosen(
+    filter: &crate::filter::ObjectFilter,
+    chosen_tag: &str,
+) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == "__it__"
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::SameStableId
+            )
+    }) && chosen_tag.len() > 0
+}
+
+fn for_each_moves_unselected_to_library_bottom(
+    for_each: &crate::effects::ForEachTaggedEffect,
+    looked_tag: &str,
+    chosen_tag: &str,
+) -> bool {
+    if for_each.tag.as_str() != looked_tag || for_each.effects.len() != 1 {
+        return false;
+    }
+    let Some(conditional) = for_each.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()
+    else {
+        return false;
+    };
+    if !conditional.if_true.is_empty() || conditional.if_false.len() != 1 {
+        return false;
+    }
+    let Some(move_to_zone) =
+        conditional.if_false[0].downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return false;
+    };
+    if move_to_zone.zone != Zone::Library
+        || move_to_zone.to_top
+        || !matches!(move_to_zone.target, ChooseSpec::Iterated)
+    {
+        return false;
+    }
+    matches!(
+        &conditional.condition,
+        crate::effect::Condition::PlayerTaggedObjectMatches { tag, filter, .. }
+            if tag.as_str() == chosen_tag && filter_is_membership_test_for_chosen(filter, chosen_tag)
+    )
+}
+
+fn describe_choose_filter_from_looked_cards(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> Option<String> {
+    if choose.zone != Zone::Library || choose.is_search || choose.count.max != Some(1) {
+        return None;
+    }
+    let references_looked = choose.filter.tagged_constraints.iter().any(|constraint| {
+        matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        ) && constraint.tag.as_str() == look_at_top.tag.as_str()
+    });
+    if !references_looked {
+        return None;
+    }
+
+    let mut base_filter = choose.filter.clone();
+    base_filter.zone = None;
+    base_filter.tagged_constraints.retain(|constraint| {
+        !(matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        ) && constraint.tag.as_str() == look_at_top.tag.as_str())
+    });
+
+    let filter_text = base_filter.description();
+    let mut card_desc = filter_text
+        .split(" in ")
+        .next()
+        .unwrap_or(filter_text.as_str())
+        .trim()
+        .to_string();
+    for owner_prefix in [
+        "target player's ",
+        "that player's ",
+        "their ",
+        "your ",
+        "an opponent's ",
+    ] {
+        if let Some(rest) = card_desc.strip_prefix(owner_prefix) {
+            card_desc = rest.to_string();
+            break;
+        }
+    }
+    if let Some(rest) = card_desc.strip_prefix("card ") {
+        card_desc = format!("{rest} card");
+    }
+    if !card_desc.contains(" card") {
+        card_desc = format!("{card_desc} card");
+    }
+
+    Some(with_indefinite_article(strip_leading_article(&card_desc)))
+}
+
+fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    reveal: Option<&crate::effects::ForEachTaggedEffect>,
+    move_to_hand: &crate::effects::ForEachTaggedEffect,
+    rest: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    if let Some(reveal) = reveal
+        && !for_each_reveals_tag(reveal, choose.tag.as_str())
+    {
+        return None;
+    }
+    if !for_each_moves_tag_to_hand(move_to_hand, choose.tag.as_str())
+        || !for_each_moves_unselected_to_library_bottom(
+            rest,
+            look_at_top.tag.as_str(),
+            choose.tag.as_str(),
+        )
+    {
+        return None;
+    }
+
+    let chosen = describe_choose_filter_from_looked_cards(look_at_top, choose)?;
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let hand = describe_possessive_player_filter(&choose.chooser);
+    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let may_prefix = if choose.chooser == PlayerFilter::You {
+        "You may".to_string()
+    } else {
+        format!(
+            "{} may",
+            capitalize_first(&describe_player_filter(&choose.chooser))
+        )
+    };
+
+    Some(format!(
+        "Look at the top {count_text} {noun} of {owner} library. {may_prefix} reveal {chosen} from among them and put it into {hand} hand. Put the rest on the bottom of {owner} library"
     ))
 }
 

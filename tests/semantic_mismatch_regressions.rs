@@ -145,3 +145,33 @@ fn regression_semantic_mismatch_entered_battlefield_under_control_this_turn() {
         "expected entry-timing clause to remain, got {rendered}"
     );
 }
+
+#[test]
+fn regression_semantic_mismatch_courageous_outrider_look_at_top_reveal_choice() {
+    let rendered = rendered_lines(
+        "When this creature enters, look at the top four cards of your library. You may reveal a Human card from among them and put it into your hand. Put the rest on the bottom of your library in any order.",
+        "Courageous Outrider",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("look at the top four cards of your library"),
+        "expected top-of-library look clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("human"),
+        "expected Human-card qualifier to remain tied to the looked-at cards, got {rendered}"
+    );
+    assert!(
+        rendered.contains("put") && rendered.contains("into") && rendered.contains("hand"),
+        "expected hand-move clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("bottom of") && rendered.contains("library"),
+        "expected rest-on-bottom clause to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("triggering"),
+        "looked-at cards should not resolve to the triggering-object tag, got {rendered}"
+    );
+}

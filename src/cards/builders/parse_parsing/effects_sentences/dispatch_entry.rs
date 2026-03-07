@@ -13,9 +13,10 @@ use crate::cards::builders::{
     is_sacrifice_that_token_at_end_of_combat, is_simple_copy_reference_sentence,
     is_spawn_scion_token_mana_reminder, is_trigger_only_restriction_sentence,
     maybe_apply_carried_player, maybe_apply_carried_player_with_clause, normalize_cant_words,
-    parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand,
+    normalize_search_library_filter, parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand,
     parse_choose_creature_type_then_become_type, parse_choose_target_prelude_sentence,
     parse_effect_clause_with_trailing_if, parse_effect_sentence, parse_may_cast_it_sentence,
+    parse_object_filter, parse_search_library_disjunction_filter,
     parse_sentence_exile_that_token_when_source_leaves,
     parse_sentence_sacrifice_source_when_that_token_leaves,
     parse_target_player_chooses_then_other_cant_block, parse_token_copy_modifier_sentence,
@@ -28,6 +29,8 @@ use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 
 type PairSentenceRule = fn(&[Token], &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
+type TripleSentenceRule =
+    fn(&[Token], &[Token], &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
 fn parse_pair_sentence_sequence(
     first: &[Token],
@@ -50,6 +53,129 @@ fn parse_pair_sentence_sequence(
 
     for (name, rule) in RULES {
         if let Some(combined) = rule(first, second)? {
+            return Ok(Some((name, combined)));
+        }
+    }
+
+    Ok(None)
+}
+
+fn parse_look_at_top_reveal_match_put_rest_bottom(
+    first: &[Token],
+    second: &[Token],
+    third: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_effects = parse_effect_sentence(first)?;
+    let [EffectAst::LookAtTopCards { player, count, .. }] = first_effects.as_slice() else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(second);
+    let second_words = words(&second_tokens);
+    if second_words.is_empty() {
+        return Ok(None);
+    }
+
+    let (chooser, reveal_word_idx) = if second_words.starts_with(&["you", "may", "reveal"]) {
+        (PlayerAst::You, 2usize)
+    } else if second_words.starts_with(&["that", "player", "may", "reveal"]) {
+        (PlayerAst::That, 3usize)
+    } else if second_words.starts_with(&["they", "may", "reveal"]) {
+        (PlayerAst::That, 2usize)
+    } else if second_words.starts_with(&["may", "reveal"]) {
+        (*player, 1usize)
+    } else if second_words.starts_with(&["reveal"]) {
+        (*player, 0usize)
+    } else {
+        return Ok(None);
+    };
+
+    let from_among_word_idx = second_words
+        .windows(3)
+        .position(|window| window == ["from", "among", "them"])
+        .or_else(|| {
+            second_words
+                .windows(4)
+                .position(|window| window == ["from", "among", "those", "cards"])
+        });
+    let Some(from_among_word_idx) = from_among_word_idx else {
+        return Ok(None);
+    };
+    if from_among_word_idx <= reveal_word_idx {
+        return Ok(None);
+    }
+
+    let filter_start = token_index_for_word_index(&second_tokens, reveal_word_idx + 1)
+        .unwrap_or(second_tokens.len());
+    let filter_end = token_index_for_word_index(&second_tokens, from_among_word_idx)
+        .unwrap_or(second_tokens.len());
+    let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = if let Some(filter) = parse_search_library_disjunction_filter(&filter_tokens) {
+        filter
+    } else {
+        let Ok(filter) = parse_object_filter(&filter_tokens, false) else {
+            return Ok(None);
+        };
+        filter
+    };
+    normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+
+    let after_from_word_idx = if second_words
+        .windows(4)
+        .any(|window| window == ["from", "among", "those", "cards"])
+    {
+        from_among_word_idx + 4
+    } else {
+        from_among_word_idx + 3
+    };
+    let after_from_words = &second_words[after_from_word_idx..];
+    let puts_into_hand = (after_from_words.starts_with(&["and", "put", "it", "into"])
+        || after_from_words.starts_with(&["put", "it", "into"]))
+        && after_from_words.contains(&"hand");
+    if !puts_into_hand {
+        return Ok(None);
+    }
+
+    let third_words = words(third);
+    let puts_rest_bottom = matches!(third_words.first().copied(), Some("put" | "puts"))
+        && third_words.contains(&"rest")
+        && third_words.contains(&"bottom")
+        && third_words.contains(&"library");
+    if !puts_rest_bottom {
+        return Ok(None);
+    }
+
+    let mut effects = vec![EffectAst::LookAtTopCards {
+        player: *player,
+        count: count.clone(),
+        tag: TagKey::from(IT_TAG),
+    }];
+    effects.push(
+        EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
+            player: chooser,
+            filter,
+            reveal: true,
+        },
+    );
+    Ok(Some(effects))
+}
+
+fn parse_triple_sentence_sequence(
+    first: &[Token],
+    second: &[Token],
+    third: &[Token],
+) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
+    const RULES: [(&str, TripleSentenceRule); 1] = [(
+        "look-at-top-reveal-match-put-rest-bottom",
+        parse_look_at_top_reveal_match_put_rest_bottom,
+    )];
+
+    for (name, rule) in RULES {
+        if let Some(combined) = rule(first, second, third)? {
             return Ok(Some((name, combined)));
         }
     }
@@ -97,6 +223,20 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
         let sentence = &sentences[sentence_idx];
         if sentence.is_empty() {
             sentence_idx += 1;
+            continue;
+        }
+
+        if sentence_idx + 2 < sentences.len()
+            && let Some((rule_name, mut combined)) = parse_triple_sentence_sequence(
+                sentence,
+                &sentences[sentence_idx + 1],
+                &sentences[sentence_idx + 2],
+            )?
+        {
+            let stage = format!("parse_effect_sentences:sequence-hit:{rule_name}");
+            parser_trace(stage.as_str(), sentence);
+            effects.append(&mut combined);
+            sentence_idx += 3;
             continue;
         }
 

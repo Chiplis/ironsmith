@@ -977,6 +977,11 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         count: u32,
     },
+    ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
+        player: PlayerAst,
+        filter: ObjectFilter,
+        reveal: bool,
+    },
     PutRestOnBottomOfLibrary,
     CopySpell {
         target: TargetAst,
