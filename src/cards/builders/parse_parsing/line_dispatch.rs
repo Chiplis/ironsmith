@@ -425,8 +425,13 @@ fn line_has_choose_leading_spell_clause(view: &ClauseView<'_>) -> bool {
 
 fn line_has_put_from_among_clause(view: &ClauseView<'_>) -> bool {
     let normalized = normalized_line(view);
+    let supported_reveal_or_look_top_sequence =
+        (normalized.starts_with("reveal the top ") || normalized.starts_with("look at the top "))
+            && normalized.contains("put the rest into")
+            && normalized.contains("graveyard");
     normalized.contains("put a ")
         && normalized.contains("from among them into your hand")
+        && !supported_reveal_or_look_top_sequence
 }
 
 fn line_has_standalone_token_reminder_clause(view: &ClauseView<'_>) -> bool {

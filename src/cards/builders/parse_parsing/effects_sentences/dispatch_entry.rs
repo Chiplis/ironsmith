@@ -493,6 +493,159 @@ fn parse_look_at_top_reveal_match_put_rest_bottom(
     Ok(Some(effects))
 }
 
+fn parse_top_cards_view_sentence(tokens: &[Token]) -> Option<(PlayerAst, Value, bool)> {
+    let tokens = trim_commas(tokens);
+    let clause_words = words(&tokens);
+    if clause_words.is_empty() {
+        return None;
+    }
+
+    let (count_word_idx, revealed) = if clause_words.starts_with(&["look", "at", "the", "top"]) {
+        (4usize, false)
+    } else if clause_words.starts_with(&["look", "at", "top"]) {
+        (3usize, false)
+    } else if clause_words.starts_with(&["reveal", "the", "top"]) {
+        (3usize, true)
+    } else if clause_words.starts_with(&["reveal", "top"]) {
+        (2usize, true)
+    } else {
+        return None;
+    };
+
+    let count_start = token_index_for_word_index(&tokens, count_word_idx)?;
+    let count_tokens = &tokens[count_start..];
+    let (count, used) = parse_number(count_tokens)?;
+    let count_tail = words(&count_tokens[used..]);
+    if !matches!(count_tail.first().copied(), Some("card" | "cards")) {
+        return None;
+    }
+
+    let owner_tail = &count_tail[1..];
+    if owner_tail != ["of", "your", "library"] {
+        return None;
+    }
+
+    Some((PlayerAst::You, Value::Fixed(count as i32), revealed))
+}
+
+fn parse_top_cards_put_match_into_hand_rest_graveyard(
+    first: &[Token],
+    second: &[Token],
+    third: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) = parse_top_cards_view_sentence(first) else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(second);
+    let second_words = words(&second_tokens);
+    if second_words.is_empty() {
+        return Ok(None);
+    }
+
+    let (chooser, action_word_idx, reveal_chosen) =
+        if second_words.starts_with(&["you", "may", "reveal"]) {
+            (PlayerAst::You, 2usize, true)
+        } else if second_words.starts_with(&["you", "may", "put"]) {
+            (PlayerAst::You, 2usize, false)
+        } else if second_words.starts_with(&["that", "player", "may", "reveal"]) {
+            (PlayerAst::That, 3usize, true)
+        } else if second_words.starts_with(&["that", "player", "may", "put"]) {
+            (PlayerAst::That, 3usize, false)
+        } else if second_words.starts_with(&["they", "may", "reveal"]) {
+            (PlayerAst::That, 2usize, true)
+        } else if second_words.starts_with(&["they", "may", "put"]) {
+            (PlayerAst::That, 2usize, false)
+        } else if second_words.starts_with(&["may", "reveal"]) {
+            (player, 1usize, true)
+        } else if second_words.starts_with(&["may", "put"]) {
+            (player, 1usize, false)
+        } else if second_words.starts_with(&["reveal"]) {
+            (player, 0usize, true)
+        } else if second_words.starts_with(&["put"]) {
+            (player, 0usize, false)
+        } else {
+            return Ok(None);
+        };
+
+    let from_among_word_idx = second_words
+        .windows(3)
+        .position(|window| window == ["from", "among", "them"])
+        .or_else(|| {
+            second_words
+                .windows(4)
+                .position(|window| window == ["from", "among", "those", "cards"])
+        });
+    let Some(from_among_word_idx) = from_among_word_idx else {
+        return Ok(None);
+    };
+    if from_among_word_idx <= action_word_idx {
+        return Ok(None);
+    }
+
+    let filter_start = token_index_for_word_index(&second_tokens, action_word_idx + 1)
+        .unwrap_or(second_tokens.len());
+    let filter_end = token_index_for_word_index(&second_tokens, from_among_word_idx)
+        .unwrap_or(second_tokens.len());
+    let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+        filter
+    } else {
+        return Ok(None);
+    };
+    normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+
+    let after_from_word_idx = if second_words
+        .windows(4)
+        .any(|window| window == ["from", "among", "those", "cards"])
+    {
+        from_among_word_idx + 4
+    } else {
+        from_among_word_idx + 3
+    };
+    let after_from_words = &second_words[after_from_word_idx..];
+    let moves_into_hand = if reveal_chosen {
+        (after_from_words.starts_with(&["and", "put", "it", "into"])
+            || after_from_words.starts_with(&["put", "it", "into"]))
+            && after_from_words.contains(&"hand")
+    } else {
+        after_from_words.starts_with(&["into"]) && after_from_words.contains(&"hand")
+    };
+    if !moves_into_hand {
+        return Ok(None);
+    }
+
+    let third_words = words(third);
+    let puts_rest_graveyard = matches!(third_words.first().copied(), Some("put" | "puts"))
+        && third_words.contains(&"rest")
+        && third_words.contains(&"graveyard");
+    if !puts_rest_graveyard {
+        return Ok(None);
+    }
+
+    let mut effects = vec![EffectAst::LookAtTopCards {
+        player,
+        count,
+        tag: TagKey::from(IT_TAG),
+    }];
+    if reveal_top {
+        effects.push(EffectAst::RevealTagged {
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+    effects.push(EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
+        player: chooser,
+        filter,
+        reveal: reveal_chosen,
+        if_not_chosen: Vec::new(),
+    });
+    Ok(Some(effects))
+}
+
 fn parse_exile_until_match_cast_rest_bottom(
     first: &[Token],
     second: &[Token],
@@ -634,9 +787,12 @@ fn parse_named_card_filter_segment(tokens: &[Token]) -> Option<ObjectFilter> {
 
 fn split_reveal_filter_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
-    let mut current = Vec::new();
+    let mut current: Vec<Token> = Vec::new();
     for token in tokens {
         if token.is_word("or") || matches!(token, Token::Comma(_)) {
+            while current.last().is_some_and(|entry| entry.is_word("and")) {
+                current.pop();
+            }
             let trimmed = trim_commas(&current);
             if !trimmed.is_empty() {
                 segments.push(trimmed.to_vec());
@@ -645,6 +801,9 @@ fn split_reveal_filter_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
             continue;
         }
         current.push(token.clone());
+    }
+    while current.last().is_some_and(|entry| entry.is_word("and")) {
+        current.pop();
     }
     let trimmed = trim_commas(&current);
     if !trimmed.is_empty() {
@@ -693,10 +852,14 @@ fn parse_triple_sentence_sequence(
     second: &[Token],
     third: &[Token],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, TripleSentenceRule); 2] = [
+    const RULES: [(&str, TripleSentenceRule); 3] = [
         (
             "exile-until-match-cast-rest-bottom",
             parse_exile_until_match_cast_rest_bottom,
+        ),
+        (
+            "top-cards-put-match-into-hand-rest-graveyard",
+            parse_top_cards_put_match_into_hand_rest_graveyard,
         ),
         (
             "look-at-top-reveal-match-put-rest-bottom",

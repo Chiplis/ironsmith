@@ -1015,6 +1015,12 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         count: u32,
     },
+    ChooseFromLookedCardsIntoHandRestIntoGraveyard {
+        player: PlayerAst,
+        filter: ObjectFilter,
+        reveal: bool,
+        if_not_chosen: Vec<EffectAst>,
+    },
     ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
         player: PlayerAst,
         filter: ObjectFilter,

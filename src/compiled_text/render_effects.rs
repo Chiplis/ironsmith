@@ -282,6 +282,54 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 3;
             continue;
         }
+        if idx + 5 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(reveal_top) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(choose) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
+                filtered[idx + 3].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 4])
+            && let Some(rest) =
+                filtered[idx + 5].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) = describe_look_at_top_then_put_into_hand_rest_graveyard(
+                look_at_top,
+                Some(reveal_top),
+                choose,
+                Some(reveal),
+                move_to_hand,
+                rest,
+            )
+        {
+            parts.push(compact);
+            idx += 6;
+            continue;
+        }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(reveal_top) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(choose) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 3])
+            && let Some(rest) =
+                filtered[idx + 4].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) = describe_look_at_top_then_put_into_hand_rest_graveyard(
+                look_at_top,
+                Some(reveal_top),
+                choose,
+                None,
+                move_to_hand,
+                rest,
+            )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -307,6 +355,50 @@ fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(compact);
             idx += 3;
+            continue;
+        }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 3])
+            && let Some(rest) =
+                filtered[idx + 4].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) = describe_look_at_top_then_put_into_hand_rest_graveyard(
+                look_at_top,
+                None,
+                choose,
+                Some(reveal),
+                move_to_hand,
+                rest,
+            )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
+        if idx + 3 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 2])
+            && let Some(rest) =
+                filtered[idx + 3].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) = describe_look_at_top_then_put_into_hand_rest_graveyard(
+                look_at_top,
+                None,
+                choose,
+                None,
+                move_to_hand,
+                rest,
+            )
+        {
+            parts.push(compact);
+            idx += 4;
             continue;
         }
         if idx + 5 < filtered.len()
@@ -2571,10 +2663,11 @@ fn filter_is_membership_test_for_chosen(
     }) && chosen_tag.len() > 0
 }
 
-fn for_each_moves_unselected_to_library_bottom(
+fn for_each_moves_unselected_to_zone(
     for_each: &crate::effects::ForEachTaggedEffect,
     looked_tag: &str,
     chosen_tag: &str,
+    zone: Zone,
 ) -> bool {
     if for_each.tag.as_str() != looked_tag || for_each.effects.len() != 1 {
         return false;
@@ -2591,8 +2684,9 @@ fn for_each_moves_unselected_to_library_bottom(
     else {
         return false;
     };
-    if move_to_zone.zone != Zone::Library
-        || move_to_zone.to_top
+    if move_to_zone.zone != zone
+        || (zone == Zone::Library && move_to_zone.to_top)
+        || (zone != Zone::Library && move_to_zone.to_top)
         || !matches!(move_to_zone.target, ChooseSpec::Iterated)
     {
         return false;
@@ -2601,7 +2695,19 @@ fn for_each_moves_unselected_to_library_bottom(
         &conditional.condition,
         crate::effect::Condition::PlayerTaggedObjectMatches { tag, filter, .. }
             if tag.as_str() == chosen_tag && filter_is_membership_test_for_chosen(filter, chosen_tag)
+    ) || matches!(
+        &conditional.condition,
+        crate::effect::Condition::TaggedObjectMatches(tag, filter)
+            if tag.as_str() == chosen_tag && filter_is_membership_test_for_chosen(filter, chosen_tag)
     )
+}
+
+fn for_each_moves_unselected_to_library_bottom(
+    for_each: &crate::effects::ForEachTaggedEffect,
+    looked_tag: &str,
+    chosen_tag: &str,
+) -> bool {
+    for_each_moves_unselected_to_zone(for_each, looked_tag, chosen_tag, Zone::Library)
 }
 
 fn describe_choose_filter_from_looked_cards(
@@ -2698,6 +2804,59 @@ fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
 
     Some(format!(
         "Look at the top {count_text} {noun} of {owner} library. {may_prefix} reveal {chosen} from among them and put it into {hand} hand. Put the rest on the bottom of {owner} library"
+    ))
+}
+
+fn describe_look_at_top_then_put_into_hand_rest_graveyard(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    reveal_top: Option<&crate::effects::RevealTaggedEffect>,
+    choose: &crate::effects::ChooseObjectsEffect,
+    reveal: Option<&crate::effects::ForEachTaggedEffect>,
+    move_to_hand: &crate::effects::ForEachTaggedEffect,
+    rest: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    if let Some(reveal_top) = reveal_top
+        && reveal_top.tag.as_str() != look_at_top.tag.as_str()
+    {
+        return None;
+    }
+    if let Some(reveal) = reveal
+        && !for_each_reveals_tag(reveal, choose.tag.as_str())
+    {
+        return None;
+    }
+    if !for_each_moves_tag_to_hand(move_to_hand, choose.tag.as_str())
+        || !for_each_moves_unselected_to_zone(
+            rest,
+            look_at_top.tag.as_str(),
+            choose.tag.as_str(),
+            Zone::Graveyard,
+        )
+    {
+        return None;
+    }
+
+    let chosen = describe_choose_filter_from_looked_cards(look_at_top, choose)?;
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let hand = describe_possessive_player_filter(&choose.chooser);
+    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let may_prefix = if choose.chooser == PlayerFilter::You {
+        "You may".to_string()
+    } else {
+        format!(
+            "{} may",
+            capitalize_first(&describe_player_filter(&choose.chooser))
+        )
+    };
+    let opener = if reveal_top.is_some() { "Reveal" } else { "Look at" };
+    let choice_clause = if reveal.is_some() {
+        format!("{may_prefix} reveal {chosen} from among them and put it into {hand} hand")
+    } else {
+        format!("{may_prefix} put {chosen} from among them into {hand} hand")
+    };
+
+    Some(format!(
+        "{opener} the top {count_text} {noun} of {owner} library. {choice_clause}. Put the rest into {owner} graveyard"
     ))
 }
 

@@ -1473,7 +1473,8 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         EffectAst::PutIntoHand { object, .. } => {
             matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == IT_TAG)
         }
-        EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { filter, .. } => {
+        EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { filter, .. }
+        | EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { filter, .. } => {
             filter_references_tag(filter, IT_TAG)
         }
         EffectAst::PutRestOnBottomOfLibrary => true,
@@ -5290,6 +5291,106 @@ fn try_compile_visibility_and_card_selection_effect(
             );
 
             (vec![choose, move_chosen, move_rest], choices)
+        }
+        EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
+            player,
+            filter,
+            reveal,
+            if_not_chosen,
+        } => {
+            use crate::effect::Condition;
+            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+
+            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "unable to resolve looked-at cards without prior reference".to_string(),
+                )
+            })?;
+
+            let (chooser, mut choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, false)?;
+
+            let mut choose_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            choose_filter.zone = Some(Zone::Library);
+            choose_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from(looked_tag.as_str()),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+
+            let chosen_tag = ctx.next_tag("chosen");
+            let chosen_tag_key: TagKey = chosen_tag.as_str().into();
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    choose_filter,
+                    ChoiceCount::up_to(1),
+                    chooser,
+                    chosen_tag_key.clone(),
+                )
+                .in_zone(Zone::Library),
+            );
+
+            let mut compiled = vec![choose];
+            if *reveal {
+                compiled.push(Effect::for_each_tagged(
+                    chosen_tag.clone(),
+                    vec![Effect::new(crate::effects::RevealTaggedEffect::new(
+                        chosen_tag.clone(),
+                    ))],
+                ));
+            }
+            let move_to_hand_id = ctx.next_effect_id();
+            compiled.push(Effect::with_id(
+                move_to_hand_id.0,
+                Effect::for_each_tagged(
+                    chosen_tag.clone(),
+                    vec![Effect::move_to_zone(
+                        ChooseSpec::Iterated,
+                        Zone::Hand,
+                        false,
+                    )],
+                ),
+            ));
+
+            let mut membership_filter = ObjectFilter::default();
+            membership_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from("__it__"),
+                    relation: TaggedOpbjectRelation::SameStableId,
+                });
+            let in_chosen = Condition::TaggedObjectMatches(chosen_tag_key, membership_filter);
+            compiled.push(Effect::for_each_tagged(
+                looked_tag,
+                vec![Effect::conditional(
+                    in_chosen,
+                    Vec::new(),
+                    vec![Effect::move_to_zone(
+                        ChooseSpec::Iterated,
+                        Zone::Graveyard,
+                        false,
+                    )],
+                )],
+            ));
+
+            if !if_not_chosen.is_empty() {
+                let (if_not_effects, if_not_choices) = with_preserved_lowering_context(
+                    ctx,
+                    |_| {},
+                    |ctx| compile_effects(if_not_chosen, ctx),
+                )?;
+                compiled.push(Effect::if_then(
+                    move_to_hand_id,
+                    EffectPredicate::DidNotHappen,
+                    if_not_effects,
+                ));
+                choices.extend(if_not_choices);
+            }
+
+            ctx.last_object_tag = Some(chosen_tag);
+            ctx.last_effect_id = Some(move_to_hand_id);
+            (compiled, choices)
         }
         EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary {
             player,

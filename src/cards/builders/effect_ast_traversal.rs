@@ -190,6 +190,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PutIntoHand { .. } => {}
         EffectAst::PutSomeIntoHandRestIntoGraveyard { .. } => {}
         EffectAst::PutSomeIntoHandRestOnBottomOfLibrary { .. } => {}
+        EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. } => {}
         EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { .. } => {}
         EffectAst::PutRestOnBottomOfLibrary => {}
         EffectAst::CopySpell { .. } => {}

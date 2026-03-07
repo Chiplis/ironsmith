@@ -255,7 +255,8 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ShuffleLibrary { player } => {
             track_effect_player(player.clone(), frame, true, true)?;
         }
-        EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { player, .. } => {
+        EffectAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { player, .. }
+        | EffectAst::ChooseFromLookedCardsIntoHandRestOnBottomOfLibrary { player, .. } => {
             track_effect_player(player.clone(), frame, true, true)?;
             frame.last_object_tag = Some(next_reference_tag(id_gen, "chosen"));
         }

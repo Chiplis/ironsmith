@@ -218,17 +218,47 @@ fn regression_semantic_mismatch_beast_hunt_reveal_all_creatures() {
 
 #[test]
 fn regression_semantic_mismatch_benefaction_of_rhonas_put_from_among_guard() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Benefaction of Rhonas")
-        .card_types(vec![CardType::Sorcery])
-        .parse_text(
-            "Reveal the top five cards of your library. You may put a creature card and/or an enchantment card from among them into your hand. Put the rest into your graveyard.",
-        )
-        .expect_err("Benefaction of Rhonas should not silently miscompile");
-    let rendered = format!("{err:?}").to_ascii_lowercase();
+    let rendered = rendered_lines(
+        "Reveal the top five cards of your library. You may put a creature card and/or an enchantment card from among them into your hand. Put the rest into your graveyard.",
+        "Benefaction of Rhonas",
+        &[CardType::Sorcery],
+    );
 
     assert!(
-        rendered.contains("unsupported put-from-among clause"),
-        "expected explicit unsupported error for put-from-among wording, got {rendered}"
+        rendered.contains("reveal the top five cards of your library"),
+        "expected the reveal-top-five clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may put a creature")
+            && rendered.contains("enchantment card from among them into your hand"),
+        "expected the filtered put-from-among clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("put the rest into your graveyard"),
+        "expected the remainder move to graveyard to remain, got {rendered}"
+    );
+}
+
+#[test]
+fn regression_semantic_mismatch_in_the_presence_of_ages_put_from_among() {
+    let rendered = rendered_lines(
+        "Reveal the top four cards of your library. You may put a creature card and/or a land card from among them into your hand. Put the rest into your graveyard.",
+        "In the Presence of Ages",
+        &[CardType::Sorcery],
+    );
+
+    assert!(
+        rendered.contains("reveal the top four cards of your library"),
+        "expected the reveal-top-four clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may put a creature")
+            && rendered.contains("land card from among them into your hand"),
+        "expected the filtered put-from-among clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("put the rest into your graveyard"),
+        "expected the remainder move to graveyard to remain, got {rendered}"
     );
 }
 
