@@ -147,6 +147,24 @@ fn regression_semantic_mismatch_entered_battlefield_under_control_this_turn() {
 }
 
 #[test]
+fn regression_semantic_mismatch_sky_tether_attached_keyword_mix() {
+    let rendered = rendered_lines(
+        "Enchant creature\nEnchanted creature has defender and loses flying.",
+        "Sky Tether",
+        &[CardType::Enchantment],
+    );
+
+    assert!(
+        rendered.contains("enchanted creature has defender"),
+        "expected defender grant to remain on the enchanted creature, got {rendered}"
+    );
+    assert!(
+        rendered.contains("enchanted creature loses flying"),
+        "expected flying removal to remain on the enchanted creature, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_courageous_outrider_look_at_top_reveal_choice() {
     let rendered = rendered_lines(
         "When this creature enters, look at the top four cards of your library. You may reveal a Human card from among them and put it into your hand. Put the rest on the bottom of your library in any order.",

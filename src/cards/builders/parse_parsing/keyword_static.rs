@@ -553,6 +553,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_doesnt_untap_during_untap_step_line),
         multi_static_ability_ast_rule!(parse_equipped_creature_has_line),
         multi_static_ability_ast_rule!(parse_enchanted_creature_has_line),
+        multi_static_ability_ast_rule!(parse_attached_has_and_loses_keywords_line),
         single_static_ability_ast_rule!(parse_you_control_attached_creature_line),
         single_static_ability_ast_rule!(parse_attached_cant_attack_or_block_line),
         single_static_ability_ast_rule!(parse_attached_prevent_all_damage_dealt_by_attached_line),
@@ -8765,6 +8766,76 @@ pub(crate) fn parse_enchanted_creature_has_line(
         return Ok(None);
     }
     Ok(Some(out))
+}
+
+pub(crate) fn parse_attached_has_and_loses_keywords_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let line_words = words(tokens);
+    if line_words.len() < 7 {
+        return Ok(None);
+    }
+
+    let is_enchanted = matches!(
+        line_words.get(..2),
+        Some(["enchanted", "creature"] | ["enchanted", "permanent"])
+    );
+    let is_equipped = matches!(line_words.get(..2), Some(["equipped", "creature"]));
+    if !is_enchanted && !is_equipped {
+        return Ok(None);
+    }
+    if line_words.get(2).copied() != Some("has") {
+        return Ok(None);
+    }
+
+    let Some(and_idx) = tokens.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    if and_idx <= 3
+        || !tokens
+            .get(and_idx + 1)
+            .is_some_and(|token| token.is_word("lose") || token.is_word("loses"))
+    {
+        return Ok(None);
+    }
+
+    let grant_tokens = trim_edge_punctuation(&tokens[3..and_idx]);
+    let lose_tokens = trim_edge_punctuation(&tokens[and_idx + 2..]);
+    if grant_tokens.is_empty() || lose_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(granted_actions) = parse_ability_line(&grant_tokens) else {
+        return Ok(None);
+    };
+    let Some(removed_actions) = parse_ability_line(&lose_tokens) else {
+        return Ok(None);
+    };
+
+    let clause_text = line_words.join(" ");
+    let filter = parse_object_filter(&tokens[..2], false)?;
+    let mut result = Vec::new();
+
+    for action in granted_actions {
+        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
+        let Some(ability) = keyword_action_to_static_ability(action) else {
+            return Ok(None);
+        };
+        result.push(StaticAbility::grant_ability(filter.clone(), ability));
+    }
+
+    for action in removed_actions {
+        reject_unimplemented_keyword_actions(std::slice::from_ref(&action), &clause_text)?;
+        let Some(ability) = keyword_action_to_static_ability(action) else {
+            return Ok(None);
+        };
+        result.push(StaticAbility::remove_ability(filter.clone(), ability));
+    }
+
+    if result.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(result))
 }
 
 pub(crate) fn parse_attached_cant_attack_or_block_line(

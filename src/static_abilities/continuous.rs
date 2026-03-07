@@ -1082,11 +1082,13 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
     }
 
     fn display(&self) -> String {
-        format!(
-            "{} lose {}",
-            pluralized_subject_text(&self.filter),
-            self.ability.display()
-        )
+        let subject = pluralized_subject_text(&self.filter);
+        let singular_subject = subject.starts_with("enchanted ")
+            || subject.starts_with("equipped ")
+            || subject.starts_with("this ")
+            || subject.starts_with("that ");
+        let verb = if singular_subject { "loses" } else { "lose" };
+        format!("{subject} {verb} {}", self.ability.display())
     }
 
     fn generate_effects(
