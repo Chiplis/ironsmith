@@ -2463,6 +2463,7 @@ pub(crate) fn parse_exile(
 ) -> Result<EffectAst, CardTextError> {
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
     let (tokens, face_down) = split_exile_face_down_suffix(tokens);
+    let tokens = split_exile_graveyard_replacement_suffix(tokens);
     let clause_words = words(tokens);
     let has_face_down_manifest_tail = (clause_words.contains(&"face-down")
         || clause_words.contains(&"facedown")
@@ -2715,6 +2716,26 @@ pub(crate) fn split_exile_face_down_suffix(tokens: &[Token]) -> (&[Token], bool)
     }
 
     (tokens, false)
+}
+
+pub(crate) fn split_exile_graveyard_replacement_suffix(tokens: &[Token]) -> &[Token] {
+    let Some(instead_idx) = tokens.iter().position(|token| token.is_word("instead")) else {
+        return tokens;
+    };
+    if instead_idx == 0 {
+        return tokens;
+    }
+
+    let tail_words = words(&tokens[instead_idx..]);
+    let is_graveyard_replacement = tail_words.starts_with(&["instead", "of", "putting"])
+        && tail_words
+            .iter()
+            .any(|word| *word == "graveyard" || *word == "graveyards");
+    if is_graveyard_replacement {
+        &tokens[..instead_idx]
+    } else {
+        tokens
+    }
 }
 
 pub(crate) fn parse_target_player_graveyard_filter(tokens: &[Token]) -> Option<ObjectFilter> {

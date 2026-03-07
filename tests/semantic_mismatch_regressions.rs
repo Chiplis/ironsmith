@@ -348,6 +348,29 @@ fn regression_semantic_mismatch_formidable_speaker_if_you_do_search() {
 }
 
 #[test]
+fn regression_semantic_mismatch_deny_the_divine_countered_spell_exiled() {
+    let rendered = rendered_lines(
+        "Counter target creature or enchantment spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard.",
+        "Deny the Divine",
+        &[CardType::Instant],
+    );
+
+    assert!(
+        rendered.contains("counter target creature or enchantment spell"),
+        "expected counter clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if you do, exile it")
+            || rendered.contains("if it happened, exile it"),
+        "expected the follow-up to exile the countered spell itself, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("exile a card in a graveyard"),
+        "countered spell should not degrade into a generic graveyard card, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_spider_ham_animal_may_ham_subtypes() {
     let rendered = rendered_lines(
         "When Spider-Ham enters, create a Food token.\nAnimal May-Ham — Other Spiders, Boars, Bats, Bears, Birds, Cats, Dogs, Frogs, Jackals, Lizards, Mice, Otters, Rabbits, Raccoons, Rats, Squirrels, Turtles, and Wolves you control get +1/+1.",
