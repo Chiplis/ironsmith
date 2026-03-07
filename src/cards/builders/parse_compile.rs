@@ -560,8 +560,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::PlayerControls { player, filter } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
-            let mut resolved = resolve_it_tag(filter, &refs)?;
-            resolved.zone = None;
+            let resolved = resolve_it_tag(filter, &refs)?;
             Condition::PlayerControls {
                 player,
                 filter: resolved,
@@ -573,8 +572,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             count,
         } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
-            let mut resolved = resolve_it_tag(filter, &refs)?;
-            resolved.zone = None;
+            let resolved = resolve_it_tag(filter, &refs)?;
             Condition::PlayerControlsAtLeast {
                 player,
                 filter: resolved,
@@ -587,8 +585,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             count,
         } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
-            let mut resolved = resolve_it_tag(filter, &refs)?;
-            resolved.zone = None;
+            let resolved = resolve_it_tag(filter, &refs)?;
             Condition::PlayerControlsExactly {
                 player,
                 filter: resolved,
@@ -601,8 +598,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             count,
         } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
-            let mut resolved = resolve_it_tag(filter, &refs)?;
-            resolved.zone = None;
+            let resolved = resolve_it_tag(filter, &refs)?;
             Condition::PlayerControlsAtLeastWithDifferentPowers {
                 player,
                 filter: resolved,

@@ -6633,6 +6633,21 @@ fn describe_player_tagged_object_text(tag: &TagKey, filter: &ObjectFilter) -> St
     with_indefinite_article(&desc)
 }
 
+fn is_owned_player_zone(zone: Option<Zone>) -> bool {
+    matches!(
+        zone,
+        Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Command)
+    )
+}
+
+fn describe_owned_player_zone_filter(player: &PlayerFilter, filter: &ObjectFilter) -> String {
+    let mut described = filter.clone();
+    if described.owner.is_none() {
+        described.owner = Some(player.clone());
+    }
+    described.description()
+}
+
 fn describe_player_relative_condition(condition: &Condition) -> Option<String> {
     match condition {
         Condition::PlayerTappedLandForManaThisTurn { player } => {
@@ -6671,6 +6686,17 @@ fn describe_condition(condition: &Condition) -> String {
         }
         Condition::PlayerControls { player, filter } => {
             let subject = describe_player_filter(player);
+            if is_owned_player_zone(filter.zone) {
+                let object_text = with_indefinite_article(&describe_owned_player_zone_filter(
+                    player, filter,
+                ));
+                return format!(
+                    "{} {} {}",
+                    subject,
+                    player_verb(&subject, "have", "has"),
+                    object_text
+                );
+            }
             let mut described_filter = filter.clone();
             if described_filter
                 .controller
@@ -6710,6 +6736,22 @@ fn describe_condition(condition: &Condition) -> String {
             count,
         } => {
             let subject = describe_player_filter(player);
+            if is_owned_player_zone(filter.zone) {
+                let described =
+                    strip_leading_article(&describe_owned_player_zone_filter(player, filter))
+                        .to_string();
+                let noun = pluralize_noun_phrase(&described);
+                let count_text = small_number_word(*count)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| count.to_string());
+                return format!(
+                    "{} {} {} or more {}",
+                    subject,
+                    player_verb(&subject, "have", "has"),
+                    count_text,
+                    noun
+                );
+            }
             let mut described_filter = filter.clone();
             if described_filter
                 .controller
@@ -6737,6 +6779,26 @@ fn describe_condition(condition: &Condition) -> String {
             count,
         } => {
             let subject = describe_player_filter(player);
+            if is_owned_player_zone(filter.zone) {
+                let described =
+                    strip_leading_article(&describe_owned_player_zone_filter(player, filter))
+                        .to_string();
+                let noun = if *count == 1 {
+                    described
+                } else {
+                    pluralize_noun_phrase(&described)
+                };
+                let count_text = small_number_word(*count)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| count.to_string());
+                return format!(
+                    "{} {} exactly {} {}",
+                    subject,
+                    player_verb(&subject, "have", "has"),
+                    count_text,
+                    noun
+                );
+            }
             let mut described_filter = filter.clone();
             if described_filter
                 .controller

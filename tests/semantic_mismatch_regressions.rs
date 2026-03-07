@@ -258,6 +258,20 @@ fn regression_semantic_mismatch_arcbound_wanderer_modular_sunburst() {
 }
 
 #[test]
+fn regression_semantic_mismatch_locked_in_the_cemetery_graveyard_threshold() {
+    let rendered = rendered_lines(
+        "Enchant creature\nWhen this Aura enters, if there are five or more cards in your graveyard, tap enchanted creature.\nEnchanted creature doesn't untap during its controller's untap step.",
+        "Locked in the Cemetery",
+        &[],
+    );
+
+    assert!(
+        rendered.contains("if you have five or more cards in your graveyard"),
+        "expected graveyard threshold condition to survive, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_uurg_power_only_cda() {
     let rendered = rendered_lines(
         "Uurg's power is equal to the number of land cards in your graveyard.\nAt the beginning of your upkeep, surveil 1.\n{B}{G}, Sacrifice a land: You gain 2 life.",
