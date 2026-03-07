@@ -316,6 +316,20 @@ fn regression_semantic_mismatch_blessed_defiance_delayed_targeted_death() {
 }
 
 #[test]
+fn regression_semantic_mismatch_drag_the_canal_conditional_branch_scope() {
+    let rendered = rendered_lines(
+        "Create a 2/2 white and blue Detective creature token. If a creature died this turn, you gain 2 life, surveil 2, then investigate.",
+        "Drag the Canal",
+        &[],
+    );
+
+    assert!(
+        rendered.contains("if a creature died this turn, you gain 2 life, surveil 2, then investigate"),
+        "expected the conditional to cover gain life, surveil, and investigate, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_uurg_power_only_cda() {
     let rendered = rendered_lines(
         "Uurg's power is equal to the number of land cards in your graveyard.\nAt the beginning of your upkeep, surveil 1.\n{B}{G}, Sacrifice a land: You gain 2 life.",

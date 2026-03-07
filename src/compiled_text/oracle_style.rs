@@ -42,6 +42,12 @@ fn normalize_sentence_surface_style(line: &str) -> String {
     if let Some((prefix, tail)) = normalized.split_once("If you do, Untap it. it gets ") {
         return format!("{prefix}If you do, untap it and it gets {tail}");
     }
+    if normalized.starts_with("If ")
+        && let Some((head, tail)) = normalized.split_once(". Surveil ")
+        && !head.contains(". Otherwise,")
+    {
+        normalized = format!("{}, surveil {}", head.trim_end_matches('.'), tail);
+    }
     let lower_normalized = normalized.to_ascii_lowercase();
     if let Some(rest) = lower_normalized.strip_prefix("spell effects: ")
         && rest.starts_with(

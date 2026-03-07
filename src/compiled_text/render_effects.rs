@@ -499,6 +499,38 @@ fn describe_effect_list(effects: &[Effect]) -> String {
     cleanup_decompiled_text(&text)
 }
 
+fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
+    if effects.len() < 2 {
+        return None;
+    }
+
+    let mut parts = Vec::with_capacity(effects.len());
+    for effect in effects {
+        let rendered = describe_effect(effect);
+        let trimmed = rendered.trim();
+        if trimmed.is_empty()
+            || trimmed.contains(". ")
+            || trimmed.contains(": ")
+            || trimmed.starts_with("If ")
+            || trimmed.starts_with("When ")
+            || trimmed.starts_with("Whenever ")
+            || trimmed.starts_with("At ")
+            || trimmed.starts_with("Choose ")
+        {
+            return None;
+        }
+        parts.push(lowercase_first(trimmed.trim_end_matches('.')));
+    }
+
+    let last = parts.pop()?;
+    let body = if parts.is_empty() {
+        last
+    } else {
+        format!("{}, then {last}", parts.join(", "))
+    };
+    Some(cleanup_decompiled_text(&body))
+}
+
 fn describe_false_only_conditional(
     condition: &crate::effect::Condition,
     false_branch: &str,
@@ -5425,8 +5457,10 @@ fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_conditional_choose_both_instead(conditional) {
             return compact;
         }
-        let true_branch = describe_effect_list(&conditional.if_true);
-        let false_branch = describe_effect_list(&conditional.if_false);
+        let true_branch = describe_effect_clause_list(&conditional.if_true)
+            .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
+        let false_branch = describe_effect_clause_list(&conditional.if_false)
+            .unwrap_or_else(|| describe_effect_list(&conditional.if_false));
         if true_branch.is_empty() && !false_branch.is_empty() {
             return describe_false_only_conditional(&conditional.condition, &false_branch);
         }
