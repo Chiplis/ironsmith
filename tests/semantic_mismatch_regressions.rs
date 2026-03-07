@@ -281,6 +281,20 @@ fn regression_semantic_mismatch_vraskas_scorn_library_and_or_graveyard() {
 }
 
 #[test]
+fn regression_semantic_mismatch_phyrexian_dragon_engine_from_graveyard_trigger() {
+    let rendered = rendered_lines(
+        "Double strike\nWhen this creature enters from your graveyard, you may discard your hand. If you do, draw three cards.\nUnearth {3}{R}{R}",
+        "Phyrexian Dragon Engine",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("when this creature enters from your graveyard"),
+        "expected trigger origin zone to remain in compiled text, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_corpse_augur_graveyard_owner_kept() {
     let rendered = rendered_lines(
         "When this creature dies, you draw X cards and you lose X life, where X is the number of creature cards in target player's graveyard.",

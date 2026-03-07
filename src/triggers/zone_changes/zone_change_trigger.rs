@@ -230,9 +230,39 @@ impl ZoneChangeTrigger {
 
     /// Generate display text for this trigger.
     fn generate_display(&self) -> String {
+        fn enters_origin_phrase(trigger: &ZoneChangeTrigger) -> Option<String> {
+            let ZonePattern::Specific(from_zone) = trigger.from else {
+                return None;
+            };
+            let text = match from_zone {
+                Zone::Graveyard => match trigger.object_filter.owner {
+                    Some(crate::target::PlayerFilter::You) => "from your graveyard",
+                    Some(crate::target::PlayerFilter::Opponent) => "from an opponent's graveyard",
+                    _ => "from a graveyard",
+                },
+                Zone::Hand => match trigger.object_filter.owner {
+                    Some(crate::target::PlayerFilter::You) => "from your hand",
+                    Some(crate::target::PlayerFilter::Opponent) => "from an opponent's hand",
+                    _ => "from hand",
+                },
+                Zone::Exile => match trigger.object_filter.owner {
+                    Some(crate::target::PlayerFilter::You) => "from your exile",
+                    Some(crate::target::PlayerFilter::Opponent) => "from an opponent's exile",
+                    _ => "from exile",
+                },
+                _ => return None,
+            };
+            Some(text.to_string())
+        }
+
         if self.this_object {
             let battlefield_subject = self.this_subject("permanent");
             let card_subject = self.this_subject("card");
+            if self.to == ZonePattern::Specific(Zone::Battlefield)
+                && let Some(origin_phrase) = enters_origin_phrase(self)
+            {
+                return format!("When this {} enters {}", battlefield_subject, origin_phrase);
+            }
             return match (&self.from, &self.to) {
                 (
                     ZonePattern::Specific(Zone::Battlefield),
@@ -269,7 +299,13 @@ impl ZoneChangeTrigger {
         }
 
         // Object filter description
-        let filter_desc = self.object_filter.description();
+        let mut filter_desc = self.object_filter.description();
+        if self.to == ZonePattern::Specific(Zone::Battlefield)
+            && enters_origin_phrase(self).is_some()
+            && let Some(stripped) = filter_desc.strip_suffix(" you own")
+        {
+            filter_desc = stripped.to_string();
+        }
         let has_article = filter_desc.starts_with("a ")
             || filter_desc.starts_with("an ")
             || filter_desc.starts_with("the ");
@@ -291,6 +327,11 @@ impl ZoneChangeTrigger {
             }
             (ZonePattern::Specific(Zone::Hand), ZonePattern::Specific(Zone::Graveyard)) => {
                 parts.push("is discarded".to_string());
+            }
+            (_, ZonePattern::Specific(Zone::Battlefield))
+                if enters_origin_phrase(self).is_some() =>
+            {
+                parts.push(format!("enters {}", enters_origin_phrase(self).unwrap()));
             }
             (_, ZonePattern::Specific(Zone::Battlefield)) => {
                 parts.push("enters the battlefield".to_string());

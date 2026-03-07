@@ -401,6 +401,12 @@ pub(crate) enum TriggerSpec {
     },
     EntersBattlefield(ObjectFilter),
     EntersBattlefieldOneOrMore(ObjectFilter),
+    EntersBattlefieldFromZone {
+        filter: ObjectFilter,
+        from: Zone,
+        owner: Option<PlayerFilter>,
+        one_or_more: bool,
+    },
     EntersBattlefieldTapped(ObjectFilter),
     EntersBattlefieldUntapped(ObjectFilter),
     BeginningOfUpkeep(PlayerFilter),
@@ -410,6 +416,11 @@ pub(crate) enum TriggerSpec {
     BeginningOfEndStep(PlayerFilter),
     BeginningOfPrecombatMain(PlayerFilter),
     ThisEntersBattlefield,
+    ThisEntersBattlefieldFromZone {
+        subject_filter: ObjectFilter,
+        from: Zone,
+        owner: Option<PlayerFilter>,
+    },
     ThisDealsCombatDamageToPlayer,
     DealsCombatDamageToPlayer {
         source: ObjectFilter,

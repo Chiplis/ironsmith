@@ -6281,6 +6281,40 @@ fn parse_leading_or_more_quantifier(tokens: &[Token]) -> Option<(u32, &[Token])>
 }
 
 pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> {
+    fn parse_enters_origin_clause(tail_tokens: &[Token]) -> Option<(Zone, Option<PlayerFilter>)> {
+        let tail_words = words(tail_tokens)
+            .into_iter()
+            .filter(|word| !is_article(word))
+            .collect::<Vec<_>>();
+        match tail_words.as_slice() {
+            ["from", "your", "graveyard"] => Some((Zone::Graveyard, Some(PlayerFilter::You))),
+            ["from", "graveyard"] => Some((Zone::Graveyard, None)),
+            ["from", "your", "hand"] => Some((Zone::Hand, Some(PlayerFilter::You))),
+            ["from", "hand"] => Some((Zone::Hand, None)),
+            ["from", "exile"] => Some((Zone::Exile, None)),
+            _ => None,
+        }
+    }
+
+    fn source_trigger_subject_filter(subject_tokens: &[Token]) -> ObjectFilter {
+        let subject_words = words(subject_tokens);
+        let mut filter = ObjectFilter::default();
+        if subject_words.iter().any(|word| *word == "creature") {
+            filter.card_types.push(CardType::Creature);
+        } else if subject_words.iter().any(|word| *word == "land") {
+            filter.card_types.push(CardType::Land);
+        } else if subject_words.iter().any(|word| *word == "artifact") {
+            filter.card_types.push(CardType::Artifact);
+        } else if subject_words.iter().any(|word| *word == "enchantment") {
+            filter.card_types.push(CardType::Enchantment);
+        } else if subject_words.iter().any(|word| *word == "planeswalker") {
+            filter.card_types.push(CardType::Planeswalker);
+        } else if subject_words.iter().any(|word| *word == "battle") {
+            filter.card_types.push(CardType::Battle);
+        }
+        filter
+    }
+
     let words = words(tokens);
 
     if words.len() == 9
@@ -6585,8 +6619,17 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
         .iter()
         .position(|token| token.is_word("enters") || token.is_word("enter"))
     {
+        let enters_origin = parse_enters_origin_clause(&tokens[enters_idx + 1..]);
         if enters_idx == 0 {
-            return Ok(TriggerSpec::ThisEntersBattlefield);
+            return Ok(if let Some((from, owner)) = enters_origin.clone() {
+                TriggerSpec::ThisEntersBattlefieldFromZone {
+                    subject_filter: ObjectFilter::default(),
+                    from,
+                    owner,
+                }
+            } else {
+                TriggerSpec::ThisEntersBattlefield
+            });
         }
         let subject_tokens = &tokens[..enters_idx];
         if let Some(or_idx) = subject_tokens.iter().position(|token| token.is_word("or")) {
@@ -6638,7 +6681,15 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
             .first()
             .is_some_and(|token| token.is_word("this"))
         {
-            return Ok(TriggerSpec::ThisEntersBattlefield);
+            return Ok(if let Some((from, owner)) = enters_origin.clone() {
+                TriggerSpec::ThisEntersBattlefieldFromZone {
+                    subject_filter: source_trigger_subject_filter(subject_tokens),
+                    from,
+                    owner,
+                }
+            } else {
+                TriggerSpec::ThisEntersBattlefield
+            });
         }
         let mut filtered_subject_tokens = subject_tokens;
         let mut other = false;
@@ -6676,7 +6727,14 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
             if words.contains(&"tapped") {
                 return Ok(TriggerSpec::EntersBattlefieldTapped(filter));
             }
-            return Ok(if one_or_more {
+            return Ok(if let Some((from, owner)) = enters_origin {
+                TriggerSpec::EntersBattlefieldFromZone {
+                    filter,
+                    from,
+                    owner,
+                    one_or_more,
+                }
+            } else if one_or_more {
                 TriggerSpec::EntersBattlefieldOneOrMore(filter)
             } else {
                 TriggerSpec::EntersBattlefield(filter)

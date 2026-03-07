@@ -5176,6 +5176,23 @@ fn test_parse_trigger_when_face_down_permanent_is_turned_face_up() {
 }
 
 #[test]
+fn test_parse_trigger_this_creature_enters_from_your_graveyard() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phyrexian Dragon Engine")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters from your graveyard, you may discard your hand. If you do, draw three cards.",
+        )
+        .expect("parse enters-from-your-graveyard trigger");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("from: Specific(\n                                Graveyard")
+            || debug.contains("from: Specific(Graveyard)"),
+        "expected trigger origin zone to be graveyard, got {debug}"
+    );
+}
+
+#[test]
 fn test_parse_composed_anthems_keep_independent_land_conditions() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Tek Variant")
         .card_types(vec![CardType::Artifact, CardType::Creature])

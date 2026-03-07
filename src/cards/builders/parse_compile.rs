@@ -213,6 +213,25 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::EntersBattlefieldOneOrMore(filter) => {
             Trigger::enters_battlefield_one_or_more(filter)
         }
+        TriggerSpec::EntersBattlefieldFromZone {
+            mut filter,
+            from,
+            owner,
+            one_or_more,
+        } => {
+            if let Some(owner) = owner {
+                filter.owner = Some(owner);
+            }
+            let trigger = crate::triggers::ZoneChangeTrigger::new()
+                .from(from)
+                .to(crate::zone::Zone::Battlefield)
+                .filter(filter);
+            if one_or_more {
+                Trigger::new(trigger.count(crate::triggers::CountMode::OneOrMore))
+            } else {
+                Trigger::new(trigger)
+            }
+        }
         TriggerSpec::EntersBattlefieldTapped(filter) => Trigger::enters_battlefield_tapped(filter),
         TriggerSpec::EntersBattlefieldUntapped(filter) => {
             Trigger::enters_battlefield_untapped(filter)
@@ -226,6 +245,22 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::beginning_of_precombat_main_phase(player)
         }
         TriggerSpec::ThisEntersBattlefield => Trigger::this_enters_battlefield(),
+        TriggerSpec::ThisEntersBattlefieldFromZone {
+            mut subject_filter,
+            from,
+            owner,
+        } => {
+            if let Some(owner) = owner {
+                subject_filter.owner = Some(owner);
+            }
+            Trigger::new(
+                crate::triggers::ZoneChangeTrigger::new()
+                    .from(from)
+                    .to(crate::zone::Zone::Battlefield)
+                    .filter(subject_filter)
+                    .this(),
+            )
+        }
         TriggerSpec::ThisDealsCombatDamageToPlayer => Trigger::this_deals_combat_damage_to_player(),
         TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
             Trigger::deals_combat_damage_to_player(source, player)
