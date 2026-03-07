@@ -5133,7 +5133,12 @@ fn try_compile_visibility_and_card_selection_effect(
             let spec = choices
                 .first()
                 .cloned()
-                .unwrap_or_else(|| ChooseSpec::Player(player_filter));
+                .unwrap_or_else(|| ChooseSpec::Player(player_filter.clone()));
+            ctx.last_player_filter = Some(match *player {
+                PlayerAst::Target => PlayerFilter::target_player(),
+                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                _ => player_filter.clone(),
+            });
             let effect = Effect::new(crate::effects::LookAtHandEffect::reveal(spec));
             (vec![effect], choices)
         }
@@ -6575,7 +6580,22 @@ fn try_compile_object_zone_and_exchange_effect(
             tag,
         } => {
             let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, false)?;
+            let references_revealed_hand = filter.zone == Some(Zone::Hand)
+                && filter.owner.is_none()
+                && filter.controller.is_none()
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == IT_TAG
+                        && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                });
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            if references_revealed_hand
+                && ctx.last_player_filter.is_some()
+            {
+                resolved_filter.tagged_constraints.retain(|constraint| {
+                    !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                });
+                resolved_filter.owner = ctx.last_player_filter.clone();
+            }
             preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             let choice_zone = resolved_filter.zone.unwrap_or(Zone::Battlefield);
             if choice_zone == Zone::Battlefield
@@ -6702,20 +6722,34 @@ fn try_compile_object_zone_and_exchange_effect(
             filter,
             tag,
         } => {
-            let (resolved_player, choices) =
-                resolve_effect_player_filter(*player, ctx, true, true, true)?;
             let resolved_filter = if let Some(filter) = filter {
                 let mut resolved = resolve_it_tag(filter, &current_reference_env(ctx))?;
                 if resolved.zone.is_none() {
                     resolved.zone = Some(Zone::Hand);
                 }
-                if resolved.owner.is_none() {
-                    resolved.owner = Some(resolved_player.clone());
-                }
                 Some(resolved)
             } else {
                 None
             };
+            let (resolved_player, choices) = if matches!(*player, PlayerAst::Implicit) {
+                if let Some(inferred_player) = resolved_filter
+                    .as_ref()
+                    .and_then(infer_player_filter_from_object_filter)
+                    .or_else(|| ctx.last_player_filter.clone())
+                {
+                    (inferred_player, Vec::new())
+                } else {
+                    resolve_effect_player_filter(*player, ctx, true, true, true)?
+                }
+            } else {
+                resolve_effect_player_filter(*player, ctx, true, true, true)?
+            };
+            let resolved_filter = resolved_filter.map(|mut resolved| {
+                if resolved.owner.is_none() {
+                    resolved.owner = Some(resolved_player.clone());
+                }
+                resolved
+            });
             let tag = tag
                 .clone()
                 .unwrap_or_else(|| TagKey::from(ctx.next_tag("discarded").as_str()));

@@ -538,6 +538,31 @@ fn regression_semantic_mismatch_insubordination_enchanted_controller_clause() {
 }
 
 #[test]
+fn regression_semantic_mismatch_grief_reveal_choose_discard_chain() {
+    let rendered = rendered_lines(
+        "Menace\nWhen this creature enters, target opponent reveals their hand. You choose a nonland card from it. That player discards that card.\nEvoke—Exile a black card from your hand.",
+        "Grief",
+        &[CardType::Creature],
+    );
+
+    assert!(rendered.contains("menace"), "expected menace to remain, got {rendered}");
+    assert!(
+        rendered.contains("target opponent reveals their hand"),
+        "expected opponent hand reveal to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("nonland card")
+            && rendered.contains("target opponent")
+            && rendered.contains("discard"),
+        "expected the chosen card to come from the opponent hand and be discarded by that player, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("you discard that card"),
+        "the chosen opponent card should not become a self-discard, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_dwarven_thaumaturgist_switch_pt() {
     let rendered = rendered_lines(
         "{T}: Switch target creature's power and toughness until end of turn.",

@@ -373,6 +373,16 @@ fn advance_reference_frame_for_effect(
             player,
             ..
         } => {
+            let references_revealed_hand = filter.zone == Some(crate::zone::Zone::Hand)
+                && filter.owner.is_none()
+                && filter.controller.is_none()
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == IT_TAG
+                        && matches!(
+                            constraint.relation,
+                            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        )
+                });
             let refs = lowering_reference_frame(frame);
             let chooser_filter = if matches!(player, PlayerAst::Implicit) {
                 None
@@ -385,11 +395,18 @@ fn advance_reference_frame_for_effect(
                     other => resolve_non_target_player_filter(*other, &refs)?,
                 })
             };
-            if let Some(player_filter) = resolve_it_tag(filter, &refs)
+            if let Some(player_filter) = if references_revealed_hand {
+                frame.last_player_filter.clone()
+            } else {
+                None
+            }
+            .or_else(|| {
+                resolve_it_tag(filter, &refs)
                 .ok()
                 .and_then(|resolved| infer_player_filter_from_object_filter(&resolved))
-                .or_else(|| infer_player_filter_from_object_filter(filter))
-                .or(chooser_filter)
+            })
+            .or_else(|| infer_player_filter_from_object_filter(filter))
+            .or(chooser_filter)
             {
                 frame.last_player_filter = Some(player_filter);
             }
