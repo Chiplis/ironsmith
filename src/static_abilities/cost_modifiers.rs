@@ -176,6 +176,17 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 filter.description()
             )),
         ),
+        Value::PartySize(player) => {
+            let owner = match player {
+                PlayerFilter::You => "your",
+                PlayerFilter::Opponent => "an opponent's",
+                _ => "a player's",
+            };
+            (
+                "{1}".to_string(),
+                Some(format!("for each creature in {owner} party")),
+            )
+        }
         Value::LifeGainedThisTurn(player) => {
             let phrase = match player {
                 PlayerFilter::You => "the amount of life you gained this turn".to_string(),

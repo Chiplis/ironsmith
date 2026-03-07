@@ -484,6 +484,28 @@ fn regression_semantic_mismatch_kill_switch_tapped_lock_clause() {
 }
 
 #[test]
+fn regression_semantic_mismatch_deadly_alliance_party_cost_clause() {
+    let rendered = rendered_lines(
+        "This spell costs {1} less to cast for each creature in your party.\nDestroy target creature or planeswalker.",
+        "Deadly Alliance",
+        &[CardType::Instant],
+    );
+
+    assert!(
+        rendered.contains("this spell costs {1} less to cast for each creature in your party"),
+        "expected party-based cost reduction to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("destroy target creature or planeswalker"),
+        "expected destroy clause to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("this spell costs {x} less to cast"),
+        "party cost reduction should not collapse into an unqualified x reduction, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_dwarven_thaumaturgist_switch_pt() {
     let rendered = rendered_lines(
         "{T}: Switch target creature's power and toughness until end of turn.",
