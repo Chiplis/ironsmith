@@ -4479,8 +4479,10 @@ fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     }
 
     let mut subject = strip_indefinite_article(&bare.description()).to_string();
-    subject = subject.replace("target player's ", "");
-    subject = subject.replace("that player's ", "");
+    if !keep_owner_in_subject {
+        subject = subject.replace("target player's ", "");
+        subject = subject.replace("that player's ", "");
+    }
     let lower_subject = subject.to_ascii_lowercase();
     if lower_subject.starts_with("a ") {
         subject = subject[2..].to_string();

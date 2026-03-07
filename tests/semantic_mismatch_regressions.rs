@@ -187,6 +187,24 @@ fn regression_semantic_mismatch_beast_hunt_reveal_all_creatures() {
 }
 
 #[test]
+fn regression_semantic_mismatch_corpse_augur_graveyard_owner_kept() {
+    let rendered = rendered_lines(
+        "When this creature dies, you draw X cards and you lose X life, where X is the number of creature cards in target player's graveyard.",
+        "Corpse Augur",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("draw a card for each creature card in target player's graveyard"),
+        "expected target graveyard qualifier on draw clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("lose 1 life for each creature card in target player's graveyard"),
+        "expected target graveyard qualifier on life-loss clause, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_courageous_outrider_look_at_top_reveal_choice() {
     let rendered = rendered_lines(
         "When this creature enters, look at the top four cards of your library. You may reveal a Human card from among them and put it into your hand. Put the rest on the bottom of your library in any order.",
