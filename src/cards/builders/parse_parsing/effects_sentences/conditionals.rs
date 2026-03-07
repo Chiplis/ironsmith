@@ -746,17 +746,16 @@ pub(crate) fn parse_conditional_sentence(
         ));
     }
 
-    // For result predicates ("if you do, ..."), always split at the first comma.
-    // The effect tail frequently contains additional commas (search/reveal/put, etc.)
-    // that should stay in the true branch.
+    // Prefer explicit game-state predicates over result predicates so clauses like
+    // "if you don't control a legendary creature" don't collapse into
+    // "if the previous effect didn't happen".
+    //
+    // For result predicates ("if you do, ..."), we still split at the first comma
+    // because the effect tail frequently contains additional commas
+    // (search/reveal/put, etc.) that should stay in the true branch.
     let first_comma_idx = comma_indices[0];
     if first_comma_idx > 1 {
         let predicate_tokens = &tokens[1..first_comma_idx];
-        if let Some(predicate) = parse_if_result_predicate(predicate_tokens) {
-            let effect_tokens = &tokens[first_comma_idx + 1..];
-            let effects = parse_effect_chain(effect_tokens)?;
-            return Ok(vec![EffectAst::IfResult { predicate, effects }]);
-        }
         if let Ok(predicate) = parse_predicate(predicate_tokens) {
             let effect_tokens = &tokens[first_comma_idx + 1..];
             let comma_fragment_looks_like_effect = if comma_indices.len() > 1 {
@@ -777,6 +776,11 @@ pub(crate) fn parse_conditional_sentence(
                     if_false: Vec::new(),
                 }]);
             }
+        }
+        if let Some(predicate) = parse_if_result_predicate(predicate_tokens) {
+            let effect_tokens = &tokens[first_comma_idx + 1..];
+            let effects = parse_effect_chain(effect_tokens)?;
+            return Ok(vec![EffectAst::IfResult { predicate, effects }]);
         }
     }
 
@@ -806,16 +810,22 @@ pub(crate) fn parse_conditional_sentence(
     };
     let predicate_tokens = &tokens[1..comma_idx];
 
-    if let Some(predicate) = parse_if_result_predicate(predicate_tokens) {
-        return Ok(vec![EffectAst::IfResult { predicate, effects }]);
+    if let Ok(predicate) = parse_predicate(predicate_tokens) {
+        return Ok(vec![EffectAst::Conditional {
+            predicate,
+            if_true: effects,
+            if_false: Vec::new(),
+        }]);
     }
-
-    let predicate = parse_predicate(predicate_tokens)?;
-    Ok(vec![EffectAst::Conditional {
-        predicate,
-        if_true: effects,
-        if_false: Vec::new(),
-    }])
+    let Some(predicate) = parse_if_result_predicate(predicate_tokens) else {
+        let predicate = parse_predicate(predicate_tokens)?;
+        return Ok(vec![EffectAst::Conditional {
+            predicate,
+            if_true: effects,
+            if_false: Vec::new(),
+        }]);
+    };
+    return Ok(vec![EffectAst::IfResult { predicate, effects }]);
 }
 
 pub(crate) fn parse_if_result_predicate(tokens: &[Token]) -> Option<IfResultPredicate> {
@@ -1516,6 +1526,39 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
                 filter = filter
                     .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
             }
+            return Ok(PredicateAst::PlayerControlsNo {
+                player: PlayerAst::You,
+                filter,
+            });
+        }
+    }
+
+    let you_dont_control_filter_start = if filtered.len() >= 4
+        && filtered[0] == "you"
+        && filtered[1] == "dont"
+        && (filtered[2] == "control" || filtered[2] == "controls")
+    {
+        Some(3usize)
+    } else if filtered.len() >= 5
+        && filtered[0] == "you"
+        && filtered[1] == "do"
+        && filtered[2] == "not"
+        && (filtered[3] == "control" || filtered[3] == "controls")
+    {
+        Some(4usize)
+    } else {
+        None
+    };
+    if let Some(filter_start) = you_dont_control_filter_start {
+        let control_tokens = filtered[filter_start..]
+            .iter()
+            .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let other = control_tokens
+            .first()
+            .is_some_and(|token| token.is_word("another") || token.is_word("other"));
+        if let Ok(mut filter) = parse_object_filter(&control_tokens, other) {
+            filter.controller = Some(PlayerFilter::You);
             return Ok(PredicateAst::PlayerControlsNo {
                 player: PlayerAst::You,
                 filter,

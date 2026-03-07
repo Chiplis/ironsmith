@@ -215,3 +215,30 @@ fn regression_semantic_mismatch_harald_mixed_filter_reveal_choice() {
         "expected rest-on-bottom clause to remain, got {rendered}"
     );
 }
+
+#[test]
+fn regression_semantic_mismatch_errand_rider_then_if_negative_control() {
+    let rendered = rendered_lines(
+        "When this creature enters, draw a card. Then if you don't control a legendary creature, put a card from your hand on the bottom of your library.",
+        "Errand-Rider of Gondor",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("draw a card"),
+        "expected draw clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if you don't control a legendary creature")
+            || rendered.contains("if you control no legendary creature"),
+        "expected negative-control predicate to remain explicit, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("if that doesn't happen"),
+        "negative-control condition should not collapse into a result predicate, got {rendered}"
+    );
+    assert!(
+        rendered.contains("put a card from your hand on the bottom of your library"),
+        "expected follow-up move clause to remain, got {rendered}"
+    );
+}
