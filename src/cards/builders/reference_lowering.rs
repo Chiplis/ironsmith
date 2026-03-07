@@ -57,6 +57,9 @@ pub(crate) fn resolve_non_target_player_filter(
                 Ok(PlayerFilter::IteratedPlayer)
             }
         }
+        PlayerAst::ThatPlayerOrTargetController => {
+            Ok(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        }
         PlayerAst::ItsController => {
             if let Some(tag) = refs.known_last_object_tag() {
                 Ok(PlayerFilter::ControllerOf(ObjectRef::tagged(tag.clone())))

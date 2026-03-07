@@ -2181,6 +2181,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+        PlayerAst::ThatPlayerOrTargetController => None,
         PlayerAst::ItsController | PlayerAst::ItsOwner => None,
     }
 }

@@ -888,3 +888,37 @@ fn regression_semantic_mismatch_westvale_abbey_transform_then_untap() {
         "expected untap follow-up to remain attached to the transformed land, got {rendered}"
     );
 }
+
+#[test]
+fn regression_semantic_mismatch_chain_of_plasma_target_player_or_controller_copy_loop() {
+    let rendered = rendered_lines(
+        "Chain of Plasma deals 3 damage to any target. Then that player or that permanent's controller may discard a card. If the player does, they may copy this spell and may choose a new target for that copy.",
+        "Chain of Plasma",
+        &[CardType::Instant],
+    );
+
+    assert!(
+        rendered.contains("deal 3 damage to any target"),
+        "expected damage clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("that player or that object's controller may discard a card"),
+        "expected discard decision to stay bound to the damaged target's player/controller, got {rendered}"
+    );
+    assert!(
+        rendered.contains("copy this spell"),
+        "expected copy clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("choose new targets for the copy"),
+        "expected retarget rider to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("you may copy this spell"),
+        "copy permission should not collapse to you, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("triggering"),
+        "copy loop should not resolve through a triggering-object controller fallback, got {rendered}"
+    );
+}

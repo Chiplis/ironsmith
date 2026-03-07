@@ -1035,6 +1035,14 @@ pub fn resolve_player_filter(
         PlayerFilter::Specific(id) => Ok(*id),
         PlayerFilter::ControllerOf(object_ref) => resolve_controller_of(game, ctx, object_ref),
         PlayerFilter::OwnerOf(object_ref) => resolve_owner_of(game, ctx, object_ref),
+        PlayerFilter::TargetPlayerOrControllerOfTarget => {
+            for target in &ctx.targets {
+                if let ResolvedTarget::Player(id) = target {
+                    return Ok(*id);
+                }
+            }
+            resolve_controller_of(game, ctx, &ObjectRef::Target)
+        }
         PlayerFilter::Active => Ok(game.turn.active_player),
         PlayerFilter::Defending => ctx.defending_player.ok_or_else(|| {
             ExecutionError::UnresolvableValue("DefendingPlayer not set".to_string())
@@ -1815,6 +1823,13 @@ fn resolve_player_filter_to_list(
             .iterated_player
             .map(|id| vec![id])
             .ok_or_else(|| ExecutionError::UnresolvableValue("IteratedPlayer not set".to_string())),
+        PlayerFilter::TargetPlayerOrControllerOfTarget => {
+            Ok(vec![resolve_player_filter(
+                game,
+                &PlayerFilter::TargetPlayerOrControllerOfTarget,
+                ctx,
+            )?])
+        }
         PlayerFilter::Excluding { base, excluded } => {
             let mut base_players = resolve_player_filter_to_list(game, base, _filter_ctx, ctx)?;
             let excluded_players = resolve_player_filter_to_list(game, excluded, _filter_ctx, ctx)?;

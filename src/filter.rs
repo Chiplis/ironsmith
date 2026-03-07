@@ -647,6 +647,10 @@ pub enum PlayerFilter {
     /// The current player in a ForEachPlayer iteration
     IteratedPlayer,
 
+    /// The targeted player, or the controller of the targeted object if the
+    /// target isn't a player.
+    TargetPlayerOrControllerOfTarget,
+
     /// Target player (uses targeting with a filter)
     Target(Box<PlayerFilter>),
 
@@ -721,6 +725,7 @@ impl PlayerFilter {
 
             // These are resolved at runtime during effect execution
             PlayerFilter::IteratedPlayer => ctx.iterated_player.is_some_and(|p| p == player),
+            PlayerFilter::TargetPlayerOrControllerOfTarget => false,
             PlayerFilter::Excluding { base, excluded } => {
                 base.matches_player(player, ctx) && !excluded.matches_player(player, ctx)
             }
@@ -750,6 +755,9 @@ impl PlayerFilter {
             PlayerFilter::DamagedPlayer => "that player".to_string(),
             PlayerFilter::Specific(_) => "that player".to_string(),
             PlayerFilter::IteratedPlayer => "that player".to_string(),
+            PlayerFilter::TargetPlayerOrControllerOfTarget => {
+                "that player or that object's controller".to_string()
+            }
             PlayerFilter::Target(inner) => format!("target {}", inner.description()),
             PlayerFilter::Excluding { base, excluded } => {
                 format!(
@@ -2887,6 +2895,13 @@ impl ObjectFilter {
                     }
                     controller_suffix = Some("that player controls".to_string())
                 }
+                PlayerFilter::TargetPlayerOrControllerOfTarget => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix =
+                        Some("that player or that object's controller controls".to_string())
+                }
                 PlayerFilter::Excluding { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -2926,6 +2941,9 @@ impl ObjectFilter {
                 PlayerFilter::Attacking => "an attacking player owns".to_string(),
                 PlayerFilter::DamagedPlayer => "the damaged player owns".to_string(),
                 PlayerFilter::IteratedPlayer => "that player owns".to_string(),
+                PlayerFilter::TargetPlayerOrControllerOfTarget => {
+                    "that player or that object's controller owns".to_string()
+                }
                 PlayerFilter::Excluding { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
@@ -3841,6 +3859,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::DamagedPlayer => "the damaged player's".to_string(),
         PlayerFilter::Specific(_) => "that player's".to_string(),
         PlayerFilter::IteratedPlayer => "that player's".to_string(),
+        PlayerFilter::TargetPlayerOrControllerOfTarget => {
+            "that player or that object's controller's".to_string()
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_possessive_player_filter(base),
@@ -3871,6 +3892,9 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::DamagedPlayer => "damaged player".to_string(),
         PlayerFilter::Specific(_) => "player".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
+        PlayerFilter::TargetPlayerOrControllerOfTarget => {
+            "that player or that object's controller".to_string()
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             describe_player_filter(base),

@@ -1390,6 +1390,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::Defending
         | PlayerFilter::DamagedPlayer
         | PlayerFilter::IteratedPlayer
+        | PlayerFilter::TargetPlayerOrControllerOfTarget
         | PlayerFilter::Excluding { .. }
         | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_) => None,

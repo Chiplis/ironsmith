@@ -255,6 +255,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::Attacking => "an attacking player".to_string(),
                 PlayerFilter::DamagedPlayer => "the damaged player".to_string(),
                 PlayerFilter::IteratedPlayer => "that player".to_string(),
+                PlayerFilter::TargetPlayerOrControllerOfTarget => {
+                    "that player or that object's controller".to_string()
+                }
                 PlayerFilter::Excluding { base, excluded } => format!(
                     "{} other than {}",
                     base.description(),

@@ -819,6 +819,7 @@ pub fn player_matches_filter_with_combat(
             // IteratedPlayer is resolved at runtime during iteration, not here
             false
         }
+        PlayerFilter::TargetPlayerOrControllerOfTarget => false,
         PlayerFilter::Target(_) => {
             // Target filters are resolved through targeting, not direct matching
             true

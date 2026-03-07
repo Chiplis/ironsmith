@@ -5516,8 +5516,8 @@ fn describe_effect_impl(effect: &Effect) -> String {
                     let normalized = normalize_you_verb_phrase(rest);
                     return format!("you may have target player {normalized}");
                 }
-                inner = normalize_you_verb_phrase(&inner);
             }
+            inner = normalize_you_verb_phrase(&inner);
             inner = lowercase_may_clause(&inner);
             return format!("{who} may {inner}");
         }

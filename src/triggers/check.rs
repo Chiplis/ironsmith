@@ -734,6 +734,7 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::Active => player == game.turn.active_player,
         PlayerFilter::Defending => defending_player == Some(player),
         PlayerFilter::IteratedPlayer => false,
+        PlayerFilter::TargetPlayerOrControllerOfTarget => false,
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_matches_with_context(base, player, controller, game, defending_player)
                 && !player_filter_matches_with_context(

@@ -465,6 +465,7 @@ pub(crate) enum PlayerAst {
     TargetOpponent,
     Opponent,
     That,
+    ThatPlayerOrTargetController,
     ItsController,
     ItsOwner,
     Implicit,

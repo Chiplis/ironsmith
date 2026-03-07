@@ -49,6 +49,9 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::DamagedPlayer => "the damaged player".to_string(),
         PlayerFilter::Teammate => "a teammate".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
+        PlayerFilter::TargetPlayerOrControllerOfTarget => {
+            "that player or that object's controller".to_string()
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             strip_leading_article(&describe_player_filter(base)),

@@ -46,17 +46,6 @@ pub(crate) fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, Car
     let starts_with_each_player =
         words.starts_with(&["each", "player"]) || words.starts_with(&["each", "players"]);
 
-    if tokens.first().is_some_and(|token| token.is_word("they"))
-        && tokens.get(1).is_some_and(|token| token.is_word("may"))
-    {
-        let inner_tokens = &tokens[2..];
-        let effects = parse_effect_chain_with_sentence_primitives(inner_tokens)?;
-        return Ok(vec![EffectAst::MayByTaggedController {
-            tag: TagKey::from("triggering"),
-            effects,
-        }]);
-    }
-
     if let Some(player) = parse_leading_player_may(tokens) {
         let mut stripped = remove_through_first_word(tokens, "may");
         if stripped
@@ -1140,6 +1129,23 @@ pub(crate) fn parse_leading_player_may(tokens: &[Token]) -> Option<PlayerAst> {
     {
         return Some(PlayerAst::That);
     }
+    if words.starts_with(&["they", "may"]) {
+        return Some(PlayerAst::That);
+    }
+    if words.len() >= 7
+        && words[0] == "that"
+        && words[1] == "player"
+        && words[2] == "or"
+        && words[3] == "that"
+        && matches!(
+            words[4],
+            "creatures" | "permanents" | "planeswalkers" | "sources" | "spells"
+        )
+        && words[5] == "controller"
+        && words[6] == "may"
+    {
+        return Some(PlayerAst::ThatPlayerOrTargetController);
+    }
     if words.len() >= 4
         && words[0] == "that"
         && matches!(words[1], "creatures" | "permanents" | "sources" | "spells")
@@ -1278,11 +1284,17 @@ pub(crate) fn parse_choose_new_targets_clause(
     let clause_words = words(tokens);
     let is_choose = clause_words.starts_with(&["choose", "new", "targets", "for"])
         || clause_words.starts_with(&["chooses", "new", "targets", "for"]);
-    if !is_choose {
+    let is_choose_single_target = clause_words.starts_with(&["choose", "a", "new", "target", "for"])
+        || clause_words.starts_with(&["chooses", "a", "new", "target", "for"]);
+    if !is_choose && !is_choose_single_target {
         return Ok(None);
     }
 
-    let mut tail_tokens = &tokens[4..];
+    let mut tail_tokens = if is_choose_single_target {
+        &tokens[5..]
+    } else {
+        &tokens[4..]
+    };
     if tail_tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "missing choose-new-targets target".to_string(),

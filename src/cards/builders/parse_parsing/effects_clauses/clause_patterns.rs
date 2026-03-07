@@ -868,6 +868,27 @@ pub(crate) fn parse_win_the_game_clause(
 pub(crate) fn parse_copy_spell_clause(
     tokens: &[Token],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    fn find_choose_new_targets_split_idx(tail: &[Token]) -> Option<usize> {
+        for idx in 0..tail.len() {
+            if !tail[idx].is_word("and") {
+                continue;
+            }
+            let mut after = words(&tail[idx + 1..]);
+            if after.first().copied() == Some("may") {
+                after.remove(0);
+            }
+            if after.first().copied() == Some("choose")
+                && after
+                    .iter()
+                    .any(|word| *word == "target" || *word == "targets")
+                && after.iter().any(|word| *word == "copy")
+            {
+                return Some(idx);
+            }
+        }
+        None
+    }
+
     let clause_words = words(tokens);
     let Some(copy_idx) = tokens
         .iter()
@@ -875,6 +896,8 @@ pub(crate) fn parse_copy_spell_clause(
     else {
         return Ok(None);
     };
+    let tail = &tokens[copy_idx + 1..];
+    let split_idx = find_choose_new_targets_split_idx(tail);
     let simple_copy_reference = copy_idx == 0
         && matches!(
             clause_words.get(1).copied(),
@@ -889,11 +912,31 @@ pub(crate) fn parse_copy_spell_clause(
                 return Ok(Some(build_may_cast_tagged_effect(&spec)));
             }
         }
+        let mut count = Value::Fixed(1);
+        let copy_target_tail = if let Some(idx) = split_idx {
+            &tail[..idx]
+        } else {
+            tail
+        };
+        if let Some(for_each_idx) = copy_target_tail
+            .windows(2)
+            .position(|window| window[0].is_word("for") && window[1].is_word("each"))
+        {
+            let count_filter_tokens = trim_commas(&copy_target_tail[for_each_idx + 2..]);
+            if count_filter_tokens.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing count filter after 'for each' in copy clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let count_filter = parse_object_filter(&count_filter_tokens, false)?;
+            count = Value::Count(count_filter);
+        }
         let base = EffectAst::CopySpell {
             target: TargetAst::Source(None),
-            count: Value::Fixed(1),
+            count,
             player: PlayerAst::Implicit,
-            may_choose_new_targets: false,
+            may_choose_new_targets: split_idx.is_some(),
         };
         if let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) {
             let predicate_tokens = trim_commas(&tokens[if_idx + 1..]);
@@ -922,32 +965,11 @@ pub(crate) fn parse_copy_spell_clause(
         SubjectAst::This => PlayerAst::Implicit,
     };
 
-    let tail = &tokens[copy_idx + 1..];
     if tail.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing spell target in copy clause (clause: '{}')",
             clause_words.join(" ")
         )));
-    }
-
-    let mut split_idx = None;
-    for idx in 0..tail.len() {
-        if !tail[idx].is_word("and") {
-            continue;
-        }
-        let mut after = words(&tail[idx + 1..]);
-        if after.first().copied() == Some("may") {
-            after.remove(0);
-        }
-        if after.first().copied() == Some("choose")
-            && after
-                .iter()
-                .any(|word| *word == "target" || *word == "targets")
-            && after.iter().any(|word| *word == "copy")
-        {
-            split_idx = Some(idx);
-            break;
-        }
     }
 
     let mut count = Value::Fixed(1);
@@ -1452,6 +1474,19 @@ pub(crate) fn extract_subject_player(subject: Option<SubjectAst>) -> Option<Play
     }
 }
 
+fn is_that_player_or_that_objects_controller_phrase(words: &[&str]) -> bool {
+    words.len() >= 6
+        && words[0] == "that"
+        && words[1] == "player"
+        && words[2] == "or"
+        && words[3] == "that"
+        && matches!(
+            words[4],
+            "creatures" | "permanents" | "planeswalkers" | "sources" | "spells"
+        )
+        && words[5] == "controller"
+}
+
 pub(crate) fn parse_subject(tokens: &[Token]) -> SubjectAst {
     let words = words(tokens);
     if words.is_empty() {
@@ -1515,6 +1550,10 @@ pub(crate) fn parse_subject(tokens: &[Token]) -> SubjectAst {
 
     if slice.starts_with(&["that", "player"]) {
         return SubjectAst::Player(PlayerAst::That);
+    }
+
+    if is_that_player_or_that_objects_controller_phrase(slice) {
+        return SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController);
     }
 
     if slice.starts_with(&["that", "players"]) || slice.starts_with(&["their"]) {
