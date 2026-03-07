@@ -832,6 +832,7 @@ macro_rules! direct_target_effect_variants {
             | EffectAst::ForEachCounterKindPutOrRemove { target: $target }
             | EffectAst::Tap { target: $target }
             | EffectAst::Untap { target: $target }
+            | EffectAst::PhaseOut { target: $target }
             | EffectAst::RemoveFromCombat { target: $target }
             | EffectAst::TapOrUntap { target: $target }
             | EffectAst::Destroy { target: $target }
@@ -3470,6 +3471,17 @@ fn try_compile_board_state_effect(
                 Effect::new(crate::effects::UntapEffect::with_spec(spec.clone()))
             };
             let effect = tag_object_target_effect(base_effect, &spec, ctx, "untapped");
+            (vec![effect], choices)
+        }
+        EffectAst::PhaseOut { target } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let base_effect = if spec.is_target() {
+                Effect::phase_out(spec.clone())
+            } else {
+                Effect::new(crate::effects::PhaseOutEffect::with_spec(spec.clone()))
+            };
+            let effect = tag_object_target_effect(base_effect, &spec, ctx, "phased_out");
             (vec![effect], choices)
         }
         EffectAst::RemoveFromCombat { target } => {

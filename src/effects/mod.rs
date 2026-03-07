@@ -110,8 +110,8 @@ pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
     BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, CrewCostEffect, EarthbendEffect,
     EvolveEffect, FlipEffect, GrantObjectAbilityEffect, MonstrosityEffect, NinjutsuCostEffect,
-    NinjutsuEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SoulbondPairEffect,
-    TapEffect, TransformEffect, UnearthEffect, UntapEffect,
+    NinjutsuEffect, PhaseOutEffect, RegenerateEffect, RenownEffect, SaddleCostEffect,
+    SoulbondPairEffect, TapEffect, TransformEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
     CascadeEffect, CastSourceEffect, CastTaggedEffect, ControlPlayerEffect, CreateEmblemEffect,

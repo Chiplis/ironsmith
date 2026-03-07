@@ -742,6 +742,9 @@ pub(crate) enum EffectAst {
     Untap {
         target: TargetAst,
     },
+    PhaseOut {
+        target: TargetAst,
+    },
     RemoveFromCombat {
         target: TargetAst,
     },

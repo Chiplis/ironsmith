@@ -1270,7 +1270,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             )));
         }
         let target = parse_target_phrase(&target_tokens)?;
-        return Ok(Some(EffectAst::TargetOnly { target }));
+        return Ok(Some(EffectAst::PhaseOut { target }));
     }
 
     if clause_words.starts_with(&["open", "an", "attraction"])

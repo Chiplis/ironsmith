@@ -297,6 +297,9 @@ fn advance_reference_frame_for_effect(
         EffectAst::Untap { target } => {
             maybe_tag_target(&target, frame, id_gen, "untapped")?;
         }
+        EffectAst::PhaseOut { target } => {
+            maybe_tag_target(&target, frame, id_gen, "phased_out")?;
+        }
         EffectAst::RemoveFromCombat { target } => {
             maybe_tag_target(&target, frame, id_gen, "removed_from_combat")?;
         }
@@ -1173,6 +1176,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         }
         EffectAst::Tap { target }
         | EffectAst::Untap { target }
+        | EffectAst::PhaseOut { target }
         | EffectAst::RemoveFromCombat { target }
         | EffectAst::TapOrUntap { target }
         | EffectAst::Connive { target }

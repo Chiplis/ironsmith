@@ -4973,6 +4973,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
         return format!("Untap {}", describe_choose_spec(&untap.spec));
     }
+    if let Some(phase_out) = effect.downcast_ref::<crate::effects::PhaseOutEffect>() {
+        return format!("Phase out {}", describe_choose_spec(&phase_out.spec));
+    }
     if let Some(attach) = effect.downcast_ref::<crate::effects::AttachToEffect>() {
         return format!(
             "Attach this source to {}",

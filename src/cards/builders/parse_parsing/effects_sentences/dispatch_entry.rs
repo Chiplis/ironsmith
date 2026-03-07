@@ -1141,6 +1141,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
         | EffectAst::Transform { target }
         | EffectAst::Flip { target }
         | EffectAst::Regenerate { target }
+        | EffectAst::PhaseOut { target }
         | EffectAst::TargetOnly { target }
         | EffectAst::ReturnToHand { target, .. }
         | EffectAst::ReturnToBattlefield { target, .. }
@@ -1424,6 +1425,9 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             target: effect_target,
         }
         | EffectAst::Untap {
+            target: effect_target,
+        }
+        | EffectAst::PhaseOut {
             target: effect_target,
         }
         | EffectAst::RemoveFromCombat {

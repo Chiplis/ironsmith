@@ -2569,6 +2569,12 @@ impl Effect {
         Self::new(UntapEffect::target(target))
     }
 
+    /// Create a "phase out target permanent" effect.
+    pub fn phase_out(target: ChooseSpec) -> Self {
+        use crate::effects::PhaseOutEffect;
+        Self::new(PhaseOutEffect::target(target))
+    }
+
     /// Create a "tap all permanents matching filter" effect.
     pub fn tap_all(filter: ObjectFilter) -> Self {
         use crate::effects::TapEffect;

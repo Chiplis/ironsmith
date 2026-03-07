@@ -259,6 +259,20 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
 
     let active_player = game.turn.active_player;
 
+    let phased_in: Vec<_> = game
+        .phased_out
+        .iter()
+        .copied()
+        .filter(|&id| {
+            game.object(id).is_some_and(|obj| {
+                obj.zone == crate::zone::Zone::Battlefield && obj.controller == active_player
+            })
+        })
+        .collect();
+    for id in phased_in {
+        game.phase_in(id);
+    }
+
     // Get all permanents controlled by active player
     let permanents: Vec<_> = game.permanents_controlled_by(active_player);
 

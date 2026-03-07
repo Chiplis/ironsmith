@@ -922,3 +922,25 @@ fn regression_semantic_mismatch_chain_of_plasma_target_player_or_controller_copy
         "copy loop should not resolve through a triggering-object controller fallback, got {rendered}"
     );
 }
+
+#[test]
+fn regression_semantic_mismatch_blink_dog_phase_out() {
+    let rendered = rendered_lines(
+        "Double strike\nTeleport — {3}{W}: This creature phases out.",
+        "Blink Dog",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("double strike"),
+        "expected keyword line to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("phase out this permanent"),
+        "expected phase-out action to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("choose this permanent"),
+        "phase-out clause should not collapse to target-only selection, got {rendered}"
+    );
+}

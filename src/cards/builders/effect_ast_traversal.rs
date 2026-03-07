@@ -120,6 +120,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::Tap { .. } => {}
         EffectAst::TapAll { .. } => {}
         EffectAst::Untap { .. } => {}
+        EffectAst::PhaseOut { .. } => {}
         EffectAst::RemoveFromCombat { .. } => {}
         EffectAst::TapOrUntap { .. } => {}
         EffectAst::UntapAll { .. } => {}
