@@ -24,9 +24,12 @@ use crate::cards::builders::{
     split_on_period, strip_embedded_token_rules_text, target_ast_to_object_filter,
     token_index_for_word_index, trim_commas, value_contains_unbound_x, words,
 };
-use crate::effect::{Until, Value};
+use crate::effect::{ChoiceCount, Until, Value};
 use crate::static_abilities::StaticAbility;
-use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::target::{
+    ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+};
+use crate::zone::Zone;
 
 type PairSentenceRule = fn(&[Token], &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 type TripleSentenceRule =
@@ -118,11 +121,92 @@ fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
     }]))
 }
 
+fn parse_delayed_dies_exile_top_power_choose_play(
+    first: &[Token],
+    second: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(first);
+    let first_words = words(&first_tokens);
+    if !first_words.starts_with(&["when", "that", "creature", "dies", "this", "turn"]) {
+        return Ok(None);
+    }
+
+    let Some(comma_idx) = first_tokens
+        .iter()
+        .position(|token| matches!(token, Token::Comma(_)))
+    else {
+        return Ok(None);
+    };
+    let action_tokens = trim_commas(&first_tokens[comma_idx + 1..]);
+    let action_words: Vec<&str> = words(&action_tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    let starts_with_exile_top_power = action_words.starts_with(&[
+        "exile", "number", "of", "cards", "from", "top", "of", "your", "library", "equal", "to",
+        "its", "power",
+    ]);
+    let ends_with_choose_exiled = action_words.ends_with(&["choose", "card", "exiled", "this", "way"]);
+    if !starts_with_exile_top_power || !ends_with_choose_exiled {
+        return Ok(None);
+    }
+
+    let second_words: Vec<&str> = words(second)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    let is_until_next_turn_play_clause = second_words.as_slice()
+        == [
+            "until", "end", "of", "your", "next", "turn", "you", "may", "play", "that", "card",
+        ];
+    if !is_until_next_turn_play_clause {
+        return Ok(None);
+    }
+
+    let looked_tag = TagKey::from("looked_0");
+    let chosen_tag = TagKey::from("chosen_0");
+    let mut exiled_filter = ObjectFilter::default();
+    exiled_filter.zone = Some(Zone::Exile);
+    exiled_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    Ok(Some(vec![EffectAst::DelayedWhenLastObjectDiesThisTurn {
+        filter: None,
+        effects: vec![
+            EffectAst::LookAtTopCards {
+                player: PlayerAst::You,
+                count: Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                tag: looked_tag.clone(),
+            },
+            EffectAst::Exile {
+                target: TargetAst::Tagged(looked_tag, None),
+                face_down: false,
+            },
+            EffectAst::ChooseObjects {
+                filter: exiled_filter,
+                count: ChoiceCount::exactly(1),
+                player: PlayerAst::You,
+                tag: chosen_tag.clone(),
+            },
+            EffectAst::GrantPlayTaggedUntilYourNextTurn {
+                tag: chosen_tag,
+                player: PlayerAst::You,
+            },
+        ],
+    }]))
+}
+
 fn parse_pair_sentence_sequence(
     first: &[Token],
     second: &[Token],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, PairSentenceRule); 4] = [
+    const RULES: [(&str, PairSentenceRule); 5] = [
+        (
+            "delayed-dies-exile-top-power-choose-play",
+            parse_delayed_dies_exile_top_power_choose_play,
+        ),
         (
             "target-chooses-other-cant-block",
             parse_target_player_chooses_then_other_cant_block,

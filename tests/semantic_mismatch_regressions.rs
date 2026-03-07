@@ -1,6 +1,7 @@
 use ironsmith::{
     cards::CardDefinitionBuilder, compiled_text::compiled_lines, ids::CardId, types::CardType,
 };
+use ironsmith::effects::{ChooseObjectsEffect, GrantPlayTaggedEffect, ScheduleDelayedTriggerEffect};
 
 fn rendered_lines(text: &str, name: &str, card_types: &[CardType]) -> String {
     let mut builder = CardDefinitionBuilder::new(CardId::new(), name);
@@ -201,6 +202,56 @@ fn regression_semantic_mismatch_corpse_augur_graveyard_owner_kept() {
     assert!(
         rendered.contains("lose 1 life for each creature card in target player's graveyard"),
         "expected target graveyard qualifier on life-loss clause, got {rendered}"
+    );
+}
+
+#[test]
+fn regression_semantic_mismatch_end_blaze_epiphany_delayed_exile_choice_permission() {
+    let text = "End-Blaze Epiphany deals X damage to target creature. When that creature dies this turn, exile a number of cards from the top of your library equal to its power, then choose a card exiled this way. Until the end of your next turn, you may play that card.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "End-Blaze Epiphany")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(text)
+        .expect("End-Blaze Epiphany should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("when that creature dies this turn"),
+        "expected delayed death trigger to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("exile a number of cards from the top of your library equal to its power"),
+        "expected top-of-library exile count tied to that creature's power, got {rendered}"
+    );
+    assert!(
+        rendered.contains("until the end of your next turn"),
+        "expected next-turn play permission to remain, got {rendered}"
+    );
+
+    let effects = def.spell_effect.expect("spell should lower to spell effects");
+    assert_eq!(effects.len(), 2, "expected damage plus one delayed trigger");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| effect.downcast_ref::<GrantPlayTaggedEffect>().is_none()),
+        "play permission must not resolve immediately at top level"
+    );
+
+    let delayed = effects[1]
+        .downcast_ref::<ScheduleDelayedTriggerEffect>()
+        .expect("second spell effect should be the delayed trigger");
+    assert!(
+        delayed
+            .effects
+            .iter()
+            .any(|effect| effect.downcast_ref::<ChooseObjectsEffect>().is_some()),
+        "delayed trigger should still choose one of the exiled cards"
+    );
+    assert!(
+        delayed
+            .effects
+            .iter()
+            .any(|effect| effect.downcast_ref::<GrantPlayTaggedEffect>().is_some()),
+        "play permission should be nested inside the delayed trigger"
     );
 }
 

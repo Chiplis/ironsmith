@@ -241,6 +241,18 @@ fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(move_to_zone) =
+                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) =
+                describe_look_at_top_then_move_to_exile(look_at_top, move_to_zone)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -2364,6 +2376,24 @@ fn describe_look_at_top_then_choose_move_to_exile(
     describe_look_at_top_then_choose_exile_text(look_at_top, choose, false)
 }
 
+fn describe_look_at_top_then_move_to_exile(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    if move_to_zone.zone != Zone::Exile {
+        return None;
+    }
+    if !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag == &look_at_top.tag) {
+        return None;
+    }
+
+    Some(describe_exile_top_of_library(
+        &look_at_top.player,
+        &look_at_top.count,
+        false,
+    ))
+}
+
 fn describe_look_at_top_then_choose_exile_text(
     look_at_top: &crate::effects::LookAtTopCardsEffect,
     choose: &crate::effects::ChooseObjectsEffect,
@@ -2389,6 +2419,34 @@ fn describe_look_at_top_then_choose_exile_text(
     Some(format!(
         "Look at the top {count_text} {noun} of {owner} library, then exile {exile_ref}{face_down_suffix}"
     ))
+}
+
+fn describe_exile_top_of_library(
+    player: &PlayerFilter,
+    count: &Value,
+    face_down: bool,
+) -> String {
+    let owner = describe_possessive_player_filter(player);
+    let face_down_suffix = if face_down { " face down" } else { "" };
+    if let Value::Fixed(n) = count
+        && *n >= 0
+    {
+        let count_u32 = *n as u32;
+        let count_text = small_number_word(count_u32)
+            .map(str::to_string)
+            .unwrap_or_else(|| n.to_string());
+        let noun = if *n == 1 { "card" } else { "cards" };
+        return format!("Exile the top {count_text} {noun} of {owner} library{face_down_suffix}");
+    }
+
+    let value_text = describe_value(count);
+    if value_text == "X" {
+        return format!("Exile the top X cards of {owner} library{face_down_suffix}");
+    }
+
+    format!(
+        "Exile a number of cards from the top of {owner} library equal to {value_text}{face_down_suffix}"
+    )
 }
 
 fn for_each_reveals_tag(for_each: &crate::effects::ForEachTaggedEffect, tag: &str) -> bool {
@@ -6430,11 +6488,7 @@ fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(exile_top) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() {
-        let (count_text, noun, _) = describe_look_count_and_noun(&exile_top.count);
-        return format!(
-            "Exile the top {count_text} {noun} of {} library",
-            describe_possessive_player_filter(&exile_top.player)
-        );
+        return describe_exile_top_of_library(&exile_top.player, &exile_top.count, false);
     }
     if let Some(experience) = effect.downcast_ref::<crate::effects::ExperienceCountersEffect>() {
         let player = describe_player_filter(&experience.player);
