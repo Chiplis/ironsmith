@@ -259,6 +259,28 @@ fn regression_semantic_mismatch_eight_and_a_half_tails_set_white() {
 }
 
 #[test]
+fn regression_semantic_mismatch_vraskas_scorn_library_and_or_graveyard() {
+    let rendered = rendered_lines(
+        "Target opponent loses 4 life. You may search your library and/or graveyard for a card named Vraska, Scheming Gorgon, reveal it, and put it into your hand. If you search your library this way, shuffle.",
+        "Vraska's Scorn",
+        &[CardType::Sorcery],
+    );
+
+    assert!(
+        rendered.contains("search your library and/or graveyard for a card named vraska scheming gorgon"),
+        "expected combined library/graveyard search clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if you search your library this way, shuffle"),
+        "expected conditional shuffle clause to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("effect #"),
+        "renderer should not leak internal effect ids, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_corpse_augur_graveyard_owner_kept() {
     let rendered = rendered_lines(
         "When this creature dies, you draw X cards and you lose X life, where X is the number of creature cards in target player's graveyard.",

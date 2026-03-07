@@ -2835,6 +2835,145 @@ fn describe_mill_then_may_return(
     Some(format!("{mill_clause}, then {player} may {return_clause}"))
 }
 
+fn describe_may_search_library_and_or_nonlibrary(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    fn downcast_search_library<'a>(
+        effect: &'a Effect,
+    ) -> Option<&'a crate::effects::SearchLibraryEffect> {
+        if let Some(search) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>() {
+            return Some(search);
+        }
+        effect
+            .downcast_ref::<crate::effects::TaggedEffect>()?
+            .effect
+            .downcast_ref::<crate::effects::SearchLibraryEffect>()
+    }
+
+    fn downcast_move_to_zone<'a>(
+        effect: &'a Effect,
+    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+        if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            return Some(move_to_zone);
+        }
+        effect
+            .downcast_ref::<crate::effects::TaggedEffect>()?
+            .effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    }
+
+    fn zone_name(zone: Zone) -> Option<&'static str> {
+        match zone {
+            Zone::Graveyard => Some("graveyard"),
+            Zone::Hand => Some("hand"),
+            Zone::Exile => Some("exile"),
+            Zone::Battlefield => Some("battlefield"),
+            Zone::Command => Some("command zone"),
+            Zone::Stack => Some("stack"),
+            Zone::Library => None,
+        }
+    }
+
+    fn destination_phrase(zone: Zone, player: &PlayerFilter) -> String {
+        let owner = describe_possessive_player_filter(player);
+        match zone {
+            Zone::Hand => format!("into {owner} hand"),
+            Zone::Battlefield => "onto the battlefield".to_string(),
+            Zone::Library => format!("on top of {owner} library"),
+            Zone::Graveyard => format!("into {owner} graveyard"),
+            Zone::Exile => "into exile".to_string(),
+            Zone::Stack => "onto the stack".to_string(),
+            Zone::Command => "into the command zone".to_string(),
+        }
+    }
+
+    let [choose_effect, found_effect, fallback_effect] = may.effects.as_slice() else {
+        return None;
+    };
+
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.zone == Zone::Library
+        || choose.is_search
+        || choose.count.min != 0
+        || choose.count.max != Some(1)
+        || choose.count.dynamic_x
+    {
+        return None;
+    }
+
+    let found = found_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if found.predicate != EffectPredicate::Happened || !found.else_.is_empty() {
+        return None;
+    }
+
+    let mut reveal_chosen = false;
+    let mut move_to_zone: Option<&crate::effects::MoveToZoneEffect> = None;
+    for effect in &found.then {
+        if let Some(reveal) = effect.downcast_ref::<crate::effects::RevealTaggedEffect>() {
+            if reveal.tag != choose.tag {
+                return None;
+            }
+            reveal_chosen = true;
+            continue;
+        }
+
+        let Some(candidate_move) = downcast_move_to_zone(effect) else {
+            return None;
+        };
+        if !matches!(candidate_move.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+            return None;
+        }
+        move_to_zone = Some(candidate_move);
+    }
+    let move_to_zone = move_to_zone?;
+
+    let fallback = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if fallback.predicate != EffectPredicate::DidNotHappen || !fallback.else_.is_empty() {
+        return None;
+    }
+    let [search_effect] = fallback.then.as_slice() else {
+        return None;
+    };
+    let search = downcast_search_library(search_effect)?;
+
+    if search.destination != move_to_zone.zone
+        || search.reveal != reveal_chosen
+        || choose.filter.name != search.filter.name
+    {
+        return None;
+    }
+
+    let nonlibrary_zone = zone_name(choose.zone)?;
+    let actor = may.decider.as_ref().unwrap_or(&search.player);
+    let actor_text = describe_player_filter(actor);
+    let actor_sentence = capitalize_first(&actor_text);
+    let possessive = describe_possessive_player_filter(&search.player);
+    let filter_desc = if is_generic_owned_card_search_filter(&search.filter) {
+        "a card".to_string()
+    } else {
+        describe_search_selection_with_cards(&search.filter.description())
+    };
+
+    let mut text = format!(
+        "{actor_sentence} may search {possessive} library and/or {nonlibrary_zone} for {filter_desc}"
+    );
+    if search.reveal && search.destination != Zone::Battlefield {
+        text.push_str(", reveal it, and put it ");
+    } else {
+        text.push_str(", and put it ");
+    }
+    text.push_str(&destination_phrase(search.destination, &search.player));
+
+    text.push_str(". If ");
+    text.push_str(&actor_text);
+    text.push(' ');
+    text.push_str(player_verb(&actor_text, "search", "searches"));
+    text.push(' ');
+    text.push_str(&format!("{possessive} library this way, shuffle"));
+
+    Some(text)
+}
+
 fn describe_gain_life_then_scry(
     gain: &crate::effects::GainLifeEffect,
     scry: &crate::effects::ScryEffect,
@@ -5356,6 +5495,9 @@ fn describe_effect_impl(effect: &Effect) -> String {
         return text;
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(compact) = describe_may_search_library_and_or_nonlibrary(may) {
+            return compact;
+        }
         if let Some(decider) = may.decider.as_ref() {
             let who = describe_player_filter(decider);
             let mut inner = describe_effect_list(&may.effects);
