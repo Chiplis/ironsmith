@@ -263,6 +263,10 @@ fn advance_reference_frame_for_effect(
             track_effect_player(player.clone(), frame, true, true)?;
             frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
         }
+        EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { player, .. } => {
+            track_effect_player(player.clone(), frame, true, true)?;
+            frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
+        }
         EffectAst::ControlPlayer { player, .. } => {
             frame.last_player_filter = Some(player.clone());
         }

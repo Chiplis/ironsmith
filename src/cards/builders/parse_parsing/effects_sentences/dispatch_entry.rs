@@ -15,9 +15,8 @@ use crate::cards::builders::{
     maybe_apply_carried_player, maybe_apply_carried_player_with_clause, normalize_cant_words,
     normalize_search_library_filter, parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand,
     parse_choose_creature_type_then_become_type, parse_choose_target_prelude_sentence,
-    parse_effect_chain, parse_effect_clause_with_trailing_if, parse_effect_sentence,
-    parse_may_cast_it_sentence,
-    parse_object_filter, parse_search_library_disjunction_filter,
+    parse_effect_chain, parse_effect_clause_with_trailing_if, parse_effect_sentence, parse_number,
+    parse_may_cast_it_sentence, parse_object_filter, parse_search_library_disjunction_filter,
     parse_sentence_exile_that_token_when_source_leaves,
     parse_sentence_sacrifice_source_when_that_token_leaves,
     parse_target_player_chooses_then_other_cant_block, parse_token_copy_modifier_sentence,
@@ -35,11 +34,95 @@ type TripleSentenceRule =
 type QuadSentenceRule =
     fn(&[Token], &[Token], &[Token], &[Token]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
+fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
+    first: &[Token],
+    second: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(first);
+    let first_words = words(&first_tokens);
+    let count_word_idx = if first_words.starts_with(&["reveal", "the", "top"]) {
+        3usize
+    } else if first_words.starts_with(&["reveal", "top"]) {
+        2usize
+    } else {
+        return Ok(None);
+    };
+
+    let count_tokens = first_words[count_word_idx..]
+        .iter()
+        .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    let (count, used) = parse_number(&count_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing reveal count in reveal-top matching split clause (clause: '{}')",
+            first_words.join(" ")
+        ))
+    })?;
+    if count_tokens
+        .get(used)
+        .and_then(Token::as_word)
+        .is_none_or(|word| word != "card" && word != "cards")
+    {
+        return Ok(None);
+    }
+    let reveal_tail = words(&count_tokens[used + 1..]);
+    if reveal_tail != ["of", "your", "library"] {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(second);
+    let second_words = words(&second_tokens);
+    if !matches!(second_words.get(..2), Some(["put", "all"] | ["puts", "all"])) {
+        return Ok(None);
+    }
+    let Some(revealed_idx) = second_words
+        .windows(3)
+        .position(|window| window == ["revealed", "this", "way"])
+    else {
+        return Ok(None);
+    };
+    if revealed_idx <= 2 {
+        return Ok(None);
+    }
+
+    let Some(filter_start) = token_index_for_word_index(&second_tokens, 2) else {
+        return Ok(None);
+    };
+    let filter_end =
+        token_index_for_word_index(&second_tokens, revealed_idx).unwrap_or(second_tokens.len());
+    let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+        filter
+    } else {
+        return Ok(None);
+    };
+    normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+
+    let after_revealed = &second_words[revealed_idx + 3..];
+    let has_hand_clause = after_revealed.windows(3).any(|window| window == ["into", "your", "hand"]);
+    let has_rest_clause = after_revealed.windows(5).any(|window| {
+        window == ["and", "the", "rest", "into", "your"]
+    }) && after_revealed.contains(&"graveyard");
+    if !has_hand_clause || !has_rest_clause {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
+        player: PlayerAst::You,
+        count,
+        filter,
+    }]))
+}
+
 fn parse_pair_sentence_sequence(
     first: &[Token],
     second: &[Token],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, PairSentenceRule); 3] = [
+    const RULES: [(&str, PairSentenceRule); 4] = [
         (
             "target-chooses-other-cant-block",
             parse_target_player_chooses_then_other_cant_block,
@@ -51,6 +134,10 @@ fn parse_pair_sentence_sequence(
         (
             "choose-creature-type-then-become-type",
             parse_choose_creature_type_then_become_type,
+        ),
+        (
+            "reveal-top-matching-into-hand-rest-graveyard",
+            parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
         ),
     ];
 

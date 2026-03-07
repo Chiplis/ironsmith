@@ -244,6 +244,24 @@ fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 2 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(reveal_tagged) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(distribute) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) =
+                describe_look_at_top_then_reveal_put_matching_into_hand_rest_graveyard(
+                    look_at_top,
+                    reveal_tagged,
+                    distribute,
+                )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
             && let Some(choose) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(move_to_zone) =
@@ -2469,6 +2487,54 @@ fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
 
     Some(format!(
         "Look at the top {count_text} {noun} of {owner} library. {may_prefix} reveal {chosen} from among them and put it into {hand} hand. Put the rest on the bottom of {owner} library"
+    ))
+}
+
+fn for_each_moves_matching_to_hand_else_graveyard<'a>(
+    for_each: &'a crate::effects::ForEachTaggedEffect,
+    looked_tag: &str,
+) -> Option<&'a crate::filter::ObjectFilter> {
+    if for_each.tag.as_str() != looked_tag || for_each.effects.len() != 1 {
+        return None;
+    }
+    let conditional = for_each.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.if_true.len() != 1 || conditional.if_false.len() != 1 {
+        return None;
+    }
+    let move_to_hand = conditional.if_true[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_graveyard =
+        conditional.if_false[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_hand.zone != Zone::Hand
+        || move_to_graveyard.zone != Zone::Graveyard
+        || !matches!(move_to_hand.target, ChooseSpec::Iterated)
+        || !matches!(move_to_graveyard.target, ChooseSpec::Iterated)
+    {
+        return None;
+    }
+    let crate::effect::Condition::TaggedObjectMatches(tag, filter) = &conditional.condition else {
+        return None;
+    };
+    if tag.as_str() != "__it__" {
+        return None;
+    }
+    Some(filter)
+}
+
+fn describe_look_at_top_then_reveal_put_matching_into_hand_rest_graveyard(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    reveal_tagged: &crate::effects::RevealTaggedEffect,
+    distribute: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    if reveal_tagged.tag.as_str() != look_at_top.tag.as_str() {
+        return None;
+    }
+    let filter = for_each_moves_matching_to_hand_else_graveyard(distribute, look_at_top.tag.as_str())?;
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let matching = pluralize_noun_phrase(&describe_search_selection_with_cards(&filter.description()));
+
+    Some(format!(
+        "Reveal the top {count_text} {noun} of {owner} library. Put all {matching} revealed this way into {owner} hand and the rest into {owner} graveyard"
     ))
 }
 

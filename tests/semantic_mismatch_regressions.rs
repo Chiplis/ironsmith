@@ -165,6 +165,28 @@ fn regression_semantic_mismatch_sky_tether_attached_keyword_mix() {
 }
 
 #[test]
+fn regression_semantic_mismatch_beast_hunt_reveal_all_creatures() {
+    let rendered = rendered_lines(
+        "Reveal the top three cards of your library. Put all creature cards revealed this way into your hand and the rest into your graveyard.",
+        "Beast Hunt",
+        &[CardType::Sorcery],
+    );
+
+    assert!(
+        rendered.contains("reveal the top three cards of your library"),
+        "expected multi-card reveal to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("put all creature cards revealed this way into your hand"),
+        "expected creature-card selection to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("rest into your graveyard"),
+        "expected remainder destination to remain, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_courageous_outrider_look_at_top_reveal_choice() {
     let rendered = rendered_lines(
         "When this creature enters, look at the top four cards of your library. You may reveal a Human card from among them and put it into your hand. Put the rest on the bottom of your library in any order.",

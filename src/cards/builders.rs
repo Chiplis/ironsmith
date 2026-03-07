@@ -954,6 +954,11 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         count: u32,
     },
+    RevealTopPutMatchingIntoHandRestIntoGraveyard {
+        player: PlayerAst,
+        count: u32,
+        filter: ObjectFilter,
+    },
     RevealTagged {
         tag: TagKey,
     },

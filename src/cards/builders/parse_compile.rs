@@ -1310,6 +1310,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
         | EffectAst::ExileInsteadOfGraveyardThisTurn { player }
         | EffectAst::ExtraTurnAfterTurn { player, .. }
         | EffectAst::RevealTop { player }
+        | EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { player, .. }
         | EffectAst::LookAtTopCards { player, .. }
         | EffectAst::RevealHand { player }
         | EffectAst::PutIntoHand { player, .. }
@@ -4880,6 +4881,46 @@ fn try_compile_visibility_and_card_selection_effect(
             }
 
             (vec![Effect::choose_one(modes)], choices)
+        }
+        EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
+            player,
+            count,
+            filter,
+        } => {
+            use crate::effect::{Condition, Value};
+
+            let (player_filter, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, false)?;
+            let looked_tag = ctx.next_tag("revealed");
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            resolved_filter.zone = None;
+
+            let reveal = Effect::look_at_top_cards(
+                player_filter,
+                Value::Fixed(*count as i32),
+                TagKey::from(looked_tag.as_str()),
+            );
+            let reveal_tagged =
+                Effect::new(crate::effects::RevealTaggedEffect::new(looked_tag.clone()));
+            let distribute = Effect::for_each_tagged(
+                looked_tag.clone(),
+                vec![Effect::conditional(
+                    Condition::TaggedObjectMatches(TagKey::from("__it__"), resolved_filter),
+                    vec![Effect::move_to_zone(
+                        ChooseSpec::Iterated,
+                        Zone::Hand,
+                        false,
+                    )],
+                    vec![Effect::move_to_zone(
+                        ChooseSpec::Iterated,
+                        Zone::Graveyard,
+                        false,
+                    )],
+                )],
+            );
+
+            ctx.last_object_tag = Some(looked_tag);
+            (vec![reveal, reveal_tagged, distribute], choices)
         }
         EffectAst::RevealTagged { tag } => {
             let resolved_tag = if tag.as_str() == IT_TAG {

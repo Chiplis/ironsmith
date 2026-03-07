@@ -172,6 +172,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => {}
         EffectAst::RevealTop { .. } => {}
         EffectAst::RevealTopChooseCardTypePutToHandRestBottom { .. } => {}
+        EffectAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. } => {}
         EffectAst::RevealTagged { .. } => {}
         EffectAst::LookAtTopCards { .. } => {}
         EffectAst::RevealHand { .. } => {}
