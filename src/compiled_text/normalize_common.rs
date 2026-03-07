@@ -6029,6 +6029,15 @@ fn describe_apply_continuous_clauses(
         crate::continuous::Modification::SwitchPowerToughness => {
             clauses.push("switches power and toughness".to_string());
         }
+        crate::continuous::Modification::SetColors(colors) => {
+            clauses.push(format!(
+                "becomes {}",
+                describe_token_color_words(*colors, false)
+            ));
+        }
+        crate::continuous::Modification::MakeColorless => {
+            clauses.push("becomes colorless".to_string());
+        }
         crate::continuous::Modification::SetPowerToughness {
             power,
             toughness,

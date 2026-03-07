@@ -134,8 +134,11 @@ mod tests {
 
     #[test]
     fn test_display_power_only_omits_source_toughness_placeholder() {
+        let mut filter = ObjectFilter::land();
+        filter.zone = Some(crate::zone::Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
         let ability = CharacteristicDefiningPT::new(
-            Value::Count(ObjectFilter::land().in_your_graveyard()),
+            Value::Count(filter),
             Value::SourceToughness,
         );
         assert_eq!(

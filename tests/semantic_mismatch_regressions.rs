@@ -241,6 +241,24 @@ fn regression_semantic_mismatch_rhonass_last_stand_plural_untap_lock() {
 }
 
 #[test]
+fn regression_semantic_mismatch_eight_and_a_half_tails_set_white() {
+    let rendered = rendered_lines(
+        "{1}{W}: Target permanent you control gains protection from white until end of turn.\n{1}: Target spell or permanent becomes white until end of turn.",
+        "Eight-and-a-Half-Tails",
+        &[CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("target permanent you control gains protection from white until end of turn"),
+        "expected protection ability to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("target spell or permanent becomes white until end of turn"),
+        "expected color-setting ability to remain, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_corpse_augur_graveyard_owner_kept() {
     let rendered = rendered_lines(
         "When this creature dies, you draw X cards and you lose X life, where X is the number of creature cards in target player's graveyard.",

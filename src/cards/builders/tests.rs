@@ -13718,11 +13718,10 @@ fn parse_target_creature_becomes_colorless_until_end_of_turn() {
         .parse_text("{1}: Target creature becomes colorless until end of turn.")
         .expect("becomes-colorless clause should parse");
 
-    // The "becomes colorless" effect parses but compiles to an unsupported effect placeholder.
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("unsupported") || rendered.contains("makecolorless"),
-        "expected unsupported or make-colorless in compiled output, got {rendered}"
+        rendered.contains("target creature becomes colorless until end of turn"),
+        "expected make-colorless wording in compiled output, got {rendered}"
     );
 }
 
@@ -13733,12 +13732,10 @@ fn parse_target_creature_becomes_single_color_until_end_of_turn() {
         .parse_text("{1}: Target creature becomes red until end of turn.")
         .expect("becomes-color clause should parse");
 
-    // The "becomes red" effect parses but compiles to an unsupported effect placeholder.
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
-        rendered.contains("unsupported")
-            || (rendered.contains("setcolors") && rendered.contains("red")),
-        "expected unsupported or set-colors(red) in compiled output, got {rendered}"
+        rendered.contains("target creature becomes red until end of turn"),
+        "expected set-colors wording in compiled output, got {rendered}"
     );
 }
 
