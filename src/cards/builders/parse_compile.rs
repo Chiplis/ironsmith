@@ -4958,11 +4958,10 @@ fn try_compile_visibility_and_card_selection_effect(
         EffectAst::RevealHand { player } => {
             let (player_filter, choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
-            let spec = if choices.is_empty() {
-                ChooseSpec::Player(player_filter)
-            } else {
-                ChooseSpec::target_player()
-            };
+            let spec = choices
+                .first()
+                .cloned()
+                .unwrap_or_else(|| ChooseSpec::Player(player_filter));
             let effect = Effect::new(crate::effects::LookAtHandEffect::reveal(spec));
             (vec![effect], choices)
         }
@@ -6386,7 +6385,8 @@ fn try_compile_object_zone_and_exchange_effect(
             player,
             tag,
         } => {
-            let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let (chooser, choices) =
+                resolve_effect_player_filter(*player, ctx, true, true, false)?;
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             let choice_zone = resolved_filter.zone.unwrap_or(Zone::Battlefield);
@@ -6396,6 +6396,8 @@ fn try_compile_object_zone_and_exchange_effect(
             {
                 resolved_filter.controller = Some(chooser.clone());
             }
+            let followup_player = infer_player_filter_from_object_filter(&resolved_filter)
+                .unwrap_or_else(|| chooser.clone());
             let choose_effect = crate::effects::ChooseObjectsEffect::new(
                 resolved_filter,
                 *count,
@@ -6411,6 +6413,7 @@ fn try_compile_object_zone_and_exchange_effect(
                 .collect();
             effects.push(effect);
             ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
         EffectAst::Sacrifice {

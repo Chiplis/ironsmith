@@ -9208,7 +9208,7 @@ pub(crate) fn parse_you_choose_objects_clause(
                 clause_words.join(" ")
             ))
         })?;
-    let choose_object_tokens = trim_commas(&tokens[choose_word_token_idx + 1..]);
+    let mut choose_object_tokens = trim_commas(&tokens[choose_word_token_idx + 1..]).to_vec();
     if choose_object_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing chosen object after choose clause (clause: '{}')",
@@ -9216,6 +9216,34 @@ pub(crate) fn parse_you_choose_objects_clause(
         )));
     }
 
+    let mut references_it = false;
+    loop {
+        let len = choose_object_tokens.len();
+        let trailing_it = len >= 2
+            && choose_object_tokens[len - 2]
+                .as_word()
+                .is_some_and(|word| matches!(word, "from" | "in"))
+            && choose_object_tokens[len - 1]
+                .as_word()
+                .is_some_and(|word| matches!(word, "it" | "them"));
+        let trailing_there = len >= 3
+            && choose_object_tokens[len - 3]
+                .as_word()
+                .is_some_and(|word| matches!(word, "from" | "in"))
+            && choose_object_tokens[len - 2].is_word("there")
+            && choose_object_tokens[len - 1].is_word("in");
+        if trailing_it {
+            references_it = true;
+            choose_object_tokens.truncate(len - 2);
+            continue;
+        }
+        if trailing_there {
+            references_it = true;
+            choose_object_tokens.truncate(len - 3);
+            continue;
+        }
+        break;
+    }
     let mut choose_words = words(&choose_object_tokens);
     let mut count = ChoiceCount::exactly(1);
     if choose_words.starts_with(&["up", "to"])
@@ -9242,29 +9270,6 @@ pub(crate) fn parse_you_choose_objects_clause(
         choose_words = choose_words[used..].to_vec();
     } else if choose_words.first().is_some_and(|word| is_article(word)) {
         choose_words = choose_words[1..].to_vec();
-    }
-
-    let mut references_it = false;
-    loop {
-        let len = choose_words.len();
-        let trailing_it = len >= 2
-            && matches!(choose_words[len - 2], "from" | "in")
-            && matches!(choose_words[len - 1], "it" | "them");
-        let trailing_there = len >= 3
-            && matches!(choose_words[len - 3], "from" | "in")
-            && choose_words[len - 2] == "there"
-            && choose_words[len - 1] == "in";
-        if trailing_it {
-            references_it = true;
-            choose_words.truncate(len - 2);
-            continue;
-        }
-        if trailing_there {
-            references_it = true;
-            choose_words.truncate(len - 3);
-            continue;
-        }
-        break;
     }
 
     if choose_words.is_empty() {

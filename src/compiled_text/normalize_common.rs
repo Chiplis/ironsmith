@@ -4294,6 +4294,13 @@ fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter>) -> Strin
         return describe_card_count(value);
     };
 
+    if !filter.tagged_constraints.is_empty() {
+        return match value {
+            Value::Fixed(1) => "that card".to_string(),
+            _ => "those cards".to_string(),
+        };
+    }
+
     let card_phrase = describe_discard_card_phrase(filter);
     let plural_card_phrase = pluralize_discard_card_phrase(&card_phrase);
     match value {

@@ -771,6 +771,12 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
     if matches!(effect, EffectAst::ForEachOpponent { .. }) {
         return Some(CarryContext::ForEachOpponent);
     }
+    if let EffectAst::TargetOnly { target } = effect
+        && let TargetAst::Player(filter, _) = target
+        && let Some(player) = player_ast_from_filter_for_carry(filter)
+    {
+        return Some(CarryContext::Player(player));
+    }
     if let EffectAst::Exile { target, .. } | EffectAst::ExileUntilSourceLeaves { target, .. } =
         effect
         && let Some(player) = player_owner_filter_from_target_for_carry(target)

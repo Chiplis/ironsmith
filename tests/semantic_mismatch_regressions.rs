@@ -494,6 +494,37 @@ fn regression_semantic_mismatch_campfire_commanders_from_public_zones() {
 }
 
 #[test]
+fn regression_semantic_mismatch_gixs_caress_reveal_choose_discard_chain() {
+    let rendered = rendered_lines(
+        "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card.\nCreate a tapped Powerstone token.",
+        "Gix's Caress",
+        &[CardType::Sorcery],
+    );
+
+    assert!(
+        rendered.contains("target opponent reveals their hand"),
+        "expected the targeted hand-reveal clause to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("nonland card") && rendered.contains("opponent's hand"),
+        "expected card selection to stay tied to the revealed opponent hand, got {rendered}"
+    );
+    assert!(
+        rendered.contains("discards that card")
+            && (rendered.contains("that player") || rendered.contains("target opponent")),
+        "expected discard to stay tied to the chosen revealed card, got {rendered}"
+    );
+    assert!(
+        rendered.contains("tapped powerstone token"),
+        "expected tapped Powerstone token creation to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("in your hand") && !rendered.contains("you discard a card"),
+        "gix's caress should not fall back to choosing or discarding from your hand, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_contagious_vorrac_if_not_into_hand_followup() {
     let rendered = rendered_lines(
         "When this creature enters, look at the top four cards of your library. You may reveal a land card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you didn't put a card into your hand this way, proliferate.",

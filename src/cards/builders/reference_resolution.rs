@@ -7,7 +7,7 @@ use crate::cards::builders::{
     RefState, ReferenceEnv, ReferenceFrame, ReferenceImports, RetargetModeAst, TargetAst,
     choose_spec_targets_object, effect_references_event_derived_amount, effects_reference_it_tag,
     effects_reference_its_controller, infer_player_filter_from_object_filter,
-    resolve_non_target_player_filter, resolve_target_spec_with_choices,
+    resolve_it_tag, resolve_non_target_player_filter, resolve_target_spec_with_choices,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::target::ObjectRef;
@@ -364,8 +364,32 @@ fn advance_reference_frame_for_effect(
                 tag.as_str().to_string()
             });
         }
-        EffectAst::ChooseObjects { tag, player, .. } => {
-            track_effect_player(player.clone(), frame, true, true)?;
+        EffectAst::ChooseObjects {
+            filter,
+            tag,
+            player,
+            ..
+        } => {
+            let refs = lowering_reference_frame(frame);
+            let chooser_filter = if matches!(player, PlayerAst::Implicit) {
+                None
+            } else {
+                Some(match player {
+                    PlayerAst::Target => PlayerFilter::target_player(),
+                    PlayerAst::TargetOpponent => {
+                        PlayerFilter::Target(Box::new(PlayerFilter::Opponent))
+                    }
+                    other => resolve_non_target_player_filter(*other, &refs)?,
+                })
+            };
+            if let Some(player_filter) = resolve_it_tag(filter, &refs)
+                .ok()
+                .and_then(|resolved| infer_player_filter_from_object_filter(&resolved))
+                .or_else(|| infer_player_filter_from_object_filter(filter))
+                .or(chooser_filter)
+            {
+                frame.last_player_filter = Some(player_filter);
+            }
             frame.last_object_tag = Some(tag.as_str().to_string());
         }
         EffectAst::SearchLibrary { player, .. } => {
