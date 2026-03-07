@@ -1676,6 +1676,14 @@ fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Lands you control don't untap during your next untap step",
         )
         .replace(
+            "a land you control can't untap during its controller's next untap step",
+            "Lands you control don't untap during your next untap step",
+        )
+        .replace(
+            "a land you control cant untap during its controller's next untap step",
+            "Lands you control don't untap during your next untap step",
+        )
+        .replace(
             "permanent can't untap while you control this creature",
             "that creature doesn't untap during its controller's untap step for as long as you control this creature",
         )

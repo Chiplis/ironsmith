@@ -223,6 +223,24 @@ fn regression_semantic_mismatch_dwarven_thaumaturgist_switch_pt() {
 }
 
 #[test]
+fn regression_semantic_mismatch_rhonass_last_stand_plural_untap_lock() {
+    let rendered = rendered_lines(
+        "Create a 5/4 green Snake creature token. Lands you control don't untap during your next untap step.",
+        "Rhonas's Last Stand",
+        &[CardType::Sorcery],
+    );
+
+    assert!(
+        rendered.contains("lands you control don't untap during your next untap step"),
+        "expected plural untap lock to remain, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("a land you control can't untap"),
+        "plural untap lock should not collapse to a singular land, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_corpse_augur_graveyard_owner_kept() {
     let rendered = rendered_lines(
         "When this creature dies, you draw X cards and you lose X life, where X is the number of creature cards in target player's graveyard.",
