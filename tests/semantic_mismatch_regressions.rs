@@ -563,6 +563,28 @@ fn regression_semantic_mismatch_grief_reveal_choose_discard_chain() {
 }
 
 #[test]
+fn regression_semantic_mismatch_tangle_tumbler_token_tap_animation() {
+    let rendered = rendered_lines(
+        "Vigilance\n{3}, {T}: Put a +1/+1 counter on target creature.\nTap two untapped tokens you control: This Vehicle becomes an artifact creature until end of turn.",
+        "Tangle Tumbler",
+        &[CardType::Artifact, CardType::Creature],
+    );
+
+    assert!(
+        rendered.contains("tap two untapped tokens you control"),
+        "expected the token-tap activation cost to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("becomes an artifact creature until end of turn"),
+        "expected the vehicle animation clause to render, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "the animation ability should not fall back to unsupported text, got {rendered}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_dwarven_thaumaturgist_switch_pt() {
     let rendered = rendered_lines(
         "{T}: Switch target creature's power and toughness until end of turn.",

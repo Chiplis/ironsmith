@@ -6243,10 +6243,6 @@ fn describe_apply_continuous_animation_effect(
         }
     }
 
-    let (Some(power), Some(toughness)) = (power, toughness) else {
-        return None;
-    };
-
     let mut descriptor = Vec::new();
     if let Some(colors) = colors {
         descriptor.push(describe_token_color_words(colors, false));
@@ -6275,16 +6271,26 @@ fn describe_apply_continuous_animation_effect(
         "creature".to_string()
     });
 
-    let pt = format!("{}/{}", describe_value(power), describe_value(toughness));
     let noun_phrase = descriptor
         .into_iter()
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
-    let mut text = if plural_target {
-        format!("{target} become {pt} {noun_phrase}")
+    let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
+        let pt = format!("{}/{}", describe_value(power), describe_value(toughness));
+        if plural_target {
+            format!("{target} become {pt} {noun_phrase}")
+        } else {
+            format!("{target} becomes a {pt} {noun_phrase}")
+        }
+    } else if power.is_none() && toughness.is_none() {
+        if plural_target {
+            format!("{target} become {noun_phrase}")
+        } else {
+            format!("{target} becomes {}", with_indefinite_article(&noun_phrase))
+        }
     } else {
-        format!("{target} becomes a {pt} {noun_phrase}")
+        return None;
     };
     if !abilities.is_empty() {
         let ability_text = abilities
