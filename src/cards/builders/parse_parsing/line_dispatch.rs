@@ -1304,6 +1304,9 @@ fn parse_statement_verb_leading_rule(
 }
 
 fn parse_static_line_rule(view: &ClauseView<'_>) -> Result<Option<LineAst>, CardTextError> {
+    if parse_ability_line(view.tokens).is_some() {
+        return Ok(None);
+    }
     let Some(abilities) = parse_static_ability_ast_line(view.tokens)? else {
         return Ok(None);
     };

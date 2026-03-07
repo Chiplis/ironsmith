@@ -5471,6 +5471,9 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
     }
 
     if words.first().copied() == Some("modular") {
+        if words.get(1).copied() == Some("sunburst") {
+            return Some(KeywordAction::ModularSunburst);
+        }
         if words.len() >= 2
             && let Ok(amount) = words[1].parse::<u32>()
         {
@@ -5678,6 +5681,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
             let value = amount.parse::<u32>().ok()?;
             KeywordAction::Vanishing(value)
         }
+        ["modular", "sunburst"] => KeywordAction::ModularSunburst,
         ["modular", amount] => {
             let value = amount.parse::<u32>().ok()?;
             KeywordAction::Modular(value)

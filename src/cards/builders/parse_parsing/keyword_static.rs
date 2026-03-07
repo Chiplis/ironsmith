@@ -227,6 +227,7 @@ pub(crate) fn keyword_action_to_static_ability(action: KeywordAction) -> Option<
         KeywordAction::Modular(amount) => {
             Some(StaticAbility::keyword_marker(format!("modular {amount}")))
         }
+        KeywordAction::ModularSunburst => None,
         KeywordAction::Graft(amount) => {
             Some(StaticAbility::keyword_marker(format!("graft {amount}")))
         }

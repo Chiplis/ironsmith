@@ -233,6 +233,31 @@ fn regression_semantic_mismatch_benefaction_of_rhonas_put_from_among_guard() {
 }
 
 #[test]
+fn regression_semantic_mismatch_arcbound_wanderer_modular_sunburst() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Arcbound Wanderer")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text("Modular—Sunburst")
+        .expect("Arcbound Wanderer keyword line should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("modular") && rendered.contains("sunburst"),
+        "expected combined keyword text to remain, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    let debug_flat: String = debug.chars().filter(|ch| !ch.is_whitespace()).collect();
+    assert!(
+        debug_flat.contains("colorsofmanaspenttocastthisspell"),
+        "expected modular-sunburst to scale from colors spent to cast, got {debug}"
+    );
+    assert!(
+        debug.contains("this_dies") || debug.contains("zonechangetrigger"),
+        "expected modular death-transfer trigger to remain, got {debug}"
+    );
+}
+
+#[test]
 fn regression_semantic_mismatch_uurg_power_only_cda() {
     let rendered = rendered_lines(
         "Uurg's power is equal to the number of land cards in your graveyard.\nAt the beginning of your upkeep, surveil 1.\n{B}{G}, Sacrifice a land: You gain 2 life.",

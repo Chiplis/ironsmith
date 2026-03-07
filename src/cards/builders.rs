@@ -91,6 +91,7 @@ pub(crate) enum KeywordAction {
     Unleash,
     Renown(u32),
     Modular(u32),
+    ModularSunburst,
     Graft(u32),
     Soulbond,
     Soulshift(u32),
@@ -1762,6 +1763,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Unleash => self.unleash(),
             KeywordAction::Renown(amount) => self.renown(amount),
             KeywordAction::Modular(amount) => self.modular(amount),
+            KeywordAction::ModularSunburst => self.modular_sunburst(),
             KeywordAction::Graft(amount) => self.graft(amount),
             KeywordAction::Soulbond => self.soulbond(),
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
@@ -3273,6 +3275,51 @@ impl CardDefinitionBuilder {
                 amount,
             ))
             .with_text(&text),
+        )
+        .with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_dies(),
+                effects: vec![
+                    Effect::tag_triggering_object(trigger_tag),
+                    Effect::may_single(Effect::put_counters(
+                        CounterType::PlusOnePlusOne,
+                        transfer_count,
+                        target.clone(),
+                    )),
+                ],
+                choices: vec![target],
+                intervening_if: None,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+            text: None,
+        })
+    }
+
+    /// Add modular whose initial counters are determined by sunburst.
+    ///
+    /// This appears on cards such as Arcbound Wanderer and means:
+    /// "This creature enters with a +1/+1 counter on it for each color of mana
+    /// spent to cast it. When it dies, you may put its +1/+1 counters on target
+    /// artifact creature."
+    pub fn modular_sunburst(self) -> Self {
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::artifact().with_type(CardType::Creature),
+        ));
+        let trigger_tag = "modular_triggering_object";
+        let dead_source_filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .same_stable_id_as_tagged(trigger_tag);
+        let transfer_count = Value::CountersOn(
+            Box::new(ChooseSpec::All(dead_source_filter)),
+            Some(CounterType::PlusOnePlusOne),
+        );
+
+        self.with_ability(
+            Ability::static_ability(StaticAbility::enters_with_counters_value(
+                CounterType::PlusOnePlusOne,
+                Value::ColorsOfManaSpentToCastThisSpell,
+            ))
+            .with_text("Modular—Sunburst"),
         )
         .with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {

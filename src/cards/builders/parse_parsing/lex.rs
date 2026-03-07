@@ -573,6 +573,7 @@ pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
             | "escape"
             | "flashback"
             | "boast"
+            | "modular"
             | "replicate"
             | "renew"
             | "spectacle"

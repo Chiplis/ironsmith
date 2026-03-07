@@ -949,6 +949,7 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Unleash => "Unleash".to_string(),
         KeywordAction::Renown(amount) => format!("Renown {amount}"),
         KeywordAction::Modular(amount) => format!("Modular {amount}"),
+        KeywordAction::ModularSunburst => "Modular—Sunburst".to_string(),
         KeywordAction::Graft(amount) => format!("Graft {amount}"),
         KeywordAction::Soulbond => "Soulbond".to_string(),
         KeywordAction::Soulshift(amount) => format!("Soulshift {amount}"),
