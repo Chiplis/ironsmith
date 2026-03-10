@@ -115,7 +115,7 @@ mod tests {
         assert!(tap_ability.is_some(), "Should have an activated ability");
 
         if let AbilityKind::Activated(activated) = &tap_ability.unwrap().kind {
-            // Verify cost is tap (via cost_effects)
+            // Verify cost is tap (via non-mana costs)
             assert!(activated.has_tap_cost(), "Should have tap cost");
 
             // Verify no mana cost

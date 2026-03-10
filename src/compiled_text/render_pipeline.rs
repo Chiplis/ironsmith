@@ -20,17 +20,17 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     });
     for (idx, method) in def.alternative_casts.iter().enumerate() {
         match method {
-            method if method.uses_composed_cost_effects() => {
+            method if method.is_composed_cost() => {
                 let name = method.name();
                 let mana_cost = method.mana_cost();
-                let cost_effects = method.cost_effects();
+                let costs = method.non_mana_costs();
                 let cast_condition = method.cast_condition();
                 let mut parts = Vec::new();
                 if let Some(cost) = mana_cost {
                     parts.push(format!("pay {}", cost.to_oracle()));
                 }
-                if !cost_effects.is_empty() {
-                    parts.push(describe_alternative_cost_effects(&cost_effects));
+                if !costs.is_empty() {
+                    parts.push(describe_alternative_costs(&costs));
                 }
                 let clause = if parts.is_empty() {
                     "cast this spell without paying its mana cost".to_string()
@@ -56,15 +56,15 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 out.push(format!("Miracle {}", cost.to_oracle()));
             }
             AlternativeCastingMethod::Flashback { total_cost } => {
-                let cost_effects = method.cost_effects();
+                let costs = method.non_mana_costs();
                 let mana_cost = total_cost
                     .mana_cost()
                     .map(|cost| cost.to_oracle())
                     .unwrap_or_else(|| "{0}".to_string());
-                if cost_effects.is_empty() {
+                if costs.is_empty() {
                     out.push(format!("Flashback—{mana_cost}"));
                 } else {
-                    let extra = capitalize_first(&describe_alternative_cost_effects(&cost_effects));
+                    let extra = capitalize_first(&describe_alternative_costs(&costs));
                     out.push(format!("Flashback—{mana_cost}, {extra}"));
                 }
             }
@@ -87,15 +87,15 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 }
             }
             AlternativeCastingMethod::Bestow { total_cost } => {
-                let cost_effects = method.cost_effects();
+                let costs = method.non_mana_costs();
                 let mana_cost = total_cost
                     .mana_cost()
                     .map(|cost| cost.to_oracle())
                     .unwrap_or_else(|| "{0}".to_string());
-                if cost_effects.is_empty() {
+                if costs.is_empty() {
                     out.push(format!("Bestow {mana_cost}"));
                 } else {
-                    let extra = capitalize_first(&describe_alternative_cost_effects(&cost_effects));
+                    let extra = capitalize_first(&describe_alternative_costs(&costs));
                     out.push(format!("Bestow {mana_cost}, {extra}"));
                 }
             }
@@ -236,11 +236,11 @@ pub(super) fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
 
     let spell_like_card = def.card.card_types.contains(&CardType::Instant)
         || def.card.card_types.contains(&CardType::Sorcery);
-    let additional_cost_effects = def.additional_cost_effects();
-    if !additional_cost_effects.is_empty() {
+    let additional_costs = def.additional_non_mana_costs();
+    if !additional_costs.is_empty() {
         out.push(format!(
             "As an additional cost to cast this spell, {}",
-            describe_additional_cost_effects(&additional_cost_effects)
+            describe_additional_costs(&additional_costs)
         ));
     }
     if !spell_like_card {

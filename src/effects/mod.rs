@@ -57,8 +57,8 @@ pub mod stack;
 pub mod tokens;
 pub mod zones;
 
-// Re-export the trait, modal spec, and cost validation error
-pub use executor_trait::{CostValidationError, EffectExecutor, ModalSpec};
+// Re-export the traits, modal spec, and cost validation error
+pub use executor_trait::{CostExecutableEffect, CostValidationError, EffectExecutor, ModalSpec};
 
 // Re-export effect implementations
 pub use cards::{
@@ -136,10 +136,9 @@ pub use tokens::{
 };
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, ExileEffect,
-    ExileFromHandAsCostEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect,
-    MoveToLibraryNthFromTopEffect, MoveToLibrarySecondFromTopEffect, MoveToZoneEffect,
-    PutOntoBattlefieldEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,
-    ReturnAllToBattlefieldEffect, ReturnFromGraveyardOrExileToBattlefieldEffect,
-    ReturnFromGraveyardToBattlefieldEffect, ReturnFromGraveyardToHandEffect, ReturnToHandEffect,
-    SacrificeEffect, SacrificeTargetEffect,
+    ExileUntilDuration, ExileUntilEffect, HauntExileEffect, MoveToLibraryNthFromTopEffect,
+    MoveToLibrarySecondFromTopEffect, MoveToZoneEffect, PutOntoBattlefieldEffect,
+    ReorderGraveyardEffect, ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect,
+    ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
+    ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
 };

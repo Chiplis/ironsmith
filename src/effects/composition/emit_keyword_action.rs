@@ -5,7 +5,7 @@
 //! effect/cost pipeline so triggers can observe it.
 
 use crate::effect::{EffectOutcome, EffectResult};
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -24,6 +24,10 @@ impl EmitKeywordActionEffect {
 }
 
 impl EffectExecutor for EmitKeywordActionEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -44,5 +48,16 @@ impl EffectExecutor for EmitKeywordActionEffect {
         // Internal scaffolding effect used to emit trigger-visible events from costs.
         // This should not show up as part of the printed/visible cost.
         Some(String::new())
+    }
+}
+
+impl CostExecutableEffect for EmitKeywordActionEffect {
+    fn can_execute_as_cost(
+        &self,
+        _game: &GameState,
+        _source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        Ok(())
     }
 }

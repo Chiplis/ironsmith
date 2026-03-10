@@ -6,7 +6,7 @@
 //! "To behold an Elemental, choose an Elemental you control or reveal an Elemental card from your hand."
 
 use crate::effect::{EffectOutcome, EffectResult};
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -78,31 +78,8 @@ impl EffectExecutor for BeholdEffect {
         Box::new(self.clone())
     }
 
-    fn can_execute_as_cost(
-        &self,
-        game: &GameState,
-        source: ObjectId,
-        controller: PlayerId,
-    ) -> Result<(), crate::effects::CostValidationError> {
-        use crate::effects::CostValidationError;
-
-        let chooser = match self.chooser {
-            PlayerFilter::You => controller,
-            PlayerFilter::Specific(id) => id,
-            _ => controller,
-        };
-
-        let available = candidates(game, chooser, source, self.subtype).len() as u32;
-        if available < self.count {
-            return Err(CostValidationError::Other(format!(
-                "Not enough {}s to behold ({} needed, {} available)",
-                self.subtype.to_string().to_ascii_lowercase(),
-                self.count,
-                available
-            )));
-        }
-
-        Ok(())
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
     }
 
     fn execute(
@@ -155,6 +132,35 @@ impl EffectExecutor for BeholdEffect {
     }
 }
 
+impl CostExecutableEffect for BeholdEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        use crate::effects::CostValidationError;
+
+        let chooser = match self.chooser {
+            PlayerFilter::You => controller,
+            PlayerFilter::Specific(id) => id,
+            _ => controller,
+        };
+
+        let available = candidates(game, chooser, source, self.subtype).len() as u32;
+        if available < self.count {
+            return Err(CostValidationError::Other(format!(
+                "Not enough {}s to behold ({} needed, {} available)",
+                self.subtype.to_string().to_ascii_lowercase(),
+                self.count,
+                available
+            )));
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,7 +210,10 @@ mod tests {
         );
 
         let effect = BeholdEffect::you(Subtype::Elemental, 2);
-        assert!(effect.can_execute_as_cost(&game, source, alice).is_ok());
+        assert!(
+            crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, source, alice)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -221,6 +230,9 @@ mod tests {
         );
 
         let effect = BeholdEffect::you(Subtype::Elemental, 2);
-        assert!(effect.can_execute_as_cost(&game, source, alice).is_err());
+        assert!(
+            crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, source, alice)
+                .is_err()
+        );
     }
 }

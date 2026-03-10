@@ -15,14 +15,19 @@ use crate::zone::Zone;
 /// Sacrifice a creature: Add {C}{C}.
 pub fn ashnods_altar() -> CardDefinition {
     // Cost effects: Choose a creature you control, then sacrifice it
-    let cost_effects = vec![
-        Effect::choose_objects(
+    let additional_costs = vec![
+        crate::costs::Cost::try_from_runtime_effect(Effect::choose_objects(
             ObjectFilter::creature().you_control(),
             1,
             PlayerFilter::You,
             "sac",
-        ),
-        Effect::sacrifice(ObjectFilter::tagged("sac"), 1),
+        ))
+        .expect("choose cost should be cost-capable"),
+        crate::costs::Cost::try_from_runtime_effect(Effect::sacrifice(
+            ObjectFilter::tagged("sac"),
+            1,
+        ))
+        .expect("sacrifice cost should be cost-capable"),
     ];
 
     CardDefinitionBuilder::new(CardId::new(), "Ashnod's Altar")
@@ -30,9 +35,9 @@ pub fn ashnods_altar() -> CardDefinition {
         .card_types(vec![CardType::Artifact])
         // Mana ability: sacrifice creature -> add CC
         .with_ability(Ability {
-            kind: AbilityKind::Activated(ActivatedAbility::mana_with_cost_effects(
+            kind: AbilityKind::Activated(ActivatedAbility::mana_with_costs(
                 TotalCost::free(),
-                cost_effects,
+                additional_costs,
                 vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
             )),
             functional_zones: vec![Zone::Battlefield],
@@ -102,12 +107,12 @@ mod tests {
             // Should not require tap
             assert!(!act_ab.has_tap_cost(), "Should not require tapping");
 
-            // Sacrifice is now in cost_effects (not TotalCost) so "dies" triggers fire
+            // Sacrifice is modeled as a non-mana cost component so "dies" triggers fire
             assert!(
                 !act_ab.mana_cost.costs().is_empty(),
-                "Should have cost_effects for sacrifice"
+                "Should have non-mana costs for sacrifice"
             );
-            // Should have 2 cost_effects: choose + sacrifice
+            // Should have 2 non-mana cost components: choose + sacrifice
             assert_eq!(
                 act_ab.mana_cost.costs().len(),
                 2,
@@ -117,11 +122,11 @@ mod tests {
             let debug_str = format!("{:?}", &act_ab.mana_cost.costs());
             assert!(
                 debug_str.contains("ChooseObjectsEffect"),
-                "cost_effects should contain choose objects"
+                "non-mana costs should contain choose objects"
             );
             assert!(
                 debug_str.contains("SacrificeEffect"),
-                "cost_effects should contain sacrifice"
+                "non-mana costs should contain sacrifice"
             );
         } else {
             panic!("Expected activated mana ability");
@@ -235,7 +240,7 @@ mod tests {
             .expect("Should have mana ability");
 
         if let AbilityKind::Activated(act_ab) = &mana_ability.kind {
-            // The sacrifice filter is now in cost_effects via ChooseObjectsEffect
+            // The sacrifice filter is now in the non-mana costs via ChooseObjectsEffect
             let debug_str = format!("{:?}", &act_ab.mana_cost.costs());
             // Should include creature filter
             assert!(

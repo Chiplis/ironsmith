@@ -103,13 +103,13 @@ mod tests {
     fn test_yawgmoth_sacrifice_ability_requires_another_creature() {
         let def = yawgmoth_thran_physician();
 
-        // Find the sacrifice ability (has life cost in cost_effects and sacrifice in cost_effects)
+        // Find the sacrifice ability (has life and sacrifice in its non-mana costs)
         let sacrifice_ability = def
             .abilities
             .iter()
             .find(|a| {
                 if let AbilityKind::Activated(act) = &a.kind {
-                    // Check for life cost in cost_effects (not TotalCost)
+                    // Check for life cost in the non-mana cost components
                     act.life_cost_amount().is_some()
                 } else {
                     false
@@ -118,11 +118,11 @@ mod tests {
             .expect("Should have sacrifice ability");
 
         if let AbilityKind::Activated(act) = &sacrifice_ability.kind {
-            // Should have 3 cost effects: PayLife + ChooseObjectsEffect + SacrificeEffect
+            // Should have 3 cost components: PayLife + ChooseObjectsEffect + SacrificeEffect
             assert_eq!(
                 act.mana_cost.costs().len(),
                 3,
-                "Should have 3 cost effects (pay life + choose + sacrifice)"
+                "Should have 3 cost components (pay life + choose + sacrifice)"
             );
 
             // Should include a life payment cost
@@ -158,13 +158,13 @@ mod tests {
     fn test_yawgmoth_sacrifice_ability_requires_life_payment() {
         let def = yawgmoth_thran_physician();
 
-        // Find the sacrifice ability (has life cost in cost_effects)
+        // Find the sacrifice ability (has life in its non-mana costs)
         let sacrifice_ability = def
             .abilities
             .iter()
             .find(|a| {
                 if let AbilityKind::Activated(act) = &a.kind {
-                    // Check for life cost in cost_effects (not TotalCost)
+                    // Check for life cost in the non-mana cost components
                     act.life_cost_amount().is_some()
                 } else {
                     false
@@ -173,7 +173,7 @@ mod tests {
             .expect("Should have sacrifice ability");
 
         if let AbilityKind::Activated(act) = &sacrifice_ability.kind {
-            // Should have life payment cost in cost_effects
+            // Should have a life payment non-mana cost
             assert_eq!(
                 act.life_cost_amount(),
                 Some(1),
@@ -186,7 +186,7 @@ mod tests {
     fn test_yawgmoth_sacrifice_ability_draws_card() {
         let def = yawgmoth_thran_physician();
 
-        // Find the sacrifice ability (has life cost in cost_effects)
+        // Find the sacrifice ability (has life in its non-mana costs)
         let sacrifice_ability = def
             .abilities
             .iter()
@@ -213,7 +213,7 @@ mod tests {
     fn test_yawgmoth_sacrifice_ability_puts_counter() {
         let def = yawgmoth_thran_physician();
 
-        // Find the sacrifice ability (has life cost in cost_effects)
+        // Find the sacrifice ability (has life in its non-mana costs)
         let sacrifice_ability = def
             .abilities
             .iter()
@@ -240,7 +240,7 @@ mod tests {
     fn test_yawgmoth_proliferate_ability_requires_bb_and_discard() {
         let def = yawgmoth_thran_physician();
 
-        // Find the proliferate ability (has mana cost and discard in cost_effects, no life cost)
+        // Find the proliferate ability (has mana plus discard, and no life cost)
         let proliferate_ability = def
             .abilities
             .iter()

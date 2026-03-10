@@ -44,6 +44,16 @@ impl TotalCost {
         &self.costs
     }
 
+    /// Iterate the non-mana components of this total cost.
+    pub fn non_mana_costs(&self) -> impl Iterator<Item = &Cost> {
+        self.costs.iter().filter(|cost| !cost.is_mana_cost())
+    }
+
+    /// Returns true if this total cost has any non-mana components.
+    pub fn has_non_mana_costs(&self) -> bool {
+        self.non_mana_costs().next().is_some()
+    }
+
     /// Get a human-readable display of this cost.
     pub fn display(&self) -> String {
         if self.costs.is_empty() {
@@ -398,8 +408,8 @@ mod tests {
     fn test_free_cost() {
         let cost = TotalCost::free();
         assert!(cost.is_free());
-        // Note: tap is now in cost_effects, not TotalCost
         assert!(cost.mana_cost().is_none());
+        assert!(!cost.has_non_mana_costs());
     }
 
     #[test]
@@ -408,7 +418,7 @@ mod tests {
         let cost = TotalCost::mana(mana.clone());
 
         assert!(!cost.is_free());
-        // Note: tap is now in cost_effects, not TotalCost
         assert_eq!(cost.mana_cost(), Some(&mana));
+        assert!(!cost.has_non_mana_costs());
     }
 }

@@ -56,6 +56,30 @@ impl std::fmt::Display for CardTextError {
 
 impl std::error::Error for CardTextError {}
 
+fn cost_to_payment_effect(cost: &crate::costs::Cost) -> Option<Effect> {
+    if let Some(mana_cost) = cost.mana_cost_ref() {
+        return Some(Effect::new(crate::effects::PayManaEffect::new(
+            mana_cost.clone(),
+            ChooseSpec::SourceController,
+        )));
+    }
+    if let Some(effect) = cost.effect_ref() {
+        return Some(effect.clone());
+    }
+    None
+}
+
+fn total_cost_to_payment_effects(total_cost: &TotalCost) -> Vec<Effect> {
+    total_cost
+        .costs()
+        .iter()
+        .map(|cost| {
+            cost_to_payment_effect(cost)
+                .unwrap_or_else(|| panic!("unsupported echo cost component: {}", cost.display()))
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum KeywordAction {
     Flying,
@@ -110,8 +134,7 @@ pub(crate) enum KeywordAction {
     Unearth(ManaCost),
     Ninjutsu(ManaCost),
     Echo {
-        mana_cost: Option<ManaCost>,
-        cost_effects: Vec<Effect>,
+        total_cost: TotalCost,
         text: String,
     },
     CumulativeUpkeep {
@@ -1634,8 +1657,8 @@ const IT_TAG: &str = "__it__";
 mod ability_lowering;
 pub(crate) use ability_lowering::*;
 
-mod cost_effects;
-pub(crate) use cost_effects::*;
+mod cost_components;
+pub(crate) use cost_components::*;
 
 mod parse_parsing;
 pub(crate) use parse_parsing::*;
@@ -1882,11 +1905,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Outlast(cost) => self.outlast(cost),
             KeywordAction::Unearth(cost) => self.unearth(cost),
             KeywordAction::Ninjutsu(cost) => self.ninjutsu(cost),
-            KeywordAction::Echo {
-                mana_cost,
-                cost_effects,
-                text,
-            } => self.echo(mana_cost, cost_effects, text),
+            KeywordAction::Echo { total_cost, text } => self.echo(total_cost, text),
             KeywordAction::CumulativeUpkeep {
                 mana_symbols_per_counter,
                 life_per_counter,
@@ -1975,9 +1994,9 @@ impl CardDefinitionBuilder {
                 timing,
                 additional_restrictions,
             } => {
-                let cost = TotalCost::from_cost(crate::costs::Cost::effect(Effect::new(
+                let cost = TotalCost::from_cost(crate::costs::Cost::effect(
                     crate::effects::CrewCostEffect::new(amount),
-                )));
+                ));
                 let animate = Effect::new(crate::effects::ApplyContinuousEffect::new(
                     crate::continuous::EffectTarget::Source,
                     crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
@@ -2004,9 +2023,9 @@ impl CardDefinitionBuilder {
                 timing,
                 additional_restrictions,
             } => {
-                let cost = TotalCost::from_cost(crate::costs::Cost::effect(Effect::new(
+                let cost = TotalCost::from_cost(crate::costs::Cost::effect(
                     crate::effects::SaddleCostEffect::new(amount),
-                )));
+                ));
                 let saddle = Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new());
                 self.with_ability(Ability {
                     kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
@@ -2724,10 +2743,10 @@ impl CardDefinitionBuilder {
     /// Put this card onto the battlefield from your hand tapped and attacking."
     pub fn ninjutsu(self, cost: ManaCost) -> Self {
         let text = format!("Ninjutsu {}", cost.to_oracle());
-        let total_cost = crate::ability::merge_cost_effects(
-            TotalCost::mana(cost),
-            vec![Effect::new(crate::effects::NinjutsuCostEffect::new())],
-        );
+        let total_cost = TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(cost),
+            crate::costs::Cost::effect(crate::effects::NinjutsuCostEffect::new()),
+        ]);
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
@@ -2757,18 +2776,10 @@ impl CardDefinitionBuilder {
     /// - If a counter was removed this way, pay the echo cost or sacrifice this permanent.
     pub fn echo(
         self,
-        mana_cost: Option<ManaCost>,
-        mut cost_effects: Vec<Effect>,
+        total_cost: TotalCost,
         text: String,
     ) -> Self {
-        let mut payment_effects = Vec::new();
-        if let Some(cost) = mana_cost {
-            payment_effects.push(Effect::new(crate::effects::PayManaEffect::new(
-                cost,
-                ChooseSpec::SourceController,
-            )));
-        }
-        payment_effects.append(&mut cost_effects);
+        let payment_effects = total_cost_to_payment_effects(&total_cost);
 
         self.with_ability(
             Ability::static_ability(StaticAbility::enters_with_counters(CounterType::Echo, 1))
@@ -3915,9 +3926,8 @@ impl CardDefinitionBuilder {
 
     /// Add a tap ability that does something.
     pub fn with_tap_ability(self, effects: Vec<Effect>) -> Self {
-        self.with_ability(Ability::activated_with_cost_effects(
-            TotalCost::free(),
-            vec![Effect::tap_source()],
+        self.with_ability(Ability::activated(
+            TotalCost::from_cost(crate::costs::Cost::tap()),
             effects,
         ))
     }
@@ -4061,12 +4071,9 @@ impl CardDefinitionBuilder {
         self
     }
 
-    /// Set cost effects (new unified model).
-    ///
-    /// Cost effects are executed as part of paying costs, with `EventCause::from_cost()`.
-    /// This enables triggers like "Whenever a creature is sacrificed to pay a cost".
-    pub fn cost_effects(mut self, effects: Vec<Effect>) -> Self {
-        self.additional_cost = crate::ability::merge_cost_effects(TotalCost::free(), effects);
+    /// Set additional spell cost components.
+    pub fn costs(mut self, costs: Vec<crate::costs::Cost>) -> Self {
+        self.additional_cost = TotalCost::from_costs(costs);
         self
     }
 
@@ -6718,8 +6725,12 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let lines = compiled_lines(&def);
         let gated = lines
             .iter()
-            .find(|line| line.starts_with("Mana ability") && line.contains("Pay 1 life"))
-            .expect("expected mana line with artifact activation condition");
+            .find(|line| {
+                line.contains("Lose 1 life")
+                    && line.contains("Add one mana of any color")
+                    && line.contains("Activate only if you control one or more artifacts")
+            })
+            .unwrap_or_else(|| panic!("expected gated mana rendering, got lines: {lines:?}"));
         assert!(
             gated.contains("Add one mana of any color"),
             "expected gated rainbow mana text, got: {gated}"
@@ -7092,8 +7103,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("expected activated ability");
         let cost_debug = format!("{:?}", activated.mana_cost);
         assert!(
-            cost_debug.contains("RemoveCountersCost"),
-            "expected source remove-counters cost, got {cost_debug}"
+            cost_debug.contains("CostEffect")
+                && cost_debug.contains("RemoveCountersEffect")
+                && cost_debug.contains("counter_type: Charge")
+                && cost_debug.contains("target: Source"),
+            "expected source remove-counters effect-backed cost, got {cost_debug}"
         );
         assert!(
             !cost_debug.contains("RemoveAnyCountersAmongCost"),
@@ -9396,17 +9410,19 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         match alt {
             AlternativeCastingMethod::Composed { total_cost, .. } => {
                 let mana_cost = total_cost.mana_cost();
-                let cost_effects = alt.cost_effects();
+                let costs = alt.non_mana_costs();
                 assert!(mana_cost.is_none(), "fireblast alt cost should be no mana");
-                let has_sacrifice = cost_effects
+                let has_sacrifice = costs
                     .iter()
+                    .filter_map(|cost| cost.effect_ref())
                     .any(|effect| effect.downcast_ref::<SacrificeEffect>().is_some());
                 assert!(
                     has_sacrifice,
                     "expected sacrifice effect in alternative cost"
                 );
-                let sacrifice = cost_effects
+                let sacrifice = costs
                     .iter()
+                    .filter_map(|cost| cost.effect_ref())
                     .find_map(|effect| effect.downcast_ref::<SacrificeEffect>())
                     .expect("missing sacrifice effect");
                 assert_eq!(sacrifice.count, Value::Fixed(2));
@@ -9457,14 +9473,14 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 ..
             } => {
                 let mana_cost = total_cost.mana_cost();
-                let cost_effects = alt.cost_effects();
+                let costs = alt.non_mana_costs();
                 assert!(
                     mana_cost.is_none(),
                     "conditional self free-cast should not require mana"
                 );
                 assert!(
-                    cost_effects.is_empty(),
-                    "conditional self free-cast should not add extra cost effects"
+                    costs.is_empty(),
+                    "conditional self free-cast should not add extra non-mana costs"
                 );
                 assert!(
                     condition.is_some(),
@@ -9535,10 +9551,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let alt = &def.alternative_casts[0];
         match alt {
             AlternativeCastingMethod::Composed { condition, .. } => {
-                let cost_effects = alt.cost_effects();
+                let costs = alt.non_mana_costs();
                 assert!(
-                    !cost_effects.is_empty(),
-                    "expected non-mana cost effects in conditional rather-than alternative cost"
+                    !costs.is_empty(),
+                    "expected non-mana costs in conditional rather-than alternative cost"
                 );
                 assert!(
                     condition.is_some(),
@@ -9564,14 +9580,14 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
                 ..
             } => {
                 let mana_cost = total_cost.mana_cost();
-                let cost_effects = alt.cost_effects();
+                let costs = alt.non_mana_costs();
                 assert!(
                     mana_cost.is_none(),
                     "self free-cast should not require mana"
                 );
                 assert!(
-                    cost_effects.is_empty(),
-                    "self free-cast should not add extra cost effects"
+                    costs.is_empty(),
+                    "self free-cast should not add extra non-mana costs"
                 );
                 assert!(
                     condition.is_none(),
@@ -9776,8 +9792,11 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("expected activated ability");
         let cost_debug = format!("{:?}", activated.mana_cost);
         assert!(
-            cost_debug.contains("RemoveCountersCost"),
-            "expected source-specific remove-counters cost, got {cost_debug}"
+            cost_debug.contains("CostEffect")
+                && cost_debug.contains("RemoveCountersEffect")
+                && cost_debug.contains("counter_type: Charge")
+                && cost_debug.contains("target: Source"),
+            "expected source-specific remove-counters effect-backed cost, got {cost_debug}"
         );
         assert!(
             !cost_debug.contains("RemoveAnyCountersAmongCost"),

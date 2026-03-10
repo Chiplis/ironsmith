@@ -16,7 +16,7 @@
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{EffectOutcome, EffectResult};
-use crate::effects::{CostValidationError, EffectExecutor};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::events::PermanentTappedEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -62,6 +62,10 @@ impl SaddleCostEffect {
 }
 
 impl EffectExecutor for SaddleCostEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -146,6 +150,15 @@ impl EffectExecutor for SaddleCostEffect {
         })
     }
 
+    fn cost_description(&self) -> Option<String> {
+        Some(format!(
+            "Tap any number of other untapped creatures you control with total power {} or more",
+            self.required_power
+        ))
+    }
+}
+
+impl CostExecutableEffect for SaddleCostEffect {
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -167,13 +180,6 @@ impl EffectExecutor for SaddleCostEffect {
                 "Not enough total power to saddle".to_string(),
             ))
         }
-    }
-
-    fn cost_description(&self) -> Option<String> {
-        Some(format!(
-            "Tap any number of other untapped creatures you control with total power {} or more",
-            self.required_power
-        ))
     }
 }
 

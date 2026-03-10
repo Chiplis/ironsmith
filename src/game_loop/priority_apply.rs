@@ -855,7 +855,7 @@ pub fn apply_priority_response_with_dm(
                         ));
                     }
 
-                    // Pay other costs (from TotalCost, not cost_effects)
+                    // Pay other costs from TotalCost
                     for c in &other_costs {
                         crate::special_actions::pay_cost_component_with_choice(
                             game,

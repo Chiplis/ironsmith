@@ -222,13 +222,13 @@ mod tests {
         // The ability has a tap cost effect, so it can't be activated while tapped
         assert!(game.is_tapped(mesa_id));
 
-        // The ability's cost_effects includes tapping
+        // The ability's non-mana costs include tapping
         let obj = game.object(mesa_id).unwrap();
         if let AbilityKind::Activated(activated) = &obj.abilities[0].kind {
             let debug_str = format!("{:?}", &activated.mana_cost.costs());
             assert!(
                 debug_str.contains("TapEffect"),
-                "Ability cost_effects should include tapping"
+                "Ability non-mana costs should include tapping"
             );
         }
     }

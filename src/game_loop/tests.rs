@@ -3054,10 +3054,7 @@ fn test_once_per_turn_ability_tracking() {
         .abilities
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
-                mana_cost: crate::ability::merge_cost_effects(
-                    TotalCost::free(),
-                    vec![Effect::tap_source()],
-                ),
+                mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
                 effects: vec![Effect::draw(1)],
                 choices: vec![],
                 timing: ActivationTiming::OncePerTurn,
@@ -3683,7 +3680,7 @@ fn test_once_per_turn_in_legal_actions() {
         .abilities
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
-                mana_cost: crate::ability::merge_cost_effects(TotalCost::free(), Vec::new()), // Free ability for testing
+                mana_cost: TotalCost::free(), // Free ability for testing
                 effects: vec![Effect::draw(1)],
                 choices: vec![],
                 timing: ActivationTiming::OncePerTurn,
@@ -5614,13 +5611,13 @@ fn test_force_of_will_alternative_cost_casting_flow() {
     // Give alice 20 life
     game.player_mut(alice).unwrap().life = 20;
 
-    // Verify alternative method has cost effects but no mana cost
+    // Verify alternative method has non-mana costs but no mana cost
     let fow_obj = game.object(fow_id).unwrap();
     assert_eq!(fow_obj.alternative_casts.len(), 1);
     let method = &fow_obj.alternative_casts[0];
     assert!(
-        !method.cost_effects().is_empty(),
-        "Force of Will should have cost effects"
+        !method.non_mana_costs().is_empty(),
+        "Force of Will should have non-mana costs"
     );
     assert!(
         method.mana_cost().is_none(),

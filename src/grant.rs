@@ -165,7 +165,7 @@ impl GrantSpec {
             && self.filter == ObjectFilter::nonland()
             && method.cast_from_zone() == Zone::Hand
             && method.mana_cost().is_none()
-            && method.cost_effects().is_empty()
+            && method.non_mana_costs().is_empty()
         {
             return "You may cast spells from your hand without paying their mana costs"
                 .to_string();

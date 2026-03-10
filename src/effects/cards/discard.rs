@@ -1,8 +1,8 @@
 //! Discard effect implementation.
 
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{normalize_object_selection, resolve_player_filter, resolve_value};
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilter;
 use crate::game_state::GameState;
@@ -10,6 +10,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
+use crate::zone::Zone;
 
 /// Effect that causes a player to discard cards.
 ///
@@ -92,6 +93,12 @@ impl DiscardEffect {
     pub fn opponent(count: impl Into<Value>) -> Self {
         Self::new(count, PlayerFilter::Opponent, false)
     }
+
+    fn discards_source_as_cost(&self) -> bool {
+        self.card_filter
+            .as_ref()
+            .is_some_and(|filter| filter.source && filter.zone == Some(Zone::Hand))
+    }
 }
 
 fn card_type_name(card_type: CardType) -> &'static str {
@@ -112,6 +119,10 @@ fn format_discard_card_type_phrase(card_types: &[CardType]) -> String {
 }
 
 impl EffectExecutor for DiscardEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -142,7 +153,18 @@ impl EffectExecutor for DiscardEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let cards_to_discard = if self.random {
+        let explicit_cards: Vec<_> = ctx
+            .targets
+            .iter()
+            .filter_map(|target| match target {
+                crate::executor::ResolvedTarget::Object(id) => Some(*id),
+                crate::executor::ResolvedTarget::Player(_) => None,
+            })
+            .collect();
+
+        let cards_to_discard = if !explicit_cards.is_empty() {
+            normalize_object_selection(explicit_cards, &hand_cards, required)
+        } else if self.random {
             game.shuffle_slice(&mut hand_cards);
             hand_cards.into_iter().take(required).collect::<Vec<_>>()
         } else {
@@ -192,58 +214,11 @@ impl EffectExecutor for DiscardEffect {
         Ok(EffectOutcome::count(discarded))
     }
 
-    fn can_execute_as_cost(
-        &self,
-        game: &GameState,
-        source: crate::ids::ObjectId,
-        controller: crate::ids::PlayerId,
-    ) -> Result<(), crate::effects::CostValidationError> {
-        use crate::effects::CostValidationError;
-
-        let required = match self.count {
-            Value::Fixed(n) => n.max(0) as usize,
-            _ => {
-                return Err(CostValidationError::Other(
-                    "dynamic discard cost amount is unsupported".to_string(),
-                ));
-            }
-        };
-        if required == 0 {
-            return Ok(());
-        }
-
-        let player_id = match self.player {
-            PlayerFilter::You => controller,
-            PlayerFilter::Specific(id) => id,
-            _ => {
-                return Err(CostValidationError::Other(
-                    "discard cost supports only 'you' or a specific player".to_string(),
-                ));
-            }
-        };
-
-        let mut hand_cards: Vec<_> = game
-            .player(player_id)
-            .map(|p| p.hand.iter().copied().collect())
-            .unwrap_or_default();
-        hand_cards.retain(|card_id| *card_id != source);
-
-        if let Some(filter) = &self.card_filter {
-            let filter_ctx = crate::filter::FilterContext::new(controller).with_source(source);
-            hand_cards.retain(|card_id| {
-                game.object(*card_id)
-                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
-            });
-        }
-
-        if hand_cards.len() < required {
-            return Err(CostValidationError::NotEnoughCards);
-        }
-
-        Ok(())
-    }
-
     fn cost_description(&self) -> Option<String> {
+        if self.discards_source_as_cost() {
+            return Some("Discard this card".to_string());
+        }
+
         let count = match self.count {
             Value::Fixed(n) if n > 0 => n as usize,
             _ => return None,
@@ -260,6 +235,60 @@ impl EffectExecutor for DiscardEffect {
         } else {
             format!("Discard {count} {type_phrase}s{random_suffix}")
         })
+    }
+}
+
+impl CostExecutableEffect for DiscardEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        use crate::effects::CostValidationError;
+
+        if !matches!(self.player, PlayerFilter::You | PlayerFilter::Specific(_)) {
+            return Err(CostValidationError::Other(
+                "discard cost supports only 'you' or a specific player".to_string(),
+            ));
+        }
+
+        let required = match self.count {
+            Value::Fixed(n) => n.max(0) as usize,
+            _ => {
+                return Err(CostValidationError::Other(
+                    "dynamic discard cost amount is unsupported".to_string(),
+                ));
+            }
+        };
+        if required == 0 {
+            return Ok(());
+        }
+
+        let player_id = match self.player {
+            PlayerFilter::You => controller,
+            PlayerFilter::Specific(id) => id,
+            _ => unreachable!("validated above"),
+        };
+
+        let mut hand_cards: Vec<_> = game
+            .player(player_id)
+            .map(|p| p.hand.iter().copied().collect())
+            .unwrap_or_default();
+
+        if let Some(filter) = &self.card_filter {
+            let filter_ctx = crate::filter::FilterContext::new(controller).with_source(source);
+            hand_cards.retain(|card_id| {
+                game.object(*card_id)
+                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+            });
+        }
+
+        if hand_cards.len() < required {
+            return Err(CostValidationError::NotEnoughCards);
+        }
+
+        Ok(())
     }
 }
 
@@ -376,14 +405,16 @@ mod tests {
         let source = game.new_object_id();
 
         let effect = DiscardEffect::you_random(1);
-        let can_pay = effect.can_execute_as_cost(&game, source, alice);
+        let can_pay =
+            crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, source, alice);
         assert_eq!(
             can_pay,
             Err(crate::effects::CostValidationError::NotEnoughCards)
         );
 
         add_card_to_hand(&mut game, "Card 1", alice);
-        let can_pay = effect.can_execute_as_cost(&game, source, alice);
+        let can_pay =
+            crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, source, alice);
         assert!(can_pay.is_ok(), "expected discard cost to be payable");
     }
 
@@ -394,5 +425,74 @@ mod tests {
             effect.cost_description().as_deref(),
             Some("Discard a card at random")
         );
+    }
+
+    #[test]
+    fn test_discard_source_cost_description_uses_generic_effect() {
+        let effect = DiscardEffect::new_with_filter(
+            1,
+            PlayerFilter::You,
+            false,
+            Some(crate::filter::ObjectFilter::source().in_zone(Zone::Hand)),
+        );
+        assert_eq!(
+            effect.cost_description().as_deref(),
+            Some("Discard this card")
+        );
+    }
+
+    #[test]
+    fn test_discard_effect_cost_validation_respects_source_filter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = add_card_to_hand(&mut game, "Source", alice);
+        add_card_to_hand(&mut game, "Other", alice);
+
+        let discard_other = DiscardEffect::new_with_filter(
+            1,
+            PlayerFilter::You,
+            false,
+            Some(
+                crate::filter::ObjectFilter::default()
+                    .in_zone(Zone::Hand)
+                    .other(),
+            ),
+        );
+        assert!(
+            crate::effects::EffectExecutor::can_execute_as_cost(
+                &discard_other,
+                &game,
+                source,
+                alice,
+            )
+            .is_ok()
+        );
+
+        let discard_source = DiscardEffect::new_with_filter(
+            1,
+            PlayerFilter::You,
+            false,
+            Some(crate::filter::ObjectFilter::source().in_zone(Zone::Hand)),
+        );
+        assert!(
+            crate::effects::EffectExecutor::can_execute_as_cost(
+                &discard_source,
+                &game,
+                source,
+                alice,
+            )
+            .is_ok()
+        );
+
+        let effect = DiscardEffect::new_with_filter(
+            1,
+            PlayerFilter::You,
+            false,
+            Some(crate::filter::ObjectFilter::source().in_zone(Zone::Hand)),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(result.result, EffectResult::Count(1));
+        assert!(!game.player(alice).unwrap().hand.contains(&source));
     }
 }

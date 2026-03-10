@@ -1,11 +1,11 @@
 //! Sacrifice effect implementation.
 
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     normalize_object_selection, resolve_player_filter, resolve_single_object_from_spec,
     resolve_value,
 };
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
 use crate::events::permanents::SacrificeEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
@@ -78,6 +78,10 @@ impl SacrificeEffect {
 }
 
 impl EffectExecutor for SacrificeEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -104,8 +108,18 @@ impl EffectExecutor for SacrificeEffect {
             .collect();
 
         let required = count.min(matching.len());
+        let explicit_targets: Vec<ObjectId> = ctx
+            .targets
+            .iter()
+            .filter_map(|target| match target {
+                crate::executor::ResolvedTarget::Object(id) => Some(*id),
+                crate::executor::ResolvedTarget::Player(_) => None,
+            })
+            .collect();
         let to_sacrifice = if required == 0 {
             Vec::new()
+        } else if !explicit_targets.is_empty() {
+            normalize_object_selection(explicit_targets, &matching, required)
         } else if required == matching.len() {
             // No choice remains: all matching permanents must be sacrificed.
             matching.clone()
@@ -170,6 +184,63 @@ impl EffectExecutor for SacrificeEffect {
         }
 
         Ok(EffectOutcome::count(sacrificed_count).with_events(sacrifice_events))
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        let count = match self.count {
+            crate::effect::Value::Fixed(count) if count > 0 => count,
+            _ => return None,
+        };
+        if self.player != PlayerFilter::You {
+            return None;
+        }
+        Some(if count == 1 {
+            format!("Sacrifice a {}", self.filter.description())
+        } else {
+            format!("Sacrifice {} {}", count, self.filter.description())
+        })
+    }
+}
+
+impl CostExecutableEffect for SacrificeEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        if self.player != PlayerFilter::You {
+            return Err(crate::effects::CostValidationError::Other(
+                "sacrifice costs support only 'you'".to_string(),
+            ));
+        }
+        let count = match self.count {
+            crate::effect::Value::Fixed(count) => count.max(0) as usize,
+            _ => {
+                return Err(crate::effects::CostValidationError::Other(
+                    "dynamic sacrifice cost amount is unsupported".to_string(),
+                ));
+            }
+        };
+        if count == 0 {
+            return Ok(());
+        }
+
+        let filter_ctx = crate::filter::FilterContext::new(controller).with_source(source);
+        let available = game
+            .battlefield
+            .iter()
+            .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+            .filter(|(id, obj)| {
+                obj.controller == controller
+                    && self.filter.matches(obj, &filter_ctx, game)
+                    && game.can_be_sacrificed(*id)
+            })
+            .count();
+        if available < count {
+            return Err(crate::effects::CostValidationError::CannotSacrifice);
+        }
+        Ok(())
     }
 }
 
@@ -252,6 +323,10 @@ impl SacrificeTargetEffect {
 }
 
 impl EffectExecutor for SacrificeTargetEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -274,6 +349,33 @@ impl EffectExecutor for SacrificeTargetEffect {
 
     fn is_sacrifice_source_cost(&self) -> bool {
         matches!(self.target, ChooseSpec::Source)
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        if matches!(self.target, ChooseSpec::Source) {
+            Some("Sacrifice ~".to_string())
+        } else {
+            None
+        }
+    }
+}
+
+impl CostExecutableEffect for SacrificeTargetEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        if !matches!(self.target, ChooseSpec::Source) {
+            return Err(crate::effects::CostValidationError::Other(
+                "sacrifice-target costs support only source".to_string(),
+            ));
+        }
+        if !game.battlefield.contains(&source) || !game.can_be_sacrificed(source) {
+            return Err(crate::effects::CostValidationError::CannotSacrifice);
+        }
+        Ok(())
     }
 }
 

@@ -1,8 +1,8 @@
 //! Put counters effect implementation.
 
 use crate::effect::{ChoiceCount, EffectOutcome, EffectResult, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_from_spec, resolve_value};
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::process_put_counters_with_event;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -88,6 +88,10 @@ impl PutCountersEffect {
 }
 
 impl EffectExecutor for PutCountersEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -169,5 +173,47 @@ impl EffectExecutor for PutCountersEffect {
 
     fn get_target_count(&self) -> Option<ChoiceCount> {
         self.target_count
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        if matches!(self.target, ChooseSpec::Source)
+            && let Value::Fixed(count) = self.count
+        {
+            return Some(if count == 1 {
+                format!("Put a {} counter on ~", self.counter_type.description())
+            } else {
+                format!(
+                    "Put {} {} counters on ~",
+                    count,
+                    self.counter_type.description()
+                )
+            });
+        }
+        None
+    }
+}
+
+impl CostExecutableEffect for PutCountersEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        if !matches!(self.target, ChooseSpec::Source) {
+            return Err(crate::effects::CostValidationError::Other(
+                "put-counters cost supports only source".to_string(),
+            ));
+        }
+        if game
+            .object(source)
+            .is_some_and(|obj| obj.zone == crate::zone::Zone::Battlefield)
+        {
+            Ok(())
+        } else {
+            Err(crate::effects::CostValidationError::Other(
+                "source must be on the battlefield".to_string(),
+            ))
+        }
     }
 }

@@ -1,14 +1,14 @@
 //! Pay energy effect implementation.
 
 use crate::effect::{EffectOutcome, EffectResult, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::executor_trait::CostValidationError;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, PlayerFilter};
 
 /// Effect that asks a player to pay energy counters.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,6 +30,10 @@ impl PayEnergyEffect {
 }
 
 impl EffectExecutor for PayEnergyEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -67,6 +71,18 @@ impl EffectExecutor for PayEnergyEffect {
         "player to pay energy"
     }
 
+    fn cost_description(&self) -> Option<String> {
+        if matches!(self.player, ChooseSpec::Player(PlayerFilter::You))
+            && let Value::Fixed(amount) = self.amount
+        {
+            let symbols: String = (0..amount.max(0)).map(|_| "{E}").collect();
+            return Some(format!("Pay {}", symbols));
+        }
+        None
+    }
+}
+
+impl CostExecutableEffect for PayEnergyEffect {
     fn can_execute_as_cost(
         &self,
         game: &GameState,

@@ -202,6 +202,28 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 2 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && reveal.tag == choose.tag
+            && let Some(for_each) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        {
+            let shuffle = filtered
+                .get(idx + 3)
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>());
+            let mut revealed_choose = choose.clone();
+            revealed_choose.reveal = true;
+            if let Some(compact) =
+                describe_search_choose_for_each(&revealed_choose, for_each, shuffle, false)
+            {
+                parts.push(compact);
+                idx += if shuffle.is_some() { 4 } else { 3 };
+                continue;
+            }
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -588,6 +610,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(scry) = filtered[idx].downcast_ref::<crate::effects::ScryEffect>()
             && let Some(draw) = filtered[idx + 1].downcast_ref::<crate::effects::DrawCardsEffect>()
             && let Some(compact) = describe_scry_then_draw(scry, draw)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(may) = filtered[idx].downcast_ref::<crate::effects::MayEffect>()
+            && may.decider.is_none()
+            && let Some(shuffle) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+            && let Some(compact) = describe_may_search_choose_for_each_with_shuffle(may, shuffle)
         {
             parts.push(compact);
             idx += 2;
@@ -3264,6 +3297,62 @@ pub(super) fn describe_may_search_library_and_or_nonlibrary(
     Some(text)
 }
 
+pub(super) fn describe_may_search_choose_for_each_with_shuffle(
+    may: &crate::effects::MayEffect,
+    shuffle: &crate::effects::ShuffleLibraryEffect,
+) -> Option<String> {
+    let choose = may
+        .effects
+        .first()?
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let (choose, for_each) = if let Some(reveal) = may
+        .effects
+        .get(1)
+        .and_then(|effect| effect.downcast_ref::<crate::effects::RevealTaggedEffect>())
+    {
+        if reveal.tag != choose.tag {
+            return None;
+        }
+        let mut revealed_choose = choose.clone();
+        revealed_choose.reveal = true;
+        let for_each = may
+            .effects
+            .get(2)?
+            .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+        (revealed_choose, for_each)
+    } else {
+        let for_each = may
+            .effects
+            .get(1)?
+            .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+        (choose.clone(), for_each)
+    };
+
+    if may.effects.len() != if choose.reveal { 3 } else { 2 } {
+        return None;
+    }
+
+    let compact = describe_search_choose_for_each(&choose, for_each, Some(shuffle), false)?;
+    let compact = if choose.search_zones().len() > 1 && compact.ends_with(", then shuffle") {
+        compact.trim_end_matches(", then shuffle").to_string()
+            + ". If you search your library this way, shuffle"
+    } else {
+        compact
+    };
+    let actor = describe_player_filter(may.decider.as_ref().unwrap_or(&choose.chooser));
+    if let Some(rest) = compact.strip_prefix("Search ") {
+        if actor == "you" {
+            return Some(format!("You may search {}", lowercase_first(rest)));
+        }
+        return Some(format!(
+            "{} may search {}",
+            capitalize_first(&actor),
+            lowercase_first(rest)
+        ));
+    }
+    None
+}
+
 pub(super) fn describe_gain_life_then_scry(
     gain: &crate::effects::GainLifeEffect,
     scry: &crate::effects::ScryEffect,
@@ -3566,7 +3655,7 @@ pub(super) fn describe_search_origin_zones(
             format!("{owner_text} graveyard, hand, and library")
         }
         [Zone::Hand, Zone::Library] => format!("{owner_text} hand and library"),
-        [Zone::Graveyard, Zone::Library] => format!("{owner_text} graveyard and library"),
+        [Zone::Graveyard, Zone::Library] => format!("{owner_text} library and/or graveyard"),
         [Zone::Graveyard] => format!("{owner_text} graveyard"),
         [Zone::Hand] => format!("{owner_text} hand"),
         other => {
@@ -7087,8 +7176,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_player_filter(&control_player.player)
         );
     }
-    if let Some(exile_hand) = effect.downcast_ref::<crate::effects::ExileFromHandAsCostEffect>() {
-        return capitalize_first(&describe_exile_from_hand_as_cost_phrase(exile_hand));
+    if let Some((count, color_filter)) = effect.0.exile_from_hand_cost_info() {
+        return capitalize_first(&describe_exile_from_hand_as_cost_phrase(
+            count,
+            color_filter,
+        ));
     }
     if let Some(imprint) = effect.downcast_ref::<crate::effects::cards::ImprintFromHandEffect>() {
         return describe_imprint_from_hand_phrase(imprint);
@@ -7652,6 +7744,9 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if text.starts_with("modular ") {
         return Some(raw_text.to_string());
     }
+    if text == "modular—sunburst" || text == "modular-sunburst" {
+        return Some("Modular—Sunburst".to_string());
+    }
     if text.starts_with("graft ") {
         return Some(raw_text.to_string());
     }
@@ -7815,6 +7910,9 @@ pub(super) fn describe_ability(
                     || normalized
                         .to_ascii_lowercase()
                         .starts_with("cumulative upkeep")
+                    || normalized
+                        .to_ascii_lowercase()
+                        .contains("of the chosen color")
                 {
                     return vec![format!("Keyword ability {index}: {normalized}")];
                 }
@@ -8393,9 +8491,11 @@ pub(super) fn ability_can_render_as_keyword_group(ability: &Ability) -> bool {
     }
 }
 
-pub(super) fn describe_additional_cost_effects(effects: &[Effect]) -> String {
-    if effects.len() == 1
-        && let Some(choose_mode) = effects[0].downcast_ref::<crate::effects::ChooseModeEffect>()
+pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String {
+    if costs.len() == 1
+        && let Some(choose_mode) = costs[0]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseModeEffect>())
     {
         let min = choose_mode
             .min_choose_count
@@ -8427,14 +8527,17 @@ pub(super) fn describe_additional_cost_effects(effects: &[Effect]) -> String {
         }
     }
 
-    describe_effect_list(effects)
+    describe_cost_list(costs)
 }
 
-pub(super) fn describe_alternative_cost_effects(cost_effects: &[Effect]) -> String {
-    if cost_effects.len() == 2
-        && let Some(choose) = cost_effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-        && let Some(return_to_hand) =
-            cost_effects[1].downcast_ref::<crate::effects::ReturnToHandEffect>()
+pub(super) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String {
+    if costs.len() == 2
+        && let Some(choose) = costs[0]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        && let Some(return_to_hand) = costs[1]
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ReturnToHandEffect>())
         && let ChooseSpec::Target(inner) = &return_to_hand.spec
         && let ChooseSpec::Object(filter) = inner.as_ref()
     {
@@ -8451,25 +8554,31 @@ pub(super) fn describe_alternative_cost_effects(cost_effects: &[Effect]) -> Stri
         }
     }
 
-    if cost_effects.iter().any(|effect| {
-        effect
-            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+    if costs.iter().any(|cost| {
+        cost.effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
             .is_some()
     }) {
-        return describe_effect_list(cost_effects);
+        return describe_cost_list(costs);
     }
 
     let mut clauses = Vec::new();
-    for effect in cost_effects {
+    for cost in costs {
+        let Some(effect) = cost.effect_ref() else {
+            let clause = cost.display().trim().to_string();
+            if !clause.is_empty() {
+                clauses.push(clause);
+            }
+            continue;
+        };
         if let Some(lose_life) = effect.downcast_ref::<crate::effects::LoseLifeEffect>()
             && lose_life.player == ChooseSpec::Player(PlayerFilter::You)
         {
             clauses.push(format!("pay {} life", describe_value(&lose_life.amount)));
             continue;
         }
-        if let Some(exile_hand) = effect.downcast_ref::<crate::effects::ExileFromHandAsCostEffect>()
-        {
-            clauses.push(describe_exile_from_hand_as_cost_phrase(exile_hand));
+        if let Some((count, color_filter)) = effect.0.exile_from_hand_cost_info() {
+            clauses.push(describe_exile_from_hand_as_cost_phrase(count, color_filter));
             continue;
         }
 
@@ -8489,16 +8598,17 @@ pub(super) fn describe_alternative_cost_effects(cost_effects: &[Effect]) -> Stri
     }
 
     if clauses.is_empty() {
-        describe_effect_list(cost_effects)
+        describe_cost_list(costs)
     } else {
         join_with_and(&clauses)
     }
 }
 
 pub(super) fn describe_exile_from_hand_as_cost_phrase(
-    exile_hand: &crate::effects::ExileFromHandAsCostEffect,
+    count: u32,
+    color_filter: Option<crate::color::ColorSet>,
 ) -> String {
-    let count = exile_hand.count.max(1);
+    let count = count.max(1);
     let card_word = if count == 1 { "card" } else { "cards" };
     let amount = if count == 1 {
         "a".to_string()
@@ -8507,8 +8617,7 @@ pub(super) fn describe_exile_from_hand_as_cost_phrase(
             .map(str::to_string)
             .unwrap_or_else(|| count.to_string())
     };
-    let color_prefix = exile_hand
-        .color_filter
+    let color_prefix = color_filter
         .map(|colors| describe_token_color_words(colors, false))
         .filter(|text| !text.is_empty())
         .map(|text| format!("{text} "))

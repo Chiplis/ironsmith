@@ -7,13 +7,13 @@ fn render_definition(def: &CardDefinition) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "name: {}", def.name());
 
-    let additional_cost_effects = def.additional_cost_effects();
-    if additional_cost_effects.is_empty() {
-        let _ = writeln!(out, "cost_effects: <none>");
+    let additional_costs = def.additional_non_mana_costs();
+    if additional_costs.is_empty() {
+        let _ = writeln!(out, "additional_costs: <none>");
     } else {
-        let _ = writeln!(out, "cost_effects:");
-        for (idx, effect) in additional_cost_effects.iter().enumerate() {
-            let _ = writeln!(out, "[{}] {:?}", idx, effect);
+        let _ = writeln!(out, "additional_costs:");
+        for (idx, cost) in additional_costs.iter().enumerate() {
+            let _ = writeln!(out, "[{}] {:?}", idx, cost);
         }
     }
 

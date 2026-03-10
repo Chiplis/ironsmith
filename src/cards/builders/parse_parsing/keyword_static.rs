@@ -837,7 +837,7 @@ pub(crate) fn parse_ward_static_ability_line(
         return Ok(Some(StaticAbility::ward(cost)));
     }
 
-    if let Ok((cost, _)) = parse_activation_cost(&cost_tokens)
+    if let Ok(cost) = parse_activation_cost(&cost_tokens)
         && !cost.is_free()
     {
         return Ok(Some(StaticAbility::ward(cost)));

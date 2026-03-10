@@ -157,7 +157,7 @@ mod tests {
 
         if let AbilityKind::Activated(act) = &regenerate_ability.kind {
             // Cost should be {2}, {T}
-            // Tap is now in cost_effects, not TotalCost
+            // Tap is modeled as a non-mana cost component
             assert!(act.has_tap_cost(), "Should have tap cost");
             // Mana cost should be {2}
             assert!(

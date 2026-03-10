@@ -29,6 +29,60 @@ pub(super) fn decision_context_name(
     }
 }
 
+fn pay_selected_cost(
+    game: &mut GameState,
+    cost: &crate::costs::Cost,
+    source: ObjectId,
+    payer: PlayerId,
+    provenance: crate::provenance::ProvNodeId,
+    chosen_id: ObjectId,
+    choice_tag: Option<&crate::tag::TagKey>,
+    tagged_objects: &mut std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<(), GameLoopError> {
+    let effective_choice_tag = choice_tag
+        .cloned()
+        .or_else(|| match cost.processing_mode() {
+            crate::costs::CostProcessingMode::ExileFromHand { .. }
+            | crate::costs::CostProcessingMode::ExileFromGraveyard { .. } => {
+                Some(crate::tag::TagKey::from("exile_cost"))
+            }
+            _ => None,
+        });
+
+    let mut cost_ctx = crate::costs::CostContext::new(source, payer, decision_maker)
+        .with_pre_chosen_cards(vec![chosen_id])
+        .with_provenance(provenance);
+    cost_ctx.tagged_objects = tagged_objects.clone();
+    if let Some(tag) = effective_choice_tag.as_ref()
+        && let Some(snapshot) = game
+            .object(chosen_id)
+            .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, game))
+    {
+        cost_ctx
+            .tagged_objects
+            .entry(tag.clone())
+            .or_default()
+            .push(snapshot);
+    }
+
+    match cost.pay(game, &mut cost_ctx) {
+        Ok(crate::costs::CostPaymentResult::Paid) => {
+            *tagged_objects = cost_ctx.tagged_objects;
+            Ok(())
+        }
+        Ok(crate::costs::CostPaymentResult::NeedsChoice(_)) => Err(GameLoopError::InvalidState(
+            "Cost still needed a choice after preselection".to_string(),
+        )),
+        Err(err) => Err(GameLoopError::InvalidState(format!(
+            "Failed to pay cost: {err}"
+        ))),
+    }
+}
+
 /// Expand a ManaCost into individual pips, expanding X pips by the chosen value.
 /// Also applies hybrid_choices to replace multi-symbol pips with the chosen symbol.
 pub(super) fn expand_mana_cost_to_pips(
@@ -1653,7 +1707,7 @@ pub(super) fn execute_pending_mana_ability(
         ));
     }
 
-    // Pay other costs from TotalCost (not cost_effects)
+    // Pay other costs from TotalCost
     let mut cost_ctx = CostContext::new(pending.source, pending.activator, decision_maker)
         .with_provenance(pending.provenance);
     for c in &pending.other_costs {
@@ -2060,10 +2114,13 @@ pub(super) fn apply_sacrifice_target_response(
 
     match pending.stage {
         ActivationStage::ChoosingSacrifice => {
-            let (filter, choice_tag) = match pending.remaining_cost_steps.first() {
+            let (cost, filter, choice_tag) = match pending.remaining_cost_steps.first() {
                 Some(ActivationCostStep::Sacrifice {
-                    filter, choice_tag, ..
-                }) => (filter.clone(), choice_tag.clone()),
+                    cost,
+                    filter,
+                    choice_tag,
+                    ..
+                }) => (cost.clone(), filter.clone(), choice_tag.clone()),
                 _ => {
                     return Err(GameLoopError::InvalidState(
                         "No pending sacrifice cost for activation".to_string(),
@@ -2078,49 +2135,32 @@ pub(super) fn apply_sacrifice_target_response(
                 ));
             }
 
-            // Sacrifice the chosen permanent
-            if game.object(target_id).is_some() {
-                let snapshot = game
-                    .object(target_id)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game));
-                if let Some(snapshot) = snapshot.clone() {
-                    let tag = choice_tag.unwrap_or_else(|| {
-                        let tag =
-                            format!("sacrifice_cost_{}", pending.next_sacrifice_cost_tag_index);
-                        pending.next_sacrifice_cost_tag_index += 1;
-                        crate::tag::TagKey::from(tag)
-                    });
-                    pending
-                        .tagged_objects
-                        .entry(tag)
-                        .or_default()
-                        .push(snapshot);
-                }
-                let sacrificing_player = snapshot
-                    .as_ref()
-                    .map(|snap| snap.controller)
-                    .or(Some(pending.activator));
-                game.move_object(target_id, Zone::Graveyard);
-                game.queue_trigger_event(
-                    pending.provenance,
-                    TriggerEvent::new_with_provenance(
-                        SacrificeEvent::new(target_id, Some(pending.source))
-                            .with_snapshot(snapshot, sacrificing_player),
-                        pending.provenance,
-                    ),
-                );
+            let choice_tag = choice_tag.unwrap_or_else(|| {
+                let tag = format!("sacrifice_cost_{}", pending.next_sacrifice_cost_tag_index);
+                pending.next_sacrifice_cost_tag_index += 1;
+                crate::tag::TagKey::from(tag)
+            });
+            pay_selected_cost(
+                game,
+                &cost,
+                pending.source,
+                pending.activator,
+                pending.provenance,
+                target_id,
+                Some(&choice_tag),
+                &mut pending.tagged_objects,
+                decision_maker,
+            )?;
 
-                #[cfg(feature = "net")]
-                {
-                    // Record sacrifice payment for deterministic trace
-                    pending
-                        .payment_trace
-                        .push(CostStep::Payment(CostPayment::Sacrifice {
-                            objects: vec![GameObjectId(target_id.0)],
-                        }));
-                }
-                drain_pending_trigger_events(game, trigger_queue);
+            #[cfg(feature = "net")]
+            {
+                pending
+                    .payment_trace
+                    .push(CostStep::Payment(CostPayment::Sacrifice {
+                        objects: vec![GameObjectId(target_id.0)],
+                    }));
             }
+            drain_pending_trigger_events(game, trigger_queue);
 
             pending.remaining_cost_steps.remove(0);
             pending.stage = activation_stage_after_targets(&pending);
@@ -2140,7 +2180,9 @@ pub(super) fn apply_sacrifice_target_response(
                 })?;
 
             match next_cost {
-                ActivationCardCostChoice::Discard { card_types, .. } => {
+                ActivationCardCostChoice::Discard {
+                    cost, card_types, ..
+                } => {
                     let legal_cards = get_legal_discard_cards(
                         game,
                         pending.activator,
@@ -2153,21 +2195,17 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    let cause = EventCause::from_cost(pending.source, pending.activator);
-                    let result = crate::event_processor::execute_discard(
+                    pay_selected_cost(
                         game,
-                        target_id,
+                        &cost,
+                        pending.source,
                         pending.activator,
-                        cause,
-                        false,
                         pending.provenance,
+                        target_id,
+                        None,
+                        &mut pending.tagged_objects,
                         decision_maker,
-                    );
-                    if result.prevented {
-                        return Err(GameLoopError::InvalidState(
-                            "Discard cost was prevented".to_string(),
-                        ));
-                    }
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2179,7 +2217,9 @@ pub(super) fn apply_sacrifice_target_response(
                     }
                     drain_pending_trigger_events(game, trigger_queue);
                 }
-                ActivationCardCostChoice::ExileFromHand { color_filter, .. } => {
+                ActivationCardCostChoice::ExileFromHand {
+                    cost, color_filter, ..
+                } => {
                     let legal_cards = get_legal_exile_from_hand_cards(
                         game,
                         pending.activator,
@@ -2192,7 +2232,17 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    game.move_object(target_id, Zone::Exile);
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.source,
+                        pending.activator,
+                        pending.provenance,
+                        target_id,
+                        None,
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2205,7 +2255,9 @@ pub(super) fn apply_sacrifice_target_response(
                     }
                     drain_pending_trigger_events(game, trigger_queue);
                 }
-                ActivationCardCostChoice::ExileFromGraveyard { card_type, .. } => {
+                ActivationCardCostChoice::ExileFromGraveyard {
+                    cost, card_type, ..
+                } => {
                     let legal_cards =
                         get_legal_exile_from_graveyard_cards(game, pending.activator, card_type);
                     if !legal_cards.contains(&target_id) {
@@ -2214,7 +2266,17 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    game.move_object(target_id, Zone::Exile);
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.source,
+                        pending.activator,
+                        pending.provenance,
+                        target_id,
+                        None,
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2228,6 +2290,7 @@ pub(super) fn apply_sacrifice_target_response(
                     drain_pending_trigger_events(game, trigger_queue);
                 }
                 ActivationCardCostChoice::ExileChosenObject {
+                    cost,
                     filter,
                     zone,
                     choice_tag,
@@ -2246,17 +2309,17 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    if let Some(snapshot) = game
-                        .object(target_id)
-                        .map(|obj| ObjectSnapshot::from_object(obj, game))
-                    {
-                        pending
-                            .tagged_objects
-                            .entry(choice_tag)
-                            .or_default()
-                            .push(snapshot);
-                    }
-                    game.move_object(target_id, Zone::Exile);
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.source,
+                        pending.activator,
+                        pending.provenance,
+                        target_id,
+                        Some(&choice_tag),
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2269,7 +2332,9 @@ pub(super) fn apply_sacrifice_target_response(
                     }
                     drain_pending_trigger_events(game, trigger_queue);
                 }
-                ActivationCardCostChoice::RevealFromHand { card_type, .. } => {
+                ActivationCardCostChoice::RevealFromHand {
+                    cost, card_type, ..
+                } => {
                     let legal_cards = get_legal_reveal_from_hand_cards(
                         game,
                         pending.activator,
@@ -2282,6 +2347,18 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.source,
+                        pending.activator,
+                        pending.provenance,
+                        target_id,
+                        None,
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
+
                     #[cfg(feature = "net")]
                     {
                         pending
@@ -2292,7 +2369,10 @@ pub(super) fn apply_sacrifice_target_response(
                     }
                 }
                 ActivationCardCostChoice::ReturnToHand {
-                    filter, choice_tag, ..
+                    cost,
+                    filter,
+                    choice_tag,
+                    ..
                 } => {
                     let legal_targets = get_legal_return_to_hand_targets(
                         game,
@@ -2307,22 +2387,17 @@ pub(super) fn apply_sacrifice_target_response(
                         ));
                     }
 
-                    if let Some(tag) = choice_tag
-                        && let Some(snapshot) = game
-                            .object(target_id)
-                            .map(|obj| ObjectSnapshot::from_object(obj, game))
-                    {
-                        pending
-                            .tagged_objects
-                            .entry(tag)
-                            .or_default()
-                            .push(snapshot);
-                    }
-                    let _ = game.move_object_with_commander_options(
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.source,
+                        pending.activator,
+                        pending.provenance,
                         target_id,
-                        Zone::Hand,
+                        choice_tag.as_ref(),
+                        &mut pending.tagged_objects,
                         decision_maker,
-                    );
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2364,10 +2439,13 @@ pub(super) fn apply_card_cost_choice_response(
 
     match pending.stage {
         CastStage::ChoosingSacrifice => {
-            let (filter, choice_tag) = match pending.remaining_cost_steps.first() {
+            let (cost, filter, choice_tag) = match pending.remaining_cost_steps.first() {
                 Some(ActivationCostStep::Sacrifice {
-                    filter, choice_tag, ..
-                }) => (filter.clone(), choice_tag.clone()),
+                    cost,
+                    filter,
+                    choice_tag,
+                    ..
+                }) => (cost.clone(), filter.clone(), choice_tag.clone()),
                 _ => {
                     return Err(GameLoopError::InvalidState(
                         "No pending sacrifice cost for spell cast".to_string(),
@@ -2382,47 +2460,32 @@ pub(super) fn apply_card_cost_choice_response(
                 ));
             }
 
-            if game.object(chosen_id).is_some() {
-                let snapshot = game
-                    .object(chosen_id)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game));
-                if let Some(snapshot) = snapshot.clone() {
-                    let tag = choice_tag.unwrap_or_else(|| {
-                        let tag =
-                            format!("sacrifice_cost_{}", pending.next_sacrifice_cost_tag_index);
-                        pending.next_sacrifice_cost_tag_index += 1;
-                        crate::tag::TagKey::from(tag)
-                    });
-                    pending
-                        .tagged_objects
-                        .entry(tag)
-                        .or_default()
-                        .push(snapshot);
-                }
-                let sacrificing_player = snapshot
-                    .as_ref()
-                    .map(|snap| snap.controller)
-                    .or(Some(pending.caster));
-                game.move_object(chosen_id, Zone::Graveyard);
-                game.queue_trigger_event(
-                    pending.provenance,
-                    TriggerEvent::new_with_provenance(
-                        SacrificeEvent::new(chosen_id, Some(pending.spell_id))
-                            .with_snapshot(snapshot, sacrificing_player),
-                        pending.provenance,
-                    ),
-                );
+            let choice_tag = choice_tag.unwrap_or_else(|| {
+                let tag = format!("sacrifice_cost_{}", pending.next_sacrifice_cost_tag_index);
+                pending.next_sacrifice_cost_tag_index += 1;
+                crate::tag::TagKey::from(tag)
+            });
+            pay_selected_cost(
+                game,
+                &cost,
+                pending.spell_id,
+                pending.caster,
+                pending.provenance,
+                chosen_id,
+                Some(&choice_tag),
+                &mut pending.tagged_objects,
+                decision_maker,
+            )?;
 
-                #[cfg(feature = "net")]
-                {
-                    pending
-                        .payment_trace
-                        .push(CostStep::Payment(CostPayment::Sacrifice {
-                            objects: vec![GameObjectId(chosen_id.0)],
-                        }));
-                }
-                drain_pending_trigger_events(game, trigger_queue);
+            #[cfg(feature = "net")]
+            {
+                pending
+                    .payment_trace
+                    .push(CostStep::Payment(CostPayment::Sacrifice {
+                        objects: vec![GameObjectId(chosen_id.0)],
+                    }));
             }
+            drain_pending_trigger_events(game, trigger_queue);
 
             pending.remaining_cost_steps.remove(0);
             pending.stage = CastStage::ChoosingNextCost;
@@ -2449,7 +2512,9 @@ pub(super) fn apply_card_cost_choice_response(
                 })?;
 
             match next_cost {
-                ActivationCardCostChoice::Discard { card_types, .. } => {
+                ActivationCardCostChoice::Discard {
+                    cost, card_types, ..
+                } => {
                     let legal_cards = get_legal_discard_cards(
                         game,
                         pending.caster,
@@ -2462,21 +2527,17 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    let cause = EventCause::from_cost(pending.spell_id, pending.caster);
-                    let result = crate::event_processor::execute_discard(
+                    pay_selected_cost(
                         game,
-                        chosen_id,
+                        &cost,
+                        pending.spell_id,
                         pending.caster,
-                        cause,
-                        false,
                         pending.provenance,
+                        chosen_id,
+                        None,
+                        &mut pending.tagged_objects,
                         decision_maker,
-                    );
-                    if result.prevented {
-                        return Err(GameLoopError::InvalidState(
-                            "Spell discard cost was prevented".to_string(),
-                        ));
-                    }
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2488,7 +2549,9 @@ pub(super) fn apply_card_cost_choice_response(
                     }
                     drain_pending_trigger_events(game, trigger_queue);
                 }
-                ActivationCardCostChoice::ExileFromHand { color_filter, .. } => {
+                ActivationCardCostChoice::ExileFromHand {
+                    cost, color_filter, ..
+                } => {
                     let legal_cards = get_legal_exile_from_hand_cards(
                         game,
                         pending.caster,
@@ -2502,7 +2565,17 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    game.move_object(chosen_id, Zone::Exile);
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.spell_id,
+                        pending.caster,
+                        pending.provenance,
+                        chosen_id,
+                        None,
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2515,7 +2588,9 @@ pub(super) fn apply_card_cost_choice_response(
                     }
                     drain_pending_trigger_events(game, trigger_queue);
                 }
-                ActivationCardCostChoice::ExileFromGraveyard { card_type, .. } => {
+                ActivationCardCostChoice::ExileFromGraveyard {
+                    cost, card_type, ..
+                } => {
                     let legal_cards =
                         get_legal_exile_from_graveyard_cards(game, pending.caster, card_type);
                     if !legal_cards.contains(&chosen_id) {
@@ -2525,7 +2600,17 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    game.move_object(chosen_id, Zone::Exile);
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.spell_id,
+                        pending.caster,
+                        pending.provenance,
+                        chosen_id,
+                        None,
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2539,6 +2624,7 @@ pub(super) fn apply_card_cost_choice_response(
                     drain_pending_trigger_events(game, trigger_queue);
                 }
                 ActivationCardCostChoice::ExileChosenObject {
+                    cost,
                     filter,
                     zone,
                     choice_tag,
@@ -2557,17 +2643,17 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    if let Some(snapshot) = game
-                        .object(chosen_id)
-                        .map(|obj| ObjectSnapshot::from_object(obj, game))
-                    {
-                        pending
-                            .tagged_objects
-                            .entry(choice_tag)
-                            .or_default()
-                            .push(snapshot);
-                    }
-                    game.move_object(chosen_id, Zone::Exile);
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.spell_id,
+                        pending.caster,
+                        pending.provenance,
+                        chosen_id,
+                        Some(&choice_tag),
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
 
                     #[cfg(feature = "net")]
                     {
@@ -2580,7 +2666,9 @@ pub(super) fn apply_card_cost_choice_response(
                     }
                     drain_pending_trigger_events(game, trigger_queue);
                 }
-                ActivationCardCostChoice::RevealFromHand { card_type, .. } => {
+                ActivationCardCostChoice::RevealFromHand {
+                    cost, card_type, ..
+                } => {
                     let legal_cards = get_legal_reveal_from_hand_cards(
                         game,
                         pending.caster,
@@ -2593,6 +2681,18 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.spell_id,
+                        pending.caster,
+                        pending.provenance,
+                        chosen_id,
+                        None,
+                        &mut pending.tagged_objects,
+                        decision_maker,
+                    )?;
+
                     #[cfg(feature = "net")]
                     {
                         pending
@@ -2603,7 +2703,10 @@ pub(super) fn apply_card_cost_choice_response(
                     }
                 }
                 ActivationCardCostChoice::ReturnToHand {
-                    filter, choice_tag, ..
+                    cost,
+                    filter,
+                    choice_tag,
+                    ..
                 } => {
                     let legal_targets = get_legal_return_to_hand_targets(
                         game,
@@ -2618,22 +2721,17 @@ pub(super) fn apply_card_cost_choice_response(
                         ));
                     }
 
-                    if let Some(tag) = choice_tag
-                        && let Some(snapshot) = game
-                            .object(chosen_id)
-                            .map(|obj| ObjectSnapshot::from_object(obj, game))
-                    {
-                        pending
-                            .tagged_objects
-                            .entry(tag)
-                            .or_default()
-                            .push(snapshot);
-                    }
-                    let _ = game.move_object_with_commander_options(
+                    pay_selected_cost(
+                        game,
+                        &cost,
+                        pending.spell_id,
+                        pending.caster,
+                        pending.provenance,
                         chosen_id,
-                        Zone::Hand,
+                        choice_tag.as_ref(),
+                        &mut pending.tagged_objects,
                         decision_maker,
-                    );
+                    )?;
 
                     #[cfg(feature = "net")]
                     {

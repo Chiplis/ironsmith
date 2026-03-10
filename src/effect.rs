@@ -2149,10 +2149,27 @@ impl Effect {
         Self::new(SacrificeTargetEffect::source())
     }
 
+    /// Create a "discard this card" cost effect.
+    pub fn discard_source_as_cost() -> Self {
+        use crate::effects::DiscardEffect;
+        Self::new(DiscardEffect::new_with_filter(
+            1,
+            PlayerFilter::You,
+            false,
+            Some(ObjectFilter::source().in_zone(Zone::Hand)),
+        ))
+    }
+
     /// Create a "return target card to its owner's hand" effect.
     pub fn return_to_hand(objects: ObjectFilter) -> Self {
         use crate::effects::ReturnToHandEffect;
         Self::new(ReturnToHandEffect::target(ChooseSpec::Object(objects)))
+    }
+
+    /// Create a "return the source permanent to its owner's hand" cost effect.
+    pub fn return_source_to_hand_as_cost() -> Self {
+        use crate::effects::ReturnToHandEffect;
+        Self::new(ReturnToHandEffect::with_spec(ChooseSpec::Source))
     }
 
     /// Create a "destroy all permanents matching filter" effect.
@@ -2707,8 +2724,44 @@ impl Effect {
         count: u32,
         color_filter: Option<crate::color::ColorSet>,
     ) -> Self {
-        use crate::effects::ExileFromHandAsCostEffect;
-        Self::new(ExileFromHandAsCostEffect::new(count, color_filter))
+        use crate::effects::ExileEffect;
+
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You)
+            .other();
+        if let Some(colors) = color_filter {
+            filter = filter.with_colors(colors);
+        }
+
+        Self::new(ExileEffect::with_spec(
+            ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(count as usize)),
+        ))
+    }
+
+    /// Create an "exile cards from your graveyard" cost effect.
+    pub fn exile_from_graveyard_as_cost(
+        count: u32,
+        card_type: Option<crate::types::CardType>,
+    ) -> Self {
+        use crate::effects::ExileEffect;
+
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You);
+        if let Some(card_type) = card_type {
+            filter = filter.with_type(card_type);
+        }
+
+        Self::new(ExileEffect::with_spec(
+            ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(count as usize)),
+        ))
+    }
+
+    /// Create an "exile the source object" cost effect.
+    pub fn exile_source_as_cost() -> Self {
+        use crate::effects::ExileEffect;
+        Self::new(ExileEffect::with_spec(ChooseSpec::Source))
     }
 
     /// Create an "untap all permanents matching filter" effect.

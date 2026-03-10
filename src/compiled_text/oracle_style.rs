@@ -3493,7 +3493,7 @@ mod normalize_sentence_surface_style_tests {
 #[cfg(test)]
 mod tests {
     use super::{
-        compiled_lines, describe_additional_cost_effects, describe_for_each_filter,
+        compiled_lines, describe_additional_costs, describe_for_each_filter,
         merge_adjacent_static_heading_lines, merge_adjacent_subject_predicate_lines,
         normalize_common_semantic_phrasing, normalize_compiled_post_pass_effect,
         normalize_create_under_control_clause, normalize_gain_life_plus_phrase,
@@ -3519,18 +3519,18 @@ mod tests {
 
     #[test]
     fn additional_cost_choose_one_renders_inline_or_phrase() {
-        let effects = vec![crate::effect::Effect::choose_one(vec![
-            crate::effect::EffectMode {
+        let effects = vec![crate::costs::Cost::validated_effect(crate::effect::Effect::choose_one(
+            vec![crate::effect::EffectMode {
                 description: "sacrifice a creature".to_string(),
                 effects: Vec::new(),
             },
             crate::effect::EffectMode {
                 description: "pay 3".to_string(),
                 effects: Vec::new(),
-            },
-        ])];
+            }],
+        ))];
         assert_eq!(
-            describe_additional_cost_effects(&effects),
+            describe_additional_costs(&effects),
             "sacrifice a creature or pay {3}"
         );
     }

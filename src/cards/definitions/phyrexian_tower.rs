@@ -139,12 +139,12 @@ mod tests {
         let ability = &def.abilities[1];
         if let AbilityKind::Activated(mana_ability) = &ability.kind {
             assert!(mana_ability.is_mana_ability());
-            // Sacrifice is now in cost_effects (not TotalCost) so "dies" triggers fire
+            // Sacrifice is modeled as a non-mana cost component so "dies" triggers fire
             assert!(
                 !mana_ability.mana_cost.costs().is_empty(),
-                "Should have cost_effects for sacrifice"
+                "Should have non-mana costs for sacrifice"
             );
-            // Should have 3 cost_effects: tap + choose + sacrifice
+            // Should have 3 non-mana cost components: tap + choose + sacrifice
             assert_eq!(
                 mana_ability.mana_cost.costs().len(),
                 3,
@@ -157,11 +157,11 @@ mod tests {
             let debug_str = format!("{:?}", &mana_ability.mana_cost.costs());
             assert!(
                 debug_str.contains("ChooseObjectsEffect"),
-                "cost_effects should contain choose objects"
+                "non-mana costs should contain choose objects"
             );
             assert!(
                 debug_str.contains("SacrificeEffect"),
-                "cost_effects should contain sacrifice"
+                "non-mana costs should contain sacrifice"
             );
         } else {
             panic!("Expected mana ability");

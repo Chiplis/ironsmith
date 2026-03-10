@@ -45,27 +45,25 @@ mod tests {
     }
 
     #[test]
-    fn test_culling_the_weak_has_cost_effects() {
+    fn test_culling_the_weak_has_additional_costs() {
         let def = culling_the_weak();
-        let cost_effects = def.additional_cost_effects();
+        let costs = def.additional_non_mana_costs();
         assert_eq!(
-            cost_effects.len(),
+            costs.len(),
             2,
-            "Should have 2 cost effects (choose + sacrifice)"
+            "Should have 2 additional costs (choose + sacrifice)"
         );
 
-        // First effect should be ChooseObjectsEffect
-        let debug_str_0 = format!("{:?}", &cost_effects[0]);
+        let debug_str_0 = format!("{:?}", &costs[0]);
         assert!(
             debug_str_0.contains("ChooseObjectsEffect"),
-            "First cost effect should be choose"
+            "First cost should be choose"
         );
 
-        // Second effect should be SacrificeEffect
-        let debug_str_1 = format!("{:?}", &cost_effects[1]);
+        let debug_str_1 = format!("{:?}", &costs[1]);
         assert!(
             debug_str_1.contains("SacrificeEffect"),
-            "Second cost effect should be sacrifice"
+            "Second cost should be sacrifice"
         );
     }
 
@@ -97,7 +95,7 @@ mod tests {
     // ========================================
     //
     // NOTE: Replay coverage is temporarily disabled while the replay harness
-    // catches up with the current cost_effects ordering and prompts.
+    // catches up with the current non-mana cost ordering and prompts.
 
     // #[test]
     // fn test_replay_culling_the_weak_casting() {

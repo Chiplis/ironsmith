@@ -13,7 +13,6 @@ mod battlefield_entry;
 mod destroy;
 mod destroy_no_regen;
 mod exile;
-mod exile_from_hand_as_cost;
 mod exile_until_source_leaves;
 mod haunt_exile;
 mod move_to_library_nth_from_top;
@@ -70,7 +69,6 @@ pub(crate) use battlefield_entry::{
 pub use destroy::DestroyEffect;
 pub use destroy_no_regen::DestroyNoRegenerationEffect;
 pub use exile::ExileEffect;
-pub use exile_from_hand_as_cost::ExileFromHandAsCostEffect;
 pub use exile_until_source_leaves::{ExileUntilDuration, ExileUntilEffect};
 pub use haunt_exile::HauntExileEffect;
 pub use move_to_library_nth_from_top::MoveToLibraryNthFromTopEffect;

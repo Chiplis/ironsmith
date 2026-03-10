@@ -7720,9 +7720,9 @@ pub(crate) fn tag_object_target_effect(
 
 pub(crate) fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
     Ability {
-        kind: AbilityKind::Activated(ActivatedAbility::mana_with_cost_effects(
+        kind: AbilityKind::Activated(ActivatedAbility::mana_with_costs(
             TotalCost::free(),
-            vec![Effect::sacrifice_source()],
+            vec![crate::costs::Cost::sacrifice_self()],
             vec![ManaSymbol::Colorless],
         )),
         functional_zones: vec![Zone::Battlefield],
@@ -7954,10 +7954,7 @@ pub(crate) fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> A
 pub(crate) fn token_red_pump_ability() -> Ability {
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-            mana_cost: ability::merge_cost_effects(
-                TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Red]])),
-                Vec::new(),
-            ),
+            mana_cost: TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Red]])),
             effects: vec![Effect::pump(1, 0, ChooseSpec::Source, Until::EndOfTurn)],
             choices: Vec::new(),
             timing: ActivationTiming::AnyTime,
@@ -7976,10 +7973,10 @@ pub(crate) fn token_white_tap_target_creature_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-            mana_cost: ability::merge_cost_effects(
-                TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::White]])),
-                vec![Effect::tap_source()],
-            ),
+            mana_cost: TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::White]])),
+                crate::costs::Cost::tap(),
+            ]),
             effects: vec![Effect::tap(target.clone())],
             choices: vec![target],
             timing: ActivationTiming::AnyTime,
@@ -7998,10 +7995,7 @@ pub(crate) fn token_tap_add_single_mana_ability(symbol: ManaSymbol) -> Ability {
     let mana_text = ManaCost::from_pips(vec![vec![symbol]]).to_oracle();
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-            mana_cost: crate::ability::merge_cost_effects(
-                TotalCost::free(),
-                vec![Effect::tap_source()],
-            ),
+            mana_cost: TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
             effects: vec![Effect::add_mana(vec![symbol])],
             choices: Vec::new(),
             timing: crate::ability::ActivationTiming::AnyTime,
@@ -8475,11 +8469,13 @@ pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
     mana_symbols: Vec<ManaSymbol>,
     tap_cost: bool,
 ) -> Ability {
-    let mut cost_effects = Vec::new();
+    let mut costs = Vec::new();
     if tap_cost {
-        cost_effects.push(Effect::tap_source());
+        costs.push(crate::costs::Cost::tap());
     }
-    cost_effects.push(Effect::sacrifice_source());
+    costs.push(crate::costs::Cost::validated_effect(Effect::new(
+        crate::effects::SacrificeTargetEffect::source(),
+    )));
     let mana_cost = if mana_symbols.is_empty() {
         ManaCost::new()
     } else {
@@ -8507,7 +8503,11 @@ pub(crate) fn token_sacrifice_return_named_from_graveyard_ability(
     );
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-            mana_cost: ability::merge_cost_effects(TotalCost::mana(mana_cost), cost_effects),
+            mana_cost: TotalCost::from_costs({
+                let mut total_costs = vec![crate::costs::Cost::mana(mana_cost)];
+                total_costs.extend(costs);
+                total_costs
+            }),
             effects: vec![Effect::return_from_graveyard_to_battlefield(
                 target.clone(),
                 false,
@@ -9320,10 +9320,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
             let ability = Ability {
                 kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                    mana_cost: crate::ability::merge_cost_effects(
-                        TotalCost::free(),
-                        vec![Effect::tap_source()],
-                    ),
+                    mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
                     effects: vec![Effect::pump(1, 0, target.clone(), Until::EndOfTurn)],
                     choices: vec![target],
                     timing: crate::ability::ActivationTiming::SorcerySpeed,
@@ -9383,10 +9380,12 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             ));
             let counter_ability = Ability {
                 kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                    mana_cost: crate::ability::merge_cost_effects(
-                        TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]])),
-                        vec![Effect::sacrifice_source()],
-                    ),
+                    mana_cost: TotalCost::from_costs(vec![
+                        crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![
+                            ManaSymbol::Generic(1),
+                        ]])),
+                        crate::costs::Cost::sacrifice_self(),
+                    ]),
                     effects: vec![Effect::counter_unless_pays(
                         target.clone(),
                         vec![ManaSymbol::Generic(1)],

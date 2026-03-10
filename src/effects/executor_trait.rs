@@ -140,6 +140,12 @@ pub trait EffectExecutor:
         self.get_modal_spec()
     }
 
+    /// Returns this effect as a cost-capable trait object when it can legally
+    /// participate in cost payment.
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        None
+    }
+
     /// If this is a "pay life" effect, returns the amount.
     ///
     /// Used for checking if alternative cost effects can be paid.
@@ -156,16 +162,24 @@ pub trait EffectExecutor:
 
     /// Check if this effect can be executed as a cost.
     ///
-    /// This is used for cost_effects in mana abilities and alternative casting costs.
+    /// This is used for non-mana cost components in mana abilities and alternative casting costs.
     /// Returns Ok(()) if the cost can be paid, or Err with a reason if not.
     ///
     /// Default implementation returns Ok(()) (effect can always be executed).
     fn can_execute_as_cost(
         &self,
-        _game: &GameState,
-        _source: ObjectId,
-        _controller: PlayerId,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
     ) -> Result<(), CostValidationError> {
+        if let Some(cost_effect) = self.as_cost_executable() {
+            return CostExecutableEffect::can_execute_as_cost(
+                cost_effect,
+                game,
+                source,
+                controller,
+            );
+        }
         Ok(())
     }
 
@@ -173,6 +187,11 @@ pub trait EffectExecutor:
     ///
     /// Used for checking summoning sickness restrictions.
     fn is_tap_source_cost(&self) -> bool {
+        false
+    }
+
+    /// Returns true if this is an "untap source" cost effect.
+    fn is_untap_source_cost(&self) -> bool {
         false
     }
 
@@ -217,6 +236,8 @@ pub trait EffectExecutor:
 pub enum CostValidationError {
     /// Source is already tapped
     AlreadyTapped,
+    /// Source is already untapped
+    AlreadyUntapped,
     /// Creature has summoning sickness (can't tap)
     SummoningSickness,
     /// Not enough life to pay
@@ -227,6 +248,17 @@ pub enum CostValidationError {
     CannotSacrifice,
     /// Generic error with message
     Other(String),
+}
+
+/// Additional behavior required for effects that can be used as costs.
+pub trait CostExecutableEffect: EffectExecutor {
+    /// Check whether this effect can be paid in a cost context.
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError>;
 }
 
 #[cfg(test)]

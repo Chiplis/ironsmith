@@ -329,7 +329,7 @@ mod tests {
         let def = bloodstained_mire();
 
         if let AbilityKind::Activated(activated) = &def.abilities[0].kind {
-            // Check cost_effects for life cost
+            // Check non-mana costs for life payment
             assert_eq!(
                 activated.life_cost_amount(),
                 Some(1),

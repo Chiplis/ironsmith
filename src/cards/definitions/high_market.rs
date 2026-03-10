@@ -131,12 +131,12 @@ mod tests {
 
         let ability = &def.abilities[1];
         if let AbilityKind::Activated(activated) = &ability.kind {
-            // Verify sacrifice is in cost_effects (not TotalCost) so "dies" triggers fire
+            // Verify sacrifice is in the non-mana cost components so "dies" triggers fire
             assert!(
                 !activated.mana_cost.costs().is_empty(),
-                "Should have cost_effects for sacrifice"
+                "Should have non-mana costs for sacrifice"
             );
-            // Should have 3 cost_effects: tap + choose + sacrifice
+            // Should have 3 non-mana cost components: tap + choose + sacrifice
             assert_eq!(
                 activated.mana_cost.costs().len(),
                 3,
@@ -149,11 +149,11 @@ mod tests {
             let debug_str = format!("{:?}", &activated.mana_cost.costs());
             assert!(
                 debug_str.contains("ChooseObjectsEffect"),
-                "cost_effects should contain choose objects"
+                "non-mana costs should contain choose objects"
             );
             assert!(
                 debug_str.contains("SacrificeEffect"),
-                "cost_effects should contain sacrifice"
+                "non-mana costs should contain sacrifice"
             );
         } else {
             panic!("Expected activated ability");
@@ -257,8 +257,8 @@ mod tests {
 
         let ability = &def.abilities[1];
         if let AbilityKind::Activated(activated) = &ability.kind {
-            // The sacrifice is now in cost_effects via TapEffect + ChooseObjectsEffect + SacrificeEffect
-            // Verify cost_effects has the expected structure
+            // The sacrifice is now in the non-mana costs via TapEffect + ChooseObjectsEffect + SacrificeEffect
+            // Verify the non-mana costs have the expected structure
             assert_eq!(
                 activated.mana_cost.costs().len(),
                 3,
@@ -317,8 +317,8 @@ mod tests {
         }
     }
 
-    // Note: can_pay_cost tests removed since sacrifice is now in cost_effects.
-    // The game loop checks cost_effects at execution time, not in can_pay_cost.
+    // Note: can_pay_cost tests removed since sacrifice is now a non-mana cost component.
+    // The game loop checks non-mana costs at execution time, not in can_pay_cost.
     // Replay tests verify the full activation flow works correctly.
 
     #[test]

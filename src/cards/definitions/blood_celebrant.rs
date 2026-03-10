@@ -32,10 +32,10 @@ pub fn blood_celebrant() -> CardDefinition {
 
     def.abilities.push(Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
-            mana_cost: crate::ability::merge_cost_effects(
-                TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Black]])),
-                vec![Effect::pay_life(1)],
-            ),
+            mana_cost: TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Black]])),
+                crate::costs::Cost::life(1),
+            ]),
             effects: vec![add_mana_effect],
             choices: vec![],
             timing: crate::ability::ActivationTiming::AnyTime,
@@ -117,7 +117,7 @@ mod tests {
                 "Blood Celebrant's ability should have a mana cost"
             );
 
-            // Should have life cost (in cost_effects)
+            // Should have a non-mana life cost
             assert_eq!(
                 act_ab.life_cost_amount(),
                 Some(1),

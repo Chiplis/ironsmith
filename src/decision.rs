@@ -1837,13 +1837,9 @@ fn can_cast_with_alternative_with_view(
         return false;
     }
 
-    // Validate any non-mana additional costs expressed as cost effects.
-    for effect in method.cost_effects() {
-        if effect
-            .0
-            .can_execute_as_cost(game, spell.id, player)
-            .is_err()
-        {
+    let check_ctx = crate::costs::CostCheckContext::new(spell.id, player);
+    for cost in method.non_mana_costs() {
+        if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err() {
             return false;
         }
     }
@@ -1874,7 +1870,7 @@ fn can_cast_with_alternative_from_hand_with_view(
     use crate::alternative_cast::AlternativeCastingMethod;
 
     match method {
-        method if method.uses_composed_cost_effects() => {
+        method if method.is_composed_cost() => {
             if let Some(condition) = method.cast_condition()
                 && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
                     game,
@@ -1898,13 +1894,9 @@ fn can_cast_with_alternative_from_hand_with_view(
                 return false;
             }
 
-            // Check cost effects can be paid using the generic can_execute_as_cost method
-            for effect in method.cost_effects() {
-                if effect
-                    .0
-                    .can_execute_as_cost(game, spell_id, player)
-                    .is_err()
-                {
+            let check_ctx = crate::costs::CostCheckContext::new(spell_id, player);
+            for cost in method.non_mana_costs() {
+                if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err() {
                     return false;
                 }
             }
@@ -1939,13 +1931,9 @@ fn can_cast_with_alternative_from_hand_with_view(
                 return false;
             }
 
-            let cost_effects = method.cost_effects();
-            for effect in cost_effects {
-                if effect
-                    .0
-                    .can_execute_as_cost(game, spell_id, player)
-                    .is_err()
-                {
+            let check_ctx = crate::costs::CostCheckContext::new(spell_id, player);
+            for cost in method.non_mana_costs() {
+                if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err() {
                     return false;
                 }
             }
@@ -5668,17 +5656,14 @@ fn format_mana_cost_from_cost(cost: &crate::ManaCost) -> String {
     }
 }
 
-fn format_cost_effects(cost_effects: &[crate::effect::Effect]) -> String {
-    if cost_effects.is_empty() {
+fn format_non_mana_costs(costs: &[crate::costs::Cost]) -> String {
+    if costs.is_empty() {
         return "Free".to_string();
     }
-    cost_effects
+    costs
         .iter()
-        .filter_map(|e| {
-            // Use the cost_description method if available, otherwise skip
-            // (ExileEffect after ChooseObjects is redundant in the description)
-            e.0.cost_description()
-        })
+        .map(|cost| cost.display())
+        .filter(|text| !text.trim().is_empty())
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -5785,12 +5770,10 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                     crate::alternative_cast::CastingMethod::Alternative(idx) => {
                         // Get the alternative cost description
                         if let Some(alt_method) = obj.alternative_casts.get(*idx) {
-                            let cost_effects = alt_method.cost_effects();
-                            let cost_desc = if !cost_effects.is_empty() {
-                                // For composed methods (like Force of Will), show the cost effects
-                                let effects_desc = format_cost_effects(&cost_effects);
+                            let costs = alt_method.non_mana_costs();
+                            let cost_desc = if !costs.is_empty() {
+                                let effects_desc = format_non_mana_costs(&costs);
                                 if let Some(mana) = alt_method.mana_cost() {
-                                    // Has both mana and cost effects
                                     format!(
                                         "{}, {}",
                                         format_mana_cost_from_cost(mana),
@@ -5841,9 +5824,9 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                             *zone,
                             *idx,
                         ) {
-                            let cost_effects = alt_method.cost_effects();
-                            let cost_desc = if !cost_effects.is_empty() {
-                                let effects_desc = format_cost_effects(&cost_effects);
+                            let costs = alt_method.non_mana_costs();
+                            let cost_desc = if !costs.is_empty() {
+                                let effects_desc = format_non_mana_costs(&costs);
                                 if let Some(mana) = alt_method.mana_cost() {
                                     format!(
                                         "{}, {}",

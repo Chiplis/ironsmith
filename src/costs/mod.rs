@@ -1,30 +1,19 @@
 //! Modular cost system for MTG.
 //!
-//! This module provides a trait-based architecture for cost payment.
-//! Each cost type implements the `CostPayer` trait, allowing for:
-//! - Co-located tests with each cost implementation
-//! - Self-contained cost payment logic
-//! - Easy addition of new costs without modifying central dispatcher
-//! - Support for "potential payability" checks for better UI
+//! This module provides the `Cost` wrapper and shared infrastructure for cost payment.
+//! Most non-mana costs now execute through [`CostEffect`], which routes them through
+//! the normal effect pipeline while preserving the `CostPayer` interface.
 //!
 //! # Module Structure
 //!
 //! ```text
 //! costs/
 //!   mod.rs              - This file, module organization and Cost wrapper
+//!   cost_effect.rs      - Effect-backed CostPayer implementation
 //!   payer_trait.rs      - CostPayer trait definition and CostContext
-//!   tap.rs              - TapCost implementation
-//!   untap.rs            - UntapCost implementation
-//!   life.rs             - LifeCost implementation
 //!   mana.rs             - ManaPaymentCost implementation
-//!   sacrifice.rs        - SacrificeSelfCost, SacrificeCost implementations
-//!   discard.rs          - DiscardCost, DiscardHandCost implementations
-//!   exile.rs            - ExileSelfCost, ExileFromGraveyardCost, ExileFromHandCost
 //!   counters.rs         - RemoveCountersCost, AddCountersCost
-//!   energy.rs           - EnergyCost
 //!   reveal.rs           - RevealFromHandCost
-//!   return_to_hand.rs   - ReturnSelfToHandCost, ReturnToHandCost
-//!   mill.rs             - MillCost
 //! ```
 //!
 //! # Usage
@@ -32,9 +21,9 @@
 //! Costs can be checked and paid through the `CostPayer` trait:
 //!
 //! ```ignore
-//! use ironsmith::costs::{CostPayer, TapCost, CostContext};
+//! use ironsmith::costs::{Cost, CostContext};
 //!
-//! let cost = TapCost::new();
+//! let cost = Cost::tap();
 //! let ctx = CostContext::new(permanent_id, player_id);
 //!
 //! // Check if cost can be paid
@@ -43,21 +32,12 @@
 //! }
 //! ```
 
+mod cost_effect;
 mod counters;
-mod discard;
-mod effect;
-mod energy;
-mod exile;
-mod life;
 mod mana;
-mod mill;
 mod payer_trait;
 mod processing_mode;
-mod return_to_hand;
 mod reveal;
-mod sacrifice;
-mod tap;
-mod untap;
 
 // Re-export the trait and context
 pub use payer_trait::{
@@ -67,22 +47,13 @@ pub use payer_trait::{CostContext, CostPayer, CostPaymentResult};
 pub use processing_mode::CostProcessingMode;
 
 // Re-export all cost implementations
+pub use cost_effect::CostEffect;
 pub use counters::{
     AddCountersCost, RemoveAnyCountersAmongCost, RemoveAnyCountersFromSourceCost,
     RemoveCountersCost,
 };
-pub use discard::{DiscardCost, DiscardHandCost, DiscardSourceCost};
-pub use effect::EffectCost;
-pub use energy::EnergyCost;
-pub use exile::{ExileFromGraveyardCost, ExileFromHandCost, ExileSelfCost};
-pub use life::{LifeCost, LifePerCardInHandCost};
 pub use mana::ManaPaymentCost;
-pub use mill::MillCost;
-pub use return_to_hand::{ReturnSelfToHandCost, ReturnToHandCost};
 pub use reveal::RevealFromHandCost;
-pub use sacrifice::{SacrificeCost, SacrificeSelfCost};
-pub use tap::TapCost;
-pub use untap::UntapCost;
 
 use crate::color::ColorSet;
 use crate::filter::ObjectFilter;
@@ -124,17 +95,19 @@ impl Cost {
 
     /// Create a tap cost ({T}).
     pub fn tap() -> Self {
-        Self::new(TapCost::new())
+        Self::effect(crate::effects::TapEffect::source())
     }
 
     /// Create an untap cost ({Q}).
     pub fn untap() -> Self {
-        Self::new(UntapCost::new())
+        Self::effect(crate::effects::UntapEffect::with_spec(
+            crate::target::ChooseSpec::Source,
+        ))
     }
 
     /// Create a life payment cost.
     pub fn life(amount: u32) -> Self {
-        Self::new(LifeCost::new(amount))
+        Self::effect(crate::effects::LoseLifeEffect::you(amount))
     }
 
     /// Create a mana cost.
@@ -143,68 +116,128 @@ impl Cost {
     }
 
     /// Create a cost backed by an effect executor.
-    pub fn effect(effect: crate::effect::Effect) -> Self {
-        Self::new(EffectCost::new(effect))
+    pub fn effect<E: crate::effects::CostExecutableEffect + 'static>(effect: E) -> Self {
+        Self::new(CostEffect::new(effect))
+    }
+
+    /// Create a cost from an effect value after validating that the runtime effect
+    /// explicitly opted into cost execution.
+    pub(crate) fn validated_effect(effect: crate::effect::Effect) -> Self {
+        Self::new(
+            CostEffect::from_validated_effect(effect)
+                .expect("attempted to use a non-cost effect as a cost"),
+        )
+    }
+
+    /// Convert a runtime effect into a canonical cost component.
+    pub(crate) fn try_from_runtime_effect(effect: crate::effect::Effect) -> Result<Self, String> {
+        if let Some(amount) = effect.0.pay_life_amount() {
+            return Ok(Self::life(amount));
+        }
+        if let Some((count, color_filter)) = effect.0.exile_from_hand_cost_info() {
+            return Ok(Self::exile_from_hand(count, color_filter));
+        }
+        if effect.0.is_sacrifice_source_cost() {
+            return Ok(Self::sacrifice_self());
+        }
+        if effect.0.is_tap_source_cost() {
+            return Ok(Self::tap());
+        }
+        if effect.0.is_untap_source_cost() {
+            return Ok(Self::untap());
+        }
+        CostEffect::from_validated_effect(effect).map(Self::new)
     }
 
     /// Create a sacrifice self cost.
     pub fn sacrifice_self() -> Self {
-        Self::new(SacrificeSelfCost::new())
+        Self::validated_effect(crate::effect::Effect::sacrifice_source())
     }
 
     /// Create a sacrifice another permanent cost.
     pub fn sacrifice(filter: ObjectFilter) -> Self {
-        Self::new(SacrificeCost::new(filter))
+        Self::validated_effect(crate::effect::Effect::sacrifice(filter, 1))
     }
 
     /// Create a discard cards cost.
     pub fn discard(count: u32, card_type: Option<CardType>) -> Self {
-        Self::new(DiscardCost::new(count, card_type))
+        Self::discard_types(count, card_type.into_iter().collect())
     }
 
     /// Create a discard cards cost with one-or-more allowed card types.
     pub fn discard_types(count: u32, card_types: Vec<CardType>) -> Self {
-        Self::new(DiscardCost::with_card_types(count, card_types))
+        let card_filter = if card_types.is_empty() {
+            None
+        } else {
+            Some(crate::filter::ObjectFilter {
+                zone: Some(crate::zone::Zone::Hand),
+                card_types,
+                ..Default::default()
+            })
+        };
+        Self::validated_effect(crate::effect::Effect::discard_player_filtered(
+            count as i32,
+            crate::target::PlayerFilter::You,
+            false,
+            card_filter,
+        ))
     }
 
     /// Create a discard hand cost.
     pub fn discard_hand() -> Self {
-        Self::new(DiscardHandCost::new())
+        Self::validated_effect(crate::effect::Effect::discard_hand())
     }
 
     /// Create a discard-this-card cost.
     pub fn discard_source() -> Self {
-        Self::new(DiscardSourceCost::new())
+        Self::validated_effect(crate::effect::Effect::discard_source_as_cost())
     }
 
     /// Create an exile self cost.
     pub fn exile_self() -> Self {
-        Self::new(ExileSelfCost::new())
+        Self::validated_effect(crate::effect::Effect::exile_source_as_cost())
     }
 
     /// Create an exile from graveyard cost.
     pub fn exile_from_graveyard(count: u32, card_type: Option<CardType>) -> Self {
-        Self::new(ExileFromGraveyardCost::new(count, card_type))
+        Self::validated_effect(crate::effect::Effect::exile_from_graveyard_as_cost(
+            count, card_type,
+        ))
     }
 
     /// Create an exile from hand cost.
     pub fn exile_from_hand(count: u32, color_filter: Option<ColorSet>) -> Self {
-        Self::new(ExileFromHandCost::new(count, color_filter))
+        Self::validated_effect(crate::effect::Effect::exile_from_hand_as_cost(
+            count,
+            color_filter,
+        ))
     }
 
     /// Create a remove counters cost.
     pub fn remove_counters(counter_type: CounterType, count: u32) -> Self {
-        Self::new(RemoveCountersCost::new(counter_type, count))
+        Self::validated_effect(crate::effect::Effect::remove_counters(
+            counter_type,
+            count as i32,
+            crate::target::ChooseSpec::Source,
+        ))
     }
 
     /// Create an add counters cost.
     pub fn add_counters(counter_type: CounterType, count: u32) -> Self {
-        Self::new(AddCountersCost::new(counter_type, count))
+        Self::validated_effect(crate::effect::Effect::put_counters_on_source(
+            counter_type,
+            count as i32,
+        ))
     }
 
     /// Create an energy payment cost.
     pub fn energy(amount: u32) -> Self {
-        Self::new(EnergyCost::new(amount))
+        Self::validated_effect(crate::effect::Effect::new(
+            crate::effects::PayEnergyEffect::new(
+                amount as i32,
+                crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You),
+            ),
+        ))
     }
 
     /// Create a reveal from hand cost.
@@ -214,17 +247,19 @@ impl Cost {
 
     /// Create a return self to hand cost.
     pub fn return_self_to_hand() -> Self {
-        Self::new(ReturnSelfToHandCost::new())
+        Self::validated_effect(crate::effect::Effect::new(
+            crate::effects::ReturnToHandEffect::with_spec(crate::target::ChooseSpec::Source),
+        ))
     }
 
     /// Create a return another permanent to hand cost.
     pub fn return_to_hand(filter: ObjectFilter) -> Self {
-        Self::new(ReturnToHandCost::new(filter))
+        Self::validated_effect(crate::effect::Effect::return_to_hand(filter))
     }
 
     /// Create a mill cost.
     pub fn mill(count: u32) -> Self {
-        Self::new(MillCost::new(count))
+        Self::validated_effect(crate::effect::Effect::mill(count as i32))
     }
 
     // ========================================================================
@@ -371,6 +406,14 @@ mod tests {
     }
 
     #[test]
+    fn test_cost_wrapper_untap_is_effect_backed() {
+        let cost = Cost::untap();
+        assert!(cost.0.effect_ref().is_some());
+        assert!(cost.requires_untap());
+        assert_eq!(cost.display(), "{Q}");
+    }
+
+    #[test]
     fn test_cost_wrapper_clone() {
         let cost = Cost::tap();
         let cloned = cost.clone();
@@ -385,5 +428,90 @@ mod tests {
         assert_eq!(costs.len(), 2);
         assert!(costs[0].requires_tap());
         assert_eq!(costs[1].display(), "Pay 2 life");
+    }
+
+    #[test]
+    fn test_discard_cost_constructor_is_effect_backed() {
+        let cost = Cost::discard(2, Some(crate::types::CardType::Creature));
+        assert!(cost.0.effect_ref().is_some());
+        match cost.processing_mode() {
+            CostProcessingMode::DiscardCards { count, card_types } => {
+                assert_eq!(count, 2);
+                assert_eq!(card_types, vec![crate::types::CardType::Creature]);
+            }
+            other => panic!("expected discard processing mode, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_sacrifice_cost_constructor_is_effect_backed() {
+        let cost = Cost::sacrifice(crate::filter::ObjectFilter::creature().you_control());
+        assert!(cost.0.effect_ref().is_some());
+        match cost.processing_mode() {
+            CostProcessingMode::SacrificeTarget { .. } => {}
+            other => panic!("expected sacrifice processing mode, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_discard_source_cost_constructor_uses_generic_discard_effect() {
+        let cost = Cost::discard_source();
+        let effect = cost
+            .0
+            .effect_ref()
+            .expect("effect-backed discard source cost");
+        let discard = effect
+            .downcast_ref::<crate::effects::DiscardEffect>()
+            .expect("generic discard effect");
+        assert!(discard
+            .card_filter
+            .as_ref()
+            .is_some_and(|filter| filter.source && filter.zone == Some(crate::zone::Zone::Hand)));
+        assert!(matches!(
+            cost.processing_mode(),
+            CostProcessingMode::Immediate
+        ));
+    }
+
+    #[test]
+    fn test_exile_cost_constructors_use_generic_exile_effect() {
+        let hand_cost = Cost::exile_from_hand(
+            1,
+            Some(crate::color::ColorSet::from(crate::color::Color::Blue)),
+        );
+        let hand_effect = hand_cost
+            .0
+            .effect_ref()
+            .expect("effect-backed exile-from-hand cost");
+        let hand_exile = hand_effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+            .expect("generic exile effect");
+        assert!(matches!(
+            hand_cost.processing_mode(),
+            CostProcessingMode::ExileFromHand { count: 1, .. }
+        ));
+        assert!(matches!(
+            hand_exile.spec.base(),
+            crate::target::ChooseSpec::Object(filter)
+                if filter.zone == Some(crate::zone::Zone::Hand)
+        ));
+
+        let graveyard_cost = Cost::exile_from_graveyard(2, Some(crate::types::CardType::Instant));
+        let graveyard_effect = graveyard_cost
+            .0
+            .effect_ref()
+            .expect("effect-backed exile-from-graveyard cost");
+        let graveyard_exile = graveyard_effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+            .expect("generic exile effect");
+        assert!(matches!(
+            graveyard_cost.processing_mode(),
+            CostProcessingMode::ExileFromGraveyard { count: 2, .. }
+        ));
+        assert!(matches!(
+            graveyard_exile.spec.base(),
+            crate::target::ChooseSpec::Object(filter)
+                if filter.zone == Some(crate::zone::Zone::Graveyard)
+        ));
     }
 }

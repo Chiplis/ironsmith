@@ -1,8 +1,6 @@
 //! CostPayer trait for the modular cost system.
 //!
-//! This module defines the `CostPayer` trait that all cost implementations
-//! must implement. Each cost type (tap, mana, sacrifice, etc.) implements this trait
-//! with its own payment logic.
+//! This module defines the `CostPayer` trait used by `Cost` and `CostEffect`.
 
 use std::collections::HashMap;
 
@@ -197,19 +195,22 @@ pub fn can_potentially_pay_with_check_context(
 /// ```ignore
 /// use ironsmith::costs::CostPayer;
 ///
-/// impl CostPayer for TapCost {
+/// #[derive(Debug, Clone)]
+/// struct MyCost;
+///
+/// impl CostPayer for MyCost {
 ///     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
-///         // Check if permanent is untapped and not summoning sick
+///         // Validate whether the cost can be paid
 ///         Ok(())
 ///     }
 ///
 ///     fn pay(&self, game: &mut GameState, ctx: &mut CostContext) -> Result<CostPaymentResult, CostPaymentError> {
-///         game.tap(ctx.source);
+///         // Mutate the game state to pay the cost
 ///         Ok(CostPaymentResult::Paid)
 ///     }
 ///
 ///     fn display(&self) -> String {
-///         "{T}".to_string()
+///         "My cost".to_string()
 ///     }
 /// }
 /// ```

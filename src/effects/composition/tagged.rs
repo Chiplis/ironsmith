@@ -4,7 +4,7 @@
 //! that can be referenced by subsequent effects in the same spell/ability.
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
@@ -58,6 +58,13 @@ impl TaggedEffect {
 }
 
 impl EffectExecutor for TaggedEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        self.effect
+            .0
+            .as_cost_executable()
+            .map(|_| self as &dyn CostExecutableEffect)
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -92,6 +99,17 @@ impl EffectExecutor for TaggedEffect {
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         // Delegate to inner effect
         self.effect.0.get_target_count()
+    }
+}
+
+impl CostExecutableEffect for TaggedEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        self.effect.0.can_execute_as_cost(game, source, controller)
     }
 }
 
@@ -136,6 +154,13 @@ impl TagAllEffect {
 }
 
 impl EffectExecutor for TagAllEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        self.effect
+            .0
+            .as_cost_executable()
+            .map(|_| self as &dyn CostExecutableEffect)
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -169,6 +194,17 @@ impl EffectExecutor for TagAllEffect {
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         // Delegate to inner effect
         self.effect.0.get_target_count()
+    }
+}
+
+impl CostExecutableEffect for TagAllEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        self.effect.0.can_execute_as_cost(game, source, controller)
     }
 }
 

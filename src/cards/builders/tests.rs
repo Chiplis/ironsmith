@@ -1696,9 +1696,10 @@ fn test_parse_additional_cost_tap_two_untapped_creatures_and_or_lands() {
         )
         .expect("parse tap-two additional cost");
 
-    let additional_cost_effects = def.additional_cost_effects();
-    let tap = additional_cost_effects
+    let additional_costs = def.additional_non_mana_costs();
+    let tap = additional_costs
         .iter()
+        .filter_map(|cost| cost.effect_ref())
         .find_map(|effect| effect.downcast_ref::<crate::effects::TapEffect>())
         .expect("expected tap cost effect");
     let (inner, count) = match &tap.spec {
@@ -1735,9 +1736,10 @@ fn test_parse_additional_cost_tap_four_untapped_artifacts_creatures_or_lands() {
         )
         .expect("parse tap-four additional cost");
 
-    let additional_cost_effects = def.additional_cost_effects();
-    let tap = additional_cost_effects
+    let additional_costs = def.additional_non_mana_costs();
+    let tap = additional_costs
         .iter()
+        .filter_map(|cost| cost.effect_ref())
         .find_map(|effect| effect.downcast_ref::<crate::effects::TapEffect>())
         .expect("expected tap cost effect");
     let (inner, count) = match &tap.spec {
@@ -2277,8 +2279,9 @@ fn test_parse_reinforce_keyword_line_from_hand() {
     assert!(
         debug.contains("functional_zones: [hand]")
             && debug.contains("plusoneplusone")
-            && debug.contains("discardsourcecost"),
-        "expected reinforce to be a hand ability with discard-to-graveyard counter effect, got {debug}"
+            && debug.contains("discardeffect")
+            && debug.contains("source: true"),
+        "expected reinforce to be a hand ability with a source-discard cost and counter effect, got {debug}"
     );
 }
 
@@ -2735,10 +2738,10 @@ fn test_parse_flashback_keyword_line() {
                 .mana_cost()
                 .expect("flashback should include mana cost");
             assert_eq!(cost.to_oracle(), "{1}{U}");
-            let cost_effects = def.alternative_casts[0].cost_effects();
+            let costs = def.alternative_casts[0].non_mana_costs();
             assert!(
-                cost_effects.is_empty(),
-                "expected flashback test probe to have no extra cost effects, got {cost_effects:?}"
+                costs.is_empty(),
+                "expected flashback test probe to have no extra non-mana costs, got {costs:?}"
             );
         }
         other => panic!("expected flashback alternative cast, got {other:?}"),
@@ -2761,10 +2764,10 @@ fn test_parse_bestow_keyword_line() {
                 .mana_cost()
                 .expect("bestow should include mana cost");
             assert_eq!(cost.to_oracle(), "{3}{W}");
-            let cost_effects = def.alternative_casts[0].cost_effects();
+            let costs = def.alternative_casts[0].non_mana_costs();
             assert!(
-                cost_effects.is_empty(),
-                "expected mana-only bestow cost for probe, got {cost_effects:?}"
+                costs.is_empty(),
+                "expected mana-only bestow cost for probe, got {costs:?}"
             );
         }
         other => panic!("expected bestow alternative cast, got {other:?}"),
@@ -5663,7 +5666,10 @@ fn test_parse_cycling_pay_life_keeps_keyword_ability() {
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("MoveToZoneEffect") && debug.contains("DrawCardsEffect"),
+        debug.contains("LoseLifeEffect")
+            && debug.contains("DiscardEffect")
+            && debug.contains("EmitKeywordActionEffect")
+            && debug.contains("DrawCardsEffect"),
         "expected life-cycling to remain a discard+draw activated ability, got {debug}"
     );
 }
@@ -10474,7 +10480,7 @@ fn parse_alternative_cost_with_return_to_hand_segment() {
 }
 
 #[test]
-fn parse_alternative_cost_with_return_to_hand_segment_preserves_cost_effects() {
+fn parse_alternative_cost_with_return_to_hand_segment_preserves_non_mana_costs() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Borderpost Variant")
         .card_types(vec![CardType::Artifact])
         .parse_text(
@@ -10487,8 +10493,8 @@ fn parse_alternative_cost_with_return_to_hand_segment_preserves_cost_effects() {
         .first()
         .expect("expected parsed alternative cast");
     assert!(
-        alternative.uses_composed_cost_effects(),
-        "expected non-mana alternative cost effects to be preserved"
+        alternative.is_composed_cost(),
+        "expected non-mana alternative costs to be preserved"
     );
 
     let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();

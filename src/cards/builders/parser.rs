@@ -704,12 +704,11 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
             if !cost_tokens.is_empty()
                 && (starts_with_activation_cost(cost_tokens) || loyalty_shorthand_cost.is_some())
             {
-                let (mana_cost, cost_effects) = if let Some(cost) = &loyalty_shorthand_cost {
-                    (cost.clone(), Vec::new())
+                let mana_cost = if let Some(cost) = &loyalty_shorthand_cost {
+                    cost.clone()
                 } else {
                     parse_activation_cost(cost_tokens)?
                 };
-                let mana_cost = crate::ability::merge_cost_effects(mana_cost, cost_effects);
 
                 let prechoose_tokens = trim_commas(&tokens[colon_idx + 1..choose_idx]).to_vec();
                 let effect_sentences = if prechoose_tokens.is_empty() {

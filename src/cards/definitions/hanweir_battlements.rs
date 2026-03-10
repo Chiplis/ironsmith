@@ -3,6 +3,7 @@
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::cost::TotalCost;
+use crate::costs::Cost;
 use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -22,14 +23,14 @@ pub fn hanweir_battlements() -> CardDefinition {
 
     definition.abilities.push(Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
-            mana_cost: crate::ability::merge_cost_effects(
-                TotalCost::mana(ManaCost::from_pips(vec![
+            mana_cost: TotalCost::from_costs(vec![
+                Cost::mana(ManaCost::from_pips(vec![
                     vec![ManaSymbol::Generic(3)],
                     vec![ManaSymbol::Red],
                     vec![ManaSymbol::Red],
                 ])),
-                vec![Effect::tap_source()],
-            ),
+                Cost::tap(),
+            ]),
             effects: vec![Effect::hanweir_battlements_meld()],
             choices: vec![],
             timing: ActivationTiming::AnyTime,

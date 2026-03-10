@@ -9,7 +9,7 @@
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{EffectOutcome, EffectResult};
-use crate::effects::{CostValidationError, EffectExecutor};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::events::PermanentTappedEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -48,6 +48,10 @@ impl CrewCostEffect {
 }
 
 impl EffectExecutor for CrewCostEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -131,6 +135,15 @@ impl EffectExecutor for CrewCostEffect {
         })
     }
 
+    fn cost_description(&self) -> Option<String> {
+        Some(format!(
+            "Tap any number of untapped creatures you control with total power {} or more",
+            self.required_power
+        ))
+    }
+}
+
+impl CostExecutableEffect for CrewCostEffect {
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -152,12 +165,5 @@ impl EffectExecutor for CrewCostEffect {
                 "Not enough total power to crew".to_string(),
             ))
         }
-    }
-
-    fn cost_description(&self) -> Option<String> {
-        Some(format!(
-            "Tap any number of untapped creatures you control with total power {} or more",
-            self.required_power
-        ))
     }
 }

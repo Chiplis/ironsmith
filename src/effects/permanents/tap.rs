@@ -1,8 +1,8 @@
 //! Tap effect implementation.
 
 use crate::effect::{ChoiceCount, EffectOutcome};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::events::PermanentTappedEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -72,6 +72,10 @@ impl TapEffect {
 }
 
 impl EffectExecutor for TapEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -126,7 +130,20 @@ impl EffectExecutor for TapEffect {
     fn target_description(&self) -> &'static str {
         "permanent to tap"
     }
+    fn is_tap_source_cost(&self) -> bool {
+        matches!(self.spec, ChooseSpec::Source)
+    }
 
+    fn cost_description(&self) -> Option<String> {
+        if matches!(self.spec, ChooseSpec::Source) {
+            Some("{T}".to_string())
+        } else {
+            None
+        }
+    }
+}
+
+impl CostExecutableEffect for TapEffect {
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -165,10 +182,6 @@ impl EffectExecutor for TapEffect {
         }
 
         Ok(())
-    }
-
-    fn is_tap_source_cost(&self) -> bool {
-        matches!(self.spec, ChooseSpec::Source)
     }
 }
 

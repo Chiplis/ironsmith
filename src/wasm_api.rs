@@ -3305,7 +3305,7 @@ impl WasmGame {
         // can consistently represent without hitting unsupported cast branches.
         if !def.alternative_casts.is_empty()
             || !def.optional_costs.is_empty()
-            || !def.additional_cost_effects().is_empty()
+            || def.additional_cost.has_non_mana_costs()
             || def.max_saga_chapter.is_some()
             || def.name().contains("//")
         {

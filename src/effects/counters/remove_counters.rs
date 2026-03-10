@@ -1,8 +1,8 @@
 //! Remove counters effect implementation.
 
 use crate::effect::{EffectOutcome, EffectResult, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_single_object_from_spec, resolve_value};
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
@@ -58,6 +58,10 @@ impl RemoveCountersEffect {
 }
 
 impl EffectExecutor for RemoveCountersEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -93,6 +97,49 @@ impl EffectExecutor for RemoveCountersEffect {
 
     fn target_description(&self) -> &'static str {
         "target to remove counters from"
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        if matches!(self.target, ChooseSpec::Source)
+            && let Value::Fixed(count) = self.count
+        {
+            let label = self.counter_type.description();
+            return Some(if count == 1 {
+                format!("Remove a {label} counter from ~")
+            } else {
+                format!("Remove {} {label} counters from ~", count)
+            });
+        }
+        None
+    }
+}
+
+impl CostExecutableEffect for RemoveCountersEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        if !matches!(self.target, ChooseSpec::Source) {
+            return Err(crate::effects::CostValidationError::Other(
+                "remove-counters cost supports only source".to_string(),
+            ));
+        }
+        let count = match self.count {
+            Value::Fixed(count) => count.max(0) as u32,
+            _ => {
+                return Err(crate::effects::CostValidationError::Other(
+                    "dynamic remove-counters cost is unsupported".to_string(),
+                ));
+            }
+        };
+        if game.counter_count(source, self.counter_type) < count {
+            return Err(crate::effects::CostValidationError::Other(
+                "not enough counters".to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 

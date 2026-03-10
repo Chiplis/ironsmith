@@ -1,10 +1,10 @@
 //! Return to hand effect implementation.
 
 use crate::effect::{ChoiceCount, EffectOutcome, EffectResult};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
 };
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -119,6 +119,10 @@ impl ReturnToHandEffect {
 }
 
 impl EffectExecutor for ReturnToHandEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -180,5 +184,62 @@ impl EffectExecutor for ReturnToHandEffect {
 
     fn target_description(&self) -> &'static str {
         "permanent to return"
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        match self.spec.base() {
+            ChooseSpec::Source => Some("Return ~ to its owner's hand".to_string()),
+            ChooseSpec::Object(filter) => Some(format!(
+                "Return a {} you control to its owner's hand",
+                filter.description()
+            )),
+            _ => None,
+        }
+    }
+}
+
+impl CostExecutableEffect for ReturnToHandEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        match self.spec.base() {
+            ChooseSpec::Source => {
+                if game
+                    .object(source)
+                    .is_some_and(|obj| obj.zone == Zone::Battlefield)
+                {
+                    Ok(())
+                } else {
+                    Err(crate::effects::CostValidationError::Other(
+                        "source must be on the battlefield".to_string(),
+                    ))
+                }
+            }
+            ChooseSpec::Object(filter) => {
+                let filter_ctx = crate::filter::FilterContext::new(controller).with_source(source);
+                let available = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        game.object(*id)
+                            .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+                    })
+                    .count();
+                if available == 0 {
+                    Err(crate::effects::CostValidationError::Other(
+                        "no valid return target".to_string(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(crate::effects::CostValidationError::Other(
+                "unsupported return-to-hand cost".to_string(),
+            )),
+        }
     }
 }

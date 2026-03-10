@@ -3,6 +3,7 @@
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::cost::TotalCost;
+use crate::costs::Cost;
 use crate::effect::Effect;
 use crate::filter::ObjectFilter;
 use crate::ids::CardId;
@@ -19,10 +20,7 @@ pub fn junk_token_definition() -> CardDefinition {
     let exile_tag = crate::tag::TagKey::from("junk_exiled_card");
     let exile_and_play_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
-            mana_cost: crate::ability::merge_cost_effects(
-                TotalCost::free(),
-                vec![Effect::tap_source(), Effect::sacrifice_source()],
-            ),
+            mana_cost: TotalCost::from_costs(vec![Cost::tap(), Cost::sacrifice_self()]),
             effects: vec![
                 Effect::new(
                     crate::effects::ChooseObjectsEffect::new(

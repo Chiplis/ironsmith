@@ -1,9 +1,9 @@
 //! Mill effect implementation.
 
 use crate::effect::{EffectOutcome, EffectResult, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::zones::apply_zone_change;
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -48,6 +48,23 @@ impl MillEffect {
 }
 
 impl EffectExecutor for MillEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        if self.player == PlayerFilter::You
+            && let Value::Fixed(count) = self.count
+        {
+            return Some(if count == 1 {
+                "Mill a card".to_string()
+            } else {
+                format!("Mill {} cards", count)
+            });
+        }
+        None
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -106,6 +123,43 @@ impl EffectExecutor for MillEffect {
             return Ok(EffectOutcome::from_result(EffectResult::Prevented));
         }
         Ok(EffectOutcome::count(0))
+    }
+}
+
+impl CostExecutableEffect for MillEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        let player_id = match self.player {
+            PlayerFilter::You => controller,
+            PlayerFilter::Specific(id) => id,
+            _ => controller,
+        };
+        let count = match &self.count {
+            Value::Fixed(count) => (*count).max(0) as usize,
+            Value::X => {
+                return Err(crate::effects::CostValidationError::Other(
+                    "dynamic X mill costs are not supported".to_string(),
+                ));
+            }
+            _ => {
+                let ctx = crate::executor::ExecutionContext::new_default(source, controller);
+                crate::effects::helpers::resolve_value(game, &self.count, &ctx)
+                    .map_err(|err| crate::effects::CostValidationError::Other(format!("{err:?}")))?
+                    .max(0) as usize
+            }
+        };
+        let available = game.player(player_id).map_or(0, |p| p.library.len());
+        if available >= count {
+            Ok(())
+        } else {
+            Err(crate::effects::CostValidationError::Other(
+                "not enough cards in library to pay mill cost".to_string(),
+            ))
+        }
     }
 }
 

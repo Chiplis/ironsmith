@@ -237,21 +237,25 @@ impl std::fmt::Display for ActivationStage {
 pub enum ActivationCardCostChoice {
     /// Choose a card to discard from hand.
     Discard {
+        cost: crate::costs::Cost,
         card_types: Vec<CardType>,
         description: String,
     },
     /// Choose a card to exile from hand.
     ExileFromHand {
+        cost: crate::costs::Cost,
         color_filter: Option<crate::color::ColorSet>,
         description: String,
     },
     /// Choose a card to exile from graveyard.
     ExileFromGraveyard {
+        cost: crate::costs::Cost,
         card_type: Option<CardType>,
         description: String,
     },
     /// Choose an object in a specific zone to exile as a cost.
     ExileChosenObject {
+        cost: crate::costs::Cost,
         filter: ObjectFilter,
         zone: Zone,
         description: String,
@@ -259,11 +263,13 @@ pub enum ActivationCardCostChoice {
     },
     /// Choose a card to reveal from hand.
     RevealFromHand {
+        cost: crate::costs::Cost,
         card_type: Option<CardType>,
         description: String,
     },
     /// Choose a permanent to return to hand.
     ReturnToHand {
+        cost: crate::costs::Cost,
         filter: ObjectFilter,
         description: String,
         choice_tag: Option<crate::tag::TagKey>,
@@ -277,6 +283,7 @@ pub enum ActivationCostStep {
     Cost(crate::costs::Cost),
     /// A sacrifice choice that must be surfaced through SelectObjects.
     Sacrifice {
+        cost: crate::costs::Cost,
         filter: ObjectFilter,
         description: String,
         choice_tag: Option<crate::tag::TagKey>,
@@ -307,6 +314,7 @@ pub(super) fn choose_tagged_cost_step(
             && tagged_filter_matches(&sacrifice.filter, &choose.tag)
         {
             return Some(ActivationCostStep::Sacrifice {
+                cost: crate::costs::Cost::sacrifice(choose.filter.clone()),
                 filter: choose.filter.clone(),
                 description: crate::costs::CostProcessingMode::SacrificeTarget {
                     filter: choose.filter.clone(),
@@ -341,6 +349,24 @@ pub(super) fn choose_tagged_cost_step(
             ChooseSpec::Tagged(tag) if tag == &choose.tag => {
                 return Some(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::ExileChosenObject {
+                        cost: match zone {
+                            Zone::Hand => {
+                                crate::costs::Cost::exile_from_hand(1, choose.filter.colors)
+                            }
+                            Zone::Graveyard => crate::costs::Cost::exile_from_graveyard(
+                                1,
+                                if choose.filter.card_types.len() == 1 {
+                                    choose.filter.card_types.first().copied()
+                                } else {
+                                    None
+                                },
+                            ),
+                            _ => crate::costs::Cost::validated_effect(crate::effect::Effect::new(
+                                crate::effects::ExileEffect::with_spec(ChooseSpec::Object(
+                                    choose.filter.clone(),
+                                )),
+                            )),
+                        },
                         filter: choose.filter.clone(),
                         zone,
                         description,
@@ -351,6 +377,24 @@ pub(super) fn choose_tagged_cost_step(
             ChooseSpec::Object(filter) if tagged_filter_matches(filter, &choose.tag) => {
                 return Some(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::ExileChosenObject {
+                        cost: match zone {
+                            Zone::Hand => {
+                                crate::costs::Cost::exile_from_hand(1, choose.filter.colors)
+                            }
+                            Zone::Graveyard => crate::costs::Cost::exile_from_graveyard(
+                                1,
+                                if choose.filter.card_types.len() == 1 {
+                                    choose.filter.card_types.first().copied()
+                                } else {
+                                    None
+                                },
+                            ),
+                            _ => crate::costs::Cost::validated_effect(crate::effect::Effect::new(
+                                crate::effects::ExileEffect::with_spec(ChooseSpec::Object(
+                                    choose.filter.clone(),
+                                )),
+                            )),
+                        },
                         filter: choose.filter.clone(),
                         zone,
                         description,
@@ -368,6 +412,7 @@ pub(super) fn choose_tagged_cost_step(
         {
             return Some(ActivationCostStep::CardChoice(
                 ActivationCardCostChoice::ReturnToHand {
+                    cost: crate::costs::Cost::return_to_hand(choose.filter.clone()),
                     filter: choose.filter.clone(),
                     description: crate::costs::CostProcessingMode::ReturnToHandTarget {
                         filter: choose.filter.clone(),
@@ -380,6 +425,26 @@ pub(super) fn choose_tagged_cost_step(
     }
 
     None
+}
+
+fn single_choice_cost(cost: &crate::costs::Cost) -> crate::costs::Cost {
+    use crate::costs::CostProcessingMode;
+
+    match cost.processing_mode() {
+        CostProcessingMode::DiscardCards { card_types, .. } => {
+            crate::costs::Cost::discard_types(1, card_types)
+        }
+        CostProcessingMode::ExileFromHand { color_filter, .. } => {
+            crate::costs::Cost::exile_from_hand(1, color_filter)
+        }
+        CostProcessingMode::ExileFromGraveyard { card_type, .. } => {
+            crate::costs::Cost::exile_from_graveyard(1, card_type)
+        }
+        CostProcessingMode::RevealFromHand { card_type, .. } => {
+            crate::costs::Cost::reveal_from_hand(1, card_type)
+        }
+        _ => cost.clone(),
+    }
 }
 
 pub(crate) fn append_activation_cost_steps_from_components(
@@ -419,6 +484,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
         }
         CostProcessingMode::SacrificeTarget { filter } => {
             out.push(ActivationCostStep::Sacrifice {
+                cost: single_choice_cost(cost),
                 filter,
                 description,
                 choice_tag: None,
@@ -428,6 +494,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
             for _ in 0..count {
                 out.push(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::Discard {
+                        cost: single_choice_cost(cost),
                         card_types: card_types.clone(),
                         description: description.clone(),
                     },
@@ -441,6 +508,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
             for _ in 0..count {
                 out.push(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::ExileFromHand {
+                        cost: single_choice_cost(cost),
                         color_filter,
                         description: description.clone(),
                     },
@@ -451,6 +519,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
             for _ in 0..count {
                 out.push(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::ExileFromGraveyard {
+                        cost: single_choice_cost(cost),
                         card_type,
                         description: description.clone(),
                     },
@@ -461,6 +530,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
             for _ in 0..count {
                 out.push(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::RevealFromHand {
+                        cost: single_choice_cost(cost),
                         card_type,
                         description: description.clone(),
                     },
@@ -470,6 +540,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
         CostProcessingMode::ReturnToHandTarget { filter } => {
             out.push(ActivationCostStep::CardChoice(
                 ActivationCardCostChoice::ReturnToHand {
+                    cost: single_choice_cost(cost),
                     filter,
                     description,
                     choice_tag: None,

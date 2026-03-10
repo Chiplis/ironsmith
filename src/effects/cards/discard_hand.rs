@@ -1,8 +1,8 @@
 //! Discard hand effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
@@ -46,6 +46,10 @@ impl DiscardHandEffect {
 }
 
 impl EffectExecutor for DiscardHandEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -77,6 +81,37 @@ impl EffectExecutor for DiscardHandEffect {
         }
 
         Ok(EffectOutcome::count(count as i32))
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        Some("Discard your hand".to_string())
+    }
+}
+
+impl CostExecutableEffect for DiscardHandEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        _source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        let player = match self.player {
+            PlayerFilter::You => controller,
+            PlayerFilter::Specific(id) => id,
+            _ => {
+                return Err(crate::effects::CostValidationError::Other(
+                    "discard-hand cost supports only 'you' or a specific player".to_string(),
+                ));
+            }
+        };
+
+        if game.player(player).is_some() {
+            Ok(())
+        } else {
+            Err(crate::effects::CostValidationError::Other(
+                "player not found".to_string(),
+            ))
+        }
     }
 }
 

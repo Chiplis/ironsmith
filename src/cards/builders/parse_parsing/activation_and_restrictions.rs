@@ -20,8 +20,7 @@ use crate::cards::builders::parse_parsing::keyword_static::{
     parse_dynamic_cost_modifier_value,
 };
 use crate::cards::builders::parse_parsing::lex::{
-    alternative_cast_parts_from_total_cost, is_basic_color_word, join_sentences_with_period,
-    split_cost_segments, split_on_and,
+    is_basic_color_word, join_sentences_with_period, split_cost_segments, split_on_and,
 };
 use crate::cards::builders::parse_parsing::object_filters::is_comparison_or_delimiter;
 use crate::cards::builders::parse_parsing::primitives::{
@@ -151,12 +150,11 @@ pub(crate) fn parse_activated_line_with_raw(
                 | ["target", "player", "adds", ..]
         );
         if is_primary_add_clause {
-            let (mana_cost, cost_effects) = if let Some(cost) = &loyalty_shorthand_cost {
-                (cost.clone(), Vec::new())
+            let mana_cost = if let Some(cost) = &loyalty_shorthand_cost {
+                cost.clone()
             } else {
                 parse_activation_cost(cost_tokens)?
             };
-            let mana_cost = crate::ability::merge_cost_effects(mana_cost, cost_effects);
             let reference_imports = first_sacrifice_cost_choice_tag(&mana_cost)
                 .or_else(|| last_exile_cost_choice_tag(&mana_cost))
                 .map(ReferenceImports::with_last_object_tag)
@@ -369,8 +367,8 @@ pub(crate) fn parse_activated_line_with_raw(
     }
 
     // Generic activated ability: parse costs and effects from "<costs>: <effects>"
-    let (mana_cost, cost_effects) = if let Some(cost) = &loyalty_shorthand_cost {
-        (cost.clone(), Vec::new())
+    let mana_cost = if let Some(cost) = &loyalty_shorthand_cost {
+        cost.clone()
     } else {
         parse_activation_cost(cost_tokens)?
     };
@@ -383,7 +381,6 @@ pub(crate) fn parse_activated_line_with_raw(
         .or_else(|| last_exile_cost_choice_tag(&mana_cost))
         .map(ReferenceImports::with_last_object_tag)
         .unwrap_or_default();
-    let mana_cost = crate::ability::merge_cost_effects(mana_cost, cost_effects);
     if loyalty_shorthand_cost.is_some() {
         timing = ActivationTiming::SorcerySpeed;
         for restriction in loyalty_additional_restrictions(true) {
@@ -919,21 +916,17 @@ pub(crate) fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbilit
         )));
     }
 
-    let (base_cost, cost_effects) = parse_activation_cost(first_cost_tokens)?;
-    let mut full_cost_effects = cost_effects;
-    // Cycling is an activated ability from hand whose cost includes discarding this card.
-    // Model this as a source-zone-change cost so the correct zone-change events fire.
-    full_cost_effects.push(Effect::move_to_zone(
-        ChooseSpec::Source,
-        Zone::Graveyard,
-        false,
-    ));
-    // Emit a keyword-action event so "When you cycle this card" triggers can observe it.
-    full_cost_effects.push(Effect::emit_keyword_action(
-        crate::events::KeywordActionKind::Cycle,
-        1,
-    ));
-    let mana_cost = crate::ability::merge_cost_effects(base_cost.clone(), full_cost_effects);
+    let base_cost = parse_activation_cost(first_cost_tokens)?;
+    let mut merged_costs = base_cost.costs().to_vec();
+    merged_costs.push(crate::costs::Cost::discard_source());
+    merged_costs.push(
+        crate::costs::Cost::try_from_runtime_effect(Effect::emit_keyword_action(
+            crate::events::KeywordActionKind::Cycle,
+            1,
+        ))
+        .map_err(CardTextError::ParseError)?,
+    );
+    let mana_cost = crate::cost::TotalCost::from_costs(merged_costs);
 
     let mut search_filter = parse_cycling_search_filter(first_keyword_tokens)?;
     for (keyword_tokens, _) in cycling_groups.iter().skip(1) {
@@ -1022,14 +1015,10 @@ pub(crate) fn parse_transmute_line(
     }
 
     let cost_tokens = &tokens[1..consumed];
-    let (base_cost, cost_effects) = parse_activation_cost(cost_tokens)?;
-    let mut full_cost_effects = cost_effects;
-    full_cost_effects.push(Effect::move_to_zone(
-        ChooseSpec::Source,
-        Zone::Graveyard,
-        false,
-    ));
-    let mana_cost = crate::ability::merge_cost_effects(base_cost.clone(), full_cost_effects);
+    let base_cost = parse_activation_cost(cost_tokens)?;
+    let mut merged_costs = base_cost.costs().to_vec();
+    merged_costs.push(crate::costs::Cost::discard_source());
+    let mana_cost = crate::cost::TotalCost::from_costs(merged_costs);
 
     let mut parsed_mana_value: Option<u32> = None;
     for idx in 0..tokens.len().saturating_sub(2) {
@@ -1158,9 +1147,8 @@ pub(crate) fn parse_reinforce_line(
     }
 
     let cost_tokens = &tokens[cost_start..cost_end];
-    let (base_cost, cost_effects) = parse_activation_cost(cost_tokens)?;
+    let base_cost = parse_activation_cost(cost_tokens)?;
     let mut merged_costs = base_cost.costs().to_vec();
-    merged_costs.extend(cost_effects.into_iter().map(crate::costs::Cost::effect));
     merged_costs.push(crate::costs::Cost::discard_source());
     let mana_cost = crate::cost::TotalCost::from_costs(merged_costs);
 
@@ -1327,7 +1315,7 @@ pub(crate) fn parse_cycling_keyword_group_text(tokens: &[Token]) -> Option<Strin
         } else {
             parse_activation_cost(&cost_tokens)
                 .ok()
-                .and_then(|(total_cost, _)| total_cost.mana_cost().map(|cost| cost.to_oracle()))
+                .and_then(|total_cost| total_cost.mana_cost().map(|cost| cost.to_oracle()))
                 .unwrap_or_else(|| cost_words.join(" "))
         };
         parts.push(format!("{keyword} {cost}"));
@@ -1376,12 +1364,7 @@ pub(crate) fn parse_madness_line(
         ));
     }
 
-    let (total_cost, cost_effects) = parse_activation_cost(&tokens[cost_start..cost_end])?;
-    if !cost_effects.is_empty() {
-        return Err(CardTextError::ParseError(
-            "madness keyword only supports mana cost".to_string(),
-        ));
-    }
+    let total_cost = parse_activation_cost(&tokens[cost_start..cost_end])?;
     let mana_cost = total_cost.mana_cost().cloned().ok_or_else(|| {
         CardTextError::ParseError("madness keyword missing mana symbols".to_string())
     })?;
@@ -1423,8 +1406,7 @@ pub(crate) fn parse_buyback_line(tokens: &[Token]) -> Result<Option<OptionalCost
         ));
     }
 
-    let (total_cost, cost_effects) = parse_activation_cost(&cost_tokens)?;
-    let total_cost = crate::ability::merge_cost_effects(total_cost, cost_effects);
+    let total_cost = parse_activation_cost(&cost_tokens)?;
     Ok(Some(OptionalCost::buyback(total_cost)))
 }
 
@@ -1468,8 +1450,7 @@ pub(crate) fn parse_optional_cost_keyword_line(
         )));
     }
 
-    let (total_cost, cost_effects) = parse_activation_cost(&cost_tokens)?;
-    let total_cost = crate::ability::merge_cost_effects(total_cost, cost_effects);
+    let total_cost = parse_activation_cost(&cost_tokens)?;
     Ok(Some(constructor(total_cost)))
 }
 
@@ -1573,12 +1554,7 @@ pub(crate) fn parse_escape_line(
         ));
     }
 
-    let (total_cost, cost_effects) = parse_activation_cost(&tokens[cost_start..comma_idx])?;
-    if !cost_effects.is_empty() {
-        return Err(CardTextError::ParseError(
-            "escape keyword only supports mana cost".to_string(),
-        ));
-    }
+    let total_cost = parse_activation_cost(&tokens[cost_start..comma_idx])?;
     let mana_cost = total_cost.mana_cost().cloned().ok_or_else(|| {
         CardTextError::ParseError("escape keyword missing mana symbols".to_string())
     })?;
@@ -1776,8 +1752,7 @@ pub(crate) fn parse_equip_line(tokens: &[Token]) -> Result<Option<ParsedAbility>
                 "equip missing activation cost".to_string(),
             ));
         }
-        let (total_cost, cost_effects) = parse_activation_cost(&cost_tokens)?;
-        let total_cost = crate::ability::merge_cost_effects(total_cost, cost_effects);
+        let total_cost = parse_activation_cost(&cost_tokens)?;
         let tail_words = words(&cost_tokens);
         if tail_words.is_empty() {
             return Err(CardTextError::ParseError(
@@ -1857,11 +1832,8 @@ pub(crate) fn parse_equip_line(tokens: &[Token]) -> Result<Option<ParsedAbility>
     }))
 }
 
-pub(crate) fn parse_activation_cost(
-    tokens: &[Token],
-) -> Result<(TotalCost, Vec<Effect>), CardTextError> {
+pub(crate) fn parse_activation_cost(tokens: &[Token]) -> Result<TotalCost, CardTextError> {
     let mut mana_pips: Vec<Vec<ManaSymbol>> = Vec::new();
-    let cost_effects = Vec::new();
     let mut explicit_costs = Vec::new();
     let mut energy_count: u32 = 0;
     let mut sac_tag_id = 0u32;
@@ -1872,9 +1844,9 @@ pub(crate) fn parse_activation_cost(
     if let Some((left, right)) = parse_shard_style_mana_or_tap_cost(tokens) {
         let costs = vec![
             crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![left, right]])),
-            crate::costs::Cost::effect(Effect::tap_source()),
+            crate::costs::Cost::tap(),
         ];
-        return Ok((TotalCost::from_costs(costs), cost_effects));
+        return Ok(TotalCost::from_costs(costs));
     }
 
     for raw_segment in split_cost_segments(tokens) {
@@ -1899,7 +1871,7 @@ pub(crate) fn parse_activation_cost(
 
         if segment_words[0] == "tap" || segment_words[0] == "t" {
             if segment_words.len() == 1 {
-                explicit_costs.push(crate::costs::Cost::effect(Effect::tap_source()));
+                explicit_costs.push(crate::costs::Cost::tap());
                 continue;
             }
 
@@ -1944,15 +1916,12 @@ pub(crate) fn parse_activation_cost(
 
             let tag = format!("tap_cost_{tap_tag_id}");
             tap_tag_id += 1;
-            explicit_costs.push(crate::costs::Cost::effect(Effect::choose_objects(
-                filter,
-                count as usize,
-                PlayerFilter::You,
-                tag.clone(),
+            explicit_costs.push(crate::costs::Cost::validated_effect(
+                Effect::choose_objects(filter, count as usize, PlayerFilter::You, tag.clone()),
+            ));
+            explicit_costs.push(crate::costs::Cost::validated_effect(Effect::tap(
+                ChooseSpec::tagged(tag),
             )));
-            explicit_costs.push(crate::costs::Cost::effect(Effect::tap(ChooseSpec::tagged(
-                tag,
-            ))));
             continue;
         }
 
@@ -1970,8 +1939,18 @@ pub(crate) fn parse_activation_cost(
                     && let Some((per_card, used)) = parse_number(&segment[1..])
                     && used == 1
                 {
-                    explicit_costs.push(crate::costs::Cost::new(
-                        crate::costs::LifePerCardInHandCost::new(per_card),
+                    let mut amount =
+                        crate::effect::Value::CardsInHand(crate::target::PlayerFilter::You);
+                    for _ in 1..per_card {
+                        amount = crate::effect::Value::Add(
+                            Box::new(amount),
+                            Box::new(crate::effect::Value::CardsInHand(
+                                crate::target::PlayerFilter::You,
+                            )),
+                        );
+                    }
+                    explicit_costs.push(crate::costs::Cost::validated_effect(
+                        crate::effect::Effect::lose_life(amount),
                     ));
                     continue;
                 }
@@ -2041,7 +2020,9 @@ pub(crate) fn parse_activation_cost(
                 )));
             }
 
-            explicit_costs.push(crate::costs::Cost::effect(Effect::behold(subtype, count)));
+            explicit_costs.push(crate::costs::Cost::validated_effect(Effect::behold(
+                subtype, count,
+            )));
             continue;
         }
 
@@ -2057,7 +2038,7 @@ pub(crate) fn parse_activation_cost(
                         segment_words.join(" ")
                     )));
                 }
-                explicit_costs.push(crate::costs::Cost::effect(Effect::discard_hand()));
+                explicit_costs.push(crate::costs::Cost::validated_effect(Effect::discard_hand()));
                 continue;
             }
             if after_discard_words.starts_with(&["this", "card"]) {
@@ -2142,12 +2123,14 @@ pub(crate) fn parse_activation_cost(
                         ..Default::default()
                     })
                 };
-                explicit_costs.push(crate::costs::Cost::effect(Effect::discard_player_filtered(
-                    Value::Fixed(count as i32),
-                    PlayerFilter::You,
-                    true,
-                    card_filter,
-                )));
+                explicit_costs.push(crate::costs::Cost::validated_effect(
+                    Effect::discard_player_filtered(
+                        Value::Fixed(count as i32),
+                        PlayerFilter::You,
+                        true,
+                        card_filter,
+                    ),
+                ));
             } else if card_types.len() > 1 {
                 explicit_costs.push(crate::costs::Cost::discard_types(count, card_types));
             } else if let Some(card_type) = card_types.first().copied() {
@@ -2181,13 +2164,15 @@ pub(crate) fn parse_activation_cost(
                 )));
             }
 
-            explicit_costs.push(crate::costs::Cost::effect(Effect::mill(count)));
+            explicit_costs.push(crate::costs::Cost::validated_effect(Effect::mill(count)));
             continue;
         }
 
         if segment_words[0] == "sacrifice" {
             if segment_words.get(1).copied() == Some("this") {
-                explicit_costs.push(crate::costs::Cost::effect(Effect::sacrifice_source()));
+                explicit_costs.push(crate::costs::Cost::validated_effect(
+                    Effect::sacrifice_source(),
+                ));
                 continue;
             }
             let mut idx = 1;
@@ -2230,13 +2215,10 @@ pub(crate) fn parse_activation_cost(
             }
             let tag = format!("sacrifice_cost_{sac_tag_id}");
             sac_tag_id += 1;
-            explicit_costs.push(crate::costs::Cost::effect(Effect::choose_objects(
-                filter,
-                choose_count,
-                PlayerFilter::You,
-                tag.clone(),
-            )));
-            explicit_costs.push(crate::costs::Cost::effect(Effect::sacrifice(
+            explicit_costs.push(crate::costs::Cost::validated_effect(
+                Effect::choose_objects(filter, choose_count, PlayerFilter::You, tag.clone()),
+            ));
+            explicit_costs.push(crate::costs::Cost::validated_effect(Effect::sacrifice(
                 ObjectFilter::tagged(tag),
                 count_value,
             )));
@@ -2271,11 +2253,11 @@ pub(crate) fn parse_activation_cost(
                 // "Exile this card from your hand" = exile source (Simian Spirit Guide)
                 // "Exile a [color] card from your hand" = choose and exile another card (Force of Will)
                 if contains_source_from_your_hand_phrase(&segment_words) {
-                    explicit_costs.push(crate::costs::Cost::effect(Effect::exile(
+                    explicit_costs.push(crate::costs::Cost::validated_effect(Effect::exile(
                         ChooseSpec::Source,
                     )));
                 } else {
-                    explicit_costs.push(crate::costs::Cost::effect(
+                    explicit_costs.push(crate::costs::Cost::validated_effect(
                         Effect::exile_from_hand_as_cost(count, color_filter),
                     ));
                 }
@@ -2346,7 +2328,7 @@ pub(crate) fn parse_activation_cost(
             if is_source_reference_words(&filter_words)
                 || is_source_from_your_graveyard_words(&filter_words)
             {
-                explicit_costs.push(crate::costs::Cost::effect(Effect::exile(
+                explicit_costs.push(crate::costs::Cost::validated_effect(Effect::exile(
                     ChooseSpec::Source,
                 )));
                 continue;
@@ -2387,8 +2369,10 @@ pub(crate) fn parse_activation_cost(
             if top_only {
                 choose_effect = choose_effect.top_only();
             }
-            explicit_costs.push(crate::costs::Cost::effect(Effect::new(choose_effect)));
-            explicit_costs.push(crate::costs::Cost::effect(Effect::exile(
+            explicit_costs.push(crate::costs::Cost::validated_effect(Effect::new(
+                choose_effect,
+            )));
+            explicit_costs.push(crate::costs::Cost::validated_effect(Effect::exile(
                 ChooseSpec::tagged(tag),
             )));
             continue;
@@ -2576,15 +2560,12 @@ pub(crate) fn parse_activation_cost(
 
             let tag = format!("return_cost_{return_tag_id}");
             return_tag_id += 1;
-            explicit_costs.push(crate::costs::Cost::effect(Effect::choose_objects(
-                filter,
-                count as usize,
-                PlayerFilter::You,
-                tag.clone(),
-            )));
-            explicit_costs.push(crate::costs::Cost::effect(Effect::return_to_hand(
-                ObjectFilter::tagged(tag),
-            )));
+            explicit_costs.push(crate::costs::Cost::validated_effect(
+                Effect::choose_objects(filter, count as usize, PlayerFilter::You, tag.clone()),
+            ));
+            explicit_costs.push(crate::costs::Cost::validated_effect(
+                Effect::return_to_hand(ObjectFilter::tagged(tag)),
+            ));
             continue;
         }
 
@@ -2630,7 +2611,7 @@ pub(crate) fn parse_activation_cost(
         TotalCost::from_costs(costs)
     };
 
-    Ok((total_cost, cost_effects))
+    Ok(total_cost)
 }
 
 fn parse_shard_style_mana_or_tap_cost(tokens: &[Token]) -> Option<(ManaSymbol, ManaSymbol)> {
@@ -5936,8 +5917,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
             && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
         {
             return Some(KeywordAction::Echo {
-                mana_cost: Some(cost),
-                cost_effects: Vec::new(),
+                total_cost: crate::cost::TotalCost::mana(cost),
                 text: format!("Echo {cost_text}"),
             });
         }
@@ -5956,11 +5936,10 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         let cost_tokens = trim_commas(&tokens[1..reminder_start]).to_vec();
 
         if !cost_tokens.is_empty()
-            && let Ok((total_cost, _)) = parse_activation_cost(&cost_tokens)
+            && let Ok(total_cost) = parse_activation_cost(&cost_tokens)
         {
-            let (mana_cost, cost_effects) = alternative_cast_parts_from_total_cost(&total_cost);
-            let text = if let Some(cost) = mana_cost.as_ref()
-                && cost_effects.is_empty()
+            let text = if let Some(cost) = total_cost.mana_cost()
+                && !total_cost.has_non_mana_costs()
             {
                 format!("Echo {}", cost.to_oracle())
             } else {
@@ -5981,8 +5960,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
                 }
             };
             return Some(KeywordAction::Echo {
-                mana_cost,
-                cost_effects,
+                total_cost,
                 text,
             });
         }
@@ -9165,14 +9143,32 @@ pub(crate) fn parse_spell_activity_trigger(
                 }
                 Some(filter)
             };
+            let compact_words = filter_words
+                .iter()
+                .copied()
+                .filter(|word| !is_article(word))
+                .collect::<Vec<_>>();
+            if compact_words
+                .last()
+                .is_some_and(|last| *last == "spell" || *last == "spells")
+            {
+                let mut qualifier_words = compact_words.clone();
+                qualifier_words.pop();
+                let qualifier_words = qualifier_words
+                    .into_iter()
+                    .filter(|word| *word != "or" && *word != "and")
+                    .collect::<Vec<_>>();
+                if matches!(
+                    qualifier_words.as_slice(),
+                    ["of", "the", "chosen", "color"] | ["of", "chosen", "color"]
+                ) {
+                    return Ok(Some(ObjectFilter::spell().of_chosen_color()));
+                }
+            }
             match parse_object_filter(filter_tokens, false) {
                 Ok(filter) => Ok(Some(filter)),
                 Err(err) => {
-                    let mut compact_words = filter_words
-                        .iter()
-                        .copied()
-                        .filter(|word| !is_article(word))
-                        .collect::<Vec<_>>();
+                    let mut compact_words = compact_words;
                     if compact_words
                         .last()
                         .is_some_and(|last| *last == "spell" || *last == "spells")

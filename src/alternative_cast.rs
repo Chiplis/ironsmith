@@ -7,77 +7,19 @@
 //! - What happens after the spell resolves (usually exile)
 
 use crate::cost::TotalCost;
-use crate::effect::Effect;
 use crate::mana::ManaCost;
 use crate::zone::Zone;
 
-fn cost_component_to_effect(component: &crate::costs::Cost) -> Option<Effect> {
-    if let Some(effect) = component.effect_ref() {
-        return Some(effect.clone());
-    }
-    if let Some(amount) = component.life_amount() {
-        return Some(Effect::pay_life(amount));
-    }
-    if let Some((count, color_filter)) = component.exile_from_hand_details() {
-        return Some(Effect::exile_from_hand_as_cost(count, color_filter));
-    }
-    if component.is_sacrifice_self() {
-        return Some(Effect::sacrifice_source());
-    }
-    if component.requires_tap() {
-        return Some(Effect::tap_source());
-    }
-    if component.is_discard() {
-        let (count, card_types) = match component.processing_mode() {
-            crate::costs::CostProcessingMode::DiscardCards { count, card_types } => {
-                (count, card_types)
-            }
-            _ => {
-                let (count, card_type) = component.discard_details().unwrap_or((1, None));
-                (count, card_type.into_iter().collect())
-            }
-        };
-        let card_filter = if card_types.is_empty() {
-            None
-        } else {
-            Some(crate::filter::ObjectFilter {
-                card_types,
-                ..Default::default()
-            })
-        };
-        return Some(Effect::discard_player_filtered(
-            crate::effect::Value::Fixed(count as i32),
-            crate::target::PlayerFilter::You,
-            false,
-            card_filter,
-        ));
-    }
-    None
-}
-
-fn effect_cost_component(effect: Effect) -> crate::costs::Cost {
-    if let Some(amount) = effect.0.pay_life_amount() {
-        return crate::costs::Cost::life(amount);
-    }
-    if let Some((count, color_filter)) = effect.0.exile_from_hand_cost_info() {
-        return crate::costs::Cost::exile_from_hand(count, color_filter);
-    }
-    if effect.0.is_sacrifice_source_cost() {
-        return crate::costs::Cost::sacrifice_self();
-    }
-    if effect.0.is_tap_source_cost() {
-        return crate::costs::Cost::tap();
-    }
-    crate::costs::Cost::effect(effect)
-}
-
-fn compose_total_cost(mana_cost: Option<ManaCost>, cost_effects: Vec<Effect>) -> TotalCost {
+fn compose_total_cost(
+    mana_cost: Option<ManaCost>,
+    additional_costs: Vec<crate::costs::Cost>,
+) -> TotalCost {
     let mut components = if let Some(mana_cost) = mana_cost {
         vec![crate::costs::Cost::mana(mana_cost)]
     } else {
         Vec::new()
     };
-    components.extend(cost_effects.into_iter().map(effect_cost_component));
+    components.extend(additional_costs);
     TotalCost::from_costs(components)
 }
 
@@ -203,22 +145,16 @@ impl AlternativeCastingMethod {
         }
     }
 
-    /// Returns the cost effects for this alternative casting method.
-    /// These are non-mana costs that execute through the effect system.
-    pub fn cost_effects(&self) -> Vec<Effect> {
-        fn effect_components(total_cost: &TotalCost) -> Vec<Effect> {
-            total_cost
-                .costs()
-                .iter()
-                .filter(|component| component.mana_cost_ref().is_none())
-                .filter_map(cost_component_to_effect)
-                .collect()
+    /// Returns the non-mana cost components for this alternative casting method.
+    pub fn non_mana_costs(&self) -> Vec<crate::costs::Cost> {
+        fn non_mana_components(total_cost: &TotalCost) -> Vec<crate::costs::Cost> {
+            total_cost.non_mana_costs().cloned().collect()
         }
 
         match self {
-            Self::Flashback { total_cost } => effect_components(total_cost),
-            Self::Composed { total_cost, .. } => effect_components(total_cost),
-            Self::Bestow { total_cost } => effect_components(total_cost),
+            Self::Flashback { total_cost } => non_mana_components(total_cost),
+            Self::Composed { total_cost, .. } => non_mana_components(total_cost),
+            Self::Bestow { total_cost } => non_mana_components(total_cost),
             _ => Vec::new(),
         }
     }
@@ -260,19 +196,14 @@ impl AlternativeCastingMethod {
 
     /// Returns the exile from hand requirements, if any.
     ///
-    /// This checks the cost_effects for ExileFromHandAsCostEffect and returns
-    /// the (count, color_filter) if found.
+    /// This checks the cost effects for a hand-exile requirement and returns
+    /// the `(count, color_filter)` if found.
     pub fn exile_from_hand_requirement(&self) -> Option<(u32, Option<crate::color::ColorSet>)> {
         if let Some(total_cost) = self.total_cost() {
-            for component in total_cost.costs() {
+            for component in total_cost.non_mana_costs() {
                 if let Some(info) = component.exile_from_hand_details() {
                     return Some(info);
                 }
-            }
-        }
-        for effect in self.cost_effects() {
-            if let Some(info) = effect.0.exile_from_hand_cost_info() {
-                return Some(info);
             }
         }
         None
@@ -314,15 +245,15 @@ impl AlternativeCastingMethod {
     /// # Arguments
     /// * `name` - Display name for the method
     /// * `mana_cost` - Mana portion of the cost (None for no mana)
-    /// * `cost_effects` - Non-mana cost effects (pay life, exile cards, etc.)
+    /// * `additional_costs` - Non-mana cost components (pay life, exile cards, etc.)
     pub fn alternative_cost(
         name: &'static str,
         mana_cost: Option<ManaCost>,
-        cost_effects: Vec<Effect>,
+        additional_costs: Vec<crate::costs::Cost>,
     ) -> Self {
         Self::Composed {
             name,
-            total_cost: compose_total_cost(mana_cost, cost_effects),
+            total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: None,
         }
     }
@@ -331,12 +262,12 @@ impl AlternativeCastingMethod {
     pub fn alternative_cost_with_condition(
         name: &'static str,
         mana_cost: Option<ManaCost>,
-        cost_effects: Vec<Effect>,
+        additional_costs: Vec<crate::costs::Cost>,
         condition: crate::static_abilities::ThisSpellCostCondition,
     ) -> Self {
         Self::Composed {
             name,
-            total_cost: compose_total_cost(mana_cost, cost_effects),
+            total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: Some(condition),
         }
     }
@@ -365,8 +296,8 @@ impl AlternativeCastingMethod {
         }
     }
 
-    /// Returns true if this method is paid through composed non-mana cost effects.
-    pub fn uses_composed_cost_effects(&self) -> bool {
+    /// Returns true if this method is a composed alternative cost.
+    pub fn is_composed_cost(&self) -> bool {
         matches!(self, Self::Composed { .. })
     }
 
@@ -532,24 +463,23 @@ mod tests {
     #[test]
     fn test_composed_alternative_properties() {
         use crate::color::{Color, ColorSet};
-        use crate::effect::Effect;
 
         // Force of Will style: pay 1 life, exile a blue card
-        let cost_effects = vec![
-            Effect::pay_life(1),
-            Effect::exile_from_hand_as_cost(1, Some(ColorSet::from(Color::Blue))),
+        let costs = vec![
+            crate::costs::Cost::life(1),
+            crate::costs::Cost::exile_from_hand(1, Some(ColorSet::from(Color::Blue))),
         ];
 
         let alternative = AlternativeCastingMethod::alternative_cost(
             "Force of Will",
             None, // No mana cost
-            cost_effects,
+            costs,
         );
 
         assert_eq!(alternative.cast_from_zone(), Zone::Hand);
         assert!(!alternative.exiles_after_resolution());
         assert!(alternative.mana_cost().is_none()); // No mana cost for FoW alternative
-        assert_eq!(alternative.cost_effects().len(), 2);
+        assert_eq!(alternative.non_mana_costs().len(), 2);
         assert_eq!(alternative.name(), "Force of Will");
     }
 }

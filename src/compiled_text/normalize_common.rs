@@ -4378,6 +4378,13 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
         return describe_card_count(value);
     };
 
+    if filter.source {
+        return match value {
+            Value::Fixed(1) => "this card".to_string(),
+            _ => describe_card_count(value),
+        };
+    }
+
     if !filter.tagged_constraints.is_empty() {
         return match value {
             Value::Fixed(1) => "that card".to_string(),

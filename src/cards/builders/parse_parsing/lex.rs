@@ -6,7 +6,7 @@ use crate::cards::builders::{
     parse_must_block_if_able_clause, parse_prevent_all_damage_clause,
     parse_prevent_next_damage_clause, parse_single_word_keyword_action, trim_commas,
 };
-use crate::{Effect, ManaCost, ManaSymbol, ObjectFilter, PlayerFilter, Value};
+use crate::ManaSymbol;
 
 pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
     let mut tokens = Vec::new();
@@ -1459,77 +1459,6 @@ pub(crate) fn split_cost_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
     }
 
     segments
-}
-
-pub(crate) fn alternative_cast_parts_from_total_cost(
-    total_cost: &crate::cost::TotalCost,
-) -> (Option<ManaCost>, Vec<Effect>) {
-    let mut mana_cost: Option<ManaCost> = None;
-    let mut cost_effects = Vec::new();
-
-    for cost in total_cost.costs() {
-        if let Some(mana) = cost.mana_cost_ref() {
-            if mana_cost.is_none() {
-                mana_cost = Some(mana.clone());
-            }
-            continue;
-        }
-        if let Some(effect) = cost.effect_ref() {
-            cost_effects.push(effect.clone());
-            continue;
-        }
-        if cost.is_life_cost() {
-            if let Some(amount) = cost.life_amount() {
-                cost_effects.push(Effect::pay_life(amount));
-            }
-            continue;
-        }
-        if cost.is_discard() {
-            let (count, card_types) = match cost.processing_mode() {
-                crate::costs::CostProcessingMode::DiscardCards { count, card_types } => {
-                    (count, card_types)
-                }
-                _ => {
-                    let (count, card_type) = cost.discard_details().unwrap_or((1, None));
-                    (count, card_type.into_iter().collect())
-                }
-            };
-            let card_filter = if card_types.is_empty() {
-                None
-            } else {
-                Some(ObjectFilter {
-                    card_types,
-                    ..Default::default()
-                })
-            };
-            cost_effects.push(Effect::discard_player_filtered(
-                Value::Fixed(count as i32),
-                PlayerFilter::You,
-                false,
-                card_filter,
-            ));
-            continue;
-        }
-        if cost.is_exile_from_hand() {
-            if let Some((count, color_filter)) = cost.exile_from_hand_details() {
-                cost_effects.push(Effect::exile_from_hand_as_cost(count, color_filter));
-            }
-            continue;
-        }
-        if cost.is_sacrifice_self() {
-            cost_effects.push(Effect::sacrifice_source());
-            continue;
-        }
-    }
-
-    (
-        mana_cost,
-        normalize_alternative_cast_cost_effects(cost_effects),
-    )
-}
-
-pub(crate) fn normalize_alternative_cast_cost_effects(cost_effects: Vec<Effect>) -> Vec<Effect> {
-    crate::cards::builders::normalize_alternative_cast_cost_effects_runtime(cost_effects)
 }
 
 pub(crate) fn parse_mana_output_options_tokens(

@@ -143,17 +143,17 @@ pub(super) fn format_mana_cost_simple(cost: &crate::mana::ManaCost) -> String {
     }
 }
 
-pub(super) fn cost_effects_for_casting_method(
+pub(super) fn non_mana_costs_for_casting_method(
     game: &GameState,
     caster: PlayerId,
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
-) -> Vec<Effect> {
+) -> Vec<crate::costs::Cost> {
     match casting_method {
         CastingMethod::Alternative(idx) => spell
             .alternative_casts
             .get(*idx)
-            .map(|method| method.cost_effects())
+            .map(|method| method.non_mana_costs())
             .unwrap_or_default(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -161,15 +161,19 @@ pub(super) fn cost_effects_for_casting_method(
             ..
         } => {
             crate::decision::resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
-                .map(|method| method.cost_effects())
+                .map(|method| method.non_mana_costs())
                 .unwrap_or_default()
         }
         _ => Vec::new(),
     }
 }
 
-pub(super) fn effect_references_x_for_cost(effect: &Effect) -> bool {
+pub(super) fn cost_references_x(cost: &crate::costs::Cost) -> bool {
     use crate::effect::Value;
+
+    let Some(effect) = cost.effect_ref() else {
+        return false;
+    };
 
     if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
         return sacrifice.count == Value::X;
@@ -181,11 +185,11 @@ pub(super) fn effect_references_x_for_cost(effect: &Effect) -> bool {
     false
 }
 
-pub(super) fn max_x_from_cost_effects(
+pub(super) fn max_x_from_non_mana_costs(
     game: &GameState,
     caster: PlayerId,
     source: ObjectId,
-    effects: &[Effect],
+    costs: &[crate::costs::Cost],
 ) -> Option<u32> {
     use crate::effect::Value;
     use crate::effects::helpers::resolve_player_filter;
@@ -196,7 +200,10 @@ pub(super) fn max_x_from_cost_effects(
 
     let mut max_x: Option<u32> = None;
 
-    for effect in effects {
+    for cost in costs {
+        let Some(effect) = cost.effect_ref() else {
+            continue;
+        };
         if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
             if sacrifice.count != Value::X {
                 continue;
@@ -316,11 +323,11 @@ pub(super) fn compute_spell_cast_x_bounds(
     let printed_has_x = spell.mana_cost.as_ref().is_some_and(|cost| cost.has_x());
     let pay_has_x = mana_cost_to_pay.is_some_and(|cost| cost.has_x());
 
-    let mut cost_effects = cost_effects_for_casting_method(game, caster, spell, casting_method);
-    cost_effects.extend(spell.additional_cost_effects());
+    let mut non_mana_costs = non_mana_costs_for_casting_method(game, caster, spell, casting_method);
+    non_mana_costs.extend(spell.additional_non_mana_costs());
 
-    let effects_need_x = cost_effects.iter().any(effect_references_x_for_cost);
-    let needs_x = printed_has_x || pay_has_x || effects_need_x;
+    let costs_need_x = non_mana_costs.iter().any(cost_references_x);
+    let needs_x = printed_has_x || pay_has_x || costs_need_x;
     if !needs_x {
         return (false, 0);
     }
@@ -335,7 +342,7 @@ pub(super) fn compute_spell_cast_x_bounds(
         );
     }
 
-    if let Some(max_cost) = max_x_from_cost_effects(game, caster, stack_id, &cost_effects) {
+    if let Some(max_cost) = max_x_from_non_mana_costs(game, caster, stack_id, &non_mana_costs) {
         max_x = Some(max_x.map_or(max_cost, |prev| prev.min(max_cost)));
     }
 
@@ -385,13 +392,9 @@ pub(super) fn format_alternative_method(
             if let Some(mana) = method.mana_cost() {
                 parts.push(format_mana_cost_simple(mana));
             }
-            let cost_effects = method.cost_effects();
-            for effect in cost_effects {
-                let rendered =
-                    crate::compiled_text::compile_effect_list(std::slice::from_ref(&effect));
-                if rendered.trim().is_empty() {
-                    parts.push("additional cost".to_string());
-                } else {
+            for cost in method.non_mana_costs() {
+                let rendered = cost.display();
+                if !rendered.trim().is_empty() {
                     parts.push(rendered);
                 }
             }
@@ -399,18 +402,14 @@ pub(super) fn format_alternative_method(
         }
         AlternativeCastingMethod::Composed { .. } => {
             let mana_cost = method.mana_cost();
-            let cost_effects = method.cost_effects();
             let name = method.name();
             let mut parts = Vec::new();
             if let Some(mana) = mana_cost {
                 parts.push(format_mana_cost_simple(mana));
             }
-            for effect in cost_effects {
-                let rendered =
-                    crate::compiled_text::compile_effect_list(std::slice::from_ref(&effect));
-                if rendered.trim().is_empty() {
-                    parts.push("additional cost".to_string());
-                } else {
+            for cost in method.non_mana_costs() {
+                let rendered = cost.display();
+                if !rendered.trim().is_empty() {
                     parts.push(rendered);
                 }
             }
@@ -1787,6 +1786,7 @@ pub(super) fn card_cost_choice_description_and_candidates(
         ActivationCardCostChoice::Discard {
             card_types,
             description,
+            ..
         } => (
             format!("Choose a card to discard: {}", description),
             get_legal_discard_cards(game, player, source, card_types),
@@ -1794,6 +1794,7 @@ pub(super) fn card_cost_choice_description_and_candidates(
         ActivationCardCostChoice::ExileFromHand {
             color_filter,
             description,
+            ..
         } => (
             format!("Choose a card to exile: {}", description),
             get_legal_exile_from_hand_cards(game, player, source, *color_filter),
@@ -1801,6 +1802,7 @@ pub(super) fn card_cost_choice_description_and_candidates(
         ActivationCardCostChoice::ExileFromGraveyard {
             card_type,
             description,
+            ..
         } => (
             format!(
                 "Choose a card to exile from your graveyard: {}",
@@ -1820,6 +1822,7 @@ pub(super) fn card_cost_choice_description_and_candidates(
         ActivationCardCostChoice::RevealFromHand {
             card_type,
             description,
+            ..
         } => (
             format!("Choose a card to reveal: {}", description),
             get_legal_reveal_from_hand_cards(game, player, source, *card_type),

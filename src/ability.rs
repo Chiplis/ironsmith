@@ -15,13 +15,6 @@ use crate::triggers::Trigger;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-/// Merge effect-backed costs into a `TotalCost`.
-pub fn merge_cost_effects(cost: TotalCost, effects: Vec<Effect>) -> TotalCost {
-    let mut merged = cost.costs().to_vec();
-    merged.extend(effects.into_iter().map(crate::costs::Cost::effect));
-    TotalCost::from_costs(merged)
-}
-
 /// Extract static abilities from a heterogeneous ability list.
 pub fn extract_static_abilities(abilities: &[Ability]) -> Vec<NewStaticAbility> {
     abilities
@@ -112,15 +105,17 @@ impl Ability {
         }
     }
 
-    /// Create an activated ability with cost effects.
-    pub fn activated_with_cost_effects(
+    /// Create an activated ability with additional cost components.
+    pub fn activated_with_costs(
         cost: TotalCost,
-        cost_effects: Vec<Effect>,
+        additional_costs: Vec<crate::costs::Cost>,
         effects: Vec<Effect>,
     ) -> Self {
+        let mut costs = cost.costs().to_vec();
+        costs.extend(additional_costs);
         Self {
             kind: AbilityKind::Activated(ActivatedAbility {
-                mana_cost: merge_cost_effects(cost, cost_effects),
+                mana_cost: TotalCost::from_costs(costs),
                 effects,
                 choices: vec![],
                 timing: ActivationTiming::AnyTime,
@@ -140,7 +135,7 @@ impl Ability {
     pub fn mana(cost: TotalCost, mana: Vec<ManaSymbol>) -> Self {
         let mut costs = cost.costs().to_vec();
         if !costs.iter().any(|c| c.requires_tap()) {
-            costs.push(crate::costs::Cost::effect(Effect::tap_source()));
+            costs.push(crate::costs::Cost::tap());
         }
         Self {
             kind: AbilityKind::Activated(ActivatedAbility {
@@ -162,7 +157,7 @@ impl Ability {
     /// Create a mana ability with variable output (uses effects instead of fixed mana).
     pub fn mana_with_effects(cost: TotalCost, effects: Vec<Effect>) -> Self {
         let mut costs = cost.costs().to_vec();
-        costs.push(crate::costs::Cost::effect(Effect::tap_source()));
+        costs.push(crate::costs::Cost::tap());
         Self {
             kind: AbilityKind::Activated(ActivatedAbility {
                 mana_cost: TotalCost::from_costs(costs),
@@ -451,12 +446,6 @@ impl ActivatedAbility {
         self
     }
 
-    /// Add effect-backed cost components.
-    pub fn with_cost_effects(mut self, effects: Vec<Effect>) -> Self {
-        self.mana_cost = merge_cost_effects(self.mana_cost, effects);
-        self
-    }
-
     /// Restrict to sorcery speed.
     pub fn sorcery_speed(mut self) -> Self {
         self.timing = ActivationTiming::SorcerySpeed;
@@ -475,9 +464,11 @@ impl ActivatedAbility {
         self
     }
 
-    /// Add cost effects to this ability (e.g., sacrifice).
-    pub fn with_cost_effects_builder(mut self, cost_effects: Vec<Effect>) -> Self {
-        self.mana_cost = merge_cost_effects(self.mana_cost, cost_effects);
+    /// Add cost components to this ability.
+    pub fn with_costs(mut self, additional_costs: Vec<crate::costs::Cost>) -> Self {
+        let mut costs = self.mana_cost.costs().to_vec();
+        costs.extend(additional_costs);
+        self.mana_cost = TotalCost::from_costs(costs);
         self
     }
 
@@ -623,7 +614,7 @@ impl ActivatedAbility {
     /// Create a basic land mana ability ({T}: Add [mana]).
     pub fn basic_mana(mana: ManaSymbol) -> Self {
         Self {
-            mana_cost: TotalCost::from_cost(crate::costs::Cost::effect(Effect::tap_source())),
+            mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
             effects: vec![],
             choices: vec![],
             timing: ActivationTiming::AnyTime,
@@ -635,14 +626,16 @@ impl ActivatedAbility {
         }
     }
 
-    /// Create a mana ability with cost effects (e.g., sacrifice a creature: Add {C}{C}).
-    pub fn mana_with_cost_effects(
+    /// Create a mana ability with additional costs (e.g., sacrifice a creature: Add {C}{C}).
+    pub fn mana_with_costs(
         cost: TotalCost,
-        cost_effects: Vec<Effect>,
+        additional_costs: Vec<crate::costs::Cost>,
         mana: Vec<ManaSymbol>,
     ) -> Self {
+        let mut costs = cost.costs().to_vec();
+        costs.extend(additional_costs);
         Self {
-            mana_cost: merge_cost_effects(cost, cost_effects),
+            mana_cost: TotalCost::from_costs(costs),
             effects: vec![],
             choices: vec![],
             timing: ActivationTiming::AnyTime,
@@ -673,7 +666,7 @@ impl ActivatedAbility {
         }
 
         Self {
-            mana_cost: TotalCost::from_cost(crate::costs::Cost::effect(Effect::tap_source())),
+            mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
             effects: vec![],
             choices: vec![],
             timing: ActivationTiming::AnyTime,
@@ -834,10 +827,13 @@ mod tests {
             vec![ManaSymbol::Generic(2)],
             vec![ManaSymbol::Black],
         ]);
-        let cost = TotalCost::mana(mana_cost);
-        let cost_effects = vec![Effect::tap_source()];
-        let ability =
-            Ability::activated_with_cost_effects(cost, cost_effects, vec![Effect::draw(1)]);
+        let ability = Ability::activated(
+            TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(mana_cost),
+                crate::costs::Cost::tap(),
+            ]),
+            vec![Effect::draw(1)],
+        );
 
         assert!(matches!(ability.kind, AbilityKind::Activated(_)));
         assert!(!ability.is_mana_ability());

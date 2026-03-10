@@ -1,8 +1,8 @@
 //! Lose life effect implementation.
 
 use crate::effect::{EffectOutcome, EffectResult, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::events::LifeLossEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -67,49 +67,22 @@ impl LoseLifeEffect {
     pub fn target_player(amount: impl Into<Value>) -> Self {
         Self::new(amount, ChooseSpec::target_player())
     }
+
+    fn life_per_card_in_hand_multiplier(amount: &Value) -> Option<u32> {
+        match amount {
+            Value::CardsInHand(PlayerFilter::You) => Some(1),
+            Value::Add(lhs, rhs) => Some(
+                Self::life_per_card_in_hand_multiplier(lhs)?
+                    + Self::life_per_card_in_hand_multiplier(rhs)?,
+            ),
+            _ => None,
+        }
+    }
 }
 
 impl EffectExecutor for LoseLifeEffect {
-    fn can_execute_as_cost(
-        &self,
-        game: &GameState,
-        source: crate::ids::ObjectId,
-        controller: crate::ids::PlayerId,
-    ) -> Result<(), crate::effects::CostValidationError> {
-        use crate::effects::CostValidationError;
-
-        // Only validate for "you" (controller) effects
-        let is_you = matches!(self.player, ChooseSpec::Player(PlayerFilter::You));
-        if !is_you {
-            return Ok(());
-        }
-
-        // Resolve the amount for validation.
-        let amount = match &self.amount {
-            Value::Fixed(n) => (*n).max(0) as u32,
-            _ => {
-                let ctx = ExecutionContext::new_default(source, controller);
-                let resolved = resolve_value(game, &self.amount, &ctx).map_err(|err| {
-                    CostValidationError::Other(format!("Unable to resolve life cost: {err}"))
-                })?;
-                resolved.max(0) as u32
-            }
-        };
-
-        if amount == 0 {
-            return Ok(());
-        }
-
-        // Check if player has enough life
-        if let Some(player) = game.player(controller) {
-            if player.life < amount as i32 {
-                return Err(CostValidationError::NotEnoughLife);
-            }
-        } else {
-            return Err(CostValidationError::Other("Player not found".to_string()));
-        }
-
-        Ok(())
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
     }
 
     fn execute(
@@ -167,11 +140,91 @@ impl EffectExecutor for LoseLifeEffect {
 
     fn cost_description(&self) -> Option<String> {
         // Only provide cost description for "you" effects (used as costs)
-        if matches!(self.player, ChooseSpec::Player(PlayerFilter::You))
-            && let Value::Fixed(n) = self.amount
-        {
-            return Some(format!("Pay {} life", n));
+        if matches!(self.player, ChooseSpec::Player(PlayerFilter::You)) {
+            if let Value::Fixed(n) = self.amount {
+                return Some(format!("Pay {} life", n));
+            }
+
+            if let Some(per_card) = Self::life_per_card_in_hand_multiplier(&self.amount) {
+                if per_card == 1 {
+                    return Some("Pay 1 life for each card in your hand".to_string());
+                }
+                return Some(format!("Pay {per_card} life for each card in your hand"));
+            }
         }
         None
+    }
+}
+
+impl CostExecutableEffect for LoseLifeEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        use crate::effects::CostValidationError;
+
+        let is_you = matches!(self.player, ChooseSpec::Player(PlayerFilter::You));
+        if !is_you {
+            return Ok(());
+        }
+
+        let amount = match &self.amount {
+            Value::Fixed(n) => (*n).max(0) as u32,
+            _ => {
+                let ctx = ExecutionContext::new_default(source, controller);
+                let resolved = resolve_value(game, &self.amount, &ctx).map_err(|err| {
+                    CostValidationError::Other(format!("Unable to resolve life cost: {err}"))
+                })?;
+                resolved.max(0) as u32
+            }
+        };
+
+        if amount == 0 {
+            return Ok(());
+        }
+
+        if let Some(player) = game.player(controller) {
+            if player.life < amount as i32 {
+                return Err(CostValidationError::NotEnoughLife);
+            }
+        } else {
+            return Err(CostValidationError::Other("Player not found".to_string()));
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lose_life_cost_description_fixed() {
+        let effect = LoseLifeEffect::you(2);
+        assert_eq!(effect.cost_description().as_deref(), Some("Pay 2 life"));
+    }
+
+    #[test]
+    fn test_lose_life_cost_description_per_card_in_hand() {
+        let effect = LoseLifeEffect::you(Value::CardsInHand(PlayerFilter::You));
+        assert_eq!(
+            effect.cost_description().as_deref(),
+            Some("Pay 1 life for each card in your hand")
+        );
+    }
+
+    #[test]
+    fn test_lose_life_cost_description_scaled_per_card_in_hand() {
+        let effect = LoseLifeEffect::you(Value::Add(
+            Box::new(Value::CardsInHand(PlayerFilter::You)),
+            Box::new(Value::CardsInHand(PlayerFilter::You)),
+        ));
+        assert_eq!(
+            effect.cost_description().as_deref(),
+            Some("Pay 2 life for each card in your hand")
+        );
     }
 }

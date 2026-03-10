@@ -7,9 +7,8 @@ use crate::color::ColorSet;
 use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::ChooseSpec;
 use crate::types::CardType;
-use crate::zone::Zone;
 
 /// Creates the Force of Will card definition.
 ///
@@ -32,20 +31,8 @@ pub fn force_of_will() -> CardDefinition {
             "Force of Will",
             None, // No mana cost for the alternative
             vec![
-                Effect::pay_life(1),
-                // Choose a blue card from hand (other than the source being cast)
-                Effect::choose_objects(
-                    ObjectFilter::default()
-                        .in_zone(Zone::Hand)
-                        .you_control()
-                        .with_colors(ColorSet::BLUE)
-                        .other(), // Exclude Force of Will itself
-                    1,
-                    PlayerFilter::You,
-                    "exile_cost",
-                ),
-                // Exile the chosen card
-                Effect::exile(ChooseSpec::tagged("exile_cost")),
+                crate::costs::Cost::life(1),
+                crate::costs::Cost::exile_from_hand(1, Some(ColorSet::BLUE)),
             ],
         ))
         // Counter target spell (using target_spell() to indicate it's a TARGET)
@@ -69,42 +56,28 @@ mod tests {
         let alt = &card.alternative_casts[0];
         assert_eq!(alt.name(), "Force of Will");
 
-        // Alternative cost should have no mana cost and three cost effects:
+        // Alternative cost should have no mana cost and two non-mana costs:
         // 1. Pay 1 life
-        // 2. Choose a blue card from hand
-        // 3. Exile the chosen card
+        // 2. Exile a blue card from your hand
         if let AlternativeCastingMethod::Composed { total_cost, .. } = alt {
             let mana_cost = total_cost.mana_cost();
-            let cost_effects = alt.cost_effects();
+            let costs = alt.non_mana_costs();
             assert!(
                 mana_cost.is_none(),
                 "Alternative cost should have no mana cost"
             );
             assert_eq!(
-                cost_effects.len(),
-                3,
-                "Should have 3 cost effects: pay life, choose, exile"
+                costs.len(),
+                2,
+                "Should have 2 non-mana costs: pay life, exile from hand"
             );
 
-            // First effect: pay 1 life
-            assert_eq!(
-                cost_effects[0].0.pay_life_amount(),
-                Some(1),
-                "First effect should be pay 1 life"
-            );
+            assert_eq!(costs[0].life_amount(), Some(1), "First cost should be pay 1 life");
 
-            // Second effect: choose objects (blue card from hand)
-            let debug_str_1 = format!("{:?}", &cost_effects[1]);
+            let debug_str_1 = format!("{:?}", &costs[1]);
             assert!(
-                debug_str_1.contains("ChooseObjectsEffect"),
-                "Second effect should be choose objects"
-            );
-
-            // Third effect: exile the chosen card
-            let debug_str_2 = format!("{:?}", &cost_effects[2]);
-            assert!(
-                debug_str_2.contains("ExileEffect"),
-                "Third effect should be exile"
+                debug_str_1.contains("CostEffect"),
+                "Second cost should be exile-from-hand"
             );
         } else {
             panic!("Expected Composed variant");

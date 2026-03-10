@@ -243,6 +243,15 @@ fn prepare_effects_from_normalized(
     })
 }
 
+fn runtime_effects_to_costs(effects: Vec<Effect>) -> Result<Vec<crate::costs::Cost>, CardTextError> {
+    effects
+        .into_iter()
+        .map(|effect| {
+            crate::costs::Cost::try_from_runtime_effect(effect).map_err(CardTextError::ParseError)
+        })
+        .collect()
+}
+
 pub(crate) fn prepare_effects_for_lowering(
     effects: &[EffectAst],
     imports: ReferenceImports,
@@ -1357,11 +1366,11 @@ fn apply_line_ast(
                 }
                 Err(err) => return Err(err),
             };
-            let compiled = lowered.effects;
+            let compiled = runtime_effects_to_costs(lowered.effects)?;
             state.latest_additional_cost_exports = lowered.exports;
-
-            builder.additional_cost =
-                crate::ability::merge_cost_effects(builder.additional_cost, compiled);
+            let mut costs = builder.additional_cost.costs().to_vec();
+            costs.extend(compiled);
+            builder.additional_cost = crate::cost::TotalCost::from_costs(costs);
         }
         NormalizedLineChunk::OptionalCost(cost) => {
             builder = builder.optional_cost(cost);
@@ -1409,10 +1418,12 @@ fn apply_line_ast(
                     Err(err) => return Err(err),
                 };
             state.latest_additional_cost_exports = exports;
-            builder.additional_cost = crate::ability::merge_cost_effects(
-                builder.additional_cost,
-                vec![Effect::choose_one(modes)],
+            let mut costs = builder.additional_cost.costs().to_vec();
+            costs.push(
+                crate::costs::Cost::try_from_runtime_effect(Effect::choose_one(modes))
+                    .map_err(CardTextError::ParseError)?,
             );
+            builder.additional_cost = crate::cost::TotalCost::from_costs(costs);
         }
         NormalizedLineChunk::AlternativeCastingMethod(method) => {
             builder.alternative_casts.push(method);

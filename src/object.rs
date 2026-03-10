@@ -344,12 +344,11 @@ pub struct Object {
 }
 
 impl Object {
-    /// Returns non-mana additional cost components represented as effects.
-    pub fn additional_cost_effects(&self) -> Vec<crate::effect::Effect> {
+    /// Returns non-mana additional cost components for this object.
+    pub fn additional_non_mana_costs(&self) -> Vec<crate::costs::Cost> {
         self.additional_cost
-            .costs()
-            .iter()
-            .filter_map(|component| component.effect_ref().cloned())
+            .non_mana_costs()
+            .cloned()
             .collect()
     }
 

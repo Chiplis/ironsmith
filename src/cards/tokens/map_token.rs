@@ -3,6 +3,7 @@
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::cost::TotalCost;
+use crate::costs::Cost;
 use crate::effect::Effect;
 use crate::filter::ObjectFilter;
 use crate::ids::CardId;
@@ -20,10 +21,11 @@ pub fn map_token_definition() -> CardDefinition {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
     let explore_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
-            mana_cost: crate::ability::merge_cost_effects(
-                TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]])),
-                vec![Effect::tap_source(), Effect::sacrifice_source()],
-            ),
+            mana_cost: TotalCost::from_costs(vec![
+                Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]])),
+                Cost::tap(),
+                Cost::sacrifice_self(),
+            ]),
             effects: vec![Effect::explore(target.clone())],
             choices: vec![target],
             timing: ActivationTiming::SorcerySpeed,

@@ -681,10 +681,14 @@ fn advance_reference_frame_for_effect(
         EffectAst::RepeatProcess { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
         }
+        EffectAst::DealDamageEach { .. } => {
+            if frame.auto_tag_object_targets {
+                frame.last_object_tag = Some(next_reference_tag(id_gen, "damaged"));
+            }
+        }
         EffectAst::Fight { .. }
         | EffectAst::FightIterated { .. }
         | EffectAst::Clash { .. }
-        | EffectAst::DealDamageEach { .. }
         | EffectAst::ForEachCounterKindPutOrRemove { .. }
         | EffectAst::PutCountersAll { .. }
         | EffectAst::DoubleCountersOnEach { .. }

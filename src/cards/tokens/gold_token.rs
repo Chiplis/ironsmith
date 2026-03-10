@@ -3,6 +3,7 @@
 use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::cost::TotalCost;
+use crate::costs::Cost;
 use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::types::{CardType, Subtype};
@@ -15,10 +16,7 @@ use crate::zone::Zone;
 pub fn gold_token_definition() -> CardDefinition {
     let mana_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
-            mana_cost: crate::ability::merge_cost_effects(
-                TotalCost::free(),
-                vec![Effect::sacrifice_source()],
-            ),
+            mana_cost: TotalCost::from_costs(vec![Cost::sacrifice_self()]),
             effects: vec![Effect::add_mana_of_any_color(1)],
             choices: vec![],
             timing: crate::ability::ActivationTiming::AnyTime,

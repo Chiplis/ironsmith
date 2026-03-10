@@ -146,22 +146,26 @@ impl CardDefinition {
             || self.card.is_planeswalker()
     }
 
-    /// Returns non-mana additional cost components represented as effects.
-    pub fn additional_cost_effects(&self) -> Vec<Effect> {
-        fn presentation_effect(effect: &Effect) -> Effect {
+    /// Returns non-mana additional cost components for this spell.
+    pub fn additional_non_mana_costs(&self) -> Vec<crate::costs::Cost> {
+        fn presentation_cost(cost: &crate::costs::Cost) -> crate::costs::Cost {
+            let Some(effect) = cost.effect_ref() else {
+                return cost.clone();
+            };
             if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-                return presentation_effect(&tagged.effect);
+                return crate::costs::Cost::try_from_runtime_effect(*tagged.effect.clone())
+                    .unwrap_or_else(|_| cost.clone());
             }
             if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
-                return presentation_effect(&with_id.effect);
+                return crate::costs::Cost::try_from_runtime_effect(*with_id.effect.clone())
+                    .unwrap_or_else(|_| cost.clone());
             }
-            effect.clone()
+            cost.clone()
         }
 
         self.additional_cost
-            .costs()
-            .iter()
-            .filter_map(|component| component.effect_ref().map(presentation_effect))
+            .non_mana_costs()
+            .map(presentation_cost)
             .collect()
     }
 }
@@ -240,7 +244,7 @@ impl CardRegistry {
                 continue;
             };
 
-            self.register(definition);
+            self.register_explicit(definition);
             if !resolved_name.eq_ignore_ascii_case(normalized) {
                 self.register_alias(normalized, &resolved_name);
             }
@@ -476,6 +480,10 @@ impl CardRegistry {
         if !generated_definition_is_supported(&def) {
             return;
         }
+        self.register_explicit(def);
+    }
+
+    fn register_explicit(&mut self, def: CardDefinition) {
         let name = def.card.name.clone();
         self.names_by_id
             .entry(def.card.id)
@@ -539,9 +547,21 @@ fn compile_generated_parser_card_allow_unsupported(
     parse_block: &str,
 ) -> Result<CardDefinition, String> {
     let builder = CardDefinitionBuilder::new(CardId::new(), name);
-    builder
-        .parse_text_allow_unsupported(parse_block.to_string())
-        .map_err(|err| format!("{err:?}"))
+    match builder.parse_text_allow_unsupported(parse_block.to_string()) {
+        Ok(definition) => Ok(definition),
+        Err(err) => {
+            let mut definition = CardDefinitionBuilder::new(CardId::new(), name)
+                .oracle_text(parse_block.to_string())
+                .build();
+            definition.abilities.push(Ability::static_ability(
+                crate::static_abilities::StaticAbility::unsupported_parser_line(
+                    parse_block,
+                    format!("{err:?}"),
+                ),
+            ));
+            Ok(definition)
+        }
+    }
 }
 
 fn normalize_card_constructor_key(name: &str) -> String {

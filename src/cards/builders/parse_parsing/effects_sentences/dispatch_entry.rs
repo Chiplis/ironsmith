@@ -1393,6 +1393,21 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
         found
     }
 
+    fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
+        if matches!(effect, EffectAst::ChooseObjectsAcrossZones { zones, .. } if zones.contains(&Zone::Library))
+        {
+            return true;
+        }
+
+        let mut found = false;
+        for_each_nested_effects(effect, true, |nested| {
+            if !found {
+                found = nested.iter().any(effect_needs_followup_library_shuffle);
+            }
+        });
+        found
+    }
+
     fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[Token]) -> bool {
         let words: Vec<&str> = words(tokens)
             .into_iter()
@@ -1465,15 +1480,26 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
         // Oracle frequently splits shuffle followups as a standalone sentence:
         // "If you search your library this way, shuffle." This clause is redundant when the
         // preceding sentence already compiles a library-search effect that shuffles.
-        if is_if_you_search_library_this_way_shuffle_sentence(&sentence_tokens)
-            && effects.iter().any(effect_contains_search_library)
-        {
-            parser_trace(
-                "parse_effect_sentences:skip:if-you-search-library-this-way-shuffle",
-                &sentence_tokens,
-            );
-            sentence_idx += 1;
-            continue;
+        if is_if_you_search_library_this_way_shuffle_sentence(&sentence_tokens) {
+            if effects.iter().any(effect_needs_followup_library_shuffle) {
+                parser_trace(
+                    "parse_effect_sentences:append:if-you-search-library-this-way-shuffle",
+                    &sentence_tokens,
+                );
+                effects.push(EffectAst::ShuffleLibrary {
+                    player: PlayerAst::You,
+                });
+                sentence_idx += 1;
+                continue;
+            }
+            if effects.iter().any(effect_contains_search_library) {
+                parser_trace(
+                    "parse_effect_sentences:skip:if-you-search-library-this-way-shuffle",
+                    &sentence_tokens,
+                );
+                sentence_idx += 1;
+                continue;
+            }
         }
 
         let sentence_words = words(&sentence_tokens);

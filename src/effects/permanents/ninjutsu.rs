@@ -13,7 +13,7 @@ use crate::effect::{EffectOutcome, EffectResult};
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
 };
-use crate::effects::{CostValidationError, EffectExecutor};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
@@ -62,6 +62,10 @@ impl NinjutsuCostEffect {
 }
 
 impl EffectExecutor for NinjutsuCostEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -161,6 +165,12 @@ impl EffectExecutor for NinjutsuCostEffect {
         Ok(EffectOutcome::from_result(EffectResult::Resolved))
     }
 
+    fn cost_description(&self) -> Option<String> {
+        Some("Return an unblocked attacker you control to hand".to_string())
+    }
+}
+
+impl CostExecutableEffect for NinjutsuCostEffect {
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -192,10 +202,6 @@ impl EffectExecutor for NinjutsuCostEffect {
         }
 
         Ok(())
-    }
-
-    fn cost_description(&self) -> Option<String> {
-        Some("Return an unblocked attacker you control to hand".to_string())
     }
 }
 
@@ -436,7 +442,12 @@ mod tests {
             ..CombatState::default()
         });
 
-        let can_pay = NinjutsuCostEffect::new().can_execute_as_cost(&game, source, alice);
+        let can_pay = crate::effects::EffectExecutor::can_execute_as_cost(
+            &NinjutsuCostEffect::new(),
+            &game,
+            source,
+            alice,
+        );
         assert!(
             can_pay.is_err(),
             "ninjutsu should not be payable before blockers are declared"

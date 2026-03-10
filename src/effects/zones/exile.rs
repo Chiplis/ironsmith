@@ -1,12 +1,14 @@
 //! Exile effect implementation.
 
+use crate::color::{Color, ColorSet};
 use crate::effect::{ChoiceCount, EffectOutcome, EffectResult};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
 };
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::event_processor::EventOutcome;
 use crate::executor::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::filter::FilterContext;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -152,9 +154,74 @@ impl ExileEffect {
                 | ChooseSpec::AnyOtherTarget
         )
     }
+
+    fn fixed_cost_filter(&self) -> Option<(&ObjectFilter, u32)> {
+        let ChooseSpec::Object(filter) = self.spec.base() else {
+            return None;
+        };
+        let count = self.spec.count();
+        if count.min == 0 || count.max != Some(count.min) {
+            return None;
+        }
+        Some((filter, count.min as u32))
+    }
+
+    fn exile_from_hand_cost_filter(&self) -> Option<(&ObjectFilter, u32)> {
+        let (filter, count) = self.fixed_cost_filter()?;
+        (filter.zone == Some(Zone::Hand)).then_some((filter, count))
+    }
+
+    fn exile_from_graveyard_cost_filter(&self) -> Option<(&ObjectFilter, u32)> {
+        let (filter, count) = self.fixed_cost_filter()?;
+        (filter.zone == Some(Zone::Graveyard)).then_some((filter, count))
+    }
+
+    fn matching_cost_candidates(
+        &self,
+        game: &GameState,
+        filter: &ObjectFilter,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Vec<crate::ids::ObjectId> {
+        let filter_ctx = FilterContext::new(controller).with_source(source);
+        let candidate_ids: Vec<_> = match filter.zone {
+            Some(Zone::Hand) => game
+                .players
+                .iter()
+                .flat_map(|player| player.hand.iter().copied())
+                .collect(),
+            Some(Zone::Graveyard) => game
+                .players
+                .iter()
+                .flat_map(|player| player.graveyard.iter().copied())
+                .collect(),
+            Some(Zone::Battlefield) => game.battlefield.clone(),
+            Some(Zone::Library) => game
+                .players
+                .iter()
+                .flat_map(|player| player.library.iter().copied())
+                .collect(),
+            Some(Zone::Stack) => game.stack.iter().map(|entry| entry.object_id).collect(),
+            Some(Zone::Exile) => game.exile.clone(),
+            Some(Zone::Command) => game.command_zone.clone(),
+            None => Vec::new(),
+        };
+
+        candidate_ids
+            .into_iter()
+            .filter(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+            })
+            .collect()
+    }
 }
 
 impl EffectExecutor for ExileEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -248,5 +315,211 @@ impl EffectExecutor for ExileEffect {
 
     fn target_description(&self) -> &'static str {
         "target to exile"
+    }
+
+    fn exile_from_hand_cost_info(&self) -> Option<(u32, Option<ColorSet>)> {
+        let (filter, count) = self.exile_from_hand_cost_filter()?;
+        Some((count, filter.colors))
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        if matches!(self.spec.base(), ChooseSpec::Source) {
+            return Some("Exile ~".to_string());
+        }
+
+        if let Some((filter, count)) = self.exile_from_hand_cost_filter() {
+            let color_prefix = filter
+                .colors
+                .map(|colors| {
+                    let mut pieces = Vec::new();
+                    if colors.contains(Color::White) {
+                        pieces.push("white");
+                    }
+                    if colors.contains(Color::Blue) {
+                        pieces.push("blue");
+                    }
+                    if colors.contains(Color::Black) {
+                        pieces.push("black");
+                    }
+                    if colors.contains(Color::Red) {
+                        pieces.push("red");
+                    }
+                    if colors.contains(Color::Green) {
+                        pieces.push("green");
+                    }
+                    if pieces.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{} ", pieces.join(" and "))
+                    }
+                })
+                .unwrap_or_default();
+            let amount = if count == 1 {
+                "a".to_string()
+            } else {
+                count.to_string()
+            };
+            let noun = if count == 1 { "card" } else { "cards" };
+            return Some(format!(
+                "Exile {amount} {color_prefix}{noun} from your hand"
+            ));
+        }
+
+        if let Some((filter, count)) = self.exile_from_graveyard_cost_filter() {
+            let type_str = filter
+                .card_types
+                .first()
+                .map(|card_type| card_type.card_phrase().to_string())
+                .unwrap_or_else(|| "card".to_string());
+            return Some(if count == 1 {
+                format!("Exile a {type_str} from your graveyard")
+            } else {
+                format!("Exile {count} {type_str}s from your graveyard")
+            });
+        }
+
+        None
+    }
+}
+
+impl CostExecutableEffect for ExileEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        if matches!(self.spec.base(), ChooseSpec::Source) && game.object(source).is_some() {
+            return Ok(());
+        }
+
+        if let Some((filter, count)) = self.fixed_cost_filter()
+            && matches!(filter.zone, Some(Zone::Hand | Zone::Graveyard))
+        {
+            let matching = self.matching_cost_candidates(game, filter, source, controller);
+            if matching.len() < count as usize {
+                return Err(crate::effects::CostValidationError::NotEnoughCards);
+            }
+            return Ok(());
+        }
+
+        Err(crate::effects::CostValidationError::Other(
+            "unsupported exile cost".to_string(),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{Card, CardBuilder};
+    use crate::effect::{ChoiceCount, EffectResult};
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::Object;
+    use crate::types::CardType;
+
+    fn setup_game() -> GameState {
+        crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    fn make_card(
+        card_id: u32,
+        name: &str,
+        mana_symbols: Vec<ManaSymbol>,
+        card_type: CardType,
+    ) -> Card {
+        CardBuilder::new(CardId::from_raw(card_id), name)
+            .mana_cost(ManaCost::from_pips(vec![mana_symbols]))
+            .card_types(vec![card_type])
+            .build()
+    }
+
+    fn add_card_to_zone(
+        game: &mut GameState,
+        owner: PlayerId,
+        zone: Zone,
+        name: &str,
+        mana_symbols: Vec<ManaSymbol>,
+        card_type: CardType,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = make_card(id.0 as u32, name, mana_symbols, card_type);
+        let obj = Object::from_card(id, &card, owner, zone);
+        game.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn test_exile_from_hand_cost_uses_generic_exile_filter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Hand,
+            "Source",
+            vec![ManaSymbol::Blue],
+            CardType::Instant,
+        );
+        add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Hand,
+            "Pitch",
+            vec![ManaSymbol::Blue],
+            CardType::Instant,
+        );
+
+        let effect = ExileEffect::with_spec(
+            ChooseSpec::Object(
+                ObjectFilter::default()
+                    .in_zone(Zone::Hand)
+                    .owned_by(crate::target::PlayerFilter::You)
+                    .with_colors(ColorSet::from(Color::Blue))
+                    .other(),
+            )
+            .with_count(ChoiceCount::exactly(1)),
+        );
+
+        assert!(
+            crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, source, alice)
+                .is_ok()
+        );
+        assert_eq!(
+            effect.exile_from_hand_cost_info(),
+            Some((1, Some(ColorSet::from(Color::Blue))))
+        );
+    }
+
+    #[test]
+    fn test_exile_from_graveyard_cost_executes_via_generic_exile_effect() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let card_id = add_card_to_zone(
+            &mut game,
+            alice,
+            Zone::Graveyard,
+            "Spell",
+            vec![ManaSymbol::Generic(1)],
+            CardType::Instant,
+        );
+
+        let effect = ExileEffect::with_spec(
+            ChooseSpec::Object(
+                ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(crate::target::PlayerFilter::You)
+                    .with_type(CardType::Instant),
+            )
+            .with_count(ChoiceCount::exactly(1)),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(card_id)]);
+
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(result.result, EffectResult::Count(1));
+        assert_eq!(game.exile.len(), 1);
     }
 }

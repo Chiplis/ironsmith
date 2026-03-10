@@ -4,7 +4,7 @@
 //! for reference by subsequent effects in the same spell/ability.
 
 use crate::effect::{ChoiceCount, EffectOutcome};
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::filter::Comparison;
 use crate::game_state::GameState;
@@ -176,6 +176,127 @@ impl EffectExecutor for ChooseObjectsEffect {
         Box::new(self.clone())
     }
 
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        super::choose_objects_runtime::run_choose_objects(self, game, ctx)
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        use crate::color::Color;
+
+        let count_str = match (self.count.min, self.count.max) {
+            (0, Some(1)) => "up to one".to_string(),
+            (0, Some(n)) => format!("up to {}", n),
+            (min, Some(max)) if min == max => match min {
+                1 => "a".to_string(),
+                n => format!("{}", n),
+            },
+            (min, Some(max)) => format!("{} to {}", min, max),
+            (min, None) if min == 1 => "one or more".to_string(),
+            (min, None) => format!("{} or more", min),
+        };
+
+        let color_desc = if let Some(colors) = &self.filter.colors {
+            if colors.count() == 1 {
+                let color_name = Color::ALL
+                    .iter()
+                    .find(|&&c| colors.contains(c))
+                    .map(|c| c.name().to_string())
+                    .unwrap_or_default();
+                if !color_name.is_empty() {
+                    format!("{} ", color_name)
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        let type_desc = if !self.filter.card_types.is_empty() {
+            self.filter
+                .card_types
+                .iter()
+                .map(|t| t.name().to_string())
+                .collect::<Vec<_>>()
+                .join(" or ")
+        } else if !self.filter.subtypes.is_empty() {
+            self.filter
+                .subtypes
+                .iter()
+                .map(|s| s.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+                .join(" or ")
+        } else {
+            "card".to_string()
+        };
+
+        let zone_desc = match self.filter.zone.unwrap_or(self.zone) {
+            Zone::Hand => "from your hand",
+            Zone::Graveyard => "from your graveyard",
+            Zone::Battlefield => "",
+            _ => "",
+        };
+
+        let mana_value_desc = match &self.filter.mana_value {
+            Some(Comparison::Equal(value)) => format!(" with mana value {}", value),
+            Some(Comparison::LessThan(value)) => format!(" with mana value less than {}", value),
+            Some(Comparison::LessThanOrEqual(value)) => {
+                format!(" with mana value {} or less", value)
+            }
+            Some(Comparison::GreaterThan(value)) => {
+                format!(" with mana value greater than {}", value)
+            }
+            Some(Comparison::GreaterThanOrEqual(value)) => {
+                format!(" with mana value {} or greater", value)
+            }
+            Some(Comparison::NotEqual(value)) => {
+                format!(" with mana value not equal to {}", value)
+            }
+            Some(Comparison::OneOf(values)) => {
+                let joined = values
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(" with mana value {}", joined)
+            }
+            Some(Comparison::EqualExpr(_))
+            | Some(Comparison::NotEqualExpr(_))
+            | Some(Comparison::LessThanExpr(_))
+            | Some(Comparison::LessThanOrEqualExpr(_))
+            | Some(Comparison::GreaterThanExpr(_))
+            | Some(Comparison::GreaterThanOrEqualExpr(_)) => {
+                " with a constrained mana value".to_string()
+            }
+            None => String::new(),
+        };
+
+        Some(format!(
+            "Exile {} {}{}{}{}",
+            count_str,
+            color_desc,
+            type_desc,
+            mana_value_desc,
+            if zone_desc.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", zone_desc)
+            }
+        ))
+    }
+}
+
+impl CostExecutableEffect for ChooseObjectsEffect {
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -338,126 +459,6 @@ impl EffectExecutor for ChooseObjectsEffect {
         }
 
         Ok(())
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        super::choose_objects_runtime::run_choose_objects(self, game, ctx)
-    }
-
-    fn cost_description(&self) -> Option<String> {
-        use crate::color::Color;
-
-        // Generate a human-readable description
-        let count_str = match (self.count.min, self.count.max) {
-            (0, Some(1)) => "up to one".to_string(),
-            (0, Some(n)) => format!("up to {}", n),
-            (min, Some(max)) if min == max => match min {
-                1 => "a".to_string(),
-                n => format!("{}", n),
-            },
-            (min, Some(max)) => format!("{} to {}", min, max),
-            (min, None) if min == 1 => "one or more".to_string(),
-            (min, None) => format!("{} or more", min),
-        };
-
-        // Describe the color requirement if present
-        let color_desc = if let Some(colors) = &self.filter.colors {
-            if colors.count() == 1 {
-                // Find which color it is
-                let color_name = Color::ALL
-                    .iter()
-                    .find(|&&c| colors.contains(c))
-                    .map(|c| c.name().to_string())
-                    .unwrap_or_default();
-                if !color_name.is_empty() {
-                    format!("{} ", color_name)
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        };
-
-        // Determine the base type
-        let type_desc = if !self.filter.card_types.is_empty() {
-            self.filter
-                .card_types
-                .iter()
-                .map(|t| t.name().to_string())
-                .collect::<Vec<_>>()
-                .join(" or ")
-        } else if !self.filter.subtypes.is_empty() {
-            self.filter
-                .subtypes
-                .iter()
-                .map(|s| s.to_string().to_ascii_lowercase())
-                .collect::<Vec<_>>()
-                .join(" or ")
-        } else {
-            "card".to_string()
-        };
-
-        // Describe the zone
-        let zone_desc = match self.filter.zone.unwrap_or(self.zone) {
-            Zone::Hand => "from your hand",
-            Zone::Graveyard => "from your graveyard",
-            Zone::Battlefield => "",
-            _ => "",
-        };
-
-        let mana_value_desc = match &self.filter.mana_value {
-            Some(Comparison::Equal(value)) => format!(" with mana value {}", value),
-            Some(Comparison::LessThan(value)) => format!(" with mana value less than {}", value),
-            Some(Comparison::LessThanOrEqual(value)) => {
-                format!(" with mana value {} or less", value)
-            }
-            Some(Comparison::GreaterThan(value)) => {
-                format!(" with mana value greater than {}", value)
-            }
-            Some(Comparison::GreaterThanOrEqual(value)) => {
-                format!(" with mana value {} or greater", value)
-            }
-            Some(Comparison::NotEqual(value)) => {
-                format!(" with mana value not equal to {}", value)
-            }
-            Some(Comparison::OneOf(values)) => {
-                let joined = values
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!(" with mana value {}", joined)
-            }
-            Some(Comparison::EqualExpr(_))
-            | Some(Comparison::NotEqualExpr(_))
-            | Some(Comparison::LessThanExpr(_))
-            | Some(Comparison::LessThanOrEqualExpr(_))
-            | Some(Comparison::GreaterThanExpr(_))
-            | Some(Comparison::GreaterThanOrEqualExpr(_)) => {
-                " with a constrained mana value".to_string()
-            }
-            None => String::new(),
-        };
-
-        Some(format!(
-            "Exile {} {}{}{}{}",
-            count_str,
-            color_desc,
-            type_desc,
-            mana_value_desc,
-            if zone_desc.is_empty() {
-                String::new()
-            } else {
-                format!(" {}", zone_desc)
-            }
-        ))
     }
 }
 

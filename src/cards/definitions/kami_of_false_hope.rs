@@ -111,15 +111,15 @@ mod tests {
         assert!(sac_ability.is_some(), "Should have an activated ability");
 
         if let AbilityKind::Activated(activated) = &sac_ability.unwrap().kind {
-            // Verify sacrifice is in cost_effects (not TotalCost) so "dies" triggers fire
+            // Verify sacrifice is in the non-mana cost components so "dies" triggers fire
             assert!(
                 !activated.mana_cost.costs().is_empty(),
-                "Should have cost_effects for sacrifice"
+                "Should have non-mana costs for sacrifice"
             );
             let debug_str = format!("{:?}", &activated.mana_cost.costs()[0]);
             assert!(
                 debug_str.contains("SacrificeTargetEffect"),
-                "cost_effects should contain sacrifice self"
+                "non-mana costs should contain sacrifice self"
             );
 
             // Verify no mana cost

@@ -2358,7 +2358,7 @@ fn test_yawgmoth_undying_loop_draws_cards_until_death() {
     //   SBA: B's counters annihilate
     // - ... repeat forever
     //
-    // With cost_effects, the sacrifice target is auto-selected based on battlefield order.
+    // With non-mana costs, the sacrifice target is auto-selected based on battlefield order.
     // The combo works because sacrificed creatures return at the end of the battlefield,
     // so the next iteration auto-selects the OTHER creature (which is earlier in the list).
 
@@ -2441,7 +2441,7 @@ fn test_yawgmoth_undying_loop_draws_cards_until_death() {
         let (target_for_counter, _target_name, target_plus_counters) = &undying_creatures[1];
 
         // === ACTIVATE YAWGMOTH'S ABILITY USING PROPER GAME FLOW ===
-        // Cost: Pay 1 life, Sacrifice another creature (via cost_effects)
+        // Cost: Pay 1 life, Sacrifice another creature (via non-mana costs)
         // Effect: Put a -1/-1 counter on up to one target creature and draw a card
 
         // Yawgmoth's sacrifice ability is at index 1 (index 0 is Protection from Humans static ability)

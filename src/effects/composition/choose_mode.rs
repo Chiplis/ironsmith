@@ -1,8 +1,8 @@
 //! ChooseMode effect implementation.
 
 use crate::effect::{EffectMode, EffectOutcome, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::executor_trait::ModalSpec;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 
@@ -102,6 +102,10 @@ impl ChooseModeEffect {
 }
 
 impl EffectExecutor for ChooseModeEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -123,5 +127,55 @@ impl EffectExecutor for ChooseModeEffect {
                 .clone()
                 .unwrap_or_else(|| self.choose_count.clone()),
         })
+    }
+}
+
+impl CostExecutableEffect for ChooseModeEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let max_modes = match self.choose_count {
+            Value::Fixed(value) => value.max(0) as usize,
+            _ => {
+                return Err(CostValidationError::Other(
+                    "dynamic modal cost counts are not supported".to_string(),
+                ));
+            }
+        };
+        let min_modes = match &self.min_choose_count {
+            Some(Value::Fixed(value)) => (*value).max(0) as usize,
+            Some(_) => {
+                return Err(CostValidationError::Other(
+                    "dynamic modal cost counts are not supported".to_string(),
+                ));
+            }
+            None => max_modes,
+        };
+
+        let legal_mode_count = self
+            .modes
+            .iter()
+            .filter(|mode| {
+                mode.effects.iter().all(|effect| {
+                    effect.0.as_cost_executable().is_some_and(|_| {
+                        effect
+                            .0
+                            .can_execute_as_cost(game, source, controller)
+                            .is_ok()
+                    })
+                })
+            })
+            .count();
+
+        if legal_mode_count >= min_modes {
+            Ok(())
+        } else {
+            Err(CostValidationError::Other(
+                "not enough legal cost options available".to_string(),
+            ))
+        }
     }
 }

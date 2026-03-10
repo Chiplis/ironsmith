@@ -64,9 +64,14 @@ impl EffectExecutor for GrantTaggedSpellLifeCostByManaValueEffect {
             let method = AlternativeCastingMethod::alternative_cost(
                 "Pay life equal to mana value",
                 None,
-                vec![Effect::new(crate::effects::LoseLifeEffect::you(
-                    Value::ManaValueOf(Box::new(ChooseSpec::Source)),
-                ))],
+                vec![
+                    crate::costs::Cost::try_from_runtime_effect(Effect::new(
+                        crate::effects::LoseLifeEffect::you(Value::ManaValueOf(Box::new(
+                            ChooseSpec::Source,
+                        ))),
+                    ))
+                    .expect("granted life-cost alternative should be cost-capable"),
+                ],
             );
             game.grant_registry.grant_alternative_cast_to_card(
                 object_id,

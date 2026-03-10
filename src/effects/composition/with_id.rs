@@ -1,7 +1,7 @@
 //! WithId effect implementation.
 
 use crate::effect::{Effect, EffectId, EffectOutcome};
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 
@@ -42,6 +42,13 @@ impl WithIdEffect {
 }
 
 impl EffectExecutor for WithIdEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        self.effect
+            .0
+            .as_cost_executable()
+            .map(|_| self as &dyn CostExecutableEffect)
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -69,6 +76,17 @@ impl EffectExecutor for WithIdEffect {
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         // Delegate to inner effect
         self.effect.0.get_target_count()
+    }
+}
+
+impl CostExecutableEffect for WithIdEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        self.effect.0.can_execute_as_cost(game, source, controller)
     }
 }
 

@@ -1,8 +1,8 @@
 //! Untap effect implementation.
 
 use crate::effect::{ChoiceCount, EffectOutcome};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
+use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::events::PermanentUntappedEvent;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -63,6 +63,10 @@ impl UntapEffect {
 }
 
 impl EffectExecutor for UntapEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -116,6 +120,32 @@ impl EffectExecutor for UntapEffect {
 
     fn target_description(&self) -> &'static str {
         "permanent to untap"
+    }
+
+    fn is_untap_source_cost(&self) -> bool {
+        matches!(self.spec, ChooseSpec::Source)
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        if matches!(self.spec, ChooseSpec::Source) {
+            Some("{Q}".to_string())
+        } else {
+            None
+        }
+    }
+}
+
+impl CostExecutableEffect for UntapEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        if matches!(self.spec, ChooseSpec::Source) && !game.is_tapped(source) {
+            return Err(crate::effects::CostValidationError::AlreadyUntapped);
+        }
+        Ok(())
     }
 }
 
@@ -232,6 +262,32 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_untap_source_cost_validation_and_description() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature(&mut game, "Bear", alice, false);
+        let effect = UntapEffect::with_spec(ChooseSpec::Source);
+
+        assert_eq!(
+            crate::effects::EffectExecutor::can_execute_as_cost(&effect, &game, creature_id, alice),
+            Err(crate::effects::CostValidationError::AlreadyUntapped)
+        );
+
+        game.tap(creature_id);
+        assert!(
+            crate::effects::EffectExecutor::can_execute_as_cost(
+                &effect,
+                &game,
+                creature_id,
+                alice,
+            )
+                .is_ok()
+        );
+        assert!(effect.is_untap_source_cost());
+        assert_eq!(effect.cost_description().as_deref(), Some("{Q}"));
     }
 
     #[test]

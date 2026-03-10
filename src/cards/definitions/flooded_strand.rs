@@ -45,7 +45,7 @@ mod tests {
     fn test_flooded_strand_ability_costs() {
         let def = flooded_strand();
         if let AbilityKind::Activated(activated) = &def.abilities[0].kind {
-            // Check cost_effects for tap, life, and sacrifice costs
+            // Check non-mana costs for tap, life, and sacrifice
             assert!(activated.has_tap_cost());
             assert_eq!(activated.life_cost_amount(), Some(1));
             assert!(activated.has_sacrifice_self_cost());

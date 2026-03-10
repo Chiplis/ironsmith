@@ -1103,7 +1103,7 @@ fn parse_replicate_line_rule(view: &ClauseView<'_>) -> Result<Option<LineAst>, C
     }
 
     parser_trace("parse_line:branch=replicate", view.tokens);
-    let (cost, _) = parse_activation_cost(cost_tokens)?;
+    let cost = parse_activation_cost(cost_tokens)?;
     Ok(Some(LineAst::OptionalCost(
         OptionalCost::custom("Replicate", cost).repeatable(),
     )))
@@ -1846,8 +1846,7 @@ pub(crate) fn parse_flashback_line(
         ));
     }
 
-    let (parsed_cost, cost_effects) = parse_activation_cost(&tokens[cost_start..])?;
-    let total_cost = crate::ability::merge_cost_effects(parsed_cost, cost_effects);
+    let total_cost = parse_activation_cost(&tokens[cost_start..])?;
     if total_cost.mana_cost().is_none() {
         return Err(CardTextError::ParseError(
             "flashback keyword missing mana symbols".to_string(),
@@ -1910,8 +1909,8 @@ pub(crate) fn parse_bestow_line(
         }
     }
 
-    if let Ok((parsed_total_cost, parsed_cost_effects)) = parse_activation_cost(&cost_tokens) {
-        total_cost = crate::ability::merge_cost_effects(parsed_total_cost, parsed_cost_effects);
+    if let Ok(parsed_total_cost) = parse_activation_cost(&cost_tokens) {
+        total_cost = parsed_total_cost;
         if total_cost.mana_cost().is_none() {
             let mut components = total_cost.costs().to_vec();
             components.insert(0, crate::costs::Cost::mana(mana_cost));
@@ -1990,8 +1989,7 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
             "alternative cost line missing cost clause".to_string(),
         ));
     }
-    let (parsed_cost, cost_effects) = parse_activation_cost(cost_tokens)?;
-    let total_cost = crate::ability::merge_cost_effects(parsed_cost, cost_effects);
+    let total_cost = parse_activation_cost(cost_tokens)?;
     Ok(Some(AlternativeCastingMethod::Composed {
         name: "Parsed alternative cost",
         total_cost,

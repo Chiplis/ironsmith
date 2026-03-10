@@ -155,7 +155,7 @@ mod tests {
                 ma.has_tap_cost(),
                 "Treasure mana ability should require tap"
             );
-            // Check for SacrificeSelf in the cost_effects
+            // Check for SacrificeSelf in the non-mana costs
             assert!(
                 ma.has_sacrifice_self_cost(),
                 "Treasure mana ability should require sacrifice self"
