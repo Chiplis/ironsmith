@@ -46,7 +46,9 @@ impl TriggerMatcher for IsDealtDamageTrigger {
             ChooseSpec::Object(filter) => {
                 format!("Whenever {} is dealt damage", filter.description())
             }
-            ChooseSpec::AnyTarget => "Whenever a target is dealt damage".to_string(),
+            ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => {
+                "Whenever a target is dealt damage".to_string()
+            }
             ChooseSpec::SourceController => "Whenever you are dealt damage".to_string(),
             ChooseSpec::SourceOwner => "Whenever you are dealt damage".to_string(),
             ChooseSpec::SpecificPlayer(_) => "Whenever that player is dealt damage".to_string(),
@@ -73,7 +75,7 @@ fn target_matches_object(
             .game
             .object(object_id)
             .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game)),
-        ChooseSpec::AnyTarget => true,
+        ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => true,
         _ => false,
     }
 }
@@ -94,7 +96,7 @@ fn target_matches_player(
             .is_some_and(|obj| obj.owner == player_id),
         ChooseSpec::SpecificPlayer(id) => player_id == *id,
         ChooseSpec::Player(filter) => filter.matches_player(player_id, &ctx.filter_ctx),
-        ChooseSpec::AnyTarget => true,
+        ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => true,
         _ => false,
     }
 }

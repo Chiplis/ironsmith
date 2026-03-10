@@ -20,7 +20,9 @@ use crate::cards::builders::{
 };
 use crate::color::ColorSet;
 use crate::cost::OptionalCost;
-use crate::effect::{Condition, Effect, EffectId, EffectMode, EffectPredicate, EventValueSpec};
+use crate::effect::{
+    Condition, Effect, EffectId, EffectMode, EffectPredicate, EventValueSpec, Value,
+};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::CardType;
@@ -1636,9 +1638,11 @@ fn finalize_pending_modal(
         return Ok(builder);
     }
 
-    let mode_count = compiled_modes.len() as u32;
-    let max = header_max.unwrap_or(mode_count).min(mode_count);
-    let min = header_min.min(max);
+    let mode_count = compiled_modes.len() as i32;
+    let default_max = Value::Fixed(mode_count);
+    let max = header_max.unwrap_or_else(|| default_max.clone());
+    let min = header_min;
+    let is_fixed_one = |value: &Value| matches!(value, Value::Fixed(1));
     let with_unchosen_requirement = |effect: Effect| {
         if !mode_must_be_unchosen {
             return effect;
@@ -1656,7 +1660,7 @@ fn finalize_pending_modal(
     };
 
     let modal_effect = if commander_allows_both {
-        let max_both = mode_count.min(2).max(1);
+        let max_both = (mode_count.min(2)).max(1);
         let choose_both = if max_both == 1 {
             with_unchosen_requirement(Effect::choose_one(compiled_modes.clone()))
         } else {
@@ -1670,15 +1674,19 @@ fn finalize_pending_modal(
         )
     } else if same_mode_more_than_once && min == max {
         with_unchosen_requirement(Effect::choose_exactly_allow_repeated_modes(
-            max,
+            max.clone(),
             compiled_modes,
         ))
-    } else if min == 1 && max == 1 {
+    } else if is_fixed_one(&min) && is_fixed_one(&max) {
         with_unchosen_requirement(Effect::choose_one(compiled_modes))
     } else if min == max {
-        with_unchosen_requirement(Effect::choose_exactly(max, compiled_modes))
+        with_unchosen_requirement(Effect::choose_exactly(max.clone(), compiled_modes))
     } else {
-        with_unchosen_requirement(Effect::choose_up_to(max, min, compiled_modes))
+        with_unchosen_requirement(Effect::choose_up_to(
+            max.clone(),
+            min.clone(),
+            compiled_modes,
+        ))
     };
 
     let mut combined_effects = prefix_effects;

@@ -4745,6 +4745,7 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
         ChooseSpec::AnyTarget => "any target".to_string(),
+        ChooseSpec::AnyOtherTarget => "any other target".to_string(),
         ChooseSpec::AttackedPlayerOrPlaneswalker => {
             "the player or planeswalker it's attacking".to_string()
         }
@@ -4803,6 +4804,9 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                             .map(str::to_string)
                             .unwrap_or_else(|| n.to_string())
                     };
+                    if count.is_up_to_dynamic_x() {
+                        return format!("up to X target {plural}{random_suffix}");
+                    }
                     if count.is_dynamic_x() {
                         return format!("X target {plural}{random_suffix}");
                     }
@@ -4843,6 +4847,9 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                             .map(str::to_string)
                             .unwrap_or_else(|| n.to_string())
                     };
+                    if count.is_up_to_dynamic_x() {
+                        return format!("up to X {plural}{random_suffix}");
+                    }
                     if count.is_dynamic_x() {
                         return format!("X {plural}{random_suffix}");
                     }
@@ -5006,6 +5013,9 @@ pub(super) fn is_you_owned_battlefield_object_spec(spec: &ChooseSpec) -> bool {
 }
 
 pub(super) fn describe_card_choice_count(count: ChoiceCount) -> String {
+    if count.is_up_to_dynamic_x() {
+        return "up to X cards".to_string();
+    }
     if count.is_dynamic_x() {
         return "X cards".to_string();
     }
@@ -5121,6 +5131,9 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                             .map(str::to_string)
                             .unwrap_or_else(|| n.to_string())
                     };
+                    if count.is_up_to_dynamic_x() {
+                        return format!("up to X target {plural}");
+                    }
                     if count.is_dynamic_x() {
                         return format!("X target {plural}");
                     }
@@ -5156,6 +5169,9 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                             .or_else(|| number_word(n as i32).map(str::to_string))
                             .unwrap_or_else(|| n.to_string())
                     };
+                    if count.is_up_to_dynamic_x() {
+                        return format!("up to X {plural}");
+                    }
                     if count.is_dynamic_x() {
                         return format!("X {plural}");
                     }
@@ -5194,7 +5210,9 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
 }
 
 pub(super) fn describe_choice_count(count: &ChoiceCount) -> String {
-    let base = if count.is_dynamic_x() {
+    let base = if count.is_up_to_dynamic_x() {
+        "up to X".to_string()
+    } else if count.is_dynamic_x() {
         "X".to_string()
     } else {
         match (count.min, count.max) {
@@ -6095,7 +6113,7 @@ pub(super) fn choose_spec_allows_multiple(spec: &ChooseSpec) -> bool {
         ChooseSpec::Target(inner) => choose_spec_allows_multiple(inner),
         ChooseSpec::All(_) | ChooseSpec::EachPlayer(_) => true,
         ChooseSpec::WithCount(inner, count) => {
-            if count.dynamic_x {
+            if count.is_dynamic_x() {
                 true
             } else if let Some(max) = count.max {
                 max > 1 || choose_spec_allows_multiple(inner)

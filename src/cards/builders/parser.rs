@@ -14,7 +14,7 @@ use crate::cards::builders::{
     ParsedModalAst, ParsedModalGate, ParsedModalHeader, ParsedModalModeAst, ParsedRestrictions,
     TextSpan, Token, collect_tag_spans_from_effects_with_context, collect_tag_spans_from_line,
     find_activation_cost_start, normalize_line_for_parse, parse_if_result_predicate,
-    parse_level_header, parse_line, parse_number, parse_power_toughness,
+    parse_level_header, parse_line, parse_number_or_x_value, parse_power_toughness,
     parse_where_x_value_clause, replace_unbound_x_with_value, value_contains_unbound_x,
 };
 use crate::effect::Value;
@@ -632,33 +632,33 @@ fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>, CardTextEr
         return Ok(None);
     };
 
-    let mut min = None;
-    let mut max = None;
+    let mut min: Option<Value> = None;
+    let mut max: Option<Value> = None;
     let choose_tokens = &tokens[choose_idx + 1..];
     if choose_tokens.len() >= 3
         && choose_tokens[0].is_word("one")
         && choose_tokens[1].is_word("or")
         && choose_tokens[2].is_word("more")
     {
-        min = Some(1);
+        min = Some(Value::Fixed(1));
         max = None;
     } else if choose_tokens.len() >= 3
         && choose_tokens[0].is_word("one")
         && choose_tokens[1].is_word("or")
         && choose_tokens[2].is_word("both")
     {
-        min = Some(1);
-        max = Some(2);
+        min = Some(Value::Fixed(1));
+        max = Some(Value::Fixed(2));
     } else if choose_tokens.len() >= 2
         && choose_tokens[0].is_word("up")
         && choose_tokens[1].is_word("to")
     {
-        if let Some((value, _)) = parse_number(&choose_tokens[2..]) {
-            min = Some(0);
+        if let Some((value, _)) = parse_number_or_x_value(&choose_tokens[2..]) {
+            min = Some(Value::Fixed(0));
             max = Some(value);
         }
-    } else if let Some((value, _)) = parse_number(choose_tokens) {
-        min = Some(value);
+    } else if let Some((value, _)) = parse_number_or_x_value(choose_tokens) {
+        min = Some(value.clone());
         max = Some(value);
     }
 

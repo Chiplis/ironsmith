@@ -1796,7 +1796,9 @@ pub(super) fn describe_choose_then_cant_block(
             .map(str::to_string)
             .unwrap_or_else(|| n.to_string())
     };
-    let sentence = if choose.count.is_dynamic_x() {
+    let sentence = if choose.count.is_up_to_dynamic_x() {
+        format!("Up to X target {plural} can't block this turn")
+    } else if choose.count.is_dynamic_x() {
         format!("X target {plural} can't block this turn")
     } else {
         match (choose.count.min, choose.count.max) {
@@ -7692,7 +7694,10 @@ pub(super) fn is_cycling_cost_word(word: &str) -> bool {
 pub(super) fn choices_are_simple_targets(choices: &[ChooseSpec]) -> bool {
     fn is_simple_target(choice: &ChooseSpec) -> bool {
         match choice {
-            ChooseSpec::Target(_) | ChooseSpec::AnyTarget | ChooseSpec::PlayerOrPlaneswalker(_) => {
+            ChooseSpec::Target(_)
+            | ChooseSpec::AnyTarget
+            | ChooseSpec::AnyOtherTarget
+            | ChooseSpec::PlayerOrPlaneswalker(_) => {
                 true
             }
             ChooseSpec::WithCount(inner, _) => is_simple_target(inner),

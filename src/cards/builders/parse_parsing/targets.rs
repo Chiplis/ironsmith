@@ -1,8 +1,10 @@
 use crate::cards::builders::{
     CardTextError, IT_TAG, TargetAst, Token, is_article, parse_card_type,
-    parse_filter_counter_constraint_words, parse_non_type, parse_number, parse_object_filter,
-    parse_subtype_word, span_from_tokens, token_index_for_word_index, words,
+    parse_filter_counter_constraint_words, parse_non_type, parse_number,
+    parse_number_or_x_value, parse_object_filter, parse_subtype_word, span_from_tokens,
+    token_index_for_word_index, words,
 };
+use crate::effect::Value;
 use crate::{CardType, ChoiceCount, ObjectFilter, PlayerFilter, TagKey, Zone};
 
 pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
@@ -157,8 +159,8 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
         && tokens.get(idx + 1).is_some_and(|token| token.is_word("to"))
     {
         idx += 2;
-        if let Some((count, used)) = parse_number(&tokens[idx..]) {
-            target_count = Some(ChoiceCount::up_to(count as usize));
+        if let Some((value, used)) = parse_number_or_x_value(&tokens[idx..]) {
+            target_count = Some(choice_count_from_value(&value, true));
             idx += used;
         } else {
             let next_word = tokens.get(idx).and_then(Token::as_word).unwrap_or("?");
@@ -170,7 +172,7 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
     } else if let Some((count, used)) = parse_target_count_range_prefix(&tokens[idx..]) {
         target_count = Some(count);
         idx += used;
-    } else if let Some((count, used)) = parse_number(&tokens[idx..]) {
+    } else if let Some((value, used)) = parse_number_or_x_value(&tokens[idx..]) {
         let next_is_target = tokens
             .get(idx + used)
             .is_some_and(|token| token.is_word("target"));
@@ -236,78 +238,11 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
                         .is_some()
             });
         if next_is_target || next_is_other_target {
-            target_count = Some(ChoiceCount::exactly(count as usize));
+            target_count = Some(choice_count_from_value(&value, false));
             idx += used;
         } else if next_is_object_selector {
-            target_count = Some(ChoiceCount::exactly(count as usize));
+            target_count = Some(choice_count_from_value(&value, false));
             idx += used;
-        }
-    }
-
-    if tokens.get(idx).is_some_and(|token| token.is_word("x")) {
-        let next_is_target = tokens
-            .get(idx + 1)
-            .is_some_and(|token| token.is_word("target"));
-        let mut object_selector_idx = idx + 1;
-        while tokens
-            .get(object_selector_idx)
-            .and_then(Token::as_word)
-            .is_some_and(|word| {
-                matches!(
-                    word,
-                    "tapped"
-                        | "untapped"
-                        | "attacking"
-                        | "nonattacking"
-                        | "blocked"
-                        | "unblocked"
-                        | "blocking"
-                        | "nonblocking"
-                        | "non"
-                        | "other"
-                        | "another"
-                        | "nonartifact"
-                        | "noncreature"
-                        | "nonland"
-                        | "nontoken"
-                        | "legendary"
-                        | "basic"
-                )
-            })
-        {
-            object_selector_idx += 1;
-        }
-        let next_is_object_selector = tokens
-            .get(object_selector_idx)
-            .and_then(Token::as_word)
-            .is_some_and(|word| {
-                matches!(
-                    word,
-                    "card"
-                        | "cards"
-                        | "permanent"
-                        | "permanents"
-                        | "creature"
-                        | "creatures"
-                        | "spell"
-                        | "spells"
-                        | "source"
-                        | "sources"
-                        | "token"
-                        | "tokens"
-                ) || parse_card_type(word).is_some()
-                    || parse_non_type(word).is_some()
-                    || parse_subtype_word(word).is_some()
-                    || word
-                        .strip_suffix('s')
-                        .and_then(parse_subtype_word)
-                        .is_some()
-            });
-        if next_is_target || next_is_object_selector {
-            // Preserve explicit/implicit X-count wording while reusing open-ended
-            // target selection internals.
-            target_count = Some(ChoiceCount::dynamic_x());
-            idx += 1;
         }
     }
 
@@ -334,70 +269,7 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
         saw_top_prefix = true;
         let count_idx = idx + 1;
 
-        if tokens
-            .get(count_idx)
-            .is_some_and(|token| token.is_word("x"))
-        {
-            let mut object_selector_idx = count_idx + 1;
-            while tokens
-                .get(object_selector_idx)
-                .and_then(Token::as_word)
-                .is_some_and(|word| {
-                    matches!(
-                        word,
-                        "tapped"
-                            | "untapped"
-                            | "attacking"
-                            | "nonattacking"
-                            | "blocked"
-                            | "unblocked"
-                            | "blocking"
-                            | "nonblocking"
-                            | "non"
-                            | "other"
-                            | "another"
-                            | "nonartifact"
-                            | "noncreature"
-                            | "nonland"
-                            | "nontoken"
-                            | "legendary"
-                            | "basic"
-                    )
-                })
-            {
-                object_selector_idx += 1;
-            }
-            let next_is_object_selector = tokens
-                .get(object_selector_idx)
-                .and_then(Token::as_word)
-                .is_some_and(|word| {
-                    matches!(
-                        word,
-                        "card"
-                            | "cards"
-                            | "permanent"
-                            | "permanents"
-                            | "creature"
-                            | "creatures"
-                            | "spell"
-                            | "spells"
-                            | "source"
-                            | "sources"
-                            | "token"
-                            | "tokens"
-                    ) || parse_card_type(word).is_some()
-                        || parse_non_type(word).is_some()
-                        || parse_subtype_word(word).is_some()
-                        || word
-                            .strip_suffix('s')
-                            .and_then(parse_subtype_word)
-                            .is_some()
-                });
-            if next_is_object_selector {
-                target_count = Some(ChoiceCount::dynamic_x());
-                idx = count_idx + 1;
-            }
-        } else if let Some((count, used)) = parse_number(&tokens[count_idx..]) {
+        if let Some((value, used)) = parse_number_or_x_value(&tokens[count_idx..]) {
             let mut object_selector_idx = count_idx + used;
             while tokens
                 .get(object_selector_idx)
@@ -454,7 +326,7 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
                             .is_some()
                 });
             if next_is_object_selector {
-                target_count = Some(ChoiceCount::exactly(count as usize));
+                target_count = Some(choice_count_from_value(&value, false));
                 idx = count_idx + used;
             }
         }
@@ -513,7 +385,10 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
         return Ok(wrap_target_count(TargetAst::AnyTarget(span), target_count));
     }
     if words_all.as_slice() == ["any", "other", "target"] {
-        return Ok(wrap_target_count(TargetAst::AnyTarget(span), target_count));
+        return Ok(wrap_target_count(
+            TargetAst::AnyOtherTarget(span),
+            target_count,
+        ));
     }
 
     let remaining = &tokens[idx..];
@@ -956,6 +831,7 @@ pub(crate) fn parse_target_count_range_prefix(tokens: &[Token]) -> Option<(Choic
             min: first as usize,
             max: Some(second as usize),
             dynamic_x: false,
+            up_to_x: false,
             random: false,
         },
         first_used + 1 + second_used,
@@ -967,6 +843,27 @@ pub(crate) fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCo
         TargetAst::WithCount(Box::new(target), count)
     } else {
         target
+    }
+}
+
+fn choice_count_from_value(value: &Value, up_to: bool) -> ChoiceCount {
+    match value {
+        Value::X => {
+            if up_to {
+                ChoiceCount::up_to_dynamic_x()
+            } else {
+                ChoiceCount::dynamic_x()
+            }
+        }
+        Value::Fixed(count) => {
+            let count = (*count).max(0) as usize;
+            if up_to {
+                ChoiceCount::up_to(count)
+            } else {
+                ChoiceCount::exactly(count)
+            }
+        }
+        other => unreachable!("unsupported target-count value {other:?}"),
     }
 }
 

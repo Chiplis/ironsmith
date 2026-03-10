@@ -79,7 +79,10 @@ impl RetargetStackObjectEffect {
 fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Target(inner) => requires_target_selection(inner),
-        ChooseSpec::AnyTarget | ChooseSpec::Player(_) | ChooseSpec::Object(_) => true,
+        ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget
+        | ChooseSpec::Player(_)
+        | ChooseSpec::Object(_) => true,
         _ => false,
     }
 }

@@ -83,7 +83,9 @@ fn resolve_legacy_prevent_damage_target(
             Ok(PreventionTarget::PermanentsMatching(filter.clone()))
         }
 
-        ChooseSpec::AnyTarget => first_target(ctx).ok_or(ExecutionError::InvalidTarget),
+        ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => {
+            first_target(ctx).ok_or(ExecutionError::InvalidTarget)
+        }
 
         ChooseSpec::SourceOwner => {
             if let Some(source) = game.object(ctx.source) {

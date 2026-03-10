@@ -18,7 +18,7 @@ use crate::cards::builders::{
 };
 use crate::{AlternativeCastingMethod, OptionalCost, TotalCost};
 
-const PRE_TOKEN_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 21] = [
+const PRE_TOKEN_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 22] = [
     UnsupportedRuleDef {
         id: "commander-cast-count",
         priority: 100,
@@ -42,6 +42,14 @@ const PRE_TOKEN_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 21] = [
         shape_mask: 0,
         message: "unsupported choose-leading spell clause",
         predicate: line_has_choose_leading_spell_clause,
+    },
+    UnsupportedRuleDef {
+        id: "partner-with-keyword-line",
+        priority: 125,
+        heads: &["partner"],
+        shape_mask: 0,
+        message: "unsupported partner-with keyword line",
+        predicate: line_has_partner_with_keyword_clause,
     },
     UnsupportedRuleDef {
         id: "put-from-among",
@@ -420,6 +428,10 @@ fn line_has_choose_leading_spell_clause(view: &ClauseView<'_>) -> bool {
     let normalized = normalized_line(view);
     normalized.starts_with("choose target land")
         && normalized.contains("create three tokens that are copies of it")
+}
+
+fn line_has_partner_with_keyword_clause(view: &ClauseView<'_>) -> bool {
+    normalized_line(view).starts_with("partner with ")
 }
 
 fn line_has_put_from_among_clause(view: &ClauseView<'_>) -> bool {

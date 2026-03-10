@@ -499,6 +499,7 @@ pub(crate) enum ReturnControllerAst {
 pub(crate) enum TargetAst {
     Source(Option<TextSpan>),
     AnyTarget(Option<TextSpan>),
+    AnyOtherTarget(Option<TextSpan>),
     PlayerOrPlaneswalker(PlayerFilter, Option<TextSpan>),
     AttackedPlayerOrPlaneswalker(Option<TextSpan>),
     Spell(Option<TextSpan>),

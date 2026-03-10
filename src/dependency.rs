@@ -528,6 +528,7 @@ fn evaluate_value(
                 | ChooseSpec::SpecificObject(_)
                 | ChooseSpec::SpecificPlayer(_)
                 | ChooseSpec::AnyTarget
+                | ChooseSpec::AnyOtherTarget
                 | ChooseSpec::PlayerOrPlaneswalker(_)
                 | ChooseSpec::AttackedPlayerOrPlaneswalker
                 | ChooseSpec::SourceController

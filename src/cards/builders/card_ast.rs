@@ -43,8 +43,8 @@ pub(crate) struct ParsedModalAst {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ParsedModalHeader {
-    pub(crate) min: u32,
-    pub(crate) max: Option<u32>,
+    pub(crate) min: Value,
+    pub(crate) max: Option<Value>,
     pub(crate) same_mode_more_than_once: bool,
     pub(crate) mode_must_be_unchosen: bool,
     pub(crate) mode_must_be_unchosen_this_turn: bool,

@@ -9798,6 +9798,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
             min: 0,
             max: Some(value as usize),
             dynamic_x: false,
+            up_to_x: false,
             random: false,
         };
         choose_object_tokens = trim_commas(&choose_object_tokens[2 + used..]);
@@ -9924,6 +9925,7 @@ pub(crate) fn parse_you_choose_objects_clause(
             min: 0,
             max: Some(value as usize),
             dynamic_x: false,
+            up_to_x: false,
             random: false,
         };
         choose_words = choose_words[2 + used..].to_vec();

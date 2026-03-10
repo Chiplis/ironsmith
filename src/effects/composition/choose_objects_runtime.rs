@@ -432,15 +432,17 @@ pub(crate) fn run_choose_objects(
             .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string()))?
             as usize;
 
-        if x > candidates.len() {
+        if effect.count.up_to_x {
+            (0, x.min(candidates.len()))
+        } else if x > candidates.len() {
             return Err(ExecutionError::Impossible(format!(
                 "Not enough candidates to choose X objects (X={}, {} available)",
                 x,
                 candidates.len()
             )));
+        } else {
+            (x, x)
         }
-
-        (x, x)
     } else {
         compute_choice_bounds(effect.count, candidates.len())
     };

@@ -146,7 +146,10 @@ impl ExileEffect {
     fn uses_ctx_targets(&self) -> bool {
         matches!(
             self.spec.base(),
-            ChooseSpec::Object(_) | ChooseSpec::Player(_) | ChooseSpec::AnyTarget
+            ChooseSpec::Object(_)
+                | ChooseSpec::Player(_)
+                | ChooseSpec::AnyTarget
+                | ChooseSpec::AnyOtherTarget
         )
     }
 }

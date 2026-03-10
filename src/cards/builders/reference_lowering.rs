@@ -398,6 +398,7 @@ pub(crate) fn resolve_choose_spec_it_tag(
         ChooseSpec::SpecificObject(id) => Ok(ChooseSpec::SpecificObject(*id)),
         ChooseSpec::SpecificPlayer(id) => Ok(ChooseSpec::SpecificPlayer(*id)),
         ChooseSpec::AnyTarget => Ok(ChooseSpec::AnyTarget),
+        ChooseSpec::AnyOtherTarget => Ok(ChooseSpec::AnyOtherTarget),
         ChooseSpec::Source => Ok(ChooseSpec::Source),
         ChooseSpec::SourceController => Ok(ChooseSpec::SourceController),
         ChooseSpec::SourceOwner => Ok(ChooseSpec::SourceOwner),
@@ -491,6 +492,7 @@ pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     match target {
         TargetAst::Source(_) => ChooseSpec::Source,
         TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
+        TargetAst::AnyOtherTarget(_) => ChooseSpec::AnyOtherTarget,
         TargetAst::PlayerOrPlaneswalker(filter, _) => {
             ChooseSpec::PlayerOrPlaneswalker(filter.clone())
         }

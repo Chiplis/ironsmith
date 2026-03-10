@@ -44,7 +44,7 @@ fn describe_choice(spec: &ChooseSpec) -> String {
     match spec.base() {
         ChooseSpec::Player(_) => "target player".to_string(),
         ChooseSpec::Object(_) => "target object".to_string(),
-        ChooseSpec::AnyTarget => "target".to_string(),
+        ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => "target".to_string(),
         ChooseSpec::PlayerOrPlaneswalker(_) => "target player or planeswalker".to_string(),
         ChooseSpec::AttackedPlayerOrPlaneswalker => {
             "target attacked player or planeswalker".to_string()

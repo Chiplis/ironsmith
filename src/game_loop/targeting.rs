@@ -1,5 +1,26 @@
 use super::*;
 
+fn resolve_modal_count_value_for_source(
+    game: &GameState,
+    source_id: Option<ObjectId>,
+    value: &crate::effect::Value,
+    fallback: usize,
+) -> usize {
+    let x_value = source_id
+        .and_then(|id| game.object(id))
+        .and_then(|obj| obj.x_value)
+        .and_then(|x| usize::try_from(x).ok());
+
+    match value {
+        crate::effect::Value::Fixed(n) => (*n).max(0) as usize,
+        crate::effect::Value::X => x_value.unwrap_or(fallback),
+        crate::effect::Value::XTimes(multiplier) => x_value
+            .map(|x| ((x as i32) * *multiplier).max(0) as usize)
+            .unwrap_or(fallback),
+        _ => fallback,
+    }
+}
+
 // ============================================================================
 // Target Extraction
 // ============================================================================
@@ -14,6 +35,7 @@ pub fn requires_target_selection(spec: &ChooseSpec) -> bool {
         }
         // These require target selection during casting
         ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget
         | ChooseSpec::PlayerOrPlaneswalker(_)
         | ChooseSpec::Player(_)
         | ChooseSpec::Object(_) => true,
@@ -409,15 +431,20 @@ pub fn extract_target_spec(effect: &Effect) -> Option<ExtractedTarget<'_>> {
 }
 
 pub(super) fn resolve_modal_mode_counts(
+    game: &GameState,
+    source_id: Option<ObjectId>,
     choose_mode: &crate::effects::ChooseModeEffect,
 ) -> (usize, usize) {
-    let max_modes = match choose_mode.choose_count {
-        crate::effect::Value::Fixed(n) => n.max(0) as usize,
-        _ => 1,
-    };
+    let max_modes = resolve_modal_count_value_for_source(
+        game,
+        source_id,
+        &choose_mode.choose_count,
+        choose_mode.modes.len().max(1),
+    );
     let min_modes = match choose_mode.min_choose_count.as_ref() {
-        Some(crate::effect::Value::Fixed(n)) => (*n).max(0) as usize,
-        Some(_) => max_modes,
+        Some(min_value) => {
+            resolve_modal_count_value_for_source(game, source_id, min_value, max_modes)
+        }
         None => max_modes,
     };
     (min_modes, max_modes)
@@ -443,7 +470,7 @@ pub(super) fn choose_mode_has_legal_targets_with_view(
     chosen_modes: Option<&[usize]>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
-    let (min_modes, max_modes) = resolve_modal_mode_counts(choose_mode);
+    let (min_modes, max_modes) = resolve_modal_mode_counts(game, source_id, choose_mode);
     if min_modes > max_modes {
         return false;
     }

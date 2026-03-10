@@ -1235,6 +1235,9 @@ pub(super) fn apply_x_value_response(
 
     // Store the X value
     pending.x_value = Some(x_value);
+    if let Some(obj) = game.object_mut(pending.spell_id) {
+        obj.x_value = Some(x_value);
+    }
 
     // Check for optional costs, then continue to targeting or finalization
     check_optional_costs_or_continue(game, trigger_queue, state, pending, decision_maker)

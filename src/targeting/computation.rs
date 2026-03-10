@@ -276,6 +276,9 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_with_view(
             view,
         ),
         ChooseSpec::AnyTarget => compute_any_targets_with_view(game, caster, source_id, view),
+        ChooseSpec::AnyOtherTarget => {
+            compute_any_other_targets_with_view(game, caster, source_id, view)
+        }
         ChooseSpec::PlayerOrPlaneswalker(filter) => {
             compute_player_or_planeswalker_targets_with_view(game, filter, caster, source_id, view)
         }
@@ -372,6 +375,19 @@ fn compute_any_targets_with_view(
         }
     }
 
+    targets
+}
+
+fn compute_any_other_targets_with_view(
+    game: &GameState,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Vec<Target> {
+    let mut targets = compute_any_targets_with_view(game, caster, source_id, view);
+    if let Some(source_id) = source_id {
+        targets.retain(|target| !matches!(target, Target::Object(id) if *id == source_id));
+    }
     targets
 }
 

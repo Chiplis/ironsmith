@@ -166,7 +166,27 @@ fn parse_target_phrase_defending_player() {
 fn parse_target_phrase_any_other_target_is_supported() {
     let tokens = tokenize_line("any other target", 0);
     let target = parse_target_phrase(&tokens).expect("parse any-other-target");
-    assert!(matches!(target, TargetAst::AnyTarget(_)));
+    assert!(matches!(target, TargetAst::AnyOtherTarget(_)));
+}
+
+#[test]
+fn parse_target_phrase_up_to_x_other_target_creatures_preserves_optional_dynamic_count() {
+    let tokens = tokenize_line("up to X other target creatures", 0);
+    let target = parse_target_phrase(&tokens).expect("parse up-to-X other target creatures");
+
+    let TargetAst::WithCount(inner, count) = target else {
+        panic!("expected counted target");
+    };
+    assert!(
+        count.is_up_to_dynamic_x(),
+        "expected optional dynamic X count, got {count:?}"
+    );
+
+    let TargetAst::Object(filter, _, _) = *inner else {
+        panic!("expected object target");
+    };
+    assert!(filter.other, "expected `other` filter to be preserved");
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
 }
 
 #[test]

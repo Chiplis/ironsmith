@@ -1253,7 +1253,10 @@ pub(crate) fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
         }
         TargetAst::WithCount(inner, _) => target_references_tag(inner, tag),
         TargetAst::AttackedPlayerOrPlaneswalker(_) => false,
-        TargetAst::Source(_) | TargetAst::AnyTarget(_) | TargetAst::Spell(_) => false,
+        TargetAst::Source(_)
+        | TargetAst::AnyTarget(_)
+        | TargetAst::AnyOtherTarget(_)
+        | TargetAst::Spell(_) => false,
     }
 }
 

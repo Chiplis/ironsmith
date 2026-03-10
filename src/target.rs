@@ -58,6 +58,12 @@ pub enum ChooseSpec {
     /// Note: This is inherently a target, so it doesn't need Target wrapper
     AnyTarget,
 
+    /// Any other target.
+    ///
+    /// This preserves the distinction from plain `AnyTarget` for rendering and
+    /// runtime legality checks.
+    AnyOtherTarget,
+
     /// Target player matching `PlayerFilter` or any planeswalker.
     ///
     /// Used for phrases like "target opponent or planeswalker" and
@@ -138,7 +144,10 @@ impl ChooseSpec {
     /// Returns true if this spec represents a target (can fizzle, checks hexproof).
     pub fn is_target(&self) -> bool {
         match self {
-            Self::Target(_) | Self::AnyTarget | Self::PlayerOrPlaneswalker(_) => true,
+            Self::Target(_)
+            | Self::AnyTarget
+            | Self::AnyOtherTarget
+            | Self::PlayerOrPlaneswalker(_) => true,
             Self::WithCount(inner, _) => inner.is_target(),
             _ => false,
         }
@@ -400,9 +409,11 @@ mod tests {
         let target_creature = ChooseSpec::target(ChooseSpec::creature());
         assert!(target_creature.is_target());
 
-        // AnyTarget is inherently a target
+        // AnyTarget variants are inherently targets
         let any_target = ChooseSpec::AnyTarget;
         assert!(any_target.is_target());
+        let any_other_target = ChooseSpec::AnyOtherTarget;
+        assert!(any_other_target.is_target());
     }
 
     #[test]

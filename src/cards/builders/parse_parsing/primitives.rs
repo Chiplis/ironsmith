@@ -423,6 +423,14 @@ pub(crate) fn parse_number(tokens: &[Token]) -> Option<(u32, usize)> {
     Some((value, 1))
 }
 
+pub(crate) fn parse_number_or_x_value(tokens: &[Token]) -> Option<(crate::effect::Value, usize)> {
+    if tokens.first().is_some_and(|token| token.is_word("x")) {
+        Some((crate::effect::Value::X, 1))
+    } else {
+        parse_number(tokens).map(|(value, used)| (crate::effect::Value::Fixed(value as i32), used))
+    }
+}
+
 fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if words.is_empty() {
         return None;

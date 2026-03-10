@@ -961,6 +961,7 @@ pub fn resolve_player_from_spec(
         | ChooseSpec::SpecificObject(_)
         | ChooseSpec::Source
         | ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget
         | ChooseSpec::All(_) => Err(ExecutionError::UnresolvableValue(
             "Object spec cannot be resolved to a player".to_string(),
         )),
@@ -1251,6 +1252,12 @@ pub fn validate_target(
             .is_some_and(|obj| obj.has_card_type(CardType::Planeswalker)),
         (ResolvedTarget::Object(id), ChooseSpec::AnyTarget) => game.object(*id).is_some(),
         (ResolvedTarget::Player(id), ChooseSpec::AnyTarget) => {
+            game.player(*id).is_some_and(|p| p.is_in_game())
+        }
+        (ResolvedTarget::Object(id), ChooseSpec::AnyOtherTarget) => game
+            .object(*id)
+            .is_some_and(|obj| obj.id != ctx.source),
+        (ResolvedTarget::Player(id), ChooseSpec::AnyOtherTarget) => {
             game.player(*id).is_some_and(|p| p.is_in_game())
         }
         (ResolvedTarget::Object(id), ChooseSpec::SpecificObject(expected)) => id == expected,
@@ -1552,7 +1559,9 @@ pub fn resolve_objects_from_spec(
             Ok(objects)
         }
 
-        ChooseSpec::AnyTarget | ChooseSpec::PlayerOrPlaneswalker(_) => {
+        ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget
+        | ChooseSpec::PlayerOrPlaneswalker(_) => {
             let objects: Vec<ObjectId> = ctx
                 .targets
                 .iter()
@@ -1767,7 +1776,8 @@ pub fn resolve_players_from_spec(
         | ChooseSpec::Source
         | ChooseSpec::Tagged(_)
         | ChooseSpec::All(_)
-        | ChooseSpec::AnyTarget => Err(ExecutionError::UnresolvableValue(
+        | ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget => Err(ExecutionError::UnresolvableValue(
             "Object spec cannot be resolved to players".to_string(),
         )),
     }

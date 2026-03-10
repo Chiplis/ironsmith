@@ -776,6 +776,7 @@ pub(crate) fn parse_counter_target_count_prefix(
                     min,
                     max: Some(max),
                     dynamic_x: false,
+                    up_to_x: false,
                     random: false,
                 },
                 pos,

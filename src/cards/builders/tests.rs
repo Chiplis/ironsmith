@@ -524,6 +524,22 @@ fn test_parse_partner_keyword_line_compiles_keyword_text() {
 }
 
 #[test]
+fn test_parse_partner_with_keyword_line_fails_loudly() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Partner With Parse Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Partner with Proud Mentor (When this creature enters, target player may put Proud Mentor into their hand from their library, then shuffle.)",
+        )
+        .expect_err("partner-with keyword line should fail loudly until supported");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported partner-with keyword line")
+            && message.contains("[rule=partner-with-keyword-line]"),
+        "expected targeted partner-with diagnostic, got {message}"
+    );
+}
+
+#[test]
 fn test_parse_assist_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Assist Parse Test")
         .card_types(vec![CardType::Sorcery])
@@ -8795,17 +8811,16 @@ fn parse_filter_dynamic_power_comparison_fails_instead_of_partial_parse() {
 }
 
 #[test]
-fn parse_return_up_to_x_target_fails_instead_of_partial_return() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Dynamic Return Count Variant")
-            .parse_text(
-                "Return up to X target creatures to their owners' hands, where X is one plus the number of cards named Aether Burst in all graveyards as you cast this spell.",
-            )
-            .expect_err("unsupported dynamic target count should fail parse");
-    let message = format!("{err:?}");
+fn parse_return_up_to_x_target_creatures_preserves_dynamic_optional_count() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Return Count Variant")
+        .parse_text(
+            "Return up to X target creatures to their owners' hands, where X is one plus the number of cards named Aether Burst in all graveyards as you cast this spell.",
+        )
+        .expect("up-to-X target return clause should parse");
+    let message = format!("{:?}", def.spell_effect);
     assert!(
-        message.contains("unsupported dynamic or missing target count after 'up to'")
-            || message.contains("unsupported dynamic target count 'X target'"),
-        "expected strict dynamic target-count parse error, got {message}"
+        message.contains("dynamic_x: true") && message.contains("up_to_x: true"),
+        "expected optional dynamic target-count in compiled effect, got {message}"
     );
 }
 
@@ -12719,6 +12734,33 @@ fn parse_for_each_of_x_target_permanents_builds_choose_then_for_each_tagged() {
 }
 
 #[test]
+fn parse_modal_choose_up_to_x_header_preserves_dynamic_bounds() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Modes Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose up to X —\n• Counter target spell.\n• Draw a card.\n• Create a Treasure token.",
+        )
+        .expect("choose-up-to-X modal header should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("choose_count: X"),
+        "expected dynamic modal max count, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("min_choose_count: Some(\n                        Fixed(\n                            0,\n                        ),\n                    )")
+            || spell_debug.contains("min_choose_count: Some(Fixed(0))"),
+        "expected zero minimum for choose-up-to-X header, got {spell_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert!(
+        rendered.to_ascii_lowercase().contains("choose up to x"),
+        "expected rendered text to keep choose-up-to-X header, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_nonhistoric_filter_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Historic Filter Variant")
         .parse_text("Return each nonland permanent that's not historic to its owner's hand.")
@@ -15218,12 +15260,17 @@ fn parse_magda_other_dwarves_anthem() {
 
 #[test]
 fn parse_screaming_nemesis_any_other_target() {
-    CardDefinitionBuilder::new(CardId::new(), "Screaming Nemesis Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Screaming Nemesis Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(
             "Haste\nWhenever this creature is dealt damage, it deals that much damage to any other target. If a player is dealt damage this way, they can't gain life for the rest of the game.",
         )
         .expect("any-other-target damage followup should parse");
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("AnyOtherTarget"),
+        "expected any-other-target semantics to survive lowering, got {abilities_debug}"
+    );
 }
 
 #[test]

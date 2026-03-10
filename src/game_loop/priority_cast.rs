@@ -1,5 +1,20 @@
 use super::*;
 
+fn resolve_modal_count_value(
+    value: &crate::effect::Value,
+    pending_x_value: Option<u32>,
+    fallback: usize,
+) -> usize {
+    match value {
+        crate::effect::Value::Fixed(n) => (*n).max(0) as usize,
+        crate::effect::Value::X => pending_x_value.map(|x| x as usize).unwrap_or(fallback),
+        crate::effect::Value::XTimes(multiplier) => pending_x_value
+            .map(|x| ((x as i32) * *multiplier).max(0) as usize)
+            .unwrap_or(fallback),
+        _ => fallback,
+    }
+}
+
 /// Collect all available casting methods for a spell.
 /// Returns a list of CastingMethodOption structs for each method that can be used.
 pub(super) fn collect_available_casting_methods(
@@ -495,14 +510,13 @@ pub(super) fn check_modes_or_continue(
             .unwrap_or(&[]);
 
         // Resolve min/max mode counts
-        let max_modes = match &modal_spec.max_modes {
-            crate::effect::Value::Fixed(n) => *n as usize,
-            _ => 1, // Default to 1 for dynamic values during casting
-        };
-        let min_modes = match &modal_spec.min_modes {
-            crate::effect::Value::Fixed(n) => *n as usize,
-            _ => max_modes, // Default to max for exact choice
-        };
+        let max_modes = resolve_modal_count_value(
+            &modal_spec.max_modes,
+            pending.x_value,
+            modal_spec.mode_descriptions.len().max(1),
+        );
+        let min_modes =
+            resolve_modal_count_value(&modal_spec.min_modes, pending.x_value, max_modes);
 
         let spell_name = game
             .object(source)
