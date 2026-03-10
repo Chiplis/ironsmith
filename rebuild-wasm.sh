@@ -114,7 +114,7 @@ if [[ -n "$THRESHOLD" ]]; then
   mkdir -p "$(dirname "$SCORES_FILE")"
   echo "[INFO] computing semantic audits report (dims=${DIMS}, threshold=${THRESHOLD})..."
   AUDIT_CMD=(
-    cargo run --quiet --no-default-features --features tooling --bin audit_oracle_clusters --
+    cargo run --quiet -p ironsmith-tools --bin audit_oracle_clusters --
     --cards "$ROOT_DIR/cards.json"
     --use-embeddings
     --embedding-dims "$DIMS"
