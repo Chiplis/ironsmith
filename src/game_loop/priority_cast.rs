@@ -45,13 +45,22 @@ fn collect_available_casting_methods(
             }
         }
 
-        let granted = game
-            .grant_registry
-            .granted_alternative_casts_for_card(game, spell_id, Zone::Hand, player);
+        let granted = game.grant_registry.granted_alternative_casts_for_card(
+            game,
+            spell_id,
+            Zone::Hand,
+            player,
+        );
         let base_alt_idx = spell.alternative_casts.len();
         for (offset, grant) in granted.iter().enumerate() {
             if grant.method.cast_from_zone() != Zone::Hand
-                || !can_cast_with_alternative_from_hand(game, player, spell, spell_id, &grant.method)
+                || !can_cast_with_alternative_from_hand(
+                    game,
+                    player,
+                    spell,
+                    spell_id,
+                    &grant.method,
+                )
             {
                 continue;
             }
@@ -910,10 +919,7 @@ fn finalize_pending_spell_cast(
 
     let event = TriggerEvent::new_with_provenance(
         SpellCastEvent::new(result.new_id, result.caster, result.from_zone),
-        game.alloc_child_event_provenance(
-            pending.provenance,
-            crate::events::EventKind::SpellCast,
-        ),
+        game.alloc_child_event_provenance(pending.provenance, crate::events::EventKind::SpellCast),
     );
     let triggers = check_triggers(game, &event);
     for trigger in triggers {
@@ -1058,7 +1064,11 @@ fn continue_spell_cost_payment(
                 ))
             })? {
                 crate::costs::CostPaymentResult::Paid => {
-                    record_immediate_cost_payment(&mut pending.payment_trace, &cost, pending.spell_id);
+                    record_immediate_cost_payment(
+                        &mut pending.payment_trace,
+                        &cost,
+                        pending.spell_id,
+                    );
                     pending.tagged_objects = cost_ctx.tagged_objects;
                     pending.remaining_cost_steps.remove(0);
                     drain_pending_trigger_events(game, trigger_queue);
@@ -1070,13 +1080,13 @@ fn continue_spell_cost_payment(
                         decision_maker,
                     )
                 }
-                crate::costs::CostPaymentResult::NeedsChoice(description) => Err(
-                    GameLoopError::InvalidState(format!(
+                crate::costs::CostPaymentResult::NeedsChoice(description) => {
+                    Err(GameLoopError::InvalidState(format!(
                         "Deferred spell cost unexpectedly requires staged choice: {} ({})",
                         describe_cost_component(&cost),
                         description
-                    )),
-                ),
+                    )))
+                }
             }
         }
         ActivationCostStep::Sacrifice {
@@ -1955,7 +1965,9 @@ fn build_next_cost_context(
         1,
         1,
     )
-    .with_context_text("Tapping resolves immediately. Other costs may open a follow-up payment prompt.")
+    .with_context_text(
+        "Tapping resolves immediately. Other costs may open a follow-up payment prompt.",
+    )
 }
 
 fn activation_stage_after_announcements(pending: &PendingActivation) -> ActivationStage {
@@ -2002,13 +2014,7 @@ fn continue_activation_cost_payment(
                     pending.remaining_cost_steps.remove(0);
                     drain_pending_trigger_events(game, trigger_queue);
                     pending.stage = activation_stage_after_targets(&pending);
-                    continue_activation(
-                        game,
-                        trigger_queue,
-                        state,
-                        pending,
-                        decision_maker,
-                    )
+                    continue_activation(game, trigger_queue, state, pending, decision_maker)
                 }
                 crate::costs::CostPaymentResult::NeedsChoice(description) => {
                     Err(GameLoopError::InvalidState(format!(
@@ -2144,14 +2150,9 @@ fn continue_activation(
             continue_activation_cost_payment(game, trigger_queue, state, pending, decision_maker)
         }
         ActivationStage::ChoosingNextCost => {
-            auto_pay_activation_tap_cost_steps(
-                game,
-                trigger_queue,
-                &mut pending,
-                decision_maker,
-            )?;
-            let option_count =
-                usize::from(pending.mana_cost_to_pay.is_some()) + pending.remaining_cost_steps.len();
+            auto_pay_activation_tap_cost_steps(game, trigger_queue, &mut pending, decision_maker)?;
+            let option_count = usize::from(pending.mana_cost_to_pay.is_some())
+                + pending.remaining_cost_steps.len();
             if option_count == 1 {
                 if pending.mana_cost_to_pay.is_some() {
                     pending.stage = ActivationStage::PayingMana;
@@ -2455,8 +2456,9 @@ fn auto_pay_activation_tap_cost_steps(
             unreachable!("tap/untap auto-payment only matches cost steps");
         };
 
-        let mut cost_ctx = CostContext::new(pending.source, pending.activator, &mut *decision_maker)
-            .with_provenance(pending.provenance);
+        let mut cost_ctx =
+            CostContext::new(pending.source, pending.activator, &mut *decision_maker)
+                .with_provenance(pending.provenance);
         cost_ctx.tagged_objects = pending.tagged_objects.clone();
         cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
 

@@ -988,7 +988,7 @@ fn execute_pip_payment_action(
     decision_maker: &mut impl DecisionMaker,
     payment_trace: &mut Vec<CostStep>,
     mut mana_spent_to_cast: Option<&mut ManaPool>,
-    ) -> Result<bool, GameLoopError> {
+) -> Result<bool, GameLoopError> {
     match action {
         ManaPipPaymentAction::UseFromPool(symbol) => {
             let spent_info = spend_pool_symbol(game, player, *symbol, source).ok_or_else(|| {
@@ -1037,8 +1037,7 @@ fn execute_pip_payment_action(
                 pip,
                 allow_any_color,
                 &produced_symbols,
-            )
-            {
+            ) {
                 if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
                     track_spent_mana_symbol(spent, spent_info.symbol);
                 }
@@ -1983,11 +1982,11 @@ fn apply_next_cost_choice_response(
 
         let cost_index = choice.saturating_sub(usize::from(has_mana_option));
         if cost_index >= pending.remaining_cost_steps.len() {
-        return Err(GameLoopError::InvalidState(format!(
-            "Invalid activation next-cost choice: {} >= {}",
-            cost_index,
-            pending.remaining_cost_steps.len()
-        )));
+            return Err(GameLoopError::InvalidState(format!(
+                "Invalid activation next-cost choice: {} >= {}",
+                cost_index,
+                pending.remaining_cost_steps.len()
+            )));
         }
 
         pending.remaining_cost_steps.swap(0, cost_index);
@@ -1996,7 +1995,9 @@ fn apply_next_cost_choice_response(
     }
 
     let mut pending = state.pending_cast.take().ok_or_else(|| {
-        GameLoopError::InvalidState("No pending cast or activation for next-cost response".to_string())
+        GameLoopError::InvalidState(
+            "No pending cast or activation for next-cost response".to_string(),
+        )
     })?;
     if !matches!(pending.stage, CastStage::ChoosingNextCost) {
         state.pending_cast = Some(pending);
@@ -2008,7 +2009,13 @@ fn apply_next_cost_choice_response(
     let has_mana_option = pending.mana_cost_to_pay.is_some();
     if has_mana_option && choice == 0 {
         pending.stage = CastStage::PayingMana;
-        return continue_spell_cast_mana_payment(game, trigger_queue, state, pending, decision_maker);
+        return continue_spell_cast_mana_payment(
+            game,
+            trigger_queue,
+            state,
+            pending,
+            decision_maker,
+        );
     }
 
     let cost_index = choice.saturating_sub(usize::from(has_mana_option));
@@ -2041,9 +2048,7 @@ fn apply_sacrifice_target_response(
         ActivationStage::ChoosingSacrifice => {
             let (filter, choice_tag) = match pending.remaining_cost_steps.first() {
                 Some(ActivationCostStep::Sacrifice {
-                    filter,
-                    choice_tag,
-                    ..
+                    filter, choice_tag, ..
                 }) => (filter.clone(), choice_tag.clone()),
                 _ => {
                     return Err(GameLoopError::InvalidState(
@@ -2214,8 +2219,13 @@ fn apply_sacrifice_target_response(
                     choice_tag,
                     ..
                 } => {
-                    let legal_objects =
-                        get_legal_cost_choice_objects(game, pending.activator, pending.source, &filter, zone);
+                    let legal_objects = get_legal_cost_choice_objects(
+                        game,
+                        pending.activator,
+                        pending.source,
+                        &filter,
+                        zone,
+                    );
                     if !legal_objects.contains(&target_id) {
                         return Err(GameLoopError::InvalidState(
                             "Selected object is not a legal exile cost choice".to_string(),
@@ -2268,9 +2278,7 @@ fn apply_sacrifice_target_response(
                     }
                 }
                 ActivationCardCostChoice::ReturnToHand {
-                    filter,
-                    choice_tag,
-                    ..
+                    filter, choice_tag, ..
                 } => {
                     let legal_targets = get_legal_return_to_hand_targets(
                         game,
@@ -2290,7 +2298,11 @@ fn apply_sacrifice_target_response(
                             .object(target_id)
                             .map(|obj| ObjectSnapshot::from_object(obj, game))
                     {
-                        pending.tagged_objects.entry(tag).or_default().push(snapshot);
+                        pending
+                            .tagged_objects
+                            .entry(tag)
+                            .or_default()
+                            .push(snapshot);
                     }
                     let _ = game.move_object_with_commander_options(
                         target_id,
@@ -2340,9 +2352,7 @@ fn apply_card_cost_choice_response(
         CastStage::ChoosingSacrifice => {
             let (filter, choice_tag) = match pending.remaining_cost_steps.first() {
                 Some(ActivationCostStep::Sacrifice {
-                    filter,
-                    choice_tag,
-                    ..
+                    filter, choice_tag, ..
                 }) => (filter.clone(), choice_tag.clone()),
                 _ => {
                     return Err(GameLoopError::InvalidState(
@@ -2402,7 +2412,13 @@ fn apply_card_cost_choice_response(
 
             pending.remaining_cost_steps.remove(0);
             pending.stage = CastStage::ChoosingNextCost;
-            continue_spell_next_cost_or_finalize(game, trigger_queue, state, pending, decision_maker)
+            continue_spell_next_cost_or_finalize(
+                game,
+                trigger_queue,
+                state,
+                pending,
+                decision_maker,
+            )
         }
         CastStage::ChoosingCardCost => {
             let next_cost = pending
@@ -2420,8 +2436,12 @@ fn apply_card_cost_choice_response(
 
             match next_cost {
                 ActivationCardCostChoice::Discard { card_types, .. } => {
-                    let legal_cards =
-                        get_legal_discard_cards(game, pending.caster, pending.spell_id, &card_types);
+                    let legal_cards = get_legal_discard_cards(
+                        game,
+                        pending.caster,
+                        pending.spell_id,
+                        &card_types,
+                    );
                     if !legal_cards.contains(&chosen_id) {
                         return Err(GameLoopError::InvalidState(
                             "Selected card is not a legal spell discard cost choice".to_string(),
@@ -2463,7 +2483,8 @@ fn apply_card_cost_choice_response(
                     );
                     if !legal_cards.contains(&chosen_id) {
                         return Err(GameLoopError::InvalidState(
-                            "Selected card is not a legal spell exile-from-hand cost choice".to_string(),
+                            "Selected card is not a legal spell exile-from-hand cost choice"
+                                .to_string(),
                         ));
                     }
 
@@ -2485,7 +2506,8 @@ fn apply_card_cost_choice_response(
                         get_legal_exile_from_graveyard_cards(game, pending.caster, card_type);
                     if !legal_cards.contains(&chosen_id) {
                         return Err(GameLoopError::InvalidState(
-                            "Selected card is not a legal spell graveyard exile cost choice".to_string(),
+                            "Selected card is not a legal spell graveyard exile cost choice"
+                                .to_string(),
                         ));
                     }
 
@@ -2508,8 +2530,13 @@ fn apply_card_cost_choice_response(
                     choice_tag,
                     ..
                 } => {
-                    let legal_objects =
-                        get_legal_cost_choice_objects(game, pending.caster, pending.spell_id, &filter, zone);
+                    let legal_objects = get_legal_cost_choice_objects(
+                        game,
+                        pending.caster,
+                        pending.spell_id,
+                        &filter,
+                        zone,
+                    );
                     if !legal_objects.contains(&chosen_id) {
                         return Err(GameLoopError::InvalidState(
                             "Selected object is not a legal spell exile cost choice".to_string(),
@@ -2540,8 +2567,12 @@ fn apply_card_cost_choice_response(
                     drain_pending_trigger_events(game, trigger_queue);
                 }
                 ActivationCardCostChoice::RevealFromHand { card_type, .. } => {
-                    let legal_cards =
-                        get_legal_reveal_from_hand_cards(game, pending.caster, pending.spell_id, card_type);
+                    let legal_cards = get_legal_reveal_from_hand_cards(
+                        game,
+                        pending.caster,
+                        pending.spell_id,
+                        card_type,
+                    );
                     if !legal_cards.contains(&chosen_id) {
                         return Err(GameLoopError::InvalidState(
                             "Selected card is not a legal spell reveal cost choice".to_string(),
@@ -2558,9 +2589,7 @@ fn apply_card_cost_choice_response(
                     }
                 }
                 ActivationCardCostChoice::ReturnToHand {
-                    filter,
-                    choice_tag,
-                    ..
+                    filter, choice_tag, ..
                 } => {
                     let legal_targets = get_legal_return_to_hand_targets(
                         game,
@@ -2580,7 +2609,11 @@ fn apply_card_cost_choice_response(
                             .object(chosen_id)
                             .map(|obj| ObjectSnapshot::from_object(obj, game))
                     {
-                        pending.tagged_objects.entry(tag).or_default().push(snapshot);
+                        pending
+                            .tagged_objects
+                            .entry(tag)
+                            .or_default()
+                            .push(snapshot);
                     }
                     let _ = game.move_object_with_commander_options(
                         chosen_id,
@@ -2602,7 +2635,13 @@ fn apply_card_cost_choice_response(
 
             pending.remaining_cost_steps.remove(0);
             pending.stage = CastStage::ChoosingNextCost;
-            continue_spell_next_cost_or_finalize(game, trigger_queue, state, pending, decision_maker)
+            continue_spell_next_cost_or_finalize(
+                game,
+                trigger_queue,
+                state,
+                pending,
+                decision_maker,
+            )
         }
         _ => Err(GameLoopError::InvalidState(
             "Object-choice response outside spell object-cost stages".to_string(),
@@ -3230,13 +3269,12 @@ pub(crate) fn apply_decision_context_with_dm<D: DecisionMaker>(
                 )
             }) {
                 apply_sacrifice_target_response(game, trigger_queue, state, chosen, decision_maker)
-            } else if state
-                .pending_cast
-                .as_ref()
-                .is_some_and(|pending| {
-                    matches!(pending.stage, CastStage::ChoosingSacrifice | CastStage::ChoosingCardCost)
-                })
-            {
+            } else if state.pending_cast.as_ref().is_some_and(|pending| {
+                matches!(
+                    pending.stage,
+                    CastStage::ChoosingSacrifice | CastStage::ChoosingCardCost
+                )
+            }) {
                 apply_card_cost_choice_response(game, trigger_queue, state, chosen, decision_maker)
             } else {
                 Err(GameLoopError::InvalidState(
@@ -3290,11 +3328,15 @@ pub(crate) fn apply_decision_context_with_dm<D: DecisionMaker>(
                     decision_maker,
                 );
             }
-            if state.pending_activation.as_ref().is_some_and(|pending| {
-                matches!(pending.stage, ActivationStage::ChoosingNextCost)
-            }) || state.pending_cast.as_ref().is_some_and(|pending| {
-                matches!(pending.stage, CastStage::ChoosingNextCost)
-            }) {
+            if state
+                .pending_activation
+                .as_ref()
+                .is_some_and(|pending| matches!(pending.stage, ActivationStage::ChoosingNextCost))
+                || state
+                    .pending_cast
+                    .as_ref()
+                    .is_some_and(|pending| matches!(pending.stage, CastStage::ChoosingNextCost))
+            {
                 let choice = result.first().copied().unwrap_or(0);
                 return apply_next_cost_choice_response(
                     game,
@@ -3416,13 +3458,13 @@ fn get_priority_player_from_ctx(
 mod priority_mana_tests {
     use super::*;
     use crate::ability::{
-        Ability, AbilityKind, ActivatedAbility, ManaUsageRestriction,
-        ManaUsageSubtypeRequirement, RestrictedManaUnit,
+        Ability, AbilityKind, ActivatedAbility, ManaUsageRestriction, ManaUsageSubtypeRequirement,
+        RestrictedManaUnit,
     };
+    use crate::cards::CardDefinitionBuilder;
     use crate::cards::definitions::{
         basic_mountain, blood_celebrant, command_tower, wall_of_roots,
     };
-    use crate::cards::CardDefinitionBuilder;
     use crate::cards::tokens::treasure_token_definition;
     use crate::color::Color;
     use crate::cost::TotalCost;

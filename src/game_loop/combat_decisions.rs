@@ -95,9 +95,11 @@ fn generic_attack_tax_per_attacker_against_player(
         let abilities = static_abilities_for_object_with_effects(game, object_id, effects);
 
         for ability in abilities {
-            if let Some(per_attacker_tax) =
-                ability.generic_attack_tax_per_attacker_against_you(game, object_id, defending_player)
-            {
+            if let Some(per_attacker_tax) = ability.generic_attack_tax_per_attacker_against_you(
+                game,
+                object_id,
+                defending_player,
+            ) {
                 tax = tax.saturating_add(per_attacker_tax);
             }
         }
@@ -123,8 +125,10 @@ pub fn apply_attacker_declarations(
     let legal_attackers = compute_legal_attackers(game, combat);
     let declared_creatures: HashSet<ObjectId> = declarations.iter().map(|d| d.creature).collect();
     let attacking_creatures: Vec<ObjectId> = declarations.iter().map(|d| d.creature).collect();
-    let mut attacker_static_abilities: HashMap<ObjectId, Vec<crate::static_abilities::StaticAbility>> =
-        HashMap::new();
+    let mut attacker_static_abilities: HashMap<
+        ObjectId,
+        Vec<crate::static_abilities::StaticAbility>,
+    > = HashMap::new();
 
     if declarations.len() == 1 && !game.can_attack_alone(declarations[0].creature) {
         return Err(ResponseError::InvalidAttackers(
@@ -183,20 +187,17 @@ pub fn apply_attacker_declarations(
                 &attacking_creatures,
             ) && !can_attack
             {
-                return Err(ResponseError::InvalidAttackers(format!(
-                    "{}",
-                    ability.display()
-                ))
-                .into());
+                return Err(
+                    ResponseError::InvalidAttackers(format!("{}", ability.display())).into(),
+                );
             }
-            if let Some(can_pay) = ability.can_pay_attack_cost(game, creature.id, creature.controller)
+            if let Some(can_pay) =
+                ability.can_pay_attack_cost(game, creature.id, creature.controller)
                 && !can_pay
             {
-                return Err(ResponseError::InvalidAttackers(format!(
-                    "{}",
-                    ability.display()
-                ))
-                .into());
+                return Err(
+                    ResponseError::InvalidAttackers(format!("{}", ability.display())).into(),
+                );
             }
             if let Some(cost) =
                 ability.generic_attack_mana_cost_for_source(game, creature.id, creature.controller)
@@ -213,16 +214,17 @@ pub fn apply_attacker_declarations(
         }
     }
 
-    let total_attack_tax = attackers_per_defending_player
-        .into_iter()
-        .fold(0u32, |acc, (defending_player, attackers)| {
+    let total_attack_tax = attackers_per_defending_player.into_iter().fold(
+        0u32,
+        |acc, (defending_player, attackers)| {
             let per_attacker_tax = generic_attack_tax_per_attacker_against_player(
                 game,
                 defending_player,
                 &all_effects,
             );
             acc.saturating_add(per_attacker_tax.saturating_mul(attackers))
-        });
+        },
+    );
     let total_generic_attack_mana_cost =
         total_attack_tax.saturating_add(additional_attack_mana_cost);
 
@@ -300,8 +302,9 @@ pub fn apply_attacker_declarations(
             AttackTarget::Planeswalker(oid) => AttackEventTarget::Planeswalker(*oid),
         };
 
-        let event_provenance =
-            game.provenance_graph.alloc_root_event(crate::events::EventKind::CreatureAttacked);
+        let event_provenance = game
+            .provenance_graph
+            .alloc_root_event(crate::events::EventKind::CreatureAttacked);
         let event = TriggerEvent::new_with_provenance(
             CreatureAttackedEvent::with_total_attackers(
                 decl.creature,
@@ -406,8 +409,9 @@ pub fn apply_blocker_declarations(
 
     // Emit block triggers (per declaration).
     for (blocker, attacker) in &pairs {
-        let event_provenance =
-            game.provenance_graph.alloc_root_event(crate::events::EventKind::CreatureBlocked);
+        let event_provenance = game
+            .provenance_graph
+            .alloc_root_event(crate::events::EventKind::CreatureBlocked);
         let event = TriggerEvent::new_with_provenance(
             CreatureBlockedEvent::new(*blocker, *attacker),
             event_provenance,

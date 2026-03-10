@@ -150,12 +150,10 @@ fn target_events_from_targets(
             let Target::Object(target_id) = target else {
                 return None;
             };
-            Some(TriggerEvent::new_with_provenance(BecomesTargetedEvent::new(
-                *target_id,
-                source,
-                source_controller,
-                by_ability,
-            ), provenance))
+            Some(TriggerEvent::new_with_provenance(
+                BecomesTargetedEvent::new(*target_id, source, source_controller, by_ability),
+                provenance,
+            ))
         })
         .collect()
 }
@@ -205,12 +203,15 @@ fn queue_becomes_targeted_events(
         queue_triggers_from_event(
             game,
             trigger_queue,
-            TriggerEvent::new_with_provenance(KeywordActionEvent::new(
-                KeywordActionKind::CommitCrime,
-                source_controller,
-                source,
-                1,
-            ), crime_event_provenance),
+            TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(
+                    KeywordActionKind::CommitCrime,
+                    source_controller,
+                    source,
+                    1,
+                ),
+                crime_event_provenance,
+            ),
             true,
         );
     }
@@ -245,7 +246,9 @@ fn queue_ability_activated_event(
                 .insert(activator);
         }
     }
-    let event_provenance = game.provenance_graph.alloc_root_event(crate::events::EventKind::AbilityActivated);
+    let event_provenance = game
+        .provenance_graph
+        .alloc_root_event(crate::events::EventKind::AbilityActivated);
     let event = TriggerEvent::new_with_provenance(
         AbilityActivatedEvent::new(source, activator, is_mana_ability).with_snapshot(snapshot),
         event_provenance,
@@ -283,7 +286,9 @@ fn tap_permanent_with_trigger(
 ) {
     if game.object(permanent).is_some() && !game.is_tapped(permanent) {
         game.tap(permanent);
-        let event_provenance = game.provenance_graph.alloc_root_event(crate::events::EventKind::PermanentTapped);
+        let event_provenance = game
+            .provenance_graph
+            .alloc_root_event(crate::events::EventKind::PermanentTapped);
         queue_triggers_from_event(
             game,
             trigger_queue,
@@ -415,18 +420,9 @@ fn effect_mode_has_legal_targets_with_view(
     source_id: Option<ObjectId>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
-    mode.effects
-        .iter()
-        .all(|effect| {
-            spell_effect_has_legal_targets_with_view(
-                game,
-                effect,
-                caster,
-                source_id,
-                None,
-                view,
-            )
-        })
+    mode.effects.iter().all(|effect| {
+        spell_effect_has_legal_targets_with_view(game, effect, caster, source_id, None, view)
+    })
 }
 
 fn choose_mode_has_legal_targets_with_view(
@@ -538,7 +534,12 @@ fn spell_effect_has_legal_targets_internal_with_view(
             return true;
         }
         let legal_targets = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
-            game, extracted.spec, caster, source_id, None, view,
+            game,
+            extracted.spec,
+            caster,
+            source_id,
+            None,
+            view,
         );
         return legal_targets.len() >= extracted.min_targets;
     }

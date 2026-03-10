@@ -96,12 +96,15 @@ fn generate_damage_triggers(
         let damage_event_provenance = game
             .provenance_graph
             .alloc_root_event(crate::events::EventKind::Damage);
-        let trigger_event = TriggerEvent::new_with_provenance(DamageEvent::new(
-            event.source,
-            damage_target,
-            event.amount,
-            true, // is_combat
-        ), damage_event_provenance);
+        let trigger_event = TriggerEvent::new_with_provenance(
+            DamageEvent::new(
+                event.source,
+                damage_target,
+                event.amount,
+                true, // is_combat
+            ),
+            damage_event_provenance,
+        );
         queue_triggers_from_event(game, trigger_queue, trigger_event, false);
 
         if let DamageEventTarget::Player(player_id) = event.target

@@ -76,4 +76,6 @@ include!("priority_mana.rs");
 include!("sba_triggers.rs");
 include!("combat_decisions.rs");
 include!("turn_execution.rs");
+
+#[cfg(all(test, feature = "engine-integration-tests"))]
 include!("tests.rs");

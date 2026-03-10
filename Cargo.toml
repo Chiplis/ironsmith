@@ -5,6 +5,10 @@ edition = "2024"
 autobins = false
 autotests = false
 
+[workspace]
+members = ["crates/ironsmith-cli", "crates/ironsmith-tools"]
+default-members = ["."]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -25,6 +29,7 @@ js-sys = { version = "0.3", optional = true }
 default = ["serialization"]
 serialization = ["dep:serde", "dep:serde_json"]
 generated-registry = []
+engine-integration-tests = []
 parser-tests = []
 parser-tests-full = ["parser-tests"]
 tooling = ["serialization"]
@@ -38,72 +43,6 @@ wasm = [
     "dep:getrandom",
     "dep:js-sys",
 ]
-
-[[bin]]
-name = "ironsmith"
-path = "src/main.rs"
-required-features = ["serialization"]
-test = false
-
-[[bin]]
-name = "audit_compiled_cards"
-path = "src/bin/audit_compiled_cards.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "audit_oracle_clusters"
-path = "src/bin/audit_oracle_clusters.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "audit_parsed_mechanics"
-path = "src/bin/audit_parsed_mechanics.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "audit_unimplemented_partition"
-path = "src/bin/audit_unimplemented_partition.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "compile_oracle_text"
-path = "src/bin/compile_oracle_text.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "dump_false_positive_texts"
-path = "src/bin/dump_false_positive_texts.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "export_compiled_oracle_csv"
-path = "src/bin/export_compiled_oracle_csv.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "parse_card_text"
-path = "src/bin/parse_card_text.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "rebuild_reports"
-path = "src/bin/rebuild_reports.rs"
-required-features = ["tooling"]
-test = false
-
-[[bin]]
-name = "report_replacement_effect_parse_status"
-path = "src/bin/report_replacement_effect_parse_status.rs"
-required-features = ["tooling"]
-test = false
 
 [[test]]
 name = "undo_action_chain"

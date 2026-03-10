@@ -349,7 +349,8 @@ pub(crate) fn append_card_choice_costs_from_processing_mode(
 fn tagged_filter_matches(filter: &ObjectFilter, tag: &crate::tag::TagKey) -> bool {
     filter.tagged_constraints.len() == 1
         && filter.tagged_constraints[0].tag == *tag
-        && filter.tagged_constraints[0].relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && filter.tagged_constraints[0].relation
+            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
 }
 
 fn choose_tagged_cost_step(

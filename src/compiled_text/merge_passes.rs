@@ -406,7 +406,9 @@ fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<String> {
                 && is_trait(right_verb)
                 && left_verb.eq_ignore_ascii_case(right_verb)
             {
-                merged.push(format!("{left_subject} {left_verb} {left_rest} and {right_rest}"));
+                merged.push(format!(
+                    "{left_subject} {left_verb} {left_rest} and {right_rest}"
+                ));
             } else {
                 merged.push(format!(
                     "{left_subject} {left_verb} {left_rest} and {right_verb} {right_rest}"
