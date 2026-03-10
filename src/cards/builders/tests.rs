@@ -3,7 +3,8 @@ use crate::ability::AbilityKind;
 use crate::color::Color;
 use crate::compiled_text::{compiled_lines, oracle_like_lines};
 use crate::effects::{
-    AddManaEffect, CreateTokenEffect, GainLifeEffect, ReturnFromGraveyardToHandEffect,
+    AddManaEffect, ChooseModeEffect, CreateTokenEffect, GainLifeEffect,
+    ReturnFromGraveyardToHandEffect,
 };
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -12742,15 +12743,15 @@ fn parse_modal_choose_up_to_x_header_preserves_dynamic_bounds() {
         )
         .expect("choose-up-to-X modal header should parse");
 
-    let spell_debug = format!("{:#?}", def.spell_effect);
+    let modal = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| effects.iter().find_map(|effect| effect.downcast_ref::<ChooseModeEffect>()))
+        .expect("expected choose-mode effect");
+    assert!(matches!(modal.choose_count, Value::X));
     assert!(
-        spell_debug.contains("choose_count: X"),
-        "expected dynamic modal max count, got {spell_debug}"
-    );
-    assert!(
-        spell_debug.contains("min_choose_count: Some(\n                        Fixed(\n                            0,\n                        ),\n                    )")
-            || spell_debug.contains("min_choose_count: Some(Fixed(0))"),
-        "expected zero minimum for choose-up-to-X header, got {spell_debug}"
+        matches!(modal.min_choose_count, Some(Value::Fixed(0))),
+        "expected zero minimum for choose-up-to-X header, got {modal:?}"
     );
 
     let rendered = compiled_lines(&def).join(" ");

@@ -1,5 +1,7 @@
 use ironsmith::{
     cards::CardDefinitionBuilder,
+    effect::Value,
+    effects::ChooseModeEffect,
     ids::CardId,
     types::CardType,
 };
@@ -62,14 +64,14 @@ fn parser_frontend_regression_choose_up_to_x_modal_header_parses() {
         )
         .expect("choose-up-to-X modal header should parse");
 
-    let debug = format!("{:#?}", def.spell_effect);
+    let modal = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| effects.iter().find_map(|effect| effect.downcast_ref::<ChooseModeEffect>()))
+        .expect("expected choose-mode effect");
+    assert!(matches!(modal.choose_count, Value::X));
     assert!(
-        debug.contains("choose_count: X"),
-        "expected dynamic modal max count, got {debug}"
-    );
-    assert!(
-        debug.contains("min_choose_count: Some(\n                        Fixed(\n                            0,\n                        ),\n                    )")
-            || debug.contains("min_choose_count: Some(Fixed(0))"),
-        "expected zero modal minimum for choose-up-to-X, got {debug}"
+        matches!(modal.min_choose_count, Some(Value::Fixed(0))),
+        "expected zero modal minimum for choose-up-to-X, got {modal:?}"
     );
 }

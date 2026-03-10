@@ -5493,6 +5493,9 @@ pub(super) fn describe_mode_choice_header(max: &Value, min: Option<&Value>) -> S
                 format!("Choose {value} mode(s) -")
             }
         }
+        (Some(Value::Fixed(0)), max) => {
+            format!("Choose up to {} -", describe_value(max))
+        }
         (Some(min), max) => format!(
             "Choose between {} and {} mode(s) -",
             describe_value(min),
