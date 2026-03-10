@@ -178,6 +178,7 @@
   --card-scale: 1;
   --card-jolt-x: 0px;
   --card-jolt-y: 0px;
+  --card-jolt-rotate: 0deg;
   --card-jolt-scale: 1;
   --card-flash-brightness: 1;
   --card-flash-saturate: 1;
@@ -200,7 +201,7 @@
       calc(var(--card-translate-y) + var(--card-jolt-y)),
       0
     )
-    rotate(var(--card-rotate))
+    rotate(calc(var(--card-rotate) + var(--card-jolt-rotate)))
     scale(var(--card-scale))
     scale(var(--card-jolt-scale));
   filter: brightness(var(--card-flash-brightness)) saturate(var(--card-flash-saturate));

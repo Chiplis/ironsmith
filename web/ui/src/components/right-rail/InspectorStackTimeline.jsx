@@ -94,7 +94,10 @@ function HorizontalStackEntry({
           isActive && "bg-[linear-gradient(180deg,rgba(10,22,37,0.98),rgba(7,16,28,1))]"
         )}
         style={{ minHeight: `${HORIZONTAL_STACK_ENTRY_MIN_HEIGHT}px`, ...accentStyle }}
-        onClick={() => onClick?.(stackInspectObjectId(entry))}
+        onClick={() => onClick?.(stackInspectObjectId(entry), {
+          source: "stack",
+          stackEntry: entry,
+        })}
       >
         <AnimatedCircuitFrame
           seed={`stack-timeline:${entry?.id}:${entry?.controller}:${name}`}

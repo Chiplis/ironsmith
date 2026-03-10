@@ -7118,6 +7118,29 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
         return Ok(spell_activity_trigger);
     }
 
+    if let Some(play_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("play") || token.is_word("plays"))
+    {
+        let subject_word_count = tokens[..play_idx]
+            .iter()
+            .filter(|token| token.as_word().is_some())
+            .count();
+        let subject_words = &words[..subject_word_count];
+        if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
+            let trimmed_object_tokens = trim_commas(&tokens[play_idx + 1..]);
+            let object_tokens = strip_leading_articles(&trimmed_object_tokens);
+            let object_words = self::words(&object_tokens);
+            if object_words
+                .iter()
+                .any(|word| matches!(*word, "land" | "lands"))
+                && let Ok(filter) = parse_object_filter(&object_tokens, false)
+            {
+                return Ok(TriggerSpec::PlayerPlaysLand { player, filter });
+            }
+        }
+    }
+
     if let Some(tap_idx) = tokens
         .iter()
         .position(|token| token.is_word("tap") || token.is_word("taps"))

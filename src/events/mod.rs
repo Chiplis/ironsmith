@@ -102,7 +102,7 @@ pub use combat::{
 };
 pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardsDrawnEvent, CounterPlacedEvent,
-    KeywordActionEvent, KeywordActionKind, MarkerChangeType, MarkersChangedEvent,
+    KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
     PermanentTappedEvent, PermanentUntappedEvent, PlayerVote, PlayersFinishedVotingEvent,
     TransformedEvent, TurnedFaceUpEvent,
 };

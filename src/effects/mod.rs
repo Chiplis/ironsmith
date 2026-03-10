@@ -110,9 +110,10 @@ pub use mana::{
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
     BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, CrewCostEffect, EarthbendEffect,
-    EvolveEffect, FlipEffect, GrantObjectAbilityEffect, MonstrosityEffect, NinjutsuCostEffect,
-    NinjutsuEffect, PhaseOutEffect, RegenerateEffect, RenownEffect, SaddleCostEffect,
-    SoulbondPairEffect, TapEffect, TransformEffect, UnearthEffect, UntapEffect,
+    EvolveEffect, FlipEffect, GrantObjectAbilityEffect, HanweirBattlementsMeldEffect,
+    MonstrosityEffect, NinjutsuCostEffect, NinjutsuEffect, PhaseOutEffect, RegenerateEffect,
+    RenownEffect, SaddleCostEffect, SoulbondPairEffect, TapEffect, TransformEffect,
+    UnearthEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,

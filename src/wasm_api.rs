@@ -2662,8 +2662,16 @@ impl WasmGame {
         }
 
         if let Some(mut replay) = self.pending_replay_action.take() {
-            let answer = match self.command_to_replay_answer(&pending_ctx, command) {
+            let answer = match self.command_to_replay_answer(&pending_ctx, command.clone()) {
                 Ok(answer) => answer,
+                Err(err) => {
+                    self.pending_decision = Some(pending_ctx);
+                    self.pending_replay_action = Some(replay);
+                    return Err(err);
+                }
+            };
+            let response = match self.command_to_response(&pending_ctx, command) {
+                Ok(response) => response,
                 Err(err) => {
                     self.pending_decision = Some(pending_ctx);
                     self.pending_replay_action = Some(replay);
@@ -2676,30 +2684,57 @@ impl WasmGame {
                     &replay.root,
                     &replay.nested_answers,
                 );
+            let live_checkpoint = self.capture_replay_checkpoint();
+            let mut live_dm = WasmReplayDecisionMaker::new(&[]);
+            let result = apply_priority_response_with_dm(
+                &mut self.game,
+                &mut self.trigger_queue,
+                &mut self.priority_state,
+                &response,
+                &mut live_dm,
+            );
+            let (pending_context, viewed_cards) = live_dm.finish();
+            self.active_viewed_cards = viewed_cards;
 
-            let outcome = match self.execute_with_replay(
-                &replay.checkpoint,
-                &replay.root,
-                &replay.nested_answers,
-            ) {
-                Ok(outcome) => outcome,
+            if let Some(next_ctx) = pending_context {
+                if should_track_action_checkpoint {
+                    self.pending_action_checkpoint = Some(replay.checkpoint.clone());
+                }
+                self.pending_decision = Some(next_ctx);
+                self.pending_replay_action = Some(replay);
+                return self.snapshot();
+            }
+
+            let progress = match result {
+                Ok(progress) => progress,
                 Err(err) => {
+                    self.restore_replay_checkpoint(&live_checkpoint);
                     self.pending_decision = Some(pending_ctx);
                     self.pending_replay_action = Some(replay);
-                    return Err(err);
+                    return Err(JsValue::from_str(&format!("dispatch failed: {err}")));
                 }
             };
 
-            match outcome {
-                ReplayOutcome::NeedsDecision(next_ctx) => {
-                    if should_track_action_checkpoint {
-                        self.pending_action_checkpoint = Some(replay.checkpoint.clone());
+            match progress {
+                GameProgress::NeedsDecisionCtx(next_ctx) => {
+                    if self.priority_action_chain_still_pending() {
+                        if should_track_action_checkpoint {
+                            self.pending_action_checkpoint = Some(replay.checkpoint.clone());
+                        }
+                        self.pending_decision = Some(next_ctx);
+                        self.pending_replay_action = Some(replay);
+                        return self.snapshot();
                     }
+
+                    // The spell/ability is now committed. Follow-up prompts
+                    // produced during resolution must not preserve Undo for
+                    // the action that just finished paying its costs.
+                    self.pending_action_checkpoint = None;
                     self.pending_decision = Some(next_ctx);
-                    self.pending_replay_action = Some(replay);
+                    self.pending_replay_action = None;
                     self.snapshot()
                 }
-                ReplayOutcome::Complete(progress) => {
+                progress => {
                     if Self::replay_root_starts_undoable_action(&replay.root) {
                         self.priority_epoch_has_undoable_action = true;
                     }
@@ -2713,20 +2748,10 @@ impl WasmGame {
                     }
                     self.priority_epoch_undo_land_stable_id =
                         self.committed_undo_land_stable_id(&replay.checkpoint, &replay.root);
-                    if let GameProgress::NeedsDecisionCtx(next_ctx) = progress {
-                        // The spell/ability is now committed. Follow-up prompts
-                        // produced during resolution must not preserve Undo for
-                        // the action that just finished paying its costs.
-                        self.pending_action_checkpoint = None;
-                        self.pending_decision = Some(next_ctx);
-                        self.pending_replay_action = None;
-                        self.snapshot()
-                    } else {
-                        self.pending_action_checkpoint = None;
-                        self.pending_replay_action = None;
-                        self.apply_progress(progress)?;
-                        self.snapshot()
-                    }
+                    self.pending_action_checkpoint = None;
+                    self.pending_replay_action = None;
+                    self.apply_progress(progress)?;
+                    self.snapshot()
                 }
             }
         } else {
@@ -2764,29 +2789,48 @@ impl WasmGame {
                     self.snapshot()
                 }
                 ReplayOutcome::Complete(progress) => {
-                    if Self::replay_root_starts_undoable_action(&root) {
-                        self.priority_epoch_has_undoable_action = true;
-                    }
-                    if Self::replay_root_has_irreversible_mana_activation(&checkpoint.game, &root)
-                        || self.replay_root_mana_activation_added_to_stack(&checkpoint, &root)
-                    {
-                        self.priority_epoch_undo_locked_by_mana = true;
-                    }
-                    self.priority_epoch_undo_land_stable_id =
-                        self.committed_undo_land_stable_id(&checkpoint, &root);
-                    if let GameProgress::NeedsDecisionCtx(next_ctx) = progress {
-                        // The spell/ability is now committed. Follow-up prompts
-                        // produced during resolution must not preserve Undo for
-                        // the action that just finished paying its costs.
-                        self.pending_action_checkpoint = None;
-                        self.pending_decision = Some(next_ctx);
-                        self.pending_replay_action = None;
-                        self.snapshot()
-                    } else {
-                        self.pending_action_checkpoint = None;
-                        self.pending_replay_action = None;
-                        self.apply_progress(progress)?;
-                        self.snapshot()
+                    match progress {
+                        GameProgress::NeedsDecisionCtx(next_ctx) => {
+                            if self.priority_action_chain_still_pending() {
+                                if should_track_action_checkpoint {
+                                    self.pending_action_checkpoint = Some(checkpoint.clone());
+                                }
+                                self.pending_decision = Some(next_ctx);
+                                self.pending_replay_action = Some(PendingReplayAction {
+                                    checkpoint,
+                                    root,
+                                    nested_answers: Vec::new(),
+                                });
+                                return self.snapshot();
+                            }
+
+                            // The spell/ability is now committed. Follow-up prompts
+                            // produced during resolution must not preserve Undo for
+                            // the action that just finished paying its costs.
+                            self.pending_action_checkpoint = None;
+                            self.pending_decision = Some(next_ctx);
+                            self.pending_replay_action = None;
+                            self.snapshot()
+                        }
+                        progress => {
+                            if Self::replay_root_starts_undoable_action(&root) {
+                                self.priority_epoch_has_undoable_action = true;
+                            }
+                            if Self::replay_root_has_irreversible_mana_activation(
+                                &checkpoint.game,
+                                &root,
+                            ) || self
+                                .replay_root_mana_activation_added_to_stack(&checkpoint, &root)
+                            {
+                                self.priority_epoch_undo_locked_by_mana = true;
+                            }
+                            self.priority_epoch_undo_land_stable_id =
+                                self.committed_undo_land_stable_id(&checkpoint, &root);
+                            self.pending_action_checkpoint = None;
+                            self.pending_replay_action = None;
+                            self.apply_progress(progress)?;
+                            self.snapshot()
+                        }
                     }
                 }
             }
@@ -2905,6 +2949,13 @@ impl WasmGame {
         }
 
         !self.has_irreversible_library_change_since(&replay.checkpoint)
+    }
+
+    fn priority_action_chain_still_pending(&self) -> bool {
+        self.priority_state.pending_cast.is_some()
+            || self.priority_state.pending_activation.is_some()
+            || self.priority_state.pending_mana_ability.is_some()
+            || self.priority_state.pending_method_selection.is_some()
     }
 
     fn has_irreversible_mana_undo_lock(&self) -> bool {
@@ -4416,7 +4467,10 @@ impl WasmGame {
                     .pending_cast
                     .as_ref()
                     .is_some_and(|pending| {
-                        matches!(pending.stage, CastStage::ChoosingSacrifice | CastStage::ChoosingCardCost)
+                        matches!(
+                            pending.stage,
+                            CastStage::ChoosingSacrifice | CastStage::ChoosingCardCost
+                        )
                     })
                 {
                     Ok(PriorityResponse::CardCostChoice(ObjectId::from_raw(chosen)))
@@ -5407,7 +5461,8 @@ mod tests {
     use crate::ability::Ability;
     use crate::card::CardBuilder;
     use crate::cards::definitions::{
-        basic_mountain, emrakul_the_promised_end, grizzly_bears, lightning_bolt, urzas_saga,
+        basic_mountain, emrakul_the_promised_end, grizzly_bears, lightning_bolt, ornithopter,
+        urzas_saga, yawgmoth_thran_physician,
     };
     use crate::continuous::ContinuousEffect;
     use crate::decision::LegalAction;
@@ -6309,6 +6364,308 @@ mod tests {
             wasm.game.stack.is_empty(),
             "canceling the spell should remove it from the stack"
         );
+    }
+
+    #[test]
+    fn yawgmoth_activation_stays_cancelable_through_target_and_cost_prompts() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let yawgmoth_id = wasm.game.create_object_from_definition(
+            &yawgmoth_thran_physician(),
+            alice,
+            Zone::Battlefield,
+        );
+        let target_id =
+            wasm.game
+                .create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        wasm.game
+            .create_object_from_definition(&ornithopter(), alice, Zone::Battlefield);
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        let priority_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(ctx)) => ctx,
+            other => panic!("expected priority decision, got {other:?}"),
+        };
+        let activate_index = priority_ctx
+            .actions
+            .iter()
+            .position(|action| {
+                matches!(
+                    action,
+                    LegalAction::ActivateAbility { source, .. } if *source == yawgmoth_id
+                )
+            })
+            .expect("expected Yawgmoth activation action");
+
+        wasm.dispatch(
+            serde_wasm_bindgen::to_value(&json!({
+                "type": "priority_action",
+                "action_index": activate_index,
+            }))
+            .expect("priority action command should serialize"),
+        )
+        .expect("activating Yawgmoth should enter target selection");
+
+        let targets_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Targets(ctx)) => ctx,
+            other => panic!("expected target prompt after Yawgmoth activation, got {other:?}"),
+        };
+        assert_eq!(
+            targets_ctx.player, alice,
+            "Yawgmoth target prompt should belong to the activating player"
+        );
+        assert!(
+            wasm.pending_replay_action.is_some(),
+            "Yawgmoth activation should keep replay state open while choosing targets"
+        );
+        assert!(
+            wasm.is_cancelable(),
+            "Yawgmoth activation should remain cancelable during target selection"
+        );
+
+        let pending_cast_stack_id = wasm
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .map(|p| p.stack_id);
+        let cancelable = wasm.is_cancelable();
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            wasm.perspective,
+            wasm.pending_decision.as_ref(),
+            wasm.game_over.as_ref(),
+            pending_cast_stack_id,
+            Vec::new(),
+            None,
+            cancelable,
+            wasm.visible_undo_land_stable_id(cancelable),
+            0,
+        );
+        assert!(
+            snapshot.cancelable,
+            "snapshot should expose Yawgmoth target prompt as cancelable"
+        );
+        let decision = snapshot
+            .decision
+            .expect("snapshot should still include the target decision");
+        let player = match decision {
+            super::DecisionView::Targets { player, .. } => player,
+            other => panic!("expected target decision snapshot, got {other:?}"),
+        };
+        assert_eq!(
+            player, alice.0,
+            "snapshot target decision should belong to the perspective player"
+        );
+
+        wasm.dispatch(
+            serde_wasm_bindgen::to_value(&json!({
+                "type": "select_targets",
+                "targets": [
+                    { "kind": "object", "object": target_id.0 }
+                ],
+            }))
+            .expect("target selection command should serialize"),
+        )
+        .expect("choosing Yawgmoth's target should continue activation");
+
+        let next_cost_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectOptions(ctx)) => ctx,
+            other => panic!("expected next-cost prompt after Yawgmoth target, got {other:?}"),
+        };
+        assert_eq!(
+            next_cost_ctx.player, alice,
+            "Yawgmoth next-cost prompt should belong to the activating player"
+        );
+        assert!(
+            wasm.pending_replay_action.is_some(),
+            "Yawgmoth activation should keep replay state open while choosing costs"
+        );
+        assert!(
+            wasm.is_cancelable(),
+            "Yawgmoth activation should remain cancelable after choosing targets"
+        );
+
+        let pending_cast_stack_id = wasm
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .map(|p| p.stack_id);
+        let cancelable = wasm.is_cancelable();
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            wasm.perspective,
+            wasm.pending_decision.as_ref(),
+            wasm.game_over.as_ref(),
+            pending_cast_stack_id,
+            Vec::new(),
+            None,
+            cancelable,
+            wasm.visible_undo_land_stable_id(cancelable),
+            0,
+        );
+        assert!(
+            snapshot.cancelable,
+            "snapshot should expose Yawgmoth next-cost prompt as cancelable"
+        );
+        let decision = snapshot
+            .decision
+            .expect("snapshot should still include the next-cost decision");
+        match decision {
+            super::DecisionView::SelectOptions { player, reason, .. } => {
+                assert_eq!(player, alice.0);
+                assert_eq!(reason.as_deref(), Some("Next cost"));
+            }
+            other => panic!("expected next-cost decision snapshot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn yawgmoth_proliferate_next_cost_choices_advance_in_replay_chain() {
+        fn setup_proliferate_prompt() -> WasmGame {
+            let mut wasm = WasmGame::new();
+            let alice = PlayerId::from_index(0);
+
+            wasm.game.turn.active_player = alice;
+            wasm.game.turn.priority_player = Some(alice);
+            wasm.game.turn.phase = Phase::FirstMain;
+            wasm.game.turn.step = None;
+
+            let yawgmoth_id = wasm.game.create_object_from_definition(
+                &yawgmoth_thran_physician(),
+                alice,
+                Zone::Battlefield,
+            );
+            wasm.add_card_to_zone(
+                alice.0,
+                "Black Lotus".to_string(),
+                "battlefield".to_string(),
+                true,
+            )
+            .expect("should add Black Lotus to battlefield");
+            wasm.game
+                .create_object_from_definition(&grizzly_bears(), alice, Zone::Hand);
+            wasm.game
+                .create_object_from_definition(&ornithopter(), alice, Zone::Hand);
+
+            let proliferate_ability_index = wasm
+                .game
+                .object(yawgmoth_id)
+                .and_then(|object| {
+                    object.abilities.iter().position(|ability| {
+                        matches!(
+                            &ability.kind,
+                            crate::ability::AbilityKind::Activated(activated)
+                                if activated.mana_cost.mana_cost().is_some()
+                                    && activated
+                                        .mana_cost
+                                        .costs()
+                                        .iter()
+                                        .any(|cost| cost.is_discard())
+                        )
+                    })
+                })
+                .expect("Yawgmoth should have proliferate ability");
+
+            wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+            wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+                alice,
+                compute_legal_actions(&wasm.game, alice),
+            )));
+
+            let priority_ctx = match wasm.pending_decision.as_ref() {
+                Some(DecisionContext::Priority(ctx)) => ctx,
+                other => panic!("expected priority decision, got {other:?}"),
+            };
+            let activate_index = priority_ctx
+                .actions
+                .iter()
+                .position(|action| {
+                    matches!(
+                        action,
+                        LegalAction::ActivateAbility { source, ability_index }
+                            if *source == yawgmoth_id && *ability_index == proliferate_ability_index
+                    )
+                })
+                .expect("expected Yawgmoth proliferate activation action");
+
+            wasm.dispatch(
+                serde_wasm_bindgen::to_value(&json!({
+                    "type": "priority_action",
+                    "action_index": activate_index,
+                }))
+                .expect("priority action command should serialize"),
+            )
+            .expect("activating Yawgmoth proliferate should open next-cost chooser");
+
+            assert!(
+                matches!(wasm.pending_decision, Some(DecisionContext::SelectOptions(_))),
+                "Yawgmoth proliferate should begin on a next-cost chooser"
+            );
+
+            wasm
+        }
+
+        let mut mana_wasm = setup_proliferate_prompt();
+        mana_wasm
+            .dispatch(
+                serde_wasm_bindgen::to_value(&json!({
+                    "type": "select_options",
+                    "option_indices": [0],
+                }))
+                .expect("next-cost mana choice should serialize"),
+            )
+            .expect("choosing Yawgmoth's mana cost should advance to mana payment");
+
+        let mana_ctx = match mana_wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectOptions(ctx)) => ctx,
+            other => panic!("expected mana payment prompt after choosing mana, got {other:?}"),
+        };
+        assert!(
+            mana_ctx.description.to_lowercase().contains("pay mana pip"),
+            "mana choice should advance to mana pip payment, got description: {}",
+            mana_ctx.description
+        );
+        assert!(
+            mana_ctx
+                .options
+                .iter()
+                .any(|option| option.legal && option.description.contains("Black Lotus")),
+            "mana payment prompt should offer Black Lotus"
+        );
+
+        let mut discard_wasm = setup_proliferate_prompt();
+        discard_wasm
+            .dispatch(
+                serde_wasm_bindgen::to_value(&json!({
+                    "type": "select_options",
+                    "option_indices": [1],
+                }))
+                .expect("next-cost discard choice should serialize"),
+            )
+            .expect("choosing Yawgmoth's discard cost should advance to discard selection");
+
+        let discard_ctx = match discard_wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectObjects(ctx)) => ctx,
+            other => panic!("expected discard selection prompt after choosing discard, got {other:?}"),
+        };
+        assert!(
+            discard_ctx.description.to_lowercase().contains("discard"),
+            "discard choice should advance to discard selection, got description: {}",
+            discard_ctx.description
+        );
+        assert_eq!(discard_ctx.min, 1);
+        assert_eq!(discard_ctx.max, Some(1));
     }
 
     #[test]

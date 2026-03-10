@@ -354,6 +354,10 @@ pub(crate) enum TriggerSpec {
         source: ObjectFilter,
         target: ObjectFilter,
     },
+    PlayerPlaysLand {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     PlayerTapsForMana {
         player: PlayerFilter,
         filter: ObjectFilter,

@@ -2731,6 +2731,12 @@ impl Effect {
         Self::new(TransformEffect::new(target))
     }
 
+    /// Create the Hanweir Battlements meld effect.
+    pub fn hanweir_battlements_meld() -> Self {
+        use crate::effects::HanweirBattlementsMeldEffect;
+        Self::new(HanweirBattlementsMeldEffect::new())
+    }
+
     /// Create a "flip" effect for flip cards.
     pub fn flip(target: ChooseSpec) -> Self {
         use crate::effects::FlipEffect;

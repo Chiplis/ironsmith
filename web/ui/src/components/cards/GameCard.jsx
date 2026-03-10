@@ -1,11 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useGame } from "@/context/GameContext";
 import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { cn } from "@/lib/utils";
 import { fetchScryfallCardMeta, scryfallImageUrl } from "@/lib/scryfall";
 import { ManaCostIcons } from "@/lib/mana-symbols";
 
+const semanticScoreCache = new Map();
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function normalizeSemanticScore(rawScore) {
+  const score = Number(rawScore);
+  if (!Number.isFinite(score) || score < 0) return null;
+  return Math.min(1, Math.max(0, score));
+}
+
+function formatSemanticScore(score) {
+  return `${(score * 100).toFixed(1)}%`;
 }
 
 function glowPhaseFromSeed(seed) {
@@ -269,7 +282,9 @@ export default function GameCard({
   className = "",
   centerOverlay = null,
   handCircuitMode = "full",
+  hideDebugBadge = false,
 }) {
+  const { game, inspectorDebug } = useGame();
   const name = card.name || "";
   const artVersion = "art_crop";
   const artUrl = scryfallImageUrl(name, artVersion);
@@ -292,6 +307,20 @@ export default function GameCard({
     ? "opacity-100 saturate-[1.12] contrast-[1.08] brightness-[1.08]"
     : "opacity-72 saturate-[1.05] contrast-[1.04]";
   const stableId = card?.stable_id ?? card?.id ?? "";
+  const directSemanticScore = normalizeSemanticScore(card?.semantic_score);
+  if (directSemanticScore != null) {
+    semanticScoreCache.set(name, directSemanticScore);
+  }
+  const [fetchedSemanticState, setFetchedSemanticState] = useState(() => ({
+    name,
+    score: semanticScoreCache.get(name) ?? null,
+  }));
+  const fetchedSemanticScore = fetchedSemanticState.name === name
+    ? fetchedSemanticState.score
+    : null;
+  const semanticScore = directSemanticScore
+    ?? fetchedSemanticScore
+    ?? (semanticScoreCache.get(name) ?? null);
   const battlefieldCircuitActive = variant === "battlefield" && (
     isInspected
     || glowKind === "action-link"
@@ -326,6 +355,32 @@ export default function GameCard({
       .filter(Boolean)
     : [];
   const handFooterStat = variant === "hand" ? handCardFooterStat(card) : null;
+  const debugSimilarityLabel = semanticScore != null ? formatSemanticScore(semanticScore) : null;
+  const showDebugSimilarityBadge = (
+    inspectorDebug
+    && !hideDebugBadge
+    && variant !== "stack"
+    && debugSimilarityLabel != null
+  );
+
+  useEffect(() => {
+    if (!inspectorDebug || !game || !name || semanticScoreCache.has(name)) return undefined;
+
+    let cancelled = false;
+    game.getCardSemanticScore(name)
+      .then((rawScore) => {
+        if (cancelled) return;
+        const nextScore = normalizeSemanticScore(rawScore);
+        if (nextScore == null) return;
+        semanticScoreCache.set(name, nextScore);
+        setFetchedSemanticState({ name, score: nextScore });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [game, inspectorDebug, name]);
 
   const clearStackAnimation = () => {
     const node = rootRef.current;
@@ -336,6 +391,7 @@ export default function GameCard({
     stackCleanupTimersRef.current = [];
     node.style.removeProperty("--card-jolt-x");
     node.style.removeProperty("--card-jolt-y");
+    node.style.removeProperty("--card-jolt-rotate");
     node.style.removeProperty("--card-jolt-scale");
     node.style.removeProperty("--card-flash-brightness");
     const badge = node.querySelector(".battlefield-group-badge");
@@ -397,13 +453,36 @@ export default function GameCard({
     if (!node || !isNew) return undefined;
 
     cancelMotion(entryMotionRef.current);
+    node.style.removeProperty("transform");
     entryMotionRef.current = createTimeline({ autoplay: true }).add(node, {
-      opacity: [0, 1],
-      scale: [0.74, 1],
-      rotateZ: [rotationSign * -6, 0],
-      duration: 420,
+      keyframes: [
+        {
+          opacity: 0,
+          "--card-jolt-scale": 0.74,
+          "--card-jolt-rotate": `${rotationSign * -6}deg`,
+          duration: 0,
+        },
+        {
+          opacity: 1,
+          "--card-jolt-scale": 1,
+          "--card-jolt-rotate": "0deg",
+          duration: 420,
+        },
+      ],
       ease: uiSpring({ duration: 420, bounce: 0.28 }),
+      onComplete: () => {
+        node.style.removeProperty("opacity");
+        node.style.removeProperty("--card-jolt-scale");
+        node.style.removeProperty("--card-jolt-rotate");
+      },
     });
+    return () => {
+      cancelMotion(entryMotionRef.current);
+      entryMotionRef.current = null;
+      node.style.removeProperty("opacity");
+      node.style.removeProperty("--card-jolt-scale");
+      node.style.removeProperty("--card-jolt-rotate");
+    };
   }, [isNew, rotationSign]);
 
   useLayoutEffect(() => {
@@ -413,12 +492,34 @@ export default function GameCard({
     cancelMotion(bumpMotionRef.current);
     bumpMotionRef.current = animate(node, {
       keyframes: [
-        { scale: 0.94, x: bumpDirection * 4, duration: 110 },
-        { scale: 1.025, x: 0, duration: 120 },
-        { scale: 1, x: 0, duration: 120 },
+        {
+          "--card-jolt-scale": 0.94,
+          "--card-jolt-x": `${bumpDirection * 4}px`,
+          duration: 110,
+        },
+        {
+          "--card-jolt-scale": 1.025,
+          "--card-jolt-x": "0px",
+          duration: 120,
+        },
+        {
+          "--card-jolt-scale": 1,
+          "--card-jolt-x": "0px",
+          duration: 120,
+        },
       ],
       ease: "out(3)",
+      onComplete: () => {
+        node.style.removeProperty("--card-jolt-scale");
+        node.style.removeProperty("--card-jolt-x");
+      },
     });
+    return () => {
+      cancelMotion(bumpMotionRef.current);
+      bumpMotionRef.current = null;
+      node.style.removeProperty("--card-jolt-scale");
+      node.style.removeProperty("--card-jolt-x");
+    };
   }, [bumpDirection, isBumped, isNew]);
 
   useLayoutEffect(() => {
@@ -713,17 +814,35 @@ export default function GameCard({
             <div className="hand-card-title whitespace-nowrap overflow-hidden text-ellipsis text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
               {name}
             </div>
+            {showDebugSimilarityBadge && (
+              <span
+                className="absolute right-1.5 top-1 rounded border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
+                title={`Similarity score: ${debugSimilarityLabel}`}
+              >
+                {debugSimilarityLabel}
+              </span>
+            )}
           </div>
         ) : (
           <div className="battlefield-header">
             <span className="battlefield-nameplate text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
               {name}
             </span>
-            {visibleBattlefieldManaCost && (
-              <span className="battlefield-mana-rack">
-                <ManaCostIcons cost={visibleBattlefieldManaCost} size={battlefieldManaIconSize} />
-              </span>
-            )}
+            <span className="flex items-center gap-1">
+              {showDebugSimilarityBadge && (
+                <span
+                  className="rounded border border-[#6aa6d5]/50 bg-[rgba(7,13,20,0.88)] px-1 py-0.5 text-[10px] font-semibold leading-none tracking-wide text-[#bfe5ff] shadow-[0_2px_6px_rgba(0,0,0,0.32)]"
+                  title={`Similarity score: ${debugSimilarityLabel}`}
+                >
+                  {debugSimilarityLabel}
+                </span>
+              )}
+              {visibleBattlefieldManaCost && (
+                <span className="battlefield-mana-rack">
+                  <ManaCostIcons cost={visibleBattlefieldManaCost} size={battlefieldManaIconSize} />
+                </span>
+              )}
+            </span>
           </div>
         )}
 

@@ -196,11 +196,7 @@ impl CardRegistry {
     /// In non-test builds this is populated from generated parser cards only.
     pub fn with_builtin_cards() -> Self {
         let mut registry = Self::new();
-
-        #[cfg(test)]
-        {
-            registry.register_builtin_handwritten_cards_if(|_| true);
-        }
+        registry.register_builtin_handwritten_cards_if(|_| true);
 
         // Non-test builds are populated from cards.json via generated parser output.
         generated_registry::register_generated_parser_cards(&mut registry);
@@ -250,21 +246,18 @@ impl CardRegistry {
             }
         }
 
-        #[cfg(test)]
-        {
-            // In test builds, prefer handwritten definitions for overlapping cards.
-            // Generated parser cards are still loaded above for all non-handwritten names.
-            let requested_keys = requested_names
-                .iter()
-                .map(|name| normalize_card_constructor_key(name))
-                .collect::<std::collections::HashSet<_>>();
-            self.register_builtin_handwritten_cards_if(|constructor_key| {
-                requested_keys.contains(constructor_key)
-                    || constructor_key
-                        .strip_prefix("basic_")
-                        .is_some_and(|stripped| requested_keys.contains(stripped))
-            });
-        }
+        // Prefer handwritten definitions for overlapping cards and provide
+        // fallbacks for cards whose generated parser definition is unavailable.
+        let requested_keys = requested_names
+            .iter()
+            .map(|name| normalize_card_constructor_key(name))
+            .collect::<std::collections::HashSet<_>>();
+        self.register_builtin_handwritten_cards_if(|constructor_key| {
+            requested_keys.contains(constructor_key)
+                || constructor_key
+                    .strip_prefix("basic_")
+                    .is_some_and(|stripped| requested_keys.contains(stripped))
+        });
     }
 
     /// Ensure every generated parser definition is loaded into this registry.
@@ -330,7 +323,6 @@ impl CardRegistry {
         registry
     }
 
-    #[cfg(test)]
     fn register_builtin_handwritten_cards_if<F>(&mut self, mut include_constructor_key: F)
     where
         F: FnMut(&str) -> bool,
@@ -454,6 +446,7 @@ impl CardRegistry {
         maybe_register!(fleshbag_marauder);
         maybe_register!(generous_gift);
         maybe_register!(godless_shrine);
+        maybe_register!(hanweir_battlements);
         maybe_register!(innocent_blood);
         maybe_register!(mana_vault);
         maybe_register!(merciless_executioner);
@@ -549,7 +542,6 @@ fn compile_generated_parser_card_allow_unsupported(
         .map_err(|err| format!("{err:?}"))
 }
 
-#[cfg(test)]
 fn normalize_card_constructor_key(name: &str) -> String {
     let mut normalized = String::with_capacity(name.len());
     let mut previous_was_separator = false;

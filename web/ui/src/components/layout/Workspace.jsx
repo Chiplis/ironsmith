@@ -114,7 +114,14 @@ export default function Workspace({
   const handRevealShellRef = useRef(null);
   const handRevealMotionRef = useRef(null);
   const handHoverCloseTimerRef = useRef(null);
-  const { state, dispatch, setStatus } = useGame();
+  const {
+    game,
+    state,
+    dispatch,
+    refresh,
+    setStatus,
+    multiplayer,
+  } = useGame();
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
   const { endDrag } = useDragActions();
   const { clearHover, hoverCard } = useHoverActions();
@@ -378,7 +385,7 @@ export default function Workspace({
   }, [deckLoadingMode, effectiveZoneViews, players.length]);
 
   const handleInspectObject = useCallback(
-    (objectId) => {
+    async (objectId, options = null) => {
       if (combatDeclarationActive) return;
       if (
         decision?.kind === "targets"
@@ -393,13 +400,39 @@ export default function Workspace({
         );
         return;
       }
+      const stackEntry = options?.source === "stack" ? options?.stackEntry : null;
+      if (
+        stackEntry
+        && !multiplayer.matchStarted
+        && game
+        && Number.isFinite(Number(stackEntry.controller))
+        && Number(stackEntry.controller) !== Number(state?.perspective)
+      ) {
+        try {
+          await game.setPerspective(Number(stackEntry.controller));
+          await refresh(`Viewing as player ${Number(stackEntry.controller)}`);
+        } catch (err) {
+          setStatus(`Change player failed: ${err}`, true);
+          return;
+        }
+      }
       setSelectedObjectId(objectId);
       setPinnedInspectorObjectId(objectId == null ? null : String(objectId));
       setExpandedInspectorObjectId(null);
       setSuppressFallbackInspector(false);
       if (objectId != null) hoverCard(objectId);
     },
-    [combatDeclarationActive, decision, hoverCard, legalTargetObjectIds, state?.perspective]
+    [
+      combatDeclarationActive,
+      decision,
+      game,
+      hoverCard,
+      legalTargetObjectIds,
+      multiplayer.matchStarted,
+      refresh,
+      setStatus,
+      state?.perspective,
+    ]
   );
 
   const handleExpandInspector = useCallback(

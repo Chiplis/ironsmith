@@ -1930,6 +1930,31 @@ fn test_parse_trigger_opponent_discards_card() {
 }
 
 #[test]
+fn test_parse_trigger_opponent_plays_land() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Burgeoning Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever an opponent plays a land, you may put a land card from your hand onto the battlefield.",
+        )
+        .expect("parse opponent land-play trigger");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayerPlaysLandTrigger") && debug.contains("player: Opponent"),
+        "expected dedicated land-play trigger matcher, got {debug}"
+    );
+    let joined = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        joined.contains("whenever an opponent plays a land"),
+        "expected land-play trigger wording in compiled text, got {joined}"
+    );
+    assert!(
+        joined.contains("you may put a land card from your hand onto the battlefield"),
+        "expected optional land deployment effect, got {joined}"
+    );
+}
+
+#[test]
 fn test_parse_trigger_tap_swamp_for_mana() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tap Swamp Trigger Probe")
         .card_types(vec![CardType::Creature])

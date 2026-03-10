@@ -3988,13 +3988,17 @@ mod tests {
         game.turn.active_player = alice;
         game.turn.priority_player = Some(alice);
 
-        let registry =
-            crate::cards::CardRegistry::with_builtin_cards_for_names(["Yawgmoth, Thran Physician"]);
+        let registry = crate::cards::CardRegistry::with_builtin_cards_for_names([
+            "Yawgmoth, Thran Physician",
+            "Black Lotus",
+        ]);
+        eprintln!("registry loaded");
         let yawgmoth_def = registry
             .get("Yawgmoth, Thran Physician")
             .expect("Yawgmoth, Thran Physician should be present in registry");
         let yawgmoth_id =
             game.create_object_from_definition(yawgmoth_def, alice, Zone::Battlefield);
+        eprintln!("yawgmoth created");
 
         let fodder = CardBuilder::new(CardId::new(), "Fodder")
             .card_types(vec![CardType::Creature])
@@ -4166,8 +4170,10 @@ mod tests {
         game.turn.active_player = alice;
         game.turn.priority_player = Some(alice);
 
-        let registry =
-            crate::cards::CardRegistry::with_builtin_cards_for_names(["Yawgmoth, Thran Physician"]);
+        let registry = crate::cards::CardRegistry::with_builtin_cards_for_names([
+            "Yawgmoth, Thran Physician",
+            "Black Lotus",
+        ]);
         let yawgmoth_def = registry
             .get("Yawgmoth, Thran Physician")
             .expect("Yawgmoth, Thran Physician should be present in registry");
@@ -4274,6 +4280,69 @@ mod tests {
         assert!(
             candidate_ids.contains(&hand_card_two),
             "second hand card should be selectable for discard cost"
+        );
+    }
+
+    #[test]
+    fn test_yawgmoth_proliferate_activation_is_legal_with_black_lotus_and_discard_card() {
+        use crate::decision::{LegalAction, compute_legal_actions};
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let registry =
+            crate::cards::CardRegistry::with_builtin_cards_for_names(["Yawgmoth, Thran Physician"]);
+        let yawgmoth_def = registry
+            .get("Yawgmoth, Thran Physician")
+            .expect("Yawgmoth, Thran Physician should be present in registry");
+        let yawgmoth_id =
+            game.create_object_from_definition(yawgmoth_def, alice, Zone::Battlefield);
+
+        let discard_card = CardBuilder::new(CardId::new(), "Discard Me")
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&discard_card, alice, Zone::Hand);
+
+        let lotus_def = CardDefinitionBuilder::new(CardId::new(), "Black Lotus")
+            .card_types(vec![CardType::Artifact])
+            .parse_text("{T}, Sacrifice this artifact: Add three mana of any one color.")
+            .expect("Black Lotus text should parse");
+        game.create_object_from_definition(&lotus_def, alice, Zone::Battlefield);
+
+        let proliferate_ability_index = game
+            .object(yawgmoth_id)
+            .expect("Yawgmoth should exist")
+            .abilities
+            .iter()
+            .position(|ability| {
+                if let AbilityKind::Activated(activated) = &ability.kind {
+                    activated.mana_cost.mana_cost().is_some()
+                        && activated
+                            .mana_cost
+                            .costs()
+                            .iter()
+                            .any(|cost| cost.is_discard())
+                } else {
+                    false
+                }
+            })
+            .expect("Yawgmoth should have proliferate ability with discard cost");
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            actions.iter().any(|action| {
+                matches!(
+                    action,
+                    LegalAction::ActivateAbility { source, ability_index }
+                        if *source == yawgmoth_id && *ability_index == proliferate_ability_index
+                )
+            }),
+            "Yawgmoth's proliferate ability should be legal with Black Lotus on the battlefield and a discardable card in hand"
         );
     }
 

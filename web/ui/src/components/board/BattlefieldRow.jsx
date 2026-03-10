@@ -318,6 +318,7 @@ function BattlefieldGhostCard({ ghost, compact, onDone }) {
         card={ghost.card}
         compact={compact}
         className="battlefield-ghost-card"
+        hideDebugBadge
         style={{
           width: "100%",
           minWidth: "100%",

@@ -8,6 +8,7 @@ mod expend;
 mod keyword_action;
 mod permanent_becomes_tapped;
 mod permanent_turned_face_up;
+mod player_plays_land;
 mod player_sacrifices;
 mod transforms;
 
@@ -19,5 +20,6 @@ pub use expend::ExpendTrigger;
 pub use keyword_action::KeywordActionTrigger;
 pub use permanent_becomes_tapped::PermanentBecomesTappedTrigger;
 pub use permanent_turned_face_up::PermanentTurnedFaceUpTrigger;
+pub use player_plays_land::PlayerPlaysLandTrigger;
 pub use player_sacrifices::PlayerSacrificesTrigger;
 pub use transforms::TransformsTrigger;

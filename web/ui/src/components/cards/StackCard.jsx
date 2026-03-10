@@ -87,7 +87,10 @@ export default function StackCard({
       )}
       data-object-id={entry.id}
       data-card-name={name}
-      onClick={() => onClick?.(entry.inspect_object_id ?? entry.id)}
+      onClick={() => onClick?.(entry.inspect_object_id ?? entry.id, {
+        source: "stack",
+        stackEntry: entry,
+      })}
       style={stackAccentStyle}
     >
       {!isLeaving && (

@@ -55,6 +55,8 @@ pub enum EventKind {
     SpellCast,
     /// A spell was copied
     SpellCopied,
+    /// A player played a land
+    LandPlayed,
     /// An activated or mana ability was activated
     AbilityActivated,
     /// A permanent became the target of a spell or ability

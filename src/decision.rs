@@ -18,7 +18,7 @@ use crate::target::ChooseSpec;
 use crate::zone::Zone;
 use crate::{CounterType, ManaSymbol, Step};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader, BufWriter, Write};
@@ -1032,173 +1032,12 @@ fn can_pay_ability_cost_with_view(
         return true;
     }
 
-    // Some activated abilities only become payable while paying costs, because
-    // mana abilities can add non-mana resources (e.g. Wall of Roots counters).
-    // If strict "pay now" fails, run a bounded dry-run that explores mana-ability
-    // sequences and rechecks whether the frozen total cost is payable.
-    can_pay_ability_cost_via_mana_sequence(game, source_id, player, &effective_cost)
-}
-
-fn can_pay_ability_cost_via_mana_sequence(
-    game: &GameState,
-    source_id: ObjectId,
-    player: PlayerId,
-    effective_cost: &crate::cost::TotalCost,
-) -> bool {
-    use crate::costs::{
-        CostCheckContext, can_pay_with_check_context, can_potentially_pay_with_check_context,
-    };
-
-    // This search only models "activate mana abilities while paying". If the
-    // cost has no mana component, this fallback should not unlock it.
-    if !effective_cost
-        .costs()
-        .iter()
-        .any(|component| component.processing_mode().is_mana_payment())
-    {
-        return false;
-    }
-
-    fn can_pay_frozen_cost_in_state(
-        game: &GameState,
-        source_id: ObjectId,
-        player: PlayerId,
-        effective_cost: &crate::cost::TotalCost,
-    ) -> bool {
-        let check_ctx = CostCheckContext::new(source_id, player);
-        effective_cost.costs().iter().all(|component| {
-            if component.processing_mode().is_mana_payment() {
-                can_potentially_pay_with_check_context(&*component.0, game, &check_ctx).is_ok()
-            } else {
-                can_pay_with_check_context(&*component.0, game, &check_ctx).is_ok()
-            }
-        })
-    }
-
-    if can_pay_frozen_cost_in_state(game, source_id, player, effective_cost) {
-        return true;
-    }
-
-    const MAX_SEARCH_DEPTH: usize = 8;
-    const MAX_SEARCH_STATES: usize = 192;
-
-    let mut queue: VecDeque<(GameState, usize)> = VecDeque::new();
-    queue.push_back((game.clone(), 0));
-
-    let mut seen = HashSet::new();
-    let mut explored = 0usize;
-
-    while let Some((state, depth)) = queue.pop_front() {
-        if explored >= MAX_SEARCH_STATES {
-            break;
-        }
-        explored += 1;
-
-        // Conservative dedupe to keep search bounded. This is fallback-only and
-        // runs when strict checks fail, so debug-key cost is acceptable.
-        if !seen.insert(format!("{state:?}")) {
-            continue;
-        }
-
-        if can_pay_frozen_cost_in_state(&state, source_id, player, effective_cost) {
-            return true;
-        }
-
-        if depth >= MAX_SEARCH_DEPTH {
-            continue;
-        }
-
-        for (mana_source, mana_ability_index) in legal_mana_ability_actions(&state, player) {
-            let mut next = state.clone();
-            let mut dm = SelectFirstDecisionMaker;
-            if crate::special_actions::perform_activate_mana_ability(
-                &mut next,
-                player,
-                mana_source,
-                mana_ability_index,
-                &mut dm,
-            )
-            .is_ok()
-            {
-                queue.push_back((next, depth + 1));
-            }
-        }
-    }
-
-    false
-}
-
-fn legal_mana_ability_actions(game: &GameState, player: PlayerId) -> Vec<(ObjectId, usize)> {
-    use crate::special_actions::{SpecialAction, can_perform_check};
-
-    let mut actions = Vec::new();
-
-    // Battlefield mana abilities controlled by this player.
-    for perm_id in game.battlefield.clone() {
-        let Some(perm) = game.object(perm_id) else {
-            continue;
-        };
-        if perm.controller != player {
-            continue;
-        }
-        for (ability_index, ability) in perm.abilities.iter().enumerate() {
-            if !ability.is_mana_ability() {
-                continue;
-            }
-            let action = SpecialAction::ActivateManaAbility {
-                permanent_id: perm_id,
-                ability_index,
-            };
-            if can_perform_check(&action, game, player).is_ok() {
-                actions.push((perm_id, ability_index));
-            }
-        }
-    }
-
-    // Non-battlefield mana abilities that function from their current zone.
-    if let Some(player_obj) = game.player(player) {
-        let mut non_battlefield_ids = Vec::new();
-        non_battlefield_ids.extend(player_obj.hand.iter().copied());
-        non_battlefield_ids.extend(player_obj.graveyard.iter().copied());
-        non_battlefield_ids.extend(
-            game.exile
-                .iter()
-                .copied()
-                .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)),
-        );
-        non_battlefield_ids.extend(
-            game.command_zone
-                .iter()
-                .copied()
-                .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)),
-        );
-        non_battlefield_ids.sort_by_key(|id| id.0);
-        non_battlefield_ids.dedup();
-
-        for source_id in non_battlefield_ids {
-            let Some(obj) = game.object(source_id) else {
-                continue;
-            };
-            if obj.zone == Zone::Battlefield || obj.controller != player {
-                continue;
-            }
-
-            for (ability_index, ability) in obj.abilities.iter().enumerate() {
-                if !ability.functions_in(&obj.zone) || !ability.is_mana_ability() {
-                    continue;
-                }
-                let action = SpecialAction::ActivateManaAbility {
-                    permanent_id: source_id,
-                    ability_index,
-                };
-                if can_perform_check(&action, game, player).is_ok() {
-                    actions.push((source_id, ability_index));
-                }
-            }
-        }
-    }
-
-    actions
+    // For legality/UI surfacing we only need to know whether the activation
+    // can plausibly be paid during the payment subflow, not fully simulate that
+    // subflow here. Use the cost system's potential-payability checks so mixed
+    // costs like "{B}{B}, discard a card" remain visible when mana can be
+    // generated during payment (e.g. via Black Lotus).
+    can_potentially_pay_total_cost(game, source_id, player, &effective_cost)
 }
 
 /// Check if a player could potentially pay a TotalCost.
@@ -3103,9 +2942,14 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
                     });
 
                 if can_activate && condition_met {
-                    // Add the mana this ability could produce (fixed output, or
-                    // inferred from variable mana effects such as "any color").
-                    for mana in mana_ability.inferred_mana_symbols(game, perm_id, player) {
+                    // Add the mana this ability could produce, preserving
+                    // multiplicity for effects like Black Lotus.
+                    for mana in inferred_potential_mana_symbols_for_ability(
+                        game,
+                        perm_id,
+                        player,
+                        mana_ability,
+                    ) {
                         potential.add(mana, 1);
                     }
                     // Only count one mana ability per permanent (can only tap once)
@@ -3116,6 +2960,95 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
     }
 
     potential
+}
+
+fn inferred_potential_mana_symbols_for_ability(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    mana_ability: &crate::ability::ActivatedAbility,
+) -> Vec<ManaSymbol> {
+    use crate::effects::{
+        AddColorlessManaEffect, AddManaEffect, AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect,
+        AddScaledManaEffect,
+    };
+
+    if let Some(mana_output) = mana_ability.mana_output.as_ref()
+        && !mana_output.is_empty()
+    {
+        return mana_output.clone();
+    }
+
+    let resolve_amount = |value: &crate::effect::Value| -> usize {
+        let mut dm = SelectFirstDecisionMaker;
+        let ctx = ExecutionContext::new(source, controller, &mut dm);
+        resolve_value(game, value, &ctx).unwrap_or(0).max(0) as usize
+    };
+
+    let mut inferred = Vec::new();
+    for effect in &mana_ability.effects {
+        if let Some(add_mana) = effect.downcast_ref::<AddManaEffect>() {
+            inferred.extend(add_mana.mana.iter().copied());
+            continue;
+        }
+        if let Some(add_colorless) = effect.downcast_ref::<AddColorlessManaEffect>() {
+            inferred.extend(std::iter::repeat_n(
+                ManaSymbol::Colorless,
+                resolve_amount(&add_colorless.amount),
+            ));
+            continue;
+        }
+        if let Some(add_scaled) = effect.downcast_ref::<AddScaledManaEffect>() {
+            let repeats = resolve_amount(&add_scaled.amount);
+            for _ in 0..repeats {
+                inferred.extend(add_scaled.mana.iter().copied());
+            }
+            continue;
+        }
+        if let Some(add_any_color) = effect.downcast_ref::<AddManaOfAnyColorEffect>() {
+            let amount = resolve_amount(&add_any_color.amount);
+            let colors = add_any_color.available_colors.as_deref().unwrap_or(&[
+                crate::color::Color::White,
+                crate::color::Color::Blue,
+                crate::color::Color::Black,
+                crate::color::Color::Red,
+                crate::color::Color::Green,
+            ]);
+            for color in colors {
+                inferred.extend(std::iter::repeat_n(ManaSymbol::from_color(*color), amount));
+            }
+            continue;
+        }
+        if let Some(add_any_one_color) = effect.downcast_ref::<AddManaOfAnyOneColorEffect>() {
+            let amount = resolve_amount(&add_any_one_color.amount);
+            for color in [
+                crate::color::Color::White,
+                crate::color::Color::Blue,
+                crate::color::Color::Black,
+                crate::color::Color::Red,
+                crate::color::Color::Green,
+            ] {
+                inferred.extend(std::iter::repeat_n(ManaSymbol::from_color(color), amount));
+            }
+            continue;
+        }
+
+        if let Some(symbols) = effect.producible_mana_symbols(game, source, controller) {
+            inferred.extend(symbols.into_iter().filter(|symbol| {
+                matches!(
+                    symbol,
+                    ManaSymbol::White
+                        | ManaSymbol::Blue
+                        | ManaSymbol::Black
+                        | ManaSymbol::Red
+                        | ManaSymbol::Green
+                        | ManaSymbol::Colorless
+                )
+            }));
+        }
+    }
+
+    inferred
 }
 
 /// Check mana ability condition for potential mana computation.

@@ -600,6 +600,11 @@ impl Trigger {
         Self::new(TapForManaTrigger::new(player, filter))
     }
 
+    /// Create a "whenever [player] plays [land filter]" trigger.
+    pub fn player_plays_land(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::new(PlayerPlaysLandTrigger::new(player, filter))
+    }
+
     /// Create a "when this permanent becomes the target of a spell or ability" trigger.
     pub fn becomes_targeted() -> Self {
         Self::new(BecomesTargetedTrigger)

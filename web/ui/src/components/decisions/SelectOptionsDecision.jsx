@@ -207,7 +207,7 @@ export default function SelectOptionsDecision({
   const reason = (decision.reason || "").toLowerCase();
 
   // Dispatch to sub-type based on decision metadata
-  if (reason.includes("order")) {
+  if (reason === "ordering") {
     return (
       <OrderingDecision
         decision={decision}

@@ -58,76 +58,8 @@ export default function Shell() {
         await game.reset(parseNames(playerNames), startingLife);
         await addStartingBattlefieldPreset(game);
         await refresh("WASM loaded");
-        // Run demo setup: advance to main phase + 3 Black Lotuses
-        await setupDemoBoard();
       } catch (err) {
         setStatus(`Init failed: ${err}`, true);
-      }
-    }
-
-    // Settle all opponent priority/combat decisions so game advances
-    async function settle(g, st) {
-      for (let i = 0; i < 80 && st?.decision && st.decision.player !== st.perspective; i++) {
-        if (st.decision.kind === "priority") {
-          const pass = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
-          if (!pass) break;
-          st = await g.dispatch({ type: "priority_action", action_index: pass.index });
-        } else if (st.decision.kind === "attackers") {
-          st = await g.dispatch({ type: "declare_attackers", declarations: [] });
-        } else if (st.decision.kind === "blockers") {
-          st = await g.dispatch({ type: "declare_blockers", declarations: [] });
-        } else {
-          break;
-        }
-      }
-      return st;
-    }
-
-    async function setupDemoBoard() {
-      try {
-        let st = await game.uiState();
-        const playerIndex = Number(st.active_player);
-
-        // Pass priority twice (with opponent settle) to advance to main phase
-        for (let i = 0; i < 2; i++) {
-          if (!st || !st.decision) break;
-          const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
-          if (!passAction) break;
-          st = await game.dispatch({ type: "priority_action", action_index: passAction.index });
-          st = await settle(game, st);
-        }
-
-        // Add 3 Black Lotuses and cast each one
-        for (let i = 0; i < 3; i++) {
-          const objectId = Number(
-            await game.addCardToZone(playerIndex, "Black Lotus", "hand", true)
-          );
-          st = await game.uiState();
-          st = await settle(game, st);
-          if (st.decision && st.decision.actions) {
-            const castAction = st.decision.actions.find(
-              (a) => a.kind === "cast_spell" && Number(a.object_id) === objectId
-            );
-            if (castAction) {
-              st = await game.dispatch({ type: "priority_action", action_index: castAction.index });
-              st = await settle(game, st);
-              if (st && st.decision) {
-                const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
-                if (passAction) {
-                  st = await game.dispatch({ type: "priority_action", action_index: passAction.index });
-                  st = await settle(game, st);
-                }
-              }
-            }
-          }
-        }
-        // Add Anger to graveyard and Mountain to battlefield
-        await game.addCardToZone(playerIndex, "Anger", "graveyard", true);
-        await game.addCardToZone(playerIndex, "Mountain", "battlefield", true);
-
-        await refresh("Demo: 3 Black Lotuses + Mountain on battlefield, Anger in graveyard");
-      } catch (err) {
-        console.error("setupDemoBoard failed:", err);
       }
     }
 
