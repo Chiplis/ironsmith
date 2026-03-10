@@ -2693,7 +2693,7 @@ impl WasmGame {
                     &replay.nested_answers,
                 );
             let live_checkpoint = self.capture_replay_checkpoint();
-            let progress = if replay_decision_requires_root_reexecution(&pending_ctx) {
+            let progress = if self.decision_requires_root_reexecution(&pending_ctx) {
                 match self.execute_with_replay(
                     &replay.checkpoint,
                     &replay.root,
@@ -3002,6 +3002,34 @@ impl WasmGame {
             || self.priority_state.pending_activation.is_some()
             || self.priority_state.pending_mana_ability.is_some()
             || self.priority_state.pending_method_selection.is_some()
+    }
+
+    fn select_objects_uses_live_priority_response(&self) -> bool {
+        self.priority_state
+            .pending_activation
+            .as_ref()
+            .is_some_and(|pending| {
+                matches!(
+                    pending.stage,
+                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost
+                )
+            })
+            || self
+                .priority_state
+                .pending_cast
+                .as_ref()
+                .is_some_and(|pending| {
+                    matches!(
+                        pending.stage,
+                        CastStage::ChoosingSacrifice | CastStage::ChoosingCardCost
+                    )
+                })
+    }
+
+    fn decision_requires_root_reexecution(&self, ctx: &DecisionContext) -> bool {
+        replay_decision_requires_root_reexecution(ctx)
+            || matches!(ctx, DecisionContext::SelectObjects(_))
+                && !self.select_objects_uses_live_priority_response()
     }
 
     fn has_irreversible_mana_undo_lock(&self) -> bool {
@@ -7200,6 +7228,14 @@ mod tests {
             None,
             "play an additional land this turn",
         ));
+        let select_objects = DecisionContext::SelectObjects(SelectObjectsContext::new(
+            PlayerId::from_index(0),
+            None,
+            "choose a land",
+            vec![SelectableObject::new(ObjectId::from_raw(1), "Forest")],
+            1,
+            Some(1),
+        ));
         let select_options =
             DecisionContext::SelectOptions(crate::decisions::context::SelectOptionsContext::new(
                 PlayerId::from_index(0),
@@ -7213,11 +7249,15 @@ mod tests {
             ));
 
         assert!(
-            replay_decision_requires_root_reexecution(&boolean),
+            WasmGame::new().decision_requires_root_reexecution(&boolean),
             "boolean prompts should replay from the original root response"
         );
         assert!(
-            !replay_decision_requires_root_reexecution(&select_options),
+            WasmGame::new().decision_requires_root_reexecution(&select_objects),
+            "resolution-time object prompts should replay from the original root response"
+        );
+        assert!(
+            !WasmGame::new().decision_requires_root_reexecution(&select_options),
             "normal select-options prompts should keep using direct live responses"
         );
     }
