@@ -14836,6 +14836,29 @@ fn parse_lose_half_your_life_rounded_up_clause() {
 }
 
 #[test]
+fn parse_oracle_liquimetal_coating_type_addition_render_regression() {
+    let def = parse_oracle_card_definition("Liquimetal Coating");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("addcardtypes") && raw.contains("artifact"),
+        "expected raw compiled definition to keep artifact type addition, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "target permanent becomes an artifact in addition to its other types until end of turn"
+        ),
+        "expected Liquimetal Coating type-addition wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Liquimetal Coating to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");
