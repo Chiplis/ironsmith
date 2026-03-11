@@ -3413,6 +3413,25 @@ Pay 3 life: Add {R}.";
     }
 
     #[test]
+    fn compare_semantics_normalizes_goblin_wardriver_battle_cry_keyword_scaffolding() {
+        let oracle =
+            "Battle cry (Whenever this creature attacks, each other attacking creature gets +1/+0 until end of turn.)";
+        let compiled = vec![String::from(
+            "Triggered ability 1: Whenever this creature attacks, another attacking creature you control get +1/+0 until end of turn.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected battle cry keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for battle cry keyword scaffolding"
+        );
+    }
+
+    #[test]
     fn compare_semantics_normalizes_echo_counter_scaffolding() {
         let oracle = "Flying, protection from black
 Echo {3}{W}{W}
