@@ -90,30 +90,31 @@ function normalizeNumericId(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function stackObjectMatchesDecisionSource(stackObject, decision) {
+  if (!stackObject || !decision) return false;
+
+  const decisionSourceId = normalizeNumericId(decision?.source_id);
+  const decisionSourceName = String(decision?.source_name || "").trim().toLowerCase();
+  const topStackId = normalizeNumericId(stackObject?.id);
+  const topInspectId = normalizeNumericId(stackObject?.inspect_object_id);
+  const topName = String(stackObject?.name || "").trim().toLowerCase();
+
+  if (
+    decisionSourceId != null
+    && (decisionSourceId === topStackId || decisionSourceId === topInspectId)
+  ) {
+    return true;
+  }
+
+  return Boolean(decisionSourceName && topName && decisionSourceName === topName);
+}
+
 function resolveTargetDecisionSourceId(state, decision) {
   const topStackObject = getVisibleTopStackObject(state);
   const decisionSourceId = normalizeNumericId(decision?.source_id);
-  const decisionSourceName = String(decision?.source_name || "").trim().toLowerCase();
 
-  if (topStackObject) {
-    const topStackId = normalizeNumericId(topStackObject?.id);
-    const topInspectId = normalizeNumericId(topStackObject?.inspect_object_id);
-    const topName = String(topStackObject?.name || "").trim().toLowerCase();
-
-    if (
-      decisionSourceId != null
-      && (decisionSourceId === topStackId || decisionSourceId === topInspectId)
-    ) {
-      return topStackId;
-    }
-
-    if (decisionSourceName && topName && decisionSourceName === topName) {
-      return topStackId;
-    }
-
-    if (topStackId != null) {
-      return topStackId;
-    }
+  if (topStackObject && stackObjectMatchesDecisionSource(topStackObject, decision)) {
+    return normalizeNumericId(topStackObject?.id);
   }
 
   return decisionSourceId;
@@ -121,9 +122,13 @@ function resolveTargetDecisionSourceId(state, decision) {
 
 function resolveTargetDecisionColor(state, decision) {
   const topStackObject = getVisibleTopStackObject(state);
-  const controllerId = normalizeNumericId(topStackObject?.controller) ?? normalizeNumericId(decision?.player);
+  const controllerId = stackObjectMatchesDecisionSource(topStackObject, decision)
+    ? normalizeNumericId(topStackObject?.controller)
+    : null;
+  const fallbackControllerId = normalizeNumericId(decision?.player);
   const accent = getPlayerAccent(state?.players || [], controllerId);
-  return accent?.hex || "#ff3b30";
+  if (accent?.hex) return accent.hex;
+  return getPlayerAccent(state?.players || [], fallbackControllerId)?.hex || "#ff3b30";
 }
 
 function isGenericObjectName(name, objectId = null) {

@@ -801,6 +801,40 @@ function resolveDecisionMiniInspectorStackObject(stackObjects = [], selectedObje
   return stackObjects[0] || null;
 }
 
+function decisionSourceMatchesStackObject(decision, stackObject) {
+  if (!decision || !stackObject) return false;
+  const sourceId = decision?.source_id == null ? null : String(decision.source_id);
+  const sourceName = String(decision?.source_name || "").trim().toLowerCase();
+  const stackId = stackObject?.id == null ? null : String(stackObject.id);
+  const inspectId = stackObject?.inspect_object_id == null ? null : String(stackObject.inspect_object_id);
+  const stackName = String(stackObject?.name || "").trim().toLowerCase();
+
+  if (sourceId && (sourceId === stackId || sourceId === inspectId)) return true;
+  return Boolean(sourceName && stackName && sourceName === stackName);
+}
+
+function resolveDecisionMiniInspectorStackObjectForDecision(
+  decision,
+  stackObjects = [],
+  selectedObjectId = null
+) {
+  if (!Array.isArray(stackObjects) || stackObjects.length === 0) return null;
+
+  const selectedEntry = resolveDecisionMiniInspectorStackObject(stackObjects, selectedObjectId);
+  if (decisionSourceMatchesStackObject(decision, selectedEntry)) {
+    return selectedEntry;
+  }
+
+  const matchingEntry = stackObjects.find((entry) => decisionSourceMatchesStackObject(decision, entry));
+  if (matchingEntry) return matchingEntry;
+
+  if (!decision || decision.kind === "priority") {
+    return selectedEntry;
+  }
+
+  return null;
+}
+
 function shouldShowDecisionMiniInspector(decision, stackObject) {
   if (!decision && !stackObject) return false;
   if (stackObject) return true;
@@ -878,8 +912,12 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const isCombatDecision = decision?.kind === "attackers" || decision?.kind === "blockers";
   const decisionActions = useMemo(() => decision?.actions || [], [decision]);
   const displayedStackObject = useMemo(
-    () => resolveDecisionMiniInspectorStackObject(getVisibleStackObjects(state), selectedObjectId),
-    [selectedObjectId, state]
+    () => resolveDecisionMiniInspectorStackObjectForDecision(
+      decision,
+      getVisibleStackObjects(state),
+      selectedObjectId
+    ),
+    [decision, selectedObjectId, state]
   );
   const passAction = useMemo(
     () => decisionActions.find((action) => action.kind === "pass_priority"),

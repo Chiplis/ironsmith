@@ -2865,7 +2865,7 @@ impl WasmGame {
                 self.active_viewed_cards = viewed_cards;
 
                 if let Some(next_ctx) = pending_context {
-                    self.update_active_resolving_stack_object_from_checkpoint(&live_checkpoint);
+                    self.sync_active_resolving_stack_object_for_prompt(Some(&live_checkpoint));
                     if should_track_action_checkpoint {
                         self.pending_action_checkpoint = Some(replay.checkpoint.clone());
                     }
@@ -2887,7 +2887,7 @@ impl WasmGame {
 
             match progress {
                 GameProgress::NeedsDecisionCtx(next_ctx) => {
-                    self.update_active_resolving_stack_object_from_checkpoint(&live_checkpoint);
+                    self.sync_active_resolving_stack_object_for_prompt(Some(&live_checkpoint));
                     if self.priority_action_chain_still_pending() {
                         if should_track_action_checkpoint {
                             self.pending_action_checkpoint = Some(replay.checkpoint.clone());
@@ -2949,7 +2949,7 @@ impl WasmGame {
             };
             match outcome {
                 ReplayOutcome::NeedsDecision(next_ctx) => {
-                    self.update_active_resolving_stack_object_from_checkpoint(&checkpoint);
+                    self.sync_active_resolving_stack_object_for_prompt(Some(&checkpoint));
                     if should_track_action_checkpoint {
                         self.pending_action_checkpoint = Some(checkpoint.clone());
                     }
@@ -2964,7 +2964,7 @@ impl WasmGame {
                 ReplayOutcome::Complete(progress) => {
                     match progress {
                         GameProgress::NeedsDecisionCtx(next_ctx) => {
-                            self.update_active_resolving_stack_object_from_checkpoint(&checkpoint);
+                            self.sync_active_resolving_stack_object_for_prompt(Some(&checkpoint));
                             if self.priority_action_chain_still_pending() {
                                 if should_track_action_checkpoint {
                                     self.pending_action_checkpoint = Some(checkpoint.clone());
@@ -4284,12 +4284,12 @@ impl WasmGame {
     ) -> Result<JsValue, JsValue> {
         match progress {
             GameProgress::NeedsDecisionCtx(next_ctx) => {
-                self.sync_active_resolving_stack_object(resolving_checkpoint.as_ref());
                 let action_still_pending = self.priority_action_chain_still_pending();
-                let committed_resolution_checkpoint = self
-                    .pending_action_checkpoint
-                    .clone()
-                    .or_else(|| action_checkpoint.clone());
+                if action_still_pending {
+                    self.clear_active_resolving_stack_object();
+                } else {
+                    self.sync_active_resolving_stack_object(resolving_checkpoint.as_ref());
+                }
                 if action_still_pending {
                     if let Some(checkpoint) = action_checkpoint {
                         self.pending_action_checkpoint.get_or_insert(checkpoint);
@@ -4300,19 +4300,13 @@ impl WasmGame {
 
                 if !action_still_pending {
                     self.priority_state.pending_continuation = None;
-                    self.pending_live_continuation = None;
-                    if let (Some(root_response), Some(checkpoint)) = (
-                        self.pending_live_action_root.take(),
-                        committed_resolution_checkpoint,
-                    ) {
-                        self.pending_replay_action = Some(PendingReplayAction {
-                            checkpoint,
-                            root: ReplayRoot::Response(root_response),
-                            nested_answers: Vec::new(),
-                        });
-                    } else {
-                        self.pending_replay_action = None;
-                    }
+                    self.pending_live_action_root = None;
+                    self.pending_replay_action = None;
+                    self.pending_live_continuation = Some(LivePriorityContinuation {
+                        checkpoint: self.capture_replay_checkpoint_tagged("finish_live_dispatch"),
+                        root: PendingPriorityContinuation::ApplyDecisionContext(next_ctx.clone()),
+                        answers: Vec::new(),
+                    });
                 } else if self.decision_uses_live_priority_response(&next_ctx) {
                     self.priority_state.pending_continuation = None;
                     self.pending_live_continuation = None;
@@ -4398,7 +4392,7 @@ impl WasmGame {
         self.active_viewed_cards = viewed_cards;
 
         if let Some(next_ctx) = pending_context {
-            self.sync_active_resolving_stack_object(Some(&step_checkpoint));
+            self.sync_active_resolving_stack_object_for_prompt(Some(&step_checkpoint));
             if self.priority_action_chain_still_pending() {
                 if let Some(checkpoint) = action_checkpoint {
                     self.pending_action_checkpoint.get_or_insert(checkpoint);
@@ -4503,7 +4497,7 @@ impl WasmGame {
         self.active_viewed_cards = viewed_cards;
 
         if let Some(next_ctx) = pending_context {
-            self.sync_active_resolving_stack_object(Some(&continuation.checkpoint));
+            self.sync_active_resolving_stack_object_for_prompt(Some(&continuation.checkpoint));
             self.priority_state.pending_continuation = None;
             continuation.checkpoint.diag_tag = "continuation_dm_capture";
             self.pending_live_continuation = Some(continuation);
@@ -4566,6 +4560,17 @@ impl WasmGame {
         }
     }
 
+    fn sync_active_resolving_stack_object_for_prompt(
+        &mut self,
+        checkpoint: Option<&ReplayCheckpoint>,
+    ) {
+        if self.priority_action_chain_still_pending() {
+            self.clear_active_resolving_stack_object();
+        } else {
+            self.sync_active_resolving_stack_object(checkpoint);
+        }
+    }
+
     fn resolving_stack_object_from_checkpoint(
         &self,
         checkpoint: &ReplayCheckpoint,
@@ -4624,14 +4629,14 @@ impl WasmGame {
         self.active_viewed_cards = viewed_cards;
 
         if let Some(next_ctx) = pending_context {
-            self.update_active_resolving_stack_object_from_checkpoint(checkpoint);
+            self.sync_active_resolving_stack_object_for_prompt(Some(checkpoint));
             return Ok(ReplayOutcome::NeedsDecision(next_ctx));
         }
 
         match result {
             Ok(progress) => {
                 if matches!(progress, GameProgress::NeedsDecisionCtx(_)) {
-                    self.update_active_resolving_stack_object_from_checkpoint(checkpoint);
+                    self.sync_active_resolving_stack_object_for_prompt(Some(checkpoint));
                 } else {
                     self.clear_active_resolving_stack_object();
                 }
@@ -6076,24 +6081,23 @@ mod tests {
         build_object_details_snapshot, build_stack_object_snapshot,
     };
     use crate::ability::Ability;
+    use crate::alternative_cast::CastingMethod;
     use crate::card::CardBuilder;
     use crate::cards::definitions::{
-        basic_mountain, emrakul_the_promised_end, grizzly_bears, lightning_bolt, ornithopter,
-        urzas_saga, yawgmoth_thran_physician,
+        basic_island, basic_mountain, emrakul_the_promised_end, grizzly_bears, lightning_bolt,
+        ornithopter, polluted_delta, urzas_saga, yawgmoth_thran_physician,
     };
     use crate::continuous::ContinuousEffect;
     use crate::cost::OptionalCostsPaid;
-    use crate::decision::LegalAction;
     use crate::decision::compute_legal_actions;
+    use crate::decision::{GameProgress, LegalAction};
     use crate::decisions::context::{
         BooleanContext, DecisionContext, PriorityContext, SelectObjectsContext, SelectableObject,
         SelectableOption,
     };
     use crate::effect::{Effect, Until};
     use crate::events::spells::SpellCastEvent;
-    use crate::game_loop::{
-        CastStage, CastingMethod, PendingCast, PendingManaAbility, PriorityResponse,
-    };
+    use crate::game_loop::{CastStage, PendingCast, PendingManaAbility, PriorityResponse};
     use crate::game_state::{GameState, Phase, StackEntry, Step, Target};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -6282,8 +6286,6 @@ mod tests {
 
         let entered_id = wasm
             .game
-            .player(alice)
-            .expect("alice should exist")
             .battlefield
             .iter()
             .copied()
@@ -6987,7 +6989,8 @@ mod tests {
             .expect("canceling the in-progress spell should succeed");
 
         let alice_player = wasm.game.player(alice).expect("alice should exist");
-        let mountains_on_battlefield = alice_player
+        let mountains_on_battlefield = wasm
+            .game
             .battlefield
             .iter()
             .filter(|&&id| {
@@ -7111,6 +7114,10 @@ mod tests {
             snapshot.cancelable,
             "snapshot should expose Yawgmoth target prompt as cancelable"
         );
+        assert!(
+            snapshot.resolving_stack_object.is_none(),
+            "activation-time target prompts should not pin a resolving stack entry"
+        );
         let decision = snapshot
             .decision
             .expect("snapshot should still include the target decision");
@@ -7173,6 +7180,10 @@ mod tests {
         assert!(
             snapshot.cancelable,
             "snapshot should expose Yawgmoth next-cost prompt as cancelable"
+        );
+        assert!(
+            snapshot.resolving_stack_object.is_none(),
+            "cost-payment prompts should not pin a resolving stack entry before the ability is committed"
         );
         let decision = snapshot
             .decision
@@ -7600,14 +7611,10 @@ mod tests {
             .as_ref()
             .expect("snapshot should include the pending discard choice")
         {
-            super::DecisionView::SelectObjects(view) => view,
+            super::DecisionView::SelectObjects { candidates, .. } => candidates,
             other => panic!("expected select_objects decision, got {other:?}"),
         };
-        let candidate_ids: Vec<u64> = decision
-            .candidates
-            .iter()
-            .map(|candidate| candidate.id)
-            .collect();
+        let candidate_ids: Vec<u64> = decision.iter().map(|candidate| candidate.id).collect();
         assert_eq!(
             candidate_ids,
             vec![peek_id, keyrune_id],
@@ -8054,13 +8061,13 @@ mod tests {
                 .expect("Tayam activation should still have a pending decision");
             match pending {
                 DecisionContext::SelectOptions(ctx) => {
-                    let choice = if ctx.prompt.contains("Choose next cost") {
+                    let choice = if ctx.description.contains("Choose next cost") {
                         ctx.options
                             .iter()
                             .find(|option| option.legal && option.description.contains("Pay {3}"))
                             .map(|option| option.index)
                             .expect("next-cost chooser should offer the mana payment")
-                    } else if ctx.prompt.contains("Pay mana") {
+                    } else if ctx.description.contains("Pay mana") {
                         if let Some(option) = ctx.options.iter().find(|option| {
                             option.legal && option.description.contains("Wall of Roots")
                         }) {
@@ -8074,7 +8081,7 @@ mod tests {
                                 .map(|option| option.index)
                                 .expect("mana payment prompt should offer a legal mana source")
                         }
-                    } else if ctx.prompt.contains("Choose next cost") {
+                    } else if ctx.description.contains("Choose next cost") {
                         unreachable!("handled above")
                     } else {
                         ctx.options
@@ -8193,6 +8200,156 @@ mod tests {
                     .is_some_and(|obj| obj.name == "Forest" && obj.owner == alice)
             }),
             "a Forest should still exist on the battlefield after Tayam resolves"
+        );
+    }
+
+    #[test]
+    fn polluted_delta_resolution_choice_keeps_paid_costs_and_resolved_land() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let delta_id =
+            wasm.game
+                .create_object_from_definition(&polluted_delta(), alice, Zone::Battlefield);
+        let island_id =
+            wasm.game
+                .create_object_from_definition(&basic_island(), alice, Zone::Library);
+        wasm.game
+            .create_object_from_definition(&basic_mountain(), alice, Zone::Library);
+
+        wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        let priority_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(ctx)) => ctx,
+            other => panic!("expected priority decision, got {other:?}"),
+        };
+        let activate_index = priority_ctx
+            .actions
+            .iter()
+            .position(|action| {
+                matches!(
+                    action,
+                    LegalAction::ActivateAbility { source, .. } if *source == delta_id
+                )
+            })
+            .expect("expected Polluted Delta activation action");
+
+        wasm.dispatch(
+            serde_wasm_bindgen::to_value(&json!({
+                "type": "priority_action",
+                "action_index": activate_index,
+            }))
+            .expect("priority action command should serialize"),
+        )
+        .expect("activating Polluted Delta should succeed");
+
+        assert!(
+            wasm.game.player(bob).is_some(),
+            "second player should exist for the pass-priority sequence"
+        );
+        assert!(
+            !wasm.game.battlefield.contains(&delta_id),
+            "Polluted Delta should be sacrificed during activation"
+        );
+        assert!(
+            wasm.game
+                .player(alice)
+                .expect("alice should exist")
+                .graveyard
+                .contains(&delta_id),
+            "Polluted Delta should be in the graveyard after activation"
+        );
+        assert_eq!(
+            wasm.game.player(alice).expect("alice should exist").life,
+            19,
+            "Polluted Delta activation should pay 1 life immediately"
+        );
+
+        loop {
+            let pending = wasm
+                .pending_decision
+                .clone()
+                .expect("fetchland line should keep producing prompts until the search resolves");
+            match pending {
+                DecisionContext::Priority(ctx) => {
+                    let pass_index = ctx
+                        .actions
+                        .iter()
+                        .position(|action| matches!(action, LegalAction::PassPriority))
+                        .expect("priority prompt should include pass");
+                    wasm.dispatch(
+                        serde_wasm_bindgen::to_value(&json!({
+                            "type": "priority_action",
+                            "action_index": pass_index,
+                        }))
+                        .expect("priority pass command should serialize"),
+                    )
+                    .expect("passing priority during fetchland line should succeed");
+                }
+                DecisionContext::SelectObjects(ctx) => {
+                    let choice = ctx
+                        .candidates
+                        .iter()
+                        .find(|candidate| candidate.legal && candidate.id == island_id)
+                        .map(|candidate| candidate.id.0)
+                        .expect("basic Island should be a legal fetchland search result");
+                    wasm.dispatch(
+                        serde_wasm_bindgen::to_value(&json!({
+                            "type": "select_objects",
+                            "object_ids": [choice],
+                        }))
+                        .expect("fetchland selection command should serialize"),
+                    )
+                    .expect("choosing the searched land should succeed");
+                    break;
+                }
+                other => panic!("unexpected Polluted Delta follow-up decision: {other:?}"),
+            }
+        }
+
+        assert_eq!(
+            wasm.game.player(alice).expect("alice should exist").life,
+            19,
+            "resolving the fetchland search should not rewind the paid life cost"
+        );
+        assert!(
+            !wasm.game.battlefield.contains(&delta_id),
+            "resolving the fetchland search should not put Polluted Delta back onto the battlefield"
+        );
+        assert!(
+            wasm.game
+                .player(alice)
+                .expect("alice should exist")
+                .graveyard
+                .contains(&delta_id),
+            "Polluted Delta should remain in the graveyard after the search completes"
+        );
+        assert!(
+            wasm.game.battlefield.contains(&island_id),
+            "the chosen Island should enter the battlefield"
+        );
+        assert!(
+            !wasm
+                .game
+                .player(alice)
+                .expect("alice should exist")
+                .library
+                .contains(&island_id),
+            "the chosen Island should leave the library after resolution"
+        );
+        assert!(
+            matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))),
+            "after the search resolves, the game should return to priority"
         );
     }
 
@@ -8368,7 +8525,7 @@ mod tests {
             CastStage::ChoosingOptionalCosts,
             None,
             Vec::new(),
-            CastingMethod::Cast,
+            CastingMethod::Normal,
             OptionalCostsPaid::new(1),
             None,
             ObjectId::from_raw(1),
@@ -8542,10 +8699,10 @@ mod tests {
         .expect("Cultivator Colossus should enter with ETB processing");
 
         let resolving_checkpoint = wasm
-            .pending_replay_action
+            .pending_live_continuation
             .as_ref()
-            .map(|replay| replay.checkpoint.clone())
-            .expect("Cultivator ETB prompt should retain the pre-resolution checkpoint");
+            .map(|continuation| continuation.checkpoint.clone())
+            .expect("Cultivator ETB prompt should retain the committed resolution checkpoint");
         let next_ctx = wasm
             .pending_decision
             .clone()
@@ -8574,7 +8731,7 @@ mod tests {
                 .as_ref()
                 .map(|entry| entry.id),
             Some(expected_resolving_id),
-            "live follow-up prompts should restore the resolving stack entry from the pre-resolution checkpoint"
+            "live follow-up prompts should restore the resolving stack entry from the committed resolution checkpoint"
         );
     }
 
@@ -8679,11 +8836,10 @@ mod tests {
             .as_ref()
             .expect("snapshot should include first land-choice decision")
         {
-            super::DecisionView::SelectObjects(view) => view,
+            super::DecisionView::SelectObjects { candidates, .. } => candidates,
             other => panic!("expected select_objects snapshot, got {other:?}"),
         };
         let mut first_candidates: Vec<u64> = first_choice
-            .candidates
             .iter()
             .filter(|candidate| candidate.legal)
             .map(|candidate| candidate.id)
@@ -8752,9 +8908,8 @@ mod tests {
             .as_ref()
             .expect("snapshot should include the repeated may decision")
         {
-            super::DecisionView::SelectOptions(view) => {
-                let option_text: Vec<&str> = view
-                    .options
+            super::DecisionView::SelectOptions { options, .. } => {
+                let option_text: Vec<&str> = options
                     .iter()
                     .map(|option| option.description.as_str())
                     .collect();
@@ -8810,11 +8965,10 @@ mod tests {
             .as_ref()
             .expect("snapshot should include second land-choice decision")
         {
-            super::DecisionView::SelectObjects(view) => view,
+            super::DecisionView::SelectObjects { candidates, .. } => candidates,
             other => panic!("expected second select_objects snapshot, got {other:?}"),
         };
         let second_candidates: Vec<u64> = second_choice
-            .candidates
             .iter()
             .filter(|candidate| candidate.legal)
             .map(|candidate| candidate.id)
