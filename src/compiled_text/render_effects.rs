@@ -2242,6 +2242,17 @@ pub(super) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     }
 }
 
+fn is_graveyard_same_stable_tagged_spec(spec: &ChooseSpec) -> bool {
+    let ChooseSpec::All(filter) = spec else {
+        return false;
+    };
+    filter.zone == Some(Zone::Graveyard)
+        && filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == crate::filter::TaggedOpbjectRelation::SameStableId)
+}
+
 pub(super) fn value_is_iterated_object_count(value: &Value) -> bool {
     let Value::Count(filter) = value else {
         return false;
@@ -4884,6 +4895,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "Put a {} counter on {target} for each {}",
                 describe_counter_type(put_counters.counter_type),
                 describe_for_each_count_filter(filter)
+            );
+        }
+        if let Value::CountersOn(spec, Some(counter_type)) = &put_counters.count
+            && is_graveyard_same_stable_tagged_spec(spec)
+        {
+            return format!(
+                "Put its {} counters on {target}",
+                describe_counter_type(*counter_type),
             );
         }
         if matches!(

@@ -792,6 +792,9 @@ impl StaticAbilityKind for EntersWithCounters {
             Value::X => {
                 format!("Enters the battlefield with X {counter} counters on it")
             }
+            Value::ColorsOfManaSpentToCastThisSpell => {
+                format!("Enters the battlefield with a {counter} counter on it for each color of mana spent to cast it")
+            }
             Value::Count(filter) => {
                 format!(
                     "Enters the battlefield with X {counter} counters on it, where X is the number of {}",

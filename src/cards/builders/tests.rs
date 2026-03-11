@@ -411,6 +411,31 @@ fn test_builder_sunburst_noncreature_uses_charge_counters() {
 }
 
 #[test]
+fn test_builder_arcbound_wanderer_modular_sunburst_renders_full_semantics() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Arcbound Wanderer")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .modular_sunburst()
+        .build();
+
+    let rendered = crate::compiled_text::compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("enters with a +1/+1 counter on it for each color of mana spent to cast it"),
+        "expected modular sunburst ETB wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("put its +1/+1 counters on target artifact creature"),
+        "expected modular death-transfer wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("target artifact or creature"),
+        "modular target must remain artifact creature, got {rendered}"
+    );
+}
+
+#[test]
 fn test_builder_fading_creates_counter_upkeep_and_sacrifice_triggers() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fading Test")
         .card_types(vec![CardType::Creature])

@@ -3684,7 +3684,7 @@ impl CardDefinitionBuilder {
     pub fn modular(self, amount: u32) -> Self {
         let text = format!("Modular {amount}");
         let target = ChooseSpec::target(ChooseSpec::Object(
-            ObjectFilter::artifact().with_type(CardType::Creature),
+            ObjectFilter::artifact().with_all_type(CardType::Creature),
         ));
         let trigger_tag = "modular_triggering_object";
         let dead_source_filter = ObjectFilter::default()
@@ -3729,7 +3729,7 @@ impl CardDefinitionBuilder {
     /// artifact creature."
     pub fn modular_sunburst(self) -> Self {
         let target = ChooseSpec::target(ChooseSpec::Object(
-            ObjectFilter::artifact().with_type(CardType::Creature),
+            ObjectFilter::artifact().with_all_type(CardType::Creature),
         ));
         let trigger_tag = "modular_triggering_object";
         let dead_source_filter = ObjectFilter::default()
