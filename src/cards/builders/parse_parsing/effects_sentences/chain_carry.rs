@@ -1756,7 +1756,7 @@ pub(crate) fn parse_choose_card_name_clause(
         return Ok(None);
     }
 
-    let (player, prefix_len) = if matches!(clause_words.first(), Some("choose")) {
+    let (player, prefix_len) = if clause_words.first().is_some_and(|word| *word == "choose") {
         (PlayerAst::You, 1usize)
     } else if clause_words.starts_with(&["you", "choose"]) {
         (PlayerAst::You, 2usize)
