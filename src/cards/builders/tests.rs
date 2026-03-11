@@ -10322,6 +10322,24 @@ fn parse_myriad_oracle_text_uses_composed_primitives() {
 }
 
 #[test]
+fn parse_wyrms_crossing_patrol_myriad_renders_you_as_token_creator() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Wyrm's Crossing Patrol")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Myriad")
+        .expect("wrym's crossing patrol myriad keyword should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("for each opponent other than defending player, you may create a token"),
+        "expected myriad render to keep you as the token creator, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("that player may create a token"),
+        "myriad render must not flip the token creator to the iterated player, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_named_vehicle_token_with_flying_and_crew() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lita Token Variant")
         .parse_text(

@@ -4338,6 +4338,23 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             let player_filter_text = describe_player_filter(&for_players.filter);
             let each_player = strip_leading_article(&player_filter_text);
+            if may.effects.len() == 1
+                && let Some(create_copy) =
+                    may.effects[0].downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+                && create_copy.controller == PlayerFilter::You
+                && create_copy.enters_attacking
+                && matches!(
+                    create_copy.attack_target_mode,
+                    Some(
+                        crate::effects::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
+                            PlayerFilter::IteratedPlayer
+                        )
+                    )
+                )
+            {
+                let inner = normalize_you_verb_phrase(&describe_effect_list(&may.effects));
+                return format!("For each {each_player}, you may {inner}");
+            }
             let mut inner = describe_effect_list(&may.effects);
             if let Some(rest) = inner.strip_prefix("that player ") {
                 inner = rest.to_string();
