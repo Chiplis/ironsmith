@@ -3326,9 +3326,13 @@ impl Effect {
     }
 
     /// Choose a card name and tag it for later same-name references.
-    pub fn choose_card_name(chooser: PlayerFilter, tag: impl Into<TagKey>) -> Self {
+    pub fn choose_card_name(
+        chooser: PlayerFilter,
+        filter: Option<crate::target::ObjectFilter>,
+        tag: impl Into<TagKey>,
+    ) -> Self {
         use crate::effects::ChooseCardNameEffect;
-        Self::new(ChooseCardNameEffect::new(chooser, tag))
+        Self::new(ChooseCardNameEffect::new(chooser, filter, tag))
     }
 
     /// Create a conditional effect based on game state.

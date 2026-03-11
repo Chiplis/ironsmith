@@ -4438,6 +4438,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             choose.tag.as_str()
         );
     }
+    if let Some(choose_name) = effect.downcast_ref::<crate::effects::ChooseCardNameEffect>() {
+        let chooser = describe_player_filter(&choose_name.chooser);
+        let choose_verb = player_verb(&chooser, "choose", "chooses");
+        let selection = if let Some(filter) = &choose_name.filter {
+            let mut filter_text = strip_leading_article(&filter.description()).to_string();
+            if !filter_text.to_ascii_lowercase().contains("card") {
+                filter_text.push_str(" card");
+            }
+            with_indefinite_article(&filter_text)
+        } else {
+            "a card".to_string()
+        };
+        return format!("{chooser} {choose_verb} {selection} name");
+    }
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         let target = describe_choose_spec(&move_to_zone.target);
         return match move_to_zone.zone {

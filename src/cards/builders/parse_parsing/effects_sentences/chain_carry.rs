@@ -16,6 +16,7 @@ use crate::cards::builders::parse_parsing::{
     parse_sentence_put_onto_battlefield_with_counters_on_it,
     parse_sentence_return_with_counters_on_it, parse_simple_gain_ability_clause,
     parse_simple_lose_ability_clause, parse_subject_object_filter,
+    parse_object_filter,
     parse_unsupported_play_cast_permission_clause, parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause, parse_verb_first_clause,
     parse_win_the_game_clause, run_sentence_primitives, segment_has_effect_head,
@@ -1751,28 +1752,49 @@ pub(crate) fn parse_choose_card_name_clause(
     tokens: &[Token],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
-    let player = if matches!(
-        clause_words.as_slice(),
-        ["choose", "a", "card", "name"] | ["choose", "card", "name"]
-    ) {
-        PlayerAst::You
-    } else if matches!(
-        clause_words.as_slice(),
-        ["you", "choose", "a", "card", "name"] | ["you", "choose", "card", "name"]
-    ) {
-        PlayerAst::You
-    } else if matches!(
-        clause_words.as_slice(),
-        ["that", "player", "chooses", "a", "card", "name"]
-            | ["that", "player", "chooses", "card", "name"]
-    ) {
-        PlayerAst::That
+    if clause_words.len() < 3 {
+        return Ok(None);
+    }
+
+    let (player, prefix_len) = if matches!(clause_words.first(), Some("choose")) {
+        (PlayerAst::You, 1usize)
+    } else if clause_words.starts_with(&["you", "choose"]) {
+        (PlayerAst::You, 2usize)
+    } else if clause_words.starts_with(&["that", "player", "chooses"]) {
+        (PlayerAst::That, 3usize)
     } else {
         return Ok(None);
     };
 
+    if clause_words.len() < prefix_len + 2
+        || clause_words[clause_words.len() - 2..] != ["card", "name"]
+    {
+        return Ok(None);
+    }
+
+    let filter_words = clause_words[prefix_len..clause_words.len() - 2]
+        .iter()
+        .copied()
+        .filter(|word| !is_article(word))
+        .collect::<Vec<_>>();
+    let filter = if filter_words.is_empty() {
+        None
+    } else {
+        let normalized_tokens: Vec<Token> = filter_words
+            .iter()
+            .map(|word| Token::Word((*word).to_string(), TextSpan::synthetic()))
+            .collect();
+        Some(parse_object_filter(&normalized_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported choose-card-name filter (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?)
+    };
+
     Ok(Some(EffectAst::ChooseCardName {
         player,
+        filter,
         tag: TagKey::from(IT_TAG),
     }))
 }

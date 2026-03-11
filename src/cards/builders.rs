@@ -1538,6 +1538,7 @@ pub(crate) enum EffectAst {
     },
     ChooseCardName {
         player: PlayerAst,
+        filter: Option<ObjectFilter>,
         tag: TagKey,
     },
     RepeatThisProcess,

@@ -7146,14 +7146,22 @@ fn try_compile_object_zone_and_exchange_effect(
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
-        EffectAst::ChooseCardName { player, tag } => {
+        EffectAst::ChooseCardName {
+            player,
+            filter,
+            tag,
+        } => {
             let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, false)?;
             let mut effects: Vec<Effect> = choices
                 .iter()
                 .cloned()
                 .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
                 .collect();
-            effects.push(Effect::choose_card_name(chooser.clone(), tag.clone()));
+            effects.push(Effect::choose_card_name(
+                chooser.clone(),
+                filter.clone(),
+                tag.clone(),
+            ));
             ctx.last_object_tag = Some(tag.as_str().to_string());
             ctx.last_player_filter = Some(chooser);
             (effects, choices)

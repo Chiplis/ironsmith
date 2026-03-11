@@ -484,7 +484,7 @@ fn advance_reference_frame_for_effect(
             }
             frame.last_object_tag = Some(tag.as_str().to_string());
         }
-        EffectAst::ChooseCardName { player, tag } => {
+        EffectAst::ChooseCardName { player, tag, .. } => {
             track_effect_player(*player, frame, true, true)?;
             frame.last_object_tag = Some(tag.as_str().to_string());
         }
