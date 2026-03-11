@@ -165,6 +165,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ExileUntilMatchGrantPlayUntilEndOfTurn { .. } => {}
         EffectAst::ExileUntilMatchCast { .. } => {}
         EffectAst::BecomeBasicLandTypeChoice { .. } => {}
+        EffectAst::BecomeBasicLandType { .. } => {}
         EffectAst::BecomeCreatureTypeChoice { .. } => {}
         EffectAst::BecomeColorChoice { .. } => {}
         EffectAst::BecomeCopy { .. } => {}

@@ -1795,6 +1795,11 @@ pub(crate) enum EffectAst {
         subtypes: Vec<Subtype>,
         duration: Until,
     },
+    BecomeBasicLandType {
+        target: TargetAst,
+        subtype: Subtype,
+        duration: Until,
+    },
     SetColors {
         target: TargetAst,
         colors: ColorSet,
@@ -10509,12 +10514,12 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("Target land becomes an Island until end of turn.")
             .expect("land subtype animation clause should parse");
 
-        let debug = format!("{:?}", def.spell_effect);
+        let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
         assert!(
-            debug.contains("AddSubtypes")
-                && debug.contains("Island")
-                && debug.contains("EndOfTurn"),
-            "expected land-subtype animation lowering, got {debug}"
+            debug.contains("becomebasiclandtypechoiceeffect")
+                && debug.contains("fixed_subtype: some")
+                && debug.contains("island"),
+            "expected fixed basic-land-type lowering, got {debug}"
         );
     }
 

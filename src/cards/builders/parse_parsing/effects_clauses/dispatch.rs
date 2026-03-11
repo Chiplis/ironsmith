@@ -17,7 +17,7 @@ use crate::cards::builders::{
     starts_with_until_end_of_turn, strip_leading_instead_prefix, token_index_for_word_index,
     trim_commas, words,
 };
-use crate::{ChooseSpec, ObjectFilter, TagKey, Until, Value};
+use crate::{ChooseSpec, ObjectFilter, Subtype, TagKey, Until, Value};
 
 pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
@@ -492,6 +492,24 @@ pub(crate) fn parse_become_clause(
     // "the/a basic land type of your choice"
     if become_words == ["basic", "land", "type", "of", "your", "choice"] {
         return Ok(EffectAst::BecomeBasicLandTypeChoice { target, duration });
+    }
+
+    if let [word] = become_words
+        && let Some(subtype) = parse_subtype_word(word)
+        && matches!(
+            subtype,
+            Subtype::Plains
+                | Subtype::Island
+                | Subtype::Swamp
+                | Subtype::Mountain
+                | Subtype::Forest
+        )
+    {
+        return Ok(EffectAst::BecomeBasicLandType {
+            target,
+            subtype,
+            duration,
+        });
     }
 
     // "the color of your choice" / "color of your choice"

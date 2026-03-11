@@ -3076,3 +3076,17 @@ fn parse_effect_sentence_implicit_card_type_without_addition_tail_is_supported()
         }] if tag.as_str() == IT_TAG && card_types == &vec![CardType::Enchantment]
     ));
 }
+
+#[test]
+fn parse_target_land_becomes_fixed_basic_land_type_clause() {
+    let tokens = tokenize_line("Target land becomes an Island until end of turn.", 0);
+    let effect = parse_effect_clause(&tokens).expect("parse fixed basic land type clause");
+    assert!(matches!(
+        effect,
+        EffectAst::BecomeBasicLandType {
+            target: TargetAst::Target(_),
+            subtype: Subtype::Island,
+            duration: Until::EndOfTurn,
+        }
+    ));
+}

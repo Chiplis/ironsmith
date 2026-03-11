@@ -710,6 +710,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::Adapt { .. }
         | EffectAst::CounterActivatedOrTriggeredAbility
         | EffectAst::AddManaImprintedColors
+        | EffectAst::BecomeBasicLandType { .. }
         | EffectAst::BecomeBasicLandTypeChoice { .. }
         | EffectAst::BecomeCreatureTypeChoice { .. }
         | EffectAst::BecomeColorChoice { .. }
@@ -1314,6 +1315,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::SwitchPowerToughness { target, .. }
         | EffectAst::AddCardTypes { target, .. }
         | EffectAst::AddSubtypes { target, .. }
+        | EffectAst::BecomeBasicLandType { target, .. }
         | EffectAst::SetColors { target, .. }
         | EffectAst::MakeColorless { target, .. }
         | EffectAst::PumpByLastEffect { target, .. } => {

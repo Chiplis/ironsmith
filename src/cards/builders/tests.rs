@@ -14882,6 +14882,28 @@ fn parse_oracle_myr_landshaper_type_addition_render_regression() {
 }
 
 #[test]
+fn parse_oracle_kavu_recluse_fixed_basic_land_type_regression() {
+    let def = parse_oracle_card_definition("Kavu Recluse");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("becomebasiclandtypechoiceeffect")
+            && raw.contains("fixed_subtype: some(forest)"),
+        "expected raw compiled definition to use fixed basic land type lowering, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target land becomes a forest until end of turn"),
+        "expected Kavu Recluse basic-land-type wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Kavu Recluse to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");

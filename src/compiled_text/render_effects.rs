@@ -6616,6 +6616,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(become_basic) =
         effect.downcast_ref::<crate::effects::BecomeBasicLandTypeChoiceEffect>()
     {
+        if let Some(subtype) = become_basic.fixed_subtype {
+            let article = match subtype {
+                crate::types::Subtype::Island => "an",
+                _ => "a",
+            };
+            let target = describe_choose_spec(&become_basic.target);
+            if become_basic.until == Until::EndOfTurn {
+                return format!(
+                    "{target} becomes {article} {subtype} until end of turn"
+                );
+            }
+            return format!(
+                "{target} becomes {article} {subtype} {}",
+                describe_until(&become_basic.until)
+            );
+        }
         let target = describe_choose_spec(&become_basic.target);
         if become_basic.until == Until::EndOfTurn {
             return format!(

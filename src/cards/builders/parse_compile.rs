@@ -899,6 +899,10 @@ macro_rules! direct_target_effect_variants {
                 target: $target,
                 ..
             }
+            | EffectAst::BecomeBasicLandType {
+                target: $target,
+                ..
+            }
             | EffectAst::BecomeBasicLandTypeChoice {
                 target: $target,
                 ..
@@ -4134,6 +4138,17 @@ fn try_compile_player_resource_and_choice_effect(
                 ))
             })?
         }
+        EffectAst::BecomeBasicLandType {
+            target,
+            subtype,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "become_basic_land_type", |spec| {
+            Effect::new(crate::effects::BecomeBasicLandTypeChoiceEffect::fixed(
+                spec,
+                *subtype,
+                duration.clone(),
+            ))
+        })?,
         EffectAst::BecomeCreatureTypeChoice {
             target,
             duration,
