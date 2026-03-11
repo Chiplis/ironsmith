@@ -15074,6 +15074,34 @@ fn parse_oracle_soul_partition_exile_and_recast_regression() {
 }
 
 #[test]
+fn parse_oracle_curious_herd_targeted_artifact_count_regression() {
+    let def = parse_oracle_card_definition("Curious Herd");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("targetonlyeffect")
+            && raw.contains("createtokeneffect")
+            && raw.contains("controller: some")
+            && raw.contains("opponent")
+            && raw.contains("artifact")
+        "expected raw compiled definition to target an opponent and count their artifacts, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "create a 3/3 green beast creature token for each artifact target opponent controls"
+        ),
+        "expected Curious Herd to preserve the targeted artifact-count token creation, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("number of tokens you control")
+            && !rendered.contains("create x 3/3 green beast creature tokens"),
+        "expected Curious Herd to avoid stale x-token fallback wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_myr_landshaper_type_addition_render_regression() {
     let def = parse_oracle_card_definition("Myr Landshaper");
 
