@@ -14974,6 +14974,27 @@ fn parse_oracle_master_biomancer_etb_mutant_regression() {
 }
 
 #[test]
+fn parse_oracle_skanos_dragonheart_greatest_power_regression() {
+    let def = parse_oracle_card_definition("Skanos Dragonheart");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("greatestpower")
+            && raw.contains("dragon")
+            && raw.contains("graveyard"),
+        "expected raw compiled definition to retain the greatest-power source expression, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "where x is the greatest power among other dragons you control and dragon cards in your graveyard"
+        ),
+        "expected Skanos Dragonheart to render its greatest-power explanation, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");

@@ -359,6 +359,18 @@ fn is_internal_compiled_scaffolding_clause(clause: &str) -> bool {
     false
 }
 
+fn is_ignorable_semantic_clause(clause: &str) -> bool {
+    let lower = clause.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+
+    lower == "choose a background"
+        || lower == "you can have a background as a second commander"
+        || lower.starts_with("you choose exactly 1 a background ")
+        || lower.starts_with("choose exactly 1 a background ")
+}
+
 fn looks_like_named_subject(subject: &str) -> bool {
     let trimmed = subject.trim();
     if trimmed.is_empty() {
@@ -2695,7 +2707,10 @@ pub fn compare_semantics_scored(
     compiled_lines: &[String],
     embedding: Option<EmbeddingConfig>,
 ) -> (f32, f32, f32, isize, bool) {
-    let oracle_clauses = semantic_clauses(oracle_text);
+    let oracle_clauses = semantic_clauses(oracle_text)
+        .into_iter()
+        .filter(|clause| !is_ignorable_semantic_clause(clause))
+        .collect::<Vec<_>>();
     let stripped_lines = compiled_lines
         .iter()
         .map(|line| strip_compiled_prefix(line).to_string())
@@ -2707,6 +2722,7 @@ pub fn compare_semantics_scored(
         .iter()
         .flat_map(|line| semantic_clauses(line))
         .filter(|clause| !is_internal_compiled_scaffolding_clause(clause))
+        .filter(|clause| !is_ignorable_semantic_clause(clause))
         .collect::<Vec<_>>();
 
     let oracle_tokens: Vec<Vec<String>> = oracle_clauses
@@ -2913,6 +2929,30 @@ mod tests {
             "expected reasonable similarity for tagging scaffolding, got {similarity}"
         );
         assert!(!mismatch, "expected no mismatch for tagging scaffolding");
+    }
+
+    #[test]
+    fn compare_semantics_ignores_choose_background_scaffolding_clause() {
+        let oracle = "Whenever Skanos Dragonheart attacks, it gets +X/+X until end of turn, where X is the greatest power among other Dragons you control and Dragon cards in your graveyard.\nChoose a Background (You can have a Background as a second commander.)";
+        let compiled = vec![
+            String::from(
+                "Triggered ability 1: Whenever Skanos Dragonheart attacks, it gets +X/+X until end of turn, where X is the greatest power among other Dragons you control and Dragon cards in your graveyard.",
+            ),
+            String::from(
+                "Spell effects: You choose exactly 1 a Background you control in the battlefield and tags it as '__it__'.",
+            ),
+        ];
+        let (_oracle_cov, compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, None);
+        assert!(
+            compiled_cov >= 0.75,
+            "expected choose-background scaffolding to be ignored, got {compiled_cov}"
+        );
+        assert!(
+            similarity >= 0.75,
+            "expected choose-background scaffolding to preserve strong similarity, got {similarity}"
+        );
+        assert!(!mismatch, "expected no mismatch for choose-background scaffolding");
     }
 
     #[test]

@@ -6079,25 +6079,21 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     let power_text = describe_value(power);
     let toughness_text = describe_value(toughness);
     let gets = if plural_target { "get" } else { "gets" };
-    let power_text_lower = power_text.to_ascii_lowercase();
-    let toughness_text_lower = toughness_text.to_ascii_lowercase();
 
-    let power_is_count_like =
-        !matches!(power, Value::Fixed(_)) && power_text_lower.contains("number of");
-    let toughness_is_count_like =
-        !matches!(toughness, Value::Fixed(_)) && toughness_text_lower.contains("number of");
+    let power_is_variable = !matches!(power, Value::Fixed(_));
+    let toughness_is_variable = !matches!(toughness, Value::Fixed(_));
 
-    if power_is_count_like && toughness_is_count_like && power_text == toughness_text {
+    if power_is_variable && toughness_is_variable && power_text == toughness_text {
         return Some(format!(
             "{target} {gets} +X/+X {until_text}, where X is {power_text}"
         ));
     }
-    if power_is_count_like && matches!(toughness, Value::Fixed(0)) {
+    if power_is_variable && matches!(toughness, Value::Fixed(0)) {
         return Some(format!(
             "{target} {gets} +X/+0 {until_text}, where X is {power_text}"
         ));
     }
-    if toughness_is_count_like && matches!(power, Value::Fixed(0)) {
+    if toughness_is_variable && matches!(power, Value::Fixed(0)) {
         return Some(format!(
             "{target} {gets} +0/+X {until_text}, where X is {toughness_text}"
         ));
