@@ -14887,6 +14887,34 @@ fn parse_oracle_dispossess_typed_card_name_regression() {
 }
 
 #[test]
+fn parse_oracle_infinite_obliteration_typed_card_name_regression() {
+    let def = parse_oracle_card_definition("Infinite Obliteration");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("choosecardnameeffect") && raw.contains("filter: some") && raw.contains("creature"),
+        "expected raw compiled definition to retain typed card-name choice, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("choose a creature card name"),
+        "expected Infinite Obliteration to preserve the typed name-choice clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "search target opponent's graveyard, hand, and library for all cards with that name and exile them"
+        ),
+        "expected Infinite Obliteration search-and-exile wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("creature you control in the battlefield")
+            && !rendered.contains("exile you"),
+        "expected Infinite Obliteration to avoid battlefield-target fallback text, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_myr_landshaper_type_addition_render_regression() {
     let def = parse_oracle_card_definition("Myr Landshaper");
 
