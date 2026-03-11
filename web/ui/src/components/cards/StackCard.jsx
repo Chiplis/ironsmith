@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import AnimatedCircuitFrame from "@/components/cards/AnimatedCircuitFrame";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
-const STACK_CARD_CIRCUIT_PATH = "M4.5 2.5H95.5 M4.5 93.5H95.5";
+const STACK_CARD_CIRCUIT_PATH = "M9.5 2.5H90.5 M9.5 93.5H90.5";
 
 export default function StackCard({
   entry,

@@ -620,6 +620,8 @@ function OrderingDecision({
 }) {
   const { dispatch, triggerOrderingState, moveTriggerOrderingItem } = useGame();
   const stripLayout = layout === "strip";
+  const options = decision.options || [];
+  const trivialOrdering = options.length <= 1;
   const triggerOrdering = isTriggerOrderingDecision(decision);
   const triggerOrderingKey = buildTriggerOrderingKey(decision);
   const localOrderingKey = useMemo(
@@ -632,7 +634,6 @@ function OrderingDecision({
       order: defaultTriggerOrderingOrder(decision),
     })
   );
-  const options = decision.options || [];
   const order = useMemo(() => {
     if (!triggerOrdering) {
       if (localOrderState.key === localOrderingKey) {
@@ -675,12 +676,14 @@ function OrderingDecision({
     dispatch({ type: "select_options", option_indices: order.slice() }, "Order submitted");
   }, [dispatch, order]);
   const submitAction = useMemo(
-    () => ({
-      label: "Submit Order",
-      disabled: !canAct,
-      onSubmit: handleSubmit,
-    }),
-    [canAct, handleSubmit]
+    () => (trivialOrdering
+      ? null
+      : {
+          label: "Submit Order",
+          disabled: !canAct,
+          onSubmit: handleSubmit,
+        }),
+    [canAct, handleSubmit, trivialOrdering]
   );
   useExternalSubmitAction(onSubmitActionChange, submitAction);
 
@@ -742,6 +745,10 @@ function OrderingDecision({
     return null;
   }
 
+  if (trivialOrdering && stripLayout) {
+    return null;
+  }
+
   return (
     <div className={cn("flex h-full min-h-0 flex-col gap-1", stripLayout && "min-w-0")}>
       {stripLayout ? (
@@ -767,7 +774,7 @@ function OrderingDecision({
           </div>
         </ScrollArea>
       )}
-      {inlineSubmit && (
+      {inlineSubmit && !trivialOrdering && (
         <div className={cn(
           "shrink-0",
           stripLayout ? "pt-0" : "border-t border-game-line-2/70 pt-1"

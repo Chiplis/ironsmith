@@ -9,7 +9,11 @@ import DecisionMiniInspector from "@/components/overlays/DecisionMiniInspector";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { SymbolText } from "@/lib/mana-symbols";
 import { nextPriorityAdvanceLabel } from "@/lib/constants";
-import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
+import {
+  defaultTriggerOrderingOrder,
+  isTriggerOrderingDecision,
+  normalizeTriggerOrderingOrder,
+} from "@/lib/trigger-ordering";
 import { cn } from "@/lib/utils";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 
@@ -859,6 +863,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     confirmEnabled,
     setConfirmEnabled,
     cancelDecision,
+    triggerOrderingState,
   } = useGame();
   const {
     hoveredObjectId,
@@ -992,11 +997,25 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     [decisionIdentity]
   );
   const submitAction = submitState.key === decisionIdentity ? submitState.action : null;
-  const canSubmitFocused = canAct
-    && !!submitAction
-    && !submitAction.disabled
-    && typeof submitAction.onSubmit === "function";
   const triggerOrderingDecision = isTriggerOrderingDecision(decision);
+  const triggerOrderingSubmitAction = useMemo(() => {
+    if (!triggerOrderingDecision) return null;
+    const order = triggerOrderingState?.order?.length
+      ? normalizeTriggerOrderingOrder(triggerOrderingState.order, decision)
+      : defaultTriggerOrderingOrder(decision);
+    return {
+      label: "Submit Order",
+      disabled: !canAct,
+      onSubmit: () => {
+        dispatch({ type: "select_options", option_indices: order }, "Order submitted");
+      },
+    };
+  }, [canAct, decision, dispatch, triggerOrderingDecision, triggerOrderingState]);
+  const effectiveSubmitAction = triggerOrderingSubmitAction || submitAction;
+  const canSubmitFocused = canAct
+    && !!effectiveSubmitAction
+    && !effectiveSubmitAction.disabled
+    && typeof effectiveSubmitAction.onSubmit === "function";
   const canAdvanceViewedCardsStep = !!decision;
   const completeViewedCardsStep = useCallback(() => {
     if (!viewedCardsToken) return;
@@ -1107,7 +1126,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       }
                       if (!canSubmitFocused || event.button !== 0) return;
                       event.preventDefault();
-                      submitAction.onSubmit();
+                      effectiveSubmitAction.onSubmit();
                     }}
                     onClick={(event) => {
                       if (showViewedCardsStep) {
@@ -1116,10 +1135,10 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         return;
                       }
                       if (!canSubmitFocused || event.detail !== 0) return;
-                      submitAction.onSubmit();
+                      effectiveSubmitAction.onSubmit();
                     }}
                   >
-                    {showViewedCardsStep ? "Done" : (submitAction?.label || "Submit")}
+                    {showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")}
                   </Button>
                   <Button
                     type="button"
@@ -1263,7 +1282,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   }
                   if (!canSubmitFocused || event.button !== 0) return;
                   event.preventDefault();
-                  submitAction.onSubmit();
+                  effectiveSubmitAction.onSubmit();
                 }}
                 onClick={(event) => {
                   if (showViewedCardsStep) {
@@ -1272,10 +1291,10 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     return;
                   }
                   if (!canSubmitFocused || event.detail !== 0) return;
-                  submitAction.onSubmit();
+                  effectiveSubmitAction.onSubmit();
                 }}
               >
-                {showViewedCardsStep ? "Done" : (submitAction?.label || "Submit")}
+                {showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")}
               </Button>
               <Button
                 type="button"

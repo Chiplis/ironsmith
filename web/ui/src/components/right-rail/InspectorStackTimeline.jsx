@@ -21,7 +21,7 @@ const STACK_LEAVE_ANIMATION_MS = 360;
 const HORIZONTAL_STACK_ENTRY_WIDTH = "clamp(180px, 17vw, 230px)";
 const HORIZONTAL_STACK_ENTRY_MIN_HEIGHT = 50;
 const HORIZONTAL_STACK_BADGE_TOP = 27;
-const HORIZONTAL_STACK_CIRCUIT_PATH = "M2.5 2.5H97.5 M2.5 47.5H97.5";
+const HORIZONTAL_STACK_CIRCUIT_PATH = "M9.5 2.5H90.5 M9.5 47.5H90.5";
 
 function isFocusedDecision(decision) {
   return (
@@ -125,7 +125,7 @@ function HorizontalStackEntry({
         className={cn(
           "stack-timeline-entry-surface stack-timeline-circuit relative grid h-full w-full grid-cols-[24px_minmax(0,1fr)] items-start gap-x-1.5 gap-y-0 overflow-hidden bg-[linear-gradient(180deg,rgba(7,16,27,0.94),rgba(6,12,21,0.98))] px-2 py-[5px] text-left transition-[background,box-shadow,transform] duration-150",
           reorderControls && "pl-8 pr-8",
-          !isActive && "hover:shadow-[0_0_16px_-8px_rgba(var(--player-accent-rgb,127,190,244),0.9),0_10px_18px_rgba(0,0,0,0.22)]",
+          !isActive && "hover:shadow-none",
           isActive && "stack-timeline-item-active",
           isActive && "bg-[linear-gradient(180deg,rgba(10,22,37,0.98),rgba(7,16,28,1))]"
         )}
@@ -230,10 +230,16 @@ export default function InspectorStackTimeline({
       __leaving: false,
     }));
   }, [decision, triggerOrderingActive, triggerOrderingKey, triggerOrderingState]);
+  const visibleLiveStackObjects = useMemo(() => {
+    if (!triggerOrderingActive || pendingTriggerEntries.length === 0) {
+      return stackObjects;
+    }
+    return stackObjects.slice(pendingTriggerEntries.length);
+  }, [pendingTriggerEntries.length, stackObjects, triggerOrderingActive]);
   const timelineEntries = useMemo(
     () => [
       ...pendingTriggerEntries,
-      ...stackObjects.map((entry) => ({
+      ...visibleLiveStackObjects.map((entry) => ({
         ...entry,
         __timeline_key: `live-${entry.id}`,
         __leaving: false,
@@ -244,9 +250,11 @@ export default function InspectorStackTimeline({
         __leaving: true,
       })),
     ],
-    [leavingEntries, pendingTriggerEntries, stackObjects]
+    [leavingEntries, pendingTriggerEntries, visibleLiveStackObjects]
   );
-  const itemCount = timelineEntries.length || stackPreview.length;
+  const itemCount = (
+    pendingTriggerEntries.length + visibleLiveStackObjects.length
+  ) || stackPreview.length;
   const timelineSignature = timelineEntries.map((entry) => entry.__timeline_key).join("|");
   const isHorizontal = layout === "horizontal";
   const horizontalEntries = timelineEntries;

@@ -455,6 +455,17 @@
   z-index: 1;
 }
 
+.stack-circuit-overlay .card-circuit-track,
+.stack-circuit-overlay .card-circuit-glow,
+.stack-circuit-overlay .card-circuit-core,
+.stack-circuit-overlay .card-circuit-accent {
+  filter: none;
+}
+
+.stack-circuit-overlay .card-circuit-glow {
+  opacity: 0.38;
+}
+
 .battlefield-header {
   position: absolute;
   top: clamp(4px, calc(var(--bf-card-height, 96px) * 0.05), 7px);
@@ -707,13 +718,13 @@
   border-radius: 10px;
   background:
     linear-gradient(180deg, rgba(11, 18, 28, 0.98), rgba(8, 13, 20, 0.98));
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.34);
+  box-shadow: none;
   transition: border-color 140ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 .game-card.stack-card.stack-card-circuit {
   isolation: isolate;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.34);
+  box-shadow: none;
 }
 
 .game-card.stack-card.stack-card-reorderable {
@@ -758,7 +769,7 @@
 
 .stack-timeline-entry-surface.stack-timeline-circuit {
   isolation: isolate;
-  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
 }
 
 .stack-timeline-item-active::before {
@@ -788,7 +799,7 @@
 .game-card.stack-card:hover {
   transform: none;
   z-index: auto;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.38);
+  box-shadow: none;
 }
 
 .game-card.stack-card.stack-card-active:hover {

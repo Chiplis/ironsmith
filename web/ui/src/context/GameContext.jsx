@@ -839,6 +839,11 @@ export function GameProvider({ children }) {
   const dispatch = useCallback(
     async (command, successMessage) => {
       if (!game) return;
+      const currentDecision = stateRef.current?.decision || null;
+      const stopAfterTriggerOrderingSubmit = (
+        command?.type === "select_options"
+        && isTriggerOrderingDecision(currentDecision)
+      );
       if (multiplayer.matchStarted) {
         const currentState = stateRef.current;
         if (!currentState?.decision) {
@@ -863,8 +868,8 @@ export function GameProvider({ children }) {
         let st = await game.dispatch(command);
         await finalizeState(game, st, {
           message: successMessage,
-          allowOpponentAutomation: true,
-          allowTrivialAutomation: true,
+          allowOpponentAutomation: !stopAfterTriggerOrderingSubmit,
+          allowTrivialAutomation: !stopAfterTriggerOrderingSubmit,
           clearViewedCards: true,
         });
       } catch (err) {
