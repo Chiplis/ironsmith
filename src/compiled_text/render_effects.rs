@@ -306,6 +306,24 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(distribute) =
                 filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
             && let Some(compact) =
+                describe_look_at_top_then_reveal_put_matching_onto_battlefield_rest_graveyard(
+                    look_at_top,
+                    reveal_tagged,
+                    distribute,
+                )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(reveal_tagged) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(distribute) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) =
                 describe_look_at_top_then_reveal_put_matching_into_hand_rest_graveyard(
                     look_at_top,
                     reveal_tagged,
@@ -3051,10 +3069,10 @@ pub(super) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom_then_if
     Some(format!("{base}. {follow_up}"))
 }
 
-pub(super) fn for_each_moves_matching_to_hand_else_graveyard<'a>(
+pub(super) fn for_each_moves_matching_to_zone_else_graveyard<'a>(
     for_each: &'a crate::effects::ForEachTaggedEffect,
     looked_tag: &str,
-) -> Option<&'a crate::filter::ObjectFilter> {
+) -> Option<(&'a crate::filter::ObjectFilter, Zone)> {
     if for_each.tag.as_str() != looked_tag || for_each.effects.len() != 1 {
         return None;
     }
@@ -3065,8 +3083,7 @@ pub(super) fn for_each_moves_matching_to_hand_else_graveyard<'a>(
     let move_to_hand = conditional.if_true[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let move_to_graveyard =
         conditional.if_false[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if move_to_hand.zone != Zone::Hand
-        || move_to_graveyard.zone != Zone::Graveyard
+    if move_to_graveyard.zone != Zone::Graveyard
         || !matches!(move_to_hand.target, ChooseSpec::Iterated)
         || !matches!(move_to_graveyard.target, ChooseSpec::Iterated)
     {
@@ -3076,6 +3093,17 @@ pub(super) fn for_each_moves_matching_to_hand_else_graveyard<'a>(
         return None;
     };
     if tag.as_str() != "__it__" {
+        return None;
+    }
+    Some((filter, move_to_hand.zone))
+}
+
+pub(super) fn for_each_moves_matching_to_hand_else_graveyard<'a>(
+    for_each: &'a crate::effects::ForEachTaggedEffect,
+    looked_tag: &str,
+) -> Option<&'a crate::filter::ObjectFilter> {
+    let (filter, zone) = for_each_moves_matching_to_zone_else_graveyard(for_each, looked_tag)?;
+    if zone != Zone::Hand {
         return None;
     }
     Some(filter)
@@ -3098,6 +3126,29 @@ pub(super) fn describe_look_at_top_then_reveal_put_matching_into_hand_rest_grave
 
     Some(format!(
         "Reveal the top {count_text} {noun} of {owner} library. Put all {matching} revealed this way into {owner} hand and the rest into {owner} graveyard"
+    ))
+}
+
+pub(super) fn describe_look_at_top_then_reveal_put_matching_onto_battlefield_rest_graveyard(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    reveal_tagged: &crate::effects::RevealTaggedEffect,
+    distribute: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    if reveal_tagged.tag.as_str() != look_at_top.tag.as_str() {
+        return None;
+    }
+    let (filter, zone) =
+        for_each_moves_matching_to_zone_else_graveyard(distribute, look_at_top.tag.as_str())?;
+    if zone != Zone::Battlefield {
+        return None;
+    }
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let matching =
+        pluralize_noun_phrase(&describe_search_selection_with_cards(&filter.description()));
+
+    Some(format!(
+        "Reveal the top {count_text} {noun} of {owner} library. Put all {matching} revealed this way onto the battlefield and the rest into {owner} graveyard"
     ))
 }
 

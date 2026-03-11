@@ -1507,6 +1507,99 @@ pub(crate) fn parse_sentence_each_player_return_with_additional_counter(
     parse_each_player_return_with_additional_counter_sentence(tokens)
 }
 
+pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard(
+    tokens: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let segments = split_on_comma(tokens);
+    if segments.len() != 3 {
+        return Ok(None);
+    }
+
+    let reveal_tokens = trim_commas(&segments[0]);
+    let reveal_words = words(&reveal_tokens);
+    let reveal_prefix = [
+        "each", "player", "reveals", "a", "number", "of", "cards", "from", "the", "top", "of",
+        "their", "library", "equal", "to",
+    ];
+    if !reveal_words.starts_with(&reveal_prefix) {
+        return Ok(None);
+    }
+    let Some(count_token_idx) = token_index_for_word_index(&reveal_tokens, reveal_prefix.len()) else {
+        return Ok(None);
+    };
+    let mut synthetic_where_tokens = vec![
+        Token::Word("where".to_string(), TextSpan::synthetic()),
+        Token::Word("x".to_string(), TextSpan::synthetic()),
+        Token::Word("is".to_string(), TextSpan::synthetic()),
+    ];
+    synthetic_where_tokens.extend(reveal_tokens[count_token_idx..].iter().cloned());
+    let Some(count) = parse_where_x_value_clause(&synthetic_where_tokens) else {
+        return Ok(None);
+    };
+
+    let put_tokens = trim_commas(&segments[1]);
+    let put_words = words(&put_tokens);
+    if !put_words.starts_with(&["puts", "all", "permanent", "cards"])
+        || !put_words
+            .windows(3)
+            .any(|window| window == ["revealed", "this", "way"])
+        || !put_words
+            .windows(3)
+            .any(|window| window == ["onto", "the", "battlefield"])
+    {
+        return Ok(None);
+    }
+
+    let rest_tokens = trim_commas(&segments[2]);
+    let rest_words = words(&rest_tokens);
+    let rest_words = if rest_words.first().copied() == Some("and") {
+        &rest_words[1..]
+    } else {
+        rest_words.as_slice()
+    };
+    if rest_words != ["puts", "the", "rest", "into", "their", "graveyard"] {
+        return Ok(None);
+    }
+
+    let revealed_tag_key = helper_tag_for_tokens(tokens, "revealed");
+    let iterated_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+
+    Ok(Some(vec![EffectAst::ForEachPlayer {
+        effects: vec![
+            EffectAst::LookAtTopCards {
+                player: PlayerAst::That,
+                count,
+                tag: revealed_tag_key.clone(),
+            },
+            EffectAst::RevealTagged {
+                tag: revealed_tag_key.clone(),
+            },
+            EffectAst::ForEachTagged {
+                tag: revealed_tag_key,
+                effects: vec![EffectAst::Conditional {
+                    predicate: PredicateAst::ItMatches(ObjectFilter::permanent()),
+                    if_true: vec![EffectAst::MoveToZone {
+                        target: iterated_target.clone(),
+                        zone: Zone::Battlefield,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::Owner,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    }],
+                    if_false: vec![EffectAst::MoveToZone {
+                        target: iterated_target,
+                        zone: Zone::Graveyard,
+                        to_top: false,
+                        battlefield_controller: ReturnControllerAst::Preserve,
+                        battlefield_tapped: false,
+                        attached_to: None,
+                    }],
+                }],
+            },
+        ],
+    }]))
+}
+
 pub(crate) fn parse_return_then_do_same_for_subtypes_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -4664,6 +4757,11 @@ pub(crate) const POST_CONDITIONAL_SENTENCE_PRIMITIVES: &[SentencePrimitive] = &[
     SentencePrimitive {
         name: "draw-for-each-card-exiled-from-hand-this-way",
         parser: parse_sentence_draw_for_each_card_exiled_from_hand_this_way,
+    },
+    SentencePrimitive {
+        name: "each-player-reveals-top-count-put-permanents-rest-graveyard",
+        parser:
+            parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard,
     },
     SentencePrimitive {
         name: "each-player-put-permanent-cards-exiled-with-source",

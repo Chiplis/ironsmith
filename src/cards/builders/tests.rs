@@ -15166,6 +15166,34 @@ fn parse_oracle_lucid_dreams_card_types_in_graveyard_regression() {
 }
 
 #[test]
+fn parse_oracle_over_the_top_dynamic_reveal_and_distribution_regression() {
+    let def = parse_oracle_card_definition("Over the Top");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("forplayerseffect")
+            && raw.contains("lookattopcardseffect")
+            && raw.contains("nonland")
+            && raw.contains("move_to_zoneeffect"),
+        "expected raw compiled definition to reveal top cards per player and distribute them, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("for each player")
+            && rendered.contains("number of nonland permanents they control")
+            && rendered.contains("put all permanent cards revealed this way onto the battlefield")
+            && rendered.contains("rest into their graveyard"),
+        "expected Over the Top to preserve dynamic reveal and battlefield/graveyard distribution, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("reveals the top card of their library")
+            && !rendered.contains("return all permanent revealed this way"),
+        "expected Over the Top to avoid the single-card reveal fallback wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_myr_landshaper_type_addition_render_regression() {
     let def = parse_oracle_card_definition("Myr Landshaper");
 
