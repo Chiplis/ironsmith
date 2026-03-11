@@ -3660,6 +3660,25 @@ Pay 3 life: Add {R}.";
     }
 
     #[test]
+    fn compare_semantics_normalizes_tavern_ruffian_daybound_keyword_scaffolding() {
+        let oracle =
+            "Daybound (If a player casts no spells during their own turn, it becomes night next turn.)";
+        let compiled = vec![String::from(
+            "Triggered ability 1: At the beginning of each player's upkeep, if this creature is transformed, if two or more spells were cast last turn, transform this creature. Otherwise, if no spells were cast last turn, transform this creature.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected daybound/nightbound keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for daybound/nightbound keyword scaffolding"
+        );
+    }
+
+    #[test]
     fn compare_semantics_normalizes_echo_counter_scaffolding() {
         let oracle = "Flying, protection from black
 Echo {3}{W}{W}
