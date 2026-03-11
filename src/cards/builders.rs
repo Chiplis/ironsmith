@@ -8393,43 +8393,49 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
-    fn parse_skulk_rules_text_line_builds_skulk_static_ability() {
-        let def = CardDefinitionBuilder::new(CardId::new(), "Skulk Rules Text Probe")
+    fn parse_relative_power_blocking_rules_text_line_builds_static_ability() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Wandering Wolf Rules Text Probe")
             .parse_text("Creatures with power less than this creature's power can't block it.")
-            .expect("parse skulk rules text line");
+            .expect("parse wandering wolf rules text line");
 
         let debug = format!("{:?}", def.abilities);
         assert!(
-            debug.contains("Skulk"),
-            "expected skulk ability in debug output, got {debug}"
+            debug.contains("CantBeBlockedByLowerPowerThanSource"),
+            "expected relative-power blocking ability in debug output, got {debug}"
         );
         assert!(
             !debug.contains("StaticAbilityId::KeywordMarker")
                 && !debug.contains("StaticAbilityId::RuleTextPlaceholder")
                 && !debug.contains("StaticAbilityId::UnsupportedParserLine"),
-            "skulk rules text should not compile as placeholder ability: {debug}"
+            "relative-power blocking rules text should not compile as placeholder ability: {debug}"
         );
     }
 
     #[test]
-    fn skulk_rules_text_runtime_restricts_greater_power_blocks() {
+    fn relative_power_blocking_rules_text_runtime_restricts_lower_power_blocks() {
         use crate::card::PowerToughness;
         use crate::ids::PlayerId;
         use crate::zone::Zone;
 
-        let attacker_def = CardDefinitionBuilder::new(CardId::from_raw(70101), "Skulk Rules Text")
+        let attacker_def =
+            CardDefinitionBuilder::new(CardId::from_raw(70101), "Wandering Wolf Rules Text")
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
             .parse_text("Creatures with power less than this creature's power can't block it.")
-            .expect("parse skulk rules text line");
+            .expect("parse wandering wolf rules text line");
 
         let equal_blocker_def =
             CardDefinitionBuilder::new(CardId::from_raw(70102), "Equal Blocker")
                 .card_types(vec![CardType::Creature])
                 .power_toughness(PowerToughness::fixed(2, 2))
                 .build();
+        let smaller_blocker_def =
+            CardDefinitionBuilder::new(CardId::from_raw(70103), "Smaller Blocker")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build();
         let larger_blocker_def =
-            CardDefinitionBuilder::new(CardId::from_raw(70103), "Larger Blocker")
+            CardDefinitionBuilder::new(CardId::from_raw(70104), "Larger Blocker")
                 .card_types(vec![CardType::Creature])
                 .power_toughness(PowerToughness::fixed(3, 3))
                 .build();
@@ -8443,6 +8449,8 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
         let equal_blocker_id =
             game.create_object_from_definition(&equal_blocker_def, bob, Zone::Battlefield);
+        let smaller_blocker_id =
+            game.create_object_from_definition(&smaller_blocker_def, bob, Zone::Battlefield);
         let larger_blocker_id =
             game.create_object_from_definition(&larger_blocker_def, bob, Zone::Battlefield);
 
@@ -8454,6 +8462,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .object(equal_blocker_id)
             .expect("equal blocker should exist")
             .clone();
+        let smaller_blocker = game
+            .object(smaller_blocker_id)
+            .expect("smaller blocker should exist")
+            .clone();
         let larger_blocker = game
             .object(larger_blocker_id)
             .expect("larger blocker should exist")
@@ -8461,11 +8473,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         assert!(
             crate::rules::combat::can_block(&attacker, &equal_blocker, &game),
-            "equal-power creature should be allowed to block skulk rules-text attacker"
+            "equal-power creature should be allowed to block relative-power attacker"
         );
         assert!(
-            !crate::rules::combat::can_block(&attacker, &larger_blocker, &game),
-            "greater-power creature should not block skulk rules-text attacker"
+            !crate::rules::combat::can_block(&attacker, &smaller_blocker, &game),
+            "lower-power creature should not block relative-power attacker"
+        );
+        assert!(
+            crate::rules::combat::can_block(&attacker, &larger_blocker, &game),
+            "greater-power creature should be allowed to block relative-power attacker"
         );
     }
 
@@ -9011,27 +9027,32 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("where-X targeted gets should parse");
 
         let effects = def.spell_effect.expect("spell effect");
-        let debug = format!("{effects:?}");
+        let debug = format!("{effects:?}").to_ascii_lowercase();
         assert!(
-            debug.contains("ApplyContinuousEffect"),
+            debug.contains("applycontinuouseffect"),
             "expected targeted pump effect, got {debug}"
         );
         assert!(
-            debug.contains("ModifyPowerToughness { power: X, toughness: X }"),
-            "expected where-X to compile into count value, got {debug}"
+            debug.contains("modifypowertoughness")
+                && debug.contains("count(objectfilter")
+                && debug.contains("controller: some(you)")
+                && debug.contains("card_types: [creature]"),
+            "expected where-X to compile into a creature-count value, got {debug}"
         );
     }
 
     #[test]
-    fn reject_gets_where_x_requires_unsupported_signed_dynamic_replacement() {
+    fn parse_gets_where_x_supports_signed_dynamic_replacement() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Signed Where X Variant")
             .parse_text(
                 "Each non-Vampire creature gets -X/-X until end of turn, where X is the number of Vampires you control.",
             )
             .expect("signed dynamic where-X should parse with signed runtime replacement");
-        let debug = format!("{:?}", def.spell_effect);
+        let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
         assert!(
-            debug.contains("XTimes(-1)"),
+            debug.contains("scaled(")
+                && debug.contains("count(objectfilter")
+                && debug.contains("vampire"),
             "expected signed where-X replacement in parsed effect, got {debug}"
         );
     }

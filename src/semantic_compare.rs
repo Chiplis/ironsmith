@@ -507,7 +507,8 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         normalized = "Unleash".to_string();
     }
     if normalized_lower
-        == "when this creature dies, create two 1/1 white and black spirit creature tokens with flying"
+        .trim_end_matches('.')
+        .starts_with("when this creature dies, create two 1/1 white and black spirit creature tokens with flying")
     {
         normalized = "Afterlife 2".to_string();
     }
@@ -521,17 +522,27 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     ) {
         normalized = "Provoke".to_string();
     }
-    if normalized_lower == "at the beginning of each player's upkeep, if this creature is transformed, if two or more spells were cast last turn, transform this creature. otherwise, if no spells were cast last turn, transform this creature"
+    if normalized_lower
+        .trim_end_matches('.')
+        .starts_with("at the beginning of each player's upkeep, if this creature is transformed, if two or more spells were cast last turn, transform this creature. otherwise, if no spells were cast last turn, transform this creature")
     {
         normalized = "Daybound/Nightbound".to_string();
     }
-    if normalized_lower == "when this creature enters, choose one — • this creature enters with a +1/+1 counter on it. • this creature gains haste until end of turn"
-        || normalized_lower == "when this creature enters, choose one - • this creature enters with a +1/+1 counter on it. • this creature gains haste until end of turn"
+    if normalized_lower
+        .trim_end_matches('.')
+        .starts_with("when this creature enters, choose one — • this creature enters with a +1/+1 counter on it. • this creature gains haste until end of turn")
+        || normalized_lower
+            .trim_end_matches('.')
+            .starts_with("when this creature enters, choose one - • this creature enters with a +1/+1 counter on it. • this creature gains haste until end of turn")
     {
         normalized = "Riot".to_string();
     }
-    if normalized_lower == "when this creature enters, choose one — • put two +1/+1 counters on this creature. • create two 1/1 colorless servo artifact creature tokens"
-        || normalized_lower == "when this creature enters, choose one - • put two +1/+1 counters on this creature. • create two 1/1 colorless servo artifact creature tokens"
+    if normalized_lower
+        .trim_end_matches('.')
+        .starts_with("when this creature enters, choose one — • put two +1/+1 counters on this creature. • create two 1/1 colorless servo artifact creature tokens")
+        || normalized_lower
+            .trim_end_matches('.')
+            .starts_with("when this creature enters, choose one - • put two +1/+1 counters on this creature. • create two 1/1 colorless servo artifact creature tokens")
     {
         normalized = "Fabricate 2".to_string();
     }
