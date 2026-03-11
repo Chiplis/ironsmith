@@ -14995,6 +14995,43 @@ fn load_war_report_handwritten_sum_regression() {
 }
 
 #[test]
+fn load_descent_into_avernus_handwritten_regression() {
+    let registry =
+        crate::cards::CardRegistry::with_builtin_cards_for_names(["Descent into Avernus"]);
+    let def = registry
+        .get("Descent into Avernus")
+        .expect("expected handwritten Descent into Avernus definition to load");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("named(\"descent\")")
+            && raw.contains("countersonsource")
+            && raw.contains("treasure"),
+        "expected raw compiled definition to keep descent counters and treasure scaling, got {raw}"
+    );
+
+    let rendered = compiled_lines(def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("put two descent counters on this enchantment"),
+        "expected Descent into Avernus to keep named counter wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each player, create a treasure token for each descent counter on this permanent")
+            || rendered.contains("for each player, create treasure tokens equal to the number of descent counters on this permanent"),
+        "expected Descent into Avernus to keep treasure scaling text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each player, deal the number of descent counters on this permanent damage to that player"),
+        "expected Descent into Avernus to keep damage scaling text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("put two this counters")
+            && !rendered.contains("for each enchantment under that player's control"),
+        "expected Descent into Avernus to avoid the old fallback wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_myr_landshaper_type_addition_render_regression() {
     let def = parse_oracle_card_definition("Myr Landshaper");
 

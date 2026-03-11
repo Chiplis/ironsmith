@@ -355,6 +355,7 @@ impl CardRegistry {
         maybe_register!(mindbreak_trap);
         maybe_register!(counterspell);
         maybe_register!(dawn_charm);
+        maybe_register!(descent_into_avernus);
         maybe_register!(swords_to_plowshares);
         maybe_register!(basic_forest);
         maybe_register!(basic_island);
