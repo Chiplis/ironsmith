@@ -15086,6 +15086,31 @@ fn parse_oracle_arwen_weaver_of_hope_dynamic_etb_counters_regression() {
 }
 
 #[test]
+fn parse_oracle_grumgully_the_generous_etb_counter_regression() {
+    let def = parse_oracle_card_definition("Grumgully, the Generous");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("enterwithcountersforfilter")
+            && raw.contains("nonhuman")
+            && raw.contains("plusoneplusone"),
+        "expected raw compiled definition to retain the non-Human ETB counter filter, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "each other non-human creature you control enters with an additional +1/+1 counter on it"
+        ),
+        "expected Grumgully, the Generous to render its ETB counter text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("enter the battlefield with counters"),
+        "expected Grumgully, the Generous to avoid generic ETB counter placeholder text, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");
