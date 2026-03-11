@@ -474,6 +474,13 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     ) {
         normalized = "Battle cry".to_string();
     }
+    if normalized_lower.starts_with(
+        "whenever this creature attacks, put a +1/+1 counter on target attacking creature with power less than this creature's power",
+    ) || normalized_lower.starts_with(
+        "whenever this creature attacks, put a +1/+1 counter on target attacking creature with lesser power",
+    ) {
+        normalized = "Mentor".to_string();
+    }
     for (from, to) in [
         (
             "Exile all cards from target player's graveyard",
@@ -3283,6 +3290,25 @@ Pay 3 life: Add {R}.";
         assert!(
             !mismatch,
             "expected no mismatch for battle cry keyword scaffolding"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_blade_instructor_mentor_keyword_scaffolding() {
+        let oracle =
+            "Mentor (Whenever this creature attacks, put a +1/+1 counter on target attacking creature with lesser power.)";
+        let compiled = vec![String::from(
+            "Triggered ability 1: Whenever this creature attacks, put a +1/+1 counter on target attacking creature with power less than this creature's power.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected mentor keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for mentor keyword scaffolding"
         );
     }
 
