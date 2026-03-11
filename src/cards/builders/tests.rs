@@ -14995,6 +14995,28 @@ fn parse_oracle_skanos_dragonheart_greatest_power_regression() {
 }
 
 #[test]
+fn parse_oracle_accomplished_automaton_fabricate_one_regression() {
+    let def = parse_oracle_card_definition("Accomplished Automaton");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("put a +1/+1 counter on this creature")
+            && raw.contains("create a 1/1 colorless servo artifact creature token"),
+        "expected raw compiled definition to singularize fabricate-1 mode descriptions, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("put a +1/+1 counter on this creature"),
+        "expected Accomplished Automaton to singularize the counter mode, got {rendered}"
+    );
+    assert!(
+        rendered.contains("create a 1/1 colorless servo artifact creature token"),
+        "expected Accomplished Automaton to singularize the token mode, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");

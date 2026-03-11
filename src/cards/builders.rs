@@ -3892,15 +3892,23 @@ impl CardDefinitionBuilder {
     /// • Create N 1/1 colorless Servo artifact creature tokens."
     pub fn fabricate(self, amount: u32) -> Self {
         let text = format!("Fabricate {amount}");
+        let put_description = if amount == 1 {
+            "Put a +1/+1 counter on this creature".to_string()
+        } else {
+            format!("Put {amount} +1/+1 counters on this creature")
+        };
+        let create_description = if amount == 1 {
+            "Create a 1/1 colorless Servo artifact creature token".to_string()
+        } else {
+            format!("Create {amount} 1/1 colorless Servo artifact creature tokens")
+        };
         let modes = vec![
             EffectMode {
-                description: format!("Put {amount} +1/+1 counters on this creature"),
+                description: put_description,
                 effects: vec![Effect::plus_one_counters(amount as i32, ChooseSpec::Source)],
             },
             EffectMode {
-                description: format!(
-                    "Create {amount} 1/1 colorless Servo artifact creature tokens"
-                ),
+                description: create_description,
                 effects: vec![Effect::create_tokens(Self::fabricate_servo_token(), amount)],
             },
         ];
