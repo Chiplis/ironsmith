@@ -453,6 +453,14 @@
 
 .stack-circuit-overlay {
   z-index: 1;
+  mix-blend-mode: normal;
+  overflow: hidden;
+  border-radius: inherit;
+  inset: 0;
+}
+
+.stack-circuit-overlay .card-circuit-svg {
+  overflow: hidden;
 }
 
 .stack-circuit-overlay .card-circuit-track,
@@ -460,6 +468,7 @@
 .stack-circuit-overlay .card-circuit-core,
 .stack-circuit-overlay .card-circuit-accent {
   filter: none;
+  stroke-linecap: butt;
 }
 
 .stack-circuit-overlay .card-circuit-glow {
