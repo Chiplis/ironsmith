@@ -3455,6 +3455,25 @@ Pay 3 life: Add {R}.";
     }
 
     #[test]
+    fn compare_semantics_normalizes_hammer_dropper_mentor_keyword_scaffolding() {
+        let oracle =
+            "Mentor (Whenever this creature attacks, put a +1/+1 counter on target attacking creature with lesser power.)";
+        let compiled = vec![String::from(
+            "Triggered ability 1: Whenever this creature attacks, put a +1/+1 counter on target attacking creature with power less than this creature's power.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected mentor keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for mentor keyword scaffolding"
+        );
+    }
+
+    #[test]
     fn compare_semantics_normalizes_echo_counter_scaffolding() {
         let oracle = "Flying, protection from black
 Echo {3}{W}{W}
