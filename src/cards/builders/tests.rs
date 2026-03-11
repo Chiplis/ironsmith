@@ -15102,6 +15102,32 @@ fn parse_oracle_curious_herd_targeted_artifact_count_regression() {
 }
 
 #[test]
+fn parse_oracle_drag_to_the_bottom_domain_value_regression() {
+    let def = parse_oracle_card_definition("Drag to the Bottom");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("modifypowertoughness")
+            && raw.contains("scaled")
+            && raw.contains("basiclandtypesamong"),
+        "expected raw compiled definition to keep signed domain scaling, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("all creatures get -x/-x until end of turn")
+            && rendered.contains("where x is 1 plus the number of basic land types among lands you control"),
+        "expected Drag to the Bottom to preserve domain-based -X/-X wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("+x/+x")
+            && !rendered.contains("where x is -x")
+            && !rendered.contains("basic lands you control"),
+        "expected Drag to the Bottom to avoid the old signed-x fallback wording, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_myr_landshaper_type_addition_render_regression() {
     let def = parse_oracle_card_definition("Myr Landshaper");
 

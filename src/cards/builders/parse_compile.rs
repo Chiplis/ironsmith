@@ -1182,6 +1182,7 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         Value::Add(left, right) => {
             value_references_tag(left, tag) || value_references_tag(right, tag)
         }
+        Value::Scaled(value, _) => value_references_tag(value, tag),
         Value::Count(filter) | Value::CountScaled(filter, _) => filter
             .tagged_constraints
             .iter()

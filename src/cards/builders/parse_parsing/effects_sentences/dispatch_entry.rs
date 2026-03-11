@@ -2054,6 +2054,24 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         | EffectAst::Monstrosity { amount } => {
             replace_value(amount, replacement, clause)?;
         }
+        EffectAst::Pump {
+            power, toughness, ..
+        }
+        | EffectAst::SetBasePowerToughness {
+            power, toughness, ..
+        }
+        | EffectAst::BecomeBasePtCreature {
+            power, toughness, ..
+        }
+        | EffectAst::PumpAll {
+            power, toughness, ..
+        } => {
+            replace_value(power, replacement, clause)?;
+            replace_value(toughness, replacement, clause)?;
+        }
+        EffectAst::SetBasePower { power, .. } => {
+            replace_value(power, replacement, clause)?;
+        }
         EffectAst::PutOrRemoveCounters {
             put_count,
             remove_count,
@@ -2100,6 +2118,9 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             if let Some(generic) = additional_generic.as_mut() {
                 replace_value(generic, replacement, clause)?;
             }
+        }
+        EffectAst::PumpForEach { count, .. } => {
+            replace_value(count, replacement, clause)?;
         }
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {

@@ -5699,6 +5699,15 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 format!("{} plus {}", describe_value(left), describe_value(right))
             }
         }
+        Value::Scaled(value, factor) => {
+            if *factor == 1 {
+                describe_value(value)
+            } else if *factor == -1 {
+                format!("-{}", describe_value(value))
+            } else {
+                format!("{factor} times {}", describe_value(value))
+            }
+        }
         Value::X => "X".to_string(),
         Value::XTimes(factor) => {
             if *factor == 1 {
@@ -5989,6 +5998,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
 pub(super) fn party_size_multiplier(value: &Value) -> Option<(PlayerFilter, i32)> {
     match value {
         Value::PartySize(filter) => Some((filter.clone(), 1)),
+        Value::Scaled(value, factor) => {
+            let (filter, mult) = party_size_multiplier(value)?;
+            Some((filter, mult * factor))
+        }
         Value::Add(left, right) => {
             let (left_filter, left_mult) = party_size_multiplier(left)?;
             let (right_filter, right_mult) = party_size_multiplier(right)?;
@@ -6005,6 +6018,10 @@ pub(super) fn party_size_multiplier(value: &Value) -> Option<(PlayerFilter, i32)
 pub(super) fn spells_cast_this_turn_multiplier(value: &Value) -> Option<(PlayerFilter, i32)> {
     match value {
         Value::SpellsCastThisTurn(filter) => Some((filter.clone(), 1)),
+        Value::Scaled(value, factor) => {
+            let (filter, mult) = spells_cast_this_turn_multiplier(value)?;
+            Some((filter, mult * factor))
+        }
         Value::Add(left, right) => {
             let (left_filter, left_mult) = spells_cast_this_turn_multiplier(left)?;
             let (right_filter, right_mult) = spells_cast_this_turn_multiplier(right)?;
@@ -6033,6 +6050,9 @@ pub(super) fn describe_spells_cast_this_turn_each(filter: &PlayerFilter) -> Stri
 pub(super) fn describe_signed_value(value: &Value) -> String {
     match value {
         Value::Fixed(n) if *n >= 0 => format!("+{n}"),
+        Value::Scaled(value, factor) if *factor > 0 => {
+            format!("+{}", describe_value(&Value::Scaled(value.clone(), *factor)))
+        }
         Value::X => "+X".to_string(),
         Value::XTimes(factor) if *factor > 0 => {
             if *factor == 1 {
@@ -6083,6 +6103,15 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     let power_is_variable = !matches!(power, Value::Fixed(_));
     let toughness_is_variable = !matches!(toughness, Value::Fixed(_));
 
+    if let (Value::Scaled(power_inner, -1), Value::Scaled(toughness_inner, -1)) =
+        (power, toughness)
+        && power_inner == toughness_inner
+    {
+        return Some(format!(
+            "{target} {gets} -X/-X {until_text}, where X is {}",
+            describe_value(power_inner)
+        ));
+    }
     if power_is_variable && toughness_is_variable && power_text == toughness_text {
         return Some(format!(
             "{target} {gets} +X/+X {until_text}, where X is {power_text}"
@@ -6903,6 +6932,10 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
 pub(super) fn basic_land_types_multiplier(value: &Value) -> Option<(&ObjectFilter, i32)> {
     match value {
         Value::BasicLandTypesAmong(filter) => Some((filter, 1)),
+        Value::Scaled(value, factor) => {
+            let (filter, mult) = basic_land_types_multiplier(value)?;
+            Some((filter, mult * factor))
+        }
         Value::Add(left, right) => {
             let (left_filter, left_mult) = basic_land_types_multiplier(left)?;
             let (right_filter, right_mult) = basic_land_types_multiplier(right)?;
@@ -6932,7 +6965,7 @@ pub(super) fn describe_basic_land_type_scope(filter: &ObjectFilter) -> String {
 
 pub(super) fn describe_basic_land_types_among(filter: &ObjectFilter) -> String {
     format!(
-        "basic land type among {}",
+        "basic land types among {}",
         describe_basic_land_type_scope(filter)
     )
 }

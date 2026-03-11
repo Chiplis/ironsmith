@@ -1045,30 +1045,63 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[Token]) -> Optio
 pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
     tokens: &[Token],
 ) -> Option<Value> {
-    let words = words(tokens);
-    if !words.starts_with(&["where", "x", "is"]) {
+    let clause_words = words(tokens);
+    if !clause_words.starts_with(&["where", "x", "is"]) {
         return None;
     }
 
     let value_start_idx = token_index_for_word_index(tokens, 3)?;
     let (fixed_value, fixed_used) = parse_number(&tokens[value_start_idx..])?;
     let plus_word_idx = 3 + fixed_used;
-    if words.get(plus_word_idx).copied() != Some("plus") {
+    if clause_words.get(plus_word_idx).copied() != Some("plus") {
         return None;
     }
 
     let mut number_word_idx = plus_word_idx + 1;
-    if words.get(number_word_idx).copied() == Some("the") {
+    if clause_words.get(number_word_idx).copied() == Some("the") {
         number_word_idx += 1;
     }
-    if words.get(number_word_idx).copied() != Some("number")
-        || words.get(number_word_idx + 1).copied() != Some("of")
+    if clause_words.get(number_word_idx).copied() != Some("number")
+        || clause_words.get(number_word_idx + 1).copied() != Some("of")
     {
         return None;
     }
 
     let filter_start_idx = token_index_for_word_index(tokens, number_word_idx + 2)?;
     let filter_tokens = &tokens[filter_start_idx..];
+    let filter_words = words(filter_tokens);
+    if filter_words.starts_with(&["basic", "land", "type", "among"])
+        || filter_words.starts_with(&["basic", "land", "types", "among"])
+    {
+        let mut scope_tokens = &filter_tokens[4..];
+        if scope_tokens
+            .first()
+            .is_some_and(|token| token.is_word("the"))
+        {
+            scope_tokens = &scope_tokens[1..];
+        }
+        let scope_filter = parse_object_filter(scope_tokens, false).ok()?;
+        return Some(Value::Add(
+            Box::new(Value::Fixed(fixed_value as i32)),
+            Box::new(Value::BasicLandTypesAmong(scope_filter)),
+        ));
+    }
+    if filter_words.starts_with(&["color", "among"])
+        || filter_words.starts_with(&["colors", "among"])
+    {
+        let mut scope_tokens = &filter_tokens[2..];
+        if scope_tokens
+            .first()
+            .is_some_and(|token| token.is_word("the"))
+        {
+            scope_tokens = &scope_tokens[1..];
+        }
+        let scope_filter = parse_object_filter(scope_tokens, false).ok()?;
+        return Some(Value::Add(
+            Box::new(Value::Fixed(fixed_value as i32)),
+            Box::new(Value::ColorsAmong(scope_filter)),
+        ));
+    }
     let filter = parse_object_filter(filter_tokens, false).ok()?;
     Some(Value::Add(
         Box::new(Value::Fixed(fixed_value as i32)),

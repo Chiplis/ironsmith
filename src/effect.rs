@@ -564,6 +564,9 @@ pub enum Value {
     /// X multiplied by a factor
     XTimes(i32),
 
+    /// An arbitrary value multiplied by a factor.
+    Scaled(Box<Value>, i32),
+
     /// The number of objects matching a filter
     Count(ObjectFilter),
 

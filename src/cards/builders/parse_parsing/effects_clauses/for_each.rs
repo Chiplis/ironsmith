@@ -430,6 +430,7 @@ pub(crate) fn parse_get_for_each_count_value(
 pub(crate) fn value_contains_unbound_x(value: &Value) -> bool {
     match value {
         Value::X | Value::XTimes(_) => true,
+        Value::Scaled(value, _) => value_contains_unbound_x(value),
         Value::Add(left, right) => {
             value_contains_unbound_x(left) || value_contains_unbound_x(right)
         }
@@ -451,11 +452,12 @@ pub(crate) fn replace_unbound_x_with_value(
             if let Value::Fixed(fixed) = replacement {
                 return Ok(Value::Fixed(fixed * multiplier));
             }
-            Err(CardTextError::ParseError(format!(
-                "unsupported signed dynamic X replacement in gets clause (clause: '{}')",
-                clause
-            )))
+            Ok(Value::Scaled(Box::new(replacement.clone()), multiplier))
         }
+        Value::Scaled(value, multiplier) => Ok(Value::Scaled(
+            Box::new(replace_unbound_x_with_value(*value, replacement, clause)?),
+            multiplier,
+        )),
         Value::Add(left, right) => Ok(Value::Add(
             Box::new(replace_unbound_x_with_value(*left, replacement, clause)?),
             Box::new(replace_unbound_x_with_value(*right, replacement, clause)?),

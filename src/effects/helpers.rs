@@ -65,6 +65,10 @@ pub fn resolve_value(
             .map(|x| (x as i32) * multiplier)
             .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string())),
 
+        Value::Scaled(value, multiplier) => {
+            Ok(resolve_value(game, value, ctx)? * *multiplier)
+        }
+
         Value::Count(filter) => {
             let filter_ctx = ctx.filter_context(game);
             let candidate_ids = candidate_ids_for_filter(game, filter);
