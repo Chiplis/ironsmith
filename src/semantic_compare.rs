@@ -494,6 +494,11 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     {
         normalized = "Afterlife 2".to_string();
     }
+    if let Some((cost, _)) = normalized.split_once(", Return an unblocked attacker you control to its owner's hand:")
+        && normalized_lower.contains("put this card onto the battlefield tapped and attacking")
+    {
+        normalized = format!("Ninjutsu {}", cost.trim());
+    }
     for (from, to) in [
         (
             "Exile all cards from target player's graveyard",
@@ -3363,6 +3368,24 @@ Pay 3 life: Add {R}.";
         assert!(
             !mismatch,
             "expected no mismatch for afterlife keyword scaffolding"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_dokuchi_shadow_walker_ninjutsu_keyword_scaffolding() {
+        let oracle = "Ninjutsu {3}{B} ({3}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)";
+        let compiled = vec![String::from(
+            "Activated ability 1: {3}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield tapped and attacking. Activate only during combat.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected ninjutsu keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for ninjutsu keyword scaffolding"
         );
     }
 
