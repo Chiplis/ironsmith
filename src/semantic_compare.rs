@@ -3573,6 +3573,24 @@ Pay 3 life: Add {R}.";
     }
 
     #[test]
+    fn compare_semantics_normalizes_ninja_of_the_new_moon_ninjutsu_keyword_scaffolding() {
+        let oracle = "Ninjutsu {3}{B} ({3}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)";
+        let compiled = vec![String::from(
+            "Activated ability 1: {3}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield tapped and attacking. Activate only during combat.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected ninjutsu keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for ninjutsu keyword scaffolding"
+        );
+    }
+
+    #[test]
     fn compare_semantics_normalizes_echo_counter_scaffolding() {
         let oracle = "Flying, protection from black
 Echo {3}{W}{W}
