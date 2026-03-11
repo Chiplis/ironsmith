@@ -499,6 +499,11 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     {
         normalized = format!("Ninjutsu {}", cost.trim());
     }
+    if normalized_lower.starts_with(
+        "whenever this creature attacks, untap target defending player's creature. target defending player's creature gains blocks each combat if able until end of combat",
+    ) {
+        normalized = "Provoke".to_string();
+    }
     for (from, to) in [
         (
             "Exile all cards from target player's graveyard",
@@ -3386,6 +3391,24 @@ Pay 3 life: Add {R}.";
         assert!(
             !mismatch,
             "expected no mismatch for ninjutsu keyword scaffolding"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_goblin_grappler_provoke_keyword_scaffolding() {
+        let oracle = "Provoke (Whenever this creature attacks, you may have target creature defending player controls untap and block it if able.)";
+        let compiled = vec![String::from(
+            "Triggered ability 1: Whenever this creature attacks, untap target defending player's creature. target defending player's creature gains Blocks each combat if able until end of combat.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected provoke keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for provoke keyword scaffolding"
         );
     }
 
