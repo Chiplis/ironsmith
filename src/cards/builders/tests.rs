@@ -14904,6 +14904,28 @@ fn parse_oracle_kavu_recluse_fixed_basic_land_type_regression() {
 }
 
 #[test]
+fn parse_oracle_slimy_kavu_fixed_basic_land_type_regression() {
+    let def = parse_oracle_card_definition("Slimy Kavu");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("becomebasiclandtypechoiceeffect")
+            && raw.contains("fixed_subtype: some(swamp)"),
+        "expected raw compiled definition to use fixed basic land type lowering, got {raw}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target land becomes a swamp until end of turn"),
+        "expected Slimy Kavu basic-land-type wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Slimy Kavu to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn oracle_render_regression_named_cards_compile_cleanly() {
     let cultivator =
         oracle_like_lines(&parse_oracle_card_definition("Cultivator Colossus")).join("\n");
