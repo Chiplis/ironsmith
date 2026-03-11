@@ -15032,11 +15032,8 @@ fn load_descent_into_avernus_handwritten_regression() {
 }
 
 #[test]
-fn load_ugins_insight_handwritten_regression() {
-    let registry = crate::cards::CardRegistry::with_builtin_cards_for_names(["Ugin's Insight"]);
-    let def = registry
-        .get("Ugin's Insight")
-        .expect("expected handwritten Ugin's Insight definition to load");
+fn parse_oracle_ugins_insight_where_x_tail_regression() {
+    let def = parse_oracle_card_definition("Ugin's Insight");
 
     let raw = format!("{def:#?}").to_ascii_lowercase();
     assert!(
@@ -15044,7 +15041,7 @@ fn load_ugins_insight_handwritten_regression() {
         "expected raw compiled definition to keep greatest-mana-value scry and draw, got {raw}"
     );
 
-    let rendered = compiled_lines(def).join(" ").to_ascii_lowercase();
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("scry the greatest mana value among permanents you control, then draw 3 cards")
             || rendered.contains("scry the greatest mana value among permanents you control, then draw three cards"),

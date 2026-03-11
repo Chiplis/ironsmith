@@ -959,10 +959,27 @@ pub(crate) fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, 
         )));
     };
     let where_tokens = &tokens[where_token_idx..];
+    let where_segments = split_on_comma_or_semicolon(where_tokens);
+    let primary_where_tokens = where_segments
+        .first()
+        .cloned()
+        .unwrap_or_else(|| where_tokens.to_vec());
+    let trailing_after_where = if where_segments.len() > 1 {
+        let mut tail = Vec::new();
+        for (idx, segment) in where_segments.iter().enumerate().skip(1) {
+            if idx > 1 {
+                tail.push(Token::Comma(TextSpan::synthetic()));
+            }
+            tail.extend(segment.iter().cloned());
+        }
+        tail
+    } else {
+        Vec::new()
+    };
 
     let stripped = trim_edge_punctuation(&tokens[..where_token_idx]);
     let stripped_words = words(&stripped);
-    let where_words = words(where_tokens);
+    let where_words = words(&primary_where_tokens);
 
     // Special-case common "where X is its power/toughness/mana value" patterns, because
     // resolving "its" depends on whether the main clause is targeting something.
@@ -1026,7 +1043,7 @@ pub(crate) fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, 
                 crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))
             }))
         }
-        _ => parse_where_x_value_clause(where_tokens).ok_or_else(|| {
+        _ => parse_where_x_value_clause(&primary_where_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported where-x clause (clause: '{}')",
                 clause_words.join(" ")
@@ -1036,6 +1053,10 @@ pub(crate) fn parse_effect_sentence(tokens: &[Token]) -> Result<Vec<EffectAst>, 
 
     let mut effects = parse_effect_sentence_inner(&stripped)?;
     replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_words.join(" "))?;
+    if !trailing_after_where.is_empty() {
+        let mut trailing_effects = parse_effect_sentence(&trailing_after_where)?;
+        effects.append(&mut trailing_effects);
+    }
     Ok(effects)
 }
 

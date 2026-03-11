@@ -396,7 +396,6 @@ impl CardRegistry {
         maybe_register!(hex_parasite);
         maybe_register!(fireball);
         maybe_register!(think_twice);
-        maybe_register!(ugins_insight);
         maybe_register!(urzas_saga);
         maybe_register!(fate_transfer);
         maybe_register!(accursed_marauder);
