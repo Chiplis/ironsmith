@@ -15032,6 +15032,31 @@ fn load_descent_into_avernus_handwritten_regression() {
 }
 
 #[test]
+fn load_ugins_insight_handwritten_regression() {
+    let registry = crate::cards::CardRegistry::with_builtin_cards_for_names(["Ugin's Insight"]);
+    let def = registry
+        .get("Ugin's Insight")
+        .expect("expected handwritten Ugin's Insight definition to load");
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.contains("greatestmanavalue") && raw.contains("permanent") && raw.contains("draw"),
+        "expected raw compiled definition to keep greatest-mana-value scry and draw, got {raw}"
+    );
+
+    let rendered = compiled_lines(def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("scry the greatest mana value among permanents you control, then draw 3 cards")
+            || rendered.contains("scry the greatest mana value among permanents you control, then draw three cards"),
+        "expected Ugin's Insight to preserve both scry and draw clauses, got {rendered}"
+    );
+    assert!(
+        !rendered.eq("spell effects: scry the greatest mana value among permanents you control."),
+        "expected Ugin's Insight to avoid dropping the draw clause, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_myr_landshaper_type_addition_render_regression() {
     let def = parse_oracle_card_definition("Myr Landshaper");
 
