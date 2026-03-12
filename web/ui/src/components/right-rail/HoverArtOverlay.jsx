@@ -671,7 +671,14 @@ export default function HoverArtOverlay({
       .map((line) => line.trim())
       .filter(Boolean);
   }, [detailAbilities, hoveredStackAbilityText, hoveredStackEffectText, oracleText]);
+  const shouldPreferStackAbilityRules = (
+    Boolean(hoveredStackObject?.ability_kind)
+    && compiledRulesLines.length > 0
+  );
   const displayRulesLines = useMemo(() => {
+    if (shouldPreferStackAbilityRules) {
+      return compiledRulesLines;
+    }
     if (showCompiledText && compiledRulesLines.length > 0) {
       return compiledRulesLines;
     }
@@ -679,7 +686,7 @@ export default function HoverArtOverlay({
       return oracleRulesLines;
     }
     return compiledRulesLines;
-  }, [compiledRulesLines, oracleRulesLines, showCompiledText]);
+  }, [compiledRulesLines, oracleRulesLines, shouldPreferStackAbilityRules, showCompiledText]);
   const displayRulesText = displayRulesLines.join("\n");
   const rulesRenderKey = useMemo(
     () => [

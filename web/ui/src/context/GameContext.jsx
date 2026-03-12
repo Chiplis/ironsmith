@@ -594,12 +594,19 @@ export function GameProvider({ children }) {
         ) {
           if (st.decision.kind === "priority") {
             const isLocalOffTurnPriority = st.decision.player === st.perspective;
+            const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
+            if (!passAction) { holdReason = "no pass action available"; break; }
+            const isCustomPassAction = !!passAction.label && passAction.label !== "Pass priority";
+            if (!isLocalOffTurnPriority && isCustomPassAction) {
+              if (autoPasses >= 80) { holdReason = "auto-pass safety limit reached"; break; }
+              st = await currentGame.dispatch({ type: "priority_action", action_index: passAction.index });
+              autoPasses += 1;
+              continue;
+            }
             holdReason = isLocalOffTurnPriority
               ? localOffTurnHoldReason(st.decision, st)
               : opponentHoldReason(st.decision, st);
             if (holdReason) break;
-            const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
-            if (!passAction) { holdReason = "no pass action available"; break; }
             if (passAction.label && passAction.label !== "Pass priority") {
               holdReason = "custom pass action";
               break;

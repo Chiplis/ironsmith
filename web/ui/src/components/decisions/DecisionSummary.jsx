@@ -1,4 +1,6 @@
+import { useGame } from "@/context/GameContext";
 import { SymbolText } from "@/lib/mana-symbols";
+import { getVisibleTopStackObject } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 import { normalizeDecisionText } from "./decisionText";
 
@@ -17,12 +19,24 @@ export default function DecisionSummary({
   layout = "panel",
   className = "",
 }) {
+  const { state } = useGame();
   if (!decision) return null;
   if (layout === "strip" && hideDescription) return null;
 
   const stripLayout = layout === "strip";
   const description = hideDescription ? "" : normalizeLine(decision.description);
-  const contextText = normalizeLine(decision.context_text);
+  const topStackObject = getVisibleTopStackObject(state);
+  const resolvingStackContextText = (() => {
+    if (!topStackObject?.ability_kind) return "";
+    if (decision.source_id == null) return "";
+    const sourceId = String(decision.source_id);
+    const stackSourceId = topStackObject.inspect_object_id != null
+      ? String(topStackObject.inspect_object_id)
+      : (topStackObject.id != null ? String(topStackObject.id) : "");
+    if (!stackSourceId || stackSourceId !== sourceId) return "";
+    return normalizeLine(topStackObject.ability_text || topStackObject.effect_text || "");
+  })();
+  const contextText = resolvingStackContextText || normalizeLine(decision.context_text);
   const consequenceText = normalizeLine(decision.consequence_text);
 
   const lines = [];

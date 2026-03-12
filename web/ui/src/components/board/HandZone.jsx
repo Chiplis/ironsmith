@@ -161,6 +161,7 @@ export default function HandZone({ player, selectedObjectId, onInspect, isExpand
     () => (player?.can_view_hand && player?.hand_cards) || [],
     [player?.can_view_hand, player?.hand_cards]
   );
+  const previousExpandedRef = useRef(isExpanded);
   const handCardIds = handCards.map((c) => c.id);
   const { newIds, bumpedIds } = useNewCards(handCardIds);
 
@@ -191,6 +192,12 @@ export default function HandZone({ player, selectedObjectId, onInspect, isExpand
     }
     return cards;
   }, [extraPlayable]);
+  const hoverableHandObjectIds = useMemo(() => {
+    const ids = new Set();
+    for (const card of handCards) ids.add(String(card.id));
+    for (const extra of extraCards) ids.add(String(extra.id));
+    return ids;
+  }, [extraCards, handCards]);
   const handLayoutSignature = useMemo(
     () => [
       handCards.map((card) => card.id).join("|"),
@@ -272,6 +279,16 @@ export default function HandZone({ player, selectedObjectId, onInspect, isExpand
       activePointerIdRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const wasExpanded = previousExpandedRef.current;
+    previousExpandedRef.current = isExpanded;
+    if (wasExpanded && !isExpanded && hoveredObjectId != null) {
+      if (hoverableHandObjectIds.has(String(hoveredObjectId))) {
+        clearHover();
+      }
+    }
+  }, [clearHover, hoverableHandObjectIds, hoveredObjectId, isExpanded]);
 
   const handleHoverEnter = useCallback((objectId) => {
     if (hoverClearTimerRef.current) {
