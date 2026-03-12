@@ -1538,6 +1538,7 @@ pub(crate) enum EffectAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
+        without_paying_mana_cost: bool,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
         tag: TagKey,
@@ -5586,6 +5587,15 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             abilities_debug.contains("ExileToCounteredExileInsteadOfGraveyard"),
             "expected Dauthi replacement ability to lower to a real static ability, got {abilities_debug}"
+        );
+        assert!(
+            abilities_debug.contains("ChooseObjectsEffect")
+                && abilities_debug.contains("zone: Some(Exile)"),
+            "expected Dauthi activation to choose from exile, got {abilities_debug}"
+        );
+        assert!(
+            abilities_debug.contains("GrantTaggedSpellFreeCastUntilEndOfTurnEffect"),
+            "expected Dauthi activation to preserve the free-cast clause, got {abilities_debug}"
         );
     }
 

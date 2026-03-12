@@ -188,6 +188,23 @@ impl GrantSpec {
 
     /// Get a display string for this grant specification.
     pub fn display(&self) -> String {
+        fn small_number_word(n: u32) -> Option<&'static str> {
+            match n {
+                0 => Some("zero"),
+                1 => Some("one"),
+                2 => Some("two"),
+                3 => Some("three"),
+                4 => Some("four"),
+                5 => Some("five"),
+                6 => Some("six"),
+                7 => Some("seven"),
+                8 => Some("eight"),
+                9 => Some("nine"),
+                10 => Some("ten"),
+                _ => None,
+            }
+        }
+
         fn zone_name(zone: Zone) -> &'static str {
             match zone {
                 Zone::Battlefield => "battlefield",
@@ -199,6 +216,10 @@ impl GrantSpec {
                 Zone::Command => "command zone",
             }
         }
+
+        let mut filter = self.filter.clone();
+        filter.zone.get_or_insert(self.zone);
+        let filter_desc = filter.description();
 
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
@@ -215,6 +236,23 @@ impl GrantSpec {
         {
             return "You may cast spells from your hand without paying their mana costs"
                 .to_string();
+        }
+        if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::EscapeFromCardManaCost {
+            exile_count,
+        }) = &self.grantable
+            && self.zone == Zone::Graveyard
+        {
+            let count_text = small_number_word(*exile_count)
+                .map(str::to_string)
+                .unwrap_or_else(|| exile_count.to_string());
+            let graveyard = if matches!(filter.owner, Some(crate::filter::PlayerFilter::You)) {
+                "your graveyard"
+            } else {
+                "that graveyard"
+            };
+            return format!(
+                "Each {filter_desc} has escape. The escape cost is equal to the card's mana cost plus exile {count_text} other cards from {graveyard}"
+            );
         }
         format!(
             "Cards in {} have {}",

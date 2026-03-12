@@ -7682,6 +7682,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             grant_tagged_spell_life.tag.as_str()
         );
     }
+    if let Some(grant_tagged_spell_free_cast) =
+        effect.downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+    {
+        return format!(
+            "{} may cast tagged '{}' spells from exile this turn without paying their mana costs",
+            describe_player_filter(&grant_tagged_spell_free_cast.player),
+            grant_tagged_spell_free_cast.tag.as_str()
+        );
+    }
     if effect
         .downcast_ref::<crate::effects::player::MayCastForMiracleCostEffect>()
         .is_some()

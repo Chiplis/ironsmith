@@ -243,6 +243,7 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
         tag: TagKey::from(IT_TAG),
         player: PlayerAst::You,
         allow_land: true,
+        without_paying_mana_cost: false,
     }))
 }
 
@@ -379,6 +380,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             tag: TagKey::from(IT_TAG),
             player: PlayerAst::Implicit,
             allow_land: is_play,
+            without_paying_mana_cost: without_paying_its_cost,
         }));
     }
     if tail.is_empty() || without_paying_its_cost {

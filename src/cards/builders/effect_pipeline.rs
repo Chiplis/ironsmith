@@ -2052,6 +2052,7 @@ mod tests {
             tag: TagKey::from(IT_TAG),
             player: PlayerAst::You,
             allow_land: true,
+            without_paying_mana_cost: false,
         }];
 
         let prepared = prepare_effects_for_lowering(
@@ -2080,6 +2081,7 @@ mod tests {
             tag: TagKey::from(IT_TAG),
             player: PlayerAst::You,
             allow_land: true,
+            without_paying_mana_cost: false,
         }];
 
         let prepared = prepare_effects_with_trigger_context_for_lowering(

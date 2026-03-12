@@ -4294,6 +4294,7 @@ fn try_compile_timing_and_control_effect(
             tag,
             player,
             allow_land,
+            without_paying_mana_cost,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -4306,15 +4307,21 @@ fn try_compile_timing_and_control_effect(
             } else {
                 tag.clone()
             };
-            (
-                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    resolved_tag,
-                    player_filter,
-                    crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
-                    *allow_land,
-                ))],
-                Vec::new(),
-            )
+            let mut effects = vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+                resolved_tag.clone(),
+                player_filter.clone(),
+                crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
+                *allow_land,
+            ))];
+            if *without_paying_mana_cost {
+                effects.push(Effect::new(
+                    crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(
+                        resolved_tag,
+                        player_filter,
+                    ),
+                ));
+            }
+            (effects, Vec::new())
         }
         EffectAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
             tag,
@@ -9820,6 +9827,7 @@ mod parse_compile_tests {
                 tag: TagKey::from(IT_TAG),
                 player: PlayerAst::You,
                 allow_land: false,
+                without_paying_mana_cost: false,
             },
         ];
 

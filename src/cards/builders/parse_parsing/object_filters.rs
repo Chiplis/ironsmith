@@ -1066,6 +1066,9 @@ pub(crate) fn parse_object_filter(
 
     let starts_with_exiled_card =
         all_words.starts_with(&["exiled", "card"]) || all_words.starts_with(&["exiled", "cards"]);
+    if starts_with_exiled_card {
+        filter.zone.get_or_insert(Zone::Exile);
+    }
     let has_exiled_with_phrase = all_words
         .windows(2)
         .any(|window| window == ["exiled", "with"]);

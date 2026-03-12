@@ -1916,6 +1916,7 @@ mod tests {
                 tag: TagKey::from(IT_TAG),
                 player: PlayerAst::You,
                 allow_land: false,
+                without_paying_mana_cost: false,
             },
         ];
 
@@ -1947,6 +1948,7 @@ mod tests {
                 tag: TagKey::from(IT_TAG),
                 player: PlayerAst::You,
                 allow_land: false,
+                without_paying_mana_cost: false,
             },
         ];
 
@@ -2035,6 +2037,7 @@ mod tests {
                     tag: TagKey::from(IT_TAG),
                     player: PlayerAst::You,
                     allow_land: false,
+                    without_paying_mana_cost: false,
                 },
             ],
             if_false: vec![
@@ -2050,6 +2053,7 @@ mod tests {
                     tag: TagKey::from(IT_TAG),
                     player: PlayerAst::You,
                     allow_land: false,
+                    without_paying_mana_cost: false,
                 },
             ],
         }];

@@ -6694,6 +6694,27 @@ fn render_during_turn_flashback_grant_keeps_mana_cost_clause() {
 }
 
 #[test]
+fn render_underworld_breach_escape_grant_keeps_nonland_and_cost_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Underworld Breach Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Each nonland card in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard.",
+        )
+        .expect("underworld breach-style escape grant should parse");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("each nonland card in your graveyard has escape"),
+        "expected nonland graveyard scope in rendering, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "escape cost is equal to the card's mana cost plus exile three other cards from your graveyard"
+        ),
+        "expected escape-cost sentence in rendering, got {rendered}"
+    );
+}
+
+#[test]
 fn render_gain_life_equal_to_its_power_uses_possessive_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Infernal Reckoning Variant")
         .card_types(vec![CardType::Instant])
@@ -16750,6 +16771,15 @@ fn parse_dauthi_voidwalker_full_text_without_parser_fallback() {
     assert!(
         abilities_debug.contains("ExileToCounteredExileInsteadOfGraveyard"),
         "expected Dauthi replacement ability to lower to a real static ability, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("ChooseObjectsEffect")
+            && abilities_debug.contains("zone: Some(Exile)"),
+        "expected Dauthi activation to choose from exile, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("GrantTaggedSpellFreeCastUntilEndOfTurnEffect"),
+        "expected Dauthi activation to preserve the free-cast clause, got {abilities_debug}"
     );
 }
 

@@ -1969,6 +1969,19 @@ fn parse_object_filter_spell_with_source_linked_exile_reference_stays_on_stack()
 }
 
 #[test]
+fn parse_object_filter_exiled_card_opponent_owns_with_void_counter_stays_in_exile() {
+    let tokens = tokenize_line("exiled card an opponent owns with a void counter on it", 0);
+    let filter =
+        parse_object_filter(&tokens, false).expect("parse exiled card with owner and counter");
+    assert_eq!(filter.zone, Some(Zone::Exile));
+    assert_eq!(filter.owner, Some(PlayerFilter::Opponent));
+    assert_eq!(
+        filter.with_counter,
+        Some(crate::filter::CounterConstraint::Typed(CounterType::Void))
+    );
+}
+
+#[test]
 fn parse_target_phrase_spell_cast_from_graveyard_uses_spell_origin_zone() {
     let tokens = tokenize_line("target spell cast from a graveyard", 0);
     let target = parse_target_phrase(&tokens).expect("parse target spell cast from graveyard");
