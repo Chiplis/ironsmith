@@ -600,6 +600,16 @@ function PriorityActionStrip({
     });
   }, []);
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return undefined;
+
+    viewport.addEventListener("wheel", handleViewportWheel, { passive: false });
+    return () => {
+      viewport.removeEventListener("wheel", handleViewportWheel);
+    };
+  }, [handleViewportWheel]);
+
   if (!canAct) {
     return (
       <span className="text-[12px] text-[#b8d2ef] whitespace-nowrap">
@@ -622,7 +632,6 @@ function PriorityActionStrip({
       className="action-strip-scroll min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap"
       onMouseEnter={() => setIsPointerInStrip(true)}
       onMouseLeave={() => setIsPointerInStrip(false)}
-      onWheel={handleViewportWheel}
     >
       <div className="flex w-max min-w-full min-h-[32px] items-stretch gap-1.5 pr-2">
         {displayGroups.map(({ key, cycle, group }) => {

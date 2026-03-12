@@ -79,6 +79,16 @@ pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
             continue;
         }
 
+        if ch == '"' || ch == '“' || ch == '”' {
+            flush(&mut buffer, &mut tokens, &mut word_start, &mut word_end);
+            tokens.push(Token::Quote(TextSpan {
+                line: line_index,
+                start: byte_idx,
+                end: byte_idx + ch.len_utf8(),
+            }));
+            continue;
+        }
+
         if ch == '\'' || ch == '’' || ch == '‘' {
             if word_start.is_some() {
                 word_end = byte_idx + ch.len_utf8();
@@ -838,9 +848,13 @@ pub(crate) fn map_span_to_original(
 pub(crate) fn split_on_period(tokens: &[Token]) -> Vec<Vec<Token>> {
     let mut segments = Vec::new();
     let mut current = Vec::new();
+    let mut quote_depth = 0u32;
 
     for token in tokens {
-        if matches!(token, Token::Period(_)) {
+        if matches!(token, Token::Quote(_)) {
+            quote_depth = if quote_depth == 0 { 1 } else { 0 };
+            current.push(token.clone());
+        } else if matches!(token, Token::Period(_)) && quote_depth == 0 {
             if !current.is_empty() {
                 segments.push(std::mem::take(&mut current));
             }

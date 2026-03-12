@@ -2361,7 +2361,7 @@ impl StaticAbilityKind for ExileToCounteredExileInsteadOfGraveyard {
                 Effect::new(crate::effects::PutCountersEffect::new(
                     self.counter_type,
                     Value::Fixed(1),
-                    ChooseSpec::All(ObjectFilter::tagged(SOURCE_EXILED_TAG)),
+                    ChooseSpec::All(ObjectFilter::tagged(SOURCE_EXILED_TAG).in_zone(Zone::Exile)),
                 )),
             ]),
         ))
@@ -2861,9 +2861,10 @@ mod tests {
         assert_eq!(counters.counter_type, CounterType::Void);
         assert!(matches!(
             counters.target,
-            ChooseSpec::All(ref filter) if filter.tagged_constraints.iter().any(
-                |constraint| constraint.tag.as_str() == SOURCE_EXILED_TAG
-            )
+            ChooseSpec::All(ref filter) if filter.zone == Some(Zone::Exile)
+                && filter.tagged_constraints.iter().any(
+                    |constraint| constraint.tag.as_str() == SOURCE_EXILED_TAG
+                )
         ));
     }
 

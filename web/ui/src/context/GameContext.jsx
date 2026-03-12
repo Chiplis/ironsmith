@@ -313,6 +313,86 @@ function resolveSyncedCommand(command, currentState) {
   return command;
 }
 
+function summarizeDecision(decision) {
+  if (!decision || typeof decision !== "object") return null;
+
+  const summary = {
+    kind: String(decision.kind || ""),
+    player: decision.player == null ? null : Number(decision.player),
+    source_name: decision.source_name ? String(decision.source_name) : null,
+    reason: decision.reason ? String(decision.reason) : null,
+  };
+
+  if (Array.isArray(decision.requirements)) {
+    summary.requirements = decision.requirements.length;
+  }
+  if (Array.isArray(decision.options)) {
+    summary.options = decision.options.length;
+  }
+  if (Array.isArray(decision.candidates)) {
+    summary.candidates = decision.candidates.length;
+  }
+  if (Array.isArray(decision.actions)) {
+    summary.actions = decision.actions.length;
+  }
+
+  return summary;
+}
+
+function summarizeCommand(command) {
+  if (!command || typeof command !== "object") return null;
+
+  const summary = {
+    type: String(command.type || ""),
+  };
+
+  if (Array.isArray(command.targets)) {
+    summary.targets = command.targets.length;
+  }
+  if (Array.isArray(command.option_indices)) {
+    summary.option_indices = [...command.option_indices];
+  }
+  if (Array.isArray(command.object_ids)) {
+    summary.object_ids = [...command.object_ids];
+  }
+  if (Array.isArray(command.declarations)) {
+    summary.declarations = command.declarations.length;
+  }
+  if (command.action_index != null) {
+    summary.action_index = Number(command.action_index);
+  }
+  if (command.value != null) {
+    summary.value = Number(command.value);
+  }
+
+  return summary;
+}
+
+function isDecisionCommandCompatible(decision, command) {
+  if (!decision || !command) return false;
+
+  switch (decision.kind) {
+    case "priority":
+      return command.type === "priority_action";
+    case "targets":
+      return command.type === "select_targets";
+    case "select_options":
+    case "modes":
+    case "hybrid_choice":
+      return command.type === "select_options";
+    case "select_objects":
+      return command.type === "select_objects";
+    case "number":
+      return command.type === "number_choice";
+    case "attackers":
+      return command.type === "declare_attackers";
+    case "blockers":
+      return command.type === "declare_blockers";
+    default:
+      return false;
+  }
+}
+
 function currentOrderForDecision(triggerOrderingState, decision, key = buildTriggerOrderingKey(decision)) {
   if (!isTriggerOrderingDecision(decision)) return [];
   if (triggerOrderingState?.key === key) {
@@ -786,8 +866,20 @@ export function GameProvider({ children }) {
         throw new Error("WASM game is not ready");
       }
 
+      const decisionBefore = summarizeDecision(stateRef.current?.decision || null);
       const resolvedCommand = resolveSyncedCommand(command, stateRef.current);
+      const commandSummary = summarizeCommand(resolvedCommand);
+      console.debug("[ironsmith] synced dispatch:start", {
+        command: commandSummary,
+        decision: decisionBefore,
+        compatible: isDecisionCommandCompatible(stateRef.current?.decision || null, resolvedCommand),
+      });
       const st = await currentGame.dispatch(resolvedCommand);
+      console.debug("[ironsmith] synced dispatch:success", {
+        command: commandSummary,
+        decision_before: decisionBefore,
+        decision_after: summarizeDecision(st?.decision || null),
+      });
       return finalizeState(currentGame, st, {
         message: successMessage,
         allowOpponentAutomation: false,
@@ -877,8 +969,22 @@ export function GameProvider({ children }) {
         return;
       }
 
+      const decisionBefore = summarizeDecision(stateRef.current?.decision || null);
+      const commandSummary = summarizeCommand(command);
+
       try {
+        console.debug("[ironsmith] dispatch:start", {
+          command: commandSummary,
+          decision: decisionBefore,
+          compatible: isDecisionCommandCompatible(stateRef.current?.decision || null, command),
+        });
+
         let st = await game.dispatch(command);
+        console.debug("[ironsmith] dispatch:success", {
+          command: commandSummary,
+          decision_before: decisionBefore,
+          decision_after: summarizeDecision(st?.decision || null),
+        });
         await finalizeState(game, st, {
           message: successMessage,
           allowOpponentAutomation: !stopAfterTriggerOrderingSubmit,
@@ -886,6 +992,26 @@ export function GameProvider({ children }) {
           clearViewedCards: true,
         });
       } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        let decisionAfterError = null;
+        try {
+          const liveState = await game.uiState();
+          decisionAfterError = summarizeDecision(liveState?.decision || null);
+        } catch {
+          // Best effort only; keep the original dispatch failure.
+        }
+        console.error("[ironsmith] dispatch:failed", {
+          error: errorMessage,
+          command: commandSummary,
+          decision_before: decisionBefore,
+          decision_after_error: decisionAfterError,
+          compatible_before: isDecisionCommandCompatible(decisionBefore, commandSummary),
+          compatible_after_error: isDecisionCommandCompatible(
+            decisionAfterError,
+            commandSummary
+          ),
+        });
+
         try {
           // Roll back to the replay checkpoint so the game returns to a
           // consistent state (e.g. before a multi-step decision chain).

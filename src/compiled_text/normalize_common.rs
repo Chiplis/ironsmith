@@ -38,6 +38,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Defending => "the defending player".to_string(),
         PlayerFilter::Attacking => "the attacking player".to_string(),
         PlayerFilter::DamagedPlayer => "the damaged player".to_string(),
+        PlayerFilter::EffectController => "the player who cast this spell".to_string(),
         PlayerFilter::Teammate => "a teammate".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {

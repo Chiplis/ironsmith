@@ -609,6 +609,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
     ability_tokens: &[Token],
     clause_words: &[&str],
 ) -> Result<Option<GrantedAbilityAst>, CardTextError> {
+    let ability_tokens = crate::cards::builders::trim_edge_punctuation(ability_tokens);
     if ability_tokens.is_empty() {
         return Ok(None);
     }
@@ -628,9 +629,9 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         return Ok(None);
     }
 
-    let display = words(ability_tokens).join(" ");
+    let display = words(&ability_tokens).join(" ");
     let parsed_ability = if has_colon {
-        let Some(parsed) = parse_activated_line(ability_tokens)? else {
+        let Some(parsed) = parse_activated_line(&ability_tokens)? else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported granted activated/triggered ability clause (clause: '{}')",
                 clause_words.join(" ")
@@ -638,7 +639,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         };
         parsed
     } else {
-        match parse_triggered_line(ability_tokens)? {
+        match parse_triggered_line(&ability_tokens)? {
             LineAst::Triggered {
                 trigger,
                 effects,
@@ -762,7 +763,9 @@ pub(crate) fn parse_gain_ability_to_source_sentence(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::tokenize_line;
+    use crate::CardId;
+    use crate::ability::AbilityKind;
+    use crate::cards::builders::{CardDefinitionBuilder, tokenize_line};
 
     #[test]
     fn gain_ability_to_source_keeps_parsed_ability_until_lowering() {
@@ -869,6 +872,92 @@ mod tests {
         assert!(
             debug.matches("YourNextTurn").count() >= 2,
             "expected shared duration to apply to both effects, got {debug}"
+        );
+    }
+
+    #[test]
+    fn quoted_granted_trigger_keeps_all_sentences_inside_the_grant() {
+        let tokens = tokenize_line(
+            "Until end of turn, permanents your opponents control gain \"When this permanent deals damage to the player who cast Hellish Rebuke, sacrifice this permanent. You lose 2 life.\"",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("quoted granted trigger should parse")
+            .expect("quoted granted trigger should produce effects");
+
+        assert_eq!(
+            effects.len(),
+            1,
+            "quoted granted trigger should stay inside a single grant effect: {effects:?}"
+        );
+
+        let debug = format!("{effects:?}");
+        assert!(
+            debug.contains("GrantAbilitiesAll"),
+            "expected a global grant effect, got {debug}"
+        );
+        assert!(
+            debug.contains("ParsedObjectAbility"),
+            "expected parsed granted ability payload, got {debug}"
+        );
+        assert!(
+            debug.contains("LoseLife"),
+            "expected lose-life text to remain inside the granted ability payload, got {debug}"
+        );
+    }
+
+    #[test]
+    fn hellish_rebuke_lowering_keeps_lose_life_inside_granted_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hellish Rebuke")
+            .parse_text(
+                "Until end of turn, permanents your opponents control gain \"When this permanent deals damage to the player who cast Hellish Rebuke, sacrifice this permanent. You lose 2 life.\"",
+            )
+            .expect("hellish rebuke grant line should parse");
+
+        let spell_effects = def
+            .spell_effect
+            .as_ref()
+            .expect("hellish rebuke should compile to spell effects");
+        assert_eq!(
+            spell_effects.len(),
+            1,
+            "lose life should not be hoisted to a top-level spell effect: {spell_effects:?}"
+        );
+
+        let apply = spell_effects[0]
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .expect("top-level spell effect should be a continuous grant");
+        let granted = apply
+            .modification
+            .as_ref()
+            .and_then(|modification| match modification {
+                crate::continuous::Modification::AddAbilityGeneric(ability) => Some(ability),
+                crate::continuous::Modification::AddAbility(static_ability) => {
+                    static_ability.granted_inline_ability()
+                }
+                _ => None,
+            })
+            .expect("continuous effect should grant an inline ability");
+
+        let AbilityKind::Triggered(triggered) = &granted.kind else {
+            panic!("expected granted inline ability to be triggered: {granted:?}");
+        };
+        assert_eq!(
+            triggered.effects.len(),
+            2,
+            "granted trigger should keep both sacrifice and lose-life effects: {triggered:?}"
+        );
+        assert!(
+            triggered.effects.iter().any(|effect| effect
+                .downcast_ref::<crate::effects::LoseLifeEffect>()
+                .is_some()),
+            "granted trigger should include lose-life effect: {triggered:?}"
+        );
+
+        let trigger_debug = format!("{:?}", triggered.trigger);
+        assert!(
+            trigger_debug.contains("damaged_player: Some("),
+            "granted trigger should constrain the damaged player: {trigger_debug}"
         );
     }
 }

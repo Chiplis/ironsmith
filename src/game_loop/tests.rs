@@ -7428,6 +7428,117 @@ fn test_omniscience_does_not_bypass_sorcery_timing_restrictions() {
     );
 }
 
+#[test]
+fn test_dauthi_voidwalker_activation_makes_void_counter_card_castable_from_exile_for_free() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::object::CounterType;
+    use crate::zone::ZoneChangeOutcome;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let dauthi = CardDefinitionBuilder::new(CardId::new(), "Dauthi Voidwalker Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Shadow\nIf a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it.\n{T}, Sacrifice this creature: Choose an exiled card an opponent owns with a void counter on it. You may play it this turn without paying its mana cost.",
+        )
+        .expect("Dauthi text should parse");
+    let dauthi_id = game.create_object_from_definition(&dauthi, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(dauthi_id);
+
+    let bears = crate::cards::definitions::grizzly_bears();
+    let bears_id = game.create_object_from_definition(&bears, bob, Zone::Battlefield);
+    let bears_stable_id = game
+        .object(bears_id)
+        .expect("grizzly bears should exist")
+        .stable_id;
+
+    let mut dm = SelectFirstDecisionMaker;
+    let zone_change = crate::event_processor::process_zone_change(
+        &mut game,
+        bears_id,
+        Zone::Battlefield,
+        Zone::Graveyard,
+        &mut dm,
+    );
+    assert!(
+        matches!(zone_change, ZoneChangeOutcome::Replaced),
+        "expected Dauthi replacement to exile the creature, got {zone_change:?}"
+    );
+
+    let exiled_bears_id = game
+        .find_object_by_stable_id(bears_stable_id)
+        .expect("exiled Grizzly Bears should be findable by stable id");
+    assert_eq!(
+        game.object(exiled_bears_id).expect("exiled bears should exist").zone,
+        Zone::Exile,
+        "Grizzly Bears should be exiled by Dauthi's replacement effect"
+    );
+    assert_eq!(
+        game.counter_count(exiled_bears_id, CounterType::Void),
+        1,
+        "exiled Grizzly Bears should have a void counter"
+    );
+
+    let actions_before = compute_legal_actions(&game, alice);
+    assert!(
+        !actions_before.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    ..
+                } if *spell_id == exiled_bears_id
+            )
+        }),
+        "card should not be castable from exile before Dauthi's activation resolves"
+    );
+
+    let activated = game
+        .object(dauthi_id)
+        .expect("Dauthi should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.clone()),
+            _ => None,
+        })
+        .expect("Dauthi should have an activated ability");
+
+    let mut ctx = ExecutionContext::new(dauthi_id, alice, &mut dm);
+    for effect in &activated.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Dauthi activation effect should resolve");
+    }
+
+    let actions_after = compute_legal_actions(&game, alice);
+    assert!(
+        actions_after.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    casting_method: CastingMethod::PlayFrom {
+                        zone: Zone::Exile,
+                        use_alternative: Some(_),
+                        ..
+                    },
+                } if *spell_id == exiled_bears_id
+            )
+        }),
+        "Dauthi activation should make the exiled void-counter card castable for free, got {actions_after:?}"
+    );
+}
+
 // =========================================================================
 // Underworld Breach / Granted Escape Tests
 // =========================================================================

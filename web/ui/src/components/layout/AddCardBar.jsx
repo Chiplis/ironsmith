@@ -2,10 +2,13 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { formatStep } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import ZoneViewer from "@/components/board/ZoneViewer";
 
-const pill = "text-[13px] uppercase cursor-pointer hover:brightness-125 transition-all select-none";
+const triggerPill = "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-45";
 const inputPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none focus:ring-1 focus:ring-primary/50";
 const selectPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 
@@ -60,17 +63,20 @@ export default function AddCardBar({
   } = useGame();
   const [cardName, setCardName] = useState("");
   const [zone, setZone] = useState("battlefield");
-  const [playerIndex, setPlayerIndex] = useState(0);
+  const [playerIndex, setPlayerIndex] = useState(null);
   const [skipTriggers, setSkipTriggers] = useState(false);
+  const [addCardMenuOpen, setAddCardMenuOpen] = useState(false);
   const [autocompleteOptions, setAutocompleteOptions] = useState([]);
   const [autocompleteOpen, setAutocompleteOpen] = useState(false);
   const [autocompleteIndex, setAutocompleteIndex] = useState(-1);
   const autocompleteRef = useRef(null);
+  const cardNameInputRef = useRef(null);
   const suppressAutocompleteRef = useRef(false);
   const autocompleteRequestRef = useRef(0);
 
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
+  const selectedPlayer = playerIndex ?? perspective;
   const addLocked = multiplayer.mode !== "idle";
   const visibleAutocompleteOptions =
     addLocked || !cardName.trim() ? [] : autocompleteOptions;
@@ -121,6 +127,16 @@ export default function AddCardBar({
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, []);
 
+  useEffect(() => {
+    if (!addCardMenuOpen) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      cardNameInputRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [addCardMenuOpen]);
+
   const handleAdd = useCallback(async (requestedName = cardName) => {
     if (addLocked) {
       setStatus("Card injection is disabled while a lobby is active", true);
@@ -136,11 +152,12 @@ export default function AddCardBar({
       return;
     }
     try {
-      await game.addCardToZone(playerIndex || perspective, name, zone, skipTriggers);
+      await game.addCardToZone(selectedPlayer, name, zone, skipTriggers);
       setCardName("");
       setAutocompleteOptions([]);
       setAutocompleteOpen(false);
       setAutocompleteIndex(-1);
+      setAddCardMenuOpen(false);
       await refresh(`Added ${name} to ${zone}`);
     } catch (err) {
       const errMsg = String(err?.message || err);
@@ -170,8 +187,7 @@ export default function AddCardBar({
     cardName,
     game,
     onAddCardFailure,
-    playerIndex,
-    perspective,
+    selectedPlayer,
     zone,
     skipTriggers,
     refresh,
@@ -189,129 +205,166 @@ export default function AddCardBar({
 
   return (
     <div className="panel-gradient flex items-center gap-1.5 rounded px-2.5 py-1">
-      <Badge
-        variant="secondary"
-        className={`${pill} ${addLocked ? "pointer-events-none opacity-45" : ""}`}
-        onClick={addLocked ? undefined : handleAdd}
-      >
-        Add
-      </Badge>
-
-      <div className="relative" ref={autocompleteRef}>
-        <input
-          className={`${inputPill} w-36`}
-          placeholder="Card name"
-          value={cardName}
-          disabled={addLocked}
-          onChange={(e) => {
-            setCardName(e.target.value);
-            setAutocompleteOpen(true);
+      <Popover
+        open={addCardMenuOpen}
+        onOpenChange={(open) => {
+          setAddCardMenuOpen(open);
+          if (!open) {
+            setAutocompleteOpen(false);
             setAutocompleteIndex(-1);
-          }}
-          onFocus={() => {
-            if (visibleAutocompleteOptions.length > 0) {
-              setAutocompleteOpen(true);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown" && visibleAutocompleteOptions.length > 0) {
-              e.preventDefault();
-              setAutocompleteOpen(true);
-              setAutocompleteIndex((prev) =>
-                prev >= visibleAutocompleteOptions.length - 1 ? 0 : prev + 1
-              );
-              return;
-            }
+          }
+        }}
+      >
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={triggerPill}
+            disabled={addLocked}
+          >
+            Add Card
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          sideOffset={8}
+          className="w-[21rem] border-[#344a61] bg-[#0b1118] p-3 text-[#d7e3f4]"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          <div className="flex flex-col gap-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7f95ac]">
+              Add Card
+            </div>
 
-            if (e.key === "ArrowUp" && visibleAutocompleteOptions.length > 0) {
-              e.preventDefault();
-              setAutocompleteOpen(true);
-              setAutocompleteIndex((prev) =>
-                prev <= 0 ? visibleAutocompleteOptions.length - 1 : prev - 1
-              );
-              return;
-            }
+            <div className="relative" ref={autocompleteRef}>
+              <input
+                ref={cardNameInputRef}
+                className={`${inputPill} w-full`}
+                placeholder="Card name"
+                value={cardName}
+                disabled={addLocked}
+                onChange={(e) => {
+                  setCardName(e.target.value);
+                  setAutocompleteOpen(true);
+                  setAutocompleteIndex(-1);
+                }}
+                onFocus={() => {
+                  if (visibleAutocompleteOptions.length > 0) {
+                    setAutocompleteOpen(true);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown" && visibleAutocompleteOptions.length > 0) {
+                    e.preventDefault();
+                    setAutocompleteOpen(true);
+                    setAutocompleteIndex((prev) =>
+                      prev >= visibleAutocompleteOptions.length - 1 ? 0 : prev + 1
+                    );
+                    return;
+                  }
 
-            if (e.key === "Escape") {
-              setAutocompleteOpen(false);
-              setAutocompleteIndex(-1);
-              return;
-            }
+                  if (e.key === "ArrowUp" && visibleAutocompleteOptions.length > 0) {
+                    e.preventDefault();
+                    setAutocompleteOpen(true);
+                    setAutocompleteIndex((prev) =>
+                      prev <= 0 ? visibleAutocompleteOptions.length - 1 : prev - 1
+                    );
+                    return;
+                  }
 
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (
-                autocompleteVisible &&
-                autocompleteIndex >= 0 &&
-                visibleAutocompleteOptions[autocompleteIndex]
-              ) {
-                handleAdd(visibleAutocompleteOptions[autocompleteIndex]);
-                return;
-              }
-              if (visibleAutocompleteOptions.length === 1) {
-                handleAdd(visibleAutocompleteOptions[0]);
-                return;
-              }
-              handleAdd();
-            }
-          }}
-        />
-        {autocompleteVisible ? (
-          <div className="absolute left-0 top-[calc(100%+0.35rem)] z-40 w-64 overflow-hidden rounded-md border border-[#344a61] bg-[#0b1118] shadow-[0_12px_30px_rgba(0,0,0,0.42)]">
-            {visibleAutocompleteOptions.map((option, index) => (
-              <button
-                key={option}
-                type="button"
-                className={`block w-full px-3 py-2 text-left text-[13px] transition-colors ${
-                  index === autocompleteIndex
-                    ? "bg-primary/20 text-foreground"
-                    : "text-[#a4bdd7] hover:bg-white/5"
-                }`}
-                onMouseEnter={() => setAutocompleteIndex(index)}
-                onClick={() => handleAutocompletePick(option)}
+                  if (e.key === "Escape") {
+                    setAutocompleteOpen(false);
+                    setAutocompleteIndex(-1);
+                    return;
+                  }
+
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (
+                      autocompleteVisible &&
+                      autocompleteIndex >= 0 &&
+                      visibleAutocompleteOptions[autocompleteIndex]
+                    ) {
+                      handleAdd(visibleAutocompleteOptions[autocompleteIndex]);
+                      return;
+                    }
+                    if (visibleAutocompleteOptions.length === 1) {
+                      handleAdd(visibleAutocompleteOptions[0]);
+                      return;
+                    }
+                    handleAdd();
+                  }
+                }}
+              />
+              {autocompleteVisible ? (
+                <div className="absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden rounded-md border border-[#344a61] bg-[#0b1118] shadow-[0_12px_30px_rgba(0,0,0,0.42)]">
+                  {visibleAutocompleteOptions.map((option, index) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`block w-full px-3 py-2 text-left text-[13px] transition-colors ${
+                        index === autocompleteIndex
+                          ? "bg-primary/20 text-foreground"
+                          : "text-[#a4bdd7] hover:bg-white/5"
+                      }`}
+                      onMouseEnter={() => setAutocompleteIndex(index)}
+                      onClick={() => handleAutocompletePick(option)}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                className={selectPill}
+                value={selectedPlayer}
+                disabled={addLocked}
+                onChange={(e) => setPlayerIndex(Number(e.target.value))}
               >
-                {option}
-              </button>
-            ))}
+                {players.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className={selectPill}
+                value={zone}
+                disabled={addLocked}
+                onChange={(e) => setZone(e.target.value)}
+              >
+                <option value="battlefield">Battlefield</option>
+                <option value="hand">Hand</option>
+                <option value="graveyard">GY</option>
+                <option value="exile">Exile</option>
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2 text-[13px] uppercase tracking-wide text-[#a4bdd7]">
+              <Checkbox
+                checked={skipTriggers}
+                disabled={addLocked}
+                onCheckedChange={(checked) => setSkipTriggers(checked === true)}
+                className="h-3.5 w-3.5 border-[#4d647d]"
+              />
+              Skip triggers
+            </label>
+
+            <Button
+              type="button"
+              size="sm"
+              className="w-full justify-center uppercase tracking-wide"
+              onClick={() => handleAdd()}
+              disabled={addLocked}
+            >
+              Add to Game
+            </Button>
           </div>
-        ) : null}
-      </div>
-
-      <select
-        className={selectPill}
-        value={playerIndex || perspective}
-        disabled={addLocked}
-        onChange={(e) => setPlayerIndex(Number(e.target.value))}
-      >
-        {players.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
-
-      <select
-        className={selectPill}
-        value={zone}
-        disabled={addLocked}
-        onChange={(e) => setZone(e.target.value)}
-      >
-        <option value="battlefield">Battlefield</option>
-        <option value="hand">Hand</option>
-        <option value="graveyard">GY</option>
-        <option value="exile">Exile</option>
-      </select>
-
-      <label className="flex items-center gap-1 text-muted-foreground text-[13px] whitespace-nowrap cursor-pointer uppercase">
-        <input
-          type="checkbox"
-          checked={skipTriggers}
-          disabled={addLocked}
-          onChange={(e) => setSkipTriggers(e.target.checked)}
-          className="h-3 w-3"
-        />
-        Skip triggers
-      </label>
+        </PopoverContent>
+      </Popover>
 
       <span className="mx-1 text-muted-foreground/40">|</span>
 

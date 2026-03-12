@@ -8028,7 +8028,9 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
         return Ok(TriggerSpec::ThisIsDealtDamage);
     }
 
-    if (words.starts_with(&["this", "creature", "deals"]) || words.starts_with(&["this", "deals"]))
+    if (words.starts_with(&["this", "creature", "deals"])
+        || words.starts_with(&["this", "permanent", "deals"])
+        || words.starts_with(&["this", "deals"]))
         && let Some(deals_idx) = tokens
             .iter()
             .position(|token| token.is_word("deal") || token.is_word("deals"))
@@ -8067,6 +8069,7 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
     }
 
     if (words.starts_with(&["this", "creature", "deals", "damage", "to"])
+        || words.starts_with(&["this", "permanent", "deals", "damage", "to"])
         || words.starts_with(&["this", "deals", "damage", "to"]))
         && let Some(to_idx) = tokens.iter().position(|token| token.is_word("to"))
     {
@@ -8094,6 +8097,7 @@ pub(crate) fn parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, Card
     }
 
     if words.starts_with(&["this", "creature", "deals", "damage"])
+        || words.starts_with(&["this", "permanent", "deals", "damage"])
         || words.starts_with(&["this", "deals", "damage"])
     {
         return Ok(TriggerSpec::ThisDealsDamage);
@@ -8970,6 +8974,11 @@ pub(crate) fn contains_your_team_words(words: &[&str]) -> bool {
 pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
     if subject == ["you"] {
         return Some(PlayerFilter::You);
+    }
+    if subject.starts_with(&["the", "player", "who", "cast"])
+        || subject.starts_with(&["player", "who", "cast"])
+    {
+        return Some(PlayerFilter::EffectController);
     }
     if subject == ["a", "player"]
         || subject == ["any", "player"]

@@ -93,7 +93,9 @@ where
     }
 }
 
-pub trait TriggerMatcher: std::fmt::Debug + Send + Sync + TriggerMatcherClone {
+pub trait TriggerMatcher:
+    std::fmt::Debug + Send + Sync + TriggerMatcherClone + std::any::Any
+{
     /// Check if this trigger matches the given game event.
     ///
     /// # Arguments

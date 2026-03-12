@@ -805,6 +805,7 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::Teammate => false,
         PlayerFilter::Attacking => false,
         PlayerFilter::DamagedPlayer => false,
+        PlayerFilter::EffectController => player == controller,
         PlayerFilter::ControllerOf(obj_ref) => match obj_ref {
             ObjectRef::Specific(object_id) => game
                 .object(*object_id)

@@ -1775,7 +1775,7 @@ pub(crate) fn trim_edge_punctuation(tokens: &[Token]) -> Vec<Token> {
     while start < end
         && matches!(
             tokens[start],
-            Token::Comma(_) | Token::Period(_) | Token::Semicolon(_)
+            Token::Comma(_) | Token::Period(_) | Token::Semicolon(_) | Token::Quote(_)
         )
     {
         start += 1;
@@ -1783,7 +1783,7 @@ pub(crate) fn trim_edge_punctuation(tokens: &[Token]) -> Vec<Token> {
     while end > start
         && matches!(
             tokens[end - 1],
-            Token::Comma(_) | Token::Period(_) | Token::Semicolon(_)
+            Token::Comma(_) | Token::Period(_) | Token::Semicolon(_) | Token::Quote(_)
         )
     {
         end -= 1;

@@ -12,7 +12,7 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::object::{CounterType, Object};
 use crate::object_query::candidate_ids_for_filter;
 use crate::static_abilities::StaticAbility;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
@@ -1236,6 +1236,57 @@ fn filter_matches_with_characteristics(
     true
 }
 
+fn bind_effect_controller_in_player_filter(
+    filter: &PlayerFilter,
+    effect_controller: PlayerId,
+) -> PlayerFilter {
+    match filter {
+        PlayerFilter::EffectController => PlayerFilter::Specific(effect_controller),
+        PlayerFilter::Target(inner) => PlayerFilter::Target(Box::new(
+            bind_effect_controller_in_player_filter(inner, effect_controller),
+        )),
+        PlayerFilter::Excluding { base, excluded } => PlayerFilter::Excluding {
+            base: Box::new(bind_effect_controller_in_player_filter(
+                base,
+                effect_controller,
+            )),
+            excluded: Box::new(bind_effect_controller_in_player_filter(
+                excluded,
+                effect_controller,
+            )),
+        },
+        other => other.clone(),
+    }
+}
+
+fn bind_effect_controller_in_trigger(
+    trigger: &crate::triggers::Trigger,
+    effect_controller: PlayerId,
+) -> crate::triggers::Trigger {
+    if let Some(damage_trigger) = trigger.downcast_ref::<crate::triggers::ThisDealsDamageTrigger>()
+    {
+        let mut bound = damage_trigger.clone();
+        if let Some(player_filter) = &damage_trigger.damaged_player {
+            bound.damaged_player = Some(bind_effect_controller_in_player_filter(
+                player_filter,
+                effect_controller,
+            ));
+        }
+        return crate::triggers::Trigger::new(bound);
+    }
+
+    trigger.clone()
+}
+
+fn bind_effect_controller_in_ability(ability: &Ability, effect_controller: PlayerId) -> Ability {
+    let mut bound = ability.clone();
+    if let AbilityKind::Triggered(triggered) = &mut bound.kind {
+        triggered.trigger =
+            bind_effect_controller_in_trigger(&triggered.trigger, effect_controller);
+    }
+    bound
+}
+
 /// Apply a modification to calculated characteristics.
 fn apply_modification_to_chars(
     modification: &Modification,
@@ -1344,10 +1395,11 @@ fn apply_modification_to_chars(
             chars.static_abilities.push(ability.clone());
         }
         Modification::AddAbilityGeneric(ability) => {
-            if let AbilityKind::Static(ref sa) = ability.kind {
+            let bound_ability = bind_effect_controller_in_ability(ability, effect_controller);
+            if let AbilityKind::Static(ref sa) = bound_ability.kind {
                 chars.static_abilities.push(sa.clone());
             }
-            chars.abilities.push(ability.clone());
+            chars.abilities.push(bound_ability);
         }
         Modification::SetAbilities(abilities) => {
             chars.abilities = abilities.clone();
@@ -1823,8 +1875,10 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     }
                 }
                 Modification::AddAbilityGeneric(ability) => {
-                    chars.abilities.push(ability.clone());
-                    if let AbilityKind::Static(static_ability) = &ability.kind
+                    let bound_ability =
+                        bind_effect_controller_in_ability(ability, effect.controller);
+                    chars.abilities.push(bound_ability.clone());
+                    if let AbilityKind::Static(static_ability) = &bound_ability.kind
                         && !chars.static_abilities.contains(static_ability)
                     {
                         chars.static_abilities.push(static_ability.clone());

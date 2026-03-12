@@ -653,6 +653,12 @@ pub enum PlayerFilter {
     /// The player who was dealt damage by the triggering damage event.
     DamagedPlayer,
 
+    /// The controller of the effect that granted or created the current ability.
+    ///
+    /// This is a lowering-time/runtime marker that should typically be resolved
+    /// to `Specific(PlayerId)` before gameplay queries evaluate it.
+    EffectController,
+
     /// A specific player
     Specific(PlayerId),
 
@@ -757,6 +763,8 @@ impl PlayerFilter {
             // Resolved from the triggering event during effect execution.
             PlayerFilter::DamagedPlayer => false,
 
+            PlayerFilter::EffectController => false,
+
             PlayerFilter::Specific(id) => player == *id,
 
             // These are resolved at runtime during effect execution
@@ -799,6 +807,7 @@ impl PlayerFilter {
             PlayerFilter::Defending => "the defending player".to_string(),
             PlayerFilter::Attacking => "the attacking player".to_string(),
             PlayerFilter::DamagedPlayer => "that player".to_string(),
+            PlayerFilter::EffectController => "the player who cast this spell".to_string(),
             PlayerFilter::Specific(_) => "that player".to_string(),
             PlayerFilter::IteratedPlayer => "that player".to_string(),
             PlayerFilter::TargetPlayerOrControllerOfTarget => {
@@ -3024,6 +3033,9 @@ impl ObjectFilter {
                 PlayerFilter::Opponent => parts.push("an opponent's".to_string()),
                 PlayerFilter::Any => {}
                 PlayerFilter::Active => parts.push("the active player's".to_string()),
+                PlayerFilter::EffectController => {
+                    parts.push("the player who cast this spell's".to_string())
+                }
                 PlayerFilter::Specific(_) => parts.push("a specific player's".to_string()),
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 PlayerFilter::Defending => parts.push("the defending player's".to_string()),
@@ -3075,6 +3087,7 @@ impl ObjectFilter {
                 PlayerFilter::Opponent => "an opponent owns".to_string(),
                 PlayerFilter::Any => "a player owns".to_string(),
                 PlayerFilter::Active => "the active player owns".to_string(),
+                PlayerFilter::EffectController => "the player who cast this spell owns".to_string(),
                 PlayerFilter::Specific(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
                 PlayerFilter::Defending => "the defending player owns".to_string(),
@@ -4008,6 +4021,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Defending => "the defending player's".to_string(),
         PlayerFilter::Attacking => "an attacking player's".to_string(),
         PlayerFilter::DamagedPlayer => "the damaged player's".to_string(),
+        PlayerFilter::EffectController => "the player who cast this spell's".to_string(),
         PlayerFilter::Specific(_) => "that player's".to_string(),
         PlayerFilter::IteratedPlayer => "that player's".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
@@ -4041,6 +4055,7 @@ fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Defending => "defending player".to_string(),
         PlayerFilter::Attacking => "attacking player".to_string(),
         PlayerFilter::DamagedPlayer => "damaged player".to_string(),
+        PlayerFilter::EffectController => "the player who cast this spell".to_string(),
         PlayerFilter::Specific(_) => "player".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {

@@ -259,6 +259,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::Defending => "the defending player".to_string(),
                 PlayerFilter::Attacking => "an attacking player".to_string(),
                 PlayerFilter::DamagedPlayer => "the damaged player".to_string(),
+                PlayerFilter::EffectController => "the player who cast this spell".to_string(),
                 PlayerFilter::IteratedPlayer => "that player".to_string(),
                 PlayerFilter::TargetPlayerOrControllerOfTarget => {
                     "that player or that object's controller".to_string()

@@ -93,6 +93,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         PlayerFilter::Defending => "the defending player".to_string(),
         PlayerFilter::Attacking => "the attacking player".to_string(),
         PlayerFilter::DamagedPlayer
+        | PlayerFilter::EffectController
         | PlayerFilter::Specific(_)
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::Target(_)
@@ -116,6 +117,7 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
         PlayerFilter::Defending => "the defending player's".to_string(),
         PlayerFilter::Attacking => "the attacking player's".to_string(),
         PlayerFilter::DamagedPlayer
+        | PlayerFilter::EffectController
         | PlayerFilter::Specific(_)
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::Target(_)
@@ -161,6 +163,10 @@ impl Trigger {
     /// Get the display text for this trigger.
     pub fn display(&self) -> String {
         self.0.display()
+    }
+
+    pub fn downcast_ref<T: TriggerMatcher + 'static>(&self) -> Option<&T> {
+        (self.0.as_ref() as &dyn std::any::Any).downcast_ref::<T>()
     }
 
     /// Whether this trigger uses snapshot-based matching.

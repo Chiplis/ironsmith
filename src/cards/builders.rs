@@ -698,6 +698,7 @@ pub(crate) enum Token {
     Period(TextSpan),
     Colon(TextSpan),
     Semicolon(TextSpan),
+    Quote(TextSpan),
 }
 
 impl Token {
@@ -718,7 +719,8 @@ impl Token {
             | Token::Comma(span)
             | Token::Period(span)
             | Token::Colon(span)
-            | Token::Semicolon(span) => *span,
+            | Token::Semicolon(span)
+            | Token::Quote(span) => *span,
         }
     }
 }
@@ -5580,6 +5582,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .expect("Dauthi Voidwalker text should parse");
 
         let abilities_debug = format!("{:#?}", def.abilities);
+        let abilities_debug_compact: String = abilities_debug
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect();
         assert!(
             !abilities_debug.contains("UnsupportedParserLine"),
             "expected full Dauthi text to avoid unsupported parser fallbacks, got {abilities_debug}"
@@ -5590,13 +5596,374 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             abilities_debug.contains("ChooseObjectsEffect")
-                && abilities_debug.contains("zone: Some(Exile)"),
+                && abilities_debug_compact.contains("zone:Some(Exile,)")
+                && abilities_debug_compact.contains("with_counter:Some(Typed(Void,))"),
             "expected Dauthi activation to choose from exile, got {abilities_debug}"
         );
         assert!(
             abilities_debug.contains("GrantTaggedSpellFreeCastUntilEndOfTurnEffect"),
             "expected Dauthi activation to preserve the free-cast clause, got {abilities_debug}"
         );
+    }
+
+    #[test]
+    fn dauthi_voidwalker_activation_grants_free_exile_cast_action() {
+        use crate::ability::AbilityKind;
+        use crate::alternative_cast::CastingMethod;
+        use crate::decision::{LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::ids::PlayerId;
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let dauthi = CardDefinitionBuilder::new(CardId::new(), "Dauthi Voidwalker Test")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Shadow\nIf a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it.\n{T}, Sacrifice this creature: Choose an exiled card an opponent owns with a void counter on it. You may play it this turn without paying its mana cost.",
+            )
+            .expect("Dauthi text should parse");
+        let dauthi_id = game.create_object_from_definition(&dauthi, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(dauthi_id);
+
+        let bears = crate::cards::definitions::grizzly_bears();
+        let bears_id = game.create_object_from_definition(&bears, bob, Zone::Battlefield);
+        let bears_stable_id = game
+            .object(bears_id)
+            .expect("grizzly bears should exist")
+            .stable_id;
+
+        let mut dm = SelectFirstDecisionMaker;
+        let zone_change = crate::event_processor::process_zone_change(
+            &mut game,
+            bears_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            &mut dm,
+        );
+        assert!(
+            matches!(zone_change, crate::event_processor::ZoneChangeOutcome::Replaced),
+            "expected Dauthi replacement to exile the creature, got {zone_change:?}"
+        );
+
+        let exiled_bears_id = game
+            .find_object_by_stable_id(bears_stable_id)
+            .expect("exiled Grizzly Bears should be findable by stable id");
+        assert_eq!(
+            game.object(exiled_bears_id)
+                .expect("exiled bears should exist")
+                .zone,
+            Zone::Exile,
+            "Grizzly Bears should be exiled by Dauthi's replacement effect"
+        );
+        assert_eq!(
+            game.counter_count(exiled_bears_id, CounterType::Void),
+            1,
+            "exiled Grizzly Bears should have a void counter"
+        );
+
+        let actions_before = compute_legal_actions(&game, alice);
+        assert!(
+            !actions_before.iter().any(|action| {
+                matches!(
+                    action,
+                    LegalAction::CastSpell {
+                        spell_id,
+                        from_zone: Zone::Exile,
+                        ..
+                    } if *spell_id == exiled_bears_id
+                )
+            }),
+            "card should not be castable from exile before Dauthi's activation resolves"
+        );
+
+        let activated = game
+            .object(dauthi_id)
+            .expect("Dauthi should exist")
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated.clone()),
+                _ => None,
+            })
+            .expect("Dauthi should have an activated ability");
+        let effects_debug = format!("{:#?}", activated.effects);
+
+        let mut ctx = ExecutionContext::new(dauthi_id, alice, &mut dm);
+        for effect in &activated.effects {
+            execute_effect(&mut game, effect, &mut ctx)
+                .expect("Dauthi activation effect should resolve");
+        }
+
+        let play_from_grants = game.grant_registry.granted_play_from_for_card(
+            &game,
+            exiled_bears_id,
+            Zone::Exile,
+            alice,
+        );
+        let alt_grants = game.grant_registry.granted_alternative_casts_for_card(
+            &game,
+            exiled_bears_id,
+            Zone::Exile,
+            alice,
+        );
+        assert!(
+            !play_from_grants.is_empty(),
+            "expected a play-from-exile grant after Dauthi activation, effects={effects_debug}, grants={:?}",
+            game.grant_registry.grants
+        );
+        assert!(
+            !alt_grants.is_empty(),
+            "expected a free-cast alternative after Dauthi activation, effects={effects_debug}, grants={:?}",
+            game.grant_registry.grants
+        );
+
+        let actions_after = compute_legal_actions(&game, alice);
+        assert!(
+            actions_after.iter().any(|action| {
+                matches!(
+                    action,
+                    LegalAction::CastSpell {
+                        spell_id,
+                        from_zone: Zone::Exile,
+                        casting_method: CastingMethod::PlayFrom {
+                            zone: Zone::Exile,
+                            use_alternative: Some(_),
+                            ..
+                        },
+                    } if *spell_id == exiled_bears_id
+                )
+            }),
+            "Dauthi activation should make the exiled void-counter card castable for free, got {actions_after:?}"
+        );
+    }
+
+    #[derive(Default)]
+    struct RecordingObjectChoiceDecisionMaker {
+        decide_objects_calls: usize,
+        legal_candidates: Vec<crate::ids::ObjectId>,
+        pick_index: usize,
+    }
+
+    impl crate::decision::DecisionMaker for RecordingObjectChoiceDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<crate::ids::ObjectId> {
+            self.decide_objects_calls += 1;
+            self.legal_candidates = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+
+            let choice = self
+                .legal_candidates
+                .get(self.pick_index)
+                .copied()
+                .or_else(|| self.legal_candidates.first().copied())
+                .expect("choice prompt should contain a legal candidate");
+            vec![choice]
+        }
+    }
+
+    #[test]
+    fn dauthi_voidwalker_activation_auto_selects_single_candidate_without_choice_prompt() {
+        use crate::ability::AbilityKind;
+        use crate::alternative_cast::CastingMethod;
+        use crate::decision::LegalAction;
+        use crate::decision::compute_legal_actions;
+        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::ids::PlayerId;
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let dauthi = CardDefinitionBuilder::new(CardId::new(), "Dauthi Voidwalker Test")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Shadow\nIf a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it.\n{T}, Sacrifice this creature: Choose an exiled card an opponent owns with a void counter on it. You may play it this turn without paying its mana cost.",
+            )
+            .expect("Dauthi text should parse");
+        let dauthi_id = game.create_object_from_definition(&dauthi, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(dauthi_id);
+
+        let exiled_bears_id = game.create_object_from_definition(
+            &crate::cards::definitions::grizzly_bears(),
+            bob,
+            Zone::Exile,
+        );
+        game.object_mut(exiled_bears_id)
+            .expect("exiled bears should exist")
+            .counters
+            .insert(CounterType::Void, 1);
+
+        let activated = game
+            .object(dauthi_id)
+            .expect("Dauthi should exist")
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated.clone()),
+                _ => None,
+            })
+            .expect("Dauthi should have an activated ability");
+
+        let mut dm = RecordingObjectChoiceDecisionMaker::default();
+        let mut ctx = ExecutionContext::new(dauthi_id, alice, &mut dm);
+        for effect in &activated.effects {
+            execute_effect(&mut game, effect, &mut ctx)
+                .expect("Dauthi activation effect should resolve");
+        }
+
+        assert_eq!(
+            dm.decide_objects_calls, 0,
+            "single legal exile target should auto-select without surfacing a choose-objects prompt"
+        );
+
+        let actions_after = compute_legal_actions(&game, alice);
+        assert!(actions_after.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    casting_method: CastingMethod::PlayFrom {
+                        zone: Zone::Exile,
+                        use_alternative: Some(_),
+                        ..
+                    },
+                } if *spell_id == exiled_bears_id
+            )
+        }));
+    }
+
+    #[test]
+    fn dauthi_voidwalker_activation_prompts_for_multiple_void_counter_cards_only() {
+        use crate::ability::AbilityKind;
+        use crate::alternative_cast::CastingMethod;
+        use crate::decision::LegalAction;
+        use crate::decision::compute_legal_actions;
+        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::ids::PlayerId;
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let dauthi = CardDefinitionBuilder::new(CardId::new(), "Dauthi Voidwalker Test")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Shadow\nIf a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it.\n{T}, Sacrifice this creature: Choose an exiled card an opponent owns with a void counter on it. You may play it this turn without paying its mana cost.",
+            )
+            .expect("Dauthi text should parse");
+        let dauthi_id = game.create_object_from_definition(&dauthi, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(dauthi_id);
+
+        let exiled_bears_id = game.create_object_from_definition(
+            &crate::cards::definitions::grizzly_bears(),
+            bob,
+            Zone::Exile,
+        );
+        let exiled_bolt_id = game.create_object_from_definition(
+            &crate::cards::definitions::lightning_bolt(),
+            bob,
+            Zone::Exile,
+        );
+        let exiled_without_counter_id = game.create_object_from_definition(
+            &crate::cards::definitions::grizzly_bears(),
+            bob,
+            Zone::Exile,
+        );
+        for object_id in [exiled_bears_id, exiled_bolt_id] {
+            game.object_mut(object_id)
+                .expect("exiled card should exist")
+                .counters
+                .insert(CounterType::Void, 1);
+        }
+
+        let activated = game
+            .object(dauthi_id)
+            .expect("Dauthi should exist")
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated.clone()),
+                _ => None,
+            })
+            .expect("Dauthi should have an activated ability");
+
+        let mut dm = RecordingObjectChoiceDecisionMaker {
+            pick_index: 1,
+            ..Default::default()
+        };
+        let mut ctx = ExecutionContext::new(dauthi_id, alice, &mut dm);
+        for effect in &activated.effects {
+            execute_effect(&mut game, effect, &mut ctx)
+                .expect("Dauthi activation effect should resolve");
+        }
+
+        assert_eq!(
+            dm.decide_objects_calls, 1,
+            "multiple legal exile targets should surface a choose-objects prompt once"
+        );
+        assert!(
+            dm.legal_candidates.contains(&exiled_bears_id),
+            "void-counter Grizzly Bears should be a legal Dauthi choice"
+        );
+        assert!(
+            dm.legal_candidates.contains(&exiled_bolt_id),
+            "void-counter Lightning Bolt should be a legal Dauthi choice"
+        );
+        assert!(
+            !dm.legal_candidates.contains(&exiled_without_counter_id),
+            "cards without a void counter should not be legal Dauthi choices"
+        );
+
+        let actions_after = compute_legal_actions(&game, alice);
+        assert!(actions_after.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    casting_method: CastingMethod::PlayFrom {
+                        zone: Zone::Exile,
+                        use_alternative: Some(_),
+                        ..
+                    },
+                } if *spell_id == exiled_bolt_id
+            )
+        }));
+        assert!(!actions_after.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    ..
+                } if *spell_id == exiled_bears_id || *spell_id == exiled_without_counter_id
+            )
+        }));
     }
 
     #[test]

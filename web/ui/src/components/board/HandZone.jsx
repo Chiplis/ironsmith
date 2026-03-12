@@ -374,6 +374,16 @@ export default function HandZone({ player, selectedObjectId, onInspect, isExpand
     recenterRouletteIfNeeded();
   }, [recenterRouletteIfNeeded]);
 
+  useEffect(() => {
+    const scrollEl = handScrollRef.current;
+    if (!scrollEl) return undefined;
+
+    scrollEl.addEventListener("wheel", handleRouletteWheel, { passive: false });
+    return () => {
+      scrollEl.removeEventListener("wheel", handleRouletteWheel);
+    };
+  }, [handleRouletteWheel]);
+
   const handlePointerDown = (e, card, plays, glowKind) => {
     if (plays.length === 0) return;
     if (e.button !== 0) return;
@@ -535,7 +545,6 @@ export default function HandZone({ player, selectedObjectId, onInspect, isExpand
             ref={handScrollRef}
             className={`hand-zone-scroll min-h-0 h-full w-full min-w-0 -mx-2 px-2 overflow-x-auto overflow-y-hidden overscroll-x-contain ${isRoulette ? "hand-zone-scroll-roulette" : ""}`}
             onScroll={handleRouletteScroll}
-            onWheel={handleRouletteWheel}
           >
             <div
               ref={handListRef}

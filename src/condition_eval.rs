@@ -1562,6 +1562,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::Attacking
         | PlayerFilter::Defending
         | PlayerFilter::DamagedPlayer
+        | PlayerFilter::EffectController
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::TargetPlayerOrControllerOfTarget
         | PlayerFilter::Excluding { .. }

@@ -6741,8 +6741,8 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
-            let abilities = lower_granted_abilities_ast(abilities)?;
-            if abilities.is_empty() {
+            let modifications = lower_granted_ability_grant_modifications(abilities)?;
+            if modifications.is_empty() {
                 return Err(CardTextError::InvariantViolation(
                     "normalize_effects_ast should remove GrantAbilitiesAll with no abilities"
                         .to_string(),
@@ -6752,15 +6752,13 @@ fn try_compile_continuous_and_modifier_effect(
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let mut apply = crate::effects::ApplyContinuousEffect::new(
                 crate::continuous::EffectTarget::Filter(resolved_filter),
-                crate::continuous::Modification::AddAbility(abilities[0].clone()),
+                modifications[0].clone(),
                 duration.clone(),
             )
             .lock_filter_at_resolution();
 
-            for ability in abilities.iter().skip(1) {
-                apply = apply.with_additional_modification(
-                    crate::continuous::Modification::AddAbility(ability.clone()),
-                );
+            for modification in modifications.iter().skip(1) {
+                apply = apply.with_additional_modification(modification.clone());
             }
 
             (vec![Effect::new(apply)], Vec::new())
@@ -6799,22 +6797,25 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
-            let abilities = lower_granted_abilities_ast(abilities)?;
-            if abilities.is_empty() {
+            let modifications = lower_granted_ability_grant_modifications(abilities)?;
+            if modifications.is_empty() {
                 return Err(CardTextError::InvariantViolation(
                     "normalize_effects_ast should remove GrantAbilitiesChoiceAll with no abilities"
                         .to_string(),
                 ));
             }
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let modes = abilities
+            let modes = modifications
                 .iter()
-                .map(|ability| EffectMode {
+                .map(|modification| EffectMode {
                     description: String::new(),
-                    effects: vec![Effect::grant_abilities_all(
-                        resolved_filter.clone(),
-                        vec![ability.clone()],
-                        duration.clone(),
+                    effects: vec![Effect::new(
+                        crate::effects::ApplyContinuousEffect::new(
+                            crate::continuous::EffectTarget::Filter(resolved_filter.clone()),
+                            modification.clone(),
+                            duration.clone(),
+                        )
+                        .lock_filter_at_resolution(),
                     )],
                 })
                 .collect::<Vec<_>>();
@@ -6825,8 +6826,8 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
-            let abilities = lower_granted_abilities_ast(abilities)?;
-            let Some(first_ability) = abilities.first() else {
+            let modifications = lower_granted_ability_grant_modifications(abilities)?;
+            let Some(first_modification) = modifications.first() else {
                 return Ok(Some(compile_tagged_effect_for_target(
                     target,
                     ctx,
@@ -6838,14 +6839,12 @@ fn try_compile_continuous_and_modifier_effect(
             compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
-                    crate::continuous::Modification::AddAbility(first_ability.clone()),
+                    first_modification.clone(),
                     duration.clone(),
                 );
 
-                for ability in abilities.iter().skip(1) {
-                    apply = apply.with_additional_modification(
-                        crate::continuous::Modification::AddAbility(ability.clone()),
-                    );
+                for modification in modifications.iter().skip(1) {
+                    apply = apply.with_additional_modification(modification.clone());
                 }
 
                 Effect::new(apply)
@@ -6894,8 +6893,8 @@ fn try_compile_continuous_and_modifier_effect(
             abilities,
             duration,
         } => {
-            let abilities = lower_granted_abilities_ast(abilities)?;
-            if abilities.is_empty() {
+            let modifications = lower_granted_ability_grant_modifications(abilities)?;
+            if modifications.is_empty() {
                 return Ok(Some(compile_tagged_effect_for_target(
                     target,
                     ctx,
@@ -6907,19 +6906,14 @@ fn try_compile_continuous_and_modifier_effect(
             compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
                 let modes = abilities
                     .iter()
-                    .map(|ability| EffectMode {
-                        description: if matches!(spec, ChooseSpec::Source) {
-                            format!(
-                                "This creature gains {} until end of turn.",
-                                ability.display()
-                            )
-                        } else {
-                            String::new()
-                        },
+                    .zip(modifications.iter())
+                    .map(|(ability, modification)| EffectMode {
+                        description: granted_ability_mode_description(ability, &spec)
+                            .unwrap_or_default(),
                         effects: vec![Effect::new(
-                            crate::effects::GrantAbilitiesTargetEffect::new(
+                            crate::effects::ApplyContinuousEffect::with_spec(
                                 spec.clone(),
-                                vec![ability.clone()],
+                                modification.clone(),
                                 duration.clone(),
                             ),
                         )],
@@ -7084,6 +7078,49 @@ fn try_compile_search_and_reorder_effect(
     };
 
     Ok(Some(compiled))
+}
+
+fn lower_granted_ability_grant_modifications(
+    abilities: &[GrantedAbilityAst],
+) -> Result<Vec<crate::continuous::Modification>, CardTextError> {
+    let mut modifications = Vec::with_capacity(abilities.len());
+    for ability in abilities {
+        match ability {
+            GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
+                let lowered = lower_parsed_ability(ability.clone())?;
+                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
+                    lowered.ability,
+                ));
+            }
+            _ => {
+                let mut lowered = lower_granted_abilities_ast(std::slice::from_ref(ability))?;
+                if let Some(static_ability) = lowered.pop() {
+                    modifications.push(crate::continuous::Modification::AddAbility(static_ability));
+                }
+            }
+        }
+    }
+    Ok(modifications)
+}
+
+fn granted_ability_mode_description(
+    ability: &GrantedAbilityAst,
+    spec: &ChooseSpec,
+) -> Result<String, CardTextError> {
+    if !matches!(spec, ChooseSpec::Source) {
+        return Ok(String::new());
+    }
+
+    let display = match ability {
+        GrantedAbilityAst::ParsedObjectAbility { display, .. } => display.clone(),
+        _ => lower_granted_abilities_ast(std::slice::from_ref(ability))?
+            .into_iter()
+            .next()
+            .map(|ability| ability.display())
+            .unwrap_or_default(),
+    };
+
+    Ok(format!("This creature gains {display} until end of turn."))
 }
 
 fn try_compile_object_zone_and_exchange_effect(

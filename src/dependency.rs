@@ -695,6 +695,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::Defending
             | PlayerFilter::Attacking
             | PlayerFilter::DamagedPlayer
+            | PlayerFilter::EffectController
             | PlayerFilter::IteratedPlayer
             | PlayerFilter::TargetPlayerOrControllerOfTarget
             | PlayerFilter::Target(_)

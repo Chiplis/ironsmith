@@ -1958,7 +1958,14 @@ fn get_mana_cost_for_method<'a>(
     method: &'a crate::alternative_cast::AlternativeCastingMethod,
     spell: &'a crate::object::Object,
 ) -> Option<&'a crate::mana::ManaCost> {
-    // Method's cost takes priority, fallback to spell's cost
+    // Composed costs can intentionally represent "without paying its mana cost"
+    // by omitting a mana component, so do not fall back to the card's printed cost.
+    if method.is_composed_cost() {
+        return method.mana_cost();
+    }
+
+    // Method's cost takes priority, fallback to spell's cost for methods that
+    // explicitly say they reuse the spell's normal mana cost.
     method.mana_cost().or(spell.mana_cost.as_ref())
 }
 

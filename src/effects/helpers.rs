@@ -981,6 +981,7 @@ pub fn resolve_player_filter(
 ) -> Result<PlayerId, ExecutionError> {
     match spec {
         PlayerFilter::You => Ok(ctx.controller),
+        PlayerFilter::EffectController => Ok(ctx.controller),
         PlayerFilter::Any => {
             // "Any" player needs resolution from targets or defaults to controller
             for target in &ctx.targets {
@@ -1853,6 +1854,7 @@ fn resolve_player_filter_to_list(
 ) -> Result<Vec<PlayerId>, ExecutionError> {
     match filter {
         PlayerFilter::You => Ok(vec![ctx.controller]),
+        PlayerFilter::EffectController => Ok(vec![ctx.controller]),
         PlayerFilter::Any | PlayerFilter::Target(_) => {
             // For Any/Target, check targets first
             for target in &ctx.targets {

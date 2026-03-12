@@ -814,6 +814,7 @@ pub fn player_matches_filter_with_combat(
             .map(|c| get_attacking_player(c, game) == Some(player_id))
             .unwrap_or(false),
         PlayerFilter::DamagedPlayer => false,
+        PlayerFilter::EffectController => player_id == controller,
         PlayerFilter::Specific(id) => player_id == *id,
         PlayerFilter::IteratedPlayer => {
             // IteratedPlayer is resolved at runtime during iteration, not here

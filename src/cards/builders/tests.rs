@@ -7196,6 +7196,64 @@ fn parse_all_slivers_have_triggered_ability_as_static_grant() {
 }
 
 #[test]
+fn hellish_rebuke_keeps_lose_life_inside_granted_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hellish Rebuke")
+        .parse_text(
+            "Until end of turn, permanents your opponents control gain \"When this permanent deals damage to the player who cast Hellish Rebuke, sacrifice this permanent. You lose 2 life.\"",
+        )
+        .expect("hellish rebuke grant line should parse");
+
+    let spell_effects = def
+        .spell_effect
+        .as_ref()
+        .expect("hellish rebuke should compile to spell effects");
+    assert_eq!(
+        spell_effects.len(),
+        1,
+        "lose life should not be hoisted to a top-level spell effect: {spell_effects:?}"
+    );
+
+    let [apply_effect] = spell_effects.as_slice() else {
+        panic!("expected exactly one top-level spell effect: {spell_effects:?}");
+    };
+    let apply = apply_effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .expect("top-level spell effect should be a continuous grant");
+    let granted = apply
+        .modification
+        .as_ref()
+        .and_then(|modification| match modification {
+            crate::continuous::Modification::AddAbilityGeneric(ability) => Some(ability),
+            crate::continuous::Modification::AddAbility(static_ability) => {
+                static_ability.granted_inline_ability()
+            }
+            _ => None,
+        })
+        .expect("continuous effect should grant an inline ability");
+
+    let crate::ability::AbilityKind::Triggered(triggered) = &granted.kind else {
+        panic!("expected granted inline ability to be triggered: {granted:?}");
+    };
+    assert_eq!(
+        triggered.effects.len(),
+        2,
+        "granted trigger should keep both sacrifice and lose-life effects: {triggered:?}"
+    );
+    assert!(
+        triggered.effects.iter().any(|effect| effect
+            .downcast_ref::<crate::effects::LoseLifeEffect>()
+            .is_some()),
+        "granted trigger should include lose-life effect: {triggered:?}"
+    );
+
+    let trigger_debug = format!("{:?}", triggered.trigger);
+    assert!(
+        trigger_debug.contains("damaged_player: Some("),
+        "granted trigger should constrain the damaged player: {trigger_debug}"
+    );
+}
+
+#[test]
 fn parse_prevent_all_combat_damage_global_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fog Variant")
         .parse_text("Prevent all combat damage that would be dealt this turn.")
@@ -16764,6 +16822,10 @@ fn parse_dauthi_voidwalker_full_text_without_parser_fallback() {
         .expect("Dauthi Voidwalker text should parse");
 
     let abilities_debug = format!("{:#?}", def.abilities);
+    let abilities_debug_compact: String = abilities_debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect();
     assert!(
         !abilities_debug.contains("UnsupportedParserLine"),
         "expected full Dauthi text to avoid unsupported parser fallbacks, got {abilities_debug}"
@@ -16774,7 +16836,8 @@ fn parse_dauthi_voidwalker_full_text_without_parser_fallback() {
     );
     assert!(
         abilities_debug.contains("ChooseObjectsEffect")
-            && abilities_debug.contains("zone: Some(Exile)"),
+            && abilities_debug_compact.contains("zone:Some(Exile,)")
+            && abilities_debug_compact.contains("with_counter:Some(Typed(Void,))"),
         "expected Dauthi activation to choose from exile, got {abilities_debug}"
     );
     assert!(
