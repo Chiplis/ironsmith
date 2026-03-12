@@ -174,10 +174,15 @@ fn lower_conditional_static_ability(
     ability: StaticAbilityAst,
     condition: crate::ConditionExpr,
 ) -> Result<StaticAbility, CardTextError> {
-    Ok(StaticAbility::new(
-        crate::static_abilities::GrantAbility::source(lower_static_ability_ast(ability)?)
-            .with_condition(condition),
-    ))
+    let lowered = lower_static_ability_ast(ability)?;
+    Ok(lowered
+        .clone()
+        .with_condition(condition.clone())
+        .unwrap_or_else(|| {
+            StaticAbility::new(
+                crate::static_abilities::GrantAbility::source(lowered).with_condition(condition),
+            )
+        }))
 }
 
 fn lower_grant_static_ability(

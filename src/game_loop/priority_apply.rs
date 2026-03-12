@@ -20,15 +20,18 @@ fn build_target_assignments(
 ) -> Result<Vec<crate::game_state::TargetAssignment>, GameLoopError> {
     let requirement_contexts = requirements
         .iter()
-        .map(|requirement| crate::decisions::context::TargetRequirementContext {
-            description: requirement.description.clone(),
-            legal_targets: requirement.legal_targets.clone(),
-            min_targets: requirement.min_targets,
-            max_targets: requirement.max_targets,
-        })
+        .map(
+            |requirement| crate::decisions::context::TargetRequirementContext {
+                description: requirement.description.clone(),
+                legal_targets: requirement.legal_targets.clone(),
+                min_targets: requirement.min_targets,
+                max_targets: requirement.max_targets,
+            },
+        )
         .collect::<Vec<_>>();
 
-    let Some(ranges) = crate::targeting::assigned_target_ranges(&requirement_contexts, targets) else {
+    let Some(ranges) = crate::targeting::assigned_target_ranges(&requirement_contexts, targets)
+    else {
         return Err(GameLoopError::InvalidState(
             "targets do not satisfy the stored targeting requirements".to_string(),
         ));
@@ -279,7 +282,7 @@ pub fn apply_priority_response_with_dm(
         | LegalAction::SerumPowderMulligan { .. }
         | LegalAction::ContinuePregame
         | LegalAction::BeginGame
-        | LegalAction::BeginWithGemstoneCaverns { .. } => Err(GameLoopError::InvalidState(
+        | LegalAction::UsePregameAction { .. } => Err(GameLoopError::InvalidState(
             "Pregame actions can't be used during the normal priority loop".to_string(),
         )),
         LegalAction::PlayLand { land_id } => {
@@ -525,8 +528,8 @@ pub fn apply_priority_response_with_dm(
         } => {
             // Re-check activation legality at execution time so stale actions can’t
             // bypass constraints discovered after action discovery.
-            if let Some(obj) = game.object(*source) {
-                if let Some(ability) = obj.abilities.get(*ability_index) {
+            if game.object(*source).is_some() {
+                if let Some(ability) = game.current_ability(*source, *ability_index) {
                     if let AbilityKind::Activated(activated) = &ability.kind {
                         if !can_activate_ability_with_restrictions(
                             game,
@@ -572,7 +575,7 @@ pub fn apply_priority_response_with_dm(
                 let name = obj.name.clone();
                 let snapshot =
                     ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-                if let Some(ability) = obj.abilities.get(*ability_index) {
+                if let Some(ability) = game.current_ability(*source, *ability_index) {
                     if let AbilityKind::Activated(activated) = &ability.kind {
                         let is_turn_capped = activated.max_activations_per_turn().is_some();
                         (
@@ -735,8 +738,8 @@ pub fn apply_priority_response_with_dm(
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
 
-            if let Some(obj) = game.object(*source)
-                && let Some(ability) = obj.abilities.get(*ability_index)
+            if game.object(*source).is_some()
+                && let Some(ability) = game.current_ability(*source, *ability_index)
                 && let AbilityKind::Activated(mana_ability) = &ability.kind
                 && mana_ability.is_mana_ability()
             {

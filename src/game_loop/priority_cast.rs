@@ -1505,8 +1505,8 @@ pub(super) fn compute_mana_ability_payment_options(
 
         // Get the mana this ability produces and check if it can help pay the cost
         let allow_any_color = game.can_spend_mana_as_any_color(player, Some(pending.source));
-        let can_help = if let Some(perm) = game.object(*perm_id)
-            && let Some(ability) = perm.abilities.get(*ability_index)
+        let can_help = if game.object(*perm_id).is_some()
+            && let Some(ability) = game.current_ability(*perm_id, *ability_index)
             && let AbilityKind::Activated(mana_ability) = &ability.kind
             && mana_ability.is_mana_ability()
         {
@@ -1635,7 +1635,10 @@ pub(super) fn get_available_mana_abilities(
             continue;
         }
 
-        for (i, ability) in perm.abilities.iter().enumerate() {
+        let current_abilities = game
+            .current_abilities(perm_id)
+            .unwrap_or_else(|| perm.abilities.clone());
+        for (i, ability) in current_abilities.iter().enumerate() {
             if ability.is_mana_ability() {
                 let action = SpecialAction::ActivateManaAbility {
                     permanent_id: perm_id,

@@ -1,104 +1,11 @@
 //! Card definition for Bello, Bard of the Brambles.
 
-use crate::ability::Ability;
 use crate::card::PowerToughness;
 use crate::cards::CardDefinition;
 use crate::cards::builders::CardDefinitionBuilder;
-use crate::continuous::{
-    ContinuousEffect, EffectSourceType, EffectTarget, Modification, PtSublayer,
-};
-use crate::effect::Value;
-use crate::filter::Comparison;
-use crate::game_state::GameState;
-use crate::ids::{CardId, ObjectId, PlayerId};
+use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::static_abilities::{StaticAbility, StaticAbilityId, StaticAbilityKind};
-use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype, Supertype};
-
-/// Bello's effect logic lives with the card definition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct BelloCardEffect;
-
-impl StaticAbilityKind for BelloCardEffect {
-    fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::BelloBardOfTheBrambles
-    }
-
-    fn display(&self) -> String {
-        "During your turn, each non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater is a 4/4 Elemental creature in addition to its other types and has indestructible, haste, and \"Whenever this creature deals combat damage to a player, draw a card.\"".to_string()
-    }
-
-    fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
-        game.object(source)
-            .map(|obj| game.turn.active_player == obj.controller)
-            .unwrap_or(false)
-    }
-
-    fn generate_effects(
-        &self,
-        source: ObjectId,
-        controller: PlayerId,
-        _game: &GameState,
-    ) -> Vec<ContinuousEffect> {
-        let filter = ObjectFilter::permanent()
-            .you_control()
-            .with_type(CardType::Artifact)
-            .with_type(CardType::Enchantment)
-            .without_subtype(Subtype::Equipment)
-            .without_subtype(Subtype::Aura)
-            .with_mana_value(Comparison::GreaterThanOrEqual(4));
-
-        vec![
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(filter.clone()),
-                Modification::AddCardTypes(vec![CardType::Creature]),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(filter.clone()),
-                Modification::AddSubtypes(vec![Subtype::Elemental]),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(filter.clone()),
-                Modification::AddAbility(StaticAbility::indestructible()),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(filter.clone()),
-                Modification::AddAbility(StaticAbility::haste()),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(filter.clone()),
-                Modification::AddCombatDamageDrawAbility,
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(filter),
-                Modification::SetPowerToughness {
-                    power: Value::Fixed(4),
-                    toughness: Value::Fixed(4),
-                    sublayer: PtSublayer::Setting,
-                },
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-        ]
-    }
-}
 
 /// Bello, Bard of the Brambles {2}{R}{G}
 /// Legendary Creature — Raccoon Bard
@@ -118,8 +25,13 @@ pub fn bello_bard_of_the_brambles() -> CardDefinition {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Raccoon, Subtype::Bard])
         .power_toughness(PowerToughness::fixed(3, 3))
-        .with_ability(Ability::static_ability(StaticAbility::new(BelloCardEffect)))
-        .build()
+        .parse_text(
+            "During your turn, each non-Equipment artifact and non-Aura enchantment you control \
+             with mana value 4 or greater is a 4/4 Elemental creature in addition to its other \
+             types and has indestructible, haste, and \"Whenever this creature deals combat \
+             damage to a player, draw a card.\"",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]
@@ -135,30 +47,43 @@ mod tests {
         assert_eq!(def.card.name, "Bello, Bard of the Brambles");
         assert_eq!(def.card.mana_cost.as_ref().unwrap().mana_value(), 4);
         assert!(def.card.is_creature());
-        assert_eq!(def.abilities.len(), 1);
-
-        let ability = &def.abilities[0];
-        if let AbilityKind::Static(s) = &ability.kind {
-            assert_eq!(
-                s.id(),
-                crate::static_abilities::StaticAbilityId::BelloBardOfTheBrambles
-            );
-        } else {
-            panic!("Expected static ability");
-        }
+        assert_eq!(def.abilities.len(), 6);
+        assert!(
+            def.abilities
+                .iter()
+                .all(|ability| matches!(ability.kind, AbilityKind::Static(_))),
+        );
     }
 
     #[test]
-    fn test_bello_effect_generates_six_effects() {
-        let effect = BelloCardEffect;
-        let game =
-            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
-        let effects = effect.generate_effects(
-            crate::ids::ObjectId::from_raw(1),
-            crate::ids::PlayerId::from_index(0),
-            &game,
+    fn test_bello_animates_non_equipment_artifacts_too() {
+        use crate::cards::definitions::mycosynth_lattice;
+        use crate::tests::test_helpers::setup_two_player_game;
+        use crate::zone::Zone;
+
+        let mut game = setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        game.create_object_from_definition(&bello_bard_of_the_brambles(), alice, Zone::Battlefield);
+        let eye_id =
+            game.create_object_from_definition(&mycosynth_lattice(), alice, Zone::Battlefield);
+        game.turn.active_player = alice;
+
+        let eye = game
+            .calculated_characteristics(eye_id)
+            .expect("calculated characteristics should exist");
+        assert!(eye.card_types.contains(&CardType::Creature));
+        assert!(eye.subtypes.contains(&Subtype::Elemental));
+        assert_eq!(game.calculated_power(eye_id), Some(4));
+        assert_eq!(game.calculated_toughness(eye_id), Some(4));
+
+        let has_haste = eye
+            .abilities
+            .iter()
+            .any(|a| matches!(&a.kind, AbilityKind::Static(s) if s.has_haste()));
+        assert!(
+            has_haste,
+            "Bello should grant haste to qualifying artifacts too"
         );
-        assert_eq!(effects.len(), 6);
     }
 
     /// Humility first, then Bello.

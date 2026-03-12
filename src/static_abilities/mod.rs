@@ -284,6 +284,20 @@ impl ThisSpellCastRestrictionKind {
     }
 }
 
+/// Pregame action available from a card in opening hand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PregameActionKind {
+    BeginOnBattlefield(PregameBeginOnBattlefieldSpec),
+}
+
+/// "You may begin the game with this on the battlefield" pregame action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PregameBeginOnBattlefieldSpec {
+    pub require_not_starting_player: bool,
+    pub counters: Vec<(crate::object::CounterType, u32)>,
+    pub exile_cards_from_hand: usize,
+}
+
 /// Trait for static ability behavior.
 ///
 /// All static abilities implement this trait. Each ability is responsible for:
@@ -318,6 +332,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     ///
     /// Examples: "Flying", "Protection from red", "Creatures you control get +1/+1"
     fn display(&self) -> String;
+
+    /// Clone this ability while attaching a static condition, when the concrete
+    /// ability kind supports native conditional evaluation.
+    fn with_static_condition(&self, _condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        None
+    }
 
     /// Clone this ability into a boxed trait object.
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
@@ -792,6 +812,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     fn this_spell_cast_restriction_kind(&self) -> Option<ThisSpellCastRestrictionKind> {
         None
     }
+
+    /// Return a pregame-action descriptor, if this ability creates one.
+    fn pregame_action_kind(&self) -> Option<PregameActionKind> {
+        None
+    }
 }
 
 /// Spec for "as this enters, choose a color" abilities.
@@ -877,9 +902,17 @@ impl StaticAbility {
         self.0.this_spell_cast_restriction_kind()
     }
 
+    pub fn pregame_action_kind(&self) -> Option<PregameActionKind> {
+        self.0.pregame_action_kind()
+    }
+
     /// Get the display text for this ability.
     pub fn display(&self) -> String {
         self.0.display()
+    }
+
+    pub fn with_condition(&self, condition: crate::ConditionExpr) -> Option<Self> {
+        self.0.with_static_condition(condition)
     }
 
     /// Generate continuous effects for this ability.
@@ -2038,6 +2071,10 @@ impl StaticAbility {
 
     pub fn unsupported_parser_line(raw_line: impl Into<String>, reason: impl Into<String>) -> Self {
         Self::new(UnsupportedParserLine::new(raw_line, reason))
+    }
+
+    pub fn pregame_action(kind: PregameActionKind, text: impl Into<String>) -> Self {
+        Self::new(PregameAction::new(kind, text))
     }
 
     pub fn cant_be_countered_ability() -> Self {

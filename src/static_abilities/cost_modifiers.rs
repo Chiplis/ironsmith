@@ -2,7 +2,7 @@
 //!
 //! These abilities modify the costs of spells being cast.
 
-use super::{StaticAbilityId, StaticAbilityKind, text_utils::join_with_and};
+use super::{StaticAbility, StaticAbilityId, StaticAbilityKind, text_utils::join_with_and};
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
 use crate::filter::{AlternativeCastKind, Comparison};
@@ -530,6 +530,10 @@ impl StaticAbilityKind for CostReduction {
             line.push_str(&tail);
         }
         describe_cost_modifier_with_condition(line, &self.condition)
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn modifies_costs(&self) -> bool {
@@ -1270,6 +1274,10 @@ impl StaticAbilityKind for CostIncrease {
         describe_cost_modifier_with_condition(line, &self.condition)
     }
 
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
     fn modifies_costs(&self) -> bool {
         true
     }
@@ -1320,6 +1328,10 @@ impl StaticAbilityKind for CostReductionManaCost {
         describe_cost_modifier_with_condition(line, &self.condition)
     }
 
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
     fn modifies_costs(&self) -> bool {
         true
     }
@@ -1368,6 +1380,10 @@ impl StaticAbilityKind for CostIncreaseManaCost {
             describe_cost_modifier_mana_cost(&self.increase)
         );
         describe_cost_modifier_with_condition(line, &self.condition)
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn modifies_costs(&self) -> bool {

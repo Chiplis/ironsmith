@@ -1,12 +1,9 @@
 //! Card definition for Mindbreak Trap.
 
-use crate::alternative_cast::{AlternativeCastingMethod, TrapCondition};
 use crate::cards::CardDefinition;
 use crate::cards::builders::CardDefinitionBuilder;
-use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype};
 
 /// Creates the Mindbreak Trap card definition.
@@ -25,18 +22,16 @@ pub fn mindbreak_trap() -> CardDefinition {
         ]))
         .card_types(vec![CardType::Instant])
         .subtypes(vec![Subtype::Trap])
-        .alternative_cast(AlternativeCastingMethod::MindbreakTrap {
-            name: "Mindbreak Trap's trap cost",
-            cost: ManaCost::new(), // {0}
-            condition: TrapCondition::OpponentCastSpells { count: 3 },
-        })
-        .with_spell_effect(vec![Effect::exile_any_number(ChooseSpec::spell())])
-        .build()
+        .parse_text(
+            "If an opponent cast three or more spells this turn, you may pay {0} rather than pay this spell's mana cost.\nExile any number of target spells.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{AlternativeCastingMethod, TrapCondition};
 
     #[test]
     fn test_mindbreak_trap_basic() {
@@ -56,7 +51,7 @@ mod tests {
             cost, condition, ..
         } = &card.alternative_casts[0]
         {
-            assert!(cost.is_empty()); // {0}
+            assert_eq!(cost.mana_value(), 0); // {0}
             assert_eq!(*condition, TrapCondition::OpponentCastSpells { count: 3 });
         } else {
             panic!("Expected Trap alternative cast");

@@ -1,48 +1,16 @@
 //! Ashnod's Altar card definition.
-
-use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
-use crate::cost::TotalCost;
-use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
-use crate::zone::Zone;
 
 /// Ashnod's Altar - {3}
 /// Artifact
 /// Sacrifice a creature: Add {C}{C}.
 pub fn ashnods_altar() -> CardDefinition {
-    // Cost effects: Choose a creature you control, then sacrifice it
-    let additional_costs = vec![
-        crate::costs::Cost::try_from_runtime_effect(Effect::choose_objects(
-            ObjectFilter::creature().you_control(),
-            1,
-            PlayerFilter::You,
-            "sac",
-        ))
-        .expect("choose cost should be cost-capable"),
-        crate::costs::Cost::try_from_runtime_effect(Effect::sacrifice(
-            ObjectFilter::tagged("sac"),
-            1,
-        ))
-        .expect("sacrifice cost should be cost-capable"),
-    ];
-
     CardDefinitionBuilder::new(CardId::new(), "Ashnod's Altar")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
         .card_types(vec![CardType::Artifact])
-        // Mana ability: sacrifice creature -> add CC
-        .with_ability(Ability {
-            kind: AbilityKind::Activated(ActivatedAbility::mana_with_costs(
-                TotalCost::free(),
-                additional_costs,
-                vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
-            )),
-            functional_zones: vec![Zone::Battlefield],
-            text: Some("Sacrifice a creature: Add {C}{C}.".to_string()),
-        })
         .parse_text("Sacrifice a creature: Add {C}{C}.")
         .expect("Card text should be supported")
 }

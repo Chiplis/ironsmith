@@ -1,45 +1,51 @@
 //! Gemstone Caverns card definition.
 
-use crate::ConditionExpr;
-use crate::ability::{Ability, AbilityKind};
-use crate::card::CardBuilder;
-use crate::cards::CardDefinition;
-use crate::cost::TotalCost;
-use crate::effect::Effect;
-use crate::effects::AddManaOfAnyColorEffect;
+use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::ids::CardId;
-use crate::mana::ManaSymbol;
-use crate::object::CounterType;
+use crate::mana::ManaCost;
 use crate::types::{CardType, Supertype};
 
 /// Creates the Gemstone Caverns card definition.
 pub fn gemstone_caverns() -> CardDefinition {
-    let card = CardBuilder::new(CardId::new(), "Gemstone Caverns")
+    CardDefinitionBuilder::new(CardId::new(), "Gemstone Caverns")
+        .mana_cost(ManaCost::new())
         .supertypes(vec![Supertype::Legendary])
         .card_types(vec![CardType::Land])
-        .oracle_text(
-            "If Gemstone Caverns is in your opening hand and you're not starting the game, you may begin the game with it on the battlefield with a luck counter on it. If you do, exile a card from your hand.\n{T}: Add {C}.\n{T}: Add one mana of any color. Activate only if Gemstone Caverns has a luck counter on it.",
+        .parse_text(
+            "If this card is in your opening hand and you're not the starting player, you may begin the game with Gemstone Caverns on the battlefield with a luck counter on it. If you do, exile a card from your hand.\n{T}: Add {C}. If Gemstone Caverns has a luck counter on it, instead add one mana of any color.",
         )
-        .build();
+        .expect("Card text should be supported")
+}
 
-    let mut rainbow = Ability::mana_with_effects(
-        TotalCost::free(),
-        vec![Effect::new(AddManaOfAnyColorEffect::you(1))],
-    )
-    .with_text("{T}: Add one mana of any color.");
-    if let AbilityKind::Activated(activated) = &mut rainbow.kind {
-        activated.activation_condition = Some(ConditionExpr::SourceHasCounterAtLeast {
-            counter_type: CounterType::Luck,
-            count: 1,
-        });
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ability::AbilityKind;
+    use crate::object::CounterType;
+    use crate::static_abilities::PregameActionKind;
+
+    #[test]
+    fn test_gemstone_caverns_parser_backed_pregame_action() {
+        let card = gemstone_caverns();
+        assert_eq!(card.card.name, "Gemstone Caverns");
+        assert!(card.card.card_types.contains(&CardType::Land));
+        assert!(card.card.supertypes.contains(&Supertype::Legendary));
+
+        assert!(matches!(
+            &card.abilities[0].kind,
+            AbilityKind::Static(static_ability)
+                if matches!(
+                    static_ability.pregame_action_kind(),
+                    Some(PregameActionKind::BeginOnBattlefield(spec))
+                        if spec.require_not_starting_player
+                            && spec.exile_cards_from_hand == 1
+                            && spec.counters == vec![(CounterType::Luck, 1)]
+                )
+        ));
+        assert!(
+            card.abilities
+                .iter()
+                .any(|ability| ability.is_mana_ability())
+        );
     }
-
-    CardDefinition::with_abilities(
-        card,
-        vec![
-            Ability::mana(TotalCost::free(), vec![ManaSymbol::Colorless])
-                .with_text("{T}: Add {C}."),
-            rainbow,
-        ],
-    )
 }

@@ -1,15 +1,9 @@
 //! Snapcaster Mage card definition.
-
-use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::card::PowerToughness;
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
-use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-use crate::triggers::Trigger;
 use crate::types::{CardType, Subtype};
-use crate::zone::Zone;
 
 /// Snapcaster Mage - {1}{U}
 /// Creature — Human Wizard (2/1)
@@ -17,7 +11,7 @@ use crate::zone::Zone;
 /// When Snapcaster Mage enters the battlefield, target instant or sorcery card
 /// in your graveyard gains flashback until end of turn.
 pub fn snapcaster_mage() -> CardDefinition {
-    let mut def = CardDefinitionBuilder::new(CardId::new(), "Snapcaster Mage")
+    CardDefinitionBuilder::new(CardId::new(), "Snapcaster Mage")
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::Generic(1)],
             vec![ManaSymbol::Blue],
@@ -25,37 +19,10 @@ pub fn snapcaster_mage() -> CardDefinition {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Human, Subtype::Wizard])
         .power_toughness(PowerToughness::fixed(2, 1))
-        .parse_text("Flash")
-        .expect("Card text should be supported");
-
-    let target = ChooseSpec::Object(ObjectFilter {
-        zone: Some(Zone::Graveyard),
-        card_types: vec![CardType::Instant, CardType::Sorcery],
-        owner: Some(PlayerFilter::You),
-        ..Default::default()
-    });
-
-    def.abilities.push(Ability {
-        kind: AbilityKind::Triggered(TriggeredAbility {
-            trigger: Trigger::this_enters_battlefield(),
-            effects: vec![Effect::grant_flashback_until_eot_unified(target)],
-            choices: vec![],
-            intervening_if: None,
-        }),
-        functional_zones: vec![Zone::Battlefield],
-        text: Some(
-            "When Snapcaster Mage enters the battlefield, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost."
-                .to_string(),
-        ),
-    });
-
-    def.card.oracle_text = format!(
-        "{}\n{}",
-        def.card.oracle_text,
-        "When Snapcaster Mage enters the battlefield, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost."
-    );
-
-    def
+        .parse_text(
+            "Flash\nWhen Snapcaster Mage enters the battlefield, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

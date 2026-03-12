@@ -19,7 +19,7 @@ use crate::cards::builders::{
     parse_effect_chain, parse_effect_clause_with_trailing_if, parse_effect_sentence,
     parse_may_cast_it_sentence, parse_number, parse_object_filter, parse_restriction_duration,
     parse_search_library_disjunction_filter, parse_sentence_exile_that_token_when_source_leaves,
-    parse_sentence_sacrifice_source_when_that_token_leaves, parse_subject,
+    parse_sentence_sacrifice_source_when_that_token_leaves, parse_subject, parse_target_phrase,
     parse_target_player_chooses_then_other_cant_block, parse_token_copy_modifier_sentence,
     parse_where_x_value_clause, parser_trace, replace_unbound_x_with_value, span_from_tokens,
     split_on_period, strip_embedded_token_rules_text, target_ast_to_object_filter,
@@ -218,10 +218,14 @@ fn parse_pair_sentence_sequence(
     first: &[Token],
     second: &[Token],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
-    const RULES: [(&str, PairSentenceRule); 8] = [
+    const RULES: [(&str, PairSentenceRule); 9] = [
         (
             "delayed-dies-exile-top-power-choose-play",
             parse_delayed_dies_exile_top_power_choose_play,
+        ),
+        (
+            "target-gains-flashback-until-eot-targets-mana-cost",
+            parse_target_gains_flashback_until_eot_with_targets_mana_cost,
         ),
         (
             "mill-then-put-from-among-into-hand",
@@ -260,6 +264,69 @@ fn parse_pair_sentence_sequence(
     }
 
     Ok(None)
+}
+
+fn parse_target_gains_flashback_until_eot_with_targets_mana_cost(
+    first: &[Token],
+    second: &[Token],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(first);
+    let first_words = words(&first_tokens);
+    let Some(gain_idx) = first_words
+        .iter()
+        .position(|word| matches!(*word, "gain" | "gains"))
+    else {
+        return Ok(None);
+    };
+    if first_words[gain_idx + 1..] != ["flashback", "until", "end", "of", "turn"] {
+        return Ok(None);
+    }
+
+    let Some(gain_token_idx) = token_index_for_word_index(&first_tokens, gain_idx) else {
+        return Ok(None);
+    };
+    let target_tokens = trim_commas(&first_tokens[..gain_token_idx]);
+    if target_tokens.is_empty() {
+        return Ok(None);
+    }
+    let target = parse_target_phrase(&target_tokens)?;
+
+    let second_tokens = trim_commas(second);
+    let second_words = words(&second_tokens);
+    let valid_followup = second_words.as_slice()
+        == [
+            "the",
+            "flashback",
+            "cost",
+            "is",
+            "equal",
+            "to",
+            "its",
+            "mana",
+            "cost",
+        ]
+        || second_words.as_slice()
+            == [
+                "that",
+                "cards",
+                "flashback",
+                "cost",
+                "is",
+                "equal",
+                "to",
+                "its",
+                "mana",
+                "cost",
+            ];
+    if !valid_followup {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![EffectAst::GrantToTarget {
+        target,
+        grantable: crate::grant::Grantable::flashback_from_cards_mana_cost(),
+        duration: crate::grant::GrantDuration::UntilEndOfTurn,
+    }]))
 }
 
 fn parse_tap_all_then_they_dont_untap_while_source_tapped(
@@ -1910,6 +1977,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
         | EffectAst::RemoveUpToAnyCounters { target, .. }
         | EffectAst::Pump { target, .. }
         | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::GrantToTarget { target, .. }
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::GrantProtectionChoice { target, .. }
         | EffectAst::PreventDamage { target, .. }
@@ -2291,6 +2359,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             ..
         }
         | EffectAst::GrantAbilitiesToTarget {
+            target: effect_target,
+            ..
+        }
+        | EffectAst::GrantToTarget {
             target: effect_target,
             ..
         }

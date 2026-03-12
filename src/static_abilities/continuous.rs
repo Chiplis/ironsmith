@@ -760,6 +760,10 @@ impl StaticAbilityKind for Anthem {
         text
     }
 
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
     fn generate_effects(
         &self,
         source: ObjectId,
@@ -868,6 +872,10 @@ impl StaticAbilityKind for GrantAbility {
             text.push_str(&describe_static_condition(condition));
         }
         text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn grants_abilities(&self) -> bool {
@@ -1204,6 +1212,7 @@ pub struct SetBasePowerToughnessForFilter {
     pub power: i32,
     /// Base toughness value.
     pub toughness: i32,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl SetBasePowerToughnessForFilter {
@@ -1212,7 +1221,13 @@ impl SetBasePowerToughnessForFilter {
             filter,
             power,
             toughness,
+            condition: None,
         }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -1228,18 +1243,32 @@ impl StaticAbilityKind for SetBasePowerToughnessForFilter {
             || subject.starts_with("this ")
             || subject.starts_with("that ");
         let verb = if singular { "has" } else { "have" };
-        format!(
+        let mut text = format!(
             "{subject} {verb} base power and toughness {}/{}",
             self.power, self.toughness
-        )
+        );
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
         &self,
         source: ObjectId,
         controller: PlayerId,
-        _game: &GameState,
+        game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        if let Some(condition) = &self.condition
+            && !static_condition_is_active(condition, game, source, controller)
+        {
+            return Vec::new();
+        }
         vec![
             ContinuousEffect::new(
                 source,
@@ -1314,6 +1343,10 @@ impl StaticAbilityKind for CopyActivatedAbilities {
 
     fn display(&self) -> String {
         self.display.clone()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
@@ -1417,6 +1450,10 @@ impl StaticAbilityKind for SetColorsForFilter {
             text.push_str(&describe_static_condition(condition));
         }
         text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
@@ -1538,17 +1575,29 @@ impl StaticAbilityKind for AddColorsForFilter {
 pub struct AddCardTypesForFilter {
     pub filter: ObjectFilter,
     pub card_types: Vec<CardType>,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl AddCardTypesForFilter {
     pub fn new(filter: ObjectFilter, card_types: Vec<CardType>) -> Self {
-        Self { filter, card_types }
+        Self {
+            filter,
+            card_types,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
 impl PartialEq for AddCardTypesForFilter {
     fn eq(&self, other: &Self) -> bool {
-        self.filter == other.filter && self.card_types == other.card_types
+        self.filter == other.filter
+            && self.card_types == other.card_types
+            && self.condition == other.condition
     }
 }
 
@@ -1565,18 +1614,32 @@ impl StaticAbilityKind for AddCardTypesForFilter {
             .iter()
             .map(|card_type| card_type.name().to_string())
             .collect::<Vec<_>>();
-        format!(
+        let mut text = format!(
             "{subject} {verb} {} in addition to {possessive} other types",
             join_with_and(&types)
-        )
+        );
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
         &self,
         source: ObjectId,
         controller: PlayerId,
-        _game: &GameState,
+        game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        if let Some(condition) = &self.condition
+            && !static_condition_is_active(condition, game, source, controller)
+        {
+            return Vec::new();
+        }
         vec![
             ContinuousEffect::new(
                 source,
@@ -1639,6 +1702,10 @@ impl StaticAbilityKind for RemoveCardTypesForFilter {
             text.push_str(&describe_static_condition(condition));
         }
         text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
@@ -1722,17 +1789,29 @@ impl StaticAbilityKind for SetCardTypesForFilter {
 pub struct AddSubtypesForFilter {
     pub filter: ObjectFilter,
     pub subtypes: Vec<Subtype>,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl AddSubtypesForFilter {
     pub fn new(filter: ObjectFilter, subtypes: Vec<Subtype>) -> Self {
-        Self { filter, subtypes }
+        Self {
+            filter,
+            subtypes,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
 impl PartialEq for AddSubtypesForFilter {
     fn eq(&self, other: &Self) -> bool {
-        self.filter == other.filter && self.subtypes == other.subtypes
+        self.filter == other.filter
+            && self.subtypes == other.subtypes
+            && self.condition == other.condition
     }
 }
 
@@ -1771,15 +1850,30 @@ impl StaticAbilityKind for AddSubtypesForFilter {
         } else {
             "other types"
         };
-        format!("{subject} {verb} {subtype_phrase} in addition to {possessive} {other_types}",)
+        let mut text =
+            format!("{subject} {verb} {subtype_phrase} in addition to {possessive} {other_types}",);
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
         &self,
         source: ObjectId,
         controller: PlayerId,
-        _game: &GameState,
+        game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        if let Some(condition) = &self.condition
+            && !static_condition_is_active(condition, game, source, controller)
+        {
+            return Vec::new();
+        }
         vec![
             ContinuousEffect::new(
                 source,
@@ -2117,6 +2211,10 @@ impl StaticAbilityKind for AttachedAbilityGrant {
         text
     }
 
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
     fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
         Some(&self.ability)
     }
@@ -2258,6 +2356,10 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
 
     fn display(&self) -> String {
         self.display.clone()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {

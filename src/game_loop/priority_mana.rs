@@ -759,7 +759,7 @@ pub(super) fn mana_ability_can_pay_pip(
         return false;
     };
 
-    let Some(ability) = obj.abilities.get(ability_index) else {
+    let Some(ability) = game.current_ability(perm_id, ability_index) else {
         return false;
     };
 
@@ -836,7 +836,7 @@ pub(crate) fn mana_ability_is_undo_safe(
     let Some(object) = game.object(source) else {
         return false;
     };
-    let Some(ability) = object.abilities.get(ability_index) else {
+    let Some(ability) = game.current_ability(source, ability_index) else {
         return false;
     };
     let AbilityKind::Activated(mana_ability) = &ability.kind else {
@@ -1568,8 +1568,8 @@ pub(super) fn apply_mana_payment_response_mana_ability(
                 }
 
                 // Check if this ability can help pay the cost
-                if let Some(perm) = game.object(*perm_id)
-                    && let Some(ability) = perm.abilities.get(*ability_index)
+                if game.object(*perm_id).is_some()
+                    && let Some(ability) = game.current_ability(*perm_id, *ability_index)
                     && let AbilityKind::Activated(mana_ability) = &ability.kind
                     && mana_ability.is_mana_ability()
                 {

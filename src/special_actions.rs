@@ -784,9 +784,8 @@ fn can_activate_mana_ability_with_cost_checks(
     }
 
     // Check the ability exists and is a mana ability
-    let ability = object
-        .abilities
-        .get(ability_index)
+    let ability = game
+        .current_ability(permanent_id, ability_index)
         .ok_or(ActionError::NoSuchAbility)?;
 
     if !ability.is_mana_ability() {
@@ -951,12 +950,10 @@ pub fn perform_activate_mana_ability_restricted_colors(
     use crate::executor::ExecutionContext;
 
     // Get the mana ability details
-    let object = game
-        .object(permanent_id)
+    game.object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)?;
-    let ability = object
-        .abilities
-        .get(ability_index)
+    let ability = game
+        .current_ability(permanent_id, ability_index)
         .ok_or(ActionError::NoSuchAbility)?;
 
     if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind

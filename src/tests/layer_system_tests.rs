@@ -19,6 +19,7 @@ use crate::effect::{Until, Value};
 use crate::game_loop::{GameLoopError, apply_attacker_declarations};
 use crate::game_state::{GameState, Phase};
 use crate::ids::{CardId, PlayerId};
+use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::static_abilities::StaticAbility;
 use crate::triggers::TriggerQueue;
@@ -28,6 +29,19 @@ use crate::zone::Zone;
 /// Helper to create a basic game state for testing.
 fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
+}
+
+fn mana_ability_index(game: &GameState, source: crate::ids::ObjectId, symbol: ManaSymbol) -> usize {
+    game.current_abilities(source)
+        .expect("source should exist")
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.is_mana_ability() => {
+                activated.mana_symbols() == [symbol].as_slice()
+            }
+            _ => false,
+        })
+        .expect("expected mana ability to exist")
 }
 
 // =============================================================================
@@ -147,6 +161,139 @@ fn test_urzas_saga_under_blood_moon_loses_chapter_abilities() {
     // The mana ability "{T}: Add {R}" is a consequence of being a Mountain,
     // not an explicitly granted ability. The key test here is that chapter
     // abilities are removed; the mana ability handling is a separate concern.
+}
+
+#[test]
+fn test_urborg_style_effect_includes_itself_and_grants_black_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.priority_player = Some(alice);
+
+    let urborg_def = CardDefinitionBuilder::new(CardId::new(), "Urborg Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text("Each land is a Swamp in addition to its other land types.")
+        .expect("Urborg-style text should parse");
+    let other_land_def = CardDefinitionBuilder::new(CardId::new(), "Blank Land")
+        .card_types(vec![CardType::Land])
+        .build();
+
+    let urborg_id = game.create_object_from_definition(&urborg_def, alice, Zone::Battlefield);
+    let other_land_id =
+        game.create_object_from_definition(&other_land_def, alice, Zone::Battlefield);
+
+    assert!(
+        game.calculated_subtypes(urborg_id)
+            .contains(&Subtype::Swamp),
+        "Urborg-style source should include itself"
+    );
+    assert!(
+        game.calculated_subtypes(other_land_id)
+            .contains(&Subtype::Swamp),
+        "other lands should also become Swamps"
+    );
+
+    let potential = crate::decision::compute_potential_mana(&game, alice);
+    assert_eq!(
+        potential.black, 2,
+        "both lands should contribute black mana"
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let black_ability_index = mana_ability_index(&game, urborg_id, ManaSymbol::Black);
+    crate::special_actions::perform_activate_mana_ability(
+        &mut game,
+        alice,
+        urborg_id,
+        black_ability_index,
+        &mut dm,
+    )
+    .expect("Urborg-style source should tap for black");
+
+    assert_eq!(
+        game.player(alice)
+            .expect("player should exist")
+            .mana_pool
+            .black,
+        1,
+        "activating the granted mana ability should add black mana"
+    );
+}
+
+#[test]
+fn test_blood_moon_replaces_nonbasic_land_mana_abilities_with_red() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.priority_player = Some(alice);
+
+    let custom_land_def = CardDefinitionBuilder::new(CardId::new(), "Weird Nonbasic")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Urzas])
+        .parse_text("{T}: Add {G}.\n{1}, {T}: Add {B}.")
+        .expect("custom nonbasic should parse");
+    let land_id = game.create_object_from_definition(&custom_land_def, alice, Zone::Battlefield);
+
+    let blood_moon_def = blood_moon();
+    let _blood_moon_id =
+        game.create_object_from_definition(&blood_moon_def, alice, Zone::Battlefield);
+
+    let subtypes = game.calculated_subtypes(land_id);
+    assert!(
+        subtypes.contains(&Subtype::Mountain),
+        "nonbasic land should become a Mountain under Blood Moon"
+    );
+    assert!(
+        !subtypes.contains(&Subtype::Urzas),
+        "Blood Moon should replace old land subtypes"
+    );
+
+    let abilities = game
+        .current_abilities(land_id)
+        .expect("land should still have abilities in current state");
+    let mana_outputs: Vec<Vec<ManaSymbol>> = abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.is_mana_ability() => {
+                Some(activated.mana_symbols().to_vec())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        mana_outputs,
+        vec![vec![ManaSymbol::Red]],
+        "Blood Moon should leave only the intrinsic Mountain mana ability"
+    );
+
+    let potential = crate::decision::compute_potential_mana(&game, alice);
+    assert_eq!(potential.red, 1, "land should contribute red mana");
+    assert_eq!(
+        potential.green, 0,
+        "printed green mana ability should be removed"
+    );
+    assert_eq!(
+        potential.black, 0,
+        "printed black mana ability should be removed"
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let red_ability_index = mana_ability_index(&game, land_id, ManaSymbol::Red);
+    crate::special_actions::perform_activate_mana_ability(
+        &mut game,
+        alice,
+        land_id,
+        red_ability_index,
+        &mut dm,
+    )
+    .expect("Blood Moon land should tap for red");
+
+    assert_eq!(
+        game.player(alice)
+            .expect("player should exist")
+            .mana_pool
+            .red,
+        1,
+        "activating the intrinsic Mountain mana ability should add red mana"
+    );
 }
 
 // =============================================================================

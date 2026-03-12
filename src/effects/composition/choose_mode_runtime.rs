@@ -5,8 +5,8 @@ use crate::decisions::{ModesSpec, make_decision, specs::ModeOption};
 use crate::effect::{EffectMode, EffectOutcome, ExecutionFact};
 use crate::effects::helpers::resolve_value;
 use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
-use crate::game_state::TargetAssignment;
 use crate::game_state::GameState;
+use crate::game_state::TargetAssignment;
 use crate::ids::{ObjectId, PlayerId};
 use crate::targeting::compute_legal_targets;
 
@@ -215,9 +215,10 @@ pub(crate) fn run_choose_mode(
                     &available_assignments,
                     &mut assignment_cursor,
                 );
-                let outcome = ctx.with_temp_target_assignments(inner_target_assignments, |ctx| {
-                    execute_effect(game, inner, ctx)
-                })?;
+                let outcome = ctx
+                    .with_temp_target_assignments(inner_target_assignments, |ctx| {
+                        execute_effect(game, inner, ctx)
+                    })?;
                 outcomes.push(outcome);
             }
         }
@@ -272,10 +273,11 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let source = game.new_object_id();
 
-        let creature_card = crate::card::CardBuilder::new(CardId::from_raw(6_000), "Marked Creature")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
-            .build();
+        let creature_card =
+            crate::card::CardBuilder::new(CardId::from_raw(6_000), "Marked Creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build();
         let creature = game.create_object_from_card(&creature_card, bob, Zone::Battlefield);
         let land_card = crate::card::CardBuilder::new(CardId::from_raw(6_001), "Marked Land")
             .card_types(vec![CardType::Land])
@@ -312,9 +314,9 @@ mod tests {
                 ),
                 EffectMode::new(
                     "Destroy target land",
-                    vec![Effect::new(crate::effects::DestroyEffect::target(ChooseSpec::Object(
-                        crate::filter::ObjectFilter::land(),
-                    )))],
+                    vec![Effect::new(crate::effects::DestroyEffect::target(
+                        ChooseSpec::Object(crate::filter::ObjectFilter::land()),
+                    ))],
                 ),
             ],
         );

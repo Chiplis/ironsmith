@@ -804,6 +804,30 @@ pub struct CalculatedCharacteristics {
     pub controller: PlayerId,
 }
 
+fn add_intrinsic_basic_land_mana_abilities(chars: &mut CalculatedCharacteristics) {
+    if !chars.card_types.contains(&CardType::Land) {
+        return;
+    }
+
+    for subtype in [
+        Subtype::Plains,
+        Subtype::Island,
+        Subtype::Swamp,
+        Subtype::Mountain,
+        Subtype::Forest,
+    ] {
+        if !chars.subtypes.contains(&subtype) {
+            continue;
+        }
+        let Some(ability) = Ability::basic_land_mana(subtype) else {
+            continue;
+        };
+        if !chars.abilities.contains(&ability) {
+            chars.abilities.push(ability);
+        }
+    }
+}
+
 /// Context needed for calculating characteristics.
 pub struct CalculationContext<'a> {
     pub objects: &'a HashMap<ObjectId, Object>,
@@ -1061,6 +1085,8 @@ fn calculate_with_layers_direct_internal(
 
     // Apply counter modifications for Layer 7c (after other 7c effects by timestamp)
     apply_counter_modifications(object, &mut chars.power, &mut chars.toughness);
+
+    add_intrinsic_basic_land_mana_abilities(&mut chars);
 
     chars
 }
@@ -1937,6 +1963,8 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
             }
         }
     }
+
+    add_intrinsic_basic_land_mana_abilities(&mut chars);
 
     chars
 }

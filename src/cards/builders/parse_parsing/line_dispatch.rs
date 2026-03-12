@@ -197,7 +197,7 @@ const PRE_TOKEN_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 22] = [
     },
 ];
 
-const STATIC_LINE_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 7] = [
+const STATIC_LINE_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 6] = [
     UnsupportedRuleDef {
         id: "activate-only-standalone",
         priority: 200,
@@ -215,16 +215,8 @@ const STATIC_LINE_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 7] = [
         predicate: line_has_graveyard_cast_permission_clause,
     },
     UnsupportedRuleDef {
-        id: "pregame-replacement",
-        priority: 220,
-        heads: &["if", "you"],
-        shape_mask: 0,
-        message: "unsupported pregame/replacement static clause",
-        predicate: line_has_pregame_or_replacement_clause,
-    },
-    UnsupportedRuleDef {
         id: "dynamic-gets-from-counters",
-        priority: 230,
+        priority: 220,
         heads: &[],
         shape_mask: 0,
         message: "unsupported dynamic gets-from-counters static clause",
@@ -232,7 +224,7 @@ const STATIC_LINE_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 7] = [
     },
     UnsupportedRuleDef {
         id: "foretell-cost-modifier",
-        priority: 240,
+        priority: 230,
         heads: &["foretelling"],
         shape_mask: 0,
         message: "unsupported foretell-cost modifier static clause",
@@ -240,7 +232,7 @@ const STATIC_LINE_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 7] = [
     },
     UnsupportedRuleDef {
         id: "trigger-frequency-standalone",
-        priority: 250,
+        priority: 240,
         heads: &["this"],
         shape_mask: 0,
         message: "unsupported standalone trigger-frequency restriction line",
@@ -248,7 +240,7 @@ const STATIC_LINE_DIAGNOSTIC_RULES: [UnsupportedRuleDef; 7] = [
     },
     UnsupportedRuleDef {
         id: "level-marker-static",
-        priority: 260,
+        priority: 250,
         heads: &[],
         shape_mask: 0,
         message: "unsupported level marker static clause",
@@ -560,15 +552,6 @@ fn line_has_graveyard_cast_permission_clause(view: &ClauseView<'_>) -> bool {
     let normalized = normalized_line(view);
     normalized.starts_with("you may cast this card from your graveyard as long as you control")
         || normalized.starts_with("you may cast this from your graveyard as long as you control")
-}
-
-fn line_has_pregame_or_replacement_clause(view: &ClauseView<'_>) -> bool {
-    let normalized = normalized_line(view);
-    normalized.starts_with("if this card is in your opening hand")
-        || normalized.contains("you may begin the game with")
-        || (normalized.starts_with("if this land would enter")
-            && normalized.contains("if you do")
-            && normalized.contains("put this"))
 }
 
 fn line_has_dynamic_gets_from_counters_clause(view: &ClauseView<'_>) -> bool {
@@ -2008,6 +1991,34 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
     }))
 }
 
+fn trap_condition_from_this_spell_cost_condition(
+    condition: &crate::static_abilities::ThisSpellCostCondition,
+) -> Option<crate::TrapCondition> {
+    match condition {
+        crate::static_abilities::ThisSpellCostCondition::OpponentCastSpellsThisTurnOrMore(
+            count,
+        ) => Some(crate::TrapCondition::OpponentCastSpells { count: *count }),
+        _ => None,
+    }
+}
+
+fn simple_trap_cost_from_alternative_method(
+    method: &AlternativeCastingMethod,
+) -> Option<crate::mana::ManaCost> {
+    let AlternativeCastingMethod::Composed { total_cost, .. } = method else {
+        return None;
+    };
+    if total_cost.non_mana_costs().next().is_some() {
+        return None;
+    }
+    Some(
+        total_cost
+            .mana_cost()
+            .cloned()
+            .unwrap_or_else(crate::mana::ManaCost::new),
+    )
+}
+
 pub(crate) fn parse_if_conditional_alternative_cost_line(
     tokens: &[Token],
     line: &str,
@@ -2039,18 +2050,40 @@ pub(crate) fn parse_if_conditional_alternative_cost_line(
     };
 
     if is_self_free_cast_clause(&tail_words) {
-        return Ok(Some(
-            AlternativeCastingMethod::alternative_cost_with_condition(
-                "Parsed alternative cost",
-                None,
-                Vec::new(),
-                condition,
-            ),
-        ));
+        let method = AlternativeCastingMethod::alternative_cost_with_condition(
+            "Parsed alternative cost",
+            None,
+            Vec::new(),
+            condition,
+        );
+        if let Some(trap_condition) = method
+            .cast_condition()
+            .and_then(trap_condition_from_this_spell_cost_condition)
+            && let Some(cost) = simple_trap_cost_from_alternative_method(&method)
+        {
+            return Ok(Some(AlternativeCastingMethod::trap(
+                "Trap",
+                cost,
+                trap_condition,
+            )));
+        }
+        return Ok(Some(method));
     }
 
     let Some(method) = parse_you_may_rather_than_spell_cost_line(&tail_tokens, line)? else {
         return Ok(None);
     };
-    Ok(Some(method.with_cast_condition(condition)))
+    let method = method.with_cast_condition(condition);
+    if let Some(trap_condition) = method
+        .cast_condition()
+        .and_then(trap_condition_from_this_spell_cost_condition)
+        && let Some(cost) = simple_trap_cost_from_alternative_method(&method)
+    {
+        return Ok(Some(AlternativeCastingMethod::trap(
+            "Trap",
+            cost,
+            trap_condition,
+        )));
+    }
+    Ok(Some(method))
 }

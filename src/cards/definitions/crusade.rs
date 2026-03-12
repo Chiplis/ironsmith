@@ -1,13 +1,9 @@
 //! Card definition for Crusade.
 
-use crate::ability::Ability;
 use crate::cards::CardDefinition;
 use crate::cards::builders::CardDefinitionBuilder;
-use crate::color::ColorSet;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::static_abilities::StaticAbility;
-use crate::target::ObjectFilter;
 use crate::types::CardType;
 
 /// Creates the Crusade card definition.
@@ -19,21 +15,14 @@ use crate::types::CardType;
 /// Crusade applies in Layer 7c as a P/T modification effect.
 /// Note: The original Crusade affects ALL white creatures, not just your own.
 pub fn crusade() -> CardDefinition {
-    // Create a filter for all white creatures (not just yours)
-    let white_creatures = ObjectFilter::creature().with_colors(ColorSet::WHITE);
-
     CardDefinitionBuilder::new(CardId::new(), "Crusade")
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::White],
             vec![ManaSymbol::White],
         ]))
         .card_types(vec![CardType::Enchantment])
-        .with_ability(Ability::static_ability(StaticAbility::anthem(
-            white_creatures,
-            1,
-            1,
-        )))
-        .build()
+        .parse_text("White creatures get +1/+1.")
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

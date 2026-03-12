@@ -2124,6 +2124,13 @@ struct PregameState {
 }
 
 #[derive(Debug, Clone)]
+struct PendingPregameHandExile {
+    player: PlayerId,
+    source: ObjectId,
+    amount: usize,
+}
+
+#[derive(Debug, Clone)]
 enum PregameStage {
     MulliganDecision {
         undecided_players: Vec<PlayerId>,
@@ -2135,7 +2142,7 @@ enum PregameStage {
     },
     OpeningActions {
         current_index: usize,
-        pending_gemstone_exile: Option<(PlayerId, ObjectId)>,
+        pending_hand_exile: Option<PendingPregameHandExile>,
     },
 }
 
@@ -3203,7 +3210,7 @@ impl WasmGame {
                 | LegalAction::SerumPowderMulligan { .. }
                 | LegalAction::ContinuePregame
                 | LegalAction::BeginGame
-                | LegalAction::BeginWithGemstoneCaverns { .. }
+                | LegalAction::UsePregameAction { .. }
         )
     }
 
@@ -4115,6 +4122,53 @@ impl WasmGame {
             .collect()
     }
 
+    fn parsed_pregame_begin_on_battlefield_spec(
+        &self,
+        card_id: ObjectId,
+        ability_index: usize,
+    ) -> Option<crate::static_abilities::PregameBeginOnBattlefieldSpec> {
+        let ability = self.game.object(card_id)?.abilities.get(ability_index)?;
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        match static_ability.pregame_action_kind()? {
+            crate::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => Some(spec),
+        }
+    }
+
+    fn available_pregame_actions(&self, player: PlayerId) -> Vec<LegalAction> {
+        let starting_player = self.game.turn_order.first().copied();
+        let hand_ids = self.player_hand_ids(player);
+        let other_cards_in_hand = hand_ids.len().saturating_sub(1);
+        let mut actions = Vec::new();
+        for card_id in hand_ids {
+            let Some(object) = self.game.object(card_id) else {
+                continue;
+            };
+            for (ability_index, ability) in object.abilities.iter().enumerate() {
+                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                    continue;
+                };
+                let Some(crate::static_abilities::PregameActionKind::BeginOnBattlefield(spec)) =
+                    static_ability.pregame_action_kind()
+                else {
+                    continue;
+                };
+                if spec.require_not_starting_player && starting_player == Some(player) {
+                    continue;
+                }
+                if other_cards_in_hand < spec.exile_cards_from_hand {
+                    continue;
+                }
+                actions.push(LegalAction::UsePregameAction {
+                    card_id,
+                    ability_index,
+                });
+            }
+        }
+        actions
+    }
+
     fn shuffle_hand_into_library_and_draw(&mut self, player: PlayerId, opening_hand_size: usize) {
         let hand_ids = self.player_hand_ids(player);
         for id in hand_ids {
@@ -4200,15 +4254,15 @@ impl WasmGame {
                     if let Some(pregame) = self.pregame.as_mut() {
                         pregame.stage = PregameStage::OpeningActions {
                             current_index: 0,
-                            pending_gemstone_exile: None,
+                            pending_hand_exile: None,
                         };
                     }
                     continue;
                 }
                 PregameStage::OpeningActions {
                     current_index,
-                    pending_gemstone_exile,
-                } if pending_gemstone_exile.is_none()
+                    pending_hand_exile,
+                } if pending_hand_exile.is_none()
                     && *current_index >= self.game.turn_order.len() =>
                 {
                     self.pregame = None;
@@ -4285,25 +4339,33 @@ impl WasmGame {
             }
             PregameStage::OpeningActions {
                 current_index,
-                pending_gemstone_exile,
+                pending_hand_exile,
             } => {
                 let Some(player) = self.game.turn_order.get(*current_index).copied() else {
                     return Ok(None);
                 };
-                if let Some((exiling_player, source)) = pending_gemstone_exile {
-                    if *exiling_player != player {
+                if let Some(pending_exile) = pending_hand_exile {
+                    if pending_exile.player != player {
                         return Err(JsValue::from_str(
-                            "pregame gemstone exile prompt is out of sync with turn order",
+                            "pregame hand exile prompt is out of sync with turn order",
                         ));
                     }
+                    let source_name = self
+                        .game
+                        .object(pending_exile.source)
+                        .map(|object| object.name.as_str())
+                        .unwrap_or("this card");
                     DecisionContext::SelectObjects(
                         crate::decisions::context::SelectObjectsContext::new(
                             player,
-                            Some(*source),
-                            "Choose a card from your hand to exile for Gemstone Caverns",
+                            Some(pending_exile.source),
+                            format!(
+                                "Choose {} card(s) from your hand to exile for {}",
+                                pending_exile.amount, source_name
+                            ),
                             self.build_hand_selectable_objects(player),
-                            1,
-                            Some(1),
+                            pending_exile.amount,
+                            Some(pending_exile.amount),
                         ),
                     )
                 } else {
@@ -4313,18 +4375,7 @@ impl WasmGame {
                     } else {
                         LegalAction::ContinuePregame
                     }];
-                    let starting_player = self.game.turn_order.first().copied();
-                    let hand_ids = self.player_hand_ids(player);
-                    let can_use_gemstone = starting_player != Some(player) && hand_ids.len() >= 2;
-                    if can_use_gemstone {
-                        actions.extend(hand_ids.into_iter().filter_map(|card_id| {
-                            let is_gemstone = self
-                                .game
-                                .object(card_id)
-                                .is_some_and(|object| object.name == "Gemstone Caverns");
-                            is_gemstone.then_some(LegalAction::BeginWithGemstoneCaverns { card_id })
-                        }));
-                    }
+                    actions.extend(self.available_pregame_actions(player));
                     DecisionContext::Priority(crate::decisions::context::PriorityContext::new(
                         player, actions,
                     ))
@@ -4417,7 +4468,7 @@ impl WasmGame {
                     stage:
                         PregameStage::OpeningActions {
                             current_index,
-                            pending_gemstone_exile,
+                            pending_hand_exile,
                         },
                     ..
                 }) = self.pregame.as_mut()
@@ -4426,20 +4477,23 @@ impl WasmGame {
                         "continue is only legal during pregame opening actions",
                     ));
                 };
-                if pending_gemstone_exile.is_some() {
+                if pending_hand_exile.is_some() {
                     return Err(JsValue::from_str(
-                        "Gemstone Caverns requires exiling a card before continuing",
+                        "a pregame action requires exiling cards before continuing",
                     ));
                 }
                 *current_index += 1;
             }
-            LegalAction::BeginWithGemstoneCaverns { card_id } => {
+            LegalAction::UsePregameAction {
+                card_id,
+                ability_index,
+            } => {
                 let player = match self.pregame.as_ref() {
                     Some(PregameState {
                         stage:
                             PregameStage::OpeningActions {
                                 current_index,
-                                pending_gemstone_exile: None,
+                                pending_hand_exile: None,
                             },
                         ..
                     }) => self.game.turn_order.get(*current_index).copied(),
@@ -4447,55 +4501,61 @@ impl WasmGame {
                 }
                 .ok_or_else(|| {
                     JsValue::from_str(
-                        "Gemstone Caverns can only be used during pregame opening actions",
+                        "pregame actions can only be used during pregame opening actions",
                     )
                 })?;
-                let starting_player = self.game.turn_order.first().copied();
                 let hand_ids = self.player_hand_ids(player);
-                if starting_player == Some(player) {
-                    return Err(JsValue::from_str(
-                        "the starting player can't use Gemstone Caverns before the game",
-                    ));
-                }
-                if hand_ids.len() < 2 {
-                    return Err(JsValue::from_str(
-                        "Gemstone Caverns requires another card in hand to exile",
-                    ));
-                }
                 if !hand_ids.contains(&card_id) {
                     return Err(JsValue::from_str(
-                        "Gemstone Caverns must be in the current player's hand",
+                        "pregame action source must be in the current player's hand",
                     ));
                 }
-                let is_gemstone = self
-                    .game
-                    .object(card_id)
-                    .is_some_and(|object| object.name == "Gemstone Caverns");
-                if !is_gemstone {
-                    return Err(JsValue::from_str("selected card is not Gemstone Caverns"));
-                }
-                let Some(new_id) = self.game.move_object(card_id, Zone::Battlefield) else {
+                let Some(spec) =
+                    self.parsed_pregame_begin_on_battlefield_spec(card_id, ability_index)
+                else {
                     return Err(JsValue::from_str(
-                        "failed to move Gemstone Caverns to battlefield",
+                        "selected ability is not a supported pregame action",
                     ));
                 };
-                let _ = self
-                    .game
-                    .add_counters(new_id, crate::object::CounterType::Luck, 1);
+                if spec.require_not_starting_player
+                    && self.game.turn_order.first().copied() == Some(player)
+                {
+                    return Err(JsValue::from_str(
+                        "the starting player can't use that pregame action",
+                    ));
+                }
+                if hand_ids.len().saturating_sub(1) < spec.exile_cards_from_hand {
+                    return Err(JsValue::from_str(
+                        "that pregame action requires more cards in hand to exile",
+                    ));
+                }
+                let exile_cards_from_hand = spec.exile_cards_from_hand;
+                let Some(new_id) = self.game.move_object(card_id, Zone::Battlefield) else {
+                    return Err(JsValue::from_str(
+                        "failed to move the pregame card to the battlefield",
+                    ));
+                };
+                for (counter_type, count) in spec.counters.iter().cloned() {
+                    let _ = self.game.add_counters(new_id, counter_type, count);
+                }
                 let Some(PregameState {
                     stage:
                         PregameStage::OpeningActions {
-                            pending_gemstone_exile,
-                            ..
+                            pending_hand_exile, ..
                         },
                     ..
                 }) = self.pregame.as_mut()
                 else {
                     return Err(JsValue::from_str(
-                        "pregame opening actions disappeared while resolving Gemstone Caverns",
+                        "pregame opening actions disappeared while resolving a pregame action",
                     ));
                 };
-                *pending_gemstone_exile = Some((player, new_id));
+                *pending_hand_exile =
+                    (exile_cards_from_hand > 0).then_some(PendingPregameHandExile {
+                        player,
+                        source: new_id,
+                        amount: exile_cards_from_hand,
+                    });
             }
             other => {
                 return Err(JsValue::from_str(&format!(
@@ -4549,7 +4609,7 @@ impl WasmGame {
                 enum PregameSelectResolution {
                     BottomNow,
                     BottomNeedsOrdering(PlayerId),
-                    GemstoneExile(ObjectId),
+                    HandExile(Vec<ObjectId>),
                 }
 
                 let resolution = match self.pregame.as_ref().map(|pregame| &pregame.stage) {
@@ -4571,17 +4631,16 @@ impl WasmGame {
                         }
                     }
                     Some(PregameStage::OpeningActions {
-                        pending_gemstone_exile,
-                        ..
-                    }) if pending_gemstone_exile.is_some() => {
-                        let Some(card_id) = selected.first().copied() else {
+                        pending_hand_exile, ..
+                    }) if pending_hand_exile.is_some() => {
+                        if selected.is_empty() {
                             return restore(
                                 self,
                                 pending_ctx,
-                                JsValue::from_str("expected exactly one card to exile"),
+                                JsValue::from_str("expected at least one card to exile"),
                             );
-                        };
-                        PregameSelectResolution::GemstoneExile(card_id)
+                        }
+                        PregameSelectResolution::HandExile(selected.clone())
                     }
                     _ => {
                         return restore(
@@ -4620,20 +4679,21 @@ impl WasmGame {
                         };
                         *pending_order = Some((player, selected));
                     }
-                    PregameSelectResolution::GemstoneExile(card_id) => {
-                        let _ = self.game.move_object(card_id, Zone::Exile);
+                    PregameSelectResolution::HandExile(card_ids) => {
+                        for card_id in card_ids {
+                            let _ = self.game.move_object(card_id, Zone::Exile);
+                        }
                         let Some(PregameStage::OpeningActions {
-                            pending_gemstone_exile,
-                            ..
+                            pending_hand_exile, ..
                         }) = self.pregame.as_mut().map(|pregame| &mut pregame.stage)
                         else {
                             return restore(
                                 self,
                                 pending_ctx,
-                                JsValue::from_str("pregame gemstone state disappeared"),
+                                JsValue::from_str("pregame hand exile state disappeared"),
                             );
                         };
-                        *pending_gemstone_exile = None;
+                        *pending_hand_exile = None;
                     }
                 }
             }
@@ -6157,8 +6217,8 @@ fn action_drag_metadata(
         ),
         LegalAction::ContinuePregame => ("pass_priority", None, None, None),
         LegalAction::BeginGame => ("pass_priority", None, None, None),
-        LegalAction::BeginWithGemstoneCaverns { card_id } => (
-            "begin_with_gemstone_caverns",
+        LegalAction::UsePregameAction { card_id, .. } => (
+            "use_pregame_action",
             Some(card_id.0),
             Some(zone_name(Zone::Hand)),
             Some(zone_name(Zone::Battlefield)),
@@ -6224,7 +6284,7 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
         }
         LegalAction::ContinuePregame => "Continue".to_string(),
         LegalAction::BeginGame => "Begin game".to_string(),
-        LegalAction::BeginWithGemstoneCaverns { card_id } => {
+        LegalAction::UsePregameAction { card_id, .. } => {
             format!("Begin with {}", object_name(game, *card_id))
         }
         LegalAction::PlayLand { land_id } => {
@@ -6301,10 +6361,9 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
         } => {
             let name = object_name(game, *source);
             let ability_text = game
-                .object(*source)
-                .and_then(|obj| obj.abilities.get(*ability_index))
-                .and_then(|ability| ability.text.as_deref())
-                .map(normalize_action_text);
+                .current_ability(*source, *ability_index)
+                .and_then(|ability| ability.text)
+                .map(|text| normalize_action_text(&text));
             match ability_text {
                 Some(text) => format!("Activate {}: {}", name, text),
                 None => format!("Activate {} ability #{}", name, ability_index + 1),
@@ -6316,10 +6375,9 @@ fn describe_action(game: &GameState, action: &LegalAction) -> String {
         } => {
             let name = object_name(game, *source);
             let ability_text = game
-                .object(*source)
-                .and_then(|obj| obj.abilities.get(*ability_index))
-                .and_then(|ability| ability.text.as_deref())
-                .map(normalize_action_text);
+                .current_ability(*source, *ability_index)
+                .and_then(|ability| ability.text)
+                .map(|text| normalize_action_text(&text));
             match ability_text {
                 Some(text) => format!("Activate {}: {}", name, text),
                 None => format!(
@@ -10234,7 +10292,7 @@ mod tests {
                 assert!(ctx.actions.iter().any(|action| {
                     matches!(
                         action,
-                        LegalAction::BeginWithGemstoneCaverns { card_id }
+                        LegalAction::UsePregameAction { card_id, .. }
                             if *card_id == gemstone_id
                     )
                 }));
@@ -10273,7 +10331,7 @@ mod tests {
             matches!(action, LegalAction::ContinuePregame)
         });
         dispatch_matching_priority_action(&mut wasm, |action| {
-            matches!(action, LegalAction::BeginWithGemstoneCaverns { .. })
+            matches!(action, LegalAction::UsePregameAction { .. })
         });
 
         let gemstone_on_battlefield = wasm.game.battlefield.iter().copied().find(|id| {

@@ -1,11 +1,9 @@
 //! Card definition for Blood Moon.
 
-use crate::ability::Ability;
 use crate::cards::CardDefinition;
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::static_abilities::StaticAbility;
 use crate::types::CardType;
 
 /// Creates the Blood Moon card definition.
@@ -24,8 +22,8 @@ pub fn blood_moon() -> CardDefinition {
             vec![ManaSymbol::Red],
         ]))
         .card_types(vec![CardType::Enchantment])
-        .with_ability(Ability::static_ability(StaticAbility::blood_moon()))
-        .build()
+        .parse_text("Nonbasic lands are Mountains.")
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

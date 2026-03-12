@@ -175,6 +175,24 @@ impl Ability {
         }
     }
 
+    /// Create the intrinsic mana ability granted by a basic land subtype.
+    pub fn basic_land_mana(subtype: Subtype) -> Option<Self> {
+        let (symbol, text) = match subtype {
+            Subtype::Plains => (ManaSymbol::White, "{T}: Add {W}."),
+            Subtype::Island => (ManaSymbol::Blue, "{T}: Add {U}."),
+            Subtype::Swamp => (ManaSymbol::Black, "{T}: Add {B}."),
+            Subtype::Mountain => (ManaSymbol::Red, "{T}: Add {R}."),
+            Subtype::Forest => (ManaSymbol::Green, "{T}: Add {G}."),
+            _ => return None,
+        };
+
+        Some(Self {
+            kind: AbilityKind::Activated(ActivatedAbility::basic_mana(symbol)),
+            functional_zones: vec![Zone::Battlefield],
+            text: Some(text.to_string()),
+        })
+    }
+
     /// Set the zones where this ability functions.
     pub fn in_zones(mut self, zones: Vec<Zone>) -> Self {
         self.functional_zones = zones;

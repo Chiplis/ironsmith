@@ -1,15 +1,9 @@
 //! Blood Celebrant card definition.
-
-use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::card::PowerToughness;
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
-use crate::cost::TotalCost;
-use crate::effect::Effect;
-use crate::effects::AddManaOfAnyColorEffect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::{CardType, Subtype};
-use crate::zone::Zone;
 
 /// Creates the Blood Celebrant card definition.
 ///
@@ -19,37 +13,13 @@ use crate::zone::Zone;
 /// 1/1
 /// {B}, Pay 1 life: Add one mana of any color.
 pub fn blood_celebrant() -> CardDefinition {
-    // The effect: Add one mana of any color
-    let add_mana_effect = Effect::new(AddManaOfAnyColorEffect::you(1));
-
-    let mut def = CardDefinitionBuilder::new(CardId::new(), "Blood Celebrant")
+    CardDefinitionBuilder::new(CardId::new(), "Blood Celebrant")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Human, Subtype::Cleric])
         .power_toughness(PowerToughness::fixed(1, 1))
         .parse_text("{B}, Pay 1 life: Add one mana of any color.")
-        .expect("Card text should be supported");
-
-    def.abilities.push(Ability {
-        kind: AbilityKind::Activated(ActivatedAbility {
-            mana_cost: TotalCost::from_costs(vec![
-                crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Black]])),
-                crate::costs::Cost::life(1),
-            ]),
-            effects: vec![add_mana_effect],
-            choices: vec![],
-            timing: crate::ability::ActivationTiming::AnyTime,
-            additional_restrictions: vec![],
-            activation_restrictions: vec![],
-            mana_output: Some(vec![]),
-            activation_condition: None,
-            mana_usage_restrictions: vec![],
-        }),
-        functional_zones: vec![Zone::Battlefield],
-        text: Some("{B}, Pay 1 life: Add one mana of any color.".to_string()),
-    });
-
-    def
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

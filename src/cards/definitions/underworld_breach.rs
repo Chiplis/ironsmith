@@ -1,15 +1,9 @@
 //! Card definition for Underworld Breach.
 
-use crate::ability::Ability;
 use crate::cards::CardDefinition;
 use crate::cards::builders::CardDefinitionBuilder;
-use crate::effect::Effect;
-use crate::grant::GrantSpec;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::static_abilities::StaticAbility;
-use crate::target::PlayerFilter;
-use crate::triggers::Trigger;
 use crate::types::CardType;
 
 /// Creates the Underworld Breach card definition.
@@ -26,25 +20,17 @@ pub fn underworld_breach() -> CardDefinition {
             vec![ManaSymbol::Red],
         ]))
         .card_types(vec![CardType::Enchantment])
-        // Static ability: Grant escape to each nonland card in your graveyard (using unified grant system)
-        .with_ability(Ability::static_ability(StaticAbility::grants(
-            GrantSpec::escape_to_nonland(3),
-        )))
-        // Triggered ability: At the beginning of the end step, sacrifice this
-        // Note: Uses Trigger::beginning_of_end_step(PlayerFilter::You) which triggers on your end step
-        .with_trigger(
-            Trigger::beginning_of_end_step(PlayerFilter::You),
-            vec![Effect::sacrifice_source()],
+        .parse_text(
+            "Each nonland card in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard.\nAt the beginning of the end step, sacrifice Underworld Breach.",
         )
-        .build()
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ability::{AbilityKind, TriggeredAbility};
-    use crate::alternative_cast::AlternativeCastingMethod;
-    use crate::grant::Grantable;
+    use crate::grant::{DerivedAlternativeCast, Grantable};
     use crate::static_abilities::StaticAbilityId;
 
     #[test]
@@ -64,10 +50,9 @@ mod tests {
             // Check that grant_spec returns escape with exile_count 3
             if let Some(spec) = s.grant_spec() {
                 match &spec.grantable {
-                    Grantable::AlternativeCast(AlternativeCastingMethod::Escape {
-                        exile_count,
-                        ..
-                    }) => {
+                    Grantable::DerivedAlternativeCast(
+                        DerivedAlternativeCast::EscapeFromCardManaCost { exile_count },
+                    ) => {
                         assert_eq!(*exile_count, 3);
                     }
                     _ => panic!("Expected Escape alternative cast method"),

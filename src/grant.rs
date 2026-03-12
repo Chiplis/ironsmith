@@ -20,27 +20,75 @@
 //!
 //! // Grant escape to nonland cards in graveyard (Underworld Breach)
 //! StaticAbility::grants(GrantSpec {
-//!     grantable: Grantable::AlternativeCast(AlternativeCastingMethod::Escape {
-//!         cost: None,
-//!         exile_count: 3,
-//!     }),
+//!     grantable: Grantable::escape(3),
 //!     filter: ObjectFilter::nonland(),
 //!     zone: Zone::Graveyard,
 //! })
 //!
 //! // Grant flashback until end of turn (Snapcaster Mage)
 //! Effect::grant(
-//!     Grantable::flashback_use_targets_cost(),
+//!     Grantable::flashback_from_cards_mana_cost(),
 //!     target,
 //!     GrantDuration::UntilEndOfTurn,
 //! )
 //! ```
 
 use crate::alternative_cast::AlternativeCastingMethod;
+use crate::cost::TotalCost;
+use crate::costs::Cost;
+use crate::object::Object;
 use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
 use crate::types::CardType;
 use crate::zone::Zone;
+
+/// A granted alternative cast whose exact cost is derived from the granted card.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DerivedAlternativeCast {
+    /// Flashback using the card's mana cost plus optional extra cost components.
+    FlashbackFromCardManaCost { additional_costs: Vec<Cost> },
+    /// Escape using the card's mana cost and exiling N other graveyard cards.
+    EscapeFromCardManaCost { exile_count: u32 },
+}
+
+impl DerivedAlternativeCast {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::FlashbackFromCardManaCost { .. } => "flashback",
+            Self::EscapeFromCardManaCost { .. } => "Escape",
+        }
+    }
+
+    pub fn materialize_for(&self, card: &Object) -> Option<AlternativeCastingMethod> {
+        let mana_cost = card.mana_cost.clone()?;
+        match self {
+            Self::FlashbackFromCardManaCost { additional_costs } => {
+                if !card.has_card_type(CardType::Instant) && !card.has_card_type(CardType::Sorcery)
+                {
+                    return None;
+                }
+                if card.zone != Zone::Graveyard {
+                    return None;
+                }
+
+                let mut costs = vec![Cost::mana(mana_cost)];
+                costs.extend(additional_costs.iter().cloned());
+                Some(AlternativeCastingMethod::Flashback {
+                    total_cost: TotalCost::from_costs(costs),
+                })
+            }
+            Self::EscapeFromCardManaCost { exile_count } => {
+                if card.zone != Zone::Graveyard {
+                    return None;
+                }
+                Some(AlternativeCastingMethod::Escape {
+                    cost: Some(mana_cost),
+                    exile_count: *exile_count,
+                })
+            }
+        }
+    }
+}
 
 /// What can be granted to a card.
 #[derive(Debug, Clone, PartialEq)]
@@ -49,10 +97,8 @@ pub enum Grantable {
     Ability(StaticAbility),
     /// Grant an alternative casting method (flashback, escape, etc.)
     AlternativeCast(AlternativeCastingMethod),
-    /// Grant flashback using the target card's mana cost.
-    /// This is a special case for Snapcaster Mage-style effects where
-    /// the flashback cost equals the card's own mana cost.
-    FlashbackUseTargetsCost,
+    /// Grant an alternative casting method whose exact cost is derived from the card.
+    DerivedAlternativeCast(DerivedAlternativeCast),
     /// Grant the ability to play a card from a non-hand zone as if it were in hand.
     /// This allows using the card's normal mana cost AND any alternative costs it has.
     /// Used by Yawgmoth's Will (graveyard), future effects could grant from exile, etc.
@@ -61,16 +107,16 @@ pub enum Grantable {
 }
 
 impl Grantable {
-    /// Create a grantable for flashback that uses the target's mana cost.
-    pub fn flashback_use_targets_cost() -> Self {
-        Grantable::FlashbackUseTargetsCost
+    /// Create a grantable for flashback that uses the granted card's mana cost.
+    pub fn flashback_from_cards_mana_cost() -> Self {
+        Grantable::DerivedAlternativeCast(DerivedAlternativeCast::FlashbackFromCardManaCost {
+            additional_costs: Vec::new(),
+        })
     }
 
-    /// Create a grantable for escape with the given exile count.
-    /// The escape cost uses the card's normal mana cost.
+    /// Create a grantable for escape with the given exile count and the granted card's mana cost.
     pub fn escape(exile_count: u32) -> Self {
-        Grantable::AlternativeCast(AlternativeCastingMethod::Escape {
-            cost: None,
+        Grantable::DerivedAlternativeCast(DerivedAlternativeCast::EscapeFromCardManaCost {
             exile_count,
         })
     }
@@ -92,7 +138,7 @@ impl Grantable {
         match self {
             Grantable::Ability(a) => a.display(),
             Grantable::AlternativeCast(m) => m.name().to_string(),
-            Grantable::FlashbackUseTargetsCost => "flashback".to_string(),
+            Grantable::DerivedAlternativeCast(spec) => spec.display_name().to_string(),
             Grantable::PlayFrom => "play from zone".to_string(),
         }
     }
@@ -198,7 +244,7 @@ mod tests {
         let flash = Grantable::Ability(StaticAbility::flash());
         assert_eq!(flash.display(), "Flash");
 
-        let flashback = Grantable::flashback_use_targets_cost();
+        let flashback = Grantable::flashback_from_cards_mana_cost();
         assert_eq!(flashback.display(), "flashback");
 
         let escape = Grantable::escape(3);
@@ -223,7 +269,9 @@ mod tests {
         assert_eq!(spec.zone, Zone::Graveyard);
         assert!(matches!(
             spec.grantable,
-            Grantable::AlternativeCast(AlternativeCastingMethod::Escape { exile_count: 3, .. })
+            Grantable::DerivedAlternativeCast(DerivedAlternativeCast::EscapeFromCardManaCost {
+                exile_count: 3
+            })
         ));
         assert!(spec.filter.excluded_card_types.contains(&CardType::Land));
     }

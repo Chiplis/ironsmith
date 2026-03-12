@@ -963,6 +963,10 @@ macro_rules! direct_target_effect_variants {
                 target: $target,
                 ..
             }
+            | EffectAst::GrantToTarget {
+                target: $target,
+                ..
+            }
             | EffectAst::RemoveAbilitiesFromTarget {
                 target: $target,
                 ..
@@ -6840,6 +6844,13 @@ fn try_compile_continuous_and_modifier_effect(
                 Effect::new(apply)
             })?
         }
+        EffectAst::GrantToTarget {
+            target,
+            grantable,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
+            Effect::grant(grantable.clone(), spec, *duration)
+        })?,
         EffectAst::RemoveAbilitiesFromTarget {
             target,
             abilities,

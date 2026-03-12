@@ -19,8 +19,8 @@ pub fn frogmite() -> CardDefinition {
         .card_types(vec![CardType::Artifact, CardType::Creature])
         .subtypes(vec![Subtype::Frog])
         .power_toughness(PowerToughness::fixed(2, 2))
-        .affinity_for_artifacts()
-        .build()
+        .parse_text("Affinity for artifacts")
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

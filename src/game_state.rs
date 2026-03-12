@@ -5,6 +5,7 @@ use std::ops::Range;
 use rand::seq::SliceRandom;
 use rand::{SeedableRng, rngs::StdRng};
 
+use crate::ability::{Ability, AbilityKind, ActivatedAbility};
 use crate::alternative_cast::CastingMethod;
 use crate::card::Card;
 use crate::continuous::{ContinuousEffect, ContinuousEffectManager};
@@ -3010,6 +3011,40 @@ impl GameState {
     ) -> Option<crate::continuous::CalculatedCharacteristics> {
         let all_effects = self.all_continuous_effects();
         self.calculated_characteristics_with_effects(id, &all_effects)
+    }
+
+    /// Return the abilities an object currently has in its zone.
+    ///
+    /// Battlefield objects use calculated characteristics so continuous effects
+    /// like Blood Moon, Humility, and subtype-granted basic land mana abilities
+    /// are reflected consistently. Other zones use the printed/intrinsic list.
+    pub fn current_abilities(&self, id: ObjectId) -> Option<Vec<Ability>> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .map(|chars| chars.abilities)
+                .or_else(|| Some(object.abilities.clone()));
+        }
+        Some(object.abilities.clone())
+    }
+
+    /// Return a specific current ability by index.
+    pub fn current_ability(&self, id: ObjectId, ability_index: usize) -> Option<Ability> {
+        self.current_abilities(id)?.get(ability_index).cloned()
+    }
+
+    /// Return a specific current activated ability by index.
+    pub fn current_activated_ability(
+        &self,
+        id: ObjectId,
+        ability_index: usize,
+    ) -> Option<ActivatedAbility> {
+        let ability = self.current_ability(id, ability_index)?;
+        match ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        }
     }
 
     /// Check if an object has a specific static ability using precomputed effects.

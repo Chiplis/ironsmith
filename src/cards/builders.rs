@@ -2103,6 +2103,11 @@ pub(crate) enum EffectAst {
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
+    GrantToTarget {
+        target: TargetAst,
+        grantable: crate::grant::Grantable,
+        duration: crate::grant::GrantDuration,
+    },
     RemoveAbilitiesFromTarget {
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,

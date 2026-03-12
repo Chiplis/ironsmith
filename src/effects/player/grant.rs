@@ -1,15 +1,14 @@
 //! Unified grant effect implementation.
 //!
 //! This module provides a generic effect for granting abilities or alternative
-//! casting methods to cards. It replaces bespoke effects like `GrantFlashbackUntilEOTEffect`
-//! with a unified approach.
+//! casting methods to cards.
 //!
 //! # Examples
 //!
 //! ```ignore
-//! // Snapcaster Mage: Grant flashback until end of turn
+//! // Grant flashback until end of turn using the card's mana cost
 //! Effect::grant(
-//!     Grantable::flashback_use_targets_cost(),
+//!     Grantable::flashback_from_cards_mana_cost(),
 //!     target,
 //!     GrantDuration::UntilEndOfTurn,
 //! )
@@ -22,7 +21,6 @@
 //! )
 //! ```
 
-use crate::alternative_cast::AlternativeCastingMethod;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_from_spec;
@@ -31,8 +29,6 @@ use crate::game_state::GameState;
 use crate::grant::{GrantDuration, Grantable};
 use crate::grant_registry::GrantSource;
 use crate::target::ChooseSpec;
-use crate::types::CardType;
-use crate::zone::Zone;
 
 /// Effect that grants something to a target card.
 ///
@@ -40,12 +36,12 @@ use crate::zone::Zone;
 /// to cards. It handles:
 /// - Granting static abilities (flash, flying, etc.)
 /// - Granting alternative casting methods (flashback, escape, etc.)
-/// - Special case: flashback using target's mana cost (Snapcaster Mage)
+/// - Derived alternative casting methods that use the granted card's mana cost
 ///
 /// The grant lasts for the specified duration (typically until end of turn).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrantEffect {
-    /// What to grant (ability, alternative cast, or flashback-use-targets-cost).
+    /// What to grant (ability or alternative casting method).
     pub grantable: Grantable,
     /// Target specification for the card to grant to.
     pub target: ChooseSpec,
@@ -62,16 +58,6 @@ impl GrantEffect {
             duration,
         }
     }
-
-    /// Create an effect that grants flashback until end of turn using the target's mana cost.
-    /// This is the Snapcaster Mage pattern.
-    pub fn flashback_until_eot(target: ChooseSpec) -> Self {
-        Self::new(
-            Grantable::flashback_use_targets_cost(),
-            target,
-            GrantDuration::UntilEndOfTurn,
-        )
-    }
 }
 
 impl EffectExecutor for GrantEffect {
@@ -82,7 +68,6 @@ impl EffectExecutor for GrantEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let target_id = resolve_single_object_from_spec(game, &self.target, ctx)?;
 
-        // Verify the target is still valid
         let obj = game
             .object(target_id)
             .ok_or(ExecutionError::ObjectNotFound(target_id))?;
@@ -125,36 +110,18 @@ impl EffectExecutor for GrantEffect {
                 );
                 Ok(EffectOutcome::resolved())
             }
-            Grantable::FlashbackUseTargetsCost => {
-                // Special case: grant flashback using the target's mana cost
-                // This is the Snapcaster Mage pattern
-
-                // Verify it's an instant or sorcery
-                if !obj.has_card_type(CardType::Instant) && !obj.has_card_type(CardType::Sorcery) {
+            Grantable::DerivedAlternativeCast(spec) => {
+                if spec.materialize_for(obj).is_none() {
                     return Ok(EffectOutcome::target_invalid());
                 }
 
-                // Must be in graveyard for flashback to make sense
-                if zone != Zone::Graveyard {
-                    return Ok(EffectOutcome::target_invalid());
-                }
-
-                // Get the mana cost
-                let flashback_cost = match &obj.mana_cost {
-                    Some(cost) => cost.clone(),
-                    None => return Ok(EffectOutcome::impossible()),
-                };
-
-                game.grant_registry.grant_alternative_cast_to_card(
+                game.grant_registry.grant_to_card(
                     target_id,
-                    Zone::Graveyard,
+                    zone,
                     owner,
-                    AlternativeCastingMethod::Flashback {
-                        total_cost: crate::cost::TotalCost::mana(flashback_cost),
-                    },
+                    self.grantable.clone(),
                     grant_source,
                 );
-
                 Ok(EffectOutcome::resolved())
             }
             Grantable::PlayFrom => {
@@ -178,7 +145,7 @@ impl EffectExecutor for GrantEffect {
 
     fn target_description(&self) -> &'static str {
         match &self.grantable {
-            Grantable::FlashbackUseTargetsCost => "instant or sorcery card in a graveyard",
+            Grantable::DerivedAlternativeCast(_) => "card",
             Grantable::Ability(_) => "card",
             Grantable::AlternativeCast(_) => "card",
             Grantable::PlayFrom => "card",
@@ -189,11 +156,14 @@ impl EffectExecutor for GrantEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::alternative_cast::AlternativeCastingMethod;
     use crate::card::CardBuilder;
     use crate::filter::ObjectFilter;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
+    use crate::types::CardType;
+    use crate::zone::Zone;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -213,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn test_grant_flashback_until_eot() {
+    fn test_grant_derived_flashback_until_eot() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
@@ -223,9 +193,11 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice);
         ctx.targets = vec![crate::executor::ResolvedTarget::Object(instant_id)];
 
-        let effect = GrantEffect::flashback_until_eot(ChooseSpec::Object(
-            ObjectFilter::default().in_zone(Zone::Graveyard),
-        ));
+        let effect = GrantEffect::new(
+            Grantable::flashback_from_cards_mana_cost(),
+            ChooseSpec::Object(ObjectFilter::default().in_zone(Zone::Graveyard)),
+            GrantDuration::UntilEndOfTurn,
+        );
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
@@ -237,7 +209,20 @@ mod tests {
         assert!(!grants.is_empty());
         assert!(matches!(
             &grants[0].grantable,
-            Grantable::AlternativeCast(AlternativeCastingMethod::Flashback { .. })
+            Grantable::DerivedAlternativeCast(
+                crate::grant::DerivedAlternativeCast::FlashbackFromCardManaCost { .. }
+            )
+        ));
+
+        let granted_casts = game.grant_registry.granted_alternative_casts_for_card(
+            &game,
+            instant_id,
+            Zone::Graveyard,
+            alice,
+        );
+        assert!(matches!(
+            granted_casts.first().map(|grant| &grant.method),
+            Some(AlternativeCastingMethod::Flashback { .. })
         ));
     }
 
@@ -293,9 +278,11 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice);
         ctx.targets = vec![crate::executor::ResolvedTarget::Object(creature_id)];
 
-        let effect = GrantEffect::flashback_until_eot(ChooseSpec::Object(
-            ObjectFilter::default().in_zone(Zone::Graveyard),
-        ));
+        let effect = GrantEffect::new(
+            Grantable::flashback_from_cards_mana_cost(),
+            ChooseSpec::Object(ObjectFilter::default().in_zone(Zone::Graveyard)),
+            GrantDuration::UntilEndOfTurn,
+        );
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         // Should fail because creature is not instant/sorcery

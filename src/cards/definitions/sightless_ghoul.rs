@@ -1,11 +1,9 @@
 //! Sightless Ghoul card definition.
 
-use crate::ability::Ability;
 use crate::card::PowerToughness;
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::static_abilities::StaticAbility;
 use crate::types::{CardType, Subtype};
 
 /// Sightless Ghoul - {3}{B}
@@ -22,13 +20,6 @@ pub fn sightless_ghoul() -> CardDefinition {
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Zombie, Subtype::Soldier])
         .power_toughness(PowerToughness::fixed(2, 2))
-        // Can't block
-        .with_ability(
-            Ability::static_ability(StaticAbility::cant_block())
-                .with_text("Sightless Ghoul can't block."),
-        )
-        // Undying
-        .undying()
         .parse_text("Sightless Ghoul can't block.\nUndying")
         .expect("Card text should be supported")
 }

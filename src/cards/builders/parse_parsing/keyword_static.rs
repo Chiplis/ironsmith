@@ -219,6 +219,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_filter_dont_untap_during_controllers_untap_steps_line
         ),
         single_static_ability_ast_rule!(parse_conditional_source_spell_keyword_line),
+        single_static_ability_ast_rule!(parse_pregame_begin_on_battlefield_line),
         single_static_ability_ast_rule!(parse_choose_basic_land_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
@@ -283,6 +284,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_protection_from_colored_spells_line),
         single_static_ability_ast_rule!(parse_blood_moon_line),
         single_static_ability_ast_rule!(parse_land_type_addition_line),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_filter_is_pt_creature_in_addition_and_has_line
+        ),
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
         multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
@@ -513,6 +517,176 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
     Ok(Some(StaticAbility::restriction(restriction, display)))
 }
 
+pub(crate) fn parse_pregame_begin_on_battlefield_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = words(tokens);
+    let mentions_opening_hand = clause_words
+        .windows(4)
+        .any(|window| window == ["your", "opening", "hand", "and"])
+        || clause_words
+            .windows(3)
+            .any(|window| window == ["your", "opening", "hand"]);
+    if clause_words.first().copied() != Some("if")
+        || !mentions_opening_hand
+        || !clause_words
+            .windows(6)
+            .any(|window| window == ["you", "may", "begin", "the", "game", "with"])
+        || !clause_words
+            .windows(3)
+            .any(|window| window == ["on", "the", "battlefield"])
+    {
+        return Ok(None);
+    }
+
+    let source_ref_start = find_source_reference_start(&tokens[1..]).map(|idx| idx + 1);
+    if source_ref_start.is_none() && clause_words.get(1..4) != Some(&["this", "card", "is"][..]) {
+        return Ok(None);
+    }
+
+    let require_not_starting_player = clause_words
+        .windows(4)
+        .any(|window| window == ["youre", "not", "playing", "first"])
+        || clause_words
+            .windows(5)
+            .any(|window| window == ["you", "are", "not", "playing", "first"])
+        || clause_words
+            .windows(5)
+            .any(|window| window == ["youre", "not", "the", "starting", "player"])
+        || clause_words
+            .windows(6)
+            .any(|window| window == ["you", "are", "not", "the", "starting", "player"])
+        || clause_words
+            .windows(5)
+            .any(|window| window == ["youre", "not", "starting", "the", "game"])
+        || clause_words
+            .windows(6)
+            .any(|window| window == ["you", "are", "not", "starting", "the", "game"]);
+
+    let battlefield_end_word_idx = clause_words
+        .windows(3)
+        .position(|window| window == ["on", "the", "battlefield"])
+        .map(|idx| idx + 3)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing battlefield destination in pregame line (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+    let if_you_do_word_idx = clause_words
+        .windows(3)
+        .position(|window| window == ["if", "you", "do"]);
+
+    let mut counters = Vec::new();
+    let counter_tail_start =
+        token_index_for_word_index(tokens, battlefield_end_word_idx).unwrap_or(tokens.len());
+    let counter_tail_end = if_you_do_word_idx
+        .and_then(|idx| token_index_for_word_index(tokens, idx))
+        .unwrap_or(tokens.len());
+    let counter_tail = trim_commas(&tokens[counter_tail_start..counter_tail_end]);
+    if !counter_tail.is_empty() {
+        if !counter_tail
+            .first()
+            .is_some_and(|token| token.is_word("with"))
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported pregame battlefield modifier (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let after_with = &counter_tail[1..];
+        let (count, used) = if after_with
+            .first()
+            .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        {
+            (1u32, 1usize)
+        } else {
+            parse_number(after_with).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing counter count in pregame line (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?
+        };
+        let counter_type =
+            parse_counter_type_from_tokens(&after_with[used..]).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported counter type in pregame line (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        let counter_word_idx = after_with
+            .iter()
+            .position(|token| token.is_word("counter") || token.is_word("counters"))
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing counter keyword in pregame line (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        let trailing = words(&after_with[counter_word_idx + 1..]);
+        if trailing.as_slice() != ["on", "it"] {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported counter placement tail in pregame line (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        counters.push((counter_type, count));
+    }
+
+    let exile_cards_from_hand = if let Some(if_you_do_word_idx) = if_you_do_word_idx {
+        let exile_start =
+            token_index_for_word_index(tokens, if_you_do_word_idx + 3).unwrap_or(tokens.len());
+        let exile_tail = trim_commas(&tokens[exile_start..]);
+        if !exile_tail
+            .first()
+            .is_some_and(|token| token.is_word("exile"))
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported pregame follow-up clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let after_exile = &exile_tail[1..];
+        let (count, used) = if after_exile
+            .first()
+            .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        {
+            (1u32, 1usize)
+        } else {
+            parse_number(after_exile).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing exile count in pregame follow-up (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?
+        };
+        let trailing = words(&after_exile[used..]);
+        if trailing.as_slice() != ["card", "from", "your", "hand"]
+            && trailing.as_slice() != ["cards", "from", "your", "hand"]
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported pregame exile tail (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        count as usize
+    } else {
+        0
+    };
+
+    Ok(Some(StaticAbility::pregame_action(
+        crate::static_abilities::PregameActionKind::BeginOnBattlefield(
+            crate::static_abilities::PregameBeginOnBattlefieldSpec {
+                require_not_starting_player,
+                counters,
+                exile_cards_from_hand,
+            },
+        ),
+        clause_words.join(" "),
+    )))
+}
+
 pub(crate) fn parse_can_block_additional_creature_each_combat_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -719,7 +893,7 @@ pub(crate) fn parse_composed_anthem_effects_line(
         return Ok(None);
     }
 
-    let comma_segments = split_on_comma(tokens);
+    let comma_segments = split_anthem_trailing_segments_preserving_granted_abilities(tokens);
     if comma_segments.len() < 2 {
         return Ok(None);
     }
@@ -3910,6 +4084,188 @@ pub(crate) fn parse_lands_are_pt_creatures_still_lands_line(
         StaticAbility::add_card_types(filter.clone(), vec![CardType::Creature]),
         StaticAbility::set_base_power_toughness(filter, power, toughness),
     ]))
+}
+
+pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
+    tokens: &[Token],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let clause_words = words(tokens);
+    if contains_until_end_of_turn(&clause_words) {
+        return Ok(None);
+    }
+
+    let Some(be_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("is") || token.is_word("are"))
+    else {
+        return Ok(None);
+    };
+    let Some(has_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
+        (idx > be_idx && (token.is_word("has") || token.is_word("have"))).then_some(idx)
+    }) else {
+        return Ok(None);
+    };
+
+    let (condition, subject_start) = match parse_anthem_prefix_condition(tokens, be_idx) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    let subject_tokens = trim_commas(&tokens[subject_start..be_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let subject = match parse_anthem_subject(&subject_tokens) {
+        Ok(subject) => subject,
+        Err(_) => return Ok(None),
+    };
+
+    let before_has = trim_commas(&tokens[be_idx + 1..has_idx]);
+    if before_has.is_empty() {
+        return Ok(None);
+    }
+    let mut before_has_words = words(&before_has);
+    if before_has_words
+        .first()
+        .is_some_and(|word| is_article(word))
+    {
+        before_has_words.remove(0);
+    }
+    if before_has_words.len() < 8 {
+        return Ok(None);
+    }
+
+    let (power, toughness) = match parse_pt_modifier(before_has_words[0]) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    let Some(creature_idx) = before_has_words
+        .iter()
+        .position(|word| matches!(*word, "creature" | "creatures"))
+    else {
+        return Ok(None);
+    };
+    if creature_idx == 0 {
+        return Ok(None);
+    }
+    let subtype_words = &before_has_words[1..creature_idx];
+    let mut subtypes = Vec::new();
+    for word in subtype_words {
+        if is_article(word) {
+            continue;
+        }
+        let Some(subtype) = parse_subtype_word(word) else {
+            return Ok(None);
+        };
+        subtypes.push(subtype);
+    }
+    let mut tail = &before_has_words[creature_idx + 1..];
+    if tail.last().copied() == Some("and") {
+        tail = &tail[..tail.len().saturating_sub(1)];
+    }
+    let valid_tail = matches!(
+        tail,
+        ["in", "addition", "to", "its", "other", "type"]
+            | ["in", "addition", "to", "its", "other", "types"]
+            | ["in", "addition", "to", "their", "other", "type"]
+            | ["in", "addition", "to", "their", "other", "types"]
+    );
+    if !valid_tail {
+        return Ok(None);
+    }
+
+    let filter = match &subject {
+        AnthemSubjectAst::Source => ObjectFilter::source(),
+        AnthemSubjectAst::Filter(filter) => filter.clone(),
+    };
+    let wrap_static = |ability: StaticAbility, condition: &Option<crate::ConditionExpr>| {
+        let ast = StaticAbilityAst::Static(ability);
+        if let Some(condition) = condition {
+            StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ast),
+                condition: condition.clone(),
+            }
+        } else {
+            ast
+        }
+    };
+
+    let mut abilities = vec![
+        wrap_static(
+            StaticAbility::add_card_types(filter.clone(), vec![CardType::Creature]),
+            &condition,
+        ),
+        wrap_static(
+            StaticAbility::set_base_power_toughness(filter.clone(), power, toughness),
+            &condition,
+        ),
+    ];
+    if !subtypes.is_empty() {
+        abilities.push(wrap_static(
+            StaticAbility::add_subtypes(filter.clone(), subtypes),
+            &condition,
+        ));
+    }
+
+    let mut granted_any = false;
+    let ability_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
+    for raw_segment in split_anthem_trailing_segments_preserving_granted_abilities(&ability_tokens)
+    {
+        let mut segment = trim_commas(&raw_segment).to_vec();
+        while segment.first().is_some_and(|token| token.is_word("and")) {
+            segment = trim_commas(&segment[1..]).to_vec();
+        }
+        if segment.is_empty() {
+            continue;
+        }
+
+        if let Some(triggered) = parse_triggered_granted_ability(&segment)? {
+            abilities.push(StaticAbilityAst::GrantObjectAbility {
+                filter: filter.clone(),
+                ability: triggered,
+                display: words(&segment).join(" "),
+                condition: condition.clone(),
+            });
+            granted_any = true;
+            continue;
+        }
+
+        let Some(actions) = parse_ability_line(&segment) else {
+            return Ok(None);
+        };
+        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+        let mut granted = false;
+        for action in actions
+            .into_iter()
+            .filter(|action| action.lowers_to_static_ability())
+        {
+            let ast = match &subject {
+                AnthemSubjectAst::Source => match &condition {
+                    Some(condition) => StaticAbilityAst::ConditionalKeywordAction {
+                        action,
+                        condition: condition.clone(),
+                    },
+                    None => StaticAbilityAst::KeywordAction(action),
+                },
+                AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
+                    filter: filter.clone(),
+                    action,
+                    condition: condition.clone(),
+                },
+            };
+            abilities.push(ast);
+            granted = true;
+            granted_any = true;
+        }
+        if !granted {
+            return Ok(None);
+        }
+    }
+
+    if !granted_any {
+        return Ok(None);
+    }
+
+    Ok(Some(abilities))
 }
 
 pub(crate) fn parse_creatures_cant_block_line(

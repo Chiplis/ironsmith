@@ -1,10 +1,8 @@
 //! Giant Growth card definition.
 
 use crate::cards::{CardDefinition, CardDefinitionBuilder};
-use crate::effect::{Effect, Until};
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::ChooseSpec;
 use crate::types::CardType;
 
 /// Giant Growth - {G}
@@ -14,14 +12,8 @@ pub fn giant_growth() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Giant Growth")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
         .card_types(vec![CardType::Instant])
-        .with_spell_effect(vec![Effect::pump(
-            3,
-            3,
-            ChooseSpec::creature(),
-            Until::EndOfTurn,
-        )])
-        .oracle_text("Target creature gets +3/+3 until end of turn.")
-        .build()
+        .parse_text("Target creature gets +3/+3 until end of turn.")
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

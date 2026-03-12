@@ -200,6 +200,9 @@ pub enum StaticAbilityId {
     /// Used by shock lands (Godless Shrine, etc.).
     PayLifeOrEnterTappedReplacement,
 
+    /// Pregame action available from opening hand.
+    PregameAction,
+
     /// Unimplemented keyword-like marker text preserved from parser/builder.
     KeywordMarker,
 
@@ -395,6 +398,7 @@ impl StaticAbilityId {
             | RuleRestriction
             | DiscardOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
+            | PregameAction
             | KeywordMarker
             | RuleTextPlaceholder
             | KeywordFallbackText

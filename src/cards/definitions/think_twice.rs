@@ -13,22 +13,14 @@ use crate::types::CardType;
 /// Draw a card.
 /// Flashback {2}{U}
 pub fn think_twice() -> CardDefinition {
-    let mut def = CardDefinitionBuilder::new(CardId::new(), "Think Twice")
+    CardDefinitionBuilder::new(CardId::new(), "Think Twice")
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::Generic(1)],
             vec![ManaSymbol::Blue],
         ]))
         .card_types(vec![CardType::Instant])
-        .flashback(ManaCost::from_pips(vec![
-            vec![ManaSymbol::Generic(2)],
-            vec![ManaSymbol::Blue],
-        ]))
-        .parse_text("Draw a card.")
-        .expect("Card text should be supported");
-
-    def.card.oracle_text = format!("{}\nFlashback {{2}}{{U}}", def.card.oracle_text);
-
-    def
+        .parse_text("Draw a card.\nFlashback {2}{U}")
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

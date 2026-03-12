@@ -3136,7 +3136,7 @@ impl Effect {
     /// ```ignore
     /// // Grant flashback until end of turn (Snapcaster Mage)
     /// Effect::grant(
-    ///     Grantable::flashback_use_targets_cost(),
+    ///     Grantable::flashback_from_cards_mana_cost(),
     ///     target,
     ///     GrantDuration::UntilEndOfTurn,
     /// )
@@ -3155,14 +3155,6 @@ impl Effect {
     ) -> Self {
         use crate::effects::GrantEffect;
         Self::new(GrantEffect::new(grantable, target, duration))
-    }
-
-    /// Create a "grant flashback until end of turn" effect using the unified grant system.
-    ///
-    /// This is a convenience method for the Snapcaster Mage pattern.
-    pub fn grant_flashback_until_eot_unified(target: ChooseSpec) -> Self {
-        use crate::effects::GrantEffect;
-        Self::new(GrantEffect::flashback_until_eot(target))
     }
 
     /// Create an effect that grants an ability directly to an object.

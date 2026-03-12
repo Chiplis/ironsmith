@@ -9,7 +9,7 @@
 //! - Static abilities (e.g., Underworld Breach grants escape while on battlefield)
 
 use crate::alternative_cast::AlternativeCastingMethod;
-use crate::grant::Grantable;
+use crate::grant::{DerivedAlternativeCast, Grantable};
 use crate::ids::{ObjectId, PlayerId};
 use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
@@ -402,14 +402,7 @@ impl GrantRegistry {
     ) -> Vec<GrantedAlternativeCast> {
         self.get_grants_for_card(game, card_id, zone, player)
             .into_iter()
-            .filter_map(|grant| match grant.grantable {
-                Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
-                    method,
-                    source_id: grant.source.source_id(),
-                    zone: grant.zone,
-                }),
-                _ => None,
-            })
+            .filter_map(|grant| materialize_granted_alternative_cast(game, card_id, grant))
             .collect()
     }
 
@@ -489,22 +482,13 @@ impl GrantRegistry {
         player: PlayerId,
         source: GrantSource,
     ) {
-        match &spec.grantable {
-            Grantable::FlashbackUseTargetsCost => {
-                // This variant is only used for one-shot effects (like Snapcaster Mage),
-                // not for static abilities. Static abilities that grant flashback would
-                // use Grantable::AlternativeCast with a specific cost.
-            }
-            _ => {
-                self.grant_to_filter(
-                    normalize_grant_filter(spec.filter.clone()),
-                    spec.zone,
-                    player,
-                    spec.grantable.clone(),
-                    source,
-                );
-            }
-        }
+        self.grant_to_filter(
+            normalize_grant_filter(spec.filter.clone()),
+            spec.zone,
+            player,
+            spec.grantable.clone(),
+            source,
+        );
     }
 
     /// Snapshot of currently valid grants.
@@ -515,6 +499,34 @@ impl GrantRegistry {
             .cloned()
             .collect()
     }
+}
+
+fn materialize_granted_alternative_cast(
+    game: &crate::game_state::GameState,
+    card_id: ObjectId,
+    grant: Grant,
+) -> Option<GrantedAlternativeCast> {
+    let method = match grant.grantable {
+        Grantable::AlternativeCast(method) => method,
+        Grantable::DerivedAlternativeCast(spec) => {
+            let card = game.object(card_id)?;
+            materialize_derived_alternative_cast(card, spec)?
+        }
+        Grantable::Ability(_) | Grantable::PlayFrom => return None,
+    };
+
+    Some(GrantedAlternativeCast {
+        method,
+        source_id: grant.source.source_id(),
+        zone: grant.zone,
+    })
+}
+
+fn materialize_derived_alternative_cast(
+    card: &crate::object::Object,
+    spec: DerivedAlternativeCast,
+) -> Option<AlternativeCastingMethod> {
+    spec.materialize_for(card)
 }
 
 fn normalize_grant_filter(mut filter: ObjectFilter) -> ObjectFilter {

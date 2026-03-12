@@ -6,7 +6,7 @@
 //! Also supports fixed-subtype variants such as:
 //! "{T}: Target land becomes an Island until end of turn."
 
-use crate::ability::{Ability, AbilityKind, ActivatedAbility};
+use crate::ability::Ability;
 use crate::continuous::Modification;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, Until};
@@ -17,7 +17,6 @@ use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::types::Subtype;
-use crate::zone::Zone;
 
 /// Effect: target land becomes one basic land type of the controller's choice.
 #[derive(Debug, Clone, PartialEq)]
@@ -62,21 +61,8 @@ impl BecomeBasicLandTypeChoiceEffect {
         ]
     }
 
-    fn mana_ability_for(symbol: ManaSymbol) -> Ability {
-        let text = match symbol {
-            ManaSymbol::White => "{T}: Add {W}.".to_string(),
-            ManaSymbol::Blue => "{T}: Add {U}.".to_string(),
-            ManaSymbol::Black => "{T}: Add {B}.".to_string(),
-            ManaSymbol::Red => "{T}: Add {R}.".to_string(),
-            ManaSymbol::Green => "{T}: Add {G}.".to_string(),
-            ManaSymbol::Colorless => "{T}: Add {C}.".to_string(),
-            _ => "{T}: Add mana.".to_string(),
-        };
-        Ability {
-            kind: AbilityKind::Activated(ActivatedAbility::basic_mana(symbol)),
-            functional_zones: vec![Zone::Battlefield],
-            text: Some(text),
-        }
+    fn mana_ability_for(subtype: Subtype) -> Ability {
+        Ability::basic_land_mana(subtype).expect("basic land subtype should map to a mana ability")
     }
 }
 
@@ -86,7 +72,7 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let (subtype, mana_symbol, _) = if let Some(subtype) = self.fixed_subtype {
+        let (subtype, _, _) = if let Some(subtype) = self.fixed_subtype {
             Self::subtype_options()
                 .into_iter()
                 .find(|(candidate, _, _)| *candidate == subtype)
@@ -116,7 +102,7 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
 
             Self::subtype_options()[chosen.min(4)]
         };
-        let mana_ability = Self::mana_ability_for(mana_symbol);
+        let mana_ability = Self::mana_ability_for(subtype);
 
         let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
             self.target.clone(),
@@ -133,10 +119,12 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::AbilityKind;
     use crate::cards::CardDefinitionBuilder;
     use crate::decision::DecisionMaker;
     use crate::ids::{CardId, PlayerId};
     use crate::types::{CardType, Subtype};
+    use crate::zone::Zone;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

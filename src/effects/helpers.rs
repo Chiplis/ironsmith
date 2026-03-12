@@ -2153,20 +2153,23 @@ mod tests {
         let land_id =
             add_battlefield_permanent(&mut game, 101, "Target Land", bob, vec![CardType::Land]);
 
-        let ctx = ExecutionContext::new_default(source_id, alice).with_targets(vec![
-            ResolvedTarget::Object(creature_id),
-            ResolvedTarget::Object(land_id),
-        ])
-        .with_target_assignments(vec![
-            crate::game_state::TargetAssignment {
-                spec: ChooseSpec::target(ChooseSpec::creature()),
-                range: 0..1,
-            },
-            crate::game_state::TargetAssignment {
-                spec: ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter::land())),
-                range: 1..2,
-            },
-        ]);
+        let ctx = ExecutionContext::new_default(source_id, alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(creature_id),
+                ResolvedTarget::Object(land_id),
+            ])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target(ChooseSpec::creature()),
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target(ChooseSpec::Object(
+                        crate::filter::ObjectFilter::land(),
+                    )),
+                    range: 1..2,
+                },
+            ]);
 
         let resolved =
             resolve_objects_from_spec(&game, &ChooseSpec::target(ChooseSpec::creature()), &ctx)
@@ -2186,20 +2189,21 @@ mod tests {
         let bob = game.players[1].id;
         let source_id = game.new_object_id();
 
-        let ctx = ExecutionContext::new_default(source_id, alice).with_targets(vec![
-            ResolvedTarget::Player(alice),
-            ResolvedTarget::Player(bob),
-        ])
-        .with_target_assignments(vec![
-            crate::game_state::TargetAssignment {
-                spec: ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Specific(alice))),
-                range: 0..1,
-            },
-            crate::game_state::TargetAssignment {
-                spec: ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Specific(bob))),
-                range: 1..2,
-            },
-        ]);
+        let ctx = ExecutionContext::new_default(source_id, alice)
+            .with_targets(vec![
+                ResolvedTarget::Player(alice),
+                ResolvedTarget::Player(bob),
+            ])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Specific(alice))),
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Specific(bob))),
+                    range: 1..2,
+                },
+            ]);
 
         let resolved = resolve_players_from_spec(
             &game,
@@ -2224,14 +2228,15 @@ mod tests {
         let target_2 = game.new_object_id();
         let spec = ChooseSpec::target(ChooseSpec::creature())
             .with_count(crate::effect::ChoiceCount::any_number());
-        let mut ctx = ExecutionContext::new_default(source_id, player_id).with_targets(vec![
-            ResolvedTarget::Object(target_1),
-            ResolvedTarget::Object(target_2),
-        ])
-        .with_target_assignments(vec![crate::game_state::TargetAssignment {
-            spec: spec.clone(),
-            range: 0..2,
-        }]);
+        let mut ctx = ExecutionContext::new_default(source_id, player_id)
+            .with_targets(vec![
+                ResolvedTarget::Object(target_1),
+                ResolvedTarget::Object(target_2),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: spec.clone(),
+                range: 0..2,
+            }]);
         let mut seen = Vec::new();
         let result = apply_to_selected_objects(
             &mut game,

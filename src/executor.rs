@@ -369,8 +369,7 @@ impl<'a> ExecutionContext<'a> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let original_targets = std::mem::replace(&mut self.targets, targets);
-        let original_target_assignments =
-            std::mem::take(&mut self.target_assignments);
+        let original_target_assignments = std::mem::take(&mut self.target_assignments);
         let result = f(self);
         self.targets = original_targets;
         self.target_assignments = original_target_assignments;

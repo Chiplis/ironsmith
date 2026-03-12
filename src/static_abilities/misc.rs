@@ -2486,6 +2486,36 @@ impl StaticAbilityKind for PayLifeOrEnterTappedReplacement {
     }
 }
 
+/// Parser-backed pregame action from opening hand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PregameAction {
+    pub kind: crate::static_abilities::PregameActionKind,
+    pub text: String,
+}
+
+impl PregameAction {
+    pub fn new(kind: crate::static_abilities::PregameActionKind, text: impl Into<String>) -> Self {
+        Self {
+            kind,
+            text: text.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for PregameAction {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PregameAction
+    }
+
+    fn display(&self) -> String {
+        self.text.clone()
+    }
+
+    fn pregame_action_kind(&self) -> Option<crate::static_abilities::PregameActionKind> {
+        Some(self.kind.clone())
+    }
+}
+
 // =============================================================================
 // Placeholder / Marker Abilities
 // =============================================================================

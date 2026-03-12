@@ -408,16 +408,17 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     let mut consumed_modal_selection = false;
     let mut assignment_cursor = 0usize;
     for effect in &effects {
-        let effect_target_assignments = super::stack_resolution::active_target_assignments_for_effect(
-            game,
-            effect,
-            entry.controller,
-            entry.object_id,
-            entry.chosen_modes.as_deref(),
-            &mut consumed_modal_selection,
-            &valid_target_assignments,
-            &mut assignment_cursor,
-        );
+        let effect_target_assignments =
+            super::stack_resolution::active_target_assignments_for_effect(
+                game,
+                effect,
+                entry.controller,
+                entry.object_id,
+                entry.chosen_modes.as_deref(),
+                &mut consumed_modal_selection,
+                &valid_target_assignments,
+                &mut assignment_cursor,
+            );
         let outcome = ctx.with_temp_target_assignments(effect_target_assignments, |ctx| {
             execute_effect(game, effect, ctx)
         });

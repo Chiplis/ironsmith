@@ -1,13 +1,9 @@
 //! Card definition for Force of Will.
 
-use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::CardDefinition;
 use crate::cards::builders::CardDefinitionBuilder;
-use crate::color::ColorSet;
-use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::ChooseSpec;
 use crate::types::CardType;
 
 /// Creates the Force of Will card definition.
@@ -25,24 +21,16 @@ pub fn force_of_will() -> CardDefinition {
             vec![ManaSymbol::Blue],
         ]))
         .card_types(vec![CardType::Instant])
-        // Alternative cost: Pay 1 life and exile a blue card from your hand
-        // Uses composable effects: choose a blue card, then exile it
-        .alternative_cast(AlternativeCastingMethod::alternative_cost(
-            "Force of Will",
-            None, // No mana cost for the alternative
-            vec![
-                crate::costs::Cost::life(1),
-                crate::costs::Cost::exile_from_hand(1, Some(ColorSet::BLUE)),
-            ],
-        ))
-        // Counter target spell (using target_spell() to indicate it's a TARGET)
-        .with_spell_effect(vec![Effect::counter(ChooseSpec::target_spell())])
-        .build()
+        .parse_text(
+            "You may pay 1 life and exile a blue card from your hand rather than pay this spell's mana cost.\nCounter target spell.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AlternativeCastingMethod;
 
     #[test]
     fn test_force_of_will() {
@@ -54,7 +42,7 @@ mod tests {
         // Should have alternative casting method
         assert_eq!(card.alternative_casts.len(), 1);
         let alt = &card.alternative_casts[0];
-        assert_eq!(alt.name(), "Force of Will");
+        assert!(matches!(alt, AlternativeCastingMethod::Composed { .. }));
 
         // Alternative cost should have no mana cost and two non-mana costs:
         // 1. Pay 1 life

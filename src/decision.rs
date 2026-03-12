@@ -80,8 +80,11 @@ pub enum LegalAction {
     /// Finish pregame actions and begin the first turn.
     BeginGame,
 
-    /// Begin the game with Gemstone Caverns on the battlefield from hand.
-    BeginWithGemstoneCaverns { card_id: ObjectId },
+    /// Use a parser-backed pregame action from a card in hand.
+    UsePregameAction {
+        card_id: ObjectId,
+        ability_index: usize,
+    },
 
     /// Cast a spell from a zone.
     CastSpell {
@@ -844,7 +847,10 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
                 }
             }
 
-            for (i, ability) in perm.abilities.iter().enumerate() {
+            let abilities = view
+                .abilities(perm_id)
+                .unwrap_or_else(|| perm.abilities.clone());
+            for (i, ability) in abilities.iter().enumerate() {
                 // Check mana abilities
                 if ability.is_mana_ability() {
                     let action = SpecialAction::ActivateManaAbility {
@@ -3045,7 +3051,10 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
             continue;
         }
 
-        for (ability_idx, ability) in perm.abilities.iter().enumerate() {
+        let abilities = game
+            .current_abilities(perm_id)
+            .unwrap_or_else(|| perm.abilities.clone());
+        for (ability_idx, ability) in abilities.iter().enumerate() {
             if let AbilityKind::Activated(mana_ability) = &ability.kind
                 && mana_ability.is_mana_ability()
             {
@@ -5982,11 +5991,11 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
         }
         LegalAction::ContinuePregame => "Continue".to_string(),
         LegalAction::BeginGame => "Begin game".to_string(),
-        LegalAction::BeginWithGemstoneCaverns { card_id } => {
+        LegalAction::UsePregameAction { card_id, .. } => {
             let name = game
                 .object(*card_id)
                 .map(|o| o.name.as_str())
-                .unwrap_or("Gemstone Caverns");
+                .unwrap_or("pregame card");
             format!("Begin with {}", name)
         }
         LegalAction::PlayLand { land_id } => {
@@ -6151,26 +6160,19 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
             let name = game.object(*source).map(|o| o.name.as_str()).unwrap_or("?");
 
             // Check if this ability requires tapping
-            if let Some(obj) = game.object(*source) {
-                if let Some(ability) = obj.abilities.get(*ability_index) {
-                    if let crate::AbilityKind::Activated(mana_ability) = &ability.kind
-                        && mana_ability.is_mana_ability()
-                    {
-                        if mana_ability.has_tap_cost() {
-                            format!("Tap {}", name)
-                        } else {
-                            // Show the ability text if available, otherwise show cost
-                            if let Some(text) = &ability.text {
-                                format!("{}: {}", name, text)
-                            } else {
-                                format!("Activate {}", name)
-                            }
-                        }
+            if let Some(ability) = game.current_ability(*source, *ability_index) {
+                if let crate::AbilityKind::Activated(mana_ability) = &ability.kind
+                    && mana_ability.is_mana_ability()
+                {
+                    if mana_ability.has_tap_cost() {
+                        format!("Tap {}", name)
+                    } else if let Some(text) = &ability.text {
+                        format!("{}: {}", name, text)
                     } else {
                         format!("Activate {}", name)
                     }
                 } else {
-                    format!("Tap {}", name)
+                    format!("Activate {}", name)
                 }
             } else {
                 format!("Tap {}", name)

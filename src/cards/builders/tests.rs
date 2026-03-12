@@ -16549,7 +16549,6 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
 
 const STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS: &[&str] = &[
     "Clown Car",
-    "Gemstone Caverns",
     "Gravecrawler",
     "Hancock, Ghoulish Mayor",
     "Lake of the Dead",
@@ -16581,7 +16580,7 @@ strict_parse_card_test!(strict_parse_cabal_ritual, "Cabal Ritual");
 strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
 strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
-strict_parse_card_expected_fail_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
+strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
 strict_parse_card_test!(strict_parse_golgari_thug, "Golgari Thug");
 strict_parse_card_expected_fail_test!(strict_parse_gravecrawler, "Gravecrawler");
 strict_parse_card_test!(strict_parse_grief, "Grief");

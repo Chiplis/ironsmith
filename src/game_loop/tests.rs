@@ -1343,20 +1343,21 @@ fn test_distinct_object_target_clauses_resolve_against_their_own_selected_target
         .build();
     let land_id = game.create_object_from_card(&land_card, bob, Zone::Battlefield);
 
-    let mut ctx = ExecutionContext::new_default(source_id, alice).with_targets(vec![
-        crate::executor::ResolvedTarget::Object(creature_id),
-        crate::executor::ResolvedTarget::Object(land_id),
-    ])
-    .with_target_assignments(vec![
-        crate::game_state::TargetAssignment {
-            spec: ChooseSpec::target(ChooseSpec::creature()),
-            range: 0..1,
-        },
-        crate::game_state::TargetAssignment {
-            spec: ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter::land())),
-            range: 1..2,
-        },
-    ]);
+    let mut ctx = ExecutionContext::new_default(source_id, alice)
+        .with_targets(vec![
+            crate::executor::ResolvedTarget::Object(creature_id),
+            crate::executor::ResolvedTarget::Object(land_id),
+        ])
+        .with_target_assignments(vec![
+            crate::game_state::TargetAssignment {
+                spec: ChooseSpec::target(ChooseSpec::creature()),
+                range: 0..1,
+            },
+            crate::game_state::TargetAssignment {
+                spec: ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter::land())),
+                range: 1..2,
+            },
+        ]);
 
     let destroy_creature =
         Effect::new(crate::effects::DestroyEffect::target(ChooseSpec::creature()));
@@ -1418,7 +1419,9 @@ fn test_stack_resolution_keeps_distinct_target_clause_assignments_when_one_targe
                     range: 0..1,
                 },
                 crate::game_state::TargetAssignment {
-                    spec: ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter::land())),
+                    spec: ChooseSpec::target(ChooseSpec::Object(
+                        crate::filter::ObjectFilter::land(),
+                    )),
                     range: 1..2,
                 },
             ]),

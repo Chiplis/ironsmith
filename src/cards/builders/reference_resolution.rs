@@ -560,6 +560,7 @@ fn advance_reference_frame_for_effect(
             maybe_tag_target(&target, frame, id_gen, "set_colorless")?;
         }
         EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::GrantToTarget { target, .. }
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::RemoveAbilitiesFromTarget { target, .. }
         | EffectAst::PreventAllCombatDamageFromSource { source: target, .. } => {
@@ -1310,6 +1311,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         | EffectAst::ExileUntilSourceLeaves { target, .. }
         | EffectAst::GainControl { target, .. }
         | EffectAst::GrantAbilitiesToTarget { target, .. }
+        | EffectAst::GrantToTarget { target, .. }
         | EffectAst::RemoveAbilitiesFromTarget { target, .. }
         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. }
         | EffectAst::SwitchPowerToughness { target, .. }

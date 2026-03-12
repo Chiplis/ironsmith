@@ -790,6 +790,7 @@ pub(crate) fn parse_sentence_put_counter_sequence(
                     match effect {
                         EffectAst::Pump { target, .. }
                         | EffectAst::GrantAbilitiesToTarget { target, .. }
+                        | EffectAst::GrantToTarget { target, .. }
                         | EffectAst::GrantAbilitiesChoiceToTarget { target, .. } => {
                             if let TargetAst::Tagged(tag, _) = target
                                 && tag.as_str() == IT_TAG

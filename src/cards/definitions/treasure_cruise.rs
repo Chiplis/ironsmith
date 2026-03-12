@@ -2,7 +2,6 @@
 
 use crate::cards::CardDefinition;
 use crate::cards::builders::CardDefinitionBuilder;
-use crate::effect::Effect;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::types::CardType;
@@ -20,9 +19,10 @@ pub fn treasure_cruise() -> CardDefinition {
             vec![ManaSymbol::Blue],
         ]))
         .card_types(vec![CardType::Sorcery])
-        .delve()
-        .with_spell_effect(vec![Effect::draw(3)])
-        .build()
+        .parse_text(
+            "Delve (Each card you exile from your graveyard while casting this spell pays for {1}.)\nDraw three cards.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]
