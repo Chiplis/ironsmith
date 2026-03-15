@@ -171,6 +171,16 @@ impl OptionalCost {
         }
     }
 
+    /// Create an offspring cost (may be paid once).
+    pub fn offspring(cost: TotalCost) -> Self {
+        Self {
+            label: "Offspring".to_string(),
+            cost,
+            repeatable: false,
+            returns_to_hand: false,
+        }
+    }
+
     /// Create a custom optional cost with a specific label.
     pub fn custom(label: impl Into<String>, cost: TotalCost) -> Self {
         Self {

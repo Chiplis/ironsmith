@@ -1,9 +1,12 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
+import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+
+const BLOCKER_COLOR = "#3b82f6";
 
 /**
  * The engine emits attacker-centric blocker options:
@@ -38,14 +41,40 @@ function pivotToBlockerCentric(attackerOptions) {
 
 export default function BlockersDecision({ decision, canAct, compact = false }) {
   const { dispatch } = useGame();
-  const { updateArrows, clearArrows, setCombatMode } = useCombatArrows();
+  const {
+    updateArrows,
+    clearArrows,
+    startDragArrow,
+    updateDragArrow,
+    endDragArrow,
+    setCombatMode,
+  } = useCombatArrows();
   const attackerOptions = useMemo(() => decision.blocker_options || [], [decision.blocker_options]);
   const blockerOptions = useMemo(
     () => pivotToBlockerCentric(attackerOptions),
     [attackerOptions]
   );
+  const blockerOptionsRef = useRef(blockerOptions);
+  const selectedBlockerRef = useRef(null);
+  const declarationsRef = useRef([]);
 
   const [declarations, setDeclarations] = useState([]);
+  const [selectedBlockerId, setSelectedBlockerId] = useState(null);
+
+  useEffect(() => {
+    blockerOptionsRef.current = blockerOptions;
+  }, [blockerOptions]);
+
+  useEffect(() => {
+    selectedBlockerRef.current = selectedBlockerId;
+  }, [selectedBlockerId]);
+
+  useEffect(() => {
+    declarationsRef.current = declarations;
+  }, [declarations]);
+
+  const getDeclaration = (blockerId) =>
+    declarations.find((d) => d.blocker === Number(blockerId));
 
   const getBlockerDeclarations = (blockerId) =>
     declarations.filter((d) => d.blocker === Number(blockerId));
@@ -55,24 +84,77 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
       (d) => d.blocker === Number(blockerId) && d.blocking === Number(attackerId)
     );
 
+  const assignBlocker = useCallback((blockerId, attackerId) => {
+    blockerId = Number(blockerId);
+    attackerId = Number(attackerId);
+    setDeclarations((prev) => [
+      ...prev.filter((d) => d.blocker !== blockerId),
+      { blocker: blockerId, blocking: attackerId },
+    ]);
+    setSelectedBlockerId(null);
+  }, []);
+
   const toggleBlocker = useCallback((blockerId, attackerId) => {
     blockerId = Number(blockerId);
     attackerId = Number(attackerId);
-    if (declarations.some((d) => d.blocker === blockerId && d.blocking === attackerId)) {
+    if (declarationsRef.current.some((d) => d.blocker === blockerId && d.blocking === attackerId)) {
       setDeclarations((prev) =>
         prev.filter((d) => !(d.blocker === blockerId && d.blocking === attackerId))
       );
-    } else {
-      setDeclarations((prev) => [
-        ...prev.filter((d) => d.blocker !== blockerId),
-        { blocker: blockerId, blocking: attackerId },
-      ]);
+      setSelectedBlockerId(null);
+      return;
     }
-  }, [declarations]);
+    assignBlocker(blockerId, attackerId);
+  }, [assignBlocker]);
 
-  // Handle drop from battlefield drag — blocker dragged to attacker
+  const toggleBlockerSelection = useCallback((opt) => {
+    const blockerId = Number(opt.blocker);
+    if (declarationsRef.current.some((d) => d.blocker === blockerId)) {
+      setDeclarations((prev) => prev.filter((d) => d.blocker !== blockerId));
+      setSelectedBlockerId(null);
+      return;
+    }
+    if (selectedBlockerRef.current === blockerId) {
+      setSelectedBlockerId(null);
+      return;
+    }
+    setSelectedBlockerId(blockerId);
+  }, []);
+
+  useEffect(() => {
+    if (selectedBlockerId == null) {
+      endDragArrow();
+      return;
+    }
+
+    const rect = getCardRect(selectedBlockerId);
+    if (rect) {
+      const center = centerOf(rect);
+      startDragArrow(selectedBlockerId, center.x, center.y, BLOCKER_COLOR);
+    }
+
+    const onMouseMove = (event) => {
+      updateDragArrow(event.clientX, event.clientY);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+    };
+  }, [endDragArrow, selectedBlockerId, startDragArrow, updateDragArrow]);
+
+  const handleTargetCardClick = useCallback((attackerId) => {
+    const blockerId = selectedBlockerRef.current;
+    if (blockerId == null) return false;
+    const opt = (blockerOptionsRef.current || []).find((entry) => entry.blocker === Number(blockerId));
+    if (!opt) return false;
+    const validAttacker = (opt.valid_attackers || []).find((entry) => entry.attacker === Number(attackerId));
+    if (!validAttacker) return false;
+    assignBlocker(blockerId, attackerId);
+    return true;
+  }, [assignBlocker]);
+
   const handleDrop = useCallback((fromId, x, y) => {
-    const opt = blockerOptions.find((o) => o.blocker === Number(fromId));
+    const opt = (blockerOptionsRef.current || []).find((o) => o.blocker === Number(fromId));
     if (!opt) return;
 
     const el = document.elementFromPoint(x, y);
@@ -84,34 +166,69 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
     const targetId = Number(cardEl.dataset.objectId);
     const validAttacker = opt.valid_attackers.find((a) => a.attacker === targetId);
     if (validAttacker) {
-      toggleBlocker(Number(fromId), targetId);
+      assignBlocker(Number(fromId), targetId);
     }
-  }, [blockerOptions, toggleBlocker]);
+  }, [assignBlocker]);
 
-  // Register combat mode for battlefield interaction
+  const combatOptionsKey = blockerOptions
+    .map((opt) => {
+      const validAttackers = (opt.valid_attackers || [])
+        .map((attacker) => `${Number(attacker.attacker)}`)
+        .join(",");
+      return `${Number(opt.blocker)}:${validAttackers}`;
+    })
+    .join("|");
+
   useEffect(() => {
     if (!canAct) {
       setCombatMode(null);
       return;
     }
-    const candidateIds = new Set(blockerOptions.map((o) => o.blocker));
+    const currentOptions = blockerOptionsRef.current || [];
+    const candidateIds = new Set(currentOptions.map((o) => o.blocker));
+    const validTargetObjectsByBlocker = {};
+    for (const opt of currentOptions) {
+      validTargetObjectsByBlocker[Number(opt.blocker)] = new Set(
+        (opt.valid_attackers || []).map((attacker) => Number(attacker.attacker))
+      );
+    }
+    const activeBlockerId = selectedBlockerId != null ? Number(selectedBlockerId) : null;
+    const validTargetObjects = (
+      activeBlockerId != null
+        ? (validTargetObjectsByBlocker[activeBlockerId] || new Set())
+        : new Set()
+    );
     setCombatMode({
       mode: "blockers",
       candidates: candidateIds,
-      color: "#3b82f6",
+      color: BLOCKER_COLOR,
+      selectedBlocker: selectedBlockerId,
+      validTargetObjectsByBlocker,
+      validTargetObjects,
       onDrop: handleDrop,
-      onClick: null, // clicks handled via buttons
+      onClick: (blockerId) => {
+        const opt = (blockerOptionsRef.current || []).find((entry) => entry.blocker === Number(blockerId));
+        if (opt) toggleBlockerSelection(opt);
+      },
+      onTargetCardClick: handleTargetCardClick,
     });
     return () => setCombatMode(null);
-  }, [canAct, blockerOptions, handleDrop, setCombatMode]);
+  }, [
+    canAct,
+    combatOptionsKey,
+    handleDrop,
+    handleTargetCardClick,
+    selectedBlockerId,
+    setCombatMode,
+    toggleBlockerSelection,
+  ]);
 
-  // Update combat arrows when declarations change
   useEffect(() => {
     const arrowData = declarations.map((d) => ({
       fromId: d.blocker,
       toId: d.blocking,
       toPlayerId: null,
-      color: "#3b82f6",
+      color: BLOCKER_COLOR,
       key: `blk-${d.blocker}-${d.blocking}`,
     }));
     updateArrows(arrowData);
@@ -137,6 +254,11 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
   }, [attackerOptions]);
 
   if (compact) {
+    const pendingOnlySelection = (
+      selectedBlockerId != null
+      && !declarations.some((d) => d.blocker === Number(selectedBlockerId))
+    );
+
     return (
       <div className="flex h-full min-w-0 items-center gap-2">
         <div className="shrink-0 flex min-w-[308px] min-h-[34px] items-stretch gap-2">
@@ -166,21 +288,34 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
 
         <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap">
           <div className="flex w-max min-w-full items-center gap-1.5 pr-2">
-            {declarations.length === 0 && (
+            {declarations.length === 0 && !pendingOnlySelection && (
               <span className="text-[12px] text-[#b8d2ef]">
-                Drag your blockers onto attackers to assign blocks.
+                Select a blocker, then point to the attacker it should block.
               </span>
+            )}
+            {pendingOnlySelection && (
+              <button
+                type="button"
+                className="inline-flex h-7 items-center rounded border border-[rgba(59,130,246,0.75)] bg-[rgba(16,41,76,0.72)] px-2.5 text-[12px] font-semibold text-[#dbeafe]"
+                disabled={!canAct}
+                onClick={() => setSelectedBlockerId(null)}
+              >
+                {(blockerNameById.get(Number(selectedBlockerId)) || `Creature ${Number(selectedBlockerId)}`)} -&gt; ?
+              </button>
             )}
             {declarations.map((decl) => {
               const blockerName = blockerNameById.get(Number(decl.blocker)) || `Creature ${Number(decl.blocker)}`;
               const attackerName = attackerNameById.get(Number(decl.blocking)) || `Attacker ${Number(decl.blocking)}`;
               return (
-                <span
+                <button
+                  type="button"
                   key={`compact-blk-${decl.blocker}-${decl.blocking}`}
-                  className="inline-flex h-7 items-center rounded border border-[#4f7cad] bg-[rgba(24,43,64,0.78)] px-2.5 text-[12px] font-semibold text-[#d7ebff]"
+                  className="inline-flex h-7 items-center rounded border border-[#4f7cad] bg-[rgba(24,43,64,0.78)] px-2.5 text-[12px] font-semibold text-[#d7ebff] transition-colors hover:border-[#7eb1e5] hover:bg-[rgba(34,58,84,0.9)]"
+                  disabled={!canAct}
+                  onClick={() => setSelectedBlockerId(Number(decl.blocker))}
                 >
                   {blockerName} -&gt; {attackerName}
-                </span>
+                </button>
               );
             })}
           </div>
@@ -197,49 +332,71 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
           {blockerOptions.map((opt) => {
             const blockerId = opt.blocker;
             const name = opt.name;
+            const decl = getDeclaration(blockerId);
             const currentDecls = getBlockerDeclarations(blockerId);
             const validAttackers = opt.valid_attackers || [];
+            const isSelected = selectedBlockerId === blockerId;
 
             return (
               <div
                 key={blockerId}
                 className={cn(
                   "min-w-0 rounded-sm px-2 py-1.5 border-l-[3px] border-[#2a3b4d] bg-[rgba(7,15,23,0.35)]",
-                  currentDecls.length > 0 && "border-[rgba(105,181,247,0.9)] bg-[rgba(20,39,58,0.52)]"
+                  currentDecls.length > 0 && "border-[rgba(105,181,247,0.9)] bg-[rgba(20,39,58,0.52)]",
+                  isSelected && "border-[rgba(59,130,246,0.92)] bg-[rgba(17,32,60,0.58)] shadow-[inset_0_0_0_1px_rgba(96,165,250,0.24)]"
                 )}
               >
-                <div className={cn(
-                  "mb-1.5 text-[15px] font-semibold text-[#d6e7fb]",
-                  currentDecls.length > 0 && "text-[#bfe1ff]"
-                )}>
-                  {name}
-                </div>
-                <div className="-mx-2 border-y border-[#2f4b67] bg-[rgba(10,20,30,0.45)]">
-                  <div className="w-full divide-y divide-[#2f4b67]">
-                    {validAttackers.map((attacker) => {
-                      const attackerId = Number(attacker.attacker);
-                      const attackerName = attacker.name;
-                      const blocking = isBlockingAttacker(blockerId, attackerId);
-                      return (
-                        <Button
-                          key={attackerId}
-                          variant="ghost"
-                          size="sm"
-                          className={cn(
-                            "h-8 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 text-[13px] text-[#c7dbf2] transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
-                            blocking && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]"
-                          )}
-                          disabled={!canAct}
-                          onClick={() => toggleBlocker(blockerId, attackerId)}
-                        >
-                          <span className="min-w-0 truncate">
-                            {blocking ? "[BLK] " : ""}Block {attackerName}
-                          </span>
-                        </Button>
-                      );
-                    })}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-auto min-h-10 w-full min-w-0 overflow-hidden justify-start rounded-sm border px-3 py-2 text-left text-[15px] font-semibold leading-snug whitespace-normal",
+                    "border-[#2f4f70] bg-[rgba(15,27,40,0.9)] text-[#d6e7fb] hover:border-[#4f7cad] hover:bg-[rgba(24,43,64,0.95)]",
+                    currentDecls.length > 0 && "border-[rgba(105,181,247,0.95)] bg-[rgba(36,58,84,0.5)] text-[#dff1ff]",
+                    isSelected && "border-[rgba(59,130,246,0.92)] bg-[rgba(19,42,78,0.58)] text-[#dbeafe]"
+                  )}
+                  disabled={!canAct}
+                  onClick={() => toggleBlockerSelection(opt)}
+                >
+                  <span className="block min-w-0 truncate">
+                    {currentDecls.length > 0 ? "[BLK] " : ""}{name}
+                  </span>
+                </Button>
+
+                {decl && (
+                  <div className="mt-1.5 px-1 text-[14px] text-[#bcd0e8] min-w-0 truncate">
+                    -&gt; {attackerNameById.get(Number(decl.blocking)) || `Attacker ${Number(decl.blocking)}`}
                   </div>
-                </div>
+                )}
+
+                {isSelected && validAttackers.length > 0 && (
+                  <div className="-mx-2 mt-1.5 border-y border-[#2f4b67] bg-[rgba(10,20,30,0.45)]">
+                    <div className="w-full divide-y divide-[#2f4b67]">
+                      {validAttackers.map((attacker) => {
+                        const attackerId = Number(attacker.attacker);
+                        const attackerName = attacker.name;
+                        const blocking = isBlockingAttacker(blockerId, attackerId);
+                        return (
+                          <Button
+                            key={attackerId}
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                              "h-8 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 text-[13px] text-[#c7dbf2] transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+                              blocking && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]"
+                            )}
+                            disabled={!canAct}
+                            onClick={() => toggleBlocker(blockerId, attackerId)}
+                          >
+                            <span className="min-w-0 truncate">
+                              {attackerName}
+                            </span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

@@ -13,7 +13,7 @@ export function normalizeZoneViews(zoneViews) {
   const normalized = Array.isArray(zoneViews)
     ? zoneViews.filter((zone) => STACK_TARGET_ZONE_ORDER.includes(zone))
     : [];
-  return normalized.length > 0 ? normalized : ["battlefield"];
+  return Array.from(new Set(["battlefield", ...normalized]));
 }
 
 export function getVisibleStackObjects(state) {

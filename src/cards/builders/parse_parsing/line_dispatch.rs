@@ -11,11 +11,11 @@ use crate::cards::builders::{
     parse_escape_line, parse_if_this_spell_costs_less_to_cast_line, parse_kicker_line,
     parse_level_up_line, parse_loyalty_shorthand_activation_cost, parse_madness_line,
     parse_mana_symbol, parse_mana_symbol_group, parse_morph_keyword_line, parse_multikicker_line,
-    parse_reinforce_line, parse_saga_chapter_prefix, parse_scryfall_mana_cost, parse_squad_line,
-    parse_static_ability_ast_line, parse_this_spell_cost_condition, parse_transmute_line,
-    parse_triggered_line, parser_trace, parser_trace_line, split_on_or,
-    starts_with_until_end_of_turn, tokenize_line, trim_commas, unsupported_rule_error_for_view,
-    words,
+    parse_offspring_line, parse_reinforce_line, parse_saga_chapter_prefix,
+    parse_scryfall_mana_cost, parse_squad_line, parse_static_ability_ast_line,
+    parse_this_spell_cost_condition, parse_transmute_line, parse_triggered_line, parser_trace,
+    parser_trace_line, split_on_or, starts_with_until_end_of_turn, tokenize_line, trim_commas,
+    unsupported_rule_error_for_view, words,
 };
 use crate::costs::Cost;
 use crate::{AlternativeCastingMethod, OptionalCost, TotalCost};
@@ -790,7 +790,11 @@ fn parse_first_optional_cost_rule(
         parse_squad_line(view.tokens)
     }
 
-    const RULES: [RuleDef<OptionalCost>; 5] = [
+    fn parse_offspring_rule(view: &ClauseView<'_>) -> Result<Option<OptionalCost>, CardTextError> {
+        parse_offspring_line(view.tokens)
+    }
+
+    const RULES: [RuleDef<OptionalCost>; 6] = [
         RuleDef {
             id: "buyback",
             priority: 100,
@@ -825,6 +829,13 @@ fn parse_first_optional_cost_rule(
             heads: &["squad"],
             shape_mask: 0,
             run: parse_squad_rule,
+        },
+        RuleDef {
+            id: "offspring",
+            priority: 150,
+            heads: &["offspring"],
+            shape_mask: 0,
+            run: parse_offspring_rule,
         },
     ];
     let view = ClauseView::from_tokens(tokens);
@@ -1712,7 +1723,14 @@ const PRE_DIAGNOSTIC_LINE_PARSE_RULES: [RuleDef<LineAst>; 17] = [
     RuleDef {
         id: "optional-cost",
         priority: 170,
-        heads: &["buyback", "kicker", "multikicker", "entwine", "squad"],
+        heads: &[
+            "buyback",
+            "kicker",
+            "multikicker",
+            "entwine",
+            "squad",
+            "offspring",
+        ],
         shape_mask: 0,
         run: parse_optional_cost_line_rule,
     },

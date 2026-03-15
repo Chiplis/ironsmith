@@ -25,9 +25,9 @@ pub fn vault_of_champions() -> CardDefinition {
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
+    use crate::effects::AddManaOfAnyColorEffect;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
-    use crate::mana::ManaSymbol;
     use crate::zone::Zone;
 
     fn setup_game() -> GameState {
@@ -54,9 +54,9 @@ mod tests {
     }
 
     #[test]
-    fn test_vault_of_champions_has_three_abilities() {
+    fn test_vault_of_champions_has_two_abilities() {
         let def = vault_of_champions();
-        assert_eq!(def.abilities.len(), 3);
+        assert_eq!(def.abilities.len(), 2);
     }
 
     // ========================================
@@ -64,7 +64,7 @@ mod tests {
     // ========================================
 
     #[test]
-    fn test_first_ability_produces_white_mana() {
+    fn test_first_ability_offers_white_and_black() {
         let def = vault_of_champions();
         let mana_abilities: Vec<_> = def
             .abilities
@@ -76,33 +76,25 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(mana_abilities.len(), 2);
-        assert!(mana_abilities.iter().any(|ability| ability.mana_symbols()
-            == &[ManaSymbol::White]
-            && ability.has_tap_cost()));
-    }
+        assert_eq!(mana_abilities.len(), 1);
 
-    #[test]
-    fn test_second_ability_produces_black_mana() {
-        let def = vault_of_champions();
-        let mana_abilities: Vec<_> = def
-            .abilities
+        let add_any = mana_abilities[0]
+            .effects
             .iter()
-            .filter_map(|ability| match &ability.kind {
-                AbilityKind::Activated(mana_ability) if mana_ability.is_mana_ability() => {
-                    Some(mana_ability)
-                }
-                _ => None,
-            })
-            .collect();
-        assert_eq!(mana_abilities.len(), 2);
-        assert!(mana_abilities.iter().any(|ability| ability.mana_symbols()
-            == &[ManaSymbol::Black]
-            && ability.has_tap_cost()));
+            .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
+            .expect("Should use restricted color-choice mana effect");
+        let colors = add_any
+            .available_colors
+            .as_ref()
+            .expect("Should expose restricted colors");
+        assert_eq!(colors.len(), 2);
+        assert!(colors.contains(&crate::color::Color::White));
+        assert!(colors.contains(&crate::color::Color::Black));
+        assert!(mana_abilities[0].has_tap_cost());
     }
 
     #[test]
-    fn test_both_abilities_are_mana_abilities() {
+    fn test_mana_ability_is_a_mana_ability() {
         let def = vault_of_champions();
         let mana_abilities: Vec<_> = def
             .abilities
@@ -110,7 +102,7 @@ mod tests {
             .filter(|ability| ability.is_mana_ability())
             .collect();
 
-        assert_eq!(mana_abilities.len(), 2);
+        assert_eq!(mana_abilities.len(), 1);
         for ability in mana_abilities {
             if let AbilityKind::Activated(mana_ability) = &ability.kind
                 && mana_ability.is_mana_ability()
@@ -138,7 +130,7 @@ mod tests {
         assert!(game.battlefield.contains(&vault_id));
 
         let obj = game.object(vault_id).unwrap();
-        assert_eq!(obj.abilities.len(), 3);
+        assert_eq!(obj.abilities.len(), 2);
     }
 
     #[test]
@@ -160,7 +152,8 @@ mod tests {
 
         let game = run_replay_test(
             vec![
-                "1", // Tap Vault of Champions for white mana (first mana ability)
+                "1", // Activate Vault of Champions' mana ability
+                "W", // Choose white
                 "",  // Pass priority
             ],
             ReplayTestConfig::new().p1_battlefield(vec!["Vault of Champions"]),
@@ -183,7 +176,8 @@ mod tests {
 
         let game = run_replay_test(
             vec![
-                "2", // Tap Vault of Champions for black mana (second mana ability)
+                "1", // Activate Vault of Champions' mana ability
+                "B", // Choose black
                 "",  // Pass priority
             ],
             ReplayTestConfig::new().p1_battlefield(vec!["Vault of Champions"]),

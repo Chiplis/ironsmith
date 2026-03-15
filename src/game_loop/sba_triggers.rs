@@ -711,6 +711,9 @@ pub(super) fn triggered_to_stack_entry(
     )
     .with_source_info(trigger.source_stable_id, trigger.source_name.clone())
     .with_triggering_event(trigger.triggering_event.clone());
+    if let Some(source_obj) = game.object(trigger.source) {
+        entry = entry.with_optional_costs_paid(source_obj.optional_costs_paid.clone());
+    }
     if !trigger.tagged_objects.is_empty() {
         entry = entry.with_tagged_objects(trigger.tagged_objects.clone());
     }

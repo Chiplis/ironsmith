@@ -12,6 +12,7 @@ import {
 } from "@/lib/trigger-ordering";
 
 const GameContext = createContext(null);
+const TARGET_SUBMIT_CANCEL_DEBOUNCE_MS = 250;
 
 function decodeAttackTargetChoice(choice) {
   if (choice && typeof choice === "object") {
@@ -173,6 +174,59 @@ function normalizeMultiplayerTarget(target) {
   return target;
 }
 
+function normalizeAttackTargetInput(target, declaration = null) {
+  if (target && typeof target === "object") {
+    if (target.kind === "player") {
+      return {
+        kind: "player",
+        player: Number(target.player),
+      };
+    }
+    if (target.kind === "planeswalker") {
+      return {
+        kind: "planeswalker",
+        object: Number(target.object),
+      };
+    }
+  }
+
+  if (declaration && typeof declaration === "object") {
+    if (declaration.target_player != null) {
+      return {
+        kind: "player",
+        player: Number(declaration.target_player),
+      };
+    }
+    if (declaration.target_battlefield != null) {
+      return {
+        kind: "planeswalker",
+        object: Number(declaration.target_battlefield),
+      };
+    }
+  }
+
+  return null;
+}
+
+function normalizeAttackerDeclaration(declaration) {
+  if (!declaration || typeof declaration !== "object") return declaration;
+
+  const target = normalizeAttackTargetInput(declaration.target, declaration);
+  return {
+    creature: Number(declaration.creature ?? declaration.attacker),
+    target,
+  };
+}
+
+function normalizeBlockerDeclaration(declaration) {
+  if (!declaration || typeof declaration !== "object") return declaration;
+
+  return {
+    blocker: Number(declaration.blocker),
+    blocking: Number(declaration.blocking ?? declaration.attacker),
+  };
+}
+
 function serializeMultiplayerCommand(command, _currentState) {
   if (!command || typeof command !== "object") return command;
 
@@ -222,23 +276,14 @@ function serializeMultiplayerCommand(command, _currentState) {
   if (command.type === "declare_attackers") {
     return {
       type: "declare_attackers",
-      declarations: (command.declarations || []).map((declaration) => ({
-        attacker: Number(declaration.attacker),
-        target_player: declaration.target_player == null ? null : Number(declaration.target_player),
-        target_battlefield: declaration.target_battlefield == null
-          ? null
-          : Number(declaration.target_battlefield),
-      })),
+      declarations: (command.declarations || []).map(normalizeAttackerDeclaration),
     };
   }
 
   if (command.type === "declare_blockers") {
     return {
       type: "declare_blockers",
-      declarations: (command.declarations || []).map((declaration) => ({
-        blocker: Number(declaration.blocker),
-        attacker: Number(declaration.attacker),
-      })),
+      declarations: (command.declarations || []).map(normalizeBlockerDeclaration),
     };
   }
 
@@ -249,7 +294,7 @@ function serializeMultiplayerCommand(command, _currentState) {
   return command;
 }
 
-function resolveSyncedCommand(command, _currentState) {
+function resolveSyncedCommand(command) {
   if (!command || typeof command !== "object") return command;
 
   if (command.type === "priority_action" && command.action_ref) {
@@ -297,23 +342,14 @@ function resolveSyncedCommand(command, _currentState) {
   if (command.type === "declare_attackers" && Array.isArray(command.declarations)) {
     return {
       type: "declare_attackers",
-      declarations: command.declarations.map((declaration) => ({
-        attacker: Number(declaration.attacker),
-        target_player: declaration.target_player == null ? null : Number(declaration.target_player),
-        target_battlefield: declaration.target_battlefield == null
-          ? null
-          : Number(declaration.target_battlefield),
-      })),
+      declarations: command.declarations.map(normalizeAttackerDeclaration),
     };
   }
 
   if (command.type === "declare_blockers" && Array.isArray(command.declarations)) {
     return {
       type: "declare_blockers",
-      declarations: command.declarations.map((declaration) => ({
-        blocker: Number(declaration.blocker),
-        attacker: Number(declaration.attacker),
-      })),
+      declarations: command.declarations.map(normalizeBlockerDeclaration),
     };
   }
 
@@ -442,6 +478,38 @@ export function GameProvider({ children }) {
   const stateRef = useRef(state);
   const multiplayerActiveRef = useRef(false);
   const stickyViewedCardsRef = useRef(null);
+  const recentTargetSubmitRef = useRef({
+    inFlight: false,
+    expiresAt: -Infinity,
+  });
+
+  const armTargetSubmitDebounce = useCallback(() => {
+    const now = performance.now();
+    recentTargetSubmitRef.current = {
+      inFlight: true,
+      expiresAt: now + TARGET_SUBMIT_CANCEL_DEBOUNCE_MS,
+    };
+  }, []);
+
+  const settleTargetSubmitDebounce = useCallback(() => {
+    const now = performance.now();
+    recentTargetSubmitRef.current = {
+      inFlight: false,
+      expiresAt: now + TARGET_SUBMIT_CANCEL_DEBOUNCE_MS,
+    };
+  }, []);
+
+  const clearTargetSubmitDebounce = useCallback(() => {
+    recentTargetSubmitRef.current = {
+      inFlight: false,
+      expiresAt: -Infinity,
+    };
+  }, []);
+
+  const shouldSuppressImmediateCancel = useCallback(() => {
+    const { inFlight, expiresAt } = recentTargetSubmitRef.current;
+    return inFlight || expiresAt > performance.now();
+  }, []);
 
   const pushLog = useCallback((message, isError = false) => {
     const time = new Date().toLocaleTimeString([], {
@@ -1000,6 +1068,7 @@ export function GameProvider({ children }) {
   const dispatch = useCallback(
     async (command, successMessage) => {
       if (!game) return;
+      const isTargetSubmit = command?.type === "select_targets";
       const currentDecision = stateRef.current?.decision || null;
       const stopAfterTriggerOrderingSubmit = (
         command?.type === "select_options"
@@ -1016,9 +1085,12 @@ export function GameProvider({ children }) {
           return;
         }
         try {
+          if (isTargetSubmit) armTargetSubmitDebounce();
           const syncedCommand = serializeMultiplayerCommand(command, currentState);
           await submitMultiplayerCommand(syncedCommand, successMessage);
+          if (isTargetSubmit) settleTargetSubmitDebounce();
         } catch (err) {
+          if (isTargetSubmit) clearTargetSubmitDebounce();
           emitSyncFailureNotice(
             "Sync failed",
             err instanceof Error ? err.message : String(err)
@@ -1039,7 +1111,9 @@ export function GameProvider({ children }) {
           compatible: isDecisionCommandCompatible(stateRef.current?.decision || null, command),
         });
 
+        if (isTargetSubmit) armTargetSubmitDebounce();
         let st = await game.dispatch(command);
+        if (isTargetSubmit) settleTargetSubmitDebounce();
         console.debug("[ironsmith] dispatch:success", {
           command: commandSummary,
           decision_before: decisionBefore,
@@ -1054,6 +1128,7 @@ export function GameProvider({ children }) {
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         let decisionAfterError = null;
+        if (isTargetSubmit) clearTargetSubmitDebounce();
         try {
           const liveState = await game.uiState();
           decisionAfterError = summarizeDecision(liveState?.decision || null);
@@ -1087,12 +1162,24 @@ export function GameProvider({ children }) {
         console.error(err);
       }
     },
-    [finalizeState, game, multiplayer.matchStarted, setStatus, submitMultiplayerCommand]
+    [
+      armTargetSubmitDebounce,
+      clearTargetSubmitDebounce,
+      finalizeState,
+      game,
+      multiplayer.matchStarted,
+      setStatus,
+      settleTargetSubmitDebounce,
+      submitMultiplayerCommand,
+    ]
   );
 
   const cancelDecision = useCallback(
     async () => {
       if (!game) return;
+      if (shouldSuppressImmediateCancel()) {
+        return;
+      }
       if (multiplayer.matchStarted) {
         const currentState = stateRef.current;
         if (!currentState?.decision) {
@@ -1128,7 +1215,14 @@ export function GameProvider({ children }) {
         console.error(err);
       }
     },
-    [finalizeState, game, multiplayer.matchStarted, setStatus, submitMultiplayerCommand]
+    [
+      finalizeState,
+      game,
+      multiplayer.matchStarted,
+      setStatus,
+      shouldSuppressImmediateCancel,
+      submitMultiplayerCommand,
+    ]
   );
 
   const value = useMemo(

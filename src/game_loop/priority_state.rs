@@ -122,6 +122,11 @@ pub struct PendingCast {
     pub mana_spent_to_cast: ManaPool,
     /// The computed mana cost to pay (set during PayingMana stage).
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
+    /// Stable display pips for the mana payment overlay.
+    ///
+    /// Unlike `remaining_mana_pips`, this is not mutated as payment proceeds so
+    /// the UI can render the full cost with paid and upcoming pips.
+    pub display_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
     /// Remaining mana pips to pay (pip-by-pip payment flow).
     /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
     pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
@@ -179,6 +184,7 @@ impl PendingCast {
             undo_locked_by_mana: false,
             mana_spent_to_cast: ManaPool::default(),
             mana_cost_to_pay: None,
+            display_mana_pips: Vec::new(),
             remaining_mana_pips: Vec::new(),
             remaining_cost_steps: Vec::new(),
             tagged_objects: std::collections::HashMap::new(),
@@ -588,6 +594,11 @@ pub struct PendingActivation {
     pub remaining_requirements: Vec<TargetRequirement>,
     /// The computed mana cost to pay.
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
+    /// Stable display pips for the mana payment overlay.
+    ///
+    /// Unlike `remaining_mana_pips`, this is not mutated as payment proceeds so
+    /// the UI can render the full cost with paid and upcoming pips.
+    pub display_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
     /// Ordered trace of cost payments performed so far.
     pub payment_trace: Vec<CostStep>,
     /// True after activating a mana ability that is not undo-safe while paying
@@ -658,6 +669,7 @@ impl PendingActivation {
             chosen_target_assignments: Vec::new(),
             remaining_requirements,
             mana_cost_to_pay,
+            display_mana_pips: Vec::new(),
             payment_trace,
             undo_locked_by_mana: false,
             remaining_mana_pips: Vec::new(),

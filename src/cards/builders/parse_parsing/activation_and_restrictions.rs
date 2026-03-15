@@ -226,42 +226,10 @@ pub(crate) fn parse_activated_line_with_raw(
             };
             if has_imprinted_colors
                 || has_any_choice_mana
+                || has_or_choice_mana
                 || uses_commander_identity
                 || has_chosen_color
             {
-                let mut mana_ast = parse_add_mana(mana_tokens, None)?;
-                resolve_activated_mana_x_requirements(
-                    &mut mana_ast,
-                    primary_sentence,
-                    x_defined_by_cost,
-                )?;
-                let mut ability = Ability {
-                    kind: AbilityKind::Activated(ActivatedAbility {
-                        mana_cost,
-                        effects: vec![],
-                        choices: vec![],
-                        timing: loyalty_timing.clone(),
-                        additional_restrictions: build_additional_restrictions(),
-                        activation_restrictions: vec![],
-                        mana_output: Some(vec![]),
-                        activation_condition: mana_activation_condition.clone(),
-                        mana_usage_restrictions: mana_usage_restrictions.clone(),
-                    }),
-                    functional_zones: functional_zones.clone(),
-                    text: None,
-                };
-                apply_ability_label(&mut ability);
-                let mut effects_ast = vec![mana_ast];
-                effects_ast.extend(extra_effects_ast);
-                return Ok(Some(ParsedAbility {
-                    ability,
-                    effects_ast: Some(effects_ast),
-                    reference_imports: reference_imports.clone(),
-                    trigger_spec: None,
-                }));
-            }
-
-            if has_or_choice_mana && !extra_effects_ast.is_empty() {
                 let mut mana_ast = parse_add_mana(mana_tokens, None)?;
                 resolve_activated_mana_x_requirements(
                     &mut mana_ast,
@@ -1467,6 +1435,12 @@ pub(crate) fn parse_multikicker_line(
 
 pub(crate) fn parse_squad_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "squad", OptionalCost::squad)
+}
+
+pub(crate) fn parse_offspring_line(
+    tokens: &[Token],
+) -> Result<Option<OptionalCost>, CardTextError> {
+    parse_optional_cost_keyword_line(tokens, "offspring", OptionalCost::offspring)
 }
 
 pub(crate) fn parse_entwine_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {

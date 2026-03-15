@@ -22,9 +22,9 @@ pub fn scrubland() -> CardDefinition {
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
+    use crate::effects::AddManaOfAnyColorEffect;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
-    use crate::mana::ManaSymbol;
     use crate::types::Supertype;
     use crate::zone::Zone;
 
@@ -94,56 +94,42 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_scrubland_has_two_mana_abilities() {
+    fn test_scrubland_has_one_mana_ability() {
         let def = scrubland();
 
-        // Should have exactly two abilities (both mana abilities)
-        assert_eq!(def.abilities.len(), 2);
+        // Should have exactly one mana ability with a color choice
+        assert_eq!(def.abilities.len(), 1);
 
-        // Both should be mana abilities
+        // It should be a mana ability
         assert!(def.abilities.iter().all(|a| a.is_mana_ability()));
     }
 
     #[test]
-    fn test_scrubland_can_produce_white() {
+    fn test_scrubland_can_produce_white_or_black() {
         let def = scrubland();
 
-        // Find the mana ability that produces white
-        let white_ability = def.abilities.iter().find(|a| {
-            if let AbilityKind::Activated(mana_ability) = &a.kind
-                && mana_ability.is_mana_ability()
-            {
-                mana_ability.mana_symbols().contains(&ManaSymbol::White)
-            } else {
-                false
-            }
-        });
-
-        assert!(
-            white_ability.is_some(),
-            "Should have ability to produce white mana"
-        );
-    }
-
-    #[test]
-    fn test_scrubland_can_produce_black() {
-        let def = scrubland();
-
-        // Find the mana ability that produces black
-        let black_ability = def.abilities.iter().find(|a| {
-            if let AbilityKind::Activated(mana_ability) = &a.kind
-                && mana_ability.is_mana_ability()
-            {
-                mana_ability.mana_symbols().contains(&ManaSymbol::Black)
-            } else {
-                false
-            }
-        });
-
-        assert!(
-            black_ability.is_some(),
-            "Should have ability to produce black mana"
-        );
+        let mana_ability = def
+            .abilities
+            .iter()
+            .find_map(|a| match &a.kind {
+                AbilityKind::Activated(mana_ability) if mana_ability.is_mana_ability() => {
+                    Some(mana_ability)
+                }
+                _ => None,
+            })
+            .expect("Should have a mana ability");
+        let add_any = mana_ability
+            .effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
+            .expect("Should use restricted color-choice mana effect");
+        let colors = add_any
+            .available_colors
+            .as_ref()
+            .expect("Should expose restricted colors");
+        assert_eq!(colors.len(), 2);
+        assert!(colors.contains(&crate::color::Color::White));
+        assert!(colors.contains(&crate::color::Color::Black));
     }
 
     #[test]
@@ -181,7 +167,7 @@ mod tests {
 
         // Verify the object has the mana abilities
         let obj = game.object(land_id).unwrap();
-        assert_eq!(obj.abilities.len(), 2);
+        assert_eq!(obj.abilities.len(), 1);
         assert!(obj.abilities.iter().all(|a| a.is_mana_ability()));
     }
 
@@ -296,7 +282,8 @@ mod tests {
     fn test_replay_scrubland_tap_for_white() {
         let game = run_replay_test(
             vec![
-                "1", // Activate first mana ability (white)
+                "1", // Activate Scrubland's mana ability
+                "W", // Choose white
                 "",  // Pass priority
             ],
             ReplayTestConfig::new().p1_battlefield(vec!["Scrubland"]),
@@ -333,7 +320,8 @@ mod tests {
     fn test_replay_scrubland_tap_for_black() {
         let game = run_replay_test(
             vec![
-                "2", // Activate second mana ability (black)
+                "1", // Activate Scrubland's mana ability
+                "B", // Choose black
                 "",  // Pass priority
             ],
             ReplayTestConfig::new().p1_battlefield(vec!["Scrubland"]),

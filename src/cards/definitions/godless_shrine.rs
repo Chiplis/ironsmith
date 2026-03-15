@@ -21,9 +21,9 @@ pub fn godless_shrine() -> CardDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ManaSymbol;
     use crate::Zone;
     use crate::ability::AbilityKind;
+    use crate::effects::AddManaOfAnyColorEffect;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
 
@@ -58,10 +58,10 @@ mod tests {
     }
 
     #[test]
-    fn test_godless_shrine_has_three_abilities() {
+    fn test_godless_shrine_has_two_abilities() {
         let def = godless_shrine();
-        // 1 static ability (pay life or enter tapped) + 2 mana abilities
-        assert_eq!(def.abilities.len(), 3);
+        // 1 static ability (pay life or enter tapped) + 1 mana ability with a color choice
+        assert_eq!(def.abilities.len(), 2);
     }
 
     // ========================================
@@ -79,31 +79,31 @@ mod tests {
     }
 
     #[test]
-    fn test_second_ability_produces_white_mana() {
+    fn test_second_ability_offers_white_and_black() {
         let def = godless_shrine();
-        let ability = def
+        let mana_abilities: Vec<_> = def
             .abilities
             .iter()
             .filter_map(|a| match &a.kind {
                 AbilityKind::Activated(mana) if mana.is_mana_ability() => Some(mana),
                 _ => None,
             })
-            .find(|mana| mana.mana_symbols().contains(&ManaSymbol::White));
-        assert!(ability.is_some(), "Should have white mana ability");
-    }
+            .collect();
+        assert_eq!(mana_abilities.len(), 1, "Should have one mana ability");
 
-    #[test]
-    fn test_third_ability_produces_black_mana() {
-        let def = godless_shrine();
-        let ability = def
-            .abilities
+        let add_any = mana_abilities[0]
+            .effects
             .iter()
-            .filter_map(|a| match &a.kind {
-                AbilityKind::Activated(mana) if mana.is_mana_ability() => Some(mana),
-                _ => None,
-            })
-            .find(|mana| mana.mana_symbols().contains(&ManaSymbol::Black));
-        assert!(ability.is_some(), "Should have black mana ability");
+            .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
+            .expect("Should use restricted color-choice mana effect");
+        let colors = add_any
+            .available_colors
+            .as_ref()
+            .expect("Should expose restricted colors");
+        assert_eq!(colors.len(), 2);
+        assert!(colors.contains(&crate::color::Color::White));
+        assert!(colors.contains(&crate::color::Color::Black));
+        assert!(mana_abilities[0].has_tap_cost());
     }
 
     // ========================================
@@ -121,8 +121,8 @@ mod tests {
         assert!(game.battlefield.contains(&shrine_id));
 
         let obj = game.object(shrine_id).unwrap();
-        // 1 static ability + 2 mana abilities
-        assert_eq!(obj.abilities.len(), 3);
+        // 1 static ability + 1 mana ability with a color choice
+        assert_eq!(obj.abilities.len(), 2);
     }
 
     #[test]
@@ -147,7 +147,8 @@ mod tests {
 
         let game = run_replay_test(
             vec![
-                "1", // Tap Godless Shrine for white mana (first mana ability)
+                "1", // Activate Godless Shrine's mana ability
+                "W", // Choose white
                 "",  // Pass priority
             ],
             ReplayTestConfig::new().p1_battlefield(vec!["Godless Shrine"]),
@@ -165,7 +166,8 @@ mod tests {
 
         let game = run_replay_test(
             vec![
-                "2", // Tap Godless Shrine for black mana (second mana ability)
+                "1", // Activate Godless Shrine's mana ability
+                "B", // Choose black
                 "",  // Pass priority
             ],
             ReplayTestConfig::new().p1_battlefield(vec!["Godless Shrine"]),

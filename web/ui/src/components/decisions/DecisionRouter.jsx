@@ -58,6 +58,7 @@ export default function DecisionRouter({
   hideDescription = false,
   combatInline = false,
   layout = "panel",
+  showStripSummary = true,
 }) {
   if (!decision) return null;
 
@@ -77,6 +78,7 @@ export default function DecisionRouter({
           onSubmitActionChange={onSubmitActionChange}
           hideDescription={hideDescription}
           layout={layout}
+          showStripSummary={showStripSummary}
         />
       );
     case "attackers":

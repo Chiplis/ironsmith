@@ -284,6 +284,36 @@ fn finalize_squad_abilities(mut definition: CardDefinition) -> CardDefinition {
     definition
 }
 
+fn finalize_offspring_abilities(mut definition: CardDefinition) -> CardDefinition {
+    if !definition
+        .optional_costs
+        .iter()
+        .any(|cost| cost.label == "Offspring")
+    {
+        return definition;
+    }
+
+    let offspring_trigger = Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: Trigger::this_enters_battlefield(),
+            effects: vec![Effect::new(
+                crate::effects::CreateTokenCopyEffect::new(
+                    ChooseSpec::Source,
+                    Value::WasPaidLabel("Offspring".to_string()),
+                    PlayerFilter::You,
+                )
+                .set_base_power_toughness(1, 1),
+            )],
+            choices: vec![],
+            intervening_if: Some(Condition::ThisSpellPaidLabel("Offspring".to_string())),
+        }),
+        functional_zones: vec![Zone::Battlefield],
+        text: None,
+    };
+    definition.abilities.push(offspring_trigger);
+    definition
+}
+
 fn normalize_delayed_trigger_text(text: &str) -> String {
     text.to_ascii_lowercase()
         .replace('’', "'")
@@ -390,6 +420,7 @@ fn finalize_definition(
     let definition = finalize_backup_abilities(definition);
     let definition = finalize_cipher_effects(definition);
     let definition = finalize_squad_abilities(definition);
+    let definition = finalize_offspring_abilities(definition);
     Ok(finalize_nonpermanent_delayed_triggered_abilities(
         definition,
     ))
@@ -4911,6 +4942,17 @@ impl CardDefinitionBuilder {
         self.entwine(TotalCost::mana(cost))
     }
 
+    /// Add an offspring cost (can pay once for a 1/1 copy ETB trigger).
+    pub fn offspring(mut self, cost: TotalCost) -> Self {
+        self.optional_costs.push(OptionalCost::offspring(cost));
+        self
+    }
+
+    /// Add an offspring cost using just mana.
+    pub fn offspring_mana(self, cost: ManaCost) -> Self {
+        self.offspring(TotalCost::mana(cost))
+    }
+
     /// Add a custom optional cost.
     pub fn optional_cost(mut self, cost: OptionalCost) -> Self {
         self.optional_costs.push(cost);
@@ -8048,6 +8090,48 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         assert!(
             mana_line.contains("in any combination of {R} and/or {G}"),
             "compiled text should preserve restricted color combination, got: {mana_line}"
+        );
+    }
+
+    #[test]
+    fn parse_add_or_mana_colors_compiles_single_restricted_choice_ability() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Dual Land Variant")
+            .parse_text("{T}: Add {W} or {B}.")
+            .expect("restricted color choice mana ability should parse");
+
+        assert_eq!(def.abilities.len(), 1, "expected a single mana ability");
+
+        let mana_ability = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(a) if a.is_mana_ability() => Some(a),
+                _ => None,
+            })
+            .expect("expected mana ability");
+        let add_any = mana_ability
+            .effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
+            .expect("expected AddManaOfAnyColorEffect");
+        assert_eq!(add_any.amount, Value::Fixed(1));
+
+        let colors = add_any
+            .available_colors
+            .as_ref()
+            .expect("expected restricted colors");
+        assert_eq!(colors.len(), 2, "expected two restricted colors");
+        assert!(colors.contains(&crate::color::Color::White));
+        assert!(colors.contains(&crate::color::Color::Black));
+
+        let lines = compiled_lines(&def);
+        let mana_line = lines
+            .iter()
+            .find(|line| line.starts_with("Mana ability"))
+            .expect("expected mana ability line");
+        assert!(
+            mana_line.contains("Add {W} or {B}"),
+            "compiled text should preserve color choice wording, got: {mana_line}"
         );
     }
 

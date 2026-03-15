@@ -3317,6 +3317,120 @@ fn test_squad_trigger_creates_token_copies_equal_to_times_paid() {
 }
 
 #[test]
+fn test_parse_offspring_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger() {
+    use crate::ability::AbilityKind;
+    use crate::effect::Condition;
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Offspring Test")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Rabbit])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text("Offspring {2}\nFlying")
+        .expect("offspring keyword line should parse");
+
+    assert_eq!(def.optional_costs.len(), 1, "expected one offspring cost");
+    let offspring = &def.optional_costs[0];
+    assert_eq!(offspring.label, "Offspring");
+    assert!(!offspring.repeatable, "offspring should not be repeatable");
+    let mana = offspring
+        .cost
+        .mana_cost()
+        .expect("offspring should preserve mana cost");
+    assert_eq!(mana.to_oracle(), "{2}");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("offspring {2}"),
+        "expected offspring optional-cost line, got {rendered}"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("offspring ETB trigger should exist");
+    assert_eq!(
+        triggered.intervening_if.as_ref(),
+        Some(&Condition::ThisSpellPaidLabel("Offspring".to_string())),
+        "offspring should use an intervening-if cost-paid check",
+    );
+
+    let debug = format!("{:?}", triggered.effects);
+    assert!(
+        debug.contains("CreateTokenCopyEffect")
+            && debug.contains("WasPaidLabel(\"Offspring\")")
+            && debug.contains("set_base_power_toughness: Some((1, 1))"),
+        "expected offspring ETB copy effect, got {debug}"
+    );
+}
+
+#[test]
+fn test_offspring_trigger_creates_one_one_copy_when_paid() {
+    use crate::ability::AbilityKind;
+    use crate::cost::OptionalCostsPaid;
+    use crate::executor::{ExecutionContext, execute_effect};
+    use crate::object::ObjectKind;
+    use crate::tests::test_helpers::setup_two_player_game;
+    use crate::zone::Zone;
+
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let def = CardDefinitionBuilder::new(CardId::new(), "Offspring Test")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Rabbit])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text("Offspring {2}\nFlying")
+        .expect("offspring keyword line should parse");
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut paid = OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.pay(0);
+    game.object_mut(source)
+        .expect("source object exists")
+        .optional_costs_paid = paid.clone();
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered.clone())
+            }
+            _ => None,
+        })
+        .expect("offspring ETB trigger should exist");
+
+    let mut ctx = ExecutionContext::new_default(source, alice).with_optional_costs_paid(paid);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("offspring effect should resolve");
+    }
+
+    let offspring_objects: Vec<_> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|obj| obj.controller == alice && obj.name == "Offspring Test")
+        .collect();
+    assert_eq!(
+        offspring_objects.len(),
+        2,
+        "expected original plus one offspring token"
+    );
+
+    let token = offspring_objects
+        .iter()
+        .find(|obj| obj.kind == ObjectKind::Token)
+        .expect("expected an offspring token");
+    assert_eq!(token.power(), Some(1), "offspring token should be 1/1");
+    assert_eq!(token.toughness(), Some(1), "offspring token should be 1/1");
+}
+
+#[test]
 fn test_parse_scavenge_keyword_line_compiles_to_graveyard_activated_ability() {
     use crate::zone::Zone;
 

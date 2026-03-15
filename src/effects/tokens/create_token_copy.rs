@@ -356,14 +356,26 @@ impl EffectExecutor for CreateTokenCopyEffect {
         let mut target_object = game.object(resolved_target_id);
 
         if target_object.is_none() {
-            if let ChooseSpec::Tagged(tag) = &self.target {
-                if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
-                    tagged_snapshot = Some(snapshot.clone());
-                    if let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id) {
+            match &self.target {
+                ChooseSpec::Tagged(tag) => {
+                    if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
+                        tagged_snapshot = Some(snapshot.clone());
+                        if let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
+                        {
+                            resolved_target_id = current_id;
+                            target_object = game.object(resolved_target_id);
+                        }
+                    }
+                }
+                ChooseSpec::Source => {
+                    if let Some(snapshot) = &ctx.source_snapshot
+                        && let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
+                    {
                         resolved_target_id = current_id;
                         target_object = game.object(resolved_target_id);
                     }
                 }
+                _ => {}
             }
         }
 
@@ -946,6 +958,40 @@ mod tests {
                 !game.battlefield.contains(&token_id),
                 "myriad token should be exiled at end of combat"
             );
+        }
+    }
+
+    #[test]
+    fn test_create_token_copy_follows_source_stable_id_after_zone_change() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Offspring Source", alice);
+        let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source).expect("source exists"),
+            &game,
+        );
+
+        let moved_id = game
+            .move_object(source, Zone::Graveyard)
+            .expect("source should move to graveyard");
+        assert_ne!(
+            moved_id, source,
+            "zone change should create a new object id"
+        );
+
+        let mut ctx =
+            ExecutionContext::new_default(source, alice).with_source_snapshot(source_snapshot);
+        let effect = CreateTokenCopyEffect::one(ChooseSpec::Source);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        if let crate::effect::OutcomeValue::Objects(ids) = result.value {
+            let token = game.object(ids[0]).expect("token should exist");
+            assert_eq!(token.name, "Offspring Source");
+            assert_eq!(token.kind, ObjectKind::Token);
+            assert_eq!(token.power(), Some(3));
+            assert_eq!(token.toughness(), Some(3));
+        } else {
+            panic!("Expected Objects result");
         }
     }
 }

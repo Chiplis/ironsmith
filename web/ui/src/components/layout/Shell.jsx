@@ -32,7 +32,7 @@ export default function Shell() {
   const [notices, setNotices] = useState([]);
   const nextNoticeIdRef = useRef(1);
   const autoJoinAttemptedLobbyRef = useRef("");
-  const initialLobbyCodeRef = useRef(readLobbyQueryParam());
+  const initialLobbyQueryRef = useRef(readLobbyQueryParams());
 
   const pushNotice = useCallback((notice) => {
     const id = nextNoticeIdRef.current++;
@@ -67,14 +67,17 @@ export default function Shell() {
   useEffect(() => {
     if (loading || wasmError || !state || multiplayer.mode !== "idle") return;
 
-    const lobbyCode = initialLobbyCodeRef.current;
+    const queryLobby = initialLobbyQueryRef.current;
+    const lobbyCode = queryLobby.lobbyId;
     if (!lobbyCode || autoJoinAttemptedLobbyRef.current === lobbyCode) return;
 
     autoJoinAttemptedLobbyRef.current = lobbyCode;
     setLobbyOpen(true);
     joinLobby({
-      name: parseNames(playerNames)[0] || "Player",
+      name: queryLobby.name || parseNames(playerNames)[0] || "Player",
       lobbyId: lobbyCode,
+      deckText: queryLobby.deckText,
+      commanderText: queryLobby.commanderText,
     });
   }, [joinLobby, loading, multiplayer.mode, playerNames, state, wasmError]);
 
@@ -306,8 +309,11 @@ export default function Shell() {
           onClose={() => setLobbyOpen(false)}
           defaultName={parseNames(playerNames)[0] || "Player"}
           defaultStartingLife={startingLife}
-          initialMode={initialLobbyCodeRef.current ? "join" : "create"}
-          initialJoinCode={initialLobbyCodeRef.current}
+          initialMode={initialLobbyQueryRef.current.lobbyId ? "join" : "create"}
+          initialJoinCode={initialLobbyQueryRef.current.lobbyId}
+          initialJoinName={initialLobbyQueryRef.current.name}
+          initialJoinDeckText={initialLobbyQueryRef.current.deckText}
+          initialJoinCommanderText={initialLobbyQueryRef.current.commanderText}
         />
       ) : null}
     </div>
@@ -318,7 +324,49 @@ async function addStartingBattlefieldPreset(game) {
   await game.addCardToZone(0, "Omniscience", "battlefield", true);
 }
 
-function readLobbyQueryParam() {
-  if (typeof window === "undefined") return "";
-  return String(new URLSearchParams(window.location.search).get("lobby") || "").trim();
+function decodeBase64Utf8(raw) {
+  if (!raw || typeof window === "undefined") return "";
+
+  try {
+    const normalized = String(raw)
+      .trim()
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const padding = normalized.length % 4;
+    const padded = padding === 0 ? normalized : `${normalized}${"=".repeat(4 - padding)}`;
+    const binary = window.atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return "";
+  }
+}
+
+function readLobbyQueryParams() {
+  if (typeof window === "undefined") {
+    return {
+      lobbyId: "",
+      name: "",
+      deckText: "",
+      commanderText: "",
+    };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const lobbyId = String(params.get("lobby") || "").trim();
+  if (!lobbyId) {
+    return {
+      lobbyId: "",
+      name: "",
+      deckText: "",
+      commanderText: "",
+    };
+  }
+
+  return {
+    lobbyId,
+    name: String(params.get("name") || "").trim(),
+    deckText: decodeBase64Utf8(params.get("deck")),
+    commanderText: decodeBase64Utf8(params.get("commander")),
+  };
 }

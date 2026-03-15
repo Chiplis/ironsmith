@@ -2111,6 +2111,73 @@ fn test_resolve_stack_entry_with_graveyard_object_target() {
 }
 
 #[test]
+fn test_offspring_trigger_resolves_after_source_leaves_battlefield() {
+    use crate::ability::AbilityKind;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::cost::OptionalCostsPaid;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Offspring Trigger Test")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Rabbit])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text("Offspring {2}\nFlying")
+        .expect("offspring ability should parse");
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut paid = OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.pay(0);
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(source).expect("source should exist"),
+        &game,
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered.clone())
+            }
+            _ => None,
+        })
+        .expect("offspring ETB trigger should exist");
+    game.object_mut(source)
+        .expect("source should exist")
+        .optional_costs_paid = paid.clone();
+
+    let stack_entry = StackEntry::ability(source, alice, triggered.effects.clone())
+        .with_optional_costs_paid(paid)
+        .with_source_info(source_snapshot.stable_id, source_snapshot.name.clone())
+        .with_source_snapshot(source_snapshot)
+        .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
+            "Offspring".to_string(),
+        ));
+    game.push_to_stack(stack_entry);
+
+    game.move_object(source, Zone::Graveyard)
+        .expect("source should move to graveyard before resolution");
+
+    resolve_stack_entry(&mut game).expect("offspring trigger should resolve from LKI");
+
+    let tokens: Vec<_> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|obj| obj.controller == alice && obj.kind == ObjectKind::Token)
+        .filter(|obj| obj.name == "Offspring Trigger Test")
+        .collect();
+    assert_eq!(tokens.len(), 1, "expected one offspring token");
+    assert_eq!(tokens[0].power(), Some(1), "offspring token should be 1/1");
+    assert_eq!(
+        tokens[0].toughness(),
+        Some(1),
+        "offspring token should be 1/1"
+    );
+}
+
+#[test]
 fn test_delayed_tagged_graveyard_return_resolves() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();

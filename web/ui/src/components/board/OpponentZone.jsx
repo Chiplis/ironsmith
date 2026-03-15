@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 
 const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command"];
+const RESERVED_ZONE_IDS = new Set(["graveyard", "exile"]);
 const ZONE_LABELS = {
   battlefield: "Battlefield",
   hand: "Hand",
@@ -23,7 +24,7 @@ function normalizeZoneViews(zoneViews) {
   const normalized = Array.isArray(zoneViews)
     ? zoneViews.filter((zone) => ZONE_ORDER.includes(zone))
     : [];
-  return normalized.length > 0 ? normalized : ["battlefield"];
+  return Array.from(new Set(["battlefield", ...normalized]));
 }
 
 function getZoneCards(player, zone) {
@@ -86,8 +87,8 @@ function zoneCounts(player) {
   ];
 }
 
-function shouldReserveSideColumn(zone, visibleZones) {
-  return visibleZones.has("battlefield") && (zone === "graveyard" || zone === "exile");
+function shouldReserveSideColumn(zone) {
+  return RESERVED_ZONE_IDS.has(zone);
 }
 
 function isBaseVisibleZone(zone, zoneViews, count) {
@@ -188,6 +189,7 @@ function OpponentSlot({
         entry.zone === "battlefield"
         || entry.zone === "library"
         || entry.count > 0
+        || (RESERVED_ZONE_IDS.has(entry.zone) && entry.active)
         || Boolean(zoneActivity?.[entry.zone])
       )
       .map((entry) => entry.zone)
@@ -354,7 +356,7 @@ function OpponentSlot({
       <div className="flex gap-1 min-h-0 h-full overflow-visible">
         {zoneEntries.map((entry) => {
           const isVisible = entry.active && visibleZones.has(entry.zone);
-          const reserveSideColumn = shouldReserveSideColumn(entry.zone, visibleZones);
+          const reserveSideColumn = shouldReserveSideColumn(entry.zone);
           const activity = zoneActivity?.[entry.zone] || null;
           const isTransientReveal = Boolean(activity)
             && !isBaseVisibleZone(entry.zone, zoneViews, entry.count);
@@ -363,6 +365,7 @@ function OpponentSlot({
             : entry.cards;
           const displayCount = Number.isFinite(activity?.displayCount) ? activity.displayCount : entry.count;
           const zoneMinWidth = reserveSideColumn ? `${SIDE_ZONE_COLUMN_WIDTH}px` : "0px";
+          const keepReservedSlot = reserveSideColumn;
           return (
             <div
               key={entry.zone}
@@ -374,15 +377,17 @@ function OpponentSlot({
                 flexGrow: isVisible ? (reserveSideColumn ? 0 : 1) : 0,
                 flexShrink: reserveSideColumn ? 0 : 1,
                 flexBasis: reserveSideColumn ? zoneMinWidth : "0%",
-                minWidth: isVisible ? zoneMinWidth : "0px",
-                maxWidth: isVisible ? "100%" : "0px",
+                minWidth: keepReservedSlot ? zoneMinWidth : (isVisible ? zoneMinWidth : "0px"),
+                maxWidth: reserveSideColumn ? zoneMinWidth : (isVisible ? "100%" : "0px"),
                 opacity: isVisible ? 1 : 0,
                 transform: isVisible ? "translateY(0)" : "translateY(4px)",
                 pointerEvents: isVisible ? "auto" : "none",
                 overflow: isVisible ? "visible" : "hidden",
-                transition: isTransientReveal
-                  ? "opacity 180ms ease, transform 220ms ease"
-                  : "flex-grow 220ms ease, max-width 220ms ease, opacity 180ms ease, transform 220ms ease",
+                transition: reserveSideColumn
+                  ? "opacity 500ms ease, transform 500ms ease"
+                  : isTransientReveal
+                    ? "opacity 180ms ease, transform 220ms ease"
+                    : "flex-grow 220ms ease, max-width 220ms ease, opacity 180ms ease, transform 220ms ease",
               }}
             >
               <div

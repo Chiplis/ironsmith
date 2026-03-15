@@ -567,6 +567,7 @@ struct GameSnapshot {
     battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
     viewed_cards: Option<ViewedCardsSnapshot>,
     decision: Option<DecisionView>,
+    mana_payment: Option<ManaPaymentView>,
     game_over: Option<GameOverView>,
     /// True when the current decision chain can be cancelled (user-initiated
     /// action like casting a spell, NOT triggered ability resolution).
@@ -575,6 +576,13 @@ struct GameSnapshot {
     /// priority epoch. Only surfaced while the perspective player is back on
     /// priority and the tap can still be undone.
     undo_land_stable_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ManaPaymentView {
+    source_name: String,
+    pips: Vec<Vec<String>>,
+    current_pip_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -586,6 +594,91 @@ struct ActiveViewedCards {
     public: bool,
     source: Option<ObjectId>,
     description: String,
+}
+
+fn mana_symbol_display_code(symbol: &ManaSymbol) -> String {
+    match symbol {
+        ManaSymbol::White => "W".to_string(),
+        ManaSymbol::Blue => "U".to_string(),
+        ManaSymbol::Black => "B".to_string(),
+        ManaSymbol::Red => "R".to_string(),
+        ManaSymbol::Green => "G".to_string(),
+        ManaSymbol::Colorless => "C".to_string(),
+        ManaSymbol::Generic(n) => n.to_string(),
+        ManaSymbol::Snow => "S".to_string(),
+        ManaSymbol::Life(_) => "P".to_string(),
+        ManaSymbol::X => "X".to_string(),
+    }
+}
+
+fn mana_payment_view_from_pending_cast(
+    game: &GameState,
+    pending: &crate::game_loop::PendingCast,
+) -> Option<ManaPaymentView> {
+    if !matches!(pending.stage, CastStage::PayingMana) {
+        return None;
+    }
+
+    let pips = if !pending.display_mana_pips.is_empty() {
+        pending.display_mana_pips.clone()
+    } else if let Some(cost) = pending.mana_cost_to_pay.as_ref() {
+        crate::game_loop::expand_mana_cost_to_display_pips(
+            cost,
+            pending.x_value.unwrap_or(0) as usize,
+        )
+    } else {
+        Vec::new()
+    };
+
+    if pips.is_empty() {
+        return None;
+    }
+
+    let current_pip_index = pips.len().saturating_sub(pending.remaining_mana_pips.len());
+    let source_name = game
+        .object(pending.spell_id)
+        .map(|obj| obj.name.clone())
+        .unwrap_or_else(|| "spell".to_string());
+
+    Some(ManaPaymentView {
+        source_name,
+        pips: pips
+            .into_iter()
+            .map(|pip| pip.iter().map(mana_symbol_display_code).collect())
+            .collect(),
+        current_pip_index,
+    })
+}
+
+fn mana_payment_view_from_pending_activation(
+    pending: &crate::game_loop::PendingActivation,
+) -> Option<ManaPaymentView> {
+    if !matches!(pending.stage, ActivationStage::PayingMana) {
+        return None;
+    }
+
+    let pips = if !pending.display_mana_pips.is_empty() {
+        pending.display_mana_pips.clone()
+    } else if let Some(cost) = pending.mana_cost_to_pay.as_ref() {
+        crate::game_loop::expand_mana_cost_to_display_pips(cost, pending.x_value.unwrap_or(0))
+    } else {
+        Vec::new()
+    };
+
+    if pips.is_empty() {
+        return None;
+    }
+
+    let current_pip_index = pips.len().saturating_sub(pending.remaining_mana_pips.len());
+
+    Some(ManaPaymentView {
+        source_name: pending.source_name.clone(),
+        pips: pips
+            .into_iter()
+            .map(|pip| pip.iter().map(mana_symbol_display_code).collect())
+            .collect(),
+        current_pip_index,
+    })
 }
 
 fn merge_active_viewed_cards(
@@ -728,6 +821,7 @@ impl GameSnapshot {
         game: &GameState,
         perspective: PlayerId,
         decision: Option<&DecisionContext>,
+        mana_payment: Option<ManaPaymentView>,
         game_over: Option<&GameResult>,
         pending_cast_stack_id: Option<ObjectId>,
         resolving_stack_object: Option<StackObjectSnapshot>,
@@ -978,6 +1072,7 @@ impl GameSnapshot {
                 }),
             decision: decision
                 .map(|ctx| DecisionView::from_context(game, ctx, perspective, viewed_cards)),
+            mana_payment,
             game_over: game_over.map(|r| GameOverView::from_result(game, r)),
             cancelable,
             undo_land_stable_id,
@@ -2359,6 +2454,22 @@ pub fn wasm_start() {
 
 #[wasm_bindgen]
 impl WasmGame {
+    fn current_mana_payment_view(&self) -> Option<ManaPaymentView> {
+        if let Some(pending) = self.priority_state.pending_cast.as_ref()
+            && let Some(view) = mana_payment_view_from_pending_cast(&self.game, pending)
+        {
+            return Some(view);
+        }
+
+        if let Some(pending) = self.priority_state.pending_activation.as_ref()
+            && let Some(view) = mana_payment_view_from_pending_activation(pending)
+        {
+            return Some(view);
+        }
+
+        None
+    }
+
     /// Construct a demo game with two players.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
@@ -2503,6 +2614,7 @@ impl WasmGame {
             &self.game,
             self.perspective,
             self.pending_decision.as_ref(),
+            self.current_mana_payment_view(),
             self.game_over.as_ref(),
             pending_cast_stack_id,
             self.active_resolving_stack_object.clone(),
@@ -2597,6 +2709,7 @@ impl WasmGame {
             &self.game,
             self.perspective,
             self.pending_decision.as_ref(),
+            self.current_mana_payment_view(),
             self.game_over.as_ref(),
             pending_cast_stack_id,
             self.active_resolving_stack_object.clone(),
@@ -7948,6 +8061,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Vec::new(),
             None,
             false,
@@ -8318,6 +8432,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -8434,6 +8549,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -8492,6 +8608,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             Some(&decision),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -8554,6 +8671,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             Some(&priority),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -8607,6 +8725,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -8649,6 +8768,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -8859,6 +8979,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -8926,6 +9047,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -9192,6 +9314,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -9342,6 +9465,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -10526,6 +10650,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -10568,6 +10693,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -10631,6 +10757,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),
@@ -10698,6 +10825,7 @@ mod tests {
             &wasm.game,
             wasm.perspective,
             wasm.pending_decision.as_ref(),
+            None,
             wasm.game_over.as_ref(),
             pending_cast_stack_id,
             wasm.active_resolving_stack_object.clone(),

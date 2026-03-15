@@ -4,9 +4,10 @@ import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
+import DecisionSummary from "@/components/decisions/DecisionSummary";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
-import { SymbolText } from "@/lib/mana-symbols";
+import { ManaSymbol, SymbolText } from "@/lib/mana-symbols";
 import { nextPriorityAdvanceLabel } from "@/lib/constants";
 import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionText";
 import { getPlayerAccent } from "@/lib/player-colors";
@@ -22,18 +23,235 @@ import {
 import { cn } from "@/lib/utils";
 
 const ACTION_STRIP_BODY_CLASS = "h-[74px]";
+const MANA_PAYMENT_TAB_EXIT_MS = 320;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function actionStripAccentStyle(accent, baseStyle = undefined) {
-  if (!accent) return baseStyle;
-  return {
-    ...(baseStyle || {}),
-    borderColor: accent.hex,
-    boxShadow: `inset 0 0 0 1px rgba(${accent.rgb}, 0.22), 0 0 0 1px rgba(${accent.rgb}, 0.72), 0 0 18px rgba(${accent.rgb}, 0.18)`,
-  };
+function isSingleGenericPip(symbols) {
+  return Array.isArray(symbols) && symbols.length === 1 && String(symbols[0]) === "1";
+}
+
+function manaPaymentDisplayCode(symbols) {
+  const normalized = Array.isArray(symbols)
+    ? symbols
+      .map((symbol) => String(symbol || "").trim().toUpperCase())
+      .filter(Boolean)
+    : [];
+  return normalized.join("/") || "0";
+}
+
+function manaPaymentEndsOnGeneric(payment) {
+  const pips = Array.isArray(payment?.pips) ? payment.pips : [];
+  return pips.length > 0 && isSingleGenericPip(pips[pips.length - 1]);
+}
+
+function buildManaPaymentGroups(payment) {
+  const pips = Array.isArray(payment?.pips) ? payment.pips : [];
+  const currentIndex = clamp(Number(payment?.current_pip_index || 0), 0, pips.length);
+  const groups = [];
+
+  for (let index = 0; index < pips.length; index += 1) {
+    const pip = pips[index];
+
+    if (isSingleGenericPip(pip)) {
+      let count = 1;
+      while (index + count < pips.length && isSingleGenericPip(pips[index + count])) {
+        count += 1;
+      }
+
+      const paidCount = clamp(currentIndex - index, 0, count);
+      groups.push({
+        key: `generic-${index}`,
+        start: index,
+        end: index + count,
+        kind: "generic",
+        displayCount: Math.max(0, count - paidCount),
+        isActive: currentIndex >= index && currentIndex < index + count,
+        isPaid: currentIndex >= index + count,
+      });
+      index += count - 1;
+      continue;
+    }
+
+    groups.push({
+      key: `pip-${index}`,
+      start: index,
+      end: index + 1,
+      kind: "symbol",
+      displayCode: manaPaymentDisplayCode(pip),
+      isActive: currentIndex === index,
+      isPaid: currentIndex > index,
+    });
+  }
+
+  return groups;
+}
+
+function ManaPaymentTab({ manaPayment = null }) {
+  const [renderedPayment, setRenderedPayment] = useState(manaPayment);
+  const [visible, setVisible] = useState(Boolean(manaPayment));
+  const renderedPaymentRef = useRef(renderedPayment);
+  const exitTimerRef = useRef(null);
+  const frameRef = useRef(null);
+  const shellRef = useRef(null);
+  const indicatorRef = useRef(null);
+  const groupNodeRefs = useRef(new Map());
+
+  useEffect(() => {
+    renderedPaymentRef.current = renderedPayment;
+  }, [renderedPayment]);
+
+  useEffect(() => {
+    if (exitTimerRef.current) {
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+
+    if (manaPayment) {
+      frameRef.current = requestAnimationFrame(() => {
+        setRenderedPayment(manaPayment);
+        setVisible(true);
+        frameRef.current = null;
+      });
+      return undefined;
+    }
+
+    if (!renderedPaymentRef.current) return undefined;
+
+    frameRef.current = requestAnimationFrame(() => {
+      setRenderedPayment((current) => {
+        const totalPips = Array.isArray(current?.pips) ? current.pips.length : 0;
+        if (!current || !manaPaymentEndsOnGeneric(current) || current.current_pip_index >= totalPips) {
+          return current;
+        }
+        return {
+          ...current,
+          current_pip_index: totalPips,
+        };
+      });
+      setVisible(false);
+      frameRef.current = null;
+    });
+    exitTimerRef.current = setTimeout(() => {
+      setRenderedPayment(null);
+      exitTimerRef.current = null;
+    }, MANA_PAYMENT_TAB_EXIT_MS);
+
+    return undefined;
+  }, [manaPayment]);
+
+  useEffect(() => () => {
+    if (exitTimerRef.current) {
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+  }, []);
+
+  const groups = useMemo(
+    () => (renderedPayment ? buildManaPaymentGroups(renderedPayment) : []),
+    [renderedPayment]
+  );
+
+  useLayoutEffect(() => {
+    const shellEl = shellRef.current;
+    const indicatorEl = indicatorRef.current;
+    const activeGroup = groups.find((group) => group.isActive);
+    if (!shellEl || !indicatorEl) {
+      return;
+    }
+    if (!activeGroup) {
+      indicatorEl.style.opacity = "0";
+      return;
+    }
+
+    const activeEl = groupNodeRefs.current.get(activeGroup.key);
+    if (!activeEl) {
+      indicatorEl.style.opacity = "0";
+      return;
+    }
+
+    const shellRect = shellEl.getBoundingClientRect();
+    const activeRect = activeEl.getBoundingClientRect();
+    indicatorEl.style.opacity = "1";
+    indicatorEl.style.transform = `translate(${activeRect.left - shellRect.left}px, ${activeRect.top - shellRect.top}px)`;
+    indicatorEl.style.width = `${activeRect.width}px`;
+    indicatorEl.style.height = `${activeRect.height}px`;
+  }, [groups, visible]);
+
+  if (!renderedPayment || groups.length === 0) return null;
+
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-x-0 top-0 z-[140] h-0 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        visible ? "opacity-100" : "opacity-0"
+      )}
+      aria-hidden="true"
+    >
+      <div
+        className={cn(
+          "absolute left-1/2 top-0 w-max max-w-[min(52vw,380px)] origin-bottom transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        visible
+          ? "-translate-x-1/2 translate-y-[-118%]"
+          : "-translate-x-1/2 translate-y-[-134%]"
+      )}
+      >
+        <div
+        ref={shellRef}
+        className="relative overflow-visible rounded-[14px] border border-[#56677d]/80 bg-[linear-gradient(180deg,rgba(18,28,40,0.985),rgba(10,16,24,0.975))] px-2.5 py-1.5 shadow-[0_12px_24px_rgba(0,0,0,0.42),0_0_20px_rgba(247,160,64,0.05)]"
+        >
+          <div className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(245,159,67,0.07),transparent_38%,rgba(117,172,232,0.06))]" />
+          <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,220,176,0.85),transparent)]" />
+          <div className="absolute left-1/2 top-full h-1.5 w-12 -translate-x-1/2 overflow-hidden rounded-b-[10px] border-x border-b border-[#56677d]/70 bg-[linear-gradient(180deg,rgba(16,25,36,0.96),rgba(10,16,24,0.98))] shadow-[0_6px_12px_rgba(0,0,0,0.16)]" />
+          <div
+            ref={indicatorRef}
+            className="absolute left-0 top-0 rounded-[999px] border border-[#f7a040]/70 bg-[rgba(247,160,64,0.16)] opacity-0 shadow-[0_0_14px_rgba(247,160,64,0.45),inset_0_0_10px_rgba(255,226,186,0.1)] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          />
+          <div className="relative rounded-[999px] border border-[#2b3f57]/75 bg-[rgba(5,11,18,0.5)] px-1.5 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+            <div className="relative flex items-center gap-1.5">
+              {groups.map((group) => {
+                const toneClass = group.isPaid
+                  ? "opacity-45 saturate-[0.12] grayscale"
+                  : group.isActive
+                    ? "opacity-100"
+                    : "opacity-88";
+                return (
+                  <span
+                    key={group.key}
+                    ref={(node) => {
+                      if (node) groupNodeRefs.current.set(group.key, node);
+                      else groupNodeRefs.current.delete(group.key);
+                    }}
+                    className={cn(
+                      "relative inline-flex min-w-[28px] items-center justify-center rounded-[999px] px-1 py-0.5 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      toneClass
+                    )}
+                    style={group.isActive ? { filter: "drop-shadow(0 0 10px rgba(247,160,64,0.44))" } : undefined}
+                  >
+                    {group.kind === "generic" ? (
+                      <ManaSymbol sym={String(group.displayCount)} size={18} />
+                    ) : (
+                      <ManaSymbol sym={group.displayCode} size={18} />
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function priorityAnchorStyle(anchor) {
@@ -342,6 +560,7 @@ function PriorityActionStrip({
   canAct,
   players,
   perspective,
+  hasPinnedSelection = false,
   objectNameById,
   objectControllerById,
   hoveredObjectFamilyIds,
@@ -549,11 +768,13 @@ function PriorityActionStrip({
     const viewport = viewportRef.current;
     if (!viewport) return;
 
-    const objectHoverActive = typeof document !== "undefined"
+    const objectHoverActive = !hasPinnedSelection && typeof document !== "undefined"
       && Boolean(document.querySelector("[data-object-id]:hover"));
-    const focusKind = (!isPointerInStrip && objectHoverActive && hoveredGroupKeys.length > 0)
-      ? "hover"
-      : (selectedGroupKeys.length > 0 ? "selected" : null);
+    const focusKind = hasPinnedSelection
+      ? (selectedGroupKeys.length > 0 ? "selected" : null)
+      : ((!isPointerInStrip && objectHoverActive && hoveredGroupKeys.length > 0)
+          ? "hover"
+          : (selectedGroupKeys.length > 0 ? "selected" : null));
     const focusKeys = focusKind === "hover" ? hoveredGroupKeys : selectedGroupKeys;
 
     if (!focusKind || focusKeys.length === 0) return;
@@ -592,7 +813,7 @@ function PriorityActionStrip({
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
     };
-  }, [hoveredGroupKeys, selectedGroupKeys, groupKeysSignature, isPointerInStrip, middleLoopIndex]);
+  }, [groupKeysSignature, hasPinnedSelection, hoveredGroupKeys, isPointerInStrip, middleLoopIndex, selectedGroupKeys]);
 
   const handleViewportWheel = useCallback((event) => {
     const viewport = viewportRef.current;
@@ -909,6 +1130,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     clearHoverLinkedObjects,
   } = useHover();
   const decision = state?.decision || null;
+  const manaPayment = state?.mana_payment || null;
   const canAct = !!decision && state?.perspective === decision.player;
   const isPriorityDecision = decision?.kind === "priority";
   const isCombatDecision = decision?.kind === "attackers" || decision?.kind === "blockers";
@@ -958,6 +1180,12 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   const viewedCardsToken = viewedCardsIdentity ? `${decisionIdentity}|${viewedCardsIdentity}` : "";
   const showViewedCardsStep = Boolean(viewedCardsToken)
     && acknowledgedViewedCardsToken !== viewedCardsToken;
+  const triggerOrderingDecision = isTriggerOrderingDecision(decision);
+  const showStripDecisionSummary = (
+    decision?.kind === "targets"
+    && !showViewedCardsStep
+    && !triggerOrderingDecision
+  );
   const viewedCardEntries = useMemo(
     () => {
       if (Array.isArray(viewedCards?.cards) && viewedCards.cards.length > 0) {
@@ -1050,7 +1278,6 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     [decisionIdentity]
   );
   const submitAction = submitState.key === decisionIdentity ? submitState.action : null;
-  const triggerOrderingDecision = isTriggerOrderingDecision(decision);
   const triggerOrderingSubmitAction = useMemo(() => {
     if (!triggerOrderingDecision) return null;
     const order = triggerOrderingState?.order?.length
@@ -1074,18 +1301,16 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     if (!viewedCardsToken) return;
     setAcknowledgedViewedCardsToken(viewedCardsToken);
   }, [viewedCardsToken]);
-  const decisionAccent = getPlayerAccent(state?.players || [], decision?.player);
-
   if (!decision || isCombatDecision) return null;
   if (isPriorityDecision && !passAction) return null;
 
   if (inline) {
     return (
-      <div className="pointer-events-none absolute inset-0 z-[120] flex items-center px-2">
+      <div className="pointer-events-none absolute inset-0 z-[120] flex items-start px-2 pt-0.5">
         <div
           className="priority-inline-panel pointer-events-auto relative flex w-full flex-col rounded border bg-[rgba(7,15,23,0.97)] px-2 py-0 shadow-[0_12px_28px_rgba(0,0,0,0.45)] backdrop-blur-[2px]"
-          style={actionStripAccentStyle(decisionAccent)}
         >
+          <ManaPaymentTab manaPayment={manaPayment} />
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <div className="flex min-h-[46px] items-stretch gap-2">
@@ -1151,6 +1376,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   canAct={canAct}
                   players={state?.players || []}
                   perspective={state?.perspective}
+                  hasPinnedSelection={selectedObjectId != null}
                   objectNameById={objectNameById}
                   objectControllerById={objectControllerById}
                   hoveredObjectFamilyIds={hoveredObjectFamilyIds}
@@ -1163,66 +1389,78 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               </div>
             )
           ) : (
-            <>
-              <div className="flex min-h-[46px] items-stretch gap-2">
-                <div className={cn(
-                  "shrink-0 flex self-stretch items-stretch gap-2",
-                  "min-w-[420px]"
-                )}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                    disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
-                    onPointerDown={(event) => {
-                      if (showViewedCardsStep) {
-                        if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                        event.preventDefault();
-                        completeViewedCardsStep();
-                        return;
-                      }
-                      if (!canSubmitFocused || event.button !== 0) return;
-                      event.preventDefault();
-                      effectiveSubmitAction.onSubmit();
-                    }}
-                    onClick={(event) => {
-                      if (showViewedCardsStep) {
-                        if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                        completeViewedCardsStep();
-                        return;
-                      }
-                      if (!canSubmitFocused || event.detail !== 0) return;
-                      effectiveSubmitAction.onSubmit();
-                    }}
-                  >
-                    {showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
-                    disabled={!canCancelDecision}
-                    onPointerDown={(event) => {
-                      if (!canCancelDecision || event.button !== 0) return;
-                      event.preventDefault();
-                      cancelDecision();
-                    }}
-                    onClick={(event) => {
-                      if (!canCancelDecision || event.detail !== 0) return;
-                      cancelDecision();
-                    }}
-                    >
-                      Cancel
-                    </Button>
-                  <PriorityControlStack
-                    holdEnabled={holdRule === "always"}
-                    confirmEnabled={confirmEnabled}
-                    onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                    onConfirmChange={setConfirmEnabled}
-                    showActionCount={false}
-                    className="min-w-[104px]"
-                  />
+            <div
+              className="grid min-w-0 items-start gap-x-2"
+              style={{ gridTemplateColumns: "max-content minmax(0,1fr)" }}
+            >
+              <div className="flex min-w-0 flex-col gap-y-1 self-start">
+                <div className="flex min-w-0 items-start gap-2">
+                  <div className="flex min-w-[392px] w-fit flex-col gap-y-1">
+                    <div className="shrink-0 flex self-stretch items-stretch gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                        disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
+                        onPointerDown={(event) => {
+                          if (showViewedCardsStep) {
+                            if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                            event.preventDefault();
+                            completeViewedCardsStep();
+                            return;
+                          }
+                          if (!canSubmitFocused || event.button !== 0) return;
+                          event.preventDefault();
+                          effectiveSubmitAction.onSubmit();
+                        }}
+                        onClick={(event) => {
+                          if (showViewedCardsStep) {
+                            if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                            completeViewedCardsStep();
+                            return;
+                          }
+                          if (!canSubmitFocused || event.detail !== 0) return;
+                          effectiveSubmitAction.onSubmit();
+                        }}
+                      >
+                        {showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
+                        disabled={!canCancelDecision}
+                        onPointerDown={(event) => {
+                          if (!canCancelDecision || event.button !== 0) return;
+                          event.preventDefault();
+                          cancelDecision();
+                        }}
+                        onClick={(event) => {
+                          if (!canCancelDecision || event.detail !== 0) return;
+                          cancelDecision();
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <PriorityControlStack
+                        holdEnabled={holdRule === "always"}
+                        confirmEnabled={confirmEnabled}
+                        onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                        onConfirmChange={setConfirmEnabled}
+                        showActionCount={false}
+                        className="min-w-[104px]"
+                      />
+                    </div>
+                    {showStripDecisionSummary && (
+                      <DecisionSummary
+                        decision={decision}
+                        hideDescription={false}
+                        layout="strip"
+                        className="w-full"
+                      />
+                    )}
+                  </div>
                   {!triggerOrderingDecision && (
                     <div className="min-w-[86px] self-stretch flex flex-col justify-center py-1.5">
                       <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
@@ -1236,41 +1474,42 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     </div>
                   )}
                 </div>
-                <div className={cn("min-w-0 flex-1 overflow-hidden", ACTION_STRIP_BODY_CLASS)}>
-                  {canAct ? (
-                    showViewedCardsStep ? (
-                      <ViewedCardsStrip
-                        label={viewedCardsLabel}
-                        description={viewedCards?.description || ""}
-                        sourceName={viewedCardsSourceName}
-                        cards={viewedCardEntries}
-                        players={state?.players || []}
-                        perspective={state?.perspective}
-                        objectControllerById={objectControllerById}
-                        hoveredObjectId={hoveredObjectId}
-                        selectedObjectId={selectedObjectId}
-                        onCardHoverStart={handleViewedCardHoverStart}
-                        onCardHoverEnd={handleViewedCardHoverEnd}
-                      />
-                    ) : (!triggerOrderingDecision && (
-                      <DecisionRouter
-                        decision={decision}
-                        canAct={canAct}
-                        selectedObjectId={selectedObjectId}
-                        inlineSubmit={false}
-                        onSubmitActionChange={handleSubmitActionChange}
-                        hideDescription={false}
-                        layout="strip"
-                      />
-                    ))
-                  ) : (
-                    <span className="text-[12px] text-[#b8d2ef] whitespace-nowrap">
-                      Waiting for opponent
-                    </span>
-                  )}
-                </div>
               </div>
-            </>
+              <div className={cn("min-w-0 flex-1 overflow-hidden", ACTION_STRIP_BODY_CLASS)}>
+                {canAct ? (
+                  showViewedCardsStep ? (
+                    <ViewedCardsStrip
+                      label={viewedCardsLabel}
+                      description={viewedCards?.description || ""}
+                      sourceName={viewedCardsSourceName}
+                      cards={viewedCardEntries}
+                      players={state?.players || []}
+                      perspective={state?.perspective}
+                      objectControllerById={objectControllerById}
+                      hoveredObjectId={hoveredObjectId}
+                      selectedObjectId={selectedObjectId}
+                      onCardHoverStart={handleViewedCardHoverStart}
+                      onCardHoverEnd={handleViewedCardHoverEnd}
+                    />
+                  ) : (!triggerOrderingDecision && (
+                    <DecisionRouter
+                      decision={decision}
+                      canAct={canAct}
+                      selectedObjectId={selectedObjectId}
+                      inlineSubmit={false}
+                      onSubmitActionChange={handleSubmitActionChange}
+                      hideDescription={false}
+                      layout="strip"
+                      showStripSummary={!showStripDecisionSummary}
+                    />
+                  ))
+                ) : (
+                  <span className="text-[12px] text-[#b8d2ef] whitespace-nowrap">
+                    Waiting for opponent
+                  </span>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -1280,15 +1519,16 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   return (
     <div
       className={cn(
-        "pointer-events-auto z-[120] rounded border bg-[rgba(7,15,23,0.97)] shadow-[0_16px_36px_rgba(0,0,0,0.55)] backdrop-blur-[2px]",
+        "pointer-events-auto relative z-[120] rounded border bg-[rgba(7,15,23,0.97)] shadow-[0_16px_36px_rgba(0,0,0,0.55)] backdrop-blur-[2px]",
         anchoredStyle
           ? "fixed"
           : "fixed left-2 bottom-[148px] w-[min(92vw,348px)]"
       )}
-      style={actionStripAccentStyle(decisionAccent, anchoredStyle || undefined)}
+      style={anchoredStyle || undefined}
     >
+      <ManaPaymentTab manaPayment={manaPayment} />
       <div className="border-b border-[#2f4662]/85 bg-[rgba(10,22,34,0.88)] px-2 py-0">
-        <div className="flex min-h-[46px] items-stretch gap-2">
+        <div className="flex min-h-[46px] items-start gap-2">
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <Button
@@ -1333,70 +1573,82 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
             )
           ) : (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
-                onPointerDown={(event) => {
-                  if (showViewedCardsStep) {
-                    if (!canAdvanceViewedCardsStep || event.button !== 0) return;
-                    event.preventDefault();
-                    completeViewedCardsStep();
-                    return;
-                  }
-                  if (!canSubmitFocused || event.button !== 0) return;
-                  event.preventDefault();
-                  effectiveSubmitAction.onSubmit();
-                }}
-                onClick={(event) => {
-                  if (showViewedCardsStep) {
-                    if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
-                    completeViewedCardsStep();
-                    return;
-                  }
-                  if (!canSubmitFocused || event.detail !== 0) return;
-                  effectiveSubmitAction.onSubmit();
-                }}
-              >
-                {showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
-                disabled={!canCancelDecision}
-                onPointerDown={(event) => {
-                  if (!canCancelDecision || event.button !== 0) return;
-                  event.preventDefault();
-                  cancelDecision();
-                }}
-                onClick={(event) => {
-                  if (!canCancelDecision || event.detail !== 0) return;
-                  cancelDecision();
-                }}
-              >
-                Cancel
-              </Button>
-              <PriorityControlStack
-                holdEnabled={holdRule === "always"}
-                confirmEnabled={confirmEnabled}
-                onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                onConfirmChange={setConfirmEnabled}
-                showActionCount={false}
-                className="min-w-[104px]"
-              />
+              <div className="flex min-w-[392px] w-fit flex-col gap-y-1">
+                <div className="flex min-h-[46px] items-stretch gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                    disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
+                    onPointerDown={(event) => {
+                      if (showViewedCardsStep) {
+                        if (!canAdvanceViewedCardsStep || event.button !== 0) return;
+                        event.preventDefault();
+                        completeViewedCardsStep();
+                        return;
+                      }
+                      if (!canSubmitFocused || event.button !== 0) return;
+                      event.preventDefault();
+                      effectiveSubmitAction.onSubmit();
+                    }}
+                    onClick={(event) => {
+                      if (showViewedCardsStep) {
+                        if (!canAdvanceViewedCardsStep || event.detail !== 0) return;
+                        completeViewedCardsStep();
+                        return;
+                      }
+                      if (!canSubmitFocused || event.detail !== 0) return;
+                      effectiveSubmitAction.onSubmit();
+                    }}
+                  >
+                    {showViewedCardsStep ? "Done" : (effectiveSubmitAction?.label || "Submit")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
+                    disabled={!canCancelDecision}
+                    onPointerDown={(event) => {
+                      if (!canCancelDecision || event.button !== 0) return;
+                        event.preventDefault();
+                        cancelDecision();
+                    }}
+                    onClick={(event) => {
+                      if (!canCancelDecision || event.detail !== 0) return;
+                      cancelDecision();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <PriorityControlStack
+                    holdEnabled={holdRule === "always"}
+                    confirmEnabled={confirmEnabled}
+                    onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                    onConfirmChange={setConfirmEnabled}
+                    showActionCount={false}
+                    className="min-w-[104px]"
+                  />
+                </div>
+                {showStripDecisionSummary && (
+                  <DecisionSummary
+                    decision={decision}
+                    hideDescription={false}
+                    layout="strip"
+                    className="w-full"
+                  />
+                )}
+              </div>
               {!triggerOrderingDecision && (
                 <div className="self-stretch flex flex-col justify-center py-1.5">
-                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
-                  {resolveDecisionTitle(decision)}
-                </div>
-                {decision?.source_name && (
-                  <div className="mt-0.5 text-[11px] text-[#d2e5fb]">
-                    {normalizeDecisionText(decision.source_name)}
+                  <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
+                    {resolveDecisionTitle(decision)}
                   </div>
-                )}
+                  {decision?.source_name && (
+                    <div className="mt-0.5 text-[11px] text-[#d2e5fb]">
+                      {normalizeDecisionText(decision.source_name)}
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -1420,14 +1672,15 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               onCardHoverEnd={handleViewedCardHoverEnd}
             />
           ) : (
-            <PriorityActionStrip
-              groups={actionGroups}
-              canAct={canAct}
-              players={state?.players || []}
-              perspective={state?.perspective}
-              objectNameById={objectNameById}
-              objectControllerById={objectControllerById}
-              hoveredObjectFamilyIds={hoveredObjectFamilyIds}
+              <PriorityActionStrip
+                groups={actionGroups}
+                canAct={canAct}
+                players={state?.players || []}
+                perspective={state?.perspective}
+                hasPinnedSelection={selectedObjectId != null}
+                objectNameById={objectNameById}
+                objectControllerById={objectControllerById}
+                hoveredObjectFamilyIds={hoveredObjectFamilyIds}
               selectedObjectFamilyIds={selectedObjectFamilyIds}
               selectedActionIndices={selectedActionIndices}
               onActionClick={triggerPriorityAction}
@@ -1460,6 +1713,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 onSubmitActionChange={handleSubmitActionChange}
                 hideDescription={false}
                 layout="strip"
+                showStripSummary={!showStripDecisionSummary}
               />
             ))}
           </div>
@@ -1475,12 +1729,10 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     setHoldRule,
     confirmEnabled,
     setConfirmEnabled,
-    state,
   } = useGame();
   if (!decision || (decision.kind !== "attackers" && decision.kind !== "blockers")) return null;
 
   const anchoredStyle = inline ? null : priorityAnchorStyle(anchor);
-  const decisionAccent = getPlayerAccent(state?.players || [], decision?.player);
   const panelClass = inline
     ? "pointer-events-none absolute inset-0 z-[120] flex items-center px-2"
     : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]";
@@ -1492,7 +1744,7 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
 
   return (
     <div className={panelClass}>
-      <div className={innerClass} style={actionStripAccentStyle(decisionAccent, anchoredStyle || undefined)}>
+      <div className={innerClass} style={anchoredStyle || undefined}>
         <div className="min-w-0 flex-1">
           <DecisionRouter
             decision={decision}

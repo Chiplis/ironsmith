@@ -539,6 +539,12 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
             const localEntry = (message.players || []).find(
               (player) => player.peerId === prev.localPeerId
             );
+            const nextFormat = normalizeMatchFormat(message.format || prev.format);
+            const localDeckSubmission = parseDeckSubmission(
+              nextFormat,
+              prev.localDeckText,
+              prev.localCommanderText
+            );
             return {
               ...prev,
               mode: message.matchStarted ? "starting" : "lobby",
@@ -546,7 +552,9 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
               hostPeerId: message.hostPeerId || prev.hostPeerId,
               desiredPlayers: Number(message.desiredPlayers || prev.desiredPlayers || 0),
               startingLife: Number(message.startingLife || prev.startingLife || 20),
-              format: normalizeMatchFormat(message.format || prev.format),
+              format: nextFormat,
+              localDeckCount: localDeckSubmission.deckCount,
+              localCommanderCount: localDeckSubmission.commanderCount,
               players: message.players || [],
               localPlayerIndex: localEntry ? localEntry.index : prev.localPlayerIndex,
               matchStarted: Boolean(message.matchStarted),

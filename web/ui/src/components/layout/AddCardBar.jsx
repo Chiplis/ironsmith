@@ -229,7 +229,7 @@ export default function AddCardBar({
         <PopoverContent
           align="start"
           sideOffset={8}
-          className="w-[21rem] border-[#344a61] bg-[#0b1118] p-3 text-[#d7e3f4]"
+          className="w-[21rem] rounded-xl border border-primary/30 bg-[#0b1118]/80 p-3 text-[#d7e3f4] shadow-[0_0_15px_rgba(100,169,255,0.15)] backdrop-blur-md"
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <div className="flex flex-col gap-3">
@@ -298,15 +298,15 @@ export default function AddCardBar({
                 }}
               />
               {autocompleteVisible ? (
-                <div className="absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden rounded-md border border-[#344a61] bg-[#0b1118] shadow-[0_12px_30px_rgba(0,0,0,0.42)]">
+                <div className="absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden rounded-xl border border-primary/30 bg-[#0b1118]/80 p-1 shadow-[0_12px_30px_rgba(0,0,0,0.6)] backdrop-blur-md">
                   {visibleAutocompleteOptions.map((option, index) => (
                     <button
                       key={option}
                       type="button"
-                      className={`block w-full px-3 py-2 text-left text-[13px] transition-colors ${
+                      className={`block w-full rounded-md px-3 py-2 text-left text-[13px] transition-colors ${
                         index === autocompleteIndex
-                          ? "bg-primary/20 text-foreground"
-                          : "text-[#a4bdd7] hover:bg-white/5"
+                          ? "bg-primary/20 text-white font-medium"
+                          : "text-[#a4bdd7] hover:bg-white/10"
                       }`}
                       onMouseEnter={() => setAutocompleteIndex(index)}
                       onClick={() => handleAutocompletePick(option)}
@@ -370,7 +370,12 @@ export default function AddCardBar({
 
       <span className="mx-1 text-muted-foreground/40">|</span>
 
-      <span className="text-muted-foreground text-[13px] uppercase whitespace-nowrap">Fidelity</span>
+      <span
+        className="text-muted-foreground text-[13px] uppercase whitespace-nowrap cursor-help"
+        title="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
+      >
+        Fidelity
+      </span>
       <Slider
         className="w-20"
         min={0}

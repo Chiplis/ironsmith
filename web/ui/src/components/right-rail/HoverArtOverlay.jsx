@@ -1412,13 +1412,8 @@ export default function HoverArtOverlay({
                 {zoneLine}
               </div>
             )}
-            <InspectorMetadataBlock
-              lines={metadataLines}
-              className="max-w-full rounded-[16px] border border-[#6eb4ff]/24 bg-[rgba(7,14,24,0.76)] px-3 py-2 text-[12px] font-semibold leading-tight text-[#d3e8ff] shadow-[0_0_18px_rgba(58,140,245,0.14)] backdrop-blur-[10px]"
-              style={METADATA_TEXT_STYLE}
-            />
           </div>
-          {(manaCost || statsText) && (
+          {(metadataLines.length > 0 || manaCost || statsText) && (
             <div className="flex shrink-0 flex-col items-end gap-1">
               {manaCost && (
                 <div className="rounded-full border border-[#6eb4ff]/28 bg-[rgba(7,14,24,0.78)] px-2.5 py-1 shadow-[0_0_16px_rgba(58,140,245,0.16)] backdrop-blur-[10px]">
@@ -1433,6 +1428,11 @@ export default function HoverArtOverlay({
                   {statsText}
                 </div>
               )}
+              <InspectorMetadataBlock
+                lines={metadataLines}
+                className="max-w-full self-end rounded-[16px] border border-[#6eb4ff]/24 bg-[rgba(7,14,24,0.76)] px-3 py-2 text-right text-[12px] font-semibold leading-tight text-[#d3e8ff] shadow-[0_0_18px_rgba(58,140,245,0.14)] backdrop-blur-[10px]"
+                style={METADATA_TEXT_STYLE}
+              />
             </div>
           )}
         </div>
@@ -1499,16 +1499,8 @@ export default function HoverArtOverlay({
               {zoneLine}
             </div>
           )}
-          <InspectorMetadataBlock
-            lines={metadataLines}
-            className={cn(
-              "rounded-r-sm bg-[rgba(0,0,0,0.48)] px-2.5 py-1 backdrop-blur-[1.8px]",
-              topMetadataTextClassName
-            )}
-            style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
-          />
         </div>
-        {(manaCost || statsText) && (
+        {(metadataLines.length > 0 || manaCost || statsText) && (
           <div ref={topMetadataRef} className="absolute top-0 right-0 z-10 flex max-w-[78%] flex-col items-end gap-0">
             {(manaCost || statsText) && (
               <div className="flex items-center justify-end gap-1.5">
@@ -1530,6 +1522,14 @@ export default function HoverArtOverlay({
                 )}
               </div>
             )}
+            <InspectorMetadataBlock
+              lines={metadataLines}
+              className={cn(
+                "self-end rounded-l-sm bg-[rgba(0,0,0,0.48)] px-2.5 py-1 text-right backdrop-blur-[1.8px]",
+                topMetadataTextClassName
+              )}
+              style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+            />
           </div>
         )}
         <div

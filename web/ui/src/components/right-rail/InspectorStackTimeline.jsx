@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import useNewCards from "@/hooks/useNewCards";
+import useStackStartAlert from "@/hooks/useStackStartAlert";
 import StackCard from "@/components/cards/StackCard";
 import AnimatedCircuitFrame from "@/components/cards/AnimatedCircuitFrame";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
@@ -112,6 +114,7 @@ function HorizontalStackEntry({
   positionLabel,
   isActive = false,
   accent = null,
+  showStackAlert = false,
   onClick,
   reorderControls = null,
 }) {
@@ -189,6 +192,10 @@ function HorizontalStackEntry({
           viewBox="0 0 100 50"
           overlayClassName="stack-circuit-overlay"
         />
+        <PlayerStackAlert
+          visible={showStackAlert}
+          className="pointer-events-none absolute right-2 top-1/2 z-[3] -translate-y-1/2"
+        />
         <span
           className="stack-entry-badge pointer-events-none absolute left-2 z-[2] rounded bg-[rgba(8,18,30,0.9)] px-1 py-[1px] text-[8px] font-bold uppercase leading-none tracking-[0.12em] text-[#8ec4ff]"
           style={{ top: `${HORIZONTAL_STACK_BADGE_TOP}px` }}
@@ -209,8 +216,8 @@ function HorizontalStackEntry({
         <div className="relative z-[2] h-6 min-w-0">
           <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-1.5">
             <div className="stack-entry-title min-w-0 truncate pr-1 text-[13px] font-semibold leading-[1.02] text-[#edf5ff]">
-                {name}
-              </div>
+              {name}
+            </div>
             <div className="flex shrink-0 items-start gap-1 pt-[1px]">
               {isSpell && entry?.mana_cost && (
                 <span className="shrink-0 scale-[0.82] origin-top-right">
@@ -288,6 +295,10 @@ export default function InspectorStackTimeline({
     () => mergeTimelineLeavingEntries(visibleLiveStackObjects, leavingEntries),
     [leavingEntries, visibleLiveStackObjects]
   );
+  const { alertEntryId: stackStartAlertId, dismissAlert: dismissStackStartAlert } = useStackStartAlert(
+    visibleLiveStackObjects,
+    state?.perspective
+  );
   const timelineEntries = useMemo(
     () => [
       ...pendingTriggerEntries,
@@ -302,6 +313,10 @@ export default function InspectorStackTimeline({
   const isHorizontal = layout === "horizontal";
   const horizontalEntries = timelineEntries;
   const horizontalPreviewEntries = stackPreview;
+  const handleInspectStackObject = useCallback((objectId, meta) => {
+    dismissStackStartAlert();
+    onInspectObject?.(objectId, meta);
+  }, [dismissStackStartAlert, onInspectObject]);
 
   useEffect(() => {
     const previousStack = previousStackRef.current || [];
@@ -415,6 +430,12 @@ export default function InspectorStackTimeline({
                     key={entry.__timeline_key}
                     entry={entry}
                     positionLabel={positionLabelForIndex(index)}
+                    showStackAlert={
+                      !entry.__leaving
+                      && !entry.__trigger_ordering
+                      && stackStartAlertId != null
+                      && String(entry.id) === String(stackStartAlertId)
+                    }
                     isActive={
                       !entry.__leaving
                       && !entry.__trigger_ordering
@@ -424,7 +445,7 @@ export default function InspectorStackTimeline({
                     accent={
                       !entry.__leaving ? getPlayerAccent(players, entry.controller) : null
                     }
-                    onClick={entry.__leaving || entry.__trigger_ordering ? undefined : onInspectObject}
+                    onClick={entry.__leaving || entry.__trigger_ordering ? undefined : handleInspectStackObject}
                     reorderControls={entry.__trigger_ordering
                       ? {
                           canMoveLeft: canAct && index > 0,
@@ -515,6 +536,12 @@ export default function InspectorStackTimeline({
                       entry={entry}
                       isNew={!entry.__leaving && !entry.__trigger_ordering && newIds.has(entry.id)}
                       isLeaving={entry.__leaving}
+                      showStackAlert={
+                        !entry.__leaving
+                        && !entry.__trigger_ordering
+                        && stackStartAlertId != null
+                        && String(entry.id) === String(stackStartAlertId)
+                      }
                       isActive={
                         !entry.__leaving
                         && !entry.__trigger_ordering
@@ -522,7 +549,7 @@ export default function InspectorStackTimeline({
                         && String(activeStackInspectId) === String(stackInspectObjectId(entry))
                       }
                       className="pt-4"
-                      onClick={entry.__leaving || entry.__trigger_ordering ? undefined : onInspectObject}
+                      onClick={entry.__leaving || entry.__trigger_ordering ? undefined : handleInspectStackObject}
                       reorderControls={entry.__trigger_ordering
                         ? {
                             canMoveLeft: canAct && index > 0,
@@ -563,6 +590,12 @@ export default function InspectorStackTimeline({
                       entry={entry}
                       isNew={!entry.__leaving && !entry.__trigger_ordering && newIds.has(entry.id)}
                       isLeaving={entry.__leaving}
+                      showStackAlert={
+                        !entry.__leaving
+                        && !entry.__trigger_ordering
+                        && stackStartAlertId != null
+                        && String(entry.id) === String(stackStartAlertId)
+                      }
                       isActive={
                         !entry.__leaving
                         && !entry.__trigger_ordering
@@ -570,7 +603,7 @@ export default function InspectorStackTimeline({
                         && String(activeStackInspectId) === String(stackInspectObjectId(entry))
                       }
                       className="pt-4"
-                      onClick={entry.__leaving || entry.__trigger_ordering ? undefined : onInspectObject}
+                      onClick={entry.__leaving || entry.__trigger_ordering ? undefined : handleInspectStackObject}
                       reorderControls={entry.__trigger_ordering
                         ? {
                             canMoveLeft: canAct && index > 0,

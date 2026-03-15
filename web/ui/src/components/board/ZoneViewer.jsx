@@ -12,7 +12,7 @@ const VIEWABLE_ZONES = [
 function normalizeZones(zones) {
   if (!Array.isArray(zones)) return ["battlefield"];
   const normalized = zones.filter((zone) => VIEWABLE_ZONES.some((entry) => entry.id === zone));
-  return normalized.length > 0 ? normalized : ["battlefield"];
+  return Array.from(new Set(["battlefield", ...normalized]));
 }
 
 export default function ZoneViewer({
@@ -24,6 +24,7 @@ export default function ZoneViewer({
 
   const toggleZone = (zoneId) => {
     if (typeof setZoneViews !== "function") return;
+    if (zoneId === "battlefield") return;
     if (activeZones.includes(zoneId)) {
       if (activeZones.length === 1) return;
       setZoneViews(activeZones.filter((zone) => zone !== zoneId));
@@ -34,7 +35,12 @@ export default function ZoneViewer({
 
   const zonesContent = (
     <div className="flex items-center gap-2 shrink-0">
-      <span className="text-[12px] uppercase tracking-wide font-semibold text-[#8fb1d6] shrink-0">Zones</span>
+      <span
+        className="text-[12px] uppercase tracking-wide font-semibold text-[#8fb1d6] shrink-0 cursor-help"
+        title="Toggles the visibility of zones for your local view only."
+      >
+        Local Zones
+      </span>
       <div className="flex items-center gap-2 flex-wrap">
         {VIEWABLE_ZONES.map((zone) => {
           const checked = activeZones.includes(zone.id);
@@ -43,11 +49,12 @@ export default function ZoneViewer({
               key={zone.id}
               className={`inline-flex items-center gap-1 text-[13px] whitespace-nowrap cursor-pointer uppercase transition-colors ${
                 checked ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
+              } ${zone.id === "battlefield" ? "cursor-default opacity-85" : ""}`}
             >
               <Checkbox
                 className="h-3.5 w-3.5"
                 checked={checked}
+                disabled={zone.id === "battlefield"}
                 onCheckedChange={() => toggleZone(zone.id)}
               />
               {zone.label}

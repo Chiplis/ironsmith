@@ -410,6 +410,7 @@ export default function TargetsDecision({
   onSubmitActionChange = null,
   hideDescription = false,
   layout = "panel",
+  showStripSummary = true,
 }) {
   const { dispatch, state } = useGame();
   const { startDragArrow, updateDragArrow, endDragArrow } = useCombatArrows();
@@ -645,16 +646,26 @@ export default function TargetsDecision({
   if (requirements.length === 0) return null;
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-1.5">
-      <DecisionSummary
-        decision={decision}
-        hideDescription={hideDescription}
-        layout={layout}
-      />
-      <div className="flex flex-col gap-1.5">
+    <div className={cn(
+      "flex w-full min-w-0 flex-col gap-1.5",
+      stripLayout && "gap-1"
+    )}>
+      {(!stripLayout || showStripSummary) && (
+        <DecisionSummary
+          decision={decision}
+          hideDescription={hideDescription}
+          layout={layout}
+          className={stripLayout ? "w-full" : ""}
+        />
+      )}
+      <div className={cn(
+        stripLayout
+          ? "min-w-0 overflow-x-auto overflow-y-hidden pb-1"
+          : "grid gap-1.5"
+      )}>
         <div className={cn(
           stripLayout
-            ? "flex min-w-0 gap-1.5 overflow-x-auto overflow-y-hidden pb-1"
+            ? "flex min-w-max items-center gap-1.5"
             : "grid gap-1.5"
         )}>
           {requirements.map((req, reqIdx) => {

@@ -251,8 +251,9 @@ impl CardRegistry {
                 continue;
             };
 
-            self.register_explicit(definition);
-            if !resolved_name.eq_ignore_ascii_case(normalized) {
+            self.register(definition);
+            if self.get(&resolved_name).is_some() && !resolved_name.eq_ignore_ascii_case(normalized)
+            {
                 self.register_alias(normalized, &resolved_name);
             }
         }
@@ -953,6 +954,22 @@ mod tests {
     fn generated_registry_includes_transform_and_adventure_front_faces() {
         assert!(CardRegistry::generated_parser_card_parse_source("Jace, Vryn's Prodigy").is_some());
         assert!(CardRegistry::generated_parser_card_parse_source("Brazen Borrower").is_some());
+        assert!(
+            CardRegistry::generated_parser_card_parse_source("Embereth Shieldbreaker").is_some()
+        );
+    }
+
+    #[cfg(feature = "generated-registry")]
+    #[test]
+    fn ensure_cards_loaded_can_load_adventure_front_face_with_empty_oracle_text() {
+        let mut registry = CardRegistry::new();
+        registry.ensure_cards_loaded(["Embereth Shieldbreaker"]);
+
+        let shieldbreaker = registry
+            .get("Embereth Shieldbreaker")
+            .expect("adventure front face should load from generated registry");
+        assert_eq!(shieldbreaker.card.name, "Embereth Shieldbreaker");
+        assert!(shieldbreaker.card.is_creature());
     }
 
     #[cfg(feature = "generated-registry")]
@@ -1043,10 +1060,13 @@ mod tests {
 
     #[cfg(feature = "generated-registry")]
     #[test]
-    fn ensure_cards_loaded_falls_back_to_allow_unsupported_generated_parse() {
+    fn ensure_cards_loaded_skips_unsupported_generated_fallback_definitions() {
         let mut registry = CardRegistry::new();
-        registry.ensure_cards_loaded(["Sicarian Infiltrator"]);
-        assert!(registry.get("Sicarian Infiltrator").is_some());
+        registry.ensure_cards_loaded(["The Fourteenth Doctor"]);
+        assert!(
+            registry.get("The Fourteenth Doctor").is_none(),
+            "unsupported generated fallback definitions should not be registered"
+        );
     }
 
     #[test]

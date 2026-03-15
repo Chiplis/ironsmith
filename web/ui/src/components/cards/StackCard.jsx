@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
+import PlayerStackAlert from "@/components/board/PlayerStackAlert";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
 import { scryfallImageUrl } from "@/lib/scryfall";
@@ -15,6 +16,7 @@ export default function StackCard({
   isNew = false,
   isActive = false,
   isLeaving = false,
+  showStackAlert = false,
   className = "",
   onClick,
   reorderControls = null,
@@ -155,6 +157,13 @@ export default function StackCard({
         "stack-card-body relative z-2 flex min-h-[96px] flex-col py-2",
         hasReorderControls ? "px-12" : "px-2.5"
       )}>
+        <PlayerStackAlert
+          visible={showStackAlert}
+          className={cn(
+            "absolute top-1/2 z-[3] -translate-y-1/2",
+            hasReorderControls ? "right-12" : "right-2.5"
+          )}
+        />
         <div className="flex items-start gap-2">
           <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-md bg-[#0b121b]">
             {artUrl && (

@@ -1,7 +1,8 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import useNewCards from "@/hooks/useNewCards";
+import useStackStartAlert from "@/hooks/useStackStartAlert";
 import StackCard from "@/components/cards/StackCard";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
@@ -19,9 +20,17 @@ export default function StackPanel({
   const itemCount = objects.length || previews.length;
   const stackIds = useMemo(() => objects.map((e) => e.id), [objects]);
   const { newIds } = useNewCards(stackIds);
+  const { alertEntryId: stackStartAlertId, dismissAlert: dismissStackStartAlert } = useStackStartAlert(
+    objects,
+    state?.perspective
+  );
   const panelRef = useRef(null);
   const [hasOverflow, setHasOverflow] = useState(false);
   const showToggle = hasContent && (expanded || hasOverflow);
+  const handleInspectStackObject = useCallback((objectId, meta) => {
+    dismissStackStartAlert();
+    onInspect?.(objectId, meta);
+  }, [dismissStackStartAlert, onInspect]);
 
   useLayoutEffect(() => {
     const panelEl = panelRef.current;
@@ -112,7 +121,16 @@ export default function StackPanel({
           <div className="grid gap-1.5 pr-0.5">
             {objects.length > 0
               ? objects.map((entry) => (
-                  <StackCard key={entry.id} entry={entry} isNew={newIds.has(entry.id)} onClick={onInspect} />
+                  <StackCard
+                    key={entry.id}
+                    entry={entry}
+                    isNew={newIds.has(entry.id)}
+                    showStackAlert={
+                      stackStartAlertId != null
+                      && String(entry.id) === String(stackStartAlertId)
+                    }
+                    onClick={handleInspectStackObject}
+                  />
                 ))
               : previews.map((name, i) => (
                   <div

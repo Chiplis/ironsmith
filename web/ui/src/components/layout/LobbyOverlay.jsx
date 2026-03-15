@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Badge } from "@/components/ui/badge";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   COMMANDER_DECK_SIZE,
   LOBBY_DECK_SIZE,
@@ -64,6 +65,9 @@ export default function LobbyOverlay({
   defaultStartingLife = 20,
   initialMode = "create",
   initialJoinCode = "",
+  initialJoinName = "",
+  initialJoinDeckText = "",
+  initialJoinCommanderText = "",
 }) {
   const {
     multiplayer,
@@ -74,20 +78,24 @@ export default function LobbyOverlay({
     startHostedMatch,
     updateLobbyDeck,
     status,
+    setStatus,
   } = useGame();
   const [mode, setMode] = useState(
     initialMode === "join" ? "join" : "create"
   );
   const [createFormat, setCreateFormat] = useState(MATCH_FORMAT_NORMAL);
   const [createName, setCreateName] = useState(defaultName);
-  const [joinName, setJoinName] = useState(defaultName);
+  const [joinName, setJoinName] = useState(String(initialJoinName || defaultName));
   const [joinCode, setJoinCode] = useState(String(initialJoinCode || ""));
   const [desiredPlayers, setDesiredPlayers] = useState(2);
   const [startingLife, setStartingLife] = useState(defaultStartingLife);
   const [createDeckText, setCreateDeckText] = useState("");
-  const [joinDeckText, setJoinDeckText] = useState("");
+  const [joinDeckText, setJoinDeckText] = useState(String(initialJoinDeckText || ""));
   const [createCommanderText, setCreateCommanderText] = useState("");
-  const [joinCommanderText, setJoinCommanderText] = useState("");
+  const [joinCommanderText, setJoinCommanderText] = useState(String(initialJoinCommanderText || ""));
+  const [inviteName, setInviteName] = useState("");
+  const [inviteDeckText, setInviteDeckText] = useState("");
+  const [inviteCommanderText, setInviteCommanderText] = useState("");
 
   const lobbyActive = multiplayer.mode !== "idle";
   const playerCount = multiplayer.players.length;
@@ -125,6 +133,17 @@ export default function LobbyOverlay({
       || /(lobby|peerjs|peer connection|signaling)/i.test(status.msg)
     )
   );
+  const shareLobbyCode = multiplayer.lobbyId || multiplayer.hostPeerId || "";
+  const inviteLink = useMemo(
+    () => buildLobbyInviteLink({
+      lobbyId: shareLobbyCode,
+      name: inviteName,
+      deckText: inviteDeckText,
+      commanderText:
+        activeFormat === MATCH_FORMAT_COMMANDER ? inviteCommanderText : "",
+    }),
+    [activeFormat, inviteCommanderText, inviteDeckText, inviteName, shareLobbyCode]
+  );
 
   const handleCreateFormatChange = (nextFormat) => {
     const normalized = normalizeMatchFormat(nextFormat);
@@ -154,6 +173,20 @@ export default function LobbyOverlay({
       deckText: joinDeckText,
       commanderText: joinCommanderText,
     });
+  };
+
+  const handleCopyInviteLink = async () => {
+    if (!inviteLink) {
+      setStatus("Lobby link is not available yet", true);
+      return;
+    }
+
+    const copied = await copyTextToClipboard(inviteLink);
+    if (copied) {
+      setStatus("Copied invite link");
+    } else {
+      setStatus("Could not copy invite link", true);
+    }
   };
 
   return (
@@ -410,6 +443,80 @@ export default function LobbyOverlay({
 
               {!multiplayer.matchStarted ? (
                 <div className="grid gap-3 rounded-lg border border-[#243447] bg-[#09111a] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] uppercase tracking-[0.22em] text-[#7d97b4]">
+                      Invite Link
+                    </span>
+                    <button
+                      type="button"
+                      disabled={!inviteLink}
+                      className={`${startButtonClass} w-auto px-3 py-2 ${
+                        inviteLink
+                          ? "border-[#285a88] bg-[#102131] text-[#d6ecff] hover:bg-[#14304a]"
+                          : "border-[#2a3746] bg-[#101923] text-[#7f93a8]"
+                      }`}
+                      onClick={() => {
+                        void handleCopyInviteLink();
+                      }}
+                    >
+                      Copy Link
+                    </button>
+                  </div>
+                  <label className={labelClass}>
+                    Invitee Name
+                    <input
+                      className={inputClass}
+                      value={inviteName}
+                      onChange={(event) => setInviteName(event.target.value)}
+                      placeholder="Optional player name"
+                    />
+                  </label>
+                  <label className={labelClass}>
+                    Main Deck
+                    <textarea
+                      className={textareaClass}
+                      value={inviteDeckText}
+                      onChange={(event) => setInviteDeckText(event.target.value)}
+                      placeholder={
+                        activeFormat === MATCH_FORMAT_COMMANDER
+                          ? `Optional ${COMMANDER_DECK_SIZE}-card or ${PARTNER_DECK_SIZE}-card main deck for this invitee`
+                          : `Optional ${LOBBY_DECK_SIZE}-card main deck for this invitee`
+                      }
+                    />
+                  </label>
+                  {activeFormat === MATCH_FORMAT_COMMANDER ? (
+                    <label className={labelClass}>
+                      Commander(s)
+                      <textarea
+                        className={commanderTextareaClass}
+                        value={inviteCommanderText}
+                        onChange={(event) => setInviteCommanderText(event.target.value)}
+                        placeholder={"Optional until the invitee finalizes their commander choice"}
+                      />
+                    </label>
+                  ) : null}
+                  <label className={labelClass}>
+                    Generated Link
+                    <textarea
+                      className={`${commanderTextareaClass} min-h-[96px]`}
+                      readOnly
+                      value={inviteLink}
+                      placeholder="Invite link will appear once the lobby code is available"
+                    />
+                  </label>
+                  <div className="grid gap-1 text-[13px] leading-6 text-muted-foreground">
+                    <span>
+                      Includes the current lobby code plus any optional name/deck/commander fields above.
+                    </span>
+                    <span>
+                      Incomplete deck submissions still join the lobby and can be finished there before the player becomes ready.
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
+              {!multiplayer.matchStarted ? (
+                <div className="grid gap-3 rounded-lg border border-[#243447] bg-[#09111a] p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] uppercase tracking-[0.22em] text-[#7d97b4]">
                       Your Deck
@@ -537,4 +644,56 @@ export default function LobbyOverlay({
       </div>
     </div>
   );
+}
+
+function encodeBase64Utf8(text) {
+  const value = String(text || "");
+  if (!value || typeof window === "undefined") return "";
+
+  try {
+    const bytes = new TextEncoder().encode(value);
+    let binary = "";
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return window.btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+  } catch {
+    return "";
+  }
+}
+
+function buildLobbyInviteLink({
+  lobbyId = "",
+  name = "",
+  deckText = "",
+  commanderText = "",
+}) {
+  if (typeof window === "undefined") return "";
+
+  const trimmedLobbyId = String(lobbyId || "").trim();
+  if (!trimmedLobbyId) return "";
+
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("lobby", trimmedLobbyId);
+
+  const trimmedName = String(name || "").trim();
+  const trimmedDeckText = String(deckText || "").trim();
+  const trimmedCommanderText = String(commanderText || "").trim();
+
+  if (trimmedName) {
+    url.searchParams.set("name", trimmedName);
+  }
+  if (trimmedDeckText) {
+    url.searchParams.set("deck", encodeBase64Utf8(trimmedDeckText));
+  }
+  if (trimmedCommanderText) {
+    url.searchParams.set("commander", encodeBase64Utf8(trimmedCommanderText));
+  }
+
+  return url.toString();
 }

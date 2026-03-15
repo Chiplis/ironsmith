@@ -13,10 +13,9 @@ use crate::cards::builders::{
     lower_prepared_ability, lower_prepared_additional_cost_choice_modes_with_exports,
     lower_prepared_effects_with_trigger_context, lower_prepared_statement_effects,
     lower_static_abilities_ast, lower_static_ability_ast, normalize_effects_ast,
-    parse_activate_only_timing, parse_activation_condition, parse_mana_output_options_for_line,
-    parse_mana_usage_restriction_sentence, parse_triggered_times_each_turn_from_words,
-    parsed_triggered_ability, static_ability_for_keyword_action, tokenize_line,
-    trigger_supports_event_value, words,
+    parse_activate_only_timing, parse_activation_condition, parse_mana_usage_restriction_sentence,
+    parse_triggered_times_each_turn_from_words, parsed_triggered_ability,
+    static_ability_for_keyword_action, tokenize_line, trigger_supports_event_value, words,
 };
 use crate::color::ColorSet;
 use crate::cost::OptionalCost;
@@ -1280,25 +1279,6 @@ fn apply_line_ast(
             }
 
             let mut ability = parsed_ability.ability;
-            if let AbilityKind::Activated(ref a) = ability.kind
-                && a.is_mana_ability()
-                && a.effects.is_empty()
-            {
-                if let Some(options) =
-                    parse_mana_output_options_for_line(&info.raw_line, info.line_index)?
-                    && options.len() > 1
-                {
-                    for option in options {
-                        let mut split = ability.clone();
-                        if let AbilityKind::Activated(ref mut inner) = split.kind {
-                            inner.mana_output = Some(option);
-                        }
-                        builder = builder.with_ability(split.with_text(info.raw_line.as_str()));
-                    }
-                    return Ok(builder);
-                }
-            }
-
             if ability.text.is_none() {
                 ability = ability.with_text(info.raw_line.as_str());
             }

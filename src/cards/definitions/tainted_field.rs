@@ -23,6 +23,7 @@ mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::card::CardBuilder;
+    use crate::effects::AddManaOfAnyColorEffect;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::ManaSymbol;
@@ -71,10 +72,10 @@ mod tests {
     }
 
     #[test]
-    fn test_tainted_field_has_three_mana_abilities() {
+    fn test_tainted_field_has_two_mana_abilities() {
         let def = tainted_field();
-        // {C} unconditional, {W} conditional, {B} conditional
-        assert_eq!(def.abilities.len(), 3);
+        // {C} unconditional, plus one conditional color-choice ability
+        assert_eq!(def.abilities.len(), 2);
         assert!(def.abilities.iter().all(|a| a.is_mana_ability()));
     }
 
@@ -128,18 +129,29 @@ mod tests {
     }
 
     // ========================================
-    // Second Ability (White Mana) Tests
+    // Second Ability (Colored Mana) Tests
     // ========================================
 
     #[test]
-    fn test_second_ability_produces_white_mana() {
+    fn test_second_ability_offers_white_and_black() {
         let def = tainted_field();
 
         let ability = &def.abilities[1];
         if let AbilityKind::Activated(mana_ability) = &ability.kind
             && mana_ability.is_mana_ability()
         {
-            assert_eq!(mana_ability.mana_symbols(), &[ManaSymbol::White]);
+            let add_any = mana_ability
+                .effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
+                .expect("Expected restricted color-choice mana effect");
+            let colors = add_any
+                .available_colors
+                .as_ref()
+                .expect("Expected restricted color options");
+            assert_eq!(colors.len(), 2);
+            assert!(colors.contains(&crate::color::Color::White));
+            assert!(colors.contains(&crate::color::Color::Black));
         } else {
             panic!("Expected mana ability");
         }
@@ -155,7 +167,7 @@ mod tests {
         {
             assert!(
                 mana_ability.activation_condition.is_some(),
-                "White ability should have activation condition"
+                "Colored ability should have activation condition"
             );
 
             match &mana_ability.activation_condition {
@@ -165,48 +177,6 @@ mod tests {
                         !filter.subtypes.contains(&Subtype::Plains),
                         "Should only require Swamp, not Plains"
                     );
-                }
-                other => panic!("Expected generic subtype activation condition, got {other:?}"),
-            }
-        } else {
-            panic!("Expected mana ability");
-        }
-    }
-
-    // ========================================
-    // Third Ability (Black Mana) Tests
-    // ========================================
-
-    #[test]
-    fn test_third_ability_produces_black_mana() {
-        let def = tainted_field();
-
-        let ability = &def.abilities[2];
-        if let AbilityKind::Activated(mana_ability) = &ability.kind
-            && mana_ability.is_mana_ability()
-        {
-            assert_eq!(mana_ability.mana_symbols(), &[ManaSymbol::Black]);
-        } else {
-            panic!("Expected mana ability");
-        }
-    }
-
-    #[test]
-    fn test_third_ability_has_swamp_condition() {
-        let def = tainted_field();
-
-        let ability = &def.abilities[2];
-        if let AbilityKind::Activated(mana_ability) = &ability.kind
-            && mana_ability.is_mana_ability()
-        {
-            assert!(
-                mana_ability.activation_condition.is_some(),
-                "Black ability should have activation condition"
-            );
-
-            match &mana_ability.activation_condition {
-                Some(crate::ConditionExpr::YouControl(filter)) => {
-                    assert!(filter.subtypes.contains(&Subtype::Swamp));
                 }
                 other => panic!("Expected generic subtype activation condition, got {other:?}"),
             }
@@ -241,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn test_white_ability_cannot_activate_without_swamp() {
+    fn test_colored_ability_cannot_activate_without_swamp() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
@@ -249,7 +219,7 @@ mod tests {
         let def = tainted_field();
         let field_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-        // Should NOT be able to activate the white mana ability (index 1)
+        // Should NOT be able to activate the colored mana ability (index 1)
         let action = SpecialAction::ActivateManaAbility {
             permanent_id: field_id,
             ability_index: 1,
@@ -257,33 +227,12 @@ mod tests {
         let result = can_perform_check(&action, &game, alice);
         assert!(
             result.is_err(),
-            "Should NOT be able to activate white mana ability without Swamp"
+            "Should NOT be able to activate colored mana ability without Swamp"
         );
     }
 
     #[test]
-    fn test_black_ability_cannot_activate_without_swamp() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-
-        // Create Tainted Field on the battlefield (no other lands)
-        let def = tainted_field();
-        let field_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-
-        // Should NOT be able to activate the black mana ability (index 2)
-        let action = SpecialAction::ActivateManaAbility {
-            permanent_id: field_id,
-            ability_index: 2,
-        };
-        let result = can_perform_check(&action, &game, alice);
-        assert!(
-            result.is_err(),
-            "Should NOT be able to activate black mana ability without Swamp"
-        );
-    }
-
-    #[test]
-    fn test_colored_abilities_can_activate_with_swamp() {
+    fn test_colored_ability_can_activate_with_swamp() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
@@ -292,28 +241,20 @@ mod tests {
         let field_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
         let _swamp_id = create_land(&mut game, "Swamp", vec![Subtype::Swamp], alice);
 
-        // Should be able to activate both white and black mana abilities
-        let white_action = SpecialAction::ActivateManaAbility {
+        // Should be able to activate the colored mana ability
+        let colored_action = SpecialAction::ActivateManaAbility {
             permanent_id: field_id,
             ability_index: 1,
         };
-        let black_action = SpecialAction::ActivateManaAbility {
-            permanent_id: field_id,
-            ability_index: 2,
-        };
 
         assert!(
-            can_perform_check(&white_action, &game, alice).is_ok(),
-            "Should be able to activate white with Swamp"
-        );
-        assert!(
-            can_perform_check(&black_action, &game, alice).is_ok(),
-            "Should be able to activate black with Swamp"
+            can_perform_check(&colored_action, &game, alice).is_ok(),
+            "Should be able to activate colored mana ability with Swamp"
         );
     }
 
     #[test]
-    fn test_plains_does_not_enable_colored_abilities() {
+    fn test_plains_does_not_enable_colored_ability() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
@@ -322,23 +263,14 @@ mod tests {
         let field_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
         let _plains_id = create_land(&mut game, "Plains", vec![Subtype::Plains], alice);
 
-        // Should NOT be able to activate colored mana abilities
-        let white_action = SpecialAction::ActivateManaAbility {
+        // Should NOT be able to activate the colored mana ability
+        let colored_action = SpecialAction::ActivateManaAbility {
             permanent_id: field_id,
             ability_index: 1,
         };
-        let black_action = SpecialAction::ActivateManaAbility {
-            permanent_id: field_id,
-            ability_index: 2,
-        };
-
         assert!(
-            can_perform_check(&white_action, &game, alice).is_err(),
-            "Plains should not enable white ability"
-        );
-        assert!(
-            can_perform_check(&black_action, &game, alice).is_err(),
-            "Plains should not enable black ability"
+            can_perform_check(&colored_action, &game, alice).is_err(),
+            "Plains should not enable colored ability"
         );
     }
 
@@ -357,13 +289,13 @@ mod tests {
             alice,
         );
 
-        // Should be able to activate colored mana abilities (Scrubland has Swamp)
-        let white_action = SpecialAction::ActivateManaAbility {
+        // Should be able to activate the colored mana ability (Scrubland has Swamp)
+        let colored_action = SpecialAction::ActivateManaAbility {
             permanent_id: field_id,
             ability_index: 1,
         };
         assert!(
-            can_perform_check(&white_action, &game, alice).is_ok(),
+            can_perform_check(&colored_action, &game, alice).is_ok(),
             "Dual land with Swamp should enable abilities"
         );
     }
@@ -381,12 +313,12 @@ mod tests {
         // Bob controls a Swamp (not Alice)
         let _bob_swamp = create_land(&mut game, "Swamp", vec![Subtype::Swamp], bob);
 
-        // Alice should NOT be able to activate the colored mana abilities
-        let white_action = SpecialAction::ActivateManaAbility {
+        // Alice should NOT be able to activate the colored mana ability
+        let colored_action = SpecialAction::ActivateManaAbility {
             permanent_id: field_id,
             ability_index: 1,
         };
-        let result = can_perform_check(&white_action, &game, alice);
+        let result = can_perform_check(&colored_action, &game, alice);
         assert!(
             result.is_err(),
             "Opponent's Swamp should not enable abilities"
@@ -411,7 +343,7 @@ mod tests {
         let _swamp_id = create_land(&mut game, "Swamp", vec![Subtype::Swamp], alice);
 
         // Should NOT be able to activate any ability while tapped
-        for index in 0..3 {
+        for index in 0..2 {
             let action = SpecialAction::ActivateManaAbility {
                 permanent_id: field_id,
                 ability_index: index,
@@ -436,9 +368,9 @@ mod tests {
         // Verify it's on the battlefield
         assert!(game.battlefield.contains(&field_id));
 
-        // Verify the object has all three mana abilities
+        // Verify the object has both mana abilities
         let obj = game.object(field_id).unwrap();
-        assert_eq!(obj.abilities.len(), 3);
+        assert_eq!(obj.abilities.len(), 2);
         assert!(obj.abilities.iter().all(|a| a.is_mana_ability()));
     }
 
@@ -486,7 +418,8 @@ mod tests {
     fn test_replay_tainted_field_colored_mana_with_swamp() {
         let game = run_replay_test(
             vec![
-                "2", // Activate second ability (white, conditional - requires Swamp)
+                "2", // Activate second ability (conditional color choice - requires Swamp)
+                "W", // Choose white
                 "",  // Pass priority
             ],
             ReplayTestConfig::new().p1_battlefield(vec!["Tainted Field", "Swamp"]),
@@ -498,6 +431,26 @@ mod tests {
         assert!(
             alice_player.mana_pool.white >= 1,
             "Should have white mana in pool"
+        );
+    }
+
+    /// Tests tapping Tainted Field with a Swamp to choose black mana.
+    #[test]
+    fn test_replay_tainted_field_black_mana_with_swamp() {
+        let game = run_replay_test(
+            vec![
+                "2", // Activate second ability (conditional color choice - requires Swamp)
+                "B", // Choose black
+                "",  // Pass priority
+            ],
+            ReplayTestConfig::new().p1_battlefield(vec!["Tainted Field", "Swamp"]),
+        );
+
+        let alice = PlayerId::from_index(0);
+        let alice_player = game.player(alice).unwrap();
+        assert!(
+            alice_player.mana_pool.black >= 1,
+            "Should have black mana in pool"
         );
     }
 }

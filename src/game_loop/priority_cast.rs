@@ -1367,6 +1367,7 @@ pub(super) fn continue_spell_cast_mana_payment(
     if pending.remaining_mana_pips.is_empty()
         && let Some(cost) = pending.mana_cost_to_pay.take()
     {
+        pending.display_mana_pips = expand_mana_cost_to_display_pips(&cost, x_value as usize);
         pending.remaining_mana_pips =
             expand_mana_cost_to_pips(&cost, x_value as usize, &pending.hybrid_choices);
     }
@@ -2715,6 +2716,7 @@ pub(super) fn continue_activation(
             if pending.remaining_mana_pips.is_empty()
                 && let Some(cost) = pending.mana_cost_to_pay.take()
             {
+                pending.display_mana_pips = expand_mana_cost_to_display_pips(&cost, x_value);
                 pending.remaining_mana_pips =
                     expand_mana_cost_to_pips(&cost, x_value, &pending.hybrid_choices);
             }

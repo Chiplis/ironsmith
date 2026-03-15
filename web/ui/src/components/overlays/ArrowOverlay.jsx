@@ -5,6 +5,7 @@ import { getCardElement, getCardRect, getPlayerTargetRect, centerOf } from "@/ho
 
 const ARROW_DASH_ARRAY = "8 4";
 const STACK_ROUTE_GAP = 6;
+const TARGETING_ARROW_OPACITY = 0.7;
 
 function curvedArrowPath(x1, y1, x2, y2) {
   const dx = x2 - x1;
@@ -295,7 +296,7 @@ export default function ArrowOverlay() {
           refY="3"
           orient="auto"
         >
-          <polygon points="0 0, 8 3, 0 6" fill="context-stroke" opacity="0.96" />
+          <polygon points="0 0, 8 3, 0 6" fill="context-stroke" opacity={TARGETING_ARROW_OPACITY} />
         </marker>
         <marker
           id="arrowhead-drag"
@@ -305,7 +306,7 @@ export default function ArrowOverlay() {
           refY="3.5"
           orient="auto"
         >
-          <polygon points="0 0, 10 3.5, 0 7" fill="context-stroke" opacity="0.85" />
+          <polygon points="0 0, 10 3.5, 0 7" fill="context-stroke" opacity={TARGETING_ARROW_OPACITY} />
         </marker>
       </defs>
 
@@ -323,10 +324,9 @@ export default function ArrowOverlay() {
           d={p.d}
           fill="none"
           stroke={p.color}
-          strokeWidth={2.5}
-          strokeLinecap="round"
           strokeDasharray={ARROW_DASH_ARRAY}
           filter="url(#arrow-glow)"
+          opacity={TARGETING_ARROW_OPACITY}
           markerEnd="url(#arrowhead-confirmed)"
         />
       ))}
@@ -341,7 +341,7 @@ export default function ArrowOverlay() {
           strokeLinecap="round"
           strokeDasharray={ARROW_DASH_ARRAY}
           filter="url(#arrow-glow)"
-          opacity={0.85}
+          opacity={TARGETING_ARROW_OPACITY}
           markerEnd="url(#arrowhead-drag)"
         />
       )}

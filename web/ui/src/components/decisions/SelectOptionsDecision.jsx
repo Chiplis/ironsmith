@@ -52,6 +52,11 @@ function isSpellCastFlowDecision(decision) {
   return (decision.options || []).some((opt) => isCastOptionDescription(opt.description));
 }
 
+function isColorChoiceDecision(decision) {
+  if (!decision || decision.kind !== "select_options") return false;
+  return String(decision.reason || "").trim().toLowerCase() === "choose color";
+}
+
 function buildContextualOptions(options, hoveredObjectId) {
   const hasObjectBoundOptions = options.some((opt) => opt.object_id != null);
   if (!hasObjectBoundOptions) {
@@ -108,6 +113,15 @@ function optionLabelContent(state, objectNameById, objectControllerById, opt) {
       highlightColor={accent?.hex || null}
     />
   );
+}
+
+function optionHoverObjectId(decision, opt, selectedObjectId = null) {
+  if (opt?.object_id != null) return String(opt.object_id);
+  if (selectedObjectId != null) return null;
+  if (isColorChoiceDecision(decision) && decision?.source_id != null) {
+    return String(decision.source_id);
+  }
+  return null;
 }
 
 function useAnimatedRows(rows, showRows, hideDelayMs = 180) {
@@ -363,6 +377,8 @@ function SingleSelectDecision({
     }
     return true;
   }, [paymentDecision, state, decision?.source_name]);
+  const colorChoiceDecision = useMemo(() => isColorChoiceDecision(decision), [decision]);
+  const showDescription = !hideDescription && !(stripLayout && colorChoiceDecision);
   const canSubmitPayment = canAct && !!payOption && payOption.legal !== false;
   const paymentProgressLabel = canSubmitPayment ? "Submit (1/1)" : "Submit (0/1)";
   const submitPayment = useCallback(() => {
@@ -446,7 +462,7 @@ function SingleSelectDecision({
               : "sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1"
           )}
         >
-          {!paymentDecision && !hideDescription && (
+          {!paymentDecision && showDescription && (
             <Description decision={decision} hideDescription={hideDescription} layout={layout} />
           )}
           {showHoverHint && (
@@ -464,6 +480,7 @@ function SingleSelectDecision({
           )}>
             {visibleOptions.map((opt) => {
               const objId = opt.object_id != null ? String(opt.object_id) : null;
+              const hoverObjectId = optionHoverObjectId(decision, opt, selectedObjectId);
               return (
                 <OptionButton
                   key={opt.index}
@@ -478,8 +495,8 @@ function SingleSelectDecision({
                       opt.description
                     )
                   }
-                  onMouseEnter={() => objId && hoverCard(objId)}
-                  onMouseLeave={clearHover}
+                  onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
+                  onMouseLeave={() => hoverObjectId && clearHover()}
                 />
               );
             })}
@@ -515,6 +532,8 @@ function MultiSelectDecision({
   const objectControllerById = useMemo(() => buildObjectControllerById(state), [state]);
   const rawOptions = useMemo(() => decision.options || [], [decision.options]);
   const paymentDecision = useMemo(() => isPaymentDecision(decision), [decision]);
+  const colorChoiceDecision = useMemo(() => isColorChoiceDecision(decision), [decision]);
+  const showDescription = !hideDescription && !(stripLayout && colorChoiceDecision);
   const options = useMemo(
     () => (paymentDecision ? rawOptions.filter((opt) => !isPaymentOptionDescription(opt.description)) : rawOptions),
     [rawOptions, paymentDecision]
@@ -579,7 +598,7 @@ function MultiSelectDecision({
               ? "px-1 py-0"
               : "sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1"
           )}>
-          {!paymentDecision && !hideDescription && (
+          {!paymentDecision && showDescription && (
             <Description decision={decision} hideDescription={hideDescription} layout={layout} />
           )}
           <SectionHeader text={`Select ${min === max ? min : `${min}–${max}`}`} />
@@ -601,6 +620,7 @@ function MultiSelectDecision({
           )}>
             {visibleOptions.map((opt) => {
               const objId = opt.object_id != null ? String(opt.object_id) : null;
+              const hoverObjectId = optionHoverObjectId(decision, opt, selectedObjectId);
               const isHighlighted = objId != null && String(activeObjectId) === objId;
               const isSelected = selected.has(opt.index);
               return (
@@ -613,8 +633,8 @@ function MultiSelectDecision({
                   isSelected={isSelected}
                   horizontal={stripLayout}
                   onClick={() => opt.legal !== false && toggle(opt.index)}
-                  onMouseEnter={() => objId && hoverCard(objId)}
-                  onMouseLeave={clearHover}
+                  onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
+                  onMouseLeave={() => hoverObjectId && clearHover()}
                 />
               );
             })}

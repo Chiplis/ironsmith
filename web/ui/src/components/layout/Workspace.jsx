@@ -698,6 +698,10 @@ export default function Workspace({
     const onPointerUp = (e) => {
       const ds = endDrag();
       if (!ds || !ds.actions || ds.actions.length === 0) return;
+      const currentDecision = state?.decision || null;
+      if (currentDecision?.kind !== "priority") {
+        return;
+      }
 
       // Check if dropped over the table area (anywhere above the hand)
       const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -711,8 +715,15 @@ export default function Workspace({
 
       collapseHandLane();
 
+      const currentActionIndices = new Set(
+        (currentDecision.actions || []).map((action) => Number(action?.index))
+      );
+
       if (ds.actions.length === 1) {
         const onlyAction = ds.actions[0];
+        if (!currentActionIndices.has(Number(onlyAction?.index))) {
+          return;
+        }
         window.__castParticles?.(e.clientX, e.clientY, ds.glowKind || "spell");
         dispatch(
           { type: "priority_action", action_index: onlyAction.index },
@@ -728,6 +739,12 @@ export default function Workspace({
 
       // Multiple possible actions: pin inspector to this card while actions
       // remain available in the action strip.
+      const hasCurrentAction = ds.actions.some((action) =>
+        currentActionIndices.has(Number(action?.index))
+      );
+      if (!hasCurrentAction) {
+        return;
+      }
       if (!combatDeclarationActive) {
         setSelectedObjectId(ds.objectId != null ? ds.objectId : null);
         setPinnedInspectorObjectId(null);
@@ -752,7 +769,7 @@ export default function Workspace({
       document.removeEventListener("pointercancel", onPointerCancel);
       window.removeEventListener("blur", onWindowBlur);
     };
-  }, [clearHover, collapseHandLane, combatDeclarationActive, dispatch, endDrag]);
+  }, [clearHover, collapseHandLane, combatDeclarationActive, dispatch, endDrag, state?.decision]);
 
   useEffect(() => {
     const onDeadZonePointerDown = (event) => {

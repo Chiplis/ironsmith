@@ -1,11 +1,23 @@
+const ORIGINAL_BASIC_LAND_SETS = new Set([
+  "Plains",
+  "Island",
+  "Swamp",
+  "Mountain",
+  "Forest",
+]);
+
 export function scryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
-  const params = new URLSearchParams({
-    fuzzy: query,
-    format: "image",
-    version,
-  });
+  const params = new URLSearchParams({ format: "image", version });
+
+  if (ORIGINAL_BASIC_LAND_SETS.has(query)) {
+    params.set("exact", query);
+    params.set("set", "lea");
+  } else {
+    params.set("fuzzy", query);
+  }
+
   return `https://api.scryfall.com/cards/named?${params.toString()}`;
 }
 const namedCardMetaCache = new Map();

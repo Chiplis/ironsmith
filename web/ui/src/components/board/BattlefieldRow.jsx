@@ -4,7 +4,6 @@ import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { useGame } from "@/context/GameContext";
 import useNewCards from "@/hooks/useNewCards";
-import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import GameCard from "@/components/cards/GameCard";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,7 @@ import { Button } from "@/components/ui/button";
 const PAPER_ROW_GROUPS = [
   {
     id: "front",
-    lanes: ["creatures", "enchantments", "planeswalkers", "battles", "other"],
+    lanes: ["enchantments", "creatures", "planeswalkers", "battles", "other"],
   },
   {
     id: "back",
@@ -26,16 +25,16 @@ const GHOST_BASE_ANIMATION_MS = 520;
 const MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO = 0.15;
 const BATTLEFIELD_GRID_GAP_PX = 8;
 const COMPACT_SCROLL_COLUMN_MAX_WIDTH = 200;
+const ABSOLUTE_MIN_CARD_WIDTH = 10;
+const ABSOLUTE_MIN_CARD_HEIGHT = 14;
 
 function normalizeBattlefieldLane(lane) {
   const normalized = String(lane || "").toLowerCase();
   return ALL_PAPER_LANES.includes(normalized) ? normalized : "other";
 }
 
-function buildPaperBattlefieldLayout(cards, battlefieldSide) {
-  const rowGroups = battlefieldSide === "top"
-    ? [...PAPER_ROW_GROUPS].reverse()
-    : PAPER_ROW_GROUPS;
+function buildPaperBattlefieldLayout(cards) {
+  const rowGroups = PAPER_ROW_GROUPS;
   const buckets = new Map(ALL_PAPER_LANES.map((lane) => [lane, []]));
 
   for (const card of cards) {
@@ -43,21 +42,19 @@ function buildPaperBattlefieldLayout(cards, battlefieldSide) {
     buckets.get(lane).push(card);
   }
 
-  const occupiedRows = rowGroups
+  const orderedRows = rowGroups
     .map((row) => ({
       id: row.id,
       cards: row.lanes.flatMap((lane) => buckets.get(lane) || []),
       signature: row.lanes.map((lane) => `${lane}:${(buckets.get(lane) || []).length}`).join(","),
-    }))
-    .filter((row) => row.cards.length > 0);
+    }));
   const orderedCards = [];
   const gridPositionById = new Map();
-  const maxCols = Math.max(1, ...occupiedRows.map((row) => row.cards.length));
+  const maxCols = Math.max(1, ...orderedRows.map((row) => row.cards.length));
 
-  occupiedRows.forEach((row, rowIndex) => {
-    const startColumn = row.id === "back"
-      ? 1
-      : Math.floor((maxCols - row.cards.length) / 2) + 1;
+  orderedRows.forEach((row, rowIndex) => {
+    if (row.cards.length === 0) return;
+    const startColumn = Math.floor((maxCols - row.cards.length) / 2) + 1;
 
     row.cards.forEach((card, columnIndex) => {
       orderedCards.push(card);
@@ -71,9 +68,9 @@ function buildPaperBattlefieldLayout(cards, battlefieldSide) {
   return {
     orderedCards,
     gridPositionById,
-    rowCount: Math.max(occupiedRows.length, 1),
+    rowCount: rowGroups.length,
     maxCols,
-    signature: occupiedRows
+    signature: orderedRows
       .map((row) => `${row.id}:${row.signature}`)
       .join("|"),
   };
@@ -86,18 +83,6 @@ function stableIdsForCard(card) {
   if (card?.stable_id != null) return [String(card.stable_id)];
   if (card?.id != null) return [String(card.id)];
   return [];
-}
-
-function buildAnimationSignature(cards) {
-  return cards
-    .map((card) => [
-      card.id,
-      card.stable_id,
-      card.tapped ? 1 : 0,
-      card.count ?? 1,
-      stableIdsForCard(card).join(","),
-    ].join(":"))
-    .join("|");
 }
 
 function indexCardsByStableId(cards) {
@@ -356,14 +341,10 @@ export default function BattlefieldRow({
   const isPaperBattlefieldLayout = !compact;
   const canShowBattlefieldUndo = isPaperBattlefieldLayout && battlefieldSide === "bottom";
   const paperLayout = useMemo(
-    () => buildPaperBattlefieldLayout(cards, battlefieldSide),
-    [battlefieldSide, cards]
+    () => buildPaperBattlefieldLayout(cards),
+    [cards]
   );
   const displayCards = isPaperBattlefieldLayout ? paperLayout.orderedCards : cards;
-  const layoutAnimationSignature = useMemo(
-    () => buildAnimationSignature(displayCards),
-    [displayCards]
-  );
   const priorityActionObjectIds = useMemo(() => {
     const ids = new Set();
     const decision = state?.decision;
@@ -456,8 +437,8 @@ export default function BattlefieldRow({
         best = {
           rows,
           cols,
-          cardWidth: Math.max(22, cardWidth),
-          cardHeight: Math.max(minHeight, cardHeight),
+          cardWidth: Math.max(ABSOLUTE_MIN_CARD_WIDTH, cardWidth),
+          cardHeight: Math.max(ABSOLUTE_MIN_CARD_HEIGHT, cardHeight),
         };
       }
     } else if (forceSingleColumn) {
@@ -494,8 +475,8 @@ export default function BattlefieldRow({
         const rows = Math.max(1, paperLayout.rowCount);
         const widthLimit = (width - (cols - 1) * gap) / cols;
         const heightLimit = ((effectiveHeight - (rows - 1) * gap) / rows) * aspect;
-        const cardWidth = Math.max(22, Math.floor(Math.min(widthLimit, heightLimit)));
-        const cardHeight = Math.max(minHeight, Math.floor(cardWidth / aspect));
+        const cardWidth = Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(Math.min(widthLimit, heightLimit)));
+        const cardHeight = Math.max(ABSOLUTE_MIN_CARD_HEIGHT, Math.floor(cardWidth / aspect));
         best = { rows, cols, cardWidth, cardHeight };
       } else {
         const cols = Math.max(1, Math.floor((width + gap) / (minWidth + gap)));
@@ -508,21 +489,26 @@ export default function BattlefieldRow({
     }
 
     const maxCardWidth = forceSingleColumn
-      ? Math.max(22, Math.floor(width - 4))
-      : Math.max(22, Math.floor(width * MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO));
+      ? Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width - 4))
+      : Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width * MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO));
+    const clampedCardWidth = Math.max(
+      isPaperBattlefieldLayout ? ABSOLUTE_MIN_CARD_WIDTH : 22,
+      Math.min(best.cardWidth, maxCardWidth)
+    );
     best = {
       ...best,
-      cardWidth: Math.min(best.cardWidth, maxCardWidth),
-      cardHeight: Math.max(minHeight, Math.floor(Math.min(best.cardWidth, maxCardWidth) / aspect)),
+      cardWidth: clampedCardWidth,
+      cardHeight: Math.max(
+        isPaperBattlefieldLayout ? ABSOLUTE_MIN_CARD_HEIGHT : minHeight,
+        Math.floor(clampedCardWidth / aspect)
+      ),
     };
 
     row.style.setProperty("--bf-cols", String(best.cols));
     row.style.setProperty("--bf-rows", String(best.rows));
     row.style.setProperty("--bf-card-width", `${best.cardWidth}px`);
     row.style.setProperty("--bf-card-height", `${best.cardHeight}px`);
-    const overlapPx = (compact || isPaperBattlefieldLayout)
-      ? 0
-      : Math.min(14, Math.max(8, Math.floor(best.cardWidth * 0.11)));
+    const overlapPx = Math.min(14, Math.max(8, Math.floor(best.cardWidth * 0.11)));
     row.style.setProperty("--bf-card-overlap", `${overlapPx}px`);
     syncOverflowMode({
       rows: best.rows,
@@ -606,15 +592,6 @@ export default function BattlefieldRow({
       fitRafRef.current = null;
     }
   }, []);
-
-  useLayoutReflow(rowRef, `${paperLayout.signature}|${layoutAnimationSignature}`, {
-    children: ".battlefield-row-card",
-    disabled: !isPaperBattlefieldLayout || displayCards.length === 0,
-    duration: 320,
-    bounce: 0.12,
-    enterFrom: { opacity: 0, y: 14, scale: 0.97 },
-    leaveTo: { opacity: 0, y: -12, scale: 0.94 },
-  });
 
   useLayoutEffect(() => {
     const row = rowRef.current;
@@ -712,7 +689,7 @@ export default function BattlefieldRow({
       }
       if (dt.dragging) {
         updateDragArrow(me.clientX, me.clientY);
-        if (cm.mode === "attackers") {
+        if (cm.mode === "attackers" || cm.mode === "blockers") {
           const hoverEl = document
             .elementFromPoint(me.clientX, me.clientY)
             ?.closest?.(".game-card[data-object-id]");
@@ -752,6 +729,27 @@ export default function BattlefieldRow({
     document.addEventListener("pointerup", onUp);
   }, [combatModeRef, startDragArrow, updateDragArrow, endDragArrow, hoverCard, clearHover]);
 
+  const handleCardSelectionClick = useCallback((event, card) => {
+    const cm = combatModeRef.current;
+    if (cm?.onTargetCardClick) {
+      const hasActiveSelection = cm.mode === "attackers"
+        ? cm.selectedAttacker != null
+        : cm.selectedBlocker != null;
+      if (hasActiveSelection && cm.onTargetCardClick(Number(card.id))) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
+
+    if (onCardClick) {
+      onCardClick(event, card);
+      return;
+    }
+
+    onInspect?.(card.id);
+  }, [combatModeRef, onCardClick, onInspect]);
+
   return (
     <div
       ref={rowRef}
@@ -785,22 +783,31 @@ export default function BattlefieldRow({
         }
 
         const isCombatCandidate = combatMode?.candidates?.has(Number(card.id));
-        const activeAttackerId = (
-          combatMode?.mode === "attackers"
-            ? Number(combatMode?.selectedAttacker ?? dragArrow?.fromId ?? NaN)
-            : NaN
-        );
+        const activeSourceId = combatMode?.mode === "attackers"
+          ? Number(combatMode?.selectedAttacker ?? dragArrow?.fromId ?? NaN)
+          : combatMode?.mode === "blockers"
+            ? Number(combatMode?.selectedBlocker ?? dragArrow?.fromId ?? NaN)
+            : NaN;
         const activeTargetObjects = (
-          Number.isFinite(activeAttackerId)
-            ? combatMode?.validTargetObjectsByAttacker?.[activeAttackerId]
+          Number.isFinite(activeSourceId)
+            ? (
+              combatMode?.mode === "attackers"
+                ? combatMode?.validTargetObjectsByAttacker?.[activeSourceId]
+                : combatMode?.validTargetObjectsByBlocker?.[activeSourceId]
+            )
             : combatMode?.validTargetObjects
         );
-        const isAttackHoverTarget = (
-          combatMode?.mode === "attackers" &&
-          Number.isFinite(activeAttackerId) &&
+        const isCombatHoverTarget = (
+          (combatMode?.mode === "attackers" || combatMode?.mode === "blockers") &&
+          Number.isFinite(activeSourceId) &&
           !!activeTargetObjects?.has?.(Number(card.id)) &&
           hoveredObjectId != null &&
           String(card.id) === String(hoveredObjectId)
+        );
+        const isCombatTargetCard = (
+          (combatMode?.mode === "attackers" || combatMode?.mode === "blockers")
+          && Number.isFinite(activeSourceId)
+          && !!activeTargetObjects?.has?.(Number(card.id))
         );
         const isActionLinkedHover = (
           cardObjectIds.some((id) => hoveredLinkedObjectIds.has(String(id)))
@@ -818,11 +825,14 @@ export default function BattlefieldRow({
           const hasNonMana = actions.some((a) => a.kind === "activate_ability");
           abilityGlow = hasMana && !hasNonMana ? "mana" : hasNonMana ? "ability" : "mana";
         }
-        const isInteractable = isActivatable || isCombatCandidate;
-        const isSelectedAttacker = combatMode?.selectedAttacker === Number(card.id);
-        const combatGlowKind = isSelectedAttacker
+        const isInteractable = isActivatable || isCombatCandidate || isCombatTargetCard;
+        const isSelectedCombatSource = (
+          combatMode?.selectedAttacker === Number(card.id)
+          || combatMode?.selectedBlocker === Number(card.id)
+        );
+        const combatGlowKind = isSelectedCombatSource
           ? "attack-selected"
-          : isAttackHoverTarget
+          : isCombatHoverTarget
             ? "attack-selected"
             : isCombatCandidate
               ? (combatMode.mode === "attackers" ? "attack-candidate" : "blocker-candidate")
@@ -831,7 +841,7 @@ export default function BattlefieldRow({
           ? "action-link"
           : isLegalTarget
             ? "spell"
-            : isAttackHoverTarget
+            : isCombatHoverTarget
               ? "attack-selected"
               : (isCombatCandidate ? combatGlowKind : abilityGlow);
         const paperGridPosition = isPaperBattlefieldLayout
@@ -851,11 +861,11 @@ export default function BattlefieldRow({
             isInspected={selectedObjectId != null && cardObjectIds.some((id) => String(id) === String(selectedObjectId))}
             isPlayable={isInteractable}
             glowKind={appliedGlowKind}
-            isHovered={isAttackHoverTarget || isActionLinkedHover}
+            isHovered={isCombatHoverTarget || isActionLinkedHover}
             isNew={isNew}
             isBumped={isBumped}
             bumpDirection={bumpDir}
-            onClick={onCardClick ? (e) => onCardClick(e, card) : () => onInspect?.(card.id)}
+            onClick={(event) => handleCardSelectionClick(event, card)}
             onPointerDown={
               isCombatCandidate
                 ? (e) => handleCombatPointerDown(e, card)
@@ -893,7 +903,7 @@ export default function BattlefieldRow({
               minWidth: "var(--bf-card-width, 124px)",
               height: "var(--bf-card-height, 96px)",
               minHeight: "var(--bf-card-height, 96px)",
-              cursor: isCombatCandidate ? "pointer" : undefined,
+              cursor: isCombatCandidate || isCombatTargetCard ? "pointer" : undefined,
             }}
           />
         );

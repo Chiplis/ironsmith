@@ -140,6 +140,54 @@ pub(super) fn expand_mana_cost_to_pips(
     colored_pips
 }
 
+/// Expand a ManaCost into display pips for the UI overlay.
+///
+/// This keeps original hybrid/Phyrexian symbols intact so the UI can render the
+/// printed-looking cost while still following the engine's payment order
+/// (colored/constrained pips first, generic pips last).
+pub(crate) fn expand_mana_cost_to_display_pips(
+    cost: &crate::mana::ManaCost,
+    x_value: usize,
+) -> Vec<Vec<crate::mana::ManaSymbol>> {
+    use crate::mana::ManaSymbol;
+
+    let mut colored_pips = Vec::new();
+    let mut generic_pips = Vec::new();
+
+    for pip in cost.pips() {
+        if pip.iter().any(|s| matches!(s, ManaSymbol::X)) {
+            for _ in 0..x_value {
+                generic_pips.push(vec![ManaSymbol::Generic(1)]);
+            }
+            continue;
+        }
+
+        if pip.iter().all(|s| matches!(s, ManaSymbol::Generic(0))) {
+            continue;
+        }
+
+        if pip.len() == 1 {
+            if let ManaSymbol::Generic(n) = pip[0] {
+                if n > 1 {
+                    for _ in 0..n {
+                        generic_pips.push(vec![ManaSymbol::Generic(1)]);
+                    }
+                    continue;
+                }
+                if n == 1 {
+                    generic_pips.push(vec![ManaSymbol::Generic(1)]);
+                    continue;
+                }
+            }
+        }
+
+        colored_pips.push(pip.clone());
+    }
+
+    colored_pips.extend(generic_pips);
+    colored_pips
+}
+
 pub(super) fn preferred_auto_pip_choice(
     state: &PriorityLoopState,
     options: &[ManaPipPaymentOption],

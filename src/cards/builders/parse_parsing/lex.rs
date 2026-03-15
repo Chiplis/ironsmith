@@ -1,11 +1,10 @@
-use crate::ManaSymbol;
 use crate::cards::TextSpan;
 use crate::cards::builders::{
     CardTextError, Token, find_verb, parse_ability_line,
     parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
-    parse_can_attack_as_though_no_defender_clause, parse_mana_symbol, parse_mana_symbol_group,
-    parse_must_block_if_able_clause, parse_prevent_all_damage_clause,
-    parse_prevent_next_damage_clause, parse_single_word_keyword_action, trim_commas,
+    parse_can_attack_as_though_no_defender_clause, parse_must_block_if_able_clause,
+    parse_prevent_all_damage_clause, parse_prevent_next_damage_clause,
+    parse_single_word_keyword_action, trim_commas,
 };
 
 pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
@@ -1473,122 +1472,6 @@ pub(crate) fn split_cost_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
     }
 
     segments
-}
-
-pub(crate) fn parse_mana_output_options_tokens(
-    tokens: &[Token],
-) -> Result<Vec<Vec<ManaSymbol>>, CardTextError> {
-    let mut segments = Vec::new();
-    let mut current = Vec::new();
-
-    for token in tokens {
-        if matches!(token, Token::Comma(_)) || token.is_word("or") {
-            if !current.is_empty() {
-                segments.push(std::mem::take(&mut current));
-            }
-            continue;
-        }
-        current.push(token.clone());
-    }
-    if !current.is_empty() {
-        segments.push(current);
-    }
-    if segments.is_empty() {
-        segments.push(tokens.to_vec());
-    }
-
-    let mut options: Vec<Vec<ManaSymbol>> = Vec::new();
-    for segment in segments {
-        let segment_words = words(&segment);
-        let mut groups: Vec<Vec<ManaSymbol>> = Vec::new();
-        for token in &segment {
-            let Some(word) = token.as_word() else {
-                continue;
-            };
-            if matches!(word, "mana" | "to" | "your" | "pool" | "and") {
-                continue;
-            }
-            if word.contains('/') {
-                groups.push(parse_mana_symbol_group(word)?);
-                continue;
-            }
-            if let Ok(symbol) = parse_mana_symbol(word) {
-                groups.push(vec![symbol]);
-            }
-        }
-        if groups.is_empty() {
-            if segment_words.is_empty() {
-                continue;
-            }
-            return Err(CardTextError::ParseError(format!(
-                "unsupported mana output option segment (clause: '{}')",
-                words(tokens).join(" ")
-            )));
-        }
-
-        let mut expanded = vec![Vec::new()];
-        for group in groups {
-            let mut next = Vec::new();
-            for partial in &expanded {
-                for symbol in &group {
-                    let mut option = partial.clone();
-                    option.push(*symbol);
-                    next.push(option);
-                }
-            }
-            expanded = next;
-        }
-        for option in expanded {
-            if !options.contains(&option) {
-                options.push(option);
-            }
-        }
-    }
-
-    Ok(options)
-}
-
-pub(crate) fn parse_mana_output_options_for_line(
-    line: &str,
-    line_index: usize,
-) -> Result<Option<Vec<Vec<ManaSymbol>>>, CardTextError> {
-    let tokens = tokenize_line(line, line_index);
-    let Some(colon_idx) = tokens
-        .iter()
-        .position(|token| matches!(token, Token::Colon(_)))
-    else {
-        return Ok(None);
-    };
-    let effect_tokens = &tokens[colon_idx + 1..];
-    let sentences = split_on_period(effect_tokens);
-    let Some(primary_sentence) = sentences.first() else {
-        return Ok(None);
-    };
-    let Some(add_idx) = primary_sentence
-        .iter()
-        .position(|token| token.is_word("add"))
-    else {
-        return Ok(None);
-    };
-    let output_tokens = &primary_sentence[add_idx + 1..];
-    let has_explicit_symbols = output_tokens.iter().any(|token| {
-        let Some(word) = token.as_word() else {
-            return false;
-        };
-        if parse_mana_symbol(word).is_ok() {
-            return true;
-        }
-        word.contains('/') && parse_mana_symbol_group(word).is_ok()
-    });
-    if !has_explicit_symbols {
-        return Ok(None);
-    }
-
-    let options = parse_mana_output_options_tokens(output_tokens)?;
-    if options.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(options))
 }
 
 pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, &str)> {

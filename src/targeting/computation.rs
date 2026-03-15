@@ -479,9 +479,10 @@ mod tests {
     use crate::ability::{Ability, AbilityKind, ProtectionFrom};
     use crate::card::{CardBuilder, PowerToughness};
     use crate::color::{Color, ColorSet};
+    use crate::effect::Comparison;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
-    use crate::static_abilities::StaticAbility;
+    use crate::static_abilities::{AnthemCountExpression, GrantAbility, StaticAbility};
 
     fn create_test_game() -> GameState {
         GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20)
@@ -508,6 +509,21 @@ mod tests {
         let card = CardBuilder::new(CardId::from_raw(id), name)
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
             .card_types(vec![CardType::Battle])
+            .build();
+
+        let mut obj = Object::from_card(
+            ObjectId::from_raw(id as u64),
+            &card,
+            controller,
+            Zone::Battlefield,
+        );
+        obj.controller = controller;
+        obj
+    }
+
+    fn create_land(id: u32, name: &str, controller: PlayerId) -> Object {
+        let card = CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Land])
             .build();
 
         let mut obj = Object::from_card(
@@ -573,6 +589,54 @@ mod tests {
 
         // Even controller can't target a shrouded permanent
         let result = can_target_object(&game, target_id, source_id, p1);
+        assert!(matches!(
+            result,
+            TargetingResult::Invalid(TargetingInvalidReason::HasShroud)
+        ));
+    }
+
+    #[test]
+    fn test_conditional_granted_shroud_blocks_targeting_when_no_untapped_lands() {
+        let mut game = create_test_game();
+        let p0 = PlayerId::from_index(0);
+        let p1 = PlayerId::from_index(1);
+
+        let mut target = create_creature(1, "Vintara Snapper Variant", p1);
+        add_static_ability(
+            &mut target,
+            StaticAbility::new(
+                GrantAbility::source(StaticAbility::shroud()).with_condition(
+                    crate::ConditionExpr::CountComparison {
+                        count: AnthemCountExpression::MatchingFilter(
+                            ObjectFilter::land().you_control().untapped(),
+                        ),
+                        comparison: Comparison::LessThanOrEqual(0),
+                        display: Some("you control no untapped lands".to_string()),
+                    },
+                ),
+            ),
+        );
+
+        let source = create_creature(2, "Source Creature", p0);
+        let land = create_land(3, "Forest", p1);
+
+        let target_id = target.id;
+        let source_id = source.id;
+        let land_id = land.id;
+
+        game.add_object(target);
+        game.add_object(source);
+        game.add_object(land);
+
+        let result = can_target_object(&game, target_id, source_id, p0);
+        assert!(
+            result.is_legal(),
+            "Creature should be targetable while its controller still has an untapped land"
+        );
+
+        game.tap(land_id);
+
+        let result = can_target_object(&game, target_id, source_id, p0);
         assert!(matches!(
             result,
             TargetingResult::Invalid(TargetingInvalidReason::HasShroud)
