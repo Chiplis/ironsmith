@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import HoverArtOverlay from "./HoverArtOverlay";
-import { useHoveredObjectId } from "@/context/HoverContext";
+import { useHover } from "@/context/HoverContext";
 import { useGame } from "@/context/GameContext";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { playerAccentVars } from "@/lib/player-colors";
@@ -26,13 +26,29 @@ function inspectorBorderStyle(accent) {
   if (!accent) return undefined;
   return {
     ...playerAccentVars(accent),
-    borderColor: accent.hex,
-    boxShadow: `0 0 0 1px rgba(${accent.rgb}, 0.38), 0 18px 42px rgba(0,0,0,0.24), 0 0 24px rgba(${accent.rgb}, 0.18)`,
+    borderColor: `rgba(${accent.rgb}, 0.48)`,
+    boxShadow: `0 0 0 1px rgba(${accent.rgb}, 0.18), 0 18px 42px rgba(0,0,0,0.28)`,
   };
 }
 
 function clampNumber(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function viewedCardIds(state) {
+  const ids = new Set();
+
+  for (const id of state?.viewed_cards?.card_ids || []) {
+    ids.add(String(id));
+  }
+
+  for (const card of state?.viewed_cards?.cards || []) {
+    if (card?.id != null) {
+      ids.add(String(card.id));
+    }
+  }
+
+  return ids;
 }
 
 function objectExistsInState(state, objectId) {
@@ -63,7 +79,7 @@ function objectExistsInState(state, objectId) {
     if (String(entry?.inspect_object_id) === needle) return true;
   }
 
-  if ((state?.viewed_cards?.card_ids || []).some((id) => String(id) === needle)) {
+  if (viewedCardIds(state).has(needle)) {
     return true;
   }
 
@@ -72,15 +88,14 @@ function objectExistsInState(state, objectId) {
 
 function isViewedCardObject(state, objectId) {
   if (objectId == null) return false;
-  const needle = String(objectId);
-  return (state?.viewed_cards?.card_ids || []).some((id) => String(id) === needle);
+  return viewedCardIds(state).has(String(objectId));
 }
 
 function locateObjectInState(state, objectId) {
   if (objectId == null) return null;
   const needle = String(objectId);
   const viewedCards = state?.viewed_cards || null;
-  if ((viewedCards?.card_ids || []).some((id) => String(id) === needle)) {
+  if (viewedCardIds(state).has(needle)) {
     return {
       side: viewedCards?.visibility === "public" ? "public-view" : "private-view",
       zone: String(viewedCards?.zone || "").toLowerCase(),
@@ -142,6 +157,43 @@ function preferredInlinePlacement(location) {
   };
 }
 
+function linkedInspectorLocationPriority(location) {
+  if (!location) return -1;
+  if (location.viewVisibility === "public") return 6;
+  if (location.viewVisibility === "private") return 5;
+  if (location.zone === "hand" && location.side === "self") return 4;
+  if (location.zone === "battlefield") return 3;
+  if (location.zone === "graveyard" || location.zone === "exile" || location.zone === "command") return 2;
+  if (location.zone === "stack") return 0;
+  return 1;
+}
+
+function resolveLinkedInspectorObjectId(state, hoveredObjectId, hoveredLinkedObjectIds) {
+  if (!hoveredLinkedObjectIds || hoveredLinkedObjectIds.size === 0) return null;
+
+  let bestObjectId = null;
+  let bestPriority = -1;
+
+  for (const linkedObjectId of hoveredLinkedObjectIds) {
+    if (linkedObjectId == null) continue;
+    const normalizedId = String(linkedObjectId);
+    const location = locateObjectInState(state, normalizedId);
+    if (!location) continue;
+
+    let priority = linkedInspectorLocationPriority(location);
+    if (hoveredObjectId != null && normalizedId === String(hoveredObjectId)) {
+      priority -= 1;
+    }
+
+    if (priority > bestPriority) {
+      bestPriority = priority;
+      bestObjectId = normalizedId;
+    }
+  }
+
+  return bestObjectId;
+}
+
 function isFocusedDecision(decision) {
   return (
     !!decision
@@ -197,7 +249,7 @@ export default function RightRail({
   const expandedMotionRef = useRef(null);
   const [expandedInlineHeight, setExpandedInlineHeight] = useState(INLINE_EXPANDED_DEFAULT_HEIGHT);
   const [inspectorAccent, setInspectorAccent] = useState(null);
-  const hoveredObjectId = useHoveredObjectId();
+  const { hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const decision = state?.decision || null;
   const stackObjects = getVisibleStackObjects(state);
   const hasStackEntries = stackObjects.length > 0 || (state?.stack_preview || []).length > 0;
@@ -208,6 +260,10 @@ export default function RightRail({
   const resolvingCastObjectId = state?.stack_size > 0 && topStackObject && !topStackObject.ability_kind
     ? String(topStackObject.inspect_object_id ?? topStackObject.id)
     : null;
+  const linkedInspectorObjectId = useMemo(
+    () => resolveLinkedInspectorObjectId(state, hoveredObjectId, hoveredLinkedObjectIds),
+    [state, hoveredLinkedObjectIds, hoveredObjectId]
+  );
   const pinnedInspectorObjectId = pinnedObjectId != null ? String(pinnedObjectId) : null;
   const focusedDecision = isFocusedDecision(decision);
   const pinnedInspectorIsViewedCard = isViewedCardObject(state, pinnedInspectorObjectId);
@@ -225,7 +281,12 @@ export default function RightRail({
         : null
     )
     : pinnedInspectorObjectId;
-  const relevantHoveredObjectId = hoveredObjectId;
+  const directHoveredInspectorObjectId = (
+    hoveredObjectId != null && objectExistsInState(state, hoveredObjectId)
+      ? String(hoveredObjectId)
+      : null
+  );
+  const relevantHoveredObjectId = linkedInspectorObjectId ?? directHoveredInspectorObjectId;
   const fallbackDecisionObjectId = suppressFallback ? null : (resolvingCastObjectId ?? topStackObjectId);
   // During focused decision steps, keep the resolving stack object as a fallback.
   // Live hover should always win, even if the current decision does not reference it.
@@ -491,10 +552,10 @@ export default function RightRail({
         <div
           ref={compactInspectorRef}
           className={cn(
-            "h-full overflow-hidden border border-[#2a3647]/70 bg-transparent shadow-[0_18px_42px_rgba(0,0,0,0.24)]",
+            "ironsmith-inspector-shell h-full overflow-hidden border border-[#2a3647]/70 bg-transparent shadow-[0_18px_42px_rgba(0,0,0,0.24)]",
             inline
-              ? (inlineExpandedSide === "left" ? "rounded-l rounded-r-sm" : "rounded-r rounded-l-sm")
-              : "rounded",
+              ? "rounded-none"
+              : "rounded-none",
             shouldShowRail ? "pointer-events-auto" : "pointer-events-none"
           )}
           style={inspectorBorderStyle(inspectorAccent)}
@@ -514,7 +575,7 @@ export default function RightRail({
           <div
             ref={expandedInspectorRef}
             className={cn(
-              "hand-inspector-inline-shell absolute bottom-0 overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)]",
+              "hand-inspector-inline-shell ironsmith-inspector-shell ironsmith-inspector-shell--expanded absolute bottom-0 overflow-hidden border border-[#2a3647]/75 bg-[rgba(8,12,18,0.94)]",
               useExpandedInlineInspector ? "is-open" : "is-closed"
             )}
             style={{

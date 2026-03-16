@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 
 const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command"];
-const RESERVED_ZONE_IDS = new Set(["graveyard", "exile"]);
+const SLIDE_IN_ZONE_IDS = new Set(["graveyard", "exile"]);
 const ZONE_LABELS = {
   battlefield: "Battlefield",
   hand: "Hand",
@@ -18,7 +18,6 @@ const ZONE_LABELS = {
   exile: "Exile",
   command: "CZ",
 };
-const SIDE_ZONE_COLUMN_WIDTH = 240;
 
 function normalizeZoneViews(zoneViews) {
   const normalized = Array.isArray(zoneViews)
@@ -87,10 +86,6 @@ function zoneCounts(player) {
   ];
 }
 
-function shouldReserveSideColumn(zone) {
-  return RESERVED_ZONE_IDS.has(zone);
-}
-
 function isBaseVisibleZone(zone, zoneViews, count) {
   const baseViews = normalizeZoneViews(zoneViews);
   if (!baseViews.includes(zone)) return false;
@@ -116,7 +111,7 @@ function collectCardObjectIds(card) {
 function ZoneCountInline({ player }) {
   const counts = zoneCounts(player);
   return (
-    <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
+    <div className="battlefield-counts flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
       {counts.map((entry) => (
         <span key={entry.label}>
           <span className="font-bold text-[#c1d4ea]">{entry.label}</span>{" "}
@@ -137,12 +132,12 @@ export default function OpponentZone({
   legalTargetObjectIds = new Set(),
 }) {
   const { state } = useGame();
-  if (!opponents.length) return <section className="board-zone-bg p-1.5 min-h-0" />;
+  if (!opponents.length) return <section className="board-zone-bg battlefield-panel battlefield-panel--opponents p-0 min-h-0" />;
 
   return (
-    <section className="board-zone-bg relative z-[2] p-1.5 min-h-0 overflow-visible" data-opponents-zones style={{ alignContent: "stretch" }}>
+    <section className="board-zone-bg battlefield-panel battlefield-panel--opponents relative z-[2] p-0 min-h-0 overflow-visible" data-opponents-zones style={{ alignContent: "stretch" }}>
       <div
-        className="grid gap-2 min-h-0 h-full"
+        className="battlefield-opponents-grid grid gap-2 min-h-0 h-full"
         style={{
           gridTemplateColumns: `repeat(auto-fit, minmax(220px, 1fr))`,
           gridAutoRows: "minmax(0, 1fr)",
@@ -183,25 +178,28 @@ function OpponentSlot({
   const transientZoneViews = Object.keys(zoneActivity || {});
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
+  const boardZoneEntries = activeZoneEntries.filter((entry) => !SLIDE_IN_ZONE_IDS.has(entry.zone));
+  const overlayZoneEntries = activeZoneEntries.filter((entry) => SLIDE_IN_ZONE_IDS.has(entry.zone));
   const visibleZones = new Set(
-    activeZoneEntries
+    boardZoneEntries
       .filter((entry) =>
         entry.zone === "battlefield"
         || entry.zone === "library"
         || entry.count > 0
-        || (RESERVED_ZONE_IDS.has(entry.zone) && entry.active)
         || Boolean(zoneActivity?.[entry.zone])
       )
       .map((entry) => entry.zone)
   );
-  if (visibleZones.size === 0 && activeZoneEntries.length > 0) {
-    visibleZones.add(activeZoneEntries[0].zone);
+  if (visibleZones.size === 0 && boardZoneEntries.length > 0) {
+    visibleZones.add(boardZoneEntries[0].zone);
   }
-  const zoneName = activeZoneEntries.length === 1
-    ? (activeZoneEntries[0].zone === "battlefield" ? "" : ` — ${activeZoneEntries[0].label}`)
+  const zoneName = boardZoneEntries.length === 1
+    ? (boardZoneEntries[0].zone === "battlefield" ? "" : ` — ${boardZoneEntries[0].label}`)
     : "";
   const showZoneHeaders = visibleZones.size > 1;
   const playerIdx = player.index ?? player.id;
+  const isActivePlayer = Number(state?.active_player) === Number(player?.id);
+  const isPriorityPlayer = Number(state?.priority_player) === Number(player?.id);
   const isPlayerLegalTarget =
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
@@ -308,18 +306,28 @@ function OpponentSlot({
   return (
     <div
       className={cn(
-        "bg-gradient-to-b from-[#101826] to-[#0a121d] rounded p-1.5 grid gap-1.5 min-h-0 h-full",
+        "battlefield-subpanel rounded-none grid min-h-0 h-full overflow-hidden",
         zoneIsAttackHoverTarget && "attack-target-zone"
       )}
-      style={{ gridTemplateRows: "auto minmax(0,1fr)", alignContent: "stretch", cursor: attackerArrowActive ? "crosshair" : undefined }}
+      style={{
+        gridTemplateRows: "auto minmax(0,1fr)",
+        alignContent: "stretch",
+        cursor: attackerArrowActive ? "crosshair" : undefined,
+        "--player-accent": playerAccent?.hex || "#d8bf6a",
+        "--panel-accent": playerAccent?.hex || "#d8bf6a",
+        "--player-accent-rgb": playerAccent?.rgb || "216, 191, 106",
+      }}
       data-opponent-zone={playerIdx}
       onClickCapture={handleClickCapture}
     >
       <div>
-        <div className="relative -top-[5px] flex items-center gap-2">
+        <div
+          className="battlefield-panel-header battlefield-panel-header--compact flex items-center gap-2"
+          data-turn-priority={isPriorityPlayer ? "true" : "false"}
+        >
           <span
             className={cn(
-              "text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums px-1 py-0.5 rounded",
+              "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums px-1 py-0.5 rounded-none",
               isPlayerLegalTarget
                 && "text-[#d7ebff] shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
             )}
@@ -332,7 +340,7 @@ function OpponentSlot({
           </span>
           <span
             className={cn(
-              "text-[16px] uppercase tracking-wider font-bold",
+              "battlefield-name text-[16px] uppercase tracking-wider font-bold",
               isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
             )}
             data-player-target={player.index ?? player.id}
@@ -353,10 +361,65 @@ function OpponentSlot({
           </div>
         </div>
       </div>
-      <div className="flex gap-1 min-h-0 h-full overflow-visible">
-        {zoneEntries.map((entry) => {
+      <div
+        className="battlefield-zones-shell relative min-h-0 h-full overflow-visible"
+        data-turn-active={isActivePlayer ? "true" : "false"}
+      >
+        {overlayZoneEntries.length > 0 ? (
+          <div className="battlefield-overlay-zones pointer-events-none absolute inset-x-2 top-2 z-[4] flex justify-end gap-3">
+            {overlayZoneEntries.map((entry) => {
+              const activity = zoneActivity?.[entry.zone] || null;
+              const displayCards = Array.isArray(activity?.replayCards) && activity.replayCards.length > 0
+                ? activity.replayCards
+                : entry.cards;
+              const displayCount = Number.isFinite(activity?.displayCount) ? activity.displayCount : entry.count;
+              return (
+                <div
+                  key={entry.zone}
+                  className={cn(
+                    "battlefield-overlay-zone pointer-events-auto",
+                    activity && formatZoneActivityClass(activity.direction)
+                  )}
+                >
+                  <div className="battlefield-overlay-zone-label flex items-center gap-2">
+                    <span>{entry.label}</span>
+                    <span className="text-[#f1e2c0]">{displayCount}</span>
+                    {activity ? (
+                      <span
+                        className={cn(
+                          "zone-activity-badge ml-auto",
+                          activity.direction === "left"
+                            ? "zone-activity-badge-leave"
+                            : "zone-activity-badge-enter"
+                        )}
+                      >
+                        {activity.label}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="battlefield-overlay-zone-body min-h-0">
+                    <BattlefieldRow
+                      cards={displayCards}
+                      compact
+                      battlefieldSide="top"
+                      selectedObjectId={selectedObjectId}
+                      onCardClick={handleCardClick}
+                      onCardPointerDown={handleCardPointerDown}
+                      legalTargetObjectIds={legalTargetObjectIds}
+                      allowVerticalScroll
+                      forceSingleColumn
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        <div className="battlefield-zone-strip flex gap-1 min-h-0 h-full overflow-visible">
+        {boardZoneEntries.map((entry) => {
           const isVisible = entry.active && visibleZones.has(entry.zone);
-          const reserveSideColumn = shouldReserveSideColumn(entry.zone);
+          const isPrimaryBattlefield = entry.zone === "battlefield";
+          const isCompactSideZone = entry.zone === "library" || entry.zone === "command";
           const activity = zoneActivity?.[entry.zone] || null;
           const isTransientReveal = Boolean(activity)
             && !isBaseVisibleZone(entry.zone, zoneViews, entry.count);
@@ -364,30 +427,33 @@ function OpponentSlot({
             ? activity.replayCards
             : entry.cards;
           const displayCount = Number.isFinite(activity?.displayCount) ? activity.displayCount : entry.count;
-          const zoneMinWidth = reserveSideColumn ? `${SIDE_ZONE_COLUMN_WIDTH}px` : "0px";
-          const keepReservedSlot = reserveSideColumn;
           return (
             <div
               key={entry.zone}
+              data-zone-id={entry.zone}
               className={cn(
-                "min-h-0 h-full",
+                "battlefield-zone-entry min-h-0 h-full",
                 activity && formatZoneActivityClass(activity.direction)
               )}
               style={{
-                flexGrow: isVisible ? (reserveSideColumn ? 0 : 1) : 0,
-                flexShrink: reserveSideColumn ? 0 : 1,
-                flexBasis: reserveSideColumn ? zoneMinWidth : "0%",
-                minWidth: keepReservedSlot ? zoneMinWidth : (isVisible ? zoneMinWidth : "0px"),
-                maxWidth: reserveSideColumn ? zoneMinWidth : (isVisible ? "100%" : "0px"),
+                flexGrow: isVisible ? (isPrimaryBattlefield ? 1 : 0) : 0,
+                flexShrink: isPrimaryBattlefield ? 1 : 0,
+                flexBasis: isVisible ? (
+                  isPrimaryBattlefield
+                    ? "0%"
+                    : isCompactSideZone
+                      ? "220px"
+                      : "260px"
+                ) : "0%",
+                minWidth: isVisible ? "0px" : "0px",
+                maxWidth: isVisible ? (isPrimaryBattlefield ? "100%" : (isCompactSideZone ? "240px" : "320px")) : "0px",
                 opacity: isVisible ? 1 : 0,
                 transform: isVisible ? "translateY(0)" : "translateY(4px)",
                 pointerEvents: isVisible ? "auto" : "none",
                 overflow: isVisible ? "visible" : "hidden",
-                transition: reserveSideColumn
-                  ? "opacity 500ms ease, transform 500ms ease"
-                  : isTransientReveal
-                    ? "opacity 180ms ease, transform 220ms ease"
-                    : "flex-grow 220ms ease, max-width 220ms ease, opacity 180ms ease, transform 220ms ease",
+                transition: isTransientReveal
+                  ? "opacity 180ms ease, transform 220ms ease"
+                  : "flex-grow 220ms ease, max-width 220ms ease, opacity 180ms ease, transform 220ms ease",
               }}
             >
               <div
@@ -398,7 +464,7 @@ function OpponentSlot({
                 style={{ gridTemplateRows: showZoneHeaders || activity ? "auto minmax(0,1fr)" : "minmax(0,1fr)" }}
               >
                 {(showZoneHeaders || activity) && (
-                  <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-[#9cb8d8] px-0.5">
+                  <div className="battlefield-zone-label flex items-center gap-1 text-[10px] uppercase tracking-wide text-[#9cb8d8] px-0.5">
                     <span>{entry.label}</span>
                     <span className="text-[#d6e6fb]">{displayCount}</span>
                     {activity ? (
@@ -426,14 +492,14 @@ function OpponentSlot({
                     onCardClick={handleCardClick}
                     onCardPointerDown={handleCardPointerDown}
                     legalTargetObjectIds={legalTargetObjectIds}
-                    allowVerticalScroll={entry.zone === "hand" || reserveSideColumn}
-                    forceSingleColumn={reserveSideColumn}
+                    allowVerticalScroll={entry.zone === "hand"}
                   />
                 )}
               </div>
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );

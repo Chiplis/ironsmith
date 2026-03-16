@@ -350,38 +350,29 @@ impl EffectExecutor for CreateTokenCopyEffect {
         let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
         let target_id = *target_ids.first().ok_or(ExecutionError::InvalidTarget)?;
 
-        // Resolve target object (supports tagged LKI with stable_id lookup)
-        let mut tagged_snapshot = None;
-        let mut resolved_target_id = target_id;
-        let mut target_object = game.object(resolved_target_id);
-
+        // Resolve target object, falling back to stored LKI snapshots when needed.
+        let resolved_target_id = target_id;
+        let target_object = game.object(resolved_target_id).cloned();
+        let mut stored_snapshot = None;
         if target_object.is_none() {
             match &self.target {
                 ChooseSpec::Tagged(tag) => {
                     if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
-                        tagged_snapshot = Some(snapshot.clone());
-                        if let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
-                        {
-                            resolved_target_id = current_id;
-                            target_object = game.object(resolved_target_id);
-                        }
+                        stored_snapshot = Some(snapshot.clone());
                     }
                 }
                 ChooseSpec::Source => {
-                    if let Some(snapshot) = &ctx.source_snapshot
-                        && let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
-                    {
-                        resolved_target_id = current_id;
-                        target_object = game.object(resolved_target_id);
+                    if let Some(snapshot) = &ctx.source_snapshot {
+                        stored_snapshot = Some(snapshot.clone());
                     }
                 }
                 _ => {}
             }
         }
-
-        let Some(target_object) = target_object else {
+        let copy_snapshot = stored_snapshot.as_ref();
+        if target_object.is_none() && copy_snapshot.is_none() {
             return Err(ExecutionError::ObjectNotFound(target_id));
-        };
+        }
         let configured_attack_player = match &self.attack_target_mode {
             Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => {
                 Some(resolve_player_filter(game, player_filter, ctx)?)
@@ -408,16 +399,15 @@ impl EffectExecutor for CreateTokenCopyEffect {
         let mut created_ids = Vec::with_capacity(count);
         let mut events = Vec::with_capacity(count);
 
-        let target_for_stats = &target_object;
         let (half_power, half_toughness) = match self.pt_adjustment {
             Some(CopyPtAdjustment::HalfRoundUp) => {
-                let (power, toughness) = if let Some(snapshot) = &tagged_snapshot {
+                let (power, toughness) = if let Some(snapshot) = copy_snapshot {
                     (snapshot.power.unwrap_or(0), snapshot.toughness.unwrap_or(0))
                 } else {
-                    (
-                        target_for_stats.power().unwrap_or(0),
-                        target_for_stats.toughness().unwrap_or(0),
-                    )
+                    let target = target_object
+                        .as_ref()
+                        .expect("target object should exist when no snapshot is available");
+                    (target.power().unwrap_or(0), target.toughness().unwrap_or(0))
                 };
                 ((power + 1) / 2, (toughness + 1) / 2)
             }
@@ -426,11 +416,14 @@ impl EffectExecutor for CreateTokenCopyEffect {
 
         for _ in 0..count {
             let id = game.new_object_id();
-            // Get fresh reference to target each iteration
-            let target = game
-                .object(resolved_target_id)
-                .ok_or(ExecutionError::ObjectNotFound(resolved_target_id))?;
-            let mut token = Object::token_copy_of(target, id, controller_id);
+            let mut token = if let Some(snapshot) = copy_snapshot {
+                Object::token_copy_from_snapshot(snapshot, id, controller_id)
+            } else {
+                let target = target_object
+                    .as_ref()
+                    .ok_or(ExecutionError::ObjectNotFound(resolved_target_id))?;
+                Object::token_copy_of(target, id, controller_id)
+            };
             token.zone = Zone::Command;
 
             if let Some(CopyPtAdjustment::HalfRoundUp) = self.pt_adjustment {
@@ -962,7 +955,7 @@ mod tests {
     }
 
     #[test]
-    fn test_create_token_copy_follows_source_stable_id_after_zone_change() {
+    fn test_create_token_copy_uses_source_snapshot_after_zone_change() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = create_creature(&mut game, "Offspring Source", alice);

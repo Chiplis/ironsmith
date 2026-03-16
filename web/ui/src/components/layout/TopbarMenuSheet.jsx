@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Sheet,
   SheetContent,
@@ -56,8 +55,6 @@ export default function TopbarMenuSheet({
     state,
     wasmRegistryCount,
     wasmRegistryTotal,
-    inspectorDebug,
-    setInspectorDebug,
     multiplayer,
   } = useGame();
 
@@ -93,7 +90,7 @@ export default function TopbarMenuSheet({
         <Button
           variant="secondary"
           size="icon-xs"
-          className="rounded-full text-muted-foreground hover:text-foreground"
+          className="rounded-none text-muted-foreground hover:text-foreground"
           aria-label="Open game menu"
         >
           <Settings2 className="size-3.5" />
@@ -188,14 +185,6 @@ export default function TopbarMenuSheet({
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.18em] text-muted-foreground">
-              <Checkbox
-                checked={inspectorDebug}
-                onCheckedChange={(value) => setInspectorDebug(!!value)}
-                className="h-4 w-4"
-              />
-              Inspector Debug
             </label>
           </MenuSection>
 

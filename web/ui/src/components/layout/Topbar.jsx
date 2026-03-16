@@ -5,8 +5,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import PhaseTrack from "@/components/board/PhaseTrack";
 import TopbarMenuSheet from "./TopbarMenuSheet";
 
-const pill = "text-[13px] uppercase cursor-pointer hover:brightness-125 transition-all select-none";
-const selectPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
+const pill = "stone-pill text-[13px] uppercase cursor-pointer hover:brightness-110 transition-all select-none";
+const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 
 export default function Topbar({
   playerNames,
@@ -26,14 +26,16 @@ export default function Topbar({
     setAutoPassEnabled,
     holdRule,
     setHoldRule,
+    inspectorDebug,
+    setInspectorDebug,
     multiplayer,
   } = useGame();
 
   const matchLocked = multiplayer.matchStarted;
 
   return (
-    <header className="panel-gradient flex items-center gap-2 rounded px-2.5 py-1 overflow-x-auto overflow-y-hidden">
-      <h1 className="m-0 text-[20px] uppercase tracking-wider whitespace-nowrap font-bold">
+    <header className="table-toolbar table-toolbar--primary flex items-center gap-2 rounded px-2.5 py-1 overflow-x-auto overflow-y-hidden">
+      <h1 className="toolbar-brand m-0 text-[20px] uppercase tracking-wider whitespace-nowrap font-bold">
         Ironsmith
       </h1>
 
@@ -53,7 +55,7 @@ export default function Topbar({
         <option value="ending">Ending</option>
         <option value="always">Always</option>
       </select>
-      <label className="flex items-center gap-1 text-muted-foreground text-[13px] whitespace-nowrap cursor-pointer uppercase">
+      <label className="toolbar-checkbox flex items-center gap-1 text-[13px] whitespace-nowrap cursor-pointer uppercase">
         <Checkbox
           checked={autoPassEnabled}
           disabled={matchLocked}
@@ -68,6 +70,14 @@ export default function Topbar({
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
+        <label className="toolbar-checkbox toolbar-debug-toggle flex items-center gap-1 text-[13px] whitespace-nowrap cursor-pointer uppercase">
+          <Checkbox
+            checked={inspectorDebug}
+            onCheckedChange={(value) => setInspectorDebug(!!value)}
+            className="h-3.5 w-3.5"
+          />
+          Debug
+        </label>
         <Badge variant="secondary" className={pill} onClick={onToggleLog}>Log</Badge>
         <TopbarMenuSheet
           playerNames={playerNames}

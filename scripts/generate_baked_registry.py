@@ -151,7 +151,7 @@ def collect_unique_blocks(
         loyalty = face.get("loyalty")
         defense = face.get("defense")
 
-        if not name or not type_line or not oracle_text:
+        if not name or not type_line:
             return None
 
         if strip_fuse:
@@ -177,7 +177,8 @@ def collect_unique_blocks(
             lines.append(f"Loyalty: {loyalty}")
         if defense is not None:
             lines.append(f"Defense: {defense}")
-        lines.append(oracle_text)
+        if oracle_text:
+            lines.append(oracle_text)
         return (name, "\n".join(lines).strip())
 
     def maybe_register_alias(alias: object, canonical: str) -> None:

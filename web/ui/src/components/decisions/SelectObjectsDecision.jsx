@@ -8,9 +8,9 @@ import HighlightedDecisionText from "./HighlightedDecisionText";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { buildObjectControllerById } from "@/lib/decision-object-meta";
 
-const STRIP_ITEM_BASE_CLASS = "h-8 max-w-[360px] min-w-[120px] justify-start self-stretch rounded-none border-0 border-l-2 border-l-[rgba(116,139,164,0.42)] bg-[rgba(12,22,34,0.58)] px-2.5 text-[12px] font-semibold text-[rgba(206,223,242,0.52)] transition-all hover:border-l-[rgba(236,245,255,0.92)] hover:bg-[rgba(220,236,255,0.16)] hover:text-[#f4f9ff] hover:shadow-[0_0_12px_rgba(236,245,255,0.3)]";
-const STRIP_ITEM_ACTIVE_CLASS = "border-l-[rgba(236,245,255,0.9)] bg-[rgba(220,236,255,0.16)] text-[#f4f9ff] shadow-[0_0_12px_rgba(236,245,255,0.3)]";
-const STRIP_ITEM_DISABLED_CLASS = "border-l-[rgba(63,79,98,0.6)] bg-[rgba(8,15,23,0.76)] text-[#5f7590] hover:border-l-[rgba(63,79,98,0.6)] hover:bg-[rgba(8,15,23,0.76)] hover:text-[#5f7590] hover:shadow-none";
+const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-8 max-w-[360px] min-w-[120px] shrink-0 justify-start self-stretch px-2.5 text-[12px] font-semibold";
+const STRIP_ITEM_ACTIVE_CLASS = "is-selected";
+const STRIP_ITEM_DISABLED_CLASS = "is-disabled";
 
 export default function SelectObjectsDecision({
   decision,
@@ -41,6 +41,7 @@ export default function SelectObjectsDecision({
   );
 
   const scopedCandidates = useMemo(() => {
+    if (stripLayout) return candidates;
     if (hoveredObjectId == null) return candidates;
     const hoveredStr = String(hoveredObjectId);
     const hasHoveredCandidate = candidates.some((c) => String(c.id) === hoveredStr);
@@ -48,11 +49,12 @@ export default function SelectObjectsDecision({
     return candidates.filter(
       (c) => String(c.id) === hoveredStr || selected.has(c.id)
     );
-  }, [candidates, hoveredObjectId, selected]);
+  }, [candidates, hoveredObjectId, selected, stripLayout]);
   const showRows = scopedCandidates.length > 0;
   const [visibleCandidates, setVisibleCandidates] = useState(scopedCandidates);
   const focusedToHover = hoveredObjectId != null
     && candidates.some((c) => String(c.id) === String(hoveredObjectId));
+  const showHeader = !stripLayout;
 
   const toggleObject = useCallback((id) => {
     setSelected((prev) => {
@@ -133,38 +135,42 @@ export default function SelectObjectsDecision({
           showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
         )}
       >
-        <div
-          className={cn(
-            stripLayout
-              ? "px-1 py-0"
-              : "sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1"
-          )}
-        >
-          <DecisionSummary
-            decision={decision}
-            hideDescription={hideDescription}
-            layout={layout}
-          />
-          <div className="text-[13px] text-[#8ba4c1] leading-snug">
-            Select {min === max ? min : `${min}-${max}`} object(s)
+        {showHeader && (
+          <div
+            className={cn(
+              stripLayout
+                ? "decision-strip-header px-1.5 py-1"
+                : "decision-panel-header sticky top-0 z-10 px-1.5 py-1"
+            )}
+          >
+            <DecisionSummary
+              decision={decision}
+              hideDescription={hideDescription}
+              layout={layout}
+            />
+            {!stripLayout && (
+              <div className="decision-helper-text text-[13px] leading-snug">
+                Select {min === max ? min : `${min}-${max}`} object(s)
+              </div>
+            )}
+            {!stripLayout && focusedToHover && (
+              <div className="decision-helper-text decision-helper-text--muted text-[12px] italic leading-snug">
+                Showing options for the hovered card.
+              </div>
+            )}
           </div>
-          {focusedToHover && (
-            <div className="text-[12px] italic text-[#89a7c7] leading-snug">
-              Showing options for the hovered card.
-            </div>
-          )}
-        </div>
+        )}
         <div
           className={cn(
             "w-full transition-[max-height] duration-300 ease-out",
-            stripLayout ? "overflow-x-auto overflow-y-hidden" : "overflow-y-auto overflow-x-hidden"
+            stripLayout ? "overflow-x-auto overflow-y-hidden pb-1" : "overflow-y-auto overflow-x-hidden"
           )}
           style={stripLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }}
         >
           <div className={cn(
             stripLayout
-              ? "flex w-max min-w-full items-center gap-1.5 py-0.5"
-              : "w-full divide-y divide-[#2f4b67]"
+              ? "flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
+              : "w-full divide-y divide-[rgba(128,107,78,0.28)]"
           )}>
             {visibleCandidates.map((c) => {
               const isSelected = selected.has(c.id);
@@ -182,13 +188,13 @@ export default function SelectObjectsDecision({
                   className={cn(
                     stripLayout
                       ? STRIP_ITEM_BASE_CLASS
-                      : "h-8 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 text-[13px] text-[#c7dbf2] transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+                      : "decision-option-row decision-option-row--panel h-8 w-full min-w-0 justify-start px-2.5 text-[13px]",
                     stripLayout && isSelected && STRIP_ITEM_ACTIVE_CLASS,
-                    !stripLayout && isSelected && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]",
+                    !stripLayout && isSelected && "is-selected",
                     isDisabled
                       && (stripLayout
                         ? STRIP_ITEM_DISABLED_CLASS
-                        : "bg-[rgba(12,20,30,0.72)] text-[#647f99] hover:bg-[rgba(12,20,30,0.72)] hover:text-[#647f99]")
+                        : "is-disabled")
                   )}
                   disabled={isDisabled}
                   onPointerDown={(event) => {
@@ -204,6 +210,7 @@ export default function SelectObjectsDecision({
                   onMouseLeave={clearHover}
                 >
                   <HighlightedDecisionText
+                    className="decision-option-label"
                     text={c.name}
                     highlightText={c.name}
                     highlightColor={accent?.hex || null}
@@ -213,7 +220,7 @@ export default function SelectObjectsDecision({
             })}
             {visibleCandidates.length === 0 && (
               <div className={cn(
-                "text-[12px] italic text-[#89a7c7]",
+                "decision-empty-note text-[12px] italic",
                 stripLayout ? "px-2 py-1" : "px-2.5 py-2"
               )}>
                 No legal choices.
@@ -228,7 +235,7 @@ export default function SelectObjectsDecision({
             variant="ghost"
             size="sm"
             className={cn(
-              "decision-neon-button decision-submit-button h-6 rounded-sm px-2 text-[13px] font-semibold uppercase",
+              "decision-neon-button decision-submit-button h-6 rounded-none px-2 text-[13px] font-semibold uppercase",
               stripLayout ? "w-auto ml-1" : "w-full"
             )}
             disabled={!canAct || !canSubmit}

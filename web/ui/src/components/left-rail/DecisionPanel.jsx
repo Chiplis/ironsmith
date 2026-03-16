@@ -223,7 +223,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   }, [cancelDecision]);
 
   return (
-    <section className="relative z-30 flex h-full min-h-0 flex-1 flex-col overflow-visible border-t border-[#223247]/70 bg-[rgba(7,15,23,0.98)] backdrop-blur-[1.5px]">
+    <section className="relative z-30 flex h-full min-h-0 flex-1 flex-col overflow-visible border-t border-[rgba(128,107,78,0.46)] bg-[linear-gradient(180deg,rgba(41,35,31,0.98),rgba(15,14,14,0.98))] backdrop-blur-[1.5px]">
       {/* Cancel flash overlay */}
       {cancelling && (
         <div
@@ -250,7 +250,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
           )}
         </div>
 
-        <div className="relative shrink-0 px-1.5 py-1 border-t border-[#203247]/70">
+        <div className="relative shrink-0 px-1.5 py-1 border-t border-[rgba(128,107,78,0.36)]">
           {isPriorityDecision && (
             <div
               className={`overflow-hidden pointer-events-none transition-all duration-200 ease-out ${

@@ -453,7 +453,9 @@ fn build_stack_object_snapshot(
         .targets
         .iter()
         .enumerate()
-        .map(|(index, target)| target_choice_view(game, perspective, viewed_cards, index, target))
+        .map(|(index, target)| {
+            target_choice_view(game, perspective, viewed_cards, None, index, target)
+        })
         .collect();
 
     if entry.is_ability {
@@ -1310,11 +1312,15 @@ impl DecisionView {
     ) -> Self {
         let enriched_ctx = crate::decisions::context::enrich_display_hints(game, ctx.clone());
         let ctx = &enriched_ctx;
+        let decision_object_visible = |id| {
+            object_visible_to_perspective(game, perspective, viewed_cards, id)
+                || decision_exposes_object_to_perspective(Some(ctx), perspective, id)
+        };
         let resolve_source_name = |source: Option<ObjectId>| -> Option<String> {
             source
                 .and_then(|id| game.object(id).map(|obj| (id, obj)))
                 .map(|(id, obj)| {
-                    if object_visible_to_perspective(game, perspective, viewed_cards, id) {
+                    if decision_object_visible(id) {
                         obj.name.clone()
                     } else {
                         hidden_object_label()
@@ -1322,9 +1328,7 @@ impl DecisionView {
                 })
         };
         let resolve_source_id = |source: Option<ObjectId>| -> Option<u64> {
-            source.and_then(|id| {
-                object_visible_to_perspective(game, perspective, viewed_cards, id).then_some(id.0)
-            })
+            source.and_then(|id| decision_object_visible(id).then_some(id.0))
         };
         let context_text = || ctx.context_text().map(str::to_string);
         let consequence_text = || ctx.consequence_text().map(str::to_string);
@@ -1404,10 +1408,9 @@ impl DecisionView {
                             } else {
                                 (false, None)
                             };
-                            let visible_object_id = opt.object_id.and_then(|id| {
-                                object_visible_to_perspective(game, perspective, viewed_cards, id)
-                                    .then_some(id)
-                            });
+                            let visible_object_id = opt
+                                .object_id
+                                .and_then(|id| decision_object_visible(id).then_some(id));
                             OptionView {
                                 index: opt.index,
                                 description: if opt.object_id.is_some()
@@ -1497,12 +1500,7 @@ impl DecisionView {
                     .enumerate()
                     .map(|(index, (object_id, name))| OptionView {
                         index,
-                        description: if object_visible_to_perspective(
-                            game,
-                            perspective,
-                            viewed_cards,
-                            *object_id,
-                        ) {
+                        description: if decision_object_visible(*object_id) {
                             name.clone()
                         } else {
                             hidden_object_label()
@@ -1510,21 +1508,10 @@ impl DecisionView {
                         legal: true,
                         repeatable: false,
                         max_count: Some(1),
-                        object_id: object_visible_to_perspective(
-                            game,
-                            perspective,
-                            viewed_cards,
-                            *object_id,
-                        )
-                        .then_some(object_id.0),
-                        object_controller: object_visible_to_perspective(
-                            game,
-                            perspective,
-                            viewed_cards,
-                            *object_id,
-                        )
-                        .then(|| game.object(*object_id).map(|obj| obj.controller.0))
-                        .flatten(),
+                        object_id: decision_object_visible(*object_id).then_some(object_id.0),
+                        object_controller: decision_object_visible(*object_id)
+                            .then(|| game.object(*object_id).map(|obj| obj.controller.0))
+                            .flatten(),
                     })
                     .collect(),
                 source_id: resolve_source_id(order.source),
@@ -1547,13 +1534,9 @@ impl DecisionView {
                     .enumerate()
                     .map(|(index, target)| {
                         let visible_object_id = match &target.target {
-                            Target::Object(object_id) => object_visible_to_perspective(
-                                game,
-                                perspective,
-                                viewed_cards,
-                                *object_id,
-                            )
-                            .then_some(*object_id),
+                            Target::Object(object_id) => {
+                                decision_object_visible(*object_id).then_some(*object_id)
+                            }
                             _ => None,
                         };
                         OptionView {
@@ -1720,8 +1703,7 @@ impl DecisionView {
                     .iter()
                     .enumerate()
                     .map(|(index, obj)| {
-                        let visible =
-                            object_visible_to_perspective(game, perspective, viewed_cards, obj.id);
+                        let visible = decision_object_visible(obj.id);
                         ObjectChoiceView {
                             id: if visible {
                                 obj.id.0
@@ -1758,7 +1740,14 @@ impl DecisionView {
                             .iter()
                             .enumerate()
                             .map(|(index, target)| {
-                                target_choice_view(game, perspective, viewed_cards, index, target)
+                                target_choice_view(
+                                    game,
+                                    perspective,
+                                    viewed_cards,
+                                    Some(ctx),
+                                    index,
+                                    target,
+                                )
                             })
                             .collect(),
                     })
@@ -6814,6 +6803,69 @@ fn redacted_choice_id(index: usize) -> u64 {
     JS_SAFE_INTEGER_MAX.saturating_sub(index as u64)
 }
 
+fn decision_exposes_object_to_perspective(
+    decision: Option<&DecisionContext>,
+    perspective: PlayerId,
+    id: ObjectId,
+) -> bool {
+    let Some(decision) = decision else {
+        return false;
+    };
+
+    match decision {
+        DecisionContext::SelectObjects(objects) => {
+            objects.player == perspective && objects.candidates.iter().any(|obj| obj.id == id)
+        }
+        DecisionContext::SelectOptions(options) => {
+            options.player == perspective
+                && options
+                    .options
+                    .iter()
+                    .any(|opt| opt.object_id.is_some_and(|object_id| object_id == id))
+        }
+        DecisionContext::Targets(targets) => {
+            targets.player == perspective
+                && targets.requirements.iter().any(|requirement| {
+                    requirement.legal_targets.iter().any(|target| {
+                        matches!(target, Target::Object(object_id) if *object_id == id)
+                    })
+                })
+        }
+        DecisionContext::Order(order) => {
+            order.player == perspective && order.items.iter().any(|(object_id, _)| *object_id == id)
+        }
+        DecisionContext::Attackers(attackers) => {
+            attackers.player == perspective
+                && attackers.attacker_options.iter().any(|option| {
+                    option.creature == id
+                        || option.valid_targets.iter().any(|target| {
+                            matches!(target, AttackTarget::Planeswalker(object_id) if *object_id == id)
+                        })
+                })
+        }
+        DecisionContext::Blockers(blockers) => {
+            blockers.player == perspective
+                && blockers.blocker_options.iter().any(|option| {
+                    option.attacker == id
+                        || option
+                            .valid_blockers
+                            .iter()
+                            .any(|(blocker, _)| *blocker == id)
+                })
+        }
+        DecisionContext::Partition(_)
+        | DecisionContext::Modes(_)
+        | DecisionContext::HybridChoice(_)
+        | DecisionContext::Boolean(_)
+        | DecisionContext::Number(_)
+        | DecisionContext::Priority(_)
+        | DecisionContext::Distribute(_)
+        | DecisionContext::Colors(_)
+        | DecisionContext::Counters(_)
+        | DecisionContext::Proliferate(_) => false,
+    }
+}
+
 fn object_visible_to_perspective(
     game: &GameState,
     perspective: PlayerId,
@@ -7087,6 +7139,7 @@ fn target_choice_view(
     game: &GameState,
     perspective: PlayerId,
     viewed_cards: Option<&ActiveViewedCards>,
+    decision: Option<&DecisionContext>,
     index: usize,
     target: &Target,
 ) -> TargetChoiceView {
@@ -7099,7 +7152,8 @@ fn target_choice_view(
                 .unwrap_or_else(|| format!("Player {}", pid.0 + 1)),
         },
         Target::Object(id) => {
-            let visible = object_visible_to_perspective(game, perspective, viewed_cards, *id);
+            let visible = object_visible_to_perspective(game, perspective, viewed_cards, *id)
+                || decision_exposes_object_to_perspective(decision, perspective, *id);
             TargetChoiceView::Object {
                 object: if visible {
                     id.0
@@ -8640,6 +8694,76 @@ mod tests {
                 .iter()
                 .all(|candidate| candidate.id != card_a && candidate.id != card_b),
             "redacted candidates should not expose the real hidden object ids"
+        );
+    }
+
+    #[test]
+    fn snapshot_shows_hidden_zone_select_object_candidates_to_decision_player() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let borrowed_card = wasm
+            .add_card_to_zone(1, "Primeval Titan".to_string(), "library".to_string(), true)
+            .expect("adding hidden library card should succeed");
+        let borrowed_card_id = ObjectId::from_raw(borrowed_card);
+
+        wasm.game
+            .player_mut(bob)
+            .expect("owner should exist")
+            .library
+            .retain(|id| *id != borrowed_card_id);
+        wasm.game
+            .player_mut(alice)
+            .expect("searching player should exist")
+            .library
+            .push(borrowed_card_id);
+
+        let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+            alice,
+            None,
+            "Search library (revealed)",
+            vec![SelectableObject::new(borrowed_card_id, "Primeval Titan")],
+            1,
+            Some(1),
+        ));
+
+        let pending_cast_stack_id = wasm
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .map(|p| p.stack_id);
+        let snapshot = GameSnapshot::from_game(
+            &wasm.game,
+            alice,
+            Some(&decision),
+            None,
+            wasm.game_over.as_ref(),
+            pending_cast_stack_id,
+            wasm.active_resolving_stack_object.clone(),
+            Vec::new(),
+            None,
+            wasm.is_cancelable(),
+            None,
+            0,
+        );
+
+        let candidates = match snapshot
+            .decision
+            .as_ref()
+            .expect("snapshot should include the pending select-objects decision")
+        {
+            super::DecisionView::SelectObjects { candidates, .. } => candidates,
+            other => panic!("expected select_objects view, got {other:?}"),
+        };
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            candidates[0].name, "Primeval Titan",
+            "the decision player should see candidate names for objects exposed by the prompt"
+        );
+        assert_eq!(
+            candidates[0].id, borrowed_card,
+            "the decision player should receive the real object id for exposed candidates"
         );
     }
 

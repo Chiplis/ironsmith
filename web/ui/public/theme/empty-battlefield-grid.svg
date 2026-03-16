@@ -1,0 +1,27 @@
+<svg width="1200" height="280" viewBox="0 0 1200 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="slot" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#8B8378" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#5D5750" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+  <g id="slotgroup" opacity="0.92">
+    <path d="M18 0H114L132 18V86L114 104H18L0 86V18L18 0Z" fill="#6B665E" fill-opacity="0.14" stroke="url(#slot)" stroke-width="3"/>
+    <path d="M20 6H112L126 20V84L112 98H20L6 84V20L20 6Z" stroke="#B3A691" stroke-opacity="0.28" stroke-width="2"/>
+    <path d="M39 27L50 39L47 55L58 70" stroke="#B9AD98" stroke-opacity="0.32" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M84 24L75 37L78 53L68 67L72 78" stroke="#B9AD98" stroke-opacity="0.32" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M19 79H34L30 85H18" stroke="#8A8277" stroke-opacity="0.34" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M98 79H113L109 85H97" stroke="#8A8277" stroke-opacity="0.34" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <use href="#slotgroup" x="198" y="18"/>
+  <use href="#slotgroup" x="390" y="18"/>
+  <use href="#slotgroup" x="582" y="18"/>
+  <use href="#slotgroup" x="774" y="18"/>
+  <use href="#slotgroup" x="966" y="18"/>
+  <use href="#slotgroup" x="6" y="144"/>
+  <use href="#slotgroup" x="198" y="144"/>
+  <use href="#slotgroup" x="390" y="144"/>
+  <use href="#slotgroup" x="582" y="144"/>
+  <use href="#slotgroup" x="774" y="144"/>
+  <use href="#slotgroup" x="966" y="144"/>
+</svg>

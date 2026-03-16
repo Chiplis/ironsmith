@@ -8,17 +8,9 @@ import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import GameCard from "@/components/cards/GameCard";
 import { Button } from "@/components/ui/button";
 
-const PAPER_ROW_GROUPS = [
-  {
-    id: "front",
-    lanes: ["enchantments", "creatures", "planeswalkers", "battles", "other"],
-  },
-  {
-    id: "back",
-    lanes: ["lands", "artifacts"],
-  },
-];
-const ALL_PAPER_LANES = PAPER_ROW_GROUPS.flatMap((row) => row.lanes);
+const PAPER_FRONT_LANES = ["enchantments", "creatures", "planeswalkers", "battles"];
+const PAPER_BACK_LANES = ["lands", "artifacts", "other"];
+const ALL_PAPER_LANES = [...PAPER_FRONT_LANES, ...PAPER_BACK_LANES];
 const BOTTOM_BATTLEFIELD_SAFE_INSET = 60;
 const LIVE_DAMAGE_ANIMATION_MS = 300;
 const GHOST_BASE_ANIMATION_MS = 520;
@@ -27,32 +19,79 @@ const BATTLEFIELD_GRID_GAP_PX = 8;
 const COMPACT_SCROLL_COLUMN_MAX_WIDTH = 200;
 const ABSOLUTE_MIN_CARD_WIDTH = 10;
 const ABSOLUTE_MIN_CARD_HEIGHT = 14;
+const EMPTY_PAPER_SLOT_COLUMNS = 6;
 
 function normalizeBattlefieldLane(lane) {
   const normalized = String(lane || "").toLowerCase();
   return ALL_PAPER_LANES.includes(normalized) ? normalized : "other";
 }
 
-function buildPaperBattlefieldLayout(cards) {
-  const rowGroups = PAPER_ROW_GROUPS;
+function buildPaperRowGroups(battlefieldSide, buckets) {
+  const frontCount = PAPER_FRONT_LANES.reduce((total, lane) => total + ((buckets.get(lane) || []).length), 0);
+  const backCount = PAPER_BACK_LANES.reduce((total, lane) => total + ((buckets.get(lane) || []).length), 0);
+  const shouldSplitOpponentRows = battlefieldSide === "top"
+    && (frontCount > EMPTY_PAPER_SLOT_COLUMNS || backCount > EMPTY_PAPER_SLOT_COLUMNS);
+
+  return shouldSplitOpponentRows
+    ? [
+      { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 2, minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS },
+      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 2, minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS },
+    ]
+    : [
+      { id: "front", lanes: PAPER_FRONT_LANES, rowCount: 1, minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS },
+      { id: "back", lanes: PAPER_BACK_LANES, rowCount: 1, minSlotsPerRow: EMPTY_PAPER_SLOT_COLUMNS },
+    ];
+}
+
+function splitCardsIntoRows(cards, rowCount) {
+  const rows = Array.from({ length: rowCount }, () => []);
+  if (!Array.isArray(cards) || cards.length === 0) return rows;
+  const chunkSize = Math.max(1, Math.ceil(cards.length / rowCount));
+  for (let index = 0; index < cards.length; index += 1) {
+    const rowIndex = Math.min(rowCount - 1, Math.floor(index / chunkSize));
+    rows[rowIndex].push(cards[index]);
+  }
+  return rows;
+}
+
+function buildPaperBattlefieldLayout(cards, battlefieldSide) {
   const buckets = new Map(ALL_PAPER_LANES.map((lane) => [lane, []]));
 
   for (const card of cards) {
     const lane = normalizeBattlefieldLane(card?.lane);
     buckets.get(lane).push(card);
   }
+  const rowGroups = buildPaperRowGroups(battlefieldSide, buckets);
 
-  const orderedRows = rowGroups
-    .map((row) => ({
-      id: row.id,
-      cards: row.lanes.flatMap((lane) => buckets.get(lane) || []),
-      signature: row.lanes.map((lane) => `${lane}:${(buckets.get(lane) || []).length}`).join(","),
+  const orderedRows = rowGroups.flatMap((group) => {
+    const groupedCards = group.lanes.flatMap((lane) => buckets.get(lane) || []);
+    const splitRows = splitCardsIntoRows(groupedCards, group.rowCount);
+    return splitRows.map((rowCards, rowIndex) => ({
+      id: `${group.id}-${rowIndex + 1}`,
+      groupId: group.id,
+      cards: rowCards,
+      minSlots: group.minSlotsPerRow,
+      signature: `${group.id}:${rowIndex + 1}:${group.lanes.map((lane) => `${lane}:${(buckets.get(lane) || []).length}`).join(",")}:${rowCards.length}`,
     }));
+  });
   const orderedCards = [];
   const gridPositionById = new Map();
-  const maxCols = Math.max(1, ...orderedRows.map((row) => row.cards.length));
+  const slotCells = [];
+  const maxCols = Math.max(
+    1,
+    ...orderedRows.map((row) => Math.max(row.cards.length, row.minSlots || 0)),
+    cards.length === 0 ? EMPTY_PAPER_SLOT_COLUMNS : 0
+  );
 
   orderedRows.forEach((row, rowIndex) => {
+    for (let column = 1; column <= maxCols; column += 1) {
+      slotCells.push({
+        key: `${row.id}-slot-${column}`,
+        row: rowIndex + 1,
+        column,
+        groupId: row.groupId,
+      });
+    }
     if (row.cards.length === 0) return;
     const startColumn = Math.floor((maxCols - row.cards.length) / 2) + 1;
 
@@ -68,7 +107,8 @@ function buildPaperBattlefieldLayout(cards) {
   return {
     orderedCards,
     gridPositionById,
-    rowCount: rowGroups.length,
+    slotCells,
+    rowCount: orderedRows.length,
     maxCols,
     signature: orderedRows
       .map((row) => `${row.id}:${row.signature}`)
@@ -341,8 +381,8 @@ export default function BattlefieldRow({
   const isPaperBattlefieldLayout = !compact;
   const canShowBattlefieldUndo = isPaperBattlefieldLayout && battlefieldSide === "bottom";
   const paperLayout = useMemo(
-    () => buildPaperBattlefieldLayout(cards),
-    [cards]
+    () => buildPaperBattlefieldLayout(cards, battlefieldSide),
+    [battlefieldSide, cards]
   );
   const displayCards = isPaperBattlefieldLayout ? paperLayout.orderedCards : cards;
   const priorityActionObjectIds = useMemo(() => {
@@ -395,18 +435,7 @@ export default function BattlefieldRow({
 
   const fitCards = useCallback(() => {
     const row = rowRef.current;
-    if (!row || !cards.length) {
-      if (row) {
-        row.style.removeProperty("--bf-cols");
-        row.style.removeProperty("--bf-rows");
-        row.style.removeProperty("--bf-card-width");
-        row.style.removeProperty("--bf-card-height");
-        row.style.removeProperty("--bf-card-overlap");
-        row.style.overflowY = "visible";
-        row.style.overflowX = "visible";
-      }
-      return;
-    }
+    if (!row) return;
 
     const width = row.clientWidth;
     const height = row.clientHeight;
@@ -414,6 +443,7 @@ export default function BattlefieldRow({
 
     const aspect = 124 / 96;
     const gap = BATTLEFIELD_GRID_GAP_PX;
+    const hasCards = cards.length > 0;
     const minWidth = compact ? 30 : 44;
     const minHeight = compact ? 42 : 34;
     const effectiveHeight = Math.max(
@@ -442,6 +472,16 @@ export default function BattlefieldRow({
         };
       }
     } else if (forceSingleColumn) {
+      if (!hasCards) {
+        row.style.removeProperty("--bf-cols");
+        row.style.removeProperty("--bf-rows");
+        row.style.removeProperty("--bf-card-width");
+        row.style.removeProperty("--bf-card-height");
+        row.style.removeProperty("--bf-card-overlap");
+        row.style.overflowY = "visible";
+        row.style.overflowX = "visible";
+        return;
+      }
       const cardWidth = Math.max(
         22,
         Math.floor(Math.min(width, COMPACT_SCROLL_COLUMN_MAX_WIDTH))
@@ -454,6 +494,16 @@ export default function BattlefieldRow({
         cardHeight,
       };
     } else {
+      if (!hasCards) {
+        row.style.removeProperty("--bf-cols");
+        row.style.removeProperty("--bf-rows");
+        row.style.removeProperty("--bf-card-width");
+        row.style.removeProperty("--bf-card-height");
+        row.style.removeProperty("--bf-card-overlap");
+        row.style.overflowY = "visible";
+        row.style.overflowX = "visible";
+        return;
+      }
       const maxRows = Math.min(cards.length, compact ? 8 : 10);
       for (let rows = 1; rows <= maxRows; rows++) {
         const cols = Math.ceil(cards.length / rows);
@@ -508,7 +558,9 @@ export default function BattlefieldRow({
     row.style.setProperty("--bf-rows", String(best.rows));
     row.style.setProperty("--bf-card-width", `${best.cardWidth}px`);
     row.style.setProperty("--bf-card-height", `${best.cardHeight}px`);
-    const overlapPx = Math.min(14, Math.max(8, Math.floor(best.cardWidth * 0.11)));
+    const overlapPx = isPaperBattlefieldLayout
+      ? 0
+      : Math.min(14, Math.max(8, Math.floor(best.cardWidth * 0.11)));
     row.style.setProperty("--bf-card-overlap", `${overlapPx}px`);
     syncOverflowMode({
       rows: best.rows,
@@ -753,8 +805,10 @@ export default function BattlefieldRow({
   return (
     <div
       ref={rowRef}
-      className="battlefield-row relative grid gap-1.5 content-start justify-center min-h-0 h-full"
+      className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
+      data-bf-side={battlefieldSide}
       style={{
+        "--bf-gap": `${BATTLEFIELD_GRID_GAP_PX}px`,
         gap: `${BATTLEFIELD_GRID_GAP_PX}px`,
         gridTemplateColumns: `repeat(var(--bf-cols, 1), minmax(0, calc(var(--bf-card-width, 124px) - var(--bf-card-overlap, 0px))))`,
         gridTemplateRows: isPaperBattlefieldLayout
@@ -764,6 +818,23 @@ export default function BattlefieldRow({
         scrollbarGutter: allowVerticalScroll ? "stable" : "auto",
       }}
     >
+      {isPaperBattlefieldLayout ? paperLayout.slotCells.map((slot) => (
+        <div
+          key={slot.key}
+          className="battlefield-slot"
+          data-bf-group={slot.groupId}
+          data-bf-row={slot.row}
+          style={{
+            gridRow: String(slot.row),
+            gridColumn: String(slot.column),
+            width: "var(--bf-card-width, 124px)",
+            minWidth: "var(--bf-card-width, 124px)",
+            height: "var(--bf-card-height, 96px)",
+            minHeight: "var(--bf-card-height, 96px)",
+          }}
+          aria-hidden="true"
+        />
+      )) : null}
       {displayCards.map((card, i) => {
         const isActivatable = activatableMap?.has(Number(card.id));
         const cardObjectIds = [Number(card.id)];

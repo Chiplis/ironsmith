@@ -662,6 +662,60 @@ impl Object {
         token
     }
 
+    /// Creates a token using last-known-information copiable values.
+    ///
+    /// This is used when the source object no longer exists, but a resolving effect
+    /// still needs to copy what it looked like at the relevant earlier moment.
+    pub fn token_copy_from_snapshot(
+        snapshot: &crate::snapshot::ObjectSnapshot,
+        id: ObjectId,
+        owner: PlayerId,
+    ) -> Self {
+        let mut token = Self {
+            id,
+            stable_id: StableId::from(id),
+            kind: ObjectKind::Token,
+            card: None,
+            zone: Zone::Battlefield,
+            owner,
+            controller: owner,
+            name: snapshot.name.clone(),
+            mana_cost: snapshot.mana_cost.clone(),
+            color_override: (!snapshot.colors.is_empty()).then_some(snapshot.colors),
+            supertypes: snapshot.supertypes.clone(),
+            card_types: snapshot.card_types.clone(),
+            subtypes: snapshot.subtypes.clone(),
+            oracle_text: snapshot.oracle_text.clone(),
+            other_face: snapshot.other_face,
+            other_face_name: snapshot.other_face_name.clone(),
+            linked_face_layout: snapshot.linked_face_layout,
+            base_power: snapshot.base_power.map(PtValue::Fixed),
+            base_toughness: snapshot.base_toughness.map(PtValue::Fixed),
+            base_loyalty: snapshot.loyalty,
+            base_defense: snapshot.defense,
+            abilities: snapshot.abilities.clone(),
+            counters: HashMap::new(),
+            attached_to: None,
+            attachments: Vec::new(),
+            spell_effect: None,
+            aura_attach_filter: snapshot.aura_attach_filter.clone(),
+            bestow_cast_state: None,
+            alternative_casts: Vec::new(),
+            has_fuse: false,
+            optional_costs: Vec::new(),
+            optional_costs_paid: OptionalCostsPaid::default(),
+            mana_spent_to_cast: ManaPool::default(),
+            x_value: None,
+            keyword_payment_contributions_to_cast: Vec::new(),
+            additional_cost: TotalCost::free(),
+            max_saga_chapter: snapshot.max_saga_chapter,
+        };
+        if let Some(loyalty) = snapshot.loyalty {
+            token.add_counters(CounterType::Loyalty, loyalty);
+        }
+        token
+    }
+
     /// Creates a new emblem in the command zone.
     ///
     /// Emblems are permanent game objects created by planeswalker ultimates.

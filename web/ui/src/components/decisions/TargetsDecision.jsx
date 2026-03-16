@@ -11,10 +11,10 @@ import { X, ArrowRight } from "lucide-react";
 import DecisionSummary from "./DecisionSummary";
 import { getVisibleStackObjects, getVisibleTopStackObject } from "@/lib/stack-targets";
 
-const STRIP_ITEM_BASE_CLASS = "h-8 max-w-[360px] min-w-[120px] justify-start self-stretch rounded-none border-0 border-l-2 border-l-[rgba(116,139,164,0.42)] bg-[rgba(12,22,34,0.58)] px-2.5 text-[12px] font-semibold text-[rgba(206,223,242,0.52)] transition-all hover:border-l-[rgba(236,245,255,0.92)] hover:bg-[rgba(220,236,255,0.16)] hover:text-[#f4f9ff] hover:shadow-[0_0_12px_rgba(236,245,255,0.3)]";
-const STRIP_ITEM_ACTIVE_CLASS = "border-l-[rgba(236,245,255,0.9)] bg-[rgba(220,236,255,0.16)] text-[#f4f9ff] shadow-[0_0_12px_rgba(236,245,255,0.3)]";
-const STRIP_ITEM_DISABLED_CLASS = "border-l-[rgba(63,79,98,0.6)] bg-[rgba(8,15,23,0.76)] text-[#5f7590] hover:border-l-[rgba(63,79,98,0.6)] hover:bg-[rgba(8,15,23,0.76)] hover:text-[#5f7590] hover:shadow-none";
-const STRIP_META_ITEM_CLASS = "inline-flex h-8 max-w-[460px] min-w-[220px] items-center self-stretch rounded-none border-0 border-l-2 border-l-[rgba(93,121,148,0.52)] bg-[rgba(10,18,28,0.62)] px-2.5 text-[12px] font-semibold text-[#9cc2e6] whitespace-nowrap";
+const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-8 max-w-[360px] min-w-[120px] justify-start self-stretch px-2.5 text-[12px] font-semibold";
+const STRIP_ITEM_ACTIVE_CLASS = "is-selected";
+const STRIP_ITEM_DISABLED_CLASS = "is-disabled";
+const STRIP_META_ITEM_CLASS = "decision-target-meta inline-flex h-8 max-w-[460px] min-w-[220px] items-center self-stretch px-2.5 text-[12px] font-semibold whitespace-nowrap";
 
 function targetObjectId(target) {
   if (!target || target.kind === "player") return null;
@@ -278,15 +278,15 @@ function ActiveRequirementTargets({
         className={cn(
           horizontal
             ? STRIP_ITEM_BASE_CLASS
-            : "h-7 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 text-[13px] text-[#c7dbf2] transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+            : "decision-option-row h-7 w-full justify-start rounded-none border-0 bg-[linear-gradient(180deg,rgba(49,42,36,0.94),rgba(21,18,17,0.98))] px-2.5 text-[13px] text-[#d8cbb0] transition-all hover:bg-[linear-gradient(180deg,rgba(82,66,45,0.98),rgba(33,25,19,0.98))] hover:text-[#fff1cb]",
           horizontal && isSelected && STRIP_ITEM_ACTIVE_CLASS,
-          !horizontal && isSelected && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]",
+          !horizontal && isSelected && "bg-[linear-gradient(180deg,rgba(95,75,50,0.98),rgba(42,32,21,0.98))] text-[#fff0cf]",
           horizontal && !isSelected && isHoveredTarget && STRIP_ITEM_ACTIVE_CLASS,
-          !horizontal && !isSelected && isHoveredTarget && "bg-[rgba(25,47,71,0.94)] text-[#d9ecff]",
+          !horizontal && !isSelected && isHoveredTarget && "bg-[linear-gradient(180deg,rgba(84,68,47,0.98),rgba(34,27,20,0.98))] text-[#f5e7c7]",
           isUnavailable
             && (horizontal
               ? STRIP_ITEM_DISABLED_CLASS
-              : "bg-[rgba(12,20,30,0.72)] text-[#647f99] hover:bg-[rgba(12,20,30,0.72)] hover:text-[#647f99]")
+              : "bg-[linear-gradient(180deg,rgba(38,33,29,0.94),rgba(18,16,15,0.98))] text-[#897b66] hover:bg-[linear-gradient(180deg,rgba(38,33,29,0.94),rgba(18,16,15,0.98))] hover:text-[#897b66]")
         )}
         disabled={!canAct || isUnavailable}
         onPointerDown={(event) => {
@@ -319,17 +319,17 @@ function ActiveRequirementTargets({
           showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
         )}
       >
-        <div className="flex min-w-max items-center gap-1.5 py-0.5">
+          <div className="flex min-w-max items-center gap-1.5 py-0.5">
           <div className={cn(STRIP_META_ITEM_CLASS, !isActive && "opacity-80")}>
             {header}
           </div>
           {showTargetButtons ? targetButtons : (
-            <div className="px-2 text-[12px] italic text-[#89a7c7] whitespace-nowrap">
+            <div className="decision-empty-note px-2 text-[12px] italic whitespace-nowrap">
               {interactionHint || "Click a highlighted card or player to target it directly."}
             </div>
           )}
           {!showRows && showTargetButtons && (
-            <div className="px-2 text-[12px] italic text-[#89a7c7] whitespace-nowrap">
+            <div className="decision-empty-note px-2 text-[12px] italic whitespace-nowrap">
               No legal targets.
             </div>
           )}
@@ -365,7 +365,7 @@ function ActiveRequirementTargets({
           showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
         )}
       >
-        <div className="sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1">
+        <div className="decision-panel-header sticky top-0 z-10 px-1.5 py-1">
           {header}
         </div>
         <div
@@ -373,7 +373,7 @@ function ActiveRequirementTargets({
           style={{ maxHeight: `${panelMaxHeight}px` }}
         >
           <div ref={panelContentRef} className="w-full">
-            <div className="w-full divide-y divide-[#2f4b67]">
+            <div className="w-full divide-y divide-[rgba(128,107,78,0.28)]">
               {targetButtons}
             </div>
           </div>
@@ -383,7 +383,7 @@ function ActiveRequirementTargets({
         <Button
           variant="ghost"
           size="sm"
-          className="mt-1 h-6 w-full justify-start rounded-none border-y border-x-0 border-[#2a3d52] bg-[rgba(10,19,29,0.75)] px-2.5 text-[12px] text-[#9ab6d3] hover:border-[#3f5f83] hover:bg-[rgba(17,30,46,0.92)] hover:text-[#ddecff]"
+          className="decision-option-row decision-option-row--panel mt-1 h-6 w-full justify-start border-y border-x-0 px-2.5 text-[12px]"
           disabled={!canAct}
           onPointerDown={(event) => {
             if (!canAct || !registerPointerDown(event)) return;
@@ -685,19 +685,19 @@ export default function TargetsDecision({
               <div className={cn(
                 "leading-snug",
                 stripLayout
-                  ? "text-[12px] whitespace-nowrap text-[#9cc2e6]"
-                  : "text-[13px] text-[#b6cae1]"
+                  ? "text-[12px] whitespace-nowrap text-[#d5c7ab]"
+                  : "text-[13px] text-[#d9ccb1]"
               )}>
                 <span className={cn(
                   "font-semibold",
-                  stripLayout ? "text-[#c8def5]" : "text-[#d6e7fa]"
+                  stripLayout ? "text-[#f0e0bf]" : "text-[#f0e0bf]"
                 )}>
                   Target {reqIdx + 1}:
                 </span>{" "}
                 {req.description || "Choose a target"}
                 <span className={cn(
                   "ml-1 text-[12px]",
-                  stripLayout ? "text-[#86a6c8]" : "text-[#8ba4c1]"
+                  stripLayout ? "text-[#bca887]" : "text-[#bca887]"
                 )}>
                   ({reqMin}-{req.max_targets ?? req.legal_targets?.length ?? "?"}{isOptional ? ", optional" : ""})
                 </span>
@@ -710,8 +710,8 @@ export default function TargetsDecision({
                 className={cn(
                   stripLayout
                     ? "flex min-w-max items-center gap-1.5"
-                    : "rounded-sm border-l-2 border-[#2a3b4d] bg-[rgba(7,15,23,0.35)] px-1.5 py-1",
-                  !stripLayout && isActive && "border-[#5f9ad6] bg-[rgba(18,34,52,0.56)] shadow-[inset_0_0_0_1px_rgba(95,154,214,0.2)]"
+                    : "decision-target-requirement px-1.5 py-1",
+                  !stripLayout && isActive && "is-active"
                 )}
               >
                 {!shouldShowTargetOptions && !stripLayout && <div className="mb-1">{requirementHeader}</div>}
@@ -748,7 +748,7 @@ export default function TargetsDecision({
                           className={cn(
                             stripLayout
                               ? cn(STRIP_ITEM_BASE_CLASS, STRIP_ITEM_ACTIVE_CLASS)
-                              : "h-5 rounded-full border border-[#4a6f94] bg-[rgba(22,40,60,0.9)] px-1.5 text-[12px] text-[#d7e8fa] hover:border-[#6993bf] hover:bg-[rgba(29,52,78,0.95)]"
+                              : "decision-selected-chip h-5 px-1.5 text-[12px]"
                           )}
                           disabled={!canAct}
                           onPointerDown={(event) => {
@@ -800,7 +800,7 @@ export default function TargetsDecision({
             variant="ghost"
             size="sm"
             className={cn(
-              "decision-neon-button decision-submit-button h-6 rounded-sm px-2 text-[13px] font-semibold uppercase",
+              "decision-neon-button decision-submit-button h-6 rounded-none px-2 text-[13px] font-semibold uppercase",
               stripLayout ? "w-auto ml-1" : "w-full"
             )}
             disabled={!canAct || !canSubmit}

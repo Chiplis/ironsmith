@@ -1,0 +1,16 @@
+<svg width="132" height="104" viewBox="0 0 132 104" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M18 4H114L128 18V86L114 100H18L4 86V18L18 4Z" fill="#5B5859" fill-opacity="0.16"/>
+  <path d="M20 6H112L126 20V84L112 98H20L6 84V20L20 6Z" fill="url(#stone)" stroke="#70685F" stroke-width="2"/>
+  <path d="M24 10H108L122 24V80L108 94H24L10 80V24L24 10Z" stroke="#9B907F" stroke-opacity="0.42" stroke-width="1.4"/>
+  <path d="M39 27L50 39L47 55L58 70" stroke="#B1A693" stroke-opacity="0.34" stroke-width="2.1" stroke-linecap="round"/>
+  <path d="M84 22L75 36L78 52L68 66L72 78" stroke="#BEB29D" stroke-opacity="0.28" stroke-width="2.1" stroke-linecap="round"/>
+  <path d="M20 79H34L30 85H19" stroke="#8A8277" stroke-opacity="0.38" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M97 79H111L107 85H96" stroke="#8A8277" stroke-opacity="0.38" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="stone" x1="66" y1="6" x2="66" y2="98" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7B766D" stop-opacity="0.58"/>
+      <stop offset="0.52" stop-color="#5A544F" stop-opacity="0.64"/>
+      <stop offset="1" stop-color="#44413E" stop-opacity="0.72"/>
+    </linearGradient>
+  </defs>
+</svg>

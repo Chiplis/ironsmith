@@ -327,10 +327,10 @@ export default function AttackersDecision({ decision, canAct, compact = false })
       <div className="flex h-full min-w-0 items-center gap-2">
         <div className="shrink-0 flex min-w-[308px] min-h-[34px] items-stretch gap-2">
           <div className="min-w-[110px] flex flex-col justify-center">
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#d8c18c]">
               {canAct ? "Your Action" : "Opponent Action"}
             </div>
-            <div className="text-[10px] text-[#b8d2ef]">
+            <div className="text-[10px] text-[#d6c8ac]">
               Attackers
             </div>
           </div>
@@ -353,7 +353,7 @@ export default function AttackersDecision({ decision, canAct, compact = false })
         <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap">
           <div className="flex w-max min-w-full items-center gap-1.5 pr-2">
             {declarations.length === 0 && !pendingOnlySelection && (
-              <span className="text-[12px] text-[#b8d2ef]">
+              <span className="text-[12px] text-[#d6c8ac]">
                 Select a creature, then point to a player or planeswalker.
               </span>
             )}
@@ -361,7 +361,7 @@ export default function AttackersDecision({ decision, canAct, compact = false })
             {pendingOnlySelection && (
               <button
                 type="button"
-                className="inline-flex h-7 items-center rounded border border-[rgba(255,126,119,0.75)] bg-[rgba(90,32,37,0.7)] px-2.5 text-[12px] font-semibold text-[#ffd8d6]"
+                className="decision-option-row inline-flex h-7 items-center border border-[rgba(164,118,99,0.75)] bg-[rgba(66,38,30,0.82)] px-2.5 text-[12px] font-semibold text-[#f0d0c0]"
                 disabled={!canAct}
                 onClick={() => setSelectedAttackerId(null)}
               >
@@ -376,7 +376,7 @@ export default function AttackersDecision({ decision, canAct, compact = false })
                 <button
                   key={`compact-atk-${decl.creature}`}
                   type="button"
-                  className="inline-flex h-7 items-center rounded border border-[#4f7cad] bg-[rgba(24,43,64,0.78)] px-2.5 text-[12px] font-semibold text-[#d7ebff] transition-colors hover:border-[#7eb1e5] hover:bg-[rgba(34,58,84,0.9)]"
+                  className="decision-option-row inline-flex h-7 items-center border border-[rgba(164,137,96,0.6)] bg-[rgba(53,44,36,0.84)] px-2.5 text-[12px] font-semibold text-[#eadfc4] transition-colors hover:border-[rgba(208,181,131,0.72)] hover:bg-[rgba(82,65,45,0.92)]"
                   disabled={!canAct}
                   onClick={() => setSelectedAttackerId(Number(decl.creature))}
                 >
@@ -394,7 +394,7 @@ export default function AttackersDecision({ decision, canAct, compact = false })
     <div className="flex h-full min-h-0 w-full flex-col gap-2 overflow-x-hidden">
       <ScrollArea className="flex-1 min-h-0 w-full overflow-x-hidden">
         <div className="flex flex-col gap-2 pr-1 overflow-x-hidden">
-          <div className="px-0.5 text-[13px] font-bold uppercase tracking-wider text-[#a4c2e2]">Declare attackers</div>
+          <div className="px-0.5 text-[13px] font-bold uppercase tracking-wider text-[#d8c18c]">Declare attackers</div>
           {options.map((opt) => {
             const creatureId = Number(opt.creature);
             const attacking = isAttacking(creatureId);
@@ -407,19 +407,19 @@ export default function AttackersDecision({ decision, canAct, compact = false })
               <div
                 key={creatureId}
                 className={cn(
-                  "min-w-0 rounded-sm px-2 py-1.5 border-l-[3px] border-[#2a3b4d] bg-[rgba(7,15,23,0.35)]",
-                  attacking && "border-[rgba(174,118,255,0.85)] bg-[rgba(38,24,58,0.48)]",
-                  isSelected && "border-[rgba(255,59,48,0.85)] bg-[rgba(52,20,24,0.5)] shadow-[inset_0_0_0_1px_rgba(255,59,48,0.25)]"
+                  "min-w-0 rounded-none px-2 py-1.5 border-l-[3px] border-[rgba(122,97,67,0.72)] bg-[rgba(31,25,21,0.35)]",
+                  attacking && "border-[rgba(176,151,104,0.86)] bg-[rgba(56,42,24,0.48)]",
+                  isSelected && "border-[rgba(158,92,74,0.86)] bg-[rgba(60,28,24,0.5)] shadow-[inset_0_0_0_1px_rgba(196,128,108,0.2)]"
                 )}
               >
                 <Button
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-auto min-h-10 w-full min-w-0 overflow-hidden justify-start rounded-sm border px-3 py-2 text-left text-[15px] font-semibold leading-snug whitespace-normal",
-                    "border-[#2f4f70] bg-[rgba(15,27,40,0.9)] text-[#d6e7fb] hover:border-[#4f7cad] hover:bg-[rgba(24,43,64,0.95)]",
-                    attacking && "border-[rgba(174,118,255,0.95)] bg-[rgba(65,38,102,0.5)] text-[#eadbff]",
-                    isSelected && "border-[rgba(255,59,48,0.85)] bg-[rgba(78,28,33,0.52)] text-[#ffd2cf]",
+                    "decision-option-row h-auto min-h-10 w-full min-w-0 overflow-hidden justify-start rounded-none border px-3 py-2 text-left text-[15px] font-semibold leading-snug whitespace-normal",
+                    "border-[rgba(128,107,78,0.48)] bg-[linear-gradient(180deg,rgba(58,50,43,0.94),rgba(22,20,18,0.98))] text-[#d7c7a4] hover:border-[rgba(196,165,112,0.7)] hover:bg-[linear-gradient(180deg,rgba(84,68,47,0.98),rgba(34,27,20,0.98))]",
+                    attacking && "border-[rgba(201,171,114,0.84)] bg-[linear-gradient(180deg,rgba(86,67,40,0.96),rgba(39,30,20,0.98))] text-[#f0e2bf]",
+                    isSelected && "border-[rgba(165,101,82,0.85)] bg-[linear-gradient(180deg,rgba(84,45,34,0.96),rgba(43,25,20,0.98))] text-[#f0d1c4]",
                     opt.must_attack && "italic"
                   )}
                   disabled={!canAct}
@@ -432,14 +432,14 @@ export default function AttackersDecision({ decision, canAct, compact = false })
                 </Button>
 
                 {attacking && decl && (
-                  <div className="mt-1.5 px-1 text-[14px] text-[#bcd0e8] min-w-0 truncate">
+                  <div className="mt-1.5 px-1 text-[14px] text-[#d6c8ac] min-w-0 truncate">
                     -&gt; {attackTargetLabel(decl.target, players)}
                   </div>
                 )}
 
                 {isSelected && validTargets.length > 1 && (
-                  <div className="-mx-2 mt-1.5 border-y border-[#2f4b67] bg-[rgba(10,20,30,0.45)]">
-                    <div className="w-full divide-y divide-[#2f4b67]">
+                  <div className="-mx-2 mt-1.5 border-y border-[rgba(128,107,78,0.36)] bg-[rgba(27,22,19,0.54)]">
+                    <div className="w-full divide-y divide-[rgba(128,107,78,0.28)]">
                       {validTargets.map((target, i) => {
                         const decodedTarget = decodeAttackTargetChoice(target);
                         const isDeclaredTarget = attackTargetsEqual(decl?.target, decodedTarget);
@@ -449,8 +449,8 @@ export default function AttackersDecision({ decision, canAct, compact = false })
                             variant="ghost"
                             size="sm"
                             className={cn(
-                              "h-8 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 text-[13px] text-[#c7dbf2] transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
-                              isDeclaredTarget && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]"
+                              "decision-option-row h-8 w-full justify-start rounded-none border-0 bg-[linear-gradient(180deg,rgba(49,42,36,0.94),rgba(21,18,17,0.98))] px-2.5 text-[13px] text-[#d8cbb0] transition-all hover:bg-[linear-gradient(180deg,rgba(82,66,45,0.98),rgba(33,25,19,0.98))] hover:text-[#fff1cb]",
+                              isDeclaredTarget && "bg-[linear-gradient(180deg,rgba(95,75,50,0.98),rgba(42,32,21,0.98))] text-[#fff0cf]"
                             )}
                             disabled={!canAct}
                             onClick={() => selectTarget(creatureId, target)}

@@ -814,10 +814,10 @@ export default function Workspace({
         <div className="absolute top-2 right-2 z-[120] flex max-w-[min(460px,52vw)] flex-col gap-2">
           {notices.map((notice) => {
             const toneClasses = notice.tone === "success"
-              ? "border-[#285f3c] bg-[rgba(8,24,14,0.96)] text-[#8fe2ad] hover:border-[#3e8b5b]"
+              ? "workspace-notice workspace-notice--success"
               : notice.tone === "error"
-                ? "border-[#9f2b2b] bg-[rgba(24,8,8,0.96)] text-[#ff7f7f] hover:border-[#c04040]"
-                : "border-[#35506c] bg-[rgba(8,13,20,0.96)] text-[#cfe3fb] hover:border-[#4d7093]";
+                ? "workspace-notice workspace-notice--error"
+                : "workspace-notice workspace-notice--info";
             const actions = Array.isArray(notice.actions)
               ? notice.actions.filter((action) => action?.copyText)
               : [];
@@ -825,31 +825,31 @@ export default function Workspace({
             return (
               <div
                 key={notice.id}
-                className={`relative overflow-hidden rounded border shadow-[0_10px_26px_rgba(0,0,0,0.45)] ${toneClasses}`}
+                className={`relative overflow-hidden border shadow-[0_10px_26px_rgba(0,0,0,0.45)] ${toneClasses}`}
               >
                 {clickable ? (
                   <button
                     type="button"
-                    className="w-full px-3 py-2 pr-9 text-left transition-colors"
+                    className="workspace-notice-body w-full px-3 py-2 pr-9 text-left transition-colors"
                     onClick={() => handleNoticeCopy(notice)}
                     title="Click to copy"
                   >
-                    <div className="text-[13px] font-bold uppercase tracking-wide">
+                    <div className="workspace-notice-title text-[13px] font-bold uppercase tracking-wide">
                       {notice.title}
                     </div>
                     {notice.body ? (
-                      <div className="mt-1 text-[13px] font-semibold leading-tight">
+                      <div className="workspace-notice-text mt-1 text-[13px] font-semibold leading-tight">
                         {notice.body}
                       </div>
                     ) : null}
                   </button>
                 ) : (
-                  <div className="px-3 py-2 pr-9 text-left">
-                    <div className="text-[13px] font-bold uppercase tracking-wide">
+                  <div className="workspace-notice-body px-3 py-2 pr-9 text-left">
+                    <div className="workspace-notice-title text-[13px] font-bold uppercase tracking-wide">
                       {notice.title}
                     </div>
                     {notice.body ? (
-                      <div className="mt-1 text-[13px] font-semibold leading-tight">
+                      <div className="workspace-notice-text mt-1 text-[13px] font-semibold leading-tight">
                         {notice.body}
                       </div>
                     ) : null}
@@ -861,7 +861,7 @@ export default function Workspace({
                       <button
                         key={`${notice.id}:${action.label}:${index}`}
                         type="button"
-                        className="shrink-0 rounded border border-current/35 bg-black/20 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide transition-colors hover:bg-black/35"
+                        className="workspace-notice-action shrink-0 border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide transition-colors"
                         onClick={() => handleNoticeCopy(action)}
                         title={action.label}
                       >
@@ -872,7 +872,7 @@ export default function Workspace({
                 ) : null}
                 <button
                   type="button"
-                  className="absolute right-1.5 top-1.5 rounded px-1 text-[12px] font-bold text-current opacity-80 transition-opacity hover:opacity-100"
+                  className="workspace-notice-dismiss absolute right-1.5 top-1.5 px-1 text-[12px] font-bold text-current opacity-80 transition-opacity hover:opacity-100"
                   onClick={() => onDismissNotice?.(notice.id)}
                   aria-label={`Dismiss ${notice.title}`}
                 >

@@ -8,9 +8,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Slider } from "@/components/ui/slider";
 import ZoneViewer from "@/components/board/ZoneViewer";
 
-const triggerPill = "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-45";
-const inputPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none focus:ring-1 focus:ring-primary/50";
-const selectPill = "rounded-full bg-secondary text-secondary-foreground px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
+const triggerPill = "stone-pill inline-flex items-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
+const inputPill = "stone-input rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none focus:ring-1 focus:ring-primary/50";
+const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
+const statusPill = "status-pill text-[13px] uppercase";
 
 function formatPercent(value, digits = 1) {
   const amount = Number(value);
@@ -206,7 +207,7 @@ export default function AddCardBar({
   }, []);
 
   return (
-    <div className="panel-gradient flex items-center gap-1.5 rounded px-2.5 py-1">
+    <div className="add-card-toolbar table-toolbar table-toolbar--secondary flex items-center gap-1.5 rounded-none px-2.5 py-1">
       <Popover
         open={addCardMenuOpen}
         onOpenChange={(open) => {
@@ -229,11 +230,11 @@ export default function AddCardBar({
         <PopoverContent
           align="start"
           sideOffset={8}
-          className="w-[21rem] rounded-xl border border-primary/30 bg-[#0b1118]/80 p-3 text-[#d7e3f4] shadow-[0_0_15px_rgba(100,169,255,0.15)] backdrop-blur-md"
+          className="add-card-popover w-[21rem] p-3"
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <div className="flex flex-col gap-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#7f95ac]">
+            <div className="add-card-popover-title text-[11px] font-semibold uppercase tracking-[0.24em]">
               Add Card
             </div>
 
@@ -298,15 +299,15 @@ export default function AddCardBar({
                 }}
               />
               {autocompleteVisible ? (
-                <div className="absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden rounded-xl border border-primary/30 bg-[#0b1118]/80 p-1 shadow-[0_12px_30px_rgba(0,0,0,0.6)] backdrop-blur-md">
+                <div className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden p-1">
                   {visibleAutocompleteOptions.map((option, index) => (
                     <button
                       key={option}
                       type="button"
-                      className={`block w-full rounded-md px-3 py-2 text-left text-[13px] transition-colors ${
+                      className={`add-card-autocomplete-option block w-full px-3 py-2 text-left text-[13px] transition-colors ${
                         index === autocompleteIndex
-                          ? "bg-primary/20 text-white font-medium"
-                          : "text-[#a4bdd7] hover:bg-white/10"
+                          ? "is-active font-medium"
+                          : ""
                       }`}
                       onMouseEnter={() => setAutocompleteIndex(index)}
                       onClick={() => handleAutocompletePick(option)}
@@ -345,12 +346,12 @@ export default function AddCardBar({
               </select>
             </div>
 
-            <label className="flex items-center gap-2 text-[13px] uppercase tracking-wide text-[#a4bdd7]">
+            <label className="toolbar-checkbox flex items-center gap-2 text-[13px] uppercase tracking-wide">
               <Checkbox
                 checked={skipTriggers}
                 disabled={addLocked}
                 onCheckedChange={(checked) => setSkipTriggers(checked === true)}
-                className="h-3.5 w-3.5 border-[#4d647d]"
+                className="h-3.5 w-3.5"
               />
               Skip triggers
             </label>
@@ -358,7 +359,7 @@ export default function AddCardBar({
             <Button
               type="button"
               size="sm"
-              className="w-full justify-center uppercase tracking-wide"
+              className="add-card-submit w-full justify-center uppercase tracking-wide"
               onClick={() => handleAdd()}
               disabled={addLocked}
             >
@@ -368,10 +369,10 @@ export default function AddCardBar({
         </PopoverContent>
       </Popover>
 
-      <span className="mx-1 text-muted-foreground/40">|</span>
+      <span className="add-card-toolbar-separator mx-1">|</span>
 
       <span
-        className="text-muted-foreground text-[13px] uppercase whitespace-nowrap cursor-help"
+        className="add-card-toolbar-meta text-[13px] uppercase whitespace-nowrap cursor-help"
         title="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
       >
         Fidelity
@@ -384,27 +385,27 @@ export default function AddCardBar({
         value={[Math.round(semanticThreshold)]}
         onValueChange={([v]) => setSemanticThreshold(v)}
       />
-      <span className="text-muted-foreground text-[13px] tabular-nums whitespace-nowrap">
+      <span className="add-card-toolbar-meta-value text-[13px] tabular-nums whitespace-nowrap">
         {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : "Off"}
         {" "}({cardsMeetingThreshold})
       </span>
 
-      <span className="mx-1 text-muted-foreground/40">|</span>
+      <span className="add-card-toolbar-separator mx-1">|</span>
 
-      <Badge variant="secondary" className="text-[13px] uppercase">
+      <Badge variant="secondary" className={statusPill}>
         Turn {state?.turn_number ?? "-"}
       </Badge>
-      <Badge variant="secondary" className="text-[13px] uppercase">
+      <Badge variant="secondary" className={statusPill}>
         Phase {state?.phase ?? "-"}
       </Badge>
-      <Badge variant="secondary" className="text-[13px] uppercase">
+      <Badge variant="secondary" className={statusPill}>
         Step {formatStep(state?.step)}
       </Badge>
-      <Badge variant="secondary" className="text-[13px] uppercase">
+      <Badge variant="secondary" className={statusPill}>
         Active {(() => { const p = (state?.players || []).find(p => p.id === state?.active_player); return p?.name || "-"; })()}
       </Badge>
       {state?.priority_player != null && (() => { const p = (state?.players || []).find(p => p.id === state?.priority_player); return p ? (
-        <Badge variant="secondary" className="text-[13px] uppercase">
+        <Badge variant="secondary" className={statusPill}>
           Priority {p.name}
         </Badge>
       ) : null; })()}

@@ -33,6 +33,13 @@ export default function Shell() {
   const nextNoticeIdRef = useRef(1);
   const autoJoinAttemptedLobbyRef = useRef("");
   const initialLobbyQueryRef = useRef(readLobbyQueryParams());
+  const borderlessPreview = (
+    typeof window !== "undefined"
+    && (
+      new URLSearchParams(window.location.search).get("borderless") === "1"
+      || window.localStorage.getItem("ironsmith-borderless-preview") === "1"
+    )
+  );
 
   const pushNotice = useCallback((notice) => {
     const id = nextNoticeIdRef.current++;
@@ -276,7 +283,10 @@ export default function Shell() {
   }
 
   return (
-    <div className="w-full h-screen p-2 grid grid-rows-[auto_auto_minmax(0,1fr)] gap-2">
+    <div
+      className="app-shell w-full h-screen p-2 grid grid-rows-[auto_auto_minmax(0,1fr)] gap-2"
+      data-borderless-preview={borderlessPreview ? "true" : "false"}
+    >
       <Topbar
         playerNames={playerNames}
         setPlayerNames={setPlayerNames}

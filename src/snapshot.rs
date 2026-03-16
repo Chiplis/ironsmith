@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 
 use crate::ability::{Ability, AbilityKind};
+use crate::card::LinkedFaceLayout;
 use crate::color::ColorSet;
 use crate::continuous::ContinuousEffect;
 use crate::ids::CardId;
@@ -23,6 +24,7 @@ use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
 use crate::object::{CounterType, Object, ObjectKind};
 use crate::static_abilities::StaticAbilityId;
+use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
@@ -62,6 +64,14 @@ pub struct ObjectSnapshot {
     pub card_types: Vec<CardType>,
     /// Subtypes (Human, Equipment, Forest, etc.).
     pub subtypes: Vec<Subtype>,
+    /// Oracle text / rules text.
+    pub oracle_text: String,
+    /// Optional reference to another face for flip/DFC style cards.
+    pub other_face: Option<CardId>,
+    /// Linked face name for on-demand compilation without a global registry preload.
+    pub other_face_name: Option<String>,
+    /// Layout semantics for linked-face cards.
+    pub linked_face_layout: LinkedFaceLayout,
     /// Base power (if creature).
     pub power: Option<i32>,
     /// Base toughness (if creature).
@@ -72,8 +82,14 @@ pub struct ObjectSnapshot {
     pub base_toughness: Option<i32>,
     /// Loyalty (if planeswalker).
     pub loyalty: Option<u32>,
+    /// Defense (if battle).
+    pub defense: Option<u32>,
     /// Abilities the object had.
     pub abilities: Vec<Ability>,
+    /// For Auras: what this object can enchant.
+    pub aura_attach_filter: Option<ObjectFilter>,
+    /// For sagas: maximum chapter number.
+    pub max_saga_chapter: Option<u32>,
     /// X value chosen when this object was cast (if any).
     pub x_value: Option<u32>,
 
@@ -126,12 +142,19 @@ impl ObjectSnapshot {
             supertypes: obj.supertypes.clone(),
             card_types: obj.card_types.clone(),
             subtypes: obj.subtypes.clone(),
+            oracle_text: obj.oracle_text.clone(),
+            other_face: obj.other_face,
+            other_face_name: obj.other_face_name.clone(),
+            linked_face_layout: obj.linked_face_layout,
             power: obj.power(),
             toughness: obj.toughness(),
             base_power: obj.base_power.as_ref().map(|p| p.base_value()),
             base_toughness: obj.base_toughness.as_ref().map(|t| t.base_value()),
             loyalty: obj.loyalty(),
+            defense: obj.base_defense,
             abilities: obj.abilities.clone(),
+            aura_attach_filter: obj.aura_attach_filter.clone(),
+            max_saga_chapter: obj.max_saga_chapter,
             x_value: obj.x_value,
 
             // Non-copiable state (from game state extension maps)
@@ -407,12 +430,19 @@ impl ObjectSnapshot {
             supertypes: vec![],
             card_types: vec![],
             subtypes: vec![],
+            oracle_text: String::new(),
+            other_face: None,
+            other_face_name: None,
+            linked_face_layout: LinkedFaceLayout::None,
             power: None,
             toughness: None,
             base_power: None,
             base_toughness: None,
             loyalty: None,
+            defense: None,
             abilities: vec![],
+            aura_attach_filter: None,
+            max_saga_chapter: None,
             x_value: None,
             counters: HashMap::new(),
             is_token: false,

@@ -45,7 +45,7 @@ export default function NumberDecision({
         <Input
           type="number"
           className={cn(
-            "h-7 bg-transparent",
+            "decision-inline-input h-7 bg-transparent",
             stripLayout ? "w-[88px] text-[14px]" : "w-28 text-[16px]"
           )}
           min={decision.min ?? 0}
@@ -55,7 +55,7 @@ export default function NumberDecision({
           disabled={!canAct}
         />
         <span className={cn(
-          "text-muted-foreground",
+          "decision-helper-text",
           stripLayout ? "text-[12px] whitespace-nowrap" : "text-[14px]"
         )}>
           ({decision.min} - {decision.max})
@@ -87,7 +87,7 @@ export default function NumberDecision({
             variant="ghost"
             size="sm"
             className={cn(
-              "decision-neon-button decision-submit-button h-6 rounded-sm px-2 text-[13px] font-semibold uppercase",
+              "decision-neon-button decision-submit-button h-6 rounded-none px-2 text-[13px] font-semibold uppercase",
               stripLayout ? "w-auto" : "w-full"
             )}
             disabled={!canAct}

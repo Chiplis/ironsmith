@@ -23,9 +23,9 @@ import {
   buildObjectNameById,
 } from "@/lib/decision-object-meta";
 
-const STRIP_ITEM_BASE_CLASS = "h-auto min-h-8 max-w-[360px] min-w-[120px] justify-start self-stretch rounded-none border-0 border-l-2 border-l-[rgba(116,139,164,0.42)] bg-[rgba(12,22,34,0.58)] px-2.5 text-left text-[12px] font-semibold text-[rgba(206,223,242,0.52)] whitespace-nowrap transition-all hover:border-l-[rgba(236,245,255,0.92)] hover:bg-[rgba(220,236,255,0.16)] hover:text-[#f4f9ff] hover:shadow-[0_0_12px_rgba(236,245,255,0.3)]";
-const STRIP_ITEM_ACTIVE_CLASS = "border-l-[rgba(236,245,255,0.9)] bg-[rgba(220,236,255,0.16)] text-[#f4f9ff] shadow-[0_0_12px_rgba(236,245,255,0.3)]";
-const STRIP_ITEM_DISABLED_CLASS = "border-l-[rgba(63,79,98,0.6)] bg-[rgba(8,15,23,0.76)] text-[#5f7590] hover:border-l-[rgba(63,79,98,0.6)] hover:bg-[rgba(8,15,23,0.76)] hover:text-[#5f7590] hover:shadow-none";
+const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-auto min-h-8 max-w-[360px] min-w-[120px] shrink-0 justify-start self-stretch overflow-hidden px-2.5 text-left text-[12px] font-semibold whitespace-nowrap";
+const STRIP_ITEM_ACTIVE_CLASS = "is-selected";
+const STRIP_ITEM_DISABLED_CLASS = "is-disabled";
 function isPaymentOptionDescription(text) {
   return /^\s*pay\b/i.test(String(text || ""));
 }
@@ -108,6 +108,7 @@ function optionLabelContent(state, objectNameById, objectControllerById, opt) {
   const accent = optionAccent(state, objectControllerById, opt);
   return (
     <HighlightedDecisionText
+      className="decision-option-label"
       text={normalizedText}
       highlightText={objectName}
       highlightColor={accent?.hex || null}
@@ -155,7 +156,7 @@ function useAnimatedRows(rows, showRows, hideDelayMs = 180) {
 
 function HoverHint({ text }) {
   return (
-    <div className="text-[12px] italic text-[#89a7c7] px-1 pb-0.5 leading-snug">
+    <div className="decision-helper-text decision-helper-text--muted px-1 pb-0.5 text-[12px] italic leading-snug">
       {text}
     </div>
   );
@@ -181,15 +182,15 @@ function OptionButton({
       className={cn(
         horizontal
           ? STRIP_ITEM_BASE_CLASS
-          : "h-auto min-h-8 w-full justify-start rounded-none border-0 bg-[rgba(15,27,40,0.9)] px-2.5 py-1.5 text-left text-[13px] text-[#c7dbf2] whitespace-normal transition-all hover:bg-[rgba(25,44,66,0.95)] hover:text-[#eaf3ff]",
+          : "decision-option-row decision-option-row--panel h-auto min-h-8 w-full min-w-0 justify-start overflow-hidden px-2.5 py-1.5 text-left text-[13px] whitespace-normal",
         horizontal && isSelected && STRIP_ITEM_ACTIVE_CLASS,
-        !horizontal && isSelected && "bg-[rgba(36,58,84,0.72)] text-[#eaf4ff]",
+        !horizontal && isSelected && "is-selected",
         horizontal && !isSelected && isHighlighted && STRIP_ITEM_ACTIVE_CLASS,
-        !horizontal && !isSelected && isHighlighted && "bg-[rgba(25,47,71,0.94)] text-[#d9ecff]",
+        !horizontal && !isSelected && isHighlighted && "is-highlighted",
         disabled
           && (horizontal
             ? STRIP_ITEM_DISABLED_CLASS
-            : "bg-[rgba(12,20,30,0.72)] text-[#647f99] hover:bg-[rgba(12,20,30,0.72)] hover:text-[#647f99]")
+            : "is-disabled")
       )}
       disabled={disabled}
       onPointerDown={(e) => {
@@ -218,7 +219,7 @@ function SubmitButton({ canAct, disabled, onClick, children }) {
     <Button
       variant="ghost"
       size="sm"
-      className="decision-neon-button decision-submit-button group h-auto min-h-6 shrink-0 justify-start px-2 py-1 text-left text-[14px] font-bold uppercase whitespace-normal"
+      className="decision-neon-button decision-submit-button group h-auto min-h-6 shrink-0 justify-start rounded-none px-2 py-1 text-left text-[14px] font-bold uppercase whitespace-normal"
       disabled={!canAct || disabled}
       onClick={onClick}
     >
@@ -231,7 +232,7 @@ function SubmitButton({ canAct, disabled, onClick, children }) {
 
 function SectionHeader({ text }) {
   return (
-    <h4 className="text-[12px] uppercase tracking-wider text-[#8ec4ff] font-bold px-1 py-0.5 m-0">
+    <h4 className="decision-section-header m-0 px-1 py-0.5 text-[12px] font-bold uppercase tracking-wider">
       {text}
     </h4>
   );
@@ -422,6 +423,7 @@ function SingleSelectDecision({
   );
   const visibleOptions = useAnimatedRows(contextual.options, contextual.options.length > 0);
   const showHoverHint = contextual.waitingForHover && options.some((opt) => opt.object_id != null);
+  const showHeader = !stripLayout;
   const submitAction = useMemo(() => {
     if (paymentDecision) {
       return {
@@ -455,28 +457,30 @@ function SingleSelectDecision({
   return (
     <div className="flex w-full min-w-0 flex-col gap-1">
       <div className="transition-all duration-200">
-        <div
-          className={cn(
-            stripLayout
-              ? "px-1 py-0"
-              : "sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1"
-          )}
-        >
-          {!paymentDecision && showDescription && (
-            <Description decision={decision} hideDescription={hideDescription} layout={layout} />
-          )}
-          {showHoverHint && (
-            <HoverHint text="Hover or select a related card to show its available choices." />
-          )}
-        </div>
+        {showHeader && (
+          <div
+            className={cn(
+              stripLayout
+                ? "decision-strip-header px-1.5 py-1"
+                : "decision-panel-header sticky top-0 z-10 px-1.5 py-1"
+            )}
+          >
+            {!paymentDecision && showDescription && (
+              <Description decision={decision} hideDescription={hideDescription} layout={layout} />
+            )}
+            {!stripLayout && showHoverHint && (
+              <HoverHint text="Hover or select a related card to show its available choices." />
+            )}
+          </div>
+        )}
         <div className={cn(
           "w-full",
-          stripLayout ? "" : "border-b border-[#2f4b67] bg-[rgba(10,20,30,0.45)]"
+          stripLayout ? "" : "decision-options-panel"
         )}>
           <div className={cn(
             stripLayout
-              ? "flex w-max min-w-full items-center gap-1.5 overflow-x-auto overflow-y-hidden py-0.5"
-              : "w-full divide-y divide-[#2f4b67] max-h-[220px] overflow-y-auto"
+              ? "flex w-max min-w-full flex-nowrap items-center gap-1.5 overflow-visible py-0.5 pr-1"
+              : "w-full divide-y divide-[rgba(128,107,78,0.28)] max-h-[220px] overflow-y-auto"
           )}>
             {visibleOptions.map((opt) => {
               const objId = opt.object_id != null ? String(opt.object_id) : null;
@@ -502,7 +506,7 @@ function SingleSelectDecision({
             })}
             {!showHoverHint && visibleOptions.length === 0 && (
               <div className={cn(
-                "text-[12px] italic text-[#89a7c7]",
+                "decision-empty-note text-[12px] italic",
                 stripLayout ? "px-2 py-1 whitespace-nowrap" : "px-2.5 py-2"
               )}>
                 {paymentDecision ? "No additional payment actions." : "No legal choices."}
@@ -562,6 +566,7 @@ function MultiSelectDecision({
     [selected, visibleOptionIndexSet]
   );
   const showHoverHint = contextual.waitingForHover && options.some((opt) => opt.object_id != null);
+  const showHeader = !stripLayout;
 
   const toggle = (index) => {
     setSelected((prev) => {
@@ -593,30 +598,32 @@ function MultiSelectDecision({
   return (
     <div className="flex w-full min-w-0 flex-col gap-1.5">
         <div className={cn(stripLayout ? "transition-all duration-200" : "-mx-1.5 transition-all duration-200")}>
-          <div className={cn(
-            stripLayout
-              ? "px-1 py-0"
-              : "sticky top-0 z-10 border-y border-[#2f4b67] bg-[rgba(13,24,36,0.96)] px-1.5 py-1"
-          )}>
-          {!paymentDecision && showDescription && (
-            <Description decision={decision} hideDescription={hideDescription} layout={layout} />
+          {showHeader && (
+            <div className={cn(
+              stripLayout
+                ? "decision-strip-header px-1.5 py-1"
+                : "decision-panel-header sticky top-0 z-10 px-1.5 py-1"
+            )}>
+              {!paymentDecision && showDescription && (
+                <Description decision={decision} hideDescription={hideDescription} layout={layout} />
+              )}
+              {!stripLayout && <SectionHeader text={`Select ${min === max ? min : `${min}–${max}`}`} />}
+              {!stripLayout && showHoverHint && (
+                <HoverHint text="Hover or select a related card to show its choices. You can keep previous selections." />
+              )}
+            </div>
           )}
-          <SectionHeader text={`Select ${min === max ? min : `${min}–${max}`}`} />
-          {showHoverHint && (
-            <HoverHint text="Hover or select a related card to show its choices. You can keep previous selections." />
-          )}
-        </div>
         <div
           className={cn(
             "w-full transition-[max-height] duration-300 ease-out",
-            stripLayout ? "overflow-x-auto overflow-y-hidden" : "overflow-y-auto overflow-x-hidden"
+            stripLayout ? "overflow-x-auto overflow-y-hidden pb-1" : "overflow-y-auto overflow-x-hidden"
           )}
           style={stripLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }}
         >
           <div className={cn(
             stripLayout
-              ? "flex w-max min-w-full items-center gap-1.5 py-0.5"
-              : "w-full divide-y divide-[#2f4b67]"
+              ? "flex w-max min-w-full flex-nowrap items-center gap-1.5 py-0.5 pr-1"
+              : "w-full divide-y divide-[rgba(128,107,78,0.28)]"
           )}>
             {visibleOptions.map((opt) => {
               const objId = opt.object_id != null ? String(opt.object_id) : null;
@@ -638,9 +645,9 @@ function MultiSelectDecision({
                 />
               );
             })}
-            {hiddenSelectedCount > 0 && (
+            {!stripLayout && hiddenSelectedCount > 0 && (
               <div className={cn(
-                "text-[12px] text-[#89a7c7]",
+                "decision-helper-text decision-helper-text--muted text-[12px]",
                 stripLayout ? "px-2 py-1 whitespace-nowrap" : "px-2.5 py-1"
               )}>
                 {hiddenSelectedCount} selected option(s) from other cards.
@@ -648,7 +655,7 @@ function MultiSelectDecision({
             )}
             {!showHoverHint && visibleOptions.length === 0 && (
               <div className={cn(
-                "text-[12px] italic text-[#89a7c7]",
+                "decision-empty-note text-[12px] italic",
                 stripLayout ? "px-2 py-1 whitespace-nowrap" : "px-2.5 py-2"
               )}>
                 No legal choices.
@@ -663,7 +670,7 @@ function MultiSelectDecision({
             variant="ghost"
             size="sm"
             className={cn(
-              "decision-neon-button decision-submit-button h-6 rounded-sm px-2 text-[13px] font-semibold uppercase",
+              "decision-neon-button decision-submit-button h-6 rounded-none px-2 text-[13px] font-semibold uppercase",
               stripLayout ? "w-auto ml-1" : "w-full"
             )}
             disabled={!canSubmit}
@@ -763,17 +770,19 @@ function OrderingDecision({
         if (!opt) return null;
         return (
           <div key={optIndex} className={cn(
-            "flex items-center gap-1.5 text-[13px] py-1 px-2 rounded-sm text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]",
-            stripLayout && "min-w-[220px] max-w-[360px] self-stretch rounded-none border-0 border-l-2 border-l-[rgba(116,139,164,0.42)] bg-[rgba(12,22,34,0.58)] text-[rgba(206,223,242,0.78)] hover:border-l-[rgba(236,245,255,0.92)] hover:bg-[rgba(220,236,255,0.16)] hover:text-[#f4f9ff]"
+            "decision-order-row flex items-center gap-1.5 px-2 py-1 text-[13px] transition-all",
+            stripLayout
+              ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+              : "decision-option-row decision-option-row--panel"
           )}>
-            <span className="text-[11px] text-[#8ec4ff] font-bold w-4 text-center shrink-0">{pos + 1}</span>
+            <span className="decision-order-index w-4 shrink-0 text-center text-[11px] font-bold">{pos + 1}</span>
             <span className="min-w-0 flex-1">
               <SymbolText text={normalizeDecisionText(opt.description)} />
             </span>
             <Button
               variant="ghost"
               size="sm"
-              className="h-5 w-5 p-0 text-[13px]"
+              className="decision-order-arrow h-5 w-5 rounded-none p-0 text-[13px]"
               disabled={!canAct || pos === 0}
               onClick={() => move(pos, -1)}
             >
@@ -782,7 +791,7 @@ function OrderingDecision({
             <Button
               variant="ghost"
               size="sm"
-              className="h-5 w-5 p-0 text-[13px]"
+              className="decision-order-arrow h-5 w-5 rounded-none p-0 text-[13px]"
               disabled={!canAct || pos === order.length - 1}
               onClick={() => move(pos, 1)}
             >
@@ -796,13 +805,13 @@ function OrderingDecision({
 
   const triggerOrderingHint = (
     <div className={cn(
-      "rounded-sm border border-[#31506e]/80 bg-[rgba(10,20,31,0.72)] text-[#c9dff7]",
+      "decision-trigger-hint border text-[#e5d6b8]",
       stripLayout ? "min-w-[280px] px-3 py-2" : "px-3 py-2.5"
     )}>
-      <div className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8ec4ff]">
+      <div className="decision-section-header text-[12px] font-bold uppercase tracking-[0.14em]">
         Order In Stack
       </div>
-      <div className="mt-1 text-[13px] leading-snug text-[#dbeaff]">
+      <div className="mt-1 text-[13px] leading-snug text-[#e5d6b8]">
         Use the arrows on the stack cards to arrange these triggers. The leftmost arrow moves a trigger closer to the top of the stack.
       </div>
     </div>
@@ -913,13 +922,15 @@ function DistributeDecision({
     )}>
       {options.map((opt) => (
         <label key={opt.index} className={cn(
-          "flex items-center gap-2 text-[13px] py-1 px-2 rounded-sm text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]",
-          stripLayout && "min-w-[220px] max-w-[360px] self-stretch rounded-none border-0 border-l-2 border-l-[rgba(116,139,164,0.42)] bg-[rgba(12,22,34,0.58)] text-[rgba(206,223,242,0.78)] hover:border-l-[rgba(236,245,255,0.92)] hover:bg-[rgba(220,236,255,0.16)] hover:text-[#f4f9ff]"
+          "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
+          stripLayout
+            ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+            : "decision-option-row decision-option-row--panel"
         )}>
           <span className="flex-1 min-w-0"><SymbolText text={normalizeDecisionText(opt.description)} /></span>
           <Input
             type="number"
-            className="h-6 w-16 text-[13px] bg-transparent text-center"
+            className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
             min={0}
             max={Number(opt.max_count ?? total)}
             value={counts[opt.index] || 0}
@@ -1027,13 +1038,15 @@ function CountersDecision({
     )}>
       {options.map((opt) => (
         <label key={opt.index} className={cn(
-          "flex items-center gap-2 text-[13px] py-1 px-2 rounded-sm text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]",
-          stripLayout && "min-w-[220px] max-w-[360px] self-stretch rounded-none border-0 border-l-2 border-l-[rgba(116,139,164,0.42)] bg-[rgba(12,22,34,0.58)] text-[rgba(206,223,242,0.78)] hover:border-l-[rgba(236,245,255,0.92)] hover:bg-[rgba(220,236,255,0.16)] hover:text-[#f4f9ff]"
+          "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
+          stripLayout
+            ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+            : "decision-option-row decision-option-row--panel"
         )}>
           <span className="flex-1 min-w-0"><SymbolText text={normalizeDecisionText(opt.description)} /></span>
           <Input
             type="number"
-            className="h-6 w-16 text-[13px] bg-transparent text-center"
+            className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
             min={0}
             max={Number(opt.max_count ?? maxTotal)}
             value={counts[opt.index] || 0}
@@ -1142,13 +1155,15 @@ function RepeatableDecision({
     )}>
       {options.map((opt) => (
         <label key={opt.index} className={cn(
-          "flex items-center gap-2 text-[13px] py-1 px-2 rounded-sm text-muted-foreground transition-all hover:text-foreground hover:bg-[rgba(100,169,255,0.06)]",
-          stripLayout && "min-w-[220px] max-w-[360px] self-stretch rounded-none border-0 border-l-2 border-l-[rgba(116,139,164,0.42)] bg-[rgba(12,22,34,0.58)] text-[rgba(206,223,242,0.78)] hover:border-l-[rgba(236,245,255,0.92)] hover:bg-[rgba(220,236,255,0.16)] hover:text-[#f4f9ff]"
+          "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
+          stripLayout
+            ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+            : "decision-option-row decision-option-row--panel"
         )}>
           <span className="flex-1 min-w-0"><SymbolText text={normalizeDecisionText(opt.description)} /></span>
           <Input
             type="number"
-            className="h-6 w-16 text-[13px] bg-transparent text-center"
+            className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
             min={0}
             max={Number(opt.max_count ?? maxTotal)}
             value={counts[opt.index] || 0}

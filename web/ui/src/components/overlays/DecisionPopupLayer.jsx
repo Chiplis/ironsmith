@@ -22,7 +22,7 @@ import {
 } from "@/lib/trigger-ordering";
 import { cn } from "@/lib/utils";
 
-const ACTION_STRIP_BODY_CLASS = "h-[74px]";
+const ACTION_STRIP_BODY_CLASS = "min-h-0 h-full";
 const MANA_PAYMENT_TAB_EXIT_MS = 320;
 
 function clamp(value, min, max) {
@@ -208,16 +208,16 @@ function ManaPaymentTab({ manaPayment = null }) {
       >
         <div
         ref={shellRef}
-        className="relative overflow-visible rounded-[14px] border border-[#56677d]/80 bg-[linear-gradient(180deg,rgba(18,28,40,0.985),rgba(10,16,24,0.975))] px-2.5 py-1.5 shadow-[0_12px_24px_rgba(0,0,0,0.42),0_0_20px_rgba(247,160,64,0.05)]"
+        className="mana-payment-shell relative overflow-visible rounded-none border px-2.5 py-1.5"
         >
-          <div className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(245,159,67,0.07),transparent_38%,rgba(117,172,232,0.06))]" />
+          <div className="mana-payment-shell-glow absolute inset-0" />
           <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,220,176,0.85),transparent)]" />
-          <div className="absolute left-1/2 top-full h-1.5 w-12 -translate-x-1/2 overflow-hidden rounded-b-[10px] border-x border-b border-[#56677d]/70 bg-[linear-gradient(180deg,rgba(16,25,36,0.96),rgba(10,16,24,0.98))] shadow-[0_6px_12px_rgba(0,0,0,0.16)]" />
+          <div className="mana-payment-tail absolute left-1/2 top-full h-1.5 w-12 -translate-x-1/2 overflow-hidden rounded-none border-x border-b" />
           <div
             ref={indicatorRef}
-            className="absolute left-0 top-0 rounded-[999px] border border-[#f7a040]/70 bg-[rgba(247,160,64,0.16)] opacity-0 shadow-[0_0_14px_rgba(247,160,64,0.45),inset_0_0_10px_rgba(255,226,186,0.1)] transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            className="mana-payment-indicator absolute left-0 top-0 rounded-none border opacity-0 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
           />
-          <div className="relative rounded-[999px] border border-[#2b3f57]/75 bg-[rgba(5,11,18,0.5)] px-1.5 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+          <div className="mana-payment-track relative rounded-none border px-1.5 py-0.5">
             <div className="relative flex items-center gap-1.5">
               {groups.map((group) => {
                 const toneClass = group.isPaid
@@ -233,7 +233,7 @@ function ManaPaymentTab({ manaPayment = null }) {
                       else groupNodeRefs.current.delete(group.key);
                     }}
                     className={cn(
-                      "relative inline-flex min-w-[28px] items-center justify-center rounded-[999px] px-1 py-0.5 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      "mana-payment-group relative inline-flex min-w-[28px] items-center justify-center rounded-none px-1 py-0.5 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                       toneClass
                     )}
                     style={group.isActive ? { filter: "drop-shadow(0 0 10px rgba(247,160,64,0.44))" } : undefined}
@@ -844,17 +844,17 @@ function PriorityActionStrip({
 
   if (!canAct) {
     return (
-      <span className="text-[12px] text-[#b8d2ef] whitespace-nowrap">
+      <div className="action-strip-empty-state action-strip-empty-state--waiting flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap">
         Waiting for opponent
-      </span>
+      </div>
     );
   }
 
   if (!groups.length) {
     return (
-      <span className="text-[12px] text-[#b8d2ef] whitespace-nowrap">
+      <div className="action-strip-empty-state action-strip-empty-state--empty flex min-w-0 flex-1 items-center px-3 text-[12px] whitespace-nowrap">
         No actions available
-      </span>
+      </div>
     );
   }
 
@@ -895,16 +895,16 @@ function PriorityActionStrip({
             }
           };
           const pillClassName = cn(
-            "inline-flex max-w-[360px] min-w-0 items-center self-stretch border-0 border-l-2 px-2.5 text-[12px] font-semibold transition-all",
+            "action-strip-pill inline-flex max-w-[360px] min-w-0 items-center self-stretch px-2.5 text-[12px] font-semibold transition-all",
             linkedActive
-              ? "border-l-[rgba(236,245,255,0.9)] bg-[rgba(220,236,255,0.16)] text-[#f4f9ff] shadow-[0_0_12px_rgba(236,245,255,0.3)]"
-              : "border-l-[rgba(116,139,164,0.42)] bg-[rgba(12,22,34,0.58)] text-[rgba(206,223,242,0.52)]",
-            isInteractiveCycle && "hover:border-l-[rgba(236,245,255,0.92)] hover:bg-[rgba(220,236,255,0.16)] hover:text-[#f4f9ff] hover:shadow-[0_0_12px_rgba(236,245,255,0.3)]"
+              ? "is-linked-active text-[#fff5de]"
+              : "text-[#d8ccb4]",
+            isInteractiveCycle && "is-interactive"
           );
           const pillContent = (
             <>
               {group.count > 1 && (
-                <span className="mr-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-[rgba(12,20,31,0.86)] px-1 text-[10px] font-bold leading-none tracking-wide text-[#f5d08b]">
+                <span className="action-strip-pill-count mr-1.5 inline-flex h-4 min-w-4 items-center justify-center px-1 text-[10px] font-bold leading-none tracking-wide text-[#f5d08b]">
                   x{group.count}
                 </span>
               )}
@@ -1010,20 +1010,20 @@ function ViewedCardsStrip({
   const normalizedDescription = String(description || "").trim();
 
   return (
-    <div className="min-w-0 flex-1 overflow-hidden px-1 py-1">
+    <div className="viewed-cards-strip min-w-0 flex-1 overflow-hidden px-1 py-1">
       <div className="flex flex-col gap-1">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="shrink-0 text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
+          <div className="shrink-0 text-[11px] font-bold uppercase tracking-[0.14em] text-[#d9c18b]">
             {label}
           </div>
           {normalizedSourceName && (
-            <div className="min-w-0 truncate text-[11px] text-[#d2e5fb]">
+            <div className="min-w-0 truncate text-[11px] text-[#d8cdb6]">
               <SymbolText text={normalizeDecisionText(normalizedSourceName)} />
             </div>
           )}
         </div>
         {normalizedDescription && (
-          <div className="text-[12px] text-[#8fb5d8] leading-snug">
+          <div className="text-[12px] leading-snug text-[#c7baa1]">
             <SymbolText text={normalizeDecisionText(normalizedDescription)} />
           </div>
         )}
@@ -1034,10 +1034,10 @@ function ViewedCardsStrip({
                 key={card.id}
                 type="button"
                 className={cn(
-                  "inline-flex max-w-[220px] items-center rounded-sm border px-2 py-1 text-[12px] text-[#eef6ff] shadow-[0_0_12px_rgba(72,120,166,0.18)] transition-all",
+                  "action-strip-pill action-strip-view-card inline-flex max-w-[220px] items-center px-2 py-1 text-[12px] transition-all",
                   String(hoveredObjectId) === String(card.id) || String(selectedObjectId) === String(card.id)
-                    ? "border-[#bfe0ff] bg-[rgba(220,236,255,0.16)] shadow-[0_0_12px_rgba(236,245,255,0.3)]"
-                    : "border-[#35506c]/78 bg-[rgba(12,22,34,0.72)] hover:border-[#bfe0ff] hover:bg-[rgba(220,236,255,0.16)]"
+                    ? "is-linked-active text-[#fff5de]"
+                    : "is-interactive text-[#decfae]"
                 )}
                 onMouseEnter={() => onCardHoverStart?.(card)}
                 onMouseLeave={() => onCardHoverEnd?.()}
@@ -1059,7 +1059,7 @@ function ViewedCardsStrip({
                 </span>
               </button>
             )) : (
-              <div className="text-[12px] italic text-[#89a7c7]">
+              <div className="text-[12px] italic text-[#bda983]">
                 No cards visible.
               </div>
             )}
@@ -1080,12 +1080,12 @@ function PriorityControlStack({
   className = "",
 }) {
   const checkboxLabelClass =
-    "flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer text-[#9db7d5] hover:text-[#d7e8fb] transition-colors";
+    "action-strip-toggle flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer transition-colors";
 
   return (
-    <div className={cn("flex shrink-0 flex-col items-start justify-center py-1.5", className)}>
+    <div className={cn("priority-control-stack flex shrink-0 flex-col items-start justify-center py-1.5", className)}>
       {showActionCount && (
-        <div className="pointer-events-none pl-[18px] text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
+        <div className="pointer-events-none pl-[18px] text-[11px] font-bold uppercase tracking-[0.14em] text-[#d9c18b]">
             {actionCount} actions
         </div>
       )}
@@ -1186,6 +1186,15 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     && !showViewedCardsStep
     && !triggerOrderingDecision
   );
+  const toolbarDecisionSummary = useMemo(() => {
+    const parts = [
+      decision?.description,
+      decision?.context_text,
+    ]
+      .map((value) => normalizeDecisionText(value))
+      .filter(Boolean);
+    return parts[0] || "";
+  }, [decision?.context_text, decision?.description]);
   const viewedCardEntries = useMemo(
     () => {
       if (Array.isArray(viewedCards?.cards) && viewedCards.cards.length > 0) {
@@ -1308,12 +1317,12 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     return (
       <div className="pointer-events-none absolute inset-0 z-[120] flex items-start px-2 pt-0.5">
         <div
-          className="priority-inline-panel pointer-events-auto relative flex w-full flex-col rounded border bg-[rgba(7,15,23,0.97)] px-2 py-0 shadow-[0_12px_28px_rgba(0,0,0,0.45)] backdrop-blur-[2px]"
+          className="priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col px-2 py-0"
         >
           <ManaPaymentTab manaPayment={manaPayment} />
           {isPriorityDecision ? (
             showViewedCardsStep ? (
-              <div className="flex min-h-[46px] items-stretch gap-2">
+              <div className="action-strip-layout flex min-h-[46px] items-stretch gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1346,31 +1355,18 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 />
               </div>
             ) : (
-              <div className="flex min-h-[46px] items-stretch gap-2">
-                <div className={cn(
-                  "shrink-0 flex self-stretch items-stretch gap-2",
-                  showPriorityAdvanceButton ? "min-w-[308px]" : "min-w-[112px]"
-                )}>
-                  {showPriorityAdvanceButton && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
-                      disabled={!canAct}
-                      onClick={() => triggerPriorityAction(passAction)}
-                    >
-                      {passLabel}
-                    </Button>
-                  )}
-                  <PriorityControlStack
-                    actionCount={priorityActionCount}
-                    holdEnabled={holdRule === "always"}
-                    confirmEnabled={confirmEnabled}
-                    onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                    onConfirmChange={setConfirmEnabled}
-                    className="min-w-[104px]"
-                  />
-                </div>
+              <div className="action-strip-layout flex min-h-[46px] items-stretch gap-2">
+                {showPriorityAdvanceButton && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="pass-priority-btn action-strip-advance-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                    disabled={!canAct}
+                    onClick={() => triggerPriorityAction(passAction)}
+                  >
+                    {passLabel}
+                  </Button>
+                )}
                 <PriorityActionStrip
                   groups={actionGroups}
                   canAct={canAct}
@@ -1386,21 +1382,26 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   onActionHoverStart={handleActionHoverStart}
                   onActionHoverEnd={handleActionHoverEnd}
                 />
+                <PriorityControlStack
+                  actionCount={priorityActionCount}
+                  holdEnabled={holdRule === "always"}
+                  confirmEnabled={confirmEnabled}
+                  onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                  onConfirmChange={setConfirmEnabled}
+                  showActionCount={priorityActionCount > 0}
+                  className="ml-auto min-w-[104px]"
+                />
               </div>
             )
           ) : (
-            <div
-              className="grid min-w-0 items-start gap-x-2"
-              style={{ gridTemplateColumns: "max-content minmax(0,1fr)" }}
-            >
-              <div className="flex min-w-0 flex-col gap-y-1 self-start">
-                <div className="flex min-w-0 items-start gap-2">
-                  <div className="flex min-w-[392px] w-fit flex-col gap-y-1">
-                    <div className="shrink-0 flex self-stretch items-stretch gap-2">
+            <div className="action-strip-decision-stack flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 py-1">
+              <div className="action-strip-decision-toolbar flex min-w-0 items-stretch gap-2">
+                <div className="flex min-w-0 flex-1 items-stretch gap-2">
+                  <div className="flex min-w-0 max-w-[320px] shrink-0 items-stretch gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                        className="decision-neon-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
                         disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
                         onPointerDown={(event) => {
                           if (showViewedCardsStep) {
@@ -1429,7 +1430,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
+                        className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
                         disabled={!canCancelDecision}
                         onPointerDown={(event) => {
                           if (!canCancelDecision || event.button !== 0) return;
@@ -1443,39 +1444,37 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       >
                         Cancel
                       </Button>
-                      <PriorityControlStack
-                        holdEnabled={holdRule === "always"}
-                        confirmEnabled={confirmEnabled}
-                        onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                        onConfirmChange={setConfirmEnabled}
-                        showActionCount={false}
-                        className="min-w-[104px]"
-                      />
-                    </div>
-                    {showStripDecisionSummary && (
-                      <DecisionSummary
-                        decision={decision}
-                        hideDescription={false}
-                        layout="strip"
-                        className="w-full"
-                      />
-                    )}
                   </div>
                   {!triggerOrderingDecision && (
-                    <div className="min-w-[86px] self-stretch flex flex-col justify-center py-1.5">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
-                        {resolveDecisionTitle(decision)}
+                    <div className="action-strip-decision-meta flex min-w-0 flex-1 flex-col justify-center px-1">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <div className="action-strip-decision-title text-[11px] font-bold uppercase tracking-[0.14em]">
+                          {resolveDecisionTitle(decision)}
+                        </div>
+                        {toolbarDecisionSummary && (
+                          <div className="action-strip-decision-inline-summary truncate text-[11px]">
+                            {toolbarDecisionSummary}
+                          </div>
+                        )}
                       </div>
-                      {decision?.source_name && (
-                        <div className="mt-0.5 text-[11px] text-[#d2e5fb]">
+                      {!toolbarDecisionSummary && decision?.source_name && (
+                        <div className="action-strip-decision-source truncate text-[11px]">
                           {normalizeDecisionText(decision.source_name)}
                         </div>
                       )}
                     </div>
                   )}
                 </div>
+                <PriorityControlStack
+                  holdEnabled={holdRule === "always"}
+                  confirmEnabled={confirmEnabled}
+                  onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                  onConfirmChange={setConfirmEnabled}
+                  showActionCount={false}
+                  className="ml-auto min-w-[104px]"
+                />
               </div>
-              <div className={cn("min-w-0 flex-1 overflow-hidden", ACTION_STRIP_BODY_CLASS)}>
+              <div className="action-strip-decision-content min-w-0 flex-1 overflow-hidden">
                 {canAct ? (
                   showViewedCardsStep ? (
                     <ViewedCardsStrip
@@ -1498,13 +1497,13 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       selectedObjectId={selectedObjectId}
                       inlineSubmit={false}
                       onSubmitActionChange={handleSubmitActionChange}
-                      hideDescription={false}
+                      hideDescription
                       layout="strip"
-                      showStripSummary={!showStripDecisionSummary}
+                      showStripSummary={false}
                     />
                   ))
                 ) : (
-                  <span className="text-[12px] text-[#b8d2ef] whitespace-nowrap">
+                  <span className="action-strip-waiting text-[12px] whitespace-nowrap">
                     Waiting for opponent
                   </span>
                 )}
@@ -1519,7 +1518,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   return (
     <div
       className={cn(
-        "pointer-events-auto relative z-[120] rounded border bg-[rgba(7,15,23,0.97)] shadow-[0_16px_36px_rgba(0,0,0,0.55)] backdrop-blur-[2px]",
+        "priority-inline-panel pointer-events-auto relative z-[120]",
         anchoredStyle
           ? "fixed"
           : "fixed left-2 bottom-[148px] w-[min(92vw,348px)]"
@@ -1527,8 +1526,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
       style={anchoredStyle || undefined}
     >
       <ManaPaymentTab manaPayment={manaPayment} />
-      <div className="border-b border-[#2f4662]/85 bg-[rgba(10,22,34,0.88)] px-2 py-0">
-        <div className="flex min-h-[46px] items-start gap-2">
+      <div className="px-2 py-0">
+        <div className="action-strip-layout flex min-h-[46px] items-start gap-2">
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <Button
@@ -1554,31 +1553,23 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="decision-neon-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                    className="pass-priority-btn action-strip-advance-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
                     disabled={!canAct}
                     onClick={() => triggerPriorityAction(passAction)}
                   >
                     {passLabel}
                   </Button>
                 )}
-                <PriorityControlStack
-                  actionCount={priorityActionCount}
-                  holdEnabled={holdRule === "always"}
-                  confirmEnabled={confirmEnabled}
-                  onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
-                  onConfirmChange={setConfirmEnabled}
-                  className="min-w-[104px]"
-                />
               </>
             )
           ) : (
             <>
-              <div className="flex min-w-[392px] w-fit flex-col gap-y-1">
-                <div className="flex min-h-[46px] items-stretch gap-2">
+              <div className="action-strip-decision-stack flex min-w-0 w-full flex-col gap-y-1">
+                <div className="action-strip-decision-toolbar flex min-h-[46px] items-stretch gap-2">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="decision-neon-button decision-submit-button h-full w-[176px] shrink-0 self-stretch rounded-none px-3 text-[14px] font-bold uppercase"
+                    className="decision-neon-button decision-submit-button h-full min-w-[104px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
                     disabled={showViewedCardsStep ? !canAdvanceViewedCardsStep : !canSubmitFocused}
                     onPointerDown={(event) => {
                       if (showViewedCardsStep) {
@@ -1607,7 +1598,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full w-[96px] shrink-0 self-stretch rounded-none px-2 text-[13px] font-bold uppercase tracking-wide"
+                    className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
                     disabled={!canCancelDecision}
                     onPointerDown={(event) => {
                       if (!canCancelDecision || event.button !== 0) return;
@@ -1627,25 +1618,17 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                     onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
                     onConfirmChange={setConfirmEnabled}
                     showActionCount={false}
-                    className="min-w-[104px]"
+                    className="ml-auto min-w-[104px]"
                   />
                 </div>
-                {showStripDecisionSummary && (
-                  <DecisionSummary
-                    decision={decision}
-                    hideDescription={false}
-                    layout="strip"
-                    className="w-full"
-                  />
-                )}
               </div>
               {!triggerOrderingDecision && (
-                <div className="self-stretch flex flex-col justify-center py-1.5">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#93c7ff]">
+                <div className="action-strip-decision-meta self-stretch flex min-w-0 flex-col justify-center py-1.5">
+                  <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
                     {resolveDecisionTitle(decision)}
                   </div>
                   {decision?.source_name && (
-                    <div className="mt-0.5 text-[11px] text-[#d2e5fb]">
+                    <div className="action-strip-decision-source mt-0.5 truncate text-[11px]">
                       {normalizeDecisionText(decision.source_name)}
                     </div>
                   )}
@@ -1655,7 +1638,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
           )}
         </div>
       </div>
-      <div className={cn("border-b border-[#2f4662]/70 px-2 py-1.5", !isPriorityDecision && ACTION_STRIP_BODY_CLASS)}>
+      <div className={cn("action-strip-body-shell flex-1 border-b px-2 py-1.5", !isPriorityDecision && ACTION_STRIP_BODY_CLASS)}>
         {isPriorityDecision ? (
           showViewedCardsStep ? (
             <ViewedCardsStrip
@@ -1672,6 +1655,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
               onCardHoverEnd={handleViewedCardHoverEnd}
             />
           ) : (
+            <div className="flex min-h-[46px] items-stretch gap-2">
               <PriorityActionStrip
                 groups={actionGroups}
                 canAct={canAct}
@@ -1681,15 +1665,24 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                 objectNameById={objectNameById}
                 objectControllerById={objectControllerById}
                 hoveredObjectFamilyIds={hoveredObjectFamilyIds}
-              selectedObjectFamilyIds={selectedObjectFamilyIds}
-              selectedActionIndices={selectedActionIndices}
-              onActionClick={triggerPriorityAction}
-              onActionHoverStart={handleActionHoverStart}
-              onActionHoverEnd={handleActionHoverEnd}
-            />
+                selectedObjectFamilyIds={selectedObjectFamilyIds}
+                selectedActionIndices={selectedActionIndices}
+                onActionClick={triggerPriorityAction}
+                onActionHoverStart={handleActionHoverStart}
+                onActionHoverEnd={handleActionHoverEnd}
+              />
+              <PriorityControlStack
+                actionCount={priorityActionCount}
+                holdEnabled={holdRule === "always"}
+                confirmEnabled={confirmEnabled}
+                onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
+                onConfirmChange={setConfirmEnabled}
+                className="ml-auto min-w-[104px]"
+              />
+            </div>
           )
         ) : (
-          <div className="min-w-0 h-full">
+          <div className="action-strip-decision-content min-w-0 h-full">
             {showViewedCardsStep ? (
               <ViewedCardsStrip
                 label={viewedCardsLabel}
@@ -1738,7 +1731,7 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
     : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]";
 
   const innerClass = cn(
-    "priority-inline-panel pointer-events-auto flex w-full items-center gap-2 rounded border border-[#305071] bg-[rgba(7,15,23,0.97)] px-2 py-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.45)] backdrop-blur-[2px]",
+    "priority-inline-panel pointer-events-auto flex w-full items-center gap-2 px-2 py-1.5",
     !inline && anchoredStyle ? "fixed" : ""
   );
 

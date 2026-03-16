@@ -1,0 +1,24 @@
+<svg width="120" height="176" viewBox="0 0 120 176" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M60 4L93 24L102 70V108L93 152L60 172L27 152L18 108V70L27 24L60 4Z" fill="#3A312B"/>
+  <path d="M60 12L88 29L96 72V106L88 147L60 164L32 147L24 106V72L32 29L60 12Z" fill="url(#bezel)"/>
+  <path d="M60 32L78 43L83 69V109L78 133L60 144L42 133L37 109V69L42 43L60 32Z" fill="url(#gem)"/>
+  <path d="M60 46L71 53L74 71V107L71 123L60 130L49 123L46 107V71L49 53L60 46Z" fill="url(#core)" opacity="0.94"/>
+  <path d="M49 53L60 78L71 53" stroke="#FFF0B8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+  <path d="M49 120L60 93L71 120" stroke="#9CE8FF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.65"/>
+  <defs>
+    <linearGradient id="bezel" x1="60" y1="12" x2="60" y2="164" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#988467"/>
+      <stop offset="0.5" stop-color="#534535"/>
+      <stop offset="1" stop-color="#B9A27C"/>
+    </linearGradient>
+    <linearGradient id="gem" x1="60" y1="32" x2="60" y2="144" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD867"/>
+      <stop offset="0.5" stop-color="#FFB41F"/>
+      <stop offset="1" stop-color="#A36508"/>
+    </linearGradient>
+    <linearGradient id="core" x1="60" y1="46" x2="60" y2="130" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF3B2"/>
+      <stop offset="1" stop-color="#DB8F00"/>
+    </linearGradient>
+  </defs>
+</svg>

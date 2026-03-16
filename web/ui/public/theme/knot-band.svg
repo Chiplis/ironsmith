@@ -1,0 +1,22 @@
+<svg width="320" height="64" viewBox="0 0 320 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="320" height="64" rx="16" fill="#3B342D"/>
+  <rect x="4" y="4" width="312" height="56" rx="14" fill="url(#panel)"/>
+  <path d="M12 32H72L110 10H138L100 32L138 54H110L72 32H12Z" fill="url(#metal)" opacity="0.95"/>
+  <path d="M308 32H248L210 10H182L220 32L182 54H210L248 32H308Z" fill="url(#metal)" opacity="0.95"/>
+  <path d="M92 18L114 32L92 46" stroke="#9E907E" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M228 18L206 32L228 46" stroke="#9E907E" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M126 12L160 32L194 12" stroke="#6B6155" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M126 52L160 32L194 52" stroke="#A49784" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <defs>
+    <linearGradient id="panel" x1="160" y1="4" x2="160" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5C5247"/>
+      <stop offset="0.5" stop-color="#433B34"/>
+      <stop offset="1" stop-color="#2D2723"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="160" y1="8" x2="160" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8D8173"/>
+      <stop offset="0.5" stop-color="#534B42"/>
+      <stop offset="1" stop-color="#B3A38B"/>
+    </linearGradient>
+  </defs>
+</svg>

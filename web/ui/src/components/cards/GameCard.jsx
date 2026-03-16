@@ -215,7 +215,7 @@ function BattlefieldCounterBadge({ badge }) {
           fill="#061019"
           fontSize={amountFontSize}
           fontWeight="800"
-          fontFamily="Rajdhani, sans-serif"
+          fontFamily="Optima, Avenir Next, Segoe UI, Candara, sans-serif"
         >
           {amountLabel}
         </text>
@@ -227,7 +227,7 @@ function BattlefieldCounterBadge({ badge }) {
           fontSize={labelFontSize}
           fontWeight="800"
           letterSpacing="1.1"
-          fontFamily="Rajdhani, sans-serif"
+          fontFamily="Optima, Avenir Next, Segoe UI, Candara, sans-serif"
         >
           {badge.shortLabel}
         </text>

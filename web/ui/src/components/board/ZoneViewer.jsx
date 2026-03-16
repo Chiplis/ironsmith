@@ -36,10 +36,27 @@ export default function ZoneViewer({
   const zonesContent = (
     <div className="flex items-center gap-2 shrink-0">
       <span
-        className="text-[12px] uppercase tracking-wide font-semibold text-[#8fb1d6] shrink-0 cursor-help"
+        className="zone-viewer-eye shrink-0 cursor-help"
         title="Toggles the visibility of zones for your local view only."
+        aria-hidden="true"
       >
-        Local Zones
+        <svg
+          viewBox="0 0 24 24"
+          className="zone-viewer-eye-icon h-3.5 w-3.5"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M2.6 12C4.5 8.9 7.9 7 12 7s7.5 1.9 9.4 5c-1.9 3.1-5.3 5-9.4 5s-7.5-1.9-9.4-5Z"
+            fill="currentColor"
+            fillOpacity="0.16"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinejoin="round"
+          />
+          <circle cx="12" cy="12" r="3.15" fill="currentColor" fillOpacity="0.9" />
+          <circle cx="12.9" cy="11.1" r="0.8" fill="#fff4d5" fillOpacity="0.72" />
+        </svg>
       </span>
       <div className="flex items-center gap-2 flex-wrap">
         {VIEWABLE_ZONES.map((zone) => {
@@ -48,7 +65,7 @@ export default function ZoneViewer({
             <label
               key={zone.id}
               className={`inline-flex items-center gap-1 text-[13px] whitespace-nowrap cursor-pointer uppercase transition-colors ${
-                checked ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                checked ? "text-[#eadbbb]" : "text-[#b8aa8c] hover:text-[#eadbbb]"
               } ${zone.id === "battlefield" ? "cursor-default opacity-85" : ""}`}
             >
               <Checkbox
@@ -67,14 +84,14 @@ export default function ZoneViewer({
 
   if (embedded) {
     return (
-      <div className="zone-viewer flex items-center min-w-0">
+      <div className="zone-viewer zone-viewer--embedded flex items-center shrink-0">
         {zonesContent}
       </div>
     );
   }
 
   return (
-    <section className="zone-viewer relative z-0 bg-[#0e141d] rounded px-2 py-1.5 min-h-[28px]">
+    <section className="zone-viewer zone-viewer--panel relative z-0 rounded-none px-2 py-1.5 min-h-[28px]">
       <div className="flex items-center gap-4 min-w-0">
         {zonesContent}
       </div>
