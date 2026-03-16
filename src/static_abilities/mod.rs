@@ -2057,6 +2057,10 @@ impl StaticAbility {
         Self::new(KeywordFallbackText::new(text))
     }
 
+    pub fn keyword_text(text: impl Into<String>) -> Self {
+        Self::new(KeywordText::new(text))
+    }
+
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {
         Self::new(RuleFallbackText::new(text))
     }

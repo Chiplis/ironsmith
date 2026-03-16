@@ -1504,6 +1504,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[Token]) -> Option<
         ("total", "toughness") => Some(Value::TotalToughness(filter)),
         ("total", "mana_value") => Some(Value::TotalManaValue(filter)),
         ("greatest", "power") => Some(Value::GreatestPower(filter)),
+        ("greatest", "toughness") => Some(Value::GreatestToughness(filter)),
         ("greatest", "mana_value") => Some(Value::GreatestManaValue(filter)),
         _ => None,
     }
@@ -1728,8 +1729,11 @@ pub(crate) fn parse_add_mana(
         }
     }
     if clause_words.starts_with(&["an", "amount", "of", "mana", "of", "that", "color"]) {
+        let amount = parse_devotion_value_from_add_clause(tokens)?
+            .or_else(|| parse_add_mana_equal_amount_value(tokens))
+            .unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::AddManaChosenColor {
-            amount: Value::Fixed(1),
+            amount,
             player,
             fixed_option: None,
         });

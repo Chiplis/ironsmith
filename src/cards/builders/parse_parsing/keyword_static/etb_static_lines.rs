@@ -931,6 +931,7 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[Token]) -> Optio
         ("total", "toughness") => Some(Value::TotalToughness(filter)),
         ("total", "mana_value") => Some(Value::TotalManaValue(filter)),
         ("greatest", "power") => Some(Value::GreatestPower(filter)),
+        ("greatest", "toughness") => Some(Value::GreatestToughness(filter)),
         ("greatest", "mana_value") => Some(Value::GreatestManaValue(filter)),
         _ => None,
     }

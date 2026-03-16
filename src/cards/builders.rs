@@ -554,6 +554,7 @@ pub(crate) enum KeywordAction {
         additional_restrictions: Vec<String>,
     },
     Marker(&'static str),
+    KeywordText(String),
     MarkerText(String),
 }
 
@@ -639,6 +640,7 @@ impl KeywordAction {
                 | Self::Devoid
                 | Self::Annihilator(_)
                 | Self::Marker(_)
+                | Self::KeywordText(_)
                 | Self::MarkerText(_)
         )
     }
@@ -800,6 +802,7 @@ impl KeywordAction {
             Self::Crew { amount, .. } => format!("Crew {amount}"),
             Self::Saddle { amount, .. } => format!("Saddle {amount}"),
             Self::Marker(name) => (*name).to_string(),
+            Self::KeywordText(text) => text.clone(),
             Self::MarkerText(text) => text.clone(),
         }
     }
@@ -1926,6 +1929,9 @@ pub(crate) enum EffectAst {
         filter: Option<ObjectFilter>,
         tag: TagKey,
     },
+    ChooseColor {
+        player: PlayerAst,
+    },
     RepeatThisProcess,
     May {
         effects: Vec<EffectAst>,
@@ -2260,6 +2266,7 @@ pub(crate) enum EffectAst {
     SearchLibrary {
         filter: ObjectFilter,
         destination: Zone,
+        chooser: PlayerAst,
         player: PlayerAst,
         reveal: bool,
         shuffle: bool,
@@ -2739,6 +2746,9 @@ impl CardDefinitionBuilder {
             }
             KeywordAction::Marker(name) => {
                 self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(name)))
+            }
+            KeywordAction::KeywordText(text) => {
+                self.with_ability(Ability::static_ability(StaticAbility::keyword_text(text)))
             }
             KeywordAction::MarkerText(text) => {
                 self.with_ability(Ability::static_ability(StaticAbility::keyword_marker(text)))

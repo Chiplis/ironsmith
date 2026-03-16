@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { Button } from "@/components/ui/button";
@@ -89,7 +90,7 @@ function buildManaPaymentGroups(payment) {
   return groups;
 }
 
-function ManaPaymentTab({ manaPayment = null }) {
+function ManaPaymentTab({ manaPayment = null, anchorRect = null }) {
   const [renderedPayment, setRenderedPayment] = useState(manaPayment);
   const [visible, setVisible] = useState(Boolean(manaPayment));
   const renderedPaymentRef = useRef(renderedPayment);
@@ -190,20 +191,33 @@ function ManaPaymentTab({ manaPayment = null }) {
 
   if (!renderedPayment || groups.length === 0) return null;
 
-  return (
+  const tabContent = (
     <div
       className={cn(
-        "pointer-events-none absolute inset-x-0 top-0 z-[140] h-0 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        anchorRect
+          ? "pointer-events-none fixed z-[140] h-0 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          : "pointer-events-none absolute inset-x-0 top-0 z-[140] h-0 overflow-visible transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
         visible ? "opacity-100" : "opacity-0"
       )}
+      style={anchorRect
+        ? {
+          left: `${anchorRect.left}px`,
+          top: `${anchorRect.top}px`,
+          width: `${anchorRect.width}px`,
+        }
+        : undefined}
       aria-hidden="true"
     >
       <div
         className={cn(
           "absolute left-1/2 top-0 w-max max-w-[min(52vw,380px)] origin-bottom transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-        visible
-          ? "-translate-x-1/2 translate-y-[-118%]"
-          : "-translate-x-1/2 translate-y-[-134%]"
+          anchorRect
+            ? (visible
+              ? "-translate-x-1/2 translate-y-[-82%]"
+              : "-translate-x-1/2 translate-y-[-98%]")
+            : (visible
+              ? "-translate-x-1/2 translate-y-[-118%]"
+              : "-translate-x-1/2 translate-y-[-134%]")
       )}
       >
         <div
@@ -212,7 +226,7 @@ function ManaPaymentTab({ manaPayment = null }) {
         >
           <div className="mana-payment-shell-glow absolute inset-0" />
           <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,220,176,0.85),transparent)]" />
-          <div className="mana-payment-tail absolute left-1/2 top-full h-1.5 w-12 -translate-x-1/2 overflow-hidden rounded-none border-x border-b" />
+          <div className="mana-payment-tail absolute left-1/2 top-full h-3.5 w-14 -translate-x-1/2 -translate-y-px overflow-hidden rounded-none border-x border-b" />
           <div
             ref={indicatorRef}
             className="mana-payment-indicator absolute left-0 top-0 rounded-none border opacity-0 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
@@ -252,6 +266,12 @@ function ManaPaymentTab({ manaPayment = null }) {
       </div>
     </div>
   );
+
+  if (anchorRect && typeof document !== "undefined") {
+    return createPortal(tabContent, document.body);
+  }
+
+  return tabContent;
 }
 
 function priorityAnchorStyle(anchor) {
@@ -1145,6 +1165,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   );
 
   const anchoredStyle = inline ? null : priorityAnchorStyle(anchor);
+  const inlineRootRef = useRef(null);
+  const [manaTabAnchorRect, setManaTabAnchorRect] = useState(null);
   const stackSize = Number(state?.stack_size || 0);
   const showPriorityAdvanceButton = !!passAction;
   const canCancelDecision = canAct && !!state?.cancelable;
@@ -1310,16 +1332,76 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     if (!viewedCardsToken) return;
     setAcknowledgedViewedCardsToken(viewedCardsToken);
   }, [viewedCardsToken]);
+
+  const updateManaTabAnchorRect = useCallback(() => {
+    if (!inline || !inlineRootRef.current) {
+      setManaTabAnchorRect(null);
+      return;
+    }
+    const rect = inlineRootRef.current.getBoundingClientRect();
+    setManaTabAnchorRect((current) => {
+      if (
+        current
+        && current.left === rect.left
+        && current.top === rect.top
+        && current.width === rect.width
+      ) {
+        return current;
+      }
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+      };
+    });
+  }, [inline]);
+
+  useLayoutEffect(() => {
+    if (!inline) return undefined;
+
+    const node = inlineRootRef.current;
+    if (!node || typeof window === "undefined") {
+      return undefined;
+    }
+
+    let frame = 0;
+    const scheduleUpdate = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        updateManaTabAnchorRect();
+        frame = 0;
+      });
+    };
+
+    scheduleUpdate();
+    const resizeObserver = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(scheduleUpdate)
+      : null;
+    resizeObserver?.observe(node);
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate, true);
+    };
+  }, [inline, updateManaTabAnchorRect]);
+
   if (!decision || isCombatDecision) return null;
   if (isPriorityDecision && !passAction) return null;
 
   if (inline) {
     return (
-      <div className="pointer-events-none absolute inset-0 z-[120] flex items-start px-2 pt-0.5">
+      <div
+        ref={inlineRootRef}
+        className="pointer-events-none absolute inset-0 z-[120] flex items-start px-2 pt-0.5"
+      >
+        <ManaPaymentTab manaPayment={manaPayment} anchorRect={inline ? manaTabAnchorRect : null} />
         <div
           className="priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col px-2 py-0"
         >
-          <ManaPaymentTab manaPayment={manaPayment} />
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <div className="action-strip-layout flex min-h-[46px] items-stretch gap-2">
@@ -1518,7 +1600,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
   return (
     <div
       className={cn(
-        "priority-inline-panel pointer-events-auto relative z-[120]",
+        "pointer-events-none relative z-[120]",
         anchoredStyle
           ? "fixed"
           : "fixed left-2 bottom-[148px] w-[min(92vw,348px)]"
@@ -1526,7 +1608,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
       style={anchoredStyle || undefined}
     >
       <ManaPaymentTab manaPayment={manaPayment} />
-      <div className="px-2 py-0">
+      <div className="priority-inline-panel pointer-events-auto relative px-2 py-0">
         <div className="action-strip-layout flex min-h-[46px] items-start gap-2">
           {isPriorityDecision ? (
             showViewedCardsStep ? (

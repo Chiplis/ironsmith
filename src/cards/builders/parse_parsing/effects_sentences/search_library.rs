@@ -12,6 +12,14 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOp
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
+#[derive(Clone)]
+enum SearchLibraryManaConstraint {
+    Equal(u32),
+    LessThanOrEqual(u32),
+    GreaterThanOrEqual(u32),
+    OneOf(Vec<u32>),
+}
+
 pub(crate) fn parse_search_library_disjunction_filter(
     filter_tokens: &[Token],
 ) -> Option<ObjectFilter> {
@@ -39,6 +47,87 @@ pub(crate) fn parse_search_library_disjunction_filter(
     let mut filter = ObjectFilter::default();
     filter.any_of = branches;
     Some(filter)
+}
+
+fn extract_search_library_mana_constraint(
+    filter_tokens: &[Token],
+) -> Option<(Vec<Token>, SearchLibraryManaConstraint)> {
+    let filter_words = words(filter_tokens);
+    let with_idx = filter_words
+        .windows(3)
+        .position(|window| window[0] == "with" && window[1] == "mana" && matches!(window[2], "cost" | "value"))?;
+    let clause_word_start = with_idx + 3;
+    let clause_token_start = token_index_for_word_index(filter_tokens, with_idx)?;
+    let base_filter_tokens = trim_commas(&filter_tokens[..clause_token_start]);
+    if base_filter_tokens.is_empty() {
+        return None;
+    }
+
+    let clause_words = &filter_words[clause_word_start..];
+    if clause_words.is_empty() {
+        return None;
+    }
+
+    let parse_u32 = |word: &str| word.parse::<u32>().ok();
+    let constraint = match clause_words {
+        [value] => SearchLibraryManaConstraint::Equal(parse_u32(value)?),
+        [value, "or", "less"] => SearchLibraryManaConstraint::LessThanOrEqual(parse_u32(value)?),
+        [value, "or", "greater"] => {
+            SearchLibraryManaConstraint::GreaterThanOrEqual(parse_u32(value)?)
+        }
+        [left, "or", right] => {
+            SearchLibraryManaConstraint::OneOf(vec![parse_u32(left)?, parse_u32(right)?])
+        }
+        _ => return None,
+    };
+
+    Some((base_filter_tokens, constraint))
+}
+
+fn apply_search_library_mana_constraint(
+    filter: &mut ObjectFilter,
+    constraint: SearchLibraryManaConstraint,
+) {
+    if !filter.any_of.is_empty() {
+        for nested in &mut filter.any_of {
+            apply_search_library_mana_constraint(nested, constraint.clone());
+        }
+        return;
+    }
+
+    let build_branch = |base: &ObjectFilter, mana_value: crate::filter::Comparison| {
+        let mut branch = base.clone();
+        branch.has_mana_cost = true;
+        branch.no_x_in_cost = true;
+        branch.mana_value = Some(mana_value);
+        branch
+    };
+
+    match constraint {
+        SearchLibraryManaConstraint::Equal(value) => {
+            filter.has_mana_cost = true;
+            filter.no_x_in_cost = true;
+            filter.mana_value = Some(crate::filter::Comparison::Equal(value as i32));
+        }
+        SearchLibraryManaConstraint::LessThanOrEqual(value) => {
+            filter.has_mana_cost = true;
+            filter.no_x_in_cost = true;
+            filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(value as i32));
+        }
+        SearchLibraryManaConstraint::GreaterThanOrEqual(value) => {
+            filter.has_mana_cost = true;
+            filter.no_x_in_cost = true;
+            filter.mana_value = Some(crate::filter::Comparison::GreaterThanOrEqual(value as i32));
+        }
+        SearchLibraryManaConstraint::OneOf(values) => {
+            let base = filter.clone();
+            *filter = ObjectFilter::default();
+            filter.any_of = values
+                .into_iter()
+                .map(|value| build_branch(&base, crate::filter::Comparison::Equal(value as i32)))
+                .collect();
+        }
+    }
 }
 
 pub(crate) fn split_search_same_name_reference_filter(
@@ -171,10 +260,11 @@ pub(crate) fn parse_search_library_sentence(
         }
         subject_tokens = &[];
     }
-    let mut player = match parse_subject(subject_tokens) {
+    let chooser = match parse_subject(subject_tokens) {
         SubjectAst::Player(player) => player,
         _ => PlayerAst::Implicit,
     };
+    let mut player = chooser;
 
     let search_tokens = &tokens[search_idx..];
     let search_words = words(search_tokens);
@@ -368,19 +458,29 @@ pub(crate) fn parse_search_library_sentence(
         .position(|token| token.is_word("for"))
         .unwrap_or(3);
     let put_idx = search_tokens.iter().position(|token| token.is_word("put"));
-    let exile_idx = search_tokens.windows(3).position(|window| {
-        window[0].is_word("and")
-            && (window[1].is_word("exile") || window[1].is_word("exiles"))
-            && (window[2].is_word("them")
-                || window[2].is_word("those")
-                || window[2].is_word("thosecards"))
+    let exile_idx = search_tokens.iter().enumerate().find_map(|(idx, token)| {
+        if !(token.is_word("exile") || token.is_word("exiles")) {
+            return None;
+        }
+        let tail = words(&search_tokens[idx + 1..]);
+        (tail.starts_with(&["it"])
+            || tail.starts_with(&["them"])
+            || tail.starts_with(&["that", "card"])
+            || tail.starts_with(&["those", "cards"]))
+        .then_some(idx)
     });
-    let Some(filter_boundary) = put_idx.or(exile_idx) else {
-        return Err(CardTextError::ParseError(format!(
-            "missing put-or-exile clause in search-library sentence (clause: '{}')",
-            words_all.join(" ")
-        )));
-    };
+    let reveal_idx = search_tokens
+        .iter()
+        .position(|token| token.is_word("reveal") || token.is_word("reveals"));
+    let shuffle_idx = search_tokens
+        .iter()
+        .position(|token| token.is_word("shuffle") || token.is_word("shuffles"));
+    let has_explicit_destination = put_idx.is_some() || exile_idx.is_some();
+    let filter_boundary = put_idx
+        .or(exile_idx)
+        .or(reveal_idx)
+        .or(shuffle_idx)
+        .unwrap_or(search_tokens.len());
 
     let filter_end = {
         let mut end = filter_boundary;
@@ -400,6 +500,17 @@ pub(crate) fn parse_search_library_sentence(
                 .position(|token| token.is_word("reveal") || token.is_word("then"))
         {
             end = end.min(idx);
+        }
+        while end > for_idx + 1 {
+            let token = &search_tokens[end - 1];
+            if matches!(token, Token::Comma(_))
+                || token.is_word("and")
+                || token.is_word("then")
+            {
+                end -= 1;
+            } else {
+                break;
+            }
         }
         end
     };
@@ -421,6 +532,11 @@ pub(crate) fn parse_search_library_sentence(
     {
         count = ChoiceCount::any_number();
         count_used = 2;
+    } else if count_tokens.first().is_some_and(|token| token.is_word("any")) {
+        if let Some((value, used)) = parse_number(&count_tokens[1..]) {
+            count = ChoiceCount::up_to(value as usize);
+            count_used = 1 + used;
+        }
     } else if count_tokens.len() >= 2
         && count_tokens[0].is_word("that")
         && count_tokens[1].is_word("many")
@@ -471,7 +587,14 @@ pub(crate) fn parse_search_library_sentence(
     }
 
     let raw_filter_tokens = trim_commas(&search_tokens[filter_start..filter_end]);
-    let mut filter_tokens = raw_filter_tokens.clone();
+    let (mut filter_tokens, mana_constraint) =
+        if let Some((base_filter_tokens, mana_constraint)) =
+            extract_search_library_mana_constraint(&raw_filter_tokens)
+        {
+            (base_filter_tokens, Some(mana_constraint))
+        } else {
+            (raw_filter_tokens.clone(), None)
+        };
     let mut same_name_reference: Option<SameNameReference> = None;
     let raw_filter_words = words(&raw_filter_tokens);
     if raw_filter_words.len() >= 3
@@ -577,22 +700,18 @@ pub(crate) fn parse_search_library_sentence(
         };
         base_filter.name = Some(name);
         base_filter
-    } else if filter_words.len() == 1 && (filter_words[0] == "card" || filter_words[0] == "cards") {
-        ObjectFilter::default()
-    } else if filter_words.contains(&"mana")
-        && filter_words.contains(&"ability")
-        && filter_words.contains(&"or")
+    } else if filter_words.len() == 1 && (filter_words[0] == "card" || filter_words[0] == "cards")
     {
-        if let Some(disjunction_filter) = parse_search_library_disjunction_filter(&filter_tokens) {
-            disjunction_filter
-        } else {
-            parse_object_filter(&filter_tokens, false).map_err(|_| {
+        ObjectFilter::default()
+    } else if filter_words.contains(&"or") {
+        parse_search_library_disjunction_filter(&filter_tokens)
+            .or_else(|| parse_object_filter(&filter_tokens, false).ok())
+            .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported search filter in search-library sentence (clause: '{}')",
                     words_all.join(" ")
                 ))
             })?
-        }
     } else {
         parse_object_filter(&filter_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
@@ -619,19 +738,8 @@ pub(crate) fn parse_search_library_sentence(
         filter.owner = Some(owner);
     }
     normalize_search_library_filter(&mut filter);
-
-    if words_all.contains(&"mana") && words_all.contains(&"cost") {
-        filter.has_mana_cost = true;
-        filter.no_x_in_cost = true;
-        let mut max_value: Option<u32> = None;
-        for word in words_all.iter() {
-            if let Ok(value) = word.parse::<u32>() {
-                max_value = Some(max_value.map_or(value, |max| max.max(value)));
-            }
-        }
-        if let Some(max_value) = max_value {
-            filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(max_value as i32));
-        }
+    if let Some(mana_constraint) = mana_constraint {
+        apply_search_library_mana_constraint(&mut filter, mana_constraint);
     }
 
     let destination = if let Some(put_idx) = put_idx {
@@ -650,6 +758,11 @@ pub(crate) fn parse_search_library_sentence(
     };
 
     let reveal = words_all.contains(&"reveal");
+    let face_down_exile = exile_idx.is_some_and(|idx| {
+        words(&search_tokens[idx..])
+            .windows(2)
+            .any(|window| window == ["face", "down"])
+    });
     let trailing_discard_before_shuffle = if let Some(put_idx) = put_idx {
         let discard_idx = search_tokens
             .iter()
@@ -670,14 +783,32 @@ pub(crate) fn parse_search_library_sentence(
         && words_all.contains(&"hand")
         && words_all.contains(&"other")
         && words_all.contains(&"one");
-    let mut effects = if let Some(search_zones) = search_zones_override.clone() {
+    let mut effects = if !has_explicit_destination {
+        let chosen_tag: TagKey = "searched".into();
+        let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count,
+            player: chooser,
+            tag: chosen_tag.clone(),
+            zones: search_zones_override.unwrap_or_else(|| vec![Zone::Library]),
+        }];
+        if reveal {
+            sequence.push(EffectAst::RevealTagged {
+                tag: chosen_tag.clone(),
+            });
+        }
+        if shuffle {
+            sequence.push(EffectAst::ShuffleLibrary { player });
+        }
+        sequence
+    } else if let Some(search_zones) = search_zones_override.clone() {
         let chosen_tag: TagKey = "searched_multi_zone".into();
         let battlefield_tapped = destination == Zone::Battlefield && words_all.contains(&"tapped");
         let shuffle_player = PlayerAst::That;
         let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,
-            player,
+            player: chooser,
             tag: chosen_tag.clone(),
             zones: search_zones.clone(),
         }];
@@ -714,6 +845,7 @@ pub(crate) fn parse_search_library_sentence(
             EffectAst::SearchLibrary {
                 filter: filter.clone(),
                 destination: Zone::Battlefield,
+                chooser,
                 player,
                 reveal,
                 shuffle: false,
@@ -723,6 +855,7 @@ pub(crate) fn parse_search_library_sentence(
             EffectAst::SearchLibrary {
                 filter,
                 destination: Zone::Hand,
+                chooser,
                 player,
                 reveal,
                 shuffle,
@@ -730,11 +863,31 @@ pub(crate) fn parse_search_library_sentence(
                 tapped: false,
             },
         ]
+    } else if destination == Zone::Exile && face_down_exile {
+        let searched_tag: TagKey = "searched_face_down".into();
+        let mut sequence = vec![
+            EffectAst::ChooseObjectsAcrossZones {
+                filter,
+                count,
+                player: chooser,
+                tag: searched_tag.clone(),
+                zones: vec![Zone::Library],
+            },
+            EffectAst::Exile {
+                target: TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
+                face_down: true,
+            },
+        ];
+        if shuffle {
+            sequence.push(EffectAst::ShuffleLibrary { player });
+        }
+        sequence
     } else {
         let battlefield_tapped = destination == Zone::Battlefield && words_all.contains(&"tapped");
         vec![EffectAst::SearchLibrary {
             filter,
             destination,
+            chooser,
             player,
             reveal,
             shuffle,
@@ -814,10 +967,13 @@ pub(crate) fn parse_search_library_sentence(
     }
 
     if sentence_has_direct_may {
-        effects = vec![if matches!(player, PlayerAst::You | PlayerAst::Implicit) {
+        effects = vec![if matches!(chooser, PlayerAst::You | PlayerAst::Implicit) {
             EffectAst::May { effects }
         } else {
-            EffectAst::MayByPlayer { player, effects }
+            EffectAst::MayByPlayer {
+                player: chooser,
+                effects,
+            }
         }];
     }
 
@@ -1305,6 +1461,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         effects: vec![EffectAst::SearchLibrary {
             filter,
             destination: Zone::Battlefield,
+            chooser: PlayerAst::Implicit,
             player: PlayerAst::Implicit,
             reveal: true,
             shuffle: true,

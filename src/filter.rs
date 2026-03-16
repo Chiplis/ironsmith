@@ -4150,7 +4150,9 @@ fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
         if let AbilityKind::Static(static_ability) = &ability.kind {
             matches!(
                 static_ability.id(),
-                StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordFallbackText
+                StaticAbilityId::KeywordMarker
+                    | StaticAbilityId::KeywordText
+                    | StaticAbilityId::KeywordFallbackText
             ) && static_ability.display().eq_ignore_ascii_case(marker)
         } else {
             false
@@ -4171,7 +4173,9 @@ fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
     object.level_granted_abilities().iter().any(|ability| {
         matches!(
             ability.id(),
-            StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordFallbackText
+            StaticAbilityId::KeywordMarker
+                | StaticAbilityId::KeywordText
+                | StaticAbilityId::KeywordFallbackText
         ) && ability.display().eq_ignore_ascii_case(marker)
     })
 }
@@ -4213,7 +4217,9 @@ fn snapshot_has_ability_marker(snapshot: &crate::snapshot::ObjectSnapshot, marke
         if let AbilityKind::Static(static_ability) = &ability.kind
             && matches!(
                 static_ability.id(),
-                StaticAbilityId::KeywordMarker | StaticAbilityId::KeywordFallbackText
+                StaticAbilityId::KeywordMarker
+                    | StaticAbilityId::KeywordText
+                    | StaticAbilityId::KeywordFallbackText
             )
             && static_ability.display().eq_ignore_ascii_case(marker)
         {

@@ -12,7 +12,7 @@ use crate::cards::builders::{
     parse_level_up_line, parse_loyalty_shorthand_activation_cost, parse_madness_line,
     parse_mana_symbol, parse_mana_symbol_group, parse_morph_keyword_line, parse_multikicker_line,
     parse_offspring_line, parse_reinforce_line, parse_saga_chapter_prefix,
-    parse_scryfall_mana_cost, parse_squad_line, parse_static_ability_ast_line,
+    parse_scryfall_mana_cost, parse_squad_line, parse_static_ability_ast_line, parse_cant_clauses,
     parse_this_spell_cost_condition, parse_transmute_line, parse_triggered_line, parser_trace,
     parser_trace_line, split_on_or, starts_with_until_end_of_turn, tokenize_line, trim_commas,
     unsupported_rule_error_for_view, words,
@@ -1543,13 +1543,15 @@ fn parse_this_cant_attack_unless_static_rule(
     if !line_is_this_cant_attack_unless_clause(normalized_line(view)) {
         return Ok(None);
     }
-    match parse_static_ability_ast_line(view.tokens) {
+    match parse_cant_clauses(view.tokens) {
         Ok(Some(abilities)) => {
             parser_trace(
                 "parse_line:branch=this-cant-attack-unless-static",
                 view.tokens,
             );
-            Ok(Some(line_ast_from_static_abilities(abilities)))
+            Ok(Some(line_ast_from_static_abilities(
+                abilities.into_iter().map(StaticAbilityAst::from).collect(),
+            )))
         }
         _ => Err(line_rule_unsupported(
             view,

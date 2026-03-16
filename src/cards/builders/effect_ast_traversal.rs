@@ -238,6 +238,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PoisonCounters { .. } => {}
         EffectAst::EnergyCounters { .. } => {}
         EffectAst::ChooseCardName { .. } => {}
+        EffectAst::ChooseColor { .. } => {}
         EffectAst::RepeatThisProcess => {}
         EffectAst::May { .. } => {}
         EffectAst::MayByPlayer { .. } => {}

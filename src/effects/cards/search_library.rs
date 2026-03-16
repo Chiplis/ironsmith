@@ -23,6 +23,7 @@ use crate::zone::Zone;
 ///
 /// * `filter` - Filter for which cards can be found
 /// * `destination` - Where to put the found card
+/// * `chooser` - Which player makes the search decision
 /// * `player` - Whose library to search
 /// * `reveal` - Whether the found card must be revealed
 ///
@@ -46,6 +47,8 @@ pub struct SearchLibraryEffect {
     pub filter: ObjectFilter,
     /// Where to put the found card.
     pub destination: Zone,
+    /// Which player makes the search decision.
+    pub chooser: PlayerFilter,
     /// Whose library to search.
     pub player: PlayerFilter,
     /// Whether the found card must be revealed.
@@ -57,12 +60,14 @@ impl SearchLibraryEffect {
     pub fn new(
         filter: ObjectFilter,
         destination: Zone,
+        chooser: PlayerFilter,
         player: PlayerFilter,
         reveal: bool,
     ) -> Self {
         Self {
             filter,
             destination,
+            chooser,
             player,
             reveal,
         }
@@ -70,17 +75,17 @@ impl SearchLibraryEffect {
 
     /// Search for a card and put it into your hand.
     pub fn to_hand(filter: ObjectFilter, player: PlayerFilter, reveal: bool) -> Self {
-        Self::new(filter, Zone::Hand, player, reveal)
+        Self::new(filter, Zone::Hand, player.clone(), player, reveal)
     }
 
     /// Search for a card and put it onto the battlefield.
     pub fn to_battlefield(filter: ObjectFilter, player: PlayerFilter, reveal: bool) -> Self {
-        Self::new(filter, Zone::Battlefield, player, reveal)
+        Self::new(filter, Zone::Battlefield, player.clone(), player, reveal)
     }
 
     /// Search for a card and put it on top of your library.
     pub fn to_library_top(filter: ObjectFilter, player: PlayerFilter, reveal: bool) -> Self {
-        Self::new(filter, Zone::Library, player, reveal)
+        Self::new(filter, Zone::Library, player.clone(), player, reveal)
     }
 }
 
@@ -90,15 +95,16 @@ impl EffectExecutor for SearchLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let chooser_id = resolve_player_filter(game, &self.chooser, ctx)?;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        // Check if player can search libraries (Leonin Arbiter, Aven Mindcensor effects)
-        if !game.can_search_library(player_id) {
+        // Check if the searching player can search libraries.
+        if !game.can_search_library(chooser_id) {
             return Ok(EffectOutcome::prevented());
         }
 
-        // Track that this player searched their library (for trap conditions like Archive Trap)
-        game.library_searches_this_turn.insert(player_id);
+        // Track which player performed the search (for Archive Trap-style checks).
+        game.library_searches_this_turn.insert(chooser_id);
 
         let filter_ctx = ctx.filter_context(game);
 
@@ -120,7 +126,7 @@ impl EffectExecutor for SearchLibraryEffect {
         let chosen_card = make_decision_with_fallback(
             game,
             &mut ctx.decision_maker,
-            player_id,
+            chooser_id,
             Some(ctx.source),
             spec,
             FallbackStrategy::FirstOption, // Auto-select first card when no decision maker

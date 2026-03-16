@@ -1,7 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useGame } from "@/context/GameContext";
-import { formatStep } from "@/lib/constants";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -11,8 +9,6 @@ import ZoneViewer from "@/components/board/ZoneViewer";
 const triggerPill = "stone-pill inline-flex items-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
 const inputPill = "stone-input rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none focus:ring-1 focus:ring-primary/50";
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
-const statusPill = "status-pill text-[13px] uppercase";
-
 function formatPercent(value, digits = 1) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return null;
@@ -61,6 +57,10 @@ export default function AddCardBar({
     cardsMeetingThreshold,
     inspectorDebug,
     multiplayer,
+    autoPassEnabled,
+    setAutoPassEnabled,
+    holdRule,
+    setHoldRule,
   } = useGame();
   const [cardName, setCardName] = useState("");
   const [zone, setZone] = useState("battlefield");
@@ -79,6 +79,7 @@ export default function AddCardBar({
   const perspective = state?.perspective ?? 0;
   const selectedPlayer = playerIndex ?? perspective;
   const addLocked = multiplayer.mode !== "idle";
+  const matchLocked = multiplayer.matchStarted;
   const visibleAutocompleteOptions =
     addLocked || !cardName.trim() ? [] : autocompleteOptions;
   const autocompleteVisible =
@@ -207,211 +208,217 @@ export default function AddCardBar({
   }, []);
 
   return (
-    <div className="add-card-toolbar table-toolbar table-toolbar--secondary flex items-center gap-1.5 rounded-none px-2.5 py-1">
-      <Popover
-        open={addCardMenuOpen}
-        onOpenChange={(open) => {
-          setAddCardMenuOpen(open);
-          if (!open) {
-            setAutocompleteOpen(false);
-            setAutocompleteIndex(-1);
-          }
-        }}
-      >
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className={triggerPill}
-            disabled={addLocked}
-          >
-            Add Card
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          sideOffset={8}
-          className="add-card-popover w-[21rem] p-3"
-          onOpenAutoFocus={(event) => event.preventDefault()}
+    <div className="add-card-toolbar table-toolbar table-toolbar--secondary rounded-none px-3 py-2">
+      <div className="add-card-toolbar-left">
+        <Popover
+          open={addCardMenuOpen}
+          onOpenChange={(open) => {
+            setAddCardMenuOpen(open);
+            if (!open) {
+              setAutocompleteOpen(false);
+              setAutocompleteIndex(-1);
+            }
+          }}
         >
-          <div className="flex flex-col gap-3">
-            <div className="add-card-popover-title text-[11px] font-semibold uppercase tracking-[0.24em]">
-              Add Card
-            </div>
-
-            <div className="relative" ref={autocompleteRef}>
-              <input
-                ref={cardNameInputRef}
-                className={`${inputPill} w-full`}
-                placeholder="Card name"
-                value={cardName}
-                disabled={addLocked}
-                onChange={(e) => {
-                  setCardName(e.target.value);
-                  setAutocompleteOpen(true);
-                  setAutocompleteIndex(-1);
-                }}
-                onFocus={() => {
-                  if (visibleAutocompleteOptions.length > 0) {
-                    setAutocompleteOpen(true);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "ArrowDown" && visibleAutocompleteOptions.length > 0) {
-                    e.preventDefault();
-                    setAutocompleteOpen(true);
-                    setAutocompleteIndex((prev) =>
-                      prev >= visibleAutocompleteOptions.length - 1 ? 0 : prev + 1
-                    );
-                    return;
-                  }
-
-                  if (e.key === "ArrowUp" && visibleAutocompleteOptions.length > 0) {
-                    e.preventDefault();
-                    setAutocompleteOpen(true);
-                    setAutocompleteIndex((prev) =>
-                      prev <= 0 ? visibleAutocompleteOptions.length - 1 : prev - 1
-                    );
-                    return;
-                  }
-
-                  if (e.key === "Escape") {
-                    setAutocompleteOpen(false);
-                    setAutocompleteIndex(-1);
-                    return;
-                  }
-
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (
-                      autocompleteVisible &&
-                      autocompleteIndex >= 0 &&
-                      visibleAutocompleteOptions[autocompleteIndex]
-                    ) {
-                      handleAdd(visibleAutocompleteOptions[autocompleteIndex]);
-                      return;
-                    }
-                    if (visibleAutocompleteOptions.length === 1) {
-                      handleAdd(visibleAutocompleteOptions[0]);
-                      return;
-                    }
-                    handleAdd();
-                  }
-                }}
-              />
-              {autocompleteVisible ? (
-                <div className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden p-1">
-                  {visibleAutocompleteOptions.map((option, index) => (
-                    <button
-                      key={option}
-                      type="button"
-                      className={`add-card-autocomplete-option block w-full px-3 py-2 text-left text-[13px] transition-colors ${
-                        index === autocompleteIndex
-                          ? "is-active font-medium"
-                          : ""
-                      }`}
-                      onMouseEnter={() => setAutocompleteIndex(index)}
-                      onClick={() => handleAutocompletePick(option)}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                className={selectPill}
-                value={selectedPlayer}
-                disabled={addLocked}
-                onChange={(e) => setPlayerIndex(Number(e.target.value))}
-              >
-                {players.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className={selectPill}
-                value={zone}
-                disabled={addLocked}
-                onChange={(e) => setZone(e.target.value)}
-              >
-                <option value="battlefield">Battlefield</option>
-                <option value="hand">Hand</option>
-                <option value="graveyard">GY</option>
-                <option value="exile">Exile</option>
-              </select>
-            </div>
-
-            <label className="toolbar-checkbox flex items-center gap-2 text-[13px] uppercase tracking-wide">
-              <Checkbox
-                checked={skipTriggers}
-                disabled={addLocked}
-                onCheckedChange={(checked) => setSkipTriggers(checked === true)}
-                className="h-3.5 w-3.5"
-              />
-              Skip triggers
-            </label>
-
-            <Button
+          <PopoverTrigger asChild>
+            <button
               type="button"
-              size="sm"
-              className="add-card-submit w-full justify-center uppercase tracking-wide"
-              onClick={() => handleAdd()}
+              className={triggerPill}
               disabled={addLocked}
             >
-              Add to Game
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
+              Add Card
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            sideOffset={8}
+            className="add-card-popover w-[21rem] p-3"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+          >
+            <div className="flex flex-col gap-3">
+              <div className="add-card-popover-title text-[11px] font-semibold uppercase tracking-[0.24em]">
+                Add Card
+              </div>
 
-      <span className="add-card-toolbar-separator mx-1">|</span>
+              <div className="relative" ref={autocompleteRef}>
+                <input
+                  ref={cardNameInputRef}
+                  className={`${inputPill} w-full`}
+                  placeholder="Card name"
+                  value={cardName}
+                  disabled={addLocked}
+                  onChange={(e) => {
+                    setCardName(e.target.value);
+                    setAutocompleteOpen(true);
+                    setAutocompleteIndex(-1);
+                  }}
+                  onFocus={() => {
+                    if (visibleAutocompleteOptions.length > 0) {
+                      setAutocompleteOpen(true);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowDown" && visibleAutocompleteOptions.length > 0) {
+                      e.preventDefault();
+                      setAutocompleteOpen(true);
+                      setAutocompleteIndex((prev) =>
+                        prev >= visibleAutocompleteOptions.length - 1 ? 0 : prev + 1
+                      );
+                      return;
+                    }
 
-      <span
-        className="add-card-toolbar-meta text-[13px] uppercase whitespace-nowrap cursor-help"
-        title="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
-      >
-        Fidelity
-      </span>
-      <Slider
-        className="w-20"
-        min={0}
-        max={100}
-        step={1}
-        value={[Math.round(semanticThreshold)]}
-        onValueChange={([v]) => setSemanticThreshold(v)}
-      />
-      <span className="add-card-toolbar-meta-value text-[13px] tabular-nums whitespace-nowrap">
-        {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : "Off"}
-        {" "}({cardsMeetingThreshold})
-      </span>
+                    if (e.key === "ArrowUp" && visibleAutocompleteOptions.length > 0) {
+                      e.preventDefault();
+                      setAutocompleteOpen(true);
+                      setAutocompleteIndex((prev) =>
+                        prev <= 0 ? visibleAutocompleteOptions.length - 1 : prev - 1
+                      );
+                      return;
+                    }
 
-      <span className="add-card-toolbar-separator mx-1">|</span>
+                    if (e.key === "Escape") {
+                      setAutocompleteOpen(false);
+                      setAutocompleteIndex(-1);
+                      return;
+                    }
 
-      <Badge variant="secondary" className={statusPill}>
-        Turn {state?.turn_number ?? "-"}
-      </Badge>
-      <Badge variant="secondary" className={statusPill}>
-        Phase {state?.phase ?? "-"}
-      </Badge>
-      <Badge variant="secondary" className={statusPill}>
-        Step {formatStep(state?.step)}
-      </Badge>
-      <Badge variant="secondary" className={statusPill}>
-        Active {(() => { const p = (state?.players || []).find(p => p.id === state?.active_player); return p?.name || "-"; })()}
-      </Badge>
-      {state?.priority_player != null && (() => { const p = (state?.players || []).find(p => p.id === state?.priority_player); return p ? (
-        <Badge variant="secondary" className={statusPill}>
-          Priority {p.name}
-        </Badge>
-      ) : null; })()}
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (
+                        autocompleteVisible &&
+                        autocompleteIndex >= 0 &&
+                        visibleAutocompleteOptions[autocompleteIndex]
+                      ) {
+                        handleAdd(visibleAutocompleteOptions[autocompleteIndex]);
+                        return;
+                      }
+                      if (visibleAutocompleteOptions.length === 1) {
+                        handleAdd(visibleAutocompleteOptions[0]);
+                        return;
+                      }
+                      handleAdd();
+                    }
+                  }}
+                />
+                {autocompleteVisible ? (
+                  <div className="add-card-autocomplete absolute left-0 top-[calc(100%+0.35rem)] z-40 w-full overflow-hidden p-1">
+                    {visibleAutocompleteOptions.map((option, index) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`add-card-autocomplete-option block w-full px-3 py-2 text-left text-[13px] transition-colors ${
+                          index === autocompleteIndex
+                            ? "is-active font-medium"
+                            : ""
+                        }`}
+                        onMouseEnter={() => setAutocompleteIndex(index)}
+                        onClick={() => handleAutocompletePick(option)}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
 
-      <div className="flex-1" />
-      <ZoneViewer zoneViews={zoneViews} setZoneViews={setZoneViews} embedded />
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  className={selectPill}
+                  value={selectedPlayer}
+                  disabled={addLocked}
+                  onChange={(e) => setPlayerIndex(Number(e.target.value))}
+                >
+                  {players.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className={selectPill}
+                  value={zone}
+                  disabled={addLocked}
+                  onChange={(e) => setZone(e.target.value)}
+                >
+                  <option value="battlefield">Battlefield</option>
+                  <option value="hand">Hand</option>
+                  <option value="graveyard">GY</option>
+                  <option value="exile">Exile</option>
+                </select>
+              </div>
+
+              <label className="toolbar-checkbox flex items-center gap-2 text-[13px] uppercase tracking-wide">
+                <Checkbox
+                  checked={skipTriggers}
+                  disabled={addLocked}
+                  onCheckedChange={(checked) => setSkipTriggers(checked === true)}
+                  className="h-3.5 w-3.5"
+                />
+                Skip triggers
+              </label>
+
+              <Button
+                type="button"
+                size="sm"
+                className="add-card-submit w-full justify-center uppercase tracking-wide"
+                onClick={() => handleAdd()}
+                disabled={addLocked}
+              >
+                Add to Game
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
+        <span className="add-card-toolbar-separator" aria-hidden="true" />
+
+        <span
+          className="add-card-toolbar-meta text-[13px] uppercase whitespace-nowrap cursor-help"
+          title="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
+        >
+          Fidelity
+        </span>
+        <Slider
+          className="w-20"
+          min={0}
+          max={100}
+          step={1}
+          value={[Math.round(semanticThreshold)]}
+          onValueChange={([v]) => setSemanticThreshold(v)}
+        />
+        <span className="add-card-toolbar-meta-value text-[13px] tabular-nums whitespace-nowrap">
+          {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : "Off"}
+          {" "}({cardsMeetingThreshold})
+        </span>
+        <span className="add-card-toolbar-separator" aria-hidden="true" />
+        <select
+          className={selectPill}
+          value={holdRule}
+          disabled={matchLocked}
+          onChange={(e) => setHoldRule(e.target.value)}
+          aria-label="Auto-pass hold rule"
+        >
+          <option value="never">Never</option>
+          <option value="if_actions">If actions</option>
+          <option value="stack">Stack</option>
+          <option value="main">Main</option>
+          <option value="combat">Combat</option>
+          <option value="ending">Ending</option>
+          <option value="always">Always</option>
+        </select>
+        <label className="toolbar-checkbox add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap cursor-pointer uppercase">
+          <Checkbox
+            checked={autoPassEnabled}
+            disabled={matchLocked}
+            onCheckedChange={(v) => setAutoPassEnabled(!!v)}
+            className="h-3.5 w-3.5"
+          />
+          Auto-pass
+        </label>
+      </div>
+      <div className="add-card-toolbar-right">
+        <ZoneViewer zoneViews={zoneViews} setZoneViews={setZoneViews} embedded />
+      </div>
     </div>
   );
 }

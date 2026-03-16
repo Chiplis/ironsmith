@@ -2516,6 +2516,29 @@ impl StaticAbilityKind for PregameAction {
     }
 }
 
+/// Supported keyword-like text that should compile cleanly even before it has
+/// dedicated runtime hooks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeywordText {
+    pub text: String,
+}
+
+impl KeywordText {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl StaticAbilityKind for KeywordText {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::KeywordText
+    }
+
+    fn display(&self) -> String {
+        self.text.clone()
+    }
+}
+
 // =============================================================================
 // Placeholder / Marker Abilities
 // =============================================================================
@@ -2873,6 +2896,13 @@ mod tests {
         let ability = KeywordMarker::new("test marker");
         assert_eq!(ability.id(), StaticAbilityId::KeywordMarker);
         assert_eq!(ability.display(), "test marker");
+    }
+
+    #[test]
+    fn test_keyword_text() {
+        let ability = KeywordText::new("Dredge 3");
+        assert_eq!(ability.id(), StaticAbilityId::KeywordText);
+        assert_eq!(ability.display(), "Dredge 3");
     }
 
     #[test]

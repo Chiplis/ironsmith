@@ -2564,6 +2564,29 @@ fn resolve_value_with_context(
                 .unwrap_or(0),
             _ => 0,
         },
+        Value::DevotionToChosenColor(player_filter) => {
+            let Some(chosen) = ctx.game.chosen_color(source) else {
+                return 0;
+            };
+            let filter_ctx = continuous_filter_context(controller, source);
+            ctx.game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
+                .map(|player| ctx.game.devotion_to_color(player.id, chosen) as i32)
+                .sum()
+        },
+        Value::GreatestToughness(filter) => {
+            let filter_ctx = continuous_filter_context(controller, source);
+            let mut max_toughness = 0i32;
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
+                    max_toughness = max_toughness.max(obj.toughness().unwrap_or(0));
+                }
+            });
+            max_toughness
+        }
 
         // For these, we'd need more complex resolution (game state, execution context)
         // Return 0 as fallback (these are rare in continuous effects anyway)

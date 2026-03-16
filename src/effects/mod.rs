@@ -119,7 +119,7 @@ pub use permanents::{
 };
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,
-    CastTaggedEffect, ChooseCardNameEffect, ControlPlayerEffect, CreateEmblemEffect,
+    CastTaggedEffect, ChooseCardNameEffect, ChooseColorEffect, ControlPlayerEffect, CreateEmblemEffect,
     DiscoverEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileUntilMatchCastEffect,
     ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect,
     ExtraTurnEffect, GrantEffect, GrantPlayFromGraveyardEffect, GrantPlayTaggedDuration,

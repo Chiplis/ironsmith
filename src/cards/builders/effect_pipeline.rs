@@ -1037,6 +1037,7 @@ fn keyword_action_line_text(action: &KeywordAction) -> String {
         KeywordAction::Crew { amount, .. } => format!("Crew {amount}"),
         KeywordAction::Saddle { amount, .. } => format!("Saddle {amount}"),
         KeywordAction::Marker(name) => title_case_words(name),
+        KeywordAction::KeywordText(text) => text.clone(),
         KeywordAction::MarkerText(text) => text.clone(),
         KeywordAction::Casualty(power) => format!("Casualty {power}"),
         KeywordAction::Conspire => "Conspire".to_string(),

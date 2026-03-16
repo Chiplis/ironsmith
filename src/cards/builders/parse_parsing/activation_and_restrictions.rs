@@ -2632,6 +2632,11 @@ pub(crate) fn parse_devotion_value_from_add_clause(
                 words.join(" ")
             ))
         })?;
+    if words.get(to_idx + 1).copied() == Some("that")
+        && words.get(to_idx + 2).copied() == Some("color")
+    {
+        return Ok(Some(Value::DevotionToChosenColor(player)));
+    }
     let color_word = words.get(to_idx + 1).copied().ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing devotion color (clause: '{}')",
@@ -3493,6 +3498,20 @@ pub(crate) fn parse_source_must_be_blocked_if_able_line(
 pub(crate) fn parse_cant_clauses(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let normalized_words = normalize_cant_words(tokens);
+    let is_direct_temporary_cast_restriction = normalized_words.windows(2).any(|window| window == ["this", "turn"])
+        && !normalized_words.contains(&"unless")
+        && !normalized_words.contains(&"who")
+        && (normalized_words.starts_with(&["your", "opponents", "cant", "cast"])
+            || normalized_words.starts_with(&["each", "opponent", "cant", "cast"])
+            || normalized_words.starts_with(&["each", "player", "cant", "cast"])
+            || normalized_words.starts_with(&["players", "cant", "cast"])
+            || normalized_words.starts_with(&["target", "player", "cant", "cast"])
+            || normalized_words.starts_with(&["you", "cant", "cast"]));
+    if is_direct_temporary_cast_restriction {
+        return Ok(None);
+    }
+
     if tokens.iter().any(|token| token.is_word("and"))
         && let Some((neg_start, _)) = find_negation_span(tokens)
         && tokens[..neg_start]
@@ -4752,10 +4771,12 @@ fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect::Re
         }
         let cant_tail = &tail[1..];
 
-        if cant_tail == ["cast", "spells"] {
+        if cant_tail == ["cast", "spells"] || cant_tail == ["cast", "spells", "this", "turn"] {
             return Some(Restriction::cast_spells(player));
         }
-        if cant_tail == ["cast", "creature", "spells"] {
+        if cant_tail == ["cast", "creature", "spells"]
+            || cant_tail == ["cast", "creature", "spells", "this", "turn"]
+        {
             return Some(Restriction::cast_creature_spells(player));
         }
         if let Some(spell_filter) = parse_cast_more_than_one_limit_filter(cant_tail) {
@@ -4775,6 +4796,15 @@ fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect::Re
 }
 
 fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
+    if words.starts_with(&["your", "opponents", "who", "have"]) {
+        return Some((PlayerFilter::Opponent, 4));
+    }
+    if words.starts_with(&["each", "player", "who", "has"]) {
+        return Some((PlayerFilter::Any, 4));
+    }
+    if words.starts_with(&["each", "opponent", "who", "has"]) {
+        return Some((PlayerFilter::Opponent, 4));
+    }
     if words.starts_with(&["your", "opponents"]) {
         return Some((PlayerFilter::Opponent, 2));
     }
@@ -5930,13 +5960,6 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         return Some(KeywordAction::Marker("spectacle"));
     }
 
-    if words.first().copied() == Some("companion") {
-        if words.len() == 1 {
-            return Some(KeywordAction::Marker("companion"));
-        }
-        return marker_text_from_words(&words).map(KeywordAction::MarkerText);
-    }
-
     if words.first().copied() == Some("hideaway") {
         if words.len() == 1 {
             return Some(KeywordAction::MarkerText("Hideaway".to_string()));
@@ -5959,13 +5982,6 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
     if words.first().copied() == Some("impending") {
         if words.len() == 1 {
             return Some(KeywordAction::MarkerText("Impending".to_string()));
-        }
-        return marker_text_from_words(&words).map(KeywordAction::MarkerText);
-    }
-
-    if words.first().copied() == Some("eternalize") {
-        if words.len() == 1 {
-            return Some(KeywordAction::MarkerText("Eternalize".to_string()));
         }
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
@@ -6107,28 +6123,6 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
         return Some(KeywordAction::Marker("vanishing"));
     }
 
-    if words.first().copied() == Some("dredge") {
-        if let Some(amount_word) = words.get(1)
-            && let Ok(amount) = amount_word.parse::<u32>()
-        {
-            return Some(KeywordAction::MarkerText(format!("Dredge {amount}")));
-        }
-        return Some(KeywordAction::MarkerText("Dredge".to_string()));
-    }
-
-    if words.first().copied() == Some("warp") {
-        if let Some((cost, _)) = leading_mana_symbols_to_oracle(&words[1..]) {
-            return Some(KeywordAction::MarkerText(format!("Warp {cost}")));
-        }
-        if words.len() > 1 {
-            return Some(KeywordAction::MarkerText(format!(
-                "Warp {}",
-                words[1..].join(" ")
-            )));
-        }
-        return Some(KeywordAction::MarkerText("Warp".to_string()));
-    }
-
     if words.first().copied() == Some("harness") {
         if words.len() > 1 {
             return Some(KeywordAction::MarkerText(format!(
@@ -6160,26 +6154,6 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
     }
     if words.as_slice().starts_with(&["doctor", "companion"]) {
         return Some(KeywordAction::Marker("doctor companion"));
-    }
-    if words.as_slice().starts_with(&["splice", "onto", "arcane"]) {
-        if let Some((cost, _)) = leading_mana_symbols_to_oracle(&words[3..]) {
-            return Some(KeywordAction::MarkerText(format!(
-                "Splice onto Arcane {cost}"
-            )));
-        }
-        let tail = &words[3..];
-        let reminder_start = tail
-            .windows(3)
-            .position(|window| window == ["as", "you", "cast"])
-            .or_else(|| tail.iter().position(|word| *word == "as"));
-        let cost_words = reminder_start.map_or(tail, |idx| &tail[..idx]);
-        if !cost_words.is_empty() {
-            let cost_text = cost_words.join(" ");
-            return Some(KeywordAction::MarkerText(format!(
-                "Splice onto Arcane—{cost_text}"
-            )));
-        }
-        return Some(KeywordAction::Marker("splice onto arcane"));
     }
 
     // Casualty N - "as you cast this spell, you may sacrifice a creature with power N or greater"

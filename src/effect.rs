@@ -815,6 +815,9 @@ pub enum Value {
     /// The greatest power among objects matching a filter.
     GreatestPower(ObjectFilter),
 
+    /// The greatest toughness among objects matching a filter.
+    GreatestToughness(ObjectFilter),
+
     /// The greatest mana value among objects matching a filter.
     GreatestManaValue(ObjectFilter),
 
@@ -873,6 +876,9 @@ pub enum Value {
 
     /// Number of cards in a player's hand
     CardsInHand(PlayerFilter),
+
+    /// Devotion to the color previously chosen for the source object.
+    DevotionToChosenColor(PlayerFilter),
 
     /// Total life gained this turn by players matching the filter.
     LifeGainedThisTurn(PlayerFilter),
@@ -3602,6 +3608,12 @@ impl Effect {
         Self::new(ChooseCardNameEffect::new(chooser, filter, tag))
     }
 
+    /// Choose a color and store it on the source object for later effects.
+    pub fn choose_color(chooser: PlayerFilter) -> Self {
+        use crate::effects::ChooseColorEffect;
+        Self::new(ChooseColorEffect::new(chooser))
+    }
+
     /// Create a conditional effect based on game state.
     ///
     /// Example: "If you control a creature, draw a card. Otherwise, gain 3 life."
@@ -3973,10 +3985,22 @@ impl Effect {
         player: PlayerFilter,
         reveal: bool,
     ) -> Self {
+        Self::search_library_as(filter, destination, player.clone(), player, reveal)
+    }
+
+    /// Create a "search library" effect with an explicit searching player.
+    pub fn search_library_as(
+        filter: ObjectFilter,
+        destination: Zone,
+        chooser: PlayerFilter,
+        player: PlayerFilter,
+        reveal: bool,
+    ) -> Self {
         use crate::effects::SearchLibraryEffect;
         Self::new(SearchLibraryEffect::new(
             filter,
             destination,
+            chooser,
             player,
             reveal,
         ))

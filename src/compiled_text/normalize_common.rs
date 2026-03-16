@@ -5755,6 +5755,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::GreatestToughness(filter) => {
+            format!(
+                "the greatest toughness among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
         Value::GreatestManaValue(filter) => {
             format!(
                 "the greatest mana value among {}",
@@ -5822,6 +5828,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         ),
         Value::CardsInHand(filter) => format!(
             "the number of cards in {} hand",
+            describe_possessive_player_filter(filter)
+        ),
+        Value::DevotionToChosenColor(filter) => format!(
+            "{} devotion to the chosen color",
             describe_possessive_player_filter(filter)
         ),
         Value::LifeGainedThisTurn(filter) => match filter {

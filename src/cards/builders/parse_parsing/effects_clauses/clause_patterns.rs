@@ -219,7 +219,9 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
     };
 
     let tail = &clause_words[prefix_len..];
-    if !tail.starts_with(&["you", "may", "play"]) {
+    let is_cast = tail.starts_with(&["you", "may", "cast"]);
+    let is_play = tail.starts_with(&["you", "may", "play"]);
+    if !is_cast && !is_play {
         return Err(CardTextError::ParseError(format!(
             "unsupported until-end-of-turn permission clause (clause: '{}')",
             clause_words.join(" ")
@@ -232,7 +234,12 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
             clause_words.join(" ")
         )));
     };
-    if as_copy || consumed != target_words.len() {
+    let permission_tail = &target_words[consumed..];
+    let without_paying_mana_cost = permission_tail == ["without", "paying", "its", "mana", "cost"]
+        || permission_tail == ["without", "paying", "their", "mana", "cost"]
+        || permission_tail == ["without", "paying", "that", "cards", "mana", "cost"]
+        || permission_tail == ["without", "paying", "that", "card", "mana", "cost"];
+    if as_copy || !(permission_tail.is_empty() || without_paying_mana_cost) {
         return Err(CardTextError::ParseError(format!(
             "unsupported until-end-of-turn play target (clause: '{}')",
             clause_words.join(" ")
@@ -242,8 +249,8 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
     Ok(Some(EffectAst::GrantPlayTaggedUntilEndOfTurn {
         tag: TagKey::from(IT_TAG),
         player: PlayerAst::You,
-        allow_land: true,
-        without_paying_mana_cost: false,
+        allow_land: is_play,
+        without_paying_mana_cost,
     }))
 }
 

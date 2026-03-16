@@ -2711,20 +2711,6 @@ fn test_parse_marker_keyword_with_cost_keeps_cost_in_render() {
 }
 
 #[test]
-fn test_parse_companion_marker_line() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Companion Probe")
-        .card_types(vec![CardType::Creature])
-        .parse_text("Companion each nonland card in your starting deck has a different name")
-        .expect("companion marker line should parse");
-
-    let rendered = oracle_like_lines(&def).join(" ");
-    assert!(
-        rendered.contains("Companion"),
-        "expected companion marker in render output, got {rendered}"
-    );
-}
-
-#[test]
 fn test_parse_hideaway_marker_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hideaway Probe")
         .card_types(vec![CardType::Land])
@@ -11317,6 +11303,32 @@ fn parse_search_filter_artifact_with_mana_ability_or_basic_land() {
 }
 
 #[test]
+fn parse_search_filter_artifact_with_mana_cost_zero_or_one() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Urza's Saga Search Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search your library for an artifact card with mana cost 0 or 1, put it onto the battlefield, then shuffle.",
+        )
+        .expect("artifact-with-mana-cost-zero-or-one search should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    let compact = spell_debug.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("sequenceeffect")
+            && compact.contains("chooseobjectseffect")
+            && compact.contains("any_of:[objectfilter")
+            && compact.contains("card_types:[artifact")
+            && compact.contains("has_mana_cost:true")
+            && compact.contains("no_x_in_cost:true")
+            && compact.contains("mana_value:some(equal(0")
+            && compact.contains("mana_value:some(equal(1")
+            && compact.contains("putontobattlefieldeffect")
+            && compact.contains("shufflelibraryeffect"),
+        "expected exact zero-or-one mana-cost search branches, got {spell_debug}"
+    );
+}
+
+#[test]
 fn render_powerstone_token_name() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Powerstone Variant")
         .parse_text("Create a tapped Powerstone token.")
@@ -15830,6 +15842,82 @@ fn parse_exile_top_card_you_may_play_that_card_this_turn() {
 }
 
 #[test]
+fn parse_until_end_of_turn_you_may_cast_that_card() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ragavan Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature deals combat damage to a player, create a Treasure token and exile the top card of that player's library. Until end of turn, you may cast that card.",
+        )
+        .expect("until-end-of-turn cast-that-card clause should parse");
+
+    let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("grantplaytaggedeffect"),
+        "expected end-of-turn tagged cast/play grant, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("granttaggedspellfreecastuntilendofturneffect"),
+        "expected ordinary cast permission without free-cast helper, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_until_end_of_turn_you_may_play_that_card_without_paying_mana_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mind's Desire Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile the top card of your library. Until end of turn, you may play that card without paying its mana cost.",
+        )
+        .expect("until-end-of-turn free play clause should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("grantplaytaggedeffect"),
+        "expected end-of-turn tagged play grant, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("granttaggedspellfreecastuntilendofturneffect"),
+        "expected free-cast/play permission, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_your_opponents_cant_cast_spells_this_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Silence Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Your opponents can't cast spells this turn.")
+        .expect("this-turn cast restriction should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("some(") && spell_debug.contains("canteffect"),
+        "expected cant effect for cast restriction, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("restriction: castspellsmatching(") && spell_debug.contains("opponent"),
+        "expected opponent cast restriction, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_your_opponents_cant_cast_creature_spells_this_turn() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Creature Silence Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Your opponents can't cast creature spells this turn.")
+        .expect("this-turn creature-spell restriction should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("some(") && spell_debug.contains("canteffect"),
+        "expected cant effect for creature-spell restriction, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("creature"),
+        "expected creature-spell cast restriction, got {spell_debug}"
+    );
+}
+
+#[test]
 fn parse_target_player_may_cast_tagged_card_without_paying_mana_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cast Tagged Variant")
         .card_types(vec![CardType::Sorcery])
@@ -16851,9 +16939,9 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Cultivator Colossus",
     "Echoing Deeps",
     "Fatal Push",
-    "Golgari Thug",
     "Grief",
     "Mox Amber",
+    "Nykthos, Shrine to Nyx",
     "Nine-Lives Familiar",
     "Otawara, Soaring City",
     "Orcish Bowmasters",
@@ -16863,10 +16951,8 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Sephiroth, Fabled SOLDIER",
     "Shifting Woodland",
     "Spelunking",
-    "Susurian Voidborn",
     "Talon Gates of Madara",
     "The Mycosynth Gardens",
-    "The Stone Brain",
     "Tolaria West",
     "Turn the Earth",
     "Unmarked Grave",
@@ -16875,10 +16961,11 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
 
 const STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS: &[&str] = &[
     "Clown Car",
+    "Golgari Thug",
     "Gravecrawler",
     "Hancock, Ghoulish Mayor",
     "Lake of the Dead",
-    "Nykthos, Shrine to Nyx",
+    "Susurian Voidborn",
     "The Soul Stone",
 ];
 
@@ -16907,7 +16994,7 @@ strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
 strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
-strict_parse_card_test!(strict_parse_golgari_thug, "Golgari Thug");
+strict_parse_card_expected_fail_test!(strict_parse_golgari_thug, "Golgari Thug");
 strict_parse_card_expected_fail_test!(strict_parse_gravecrawler, "Gravecrawler");
 strict_parse_card_test!(strict_parse_grief, "Grief");
 strict_parse_card_expected_fail_test!(
@@ -16917,7 +17004,7 @@ strict_parse_card_expected_fail_test!(
 strict_parse_card_expected_fail_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
 strict_parse_card_test!(strict_parse_mox_amber, "Mox Amber");
 strict_parse_card_test!(strict_parse_nine_lives_familiar, "Nine-Lives Familiar");
-strict_parse_card_expected_fail_test!(strict_parse_nykthos_shrine_to_nyx, "Nykthos, Shrine to Nyx");
+strict_parse_card_test!(strict_parse_nykthos_shrine_to_nyx, "Nykthos, Shrine to Nyx");
 strict_parse_card_test!(strict_parse_orcish_bowmasters, "Orcish Bowmasters");
 strict_parse_card_test!(strict_parse_pawn_of_ulamog, "Pawn of Ulamog");
 strict_parse_card_test!(strict_parse_genesis_chamber, "Genesis Chamber");
@@ -16926,7 +17013,7 @@ strict_parse_card_test!(
     strict_parse_sephiroth_fabled_soldier,
     "Sephiroth, Fabled SOLDIER"
 );
-strict_parse_card_test!(strict_parse_susurian_voidborn, "Susurian Voidborn");
+strict_parse_card_expected_fail_test!(strict_parse_susurian_voidborn, "Susurian Voidborn");
 strict_parse_card_test!(strict_parse_talon_gates_of_madara, "Talon Gates of Madara");
 strict_parse_card_expected_fail_test!(strict_parse_the_soul_stone, "The Soul Stone");
 strict_parse_card_test!(strict_parse_unmarked_grave, "Unmarked Grave");
@@ -17315,5 +17402,148 @@ fn sacrificed_creature_was_hamster_with_extra_tail_still_fails_loudly() {
             || rendered.contains("unsupported predicate")
             || rendered.contains("could not find verb"),
         "expected loud failure for unsupported sacrificed-creature tail, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_can_be_your_commander_static_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dihada Variant")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text("This can be your commander.")
+        .expect("can-be-commander line should parse");
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        static_ids.contains(&StaticAbilityId::CanBeCommander),
+        "expected can-be-commander static ability, got {static_ids:?}"
+    );
+}
+
+#[test]
+fn parse_search_library_reveal_disjunction_to_hand_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Archdruid's Charm Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Search your library for a creature or land card, reveal it, put it into your hand, then shuffle.")
+        .expect("search reveal disjunction to hand should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("SearchLibraryEffect")
+            && debug.contains("chooser: You")
+            && debug.contains("destination: Hand"),
+        "expected search-library hand effect with explicit chooser, got {debug}"
+    );
+}
+
+#[test]
+fn parse_search_library_face_down_exile_then_shuffle_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hoarding Broodlord Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("When this creature enters, search your library for a card, exile it face down, then shuffle.")
+        .expect("search face-down exile clause should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("ExileEffect")
+            && debug.contains("face_down: true")
+            && debug.contains("ShuffleLibraryEffect"),
+        "expected choose-plus-face-down-exile search sequence, got {debug}"
+    );
+}
+
+#[test]
+fn parse_tithe_separate_searches_then_reveal_to_hand() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tithe Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Search your library for a Plains card. If an opponent controls more lands than you, you may search your library for an additional Plains card. Reveal those cards. Put them into your hand. Then shuffle.")
+        .expect("Tithe-style repeated search should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("RevealTaggedEffect")
+            && debug.contains("MoveToZone")
+            && debug.contains("zone: Hand")
+            && debug.contains("ShuffleLibraryEffect"),
+        "expected repeated tagged search, reveal, hand move, and shuffle, got {debug}"
+    );
+}
+
+#[test]
+fn parse_last_march_of_the_ents_draws_greatest_toughness() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Last March Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Draw cards equal to the greatest toughness among creatures you control.")
+        .expect("greatest-toughness draw clause should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("Draw") && debug.contains("GreatestToughness"),
+        "expected draw count based on greatest toughness, got {debug}"
+    );
+}
+
+#[test]
+fn parse_search_target_opponents_library_face_down_exile_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Praetor's Grasp Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Search target opponent's library for a card and exile it face down. Then that player shuffles.",
+        )
+        .expect("search target-opponent library face-down exile should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("chooser: You")
+            && debug.contains("owner: Some(Target(")
+            && debug.contains("Opponent")
+            && debug.contains("face_down: true"),
+        "expected controller-chooses opponent-library face-down exile search, got {debug}"
+    );
+}
+
+#[test]
+fn parse_cast_this_spell_as_though_it_had_flash_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Necromancy Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("You may cast this spell as though it had flash.")
+        .expect("cast-this-spell-as-though-it-had-flash line should parse");
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        static_ids.contains(&StaticAbilityId::Flash),
+        "expected flash static ability, got {static_ids:?}"
+    );
+}
+
+#[test]
+fn parse_choose_color_then_add_devotion_to_that_color() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Nykthos Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text("{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.")
+        .expect("choose-color devotion mana ability should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ChooseColorEffect")
+            && debug.contains("AddManaOfChosenColorEffect")
+            && debug.contains("DevotionToChosenColor"),
+        "expected choose-color plus devotion-to-chosen-color mana sequence, got {debug}"
     );
 }

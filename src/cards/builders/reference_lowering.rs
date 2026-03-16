@@ -440,6 +440,9 @@ pub(crate) fn resolve_value_it_tag(
         Value::TotalToughness(filter) => Ok(Value::TotalToughness(resolve_it_tag(filter, refs)?)),
         Value::TotalManaValue(filter) => Ok(Value::TotalManaValue(resolve_it_tag(filter, refs)?)),
         Value::GreatestPower(filter) => Ok(Value::GreatestPower(resolve_it_tag(filter, refs)?)),
+        Value::GreatestToughness(filter) => {
+            Ok(Value::GreatestToughness(resolve_it_tag(filter, refs)?))
+        }
         Value::GreatestManaValue(filter) => {
             Ok(Value::GreatestManaValue(resolve_it_tag(filter, refs)?))
         }

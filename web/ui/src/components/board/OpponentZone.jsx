@@ -352,7 +352,9 @@ function OpponentSlot({
               cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
             }}
           >
-            {player.name}
+            <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+              {player.name}
+            </span>
             {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
           </span>
           <ManaPool pool={player.mana_pool} />

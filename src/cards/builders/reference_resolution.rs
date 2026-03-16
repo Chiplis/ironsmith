@@ -487,6 +487,9 @@ fn advance_reference_frame_for_effect(
             track_effect_player(*player, frame, true, true)?;
             frame.last_object_tag = Some(tag.as_str().to_string());
         }
+        EffectAst::ChooseColor { player } => {
+            track_effect_player(*player, frame, true, true)?;
+        }
         EffectAst::DrawForEachTaggedMatching { player, .. } => {
             track_effect_player(*player, frame, true, true)?;
         }
@@ -1453,6 +1456,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 + bind_unresolved_it_in_tag(tag, seed_tag)
         }
         EffectAst::ChooseCardName { tag, .. } => bind_unresolved_it_in_tag(tag, seed_tag),
+        EffectAst::ChooseColor { .. } => 0,
         EffectAst::Sacrifice { filter, .. }
         | EffectAst::SacrificeAll { filter, .. }
         | EffectAst::ExchangeControl { filter, .. }
@@ -1676,6 +1680,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter)
+        | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::ColorsAmong(filter) => bind_unresolved_it_in_filter(filter, seed_tag),

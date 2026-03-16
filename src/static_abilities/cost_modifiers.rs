@@ -162,6 +162,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 filter.description()
             )),
         ),
+        Value::GreatestToughness(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the greatest toughness among {}",
+                filter.description()
+            )),
+        ),
         Value::GreatestManaValue(filter) => (
             "{X}".to_string(),
             Some(format!(

@@ -290,7 +290,9 @@ export default function MyZone({
               cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
             }}
           >
-            {player.name}
+            <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+              {player.name}
+            </span>
             {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
           </span>
           <ZoneCountInline player={player} />

@@ -151,6 +151,19 @@ pub fn resolve_value(
                 .unwrap_or(0);
             Ok(max)
         }
+        Value::GreatestToughness(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let candidate_ids = candidate_ids_for_filter(game, filter);
+            let max = candidate_ids
+                .iter()
+                .copied()
+                .filter_map(|id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+                .filter_map(|(id, obj)| game.calculated_toughness(id).or_else(|| obj.toughness()))
+                .max()
+                .unwrap_or(0);
+            Ok(max)
+        }
         Value::GreatestManaValue(filter) => {
             let filter_ctx = ctx.filter_context(game);
             let candidate_ids = candidate_ids_for_filter(game, filter);
@@ -511,6 +524,25 @@ pub fn resolve_value(
                 .player(player_id)
                 .ok_or(ExecutionError::PlayerNotFound(player_id))?;
             Ok(player.hand.len() as i32)
+        }
+
+        Value::DevotionToChosenColor(player_spec) => {
+            let chosen = game.chosen_color(ctx.source).ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "DevotionToChosenColor requires a previously chosen color".to_string(),
+                )
+            })?;
+            let player_ids = resolve_player_filter_to_list(
+                game,
+                player_spec,
+                &ctx.filter_context(game),
+                ctx,
+            )?;
+            let devotion: usize = player_ids
+                .iter()
+                .map(|pid| game.devotion_to_color(*pid, chosen))
+                .sum();
+            Ok(devotion as i32)
         }
 
         Value::LifeGainedThisTurn(player_spec) => {

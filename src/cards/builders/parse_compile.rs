@@ -1202,6 +1202,7 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::TotalToughness(filter)
         | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter)
+        | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter) => filter
             .tagged_constraints
             .iter()
@@ -6949,14 +6950,20 @@ fn try_compile_search_and_reorder_effect(
         EffectAst::SearchLibrary {
             filter,
             destination,
+            chooser,
             player,
             reveal,
             shuffle,
             count,
             tapped,
         } => {
+            let (chooser_filter, chooser_choices) =
+                resolve_effect_player_filter(*chooser, ctx, true, true, true)?;
             let (player_filter, mut choices) =
                 resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            for choice in chooser_choices {
+                push_choice(&mut choices, choice);
+            }
             let count = *count;
             let mut filter = filter.clone();
             if filter.owner.is_none() && !matches!(player_filter, PlayerFilter::You) {
@@ -6968,18 +6975,18 @@ fn try_compile_search_and_reorder_effect(
                     .clone()
                     .unwrap_or_else(|| player_filter.clone()),
             );
-            let owner_matches_chooser = filter
-                .owner
-                .as_ref()
-                .is_none_or(|owner| owner == &player_filter);
             let use_search_effect = *shuffle
                 && count.min == 0
                 && count.max == Some(1)
-                && *destination != Zone::Battlefield
-                && owner_matches_chooser;
+                && *destination != Zone::Battlefield;
             if use_search_effect {
-                let mut effect =
-                    Effect::search_library(filter, *destination, player_filter.clone(), *reveal);
+                let mut effect = Effect::search_library_as(
+                    filter,
+                    *destination,
+                    chooser_filter.clone(),
+                    player_filter.clone(),
+                    *reveal,
+                );
                 if ctx.auto_tag_object_targets {
                     let tag = ctx.next_tag("searched");
                     ctx.last_object_tag = Some(tag.clone());
@@ -7006,7 +7013,7 @@ fn try_compile_search_and_reorder_effect(
                 let choose = crate::effects::ChooseObjectsEffect::new(
                     filter,
                     count,
-                    player_filter.clone(),
+                    chooser_filter.clone(),
                     tag.clone(),
                 )
                 .in_zone(Zone::Library)
@@ -7247,6 +7254,17 @@ fn try_compile_object_zone_and_exchange_effect(
                 tag.clone(),
             ));
             ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_player_filter = Some(chooser);
+            (effects, choices)
+        }
+        EffectAst::ChooseColor { player } => {
+            let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, false)?;
+            let mut effects: Vec<Effect> = choices
+                .iter()
+                .cloned()
+                .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
+                .collect();
+            effects.push(Effect::choose_color(chooser.clone()));
             ctx.last_player_filter = Some(chooser);
             (effects, choices)
         }

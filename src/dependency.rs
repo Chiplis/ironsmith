@@ -1040,7 +1040,10 @@ fn value_references_pt(value: &Value) -> bool {
         // These directly reference P/T of objects
         Value::SourcePower | Value::SourceToughness => true,
         Value::PowerOf(_) | Value::ToughnessOf(_) => true,
-        Value::TotalPower(_) | Value::TotalToughness(_) | Value::GreatestPower(_) => true,
+        Value::TotalPower(_)
+        | Value::TotalToughness(_)
+        | Value::GreatestPower(_)
+        | Value::GreatestToughness(_) => true,
         Value::Add(left, right) => value_references_pt(left) || value_references_pt(right),
         Value::Scaled(value, _) => value_references_pt(value),
 
@@ -1063,6 +1066,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CountPlayers(_)
         | Value::PartySize(_)
         | Value::Devotion { .. }
+        | Value::DevotionToChosenColor(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)

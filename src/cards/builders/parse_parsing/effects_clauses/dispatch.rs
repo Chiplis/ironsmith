@@ -82,10 +82,9 @@ pub(crate) fn parse_effect_clause(tokens: &[Token]) -> Result<EffectAst, CardTex
             | ["you", "choose", "a", "color"]
             | ["you", "choose", "color"]
     ) {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported choose-color clause (clause: '{}') [rule=choose-color]",
-            clause_words.join(" ")
-        )));
+        return Ok(EffectAst::ChooseColor {
+            player: crate::cards::builders::PlayerAst::Implicit,
+        });
     }
 
     if let Some((chooser, choose_filter, choose_count)) =

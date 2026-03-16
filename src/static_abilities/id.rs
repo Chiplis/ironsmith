@@ -203,6 +203,9 @@ pub enum StaticAbilityId {
     /// Pregame action available from opening hand.
     PregameAction,
 
+    /// Supported keyword-like text without dedicated runtime hooks yet.
+    KeywordText,
+
     /// Unimplemented keyword-like marker text preserved from parser/builder.
     KeywordMarker,
 
@@ -399,6 +402,7 @@ impl StaticAbilityId {
             | DiscardOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
             | PregameAction
+            | KeywordText
             | KeywordMarker
             | RuleTextPlaceholder
             | KeywordFallbackText
@@ -452,6 +456,7 @@ impl StaticAbilityId {
                 | Rebound
                 | Cascade
                 | Unleash
+                | KeywordText
                 | KeywordFallbackText
         )
     }

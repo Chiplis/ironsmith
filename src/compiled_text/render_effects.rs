@@ -3385,7 +3385,7 @@ pub(super) fn describe_may_search_library_and_or_nonlibrary(
     }
 
     let nonlibrary_zone = zone_name(choose_primary_zone(choose)?)?;
-    let actor = may.decider.as_ref().unwrap_or(&search.player);
+    let actor = may.decider.as_ref().unwrap_or(&search.chooser);
     let actor_text = describe_player_filter(actor);
     let actor_sentence = capitalize_first(&actor_text);
     let possessive = describe_possessive_player_filter(&search.player);
@@ -4665,6 +4665,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "a card".to_string()
         };
         return format!("{chooser} {choose_verb} {selection} name");
+    }
+    if let Some(choose_color) = effect.downcast_ref::<crate::effects::ChooseColorEffect>() {
+        let chooser = describe_player_filter(&choose_color.chooser);
+        let choose_verb = player_verb(&chooser, "choose", "chooses");
+        return format!("{chooser} {choose_verb} a color");
     }
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         let target = describe_choose_spec(&move_to_zone.target);
@@ -8792,6 +8797,7 @@ pub(super) fn ability_can_render_as_keyword_group(ability: &Ability) -> bool {
         AbilityKind::Static(static_ability) => {
             static_ability.is_keyword()
                 || static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                || static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordText
                 || static_ability.id()
                     == crate::static_abilities::StaticAbilityId::KeywordFallbackText
         }

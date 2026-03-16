@@ -245,15 +245,44 @@ impl CardRegistry {
                 continue;
             };
 
+            let resolved_name_key = normalize_card_lookup_name(&resolved_name);
+            generated_registry::register_generated_parser_cards_if_name(self, |name| {
+                normalize_card_lookup_name(name) == resolved_name_key
+            });
+            if self.get(&resolved_name).is_some() {
+                if !resolved_name.eq_ignore_ascii_case(normalized) {
+                    self.register_alias(normalized, &resolved_name);
+                }
+                continue;
+            }
+
+            if let Ok(definition) = generated_registry::try_compile_card_by_name(&resolved_name) {
+                self.register(definition);
+                if self.get(&resolved_name).is_some()
+                    && !resolved_name.eq_ignore_ascii_case(normalized)
+                {
+                    self.register_alias(normalized, &resolved_name);
+                }
+                continue;
+            }
+
             let Ok(definition) =
                 compile_generated_parser_card_allow_unsupported(&resolved_name, &parse_block)
             else {
                 continue;
             };
 
+            if !resolved_name.eq_ignore_ascii_case(normalized) {
+                // Flavor/printed aliases should still resolve to their canonical card even if the
+                // canonical generated definition currently needs the unsupported fallback marker.
+                // We keep that fallback visible on the definition rather than pretending support.
+                self.register_explicit(definition);
+                self.register_alias(normalized, &resolved_name);
+                continue;
+            }
+
             self.register(definition);
-            if self.get(&resolved_name).is_some() && !resolved_name.eq_ignore_ascii_case(normalized)
-            {
+            if self.get(&resolved_name).is_some() {
                 self.register_alias(normalized, &resolved_name);
             }
         }

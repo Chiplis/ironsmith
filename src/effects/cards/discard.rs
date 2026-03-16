@@ -202,6 +202,16 @@ impl EffectExecutor for DiscardEffect {
                 &mut *ctx.decision_maker,
             );
             if !result.prevented {
+                if card_id == ctx.source
+                    && let Some(x) = ctx.x_value
+                    && let Some(new_id) = result.new_id
+                    && let Some(obj) = game.object_mut(new_id)
+                {
+                    // Preserve the chosen X on "discard this card" costs so
+                    // "when you cycle this card" triggers in the graveyard can
+                    // still evaluate references like "mana value equal to X".
+                    obj.x_value = Some(x);
+                }
                 discarded += 1;
                 discarded_cards.push(card_id);
                 discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
@@ -549,6 +559,45 @@ mod tests {
                 .expect("discard event")
                 .player,
             alice
+        );
+    }
+
+    #[test]
+    fn test_discarding_source_as_cost_preserves_x_on_moved_object() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_id = add_card_to_hand(&mut game, "Cycling Test", alice);
+        let stable_id = game
+            .object(source_id)
+            .expect("source card should exist in hand")
+            .stable_id;
+
+        let effect = DiscardEffect::new_with_filter(
+            1,
+            PlayerFilter::You,
+            false,
+            Some(crate::filter::ObjectFilter::source().in_zone(Zone::Hand)),
+        );
+        let mut ctx = ExecutionContext::new_default(source_id, alice).with_x(3);
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("discarding the source card as a cost should succeed");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+
+        let moved_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("discarded source card should still be reachable by stable id");
+        let moved_obj = game
+            .object(moved_id)
+            .expect("discarded source card should still exist");
+        assert_eq!(moved_obj.zone, Zone::Graveyard);
+        assert_eq!(
+            moved_obj.x_value,
+            Some(3),
+            "discarding the source card as part of an X cost should preserve the chosen X on the new object"
         );
     }
 }

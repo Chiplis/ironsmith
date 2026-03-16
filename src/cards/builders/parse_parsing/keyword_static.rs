@@ -234,6 +234,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_characteristic_defining_pt_line),
         single_static_ability_ast_rule!(parse_no_maximum_hand_size_line),
+        single_static_ability_ast_rule!(parse_can_be_your_commander_line),
         single_static_ability_ast_rule!(parse_reduced_maximum_hand_size_line),
         single_static_ability_ast_rule!(parse_library_of_leng_discard_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
@@ -370,6 +371,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
+        single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
         single_static_ability_ast_rule!(parse_prevent_all_damage_to_source_by_creatures_line),
         single_static_ability_ast_rule!(parse_prevent_all_damage_dealt_to_creatures_line),
@@ -773,7 +775,9 @@ pub(crate) fn parse_ward_static_ability_line(
 
     let cost_tokens = trim_commas(&tokens[1..]);
     if cost_tokens.is_empty() {
-        return Ok(Some(StaticAbility::keyword_marker("Ward".to_string())));
+        return Err(CardTextError::ParseError(
+            "ward keyword missing cost".to_string(),
+        ));
     }
 
     if let Some(cost) = parse_ward_discard_card_type_cost(&cost_tokens) {
@@ -786,15 +790,10 @@ pub(crate) fn parse_ward_static_ability_line(
         return Ok(Some(StaticAbility::ward(cost)));
     }
 
-    // Preserve ward lines as static marker text rather than lowering the
-    // ward cost into spell effects when a cost variant is not yet modeled.
-    let marker_tail = format_ward_marker_tail(&cost_tokens);
-    let marker = if marker_tail.is_empty() {
-        "Ward".to_string()
-    } else {
-        format!("Ward—{}", marker_tail)
-    };
-    Ok(Some(StaticAbility::keyword_marker(marker)))
+    Err(CardTextError::ParseError(format!(
+        "unsupported ward cost clause (clause: '{}')",
+        clause_words.join(" ")
+    )))
 }
 
 pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[Token]) -> Option<TotalCost> {
@@ -4784,6 +4783,20 @@ pub(crate) fn parse_grant_flash_to_noncreature_spells_line(
     Ok(None)
 }
 
+pub(crate) fn parse_cast_this_spell_as_though_it_had_flash_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let normalized = words(tokens);
+    let matches = normalized.as_slice()
+        == ["you", "may", "cast", "this", "spell", "as", "though", "it", "had", "flash"]
+        || normalized.as_slice()
+            == ["you", "may", "cast", "this", "as", "though", "it", "had", "flash"];
+    if matches {
+        return Ok(Some(StaticAbility::flash()));
+    }
+    Ok(None)
+}
+
 pub(crate) fn parse_attacks_each_combat_if_able_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -5007,6 +5020,16 @@ pub(crate) fn parse_no_maximum_hand_size_line(
     let words = words(tokens);
     if words.as_slice() == ["you", "have", "no", "maximum", "hand", "size"] {
         return Ok(Some(StaticAbility::no_maximum_hand_size()));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_can_be_your_commander_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.as_slice() == ["this", "can", "be", "your", "commander"] {
+        return Ok(Some(StaticAbility::can_be_commander()));
     }
     Ok(None)
 }

@@ -143,6 +143,7 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
             "annihilator {amount}"
         ))),
         KeywordAction::Marker(name) => Some(StaticAbility::keyword_marker(name)),
+        KeywordAction::KeywordText(text) => Some(StaticAbility::keyword_text(text)),
         KeywordAction::MarkerText(text) => Some(StaticAbility::keyword_marker(text)),
         _ => None,
     }
