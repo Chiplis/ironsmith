@@ -11,6 +11,7 @@ default-members = ["."]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+doctest = false
 
 [dependencies]
 stacker = "0.1"
@@ -28,7 +29,7 @@ getrandom = { version = "0.3", features = ["wasm_js"], optional = true }
 js-sys = { version = "0.3", optional = true }
 
 [features]
-default = ["serialization"]
+default = ["serialization", "engine-integration-tests", "parser-tests-full"]
 serialization = ["dep:serde", "dep:serde_json"]
 generated-registry = []
 engine-integration-tests = []
