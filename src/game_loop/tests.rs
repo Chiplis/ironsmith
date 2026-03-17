@@ -2406,9 +2406,11 @@ fn test_fatal_push_with_revolt_destroys_four_mana_target() {
     let target_id = game.create_object_from_card(&four_mana_creature, bob, Zone::Battlefield);
     let fatal_push_id = game.create_object_from_definition(&fatal_push, alice, Zone::Stack);
 
-    game.turn_history
-        .permanents_left_battlefield_under_controller_this_turn
-        .insert(alice, 1);
+    let revolt_permanent = CardBuilder::new(CardId::from_raw(9981), "Revolt Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let revolt_id = game.create_object_from_card(&revolt_permanent, alice, Zone::Battlefield);
+    game.move_object(revolt_id, Zone::Graveyard);
 
     game.push_to_stack(
         StackEntry::new(fatal_push_id, alice).with_targets(vec![Target::Object(target_id)]),

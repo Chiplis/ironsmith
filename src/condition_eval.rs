@@ -90,7 +90,7 @@ fn evaluate_condition_shared_core(
             ctx.filter_source,
         )),
         Condition::YourTurn => Some(game.turn.active_player == ctx.controller),
-        Condition::CreatureDiedThisTurn => Some(game.turn_history.creatures_died_this_turn > 0),
+        Condition::CreatureDiedThisTurn => Some(game.turn_history.total_creatures_died_this_turn() > 0),
         Condition::CastSpellThisTurn => Some(game.turn_history.any_spell_was_cast_this_turn()),
         Condition::AttackedThisTurn => Some(
             game.turn_history
@@ -1057,7 +1057,7 @@ fn count_distinct_matching_powers(
 
 fn player_had_land_enter_battlefield_this_turn(game: &GameState, player_id: PlayerId) -> bool {
     game.turn_history
-        .player_had_land_enter_battlefield_this_turn(game, player_id)
+        .player_had_land_enter_battlefield_this_turn(player_id)
 }
 
 /// Evaluate a condition with minimal context (for cast-time evaluation).

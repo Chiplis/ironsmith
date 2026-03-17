@@ -1993,43 +1993,6 @@ impl GameState {
         self.declined_commander_command_zone_moves.remove(&old_id);
         let old_zone = old_object.zone;
         let owner = old_object.owner;
-        let controller = old_object.controller;
-
-        // Track creature deaths (battlefield to graveyard) and record pending death event
-        let is_creature_dying = old_zone == Zone::Battlefield
-            && new_zone == Zone::Graveyard
-            && old_object.is_creature();
-        if is_creature_dying {
-            self.turn_history.creatures_died_this_turn += 1;
-            *self
-                .turn_history
-                .creatures_died_under_controller_this_turn
-                .entry(controller)
-                .or_insert(0) += 1;
-        }
-        if old_zone == Zone::Battlefield
-            && new_zone != Zone::Battlefield
-            && old_object.is_creature()
-        {
-            *self
-                .turn_history
-                .creatures_left_battlefield_under_controller_this_turn
-                .entry(controller)
-                .or_insert(0) += 1;
-        }
-        if old_zone == Zone::Battlefield && new_zone != Zone::Battlefield {
-            *self
-                .turn_history
-                .permanents_left_battlefield_under_controller_this_turn
-                .entry(controller)
-                .or_insert(0) += 1;
-        }
-        if new_zone == Zone::Battlefield {
-            self.turn_history
-                .objects_entered_battlefield_this_turn
-                .insert(old_object.stable_id, controller);
-        }
-
         // Remove from old zone index
         self.remove_from_zone_index(old_id, old_zone, owner);
 
@@ -4191,15 +4154,6 @@ impl GameState {
         }
     }
 
-    /// Record that a creature was dealt damage by a given source this turn.
-    pub fn record_creature_damaged_by_this_turn(&mut self, creature: ObjectId, source: ObjectId) {
-        self.turn_history
-            .creatures_damaged_by_this_turn
-            .entry(creature)
-            .or_default()
-            .insert(source);
-    }
-
     /// Returns true if `creature` was dealt damage by `source` this turn.
     pub fn creature_was_damaged_by_source_this_turn(
         &self,
@@ -4653,12 +4607,22 @@ impl GameState {
         Option<crate::snapshot::ObjectSnapshot>,
         Option<crate::snapshot::ObjectSnapshot>,
     ) {
-        let object_snapshot = event.snapshot().cloned().or_else(|| {
-            event.object_id().and_then(|id| {
-                self.object(id)
-                    .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))
+        let object_snapshot = event
+            .downcast::<crate::events::zones::ZoneChangeEvent>()
+            .filter(|zone_change| zone_change.to == Zone::Battlefield)
+            .and_then(|zone_change| {
+                zone_change.objects.first().copied().and_then(|id| {
+                    self.object(id)
+                        .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))
+                })
             })
-        });
+            .or_else(|| event.snapshot().cloned())
+            .or_else(|| {
+                event.object_id().and_then(|id| {
+                    self.object(id)
+                        .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))
+                })
+            });
         let source_snapshot = event.inner().source_object().and_then(|id| {
             self.object(id)
                 .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))

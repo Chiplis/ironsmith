@@ -30,10 +30,6 @@ pub struct TurnEventRecord {
 pub struct TurnHistory {
     pub activated_abilities_this_turn: HashSet<(ObjectId, usize)>,
     pub chosen_modes_by_ability_this_turn: HashMap<(ObjectId, usize), HashSet<usize>>,
-    pub creatures_died_this_turn: u32,
-    pub creatures_died_under_controller_this_turn: HashMap<PlayerId, u32>,
-    pub creatures_left_battlefield_under_controller_this_turn: HashMap<PlayerId, u32>,
-    pub permanents_left_battlefield_under_controller_this_turn: HashMap<PlayerId, u32>,
     pub triggers_fired_this_turn: HashMap<(ObjectId, TriggerIdentity), u32>,
     pub turn_counters: TurnCounterTracker,
     pub foretell_actions_this_turn: HashSet<PlayerId>,
@@ -41,11 +37,8 @@ pub struct TurnHistory {
     pub players_attacked_this_turn: HashSet<PlayerId>,
     pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
-    pub creatures_entered_this_turn: HashMap<PlayerId, u32>,
-    pub objects_entered_battlefield_this_turn: HashMap<StableId, PlayerId>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
     pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
-    pub creatures_damaged_by_this_turn: HashMap<ObjectId, HashSet<ObjectId>>,
     pub event_records: Vec<TurnEventRecord>,
     pub staged_event_records: Vec<TurnEventRecord>,
 }
@@ -56,12 +49,6 @@ impl TurnHistory {
 
         self.activated_abilities_this_turn.clear();
         self.chosen_modes_by_ability_this_turn.clear();
-        self.creatures_died_this_turn = 0;
-        self.creatures_died_under_controller_this_turn.clear();
-        self.creatures_left_battlefield_under_controller_this_turn
-            .clear();
-        self.permanents_left_battlefield_under_controller_this_turn
-            .clear();
         self.triggers_fired_this_turn.clear();
         self.turn_counters.clear();
         self.foretell_actions_this_turn.clear();
@@ -69,11 +56,8 @@ impl TurnHistory {
         self.players_attacked_this_turn.clear();
         self.players_tapped_land_for_mana_this_turn.clear();
         self.creatures_attacked_this_turn.clear();
-        self.creatures_entered_this_turn.clear();
-        self.objects_entered_battlefield_this_turn.clear();
         self.crewed_this_turn.clear();
         self.saddled_this_turn.clear();
-        self.creatures_damaged_by_this_turn.clear();
         self.event_records.clear();
         self.staged_event_records.clear();
 
@@ -137,6 +121,31 @@ impl TurnHistory {
     pub fn total_spells_cast_this_turn(&self) -> u32 {
         self.projected_records()
             .filter(|record| record.event.downcast::<SpellCastEvent>().is_some())
+            .count() as u32
+    }
+
+    pub fn total_creatures_died_this_turn(&self) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.is_dies())
+            .filter(|event| {
+                event.snapshot.as_ref().is_some_and(|snapshot| {
+                    snapshot.card_types.contains(&CardType::Creature)
+                })
+            })
+            .count() as u32
+    }
+
+    pub fn creatures_died_under_controller(&self, player: PlayerId) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.is_dies())
+            .filter(|event| {
+                event.snapshot.as_ref().is_some_and(|snapshot| {
+                    snapshot.controller == player
+                        && snapshot.card_types.contains(&CardType::Creature)
+                })
+            })
             .count() as u32
     }
 
@@ -243,22 +252,21 @@ impl TurnHistory {
     }
 
     pub fn creatures_entered_under_controller(&self, player: PlayerId) -> u32 {
-        let event_total: u32 = self
-            .projected_records()
-            .filter(|record| record.event.downcast::<EnterBattlefieldEvent>().is_some())
+        self.projected_records()
+            .filter(|record| {
+                record.event.downcast::<EnterBattlefieldEvent>().is_some()
+                    || record
+                        .event
+                        .downcast::<ZoneChangeEvent>()
+                        .is_some_and(|event| event.is_etb())
+            })
             .filter(|record| {
                 record.object_snapshot.as_ref().is_some_and(|snapshot| {
                     snapshot.controller == player
                         && snapshot.card_types.contains(&CardType::Creature)
                 })
             })
-            .count() as u32;
-        event_total.max(
-            self.creatures_entered_this_turn
-                .get(&player)
-                .copied()
-                .unwrap_or(0),
-        )
+            .count() as u32
     }
 
     pub fn player_had_creature_enter_battlefield_this_turn(&self, player: PlayerId) -> bool {
@@ -267,25 +275,18 @@ impl TurnHistory {
 
     pub fn player_had_land_enter_battlefield_this_turn(
         &self,
-        game: &crate::game_state::GameState,
         player: PlayerId,
     ) -> bool {
-        let event_match = self.projected_records().any(|record| {
-            record.event.downcast::<EnterBattlefieldEvent>().is_some()
+        self.projected_records().any(|record| {
+            (record.event.downcast::<EnterBattlefieldEvent>().is_some()
+                || record
+                    .event
+                    .downcast::<ZoneChangeEvent>()
+                    .is_some_and(|event| event.is_etb()))
                 && record.object_snapshot.as_ref().is_some_and(|snapshot| {
                     snapshot.controller == player && snapshot.card_types.contains(&CardType::Land)
                 })
-        });
-        event_match
-            || self
-                .objects_entered_battlefield_this_turn
-                .iter()
-                .any(|(stable_id, entry_controller)| {
-                    *entry_controller == player
-                        && game
-                            .find_object_by_stable_id(*stable_id)
-                            .is_some_and(|object_id| game.object_has_card_type(object_id, CardType::Land))
-                })
+        })
     }
 
     pub fn object_entered_battlefield_controller_this_turn(
@@ -295,14 +296,18 @@ impl TurnHistory {
         self.projected_records()
             .rev()
             .find_map(|record| {
+                let is_entry = record.event.downcast::<EnterBattlefieldEvent>().is_some()
+                    || record
+                        .event
+                        .downcast::<ZoneChangeEvent>()
+                        .is_some_and(|event| event.is_etb());
+                is_entry.then_some(())?;
                 record
-                    .event
-                    .downcast::<EnterBattlefieldEvent>()
-                    .and(record.object_snapshot.as_ref())
+                    .object_snapshot
+                    .as_ref()
                     .filter(|snapshot| snapshot.stable_id == stable_id)
                     .map(|snapshot| snapshot.controller)
             })
-            .or_else(|| self.objects_entered_battlefield_this_turn.get(&stable_id).copied())
     }
 
     pub fn object_was_put_into_graveyard_this_turn(&self, stable_id: StableId) -> bool {
@@ -357,10 +362,7 @@ impl TurnHistory {
                         && event.source == source
                         && event.amount > 0
                 })
-        }) || self
-            .creatures_damaged_by_this_turn
-            .get(&creature)
-            .is_some_and(|sources| sources.contains(&source))
+        })
     }
 
     pub fn creature_was_damaged_this_turn(&self, creature: ObjectId) -> bool {
@@ -372,10 +374,7 @@ impl TurnHistory {
                     matches!(event.target, crate::game_event::DamageTarget::Object(target) if target == creature)
                         && event.amount > 0
                 })
-        }) || self
-            .creatures_damaged_by_this_turn
-            .get(&creature)
-            .is_some_and(|sources| !sources.is_empty())
+        })
     }
 
     pub fn player_searched_library_this_turn(&self, player: PlayerId) -> bool {
@@ -416,8 +415,7 @@ impl TurnHistory {
     }
 
     pub fn permanents_left_battlefield_under_controller(&self, player: PlayerId) -> u32 {
-        let event_total: u32 = self
-            .projected_records()
+        self.projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
             .filter(|event| event.from == Zone::Battlefield)
             .filter(|event| {
@@ -425,27 +423,11 @@ impl TurnHistory {
                     .as_ref()
                     .is_some_and(|snapshot| snapshot.controller == player)
             })
-            .count() as u32;
-        if event_total > 0
-            || self.projected_records().any(|record| {
-                record
-                    .event
-                    .downcast::<ZoneChangeEvent>()
-                    .is_some_and(|event| event.from == Zone::Battlefield)
-            })
-        {
-            event_total
-        } else {
-            self.permanents_left_battlefield_under_controller_this_turn
-                .get(&player)
-                .copied()
-                .unwrap_or(0)
-        }
+            .count() as u32
     }
 
     pub fn creatures_left_battlefield_under_controller(&self, player: PlayerId) -> u32 {
-        let event_total: u32 = self
-            .projected_records()
+        self.projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
             .filter(|event| event.from == Zone::Battlefield)
             .filter(|event| {
@@ -454,22 +436,7 @@ impl TurnHistory {
                         && snapshot.card_types.contains(&CardType::Creature)
                 })
             })
-            .count() as u32;
-        if event_total > 0
-            || self.projected_records().any(|record| {
-                record
-                    .event
-                    .downcast::<ZoneChangeEvent>()
-                    .is_some_and(|event| event.from == Zone::Battlefield)
-            })
-        {
-            event_total
-        } else {
-            self.creatures_left_battlefield_under_controller_this_turn
-                .get(&player)
-                .copied()
-                .unwrap_or(0)
-        }
+            .count() as u32
     }
 
     pub fn spell_cast_event_provenance(&self, spell: ObjectId) -> Option<ProvNodeId> {

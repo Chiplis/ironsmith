@@ -151,10 +151,6 @@ pub(crate) fn apply_processed_damage_assignment(
                 game.mark_damage(object_id, amount);
             }
 
-            if is_creature {
-                game.record_creature_damaged_by_this_turn(object_id, source);
-            }
-
             AppliedDamageAssignment {
                 applied: true,
                 life_lost: 0,

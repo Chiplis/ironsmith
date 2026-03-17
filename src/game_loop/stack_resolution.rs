@@ -235,15 +235,6 @@ pub(super) fn resolve_stack_entry_full(
                     perm.optional_costs_paid = entry.optional_costs_paid.clone();
                 }
 
-                // Track creature ETBs for trap conditions
-                if obj.is_creature() {
-                    *game
-                        .turn_history
-                        .creatures_entered_this_turn
-                        .entry(entry.controller)
-                        .or_insert(0) += 1;
-                }
-
                 // Interactive replacement was already processed above - skip second ETB processing
                 // and move directly to battlefield (avoids double-processing)
                 let new_id = game.move_object(entry.object_id, Zone::Battlefield);
@@ -292,15 +283,6 @@ pub(super) fn resolve_stack_entry_full(
                 // Preserve Convoke/Improvise contributors for later triggered ability resolution.
                 perm.keyword_payment_contributions_to_cast =
                     entry.keyword_payment_contributions.clone();
-            }
-
-            // Track creature ETBs for trap conditions (before the object moves zones)
-            if obj.is_creature() {
-                *game
-                    .turn_history
-                    .creatures_entered_this_turn
-                    .entry(entry.controller)
-                    .or_insert(0) += 1;
             }
 
             // It's a permanent spell, move to battlefield with ETB processing

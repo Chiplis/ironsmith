@@ -8316,9 +8316,12 @@ mod tests {
         let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
         assert_eq!(effective.to_oracle(), "{4}{G}");
 
-        game.turn_history
-            .creatures_left_battlefield_under_controller_this_turn
-            .insert(alice, 1);
+        let departed_creature = CardBuilder::new(CardId::from_raw(5000), "Fallen Helper")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let departed_id = game.create_object_from_card(&departed_creature, alice, Zone::Battlefield);
+        game.move_object(departed_id, Zone::Graveyard);
         let spell_obj = game.object(spell_id).expect("spell exists");
         let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
         let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);

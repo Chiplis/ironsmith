@@ -311,7 +311,7 @@ pub fn resolve_value(
             }
             Ok(seen.len() as i32)
         }
-        Value::CreaturesDiedThisTurn => Ok(game.turn_history.creatures_died_this_turn as i32),
+        Value::CreaturesDiedThisTurn => Ok(game.turn_history.total_creatures_died_this_turn() as i32),
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
             let filter_ctx = ctx.filter_context(game);
             let mut total = 0i32;
@@ -319,12 +319,7 @@ pub fn resolve_value(
                 if !player_filter.matches_player(player.id, &filter_ctx) {
                     continue;
                 }
-                total += game
-                    .turn_history
-                    .creatures_died_under_controller_this_turn
-                    .get(&player.id)
-                    .copied()
-                    .unwrap_or(0) as i32;
+                total += game.turn_history.creatures_died_under_controller(player.id) as i32;
             }
             Ok(total)
         }

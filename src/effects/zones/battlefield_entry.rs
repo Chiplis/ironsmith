@@ -88,22 +88,6 @@ pub(crate) fn move_to_battlefield_with_options(
         }
     }
 
-    if let Some((stable_id, controller, is_creature)) = game
-        .object(new_id)
-        .map(|obj| (obj.stable_id, obj.controller, obj.is_creature()))
-    {
-        game.turn_history
-            .objects_entered_battlefield_this_turn
-            .insert(stable_id, controller);
-        if is_creature {
-            *game
-                .turn_history
-                .creatures_entered_this_turn
-                .entry(controller)
-                .or_insert(0) += 1;
-        }
-    }
-
     let enters_tapped = result.enters_tapped || options.tapped;
     if options.tapped && !result.enters_tapped {
         game.tap(new_id);

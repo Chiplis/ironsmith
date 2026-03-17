@@ -5491,7 +5491,18 @@ mod tests {
         let creature = game.object(creature_id).expect("creature should exist");
         assert!(!filter.matches(creature, &ctx, &game));
 
-        game.record_creature_damaged_by_this_turn(creature_id, ObjectId::from_raw(500));
+        let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::DamageEvent {
+                source: ObjectId::from_raw(500),
+                target: crate::game_event::DamageTarget::Object(creature_id),
+                amount: 1,
+                is_combat: false,
+                is_unpreventable: false,
+                remainder: None,
+            },
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&damage_event);
         let creature = game.object(creature_id).expect("creature should exist");
         assert!(filter.matches(creature, &ctx, &game));
     }

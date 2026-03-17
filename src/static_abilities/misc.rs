@@ -3111,9 +3111,12 @@ mod tests {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let source = ObjectId::from_raw(52);
         let alice = PlayerId::from_index(0);
-        game.turn_history
-            .permanents_left_battlefield_under_controller_this_turn
-            .insert(alice, 1);
+        let departed_permanent = CardBuilder::new(crate::ids::CardId::from_raw(9991), "Spent Relic")
+            .card_types(vec![crate::types::CardType::Artifact])
+            .build();
+        let departed_id =
+            game.create_object_from_card(&departed_permanent, alice, Zone::Battlefield);
+        game.move_object(departed_id, Zone::Graveyard);
 
         let ability = EntersWithCountersIfCondition::new(
             CounterType::PlusOnePlusOne,

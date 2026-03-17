@@ -33,33 +33,18 @@ pub(crate) fn apply_token_battlefield_entry(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     token_id: ObjectId,
-    controller_id: PlayerId,
-    token_is_creature: bool,
+    _controller_id: PlayerId,
+    _token_is_creature: bool,
     options: TokenEntryOptions,
     from_zone: Zone,
     enters_tapped: bool,
     events: &mut Vec<TriggerEvent>,
 ) -> Result<(), ExecutionError> {
-    if token_is_creature {
-        *game
-            .turn_history
-            .creatures_entered_this_turn
-            .entry(controller_id)
-            .or_insert(0) += 1;
-    }
-
     if enters_tapped && !game.is_tapped(token_id) {
         game.tap(token_id);
     }
     // Tokens always have summoning sickness.
     game.set_summoning_sick(token_id);
-    if let Some(obj) = game.object(token_id)
-        && obj.zone == Zone::Battlefield
-    {
-        game.turn_history
-            .objects_entered_battlefield_this_turn
-            .insert(obj.stable_id, controller_id);
-    }
 
     // Zone-change events are queued by `move_object_with_etb_processing_with_dm`.
     // Emit the explicit ETB event here so enters-tapped/untapped triggers can match.
@@ -335,10 +320,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            game.turn_history.creatures_entered_this_turn.get(&alice),
-            Some(&1)
-        );
         assert!(game.is_tapped(token_id));
         assert!(game.is_summoning_sick(token_id));
         assert_eq!(events.len(), 1);
