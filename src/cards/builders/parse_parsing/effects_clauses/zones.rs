@@ -281,6 +281,43 @@ pub(crate) fn parse_discard(
         discard_filter = Some(filter);
     }
 
+    let trailing_tokens = if card_word_idx + 1 < rest_words.len() {
+        let trailing_token_idx =
+            token_index_for_word_index(rest, card_word_idx + 1).unwrap_or(rest.len());
+        &rest[trailing_token_idx..]
+    } else {
+        &[]
+    };
+    let trailing_words = words(trailing_tokens);
+    let random = trailing_words.as_slice() == ["at", "random"];
+    if !trailing_words.is_empty() && !random {
+        let trailing_filter = if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
+            Some(filter)
+        } else if let Some(filter) = parse_discard_chosen_color_qualifier_filter(trailing_tokens) {
+            Some(filter)
+        } else if let Some(filter) = parse_discard_color_qualifier_filter(trailing_tokens) {
+            Some(filter)
+        } else {
+            None
+        };
+
+        if let Some(mut filter) = trailing_filter {
+            filter.zone = Some(Zone::Hand);
+            if uses_all_count
+                && let Some(owner) = discard_subject_owner_filter(subject)
+                && filter.owner.is_none()
+            {
+                filter.owner = Some(owner);
+            }
+            discard_filter = Some(filter);
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing discard clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+    }
+
     if uses_all_count {
         count = if let Some(filter) = discard_filter.as_ref() {
             Value::Count(filter.clone())
@@ -292,22 +329,6 @@ pub(crate) fn parse_discard(
                 clause_words.join(" ")
             )));
         };
-    }
-
-    let trailing_tokens = if card_word_idx + 1 < rest_words.len() {
-        let trailing_token_idx =
-            token_index_for_word_index(rest, card_word_idx + 1).unwrap_or(rest.len());
-        &rest[trailing_token_idx..]
-    } else {
-        &[]
-    };
-    let trailing_words = words(trailing_tokens);
-    let random = trailing_words.as_slice() == ["at", "random"];
-    if !trailing_words.is_empty() && !random {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing discard clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
     }
 
     Ok(EffectAst::Discard {

@@ -18,7 +18,7 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
                         continue;
                     };
                     let candidate = trim_commas(&tokens[token_start..]);
-                    let candidate_words = words(candidate);
+                    let candidate_words = words(&candidate);
                     if candidate_words.is_empty() {
                         continue;
                     }
@@ -28,7 +28,7 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
                     ) {
                         continue;
                     }
-                    if let Ok(target) = parse_target_phrase_inner(candidate) {
+                    if let Ok(target) = parse_target_phrase_inner(&candidate) {
                         return Ok(target);
                     }
                 }
@@ -429,6 +429,16 @@ fn parse_target_phrase_inner(tokens: &[Token]) -> Result<TargetAst, CardTextErro
         .collect();
     let target_span = if explicit_target { span } else { None };
 
+    if remaining_words.is_empty() && explicit_target {
+        return Ok(wrap_target_count(
+            if other {
+                TargetAst::AnyOtherTarget(span)
+            } else {
+                TargetAst::AnyTarget(span)
+            },
+            target_count,
+        ));
+    }
     if other
         && matches!(remaining_words.as_slice(), ["target"] | ["targets"])
     {

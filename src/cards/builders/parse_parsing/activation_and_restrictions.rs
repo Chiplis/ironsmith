@@ -5000,6 +5000,18 @@ pub(crate) fn parse_negated_object_restriction_clause(
         )));
     }
     let remainder_words = normalize_cant_words(&remainder_tokens);
+    let subject_words = normalize_cant_words(&subject_tokens);
+
+    if matches!(
+        subject_words.as_slice(),
+        ["damage"] | ["the", "damage"] | ["that", "damage"]
+    ) && remainder_words.as_slice() == ["be", "prevented"]
+    {
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::prevent_damage(),
+            target: None,
+        }));
+    }
 
     let restriction = match remainder_words.as_slice() {
         ["attack"] => Restriction::attack(filter),
@@ -5293,6 +5305,12 @@ pub(crate) fn parse_subject_object_filter(
     }
 
     let normalized_words = normalize_cant_words(tokens);
+    if matches!(
+        normalized_words.as_slice(),
+        ["damage"] | ["the", "damage"] | ["that", "damage"]
+    ) {
+        return Ok(Some(ObjectFilter::default()));
+    }
     if matches!(
         normalized_words.as_slice(),
         ["it"] | ["they"] | ["them"] | ["itself"] | ["themselves"]
@@ -10086,6 +10104,22 @@ pub(crate) fn parse_you_choose_objects_clause(
         break;
     }
     let mut choose_words = words(&choose_object_tokens);
+    loop {
+        if matches!(
+            choose_words.as_slice(),
+            [.., "from", "it"] | [.., "from", "them"] | [.., "in", "it"] | [.., "in", "them"]
+        ) {
+            references_it = true;
+            choose_words.truncate(choose_words.len().saturating_sub(2));
+            continue;
+        }
+        if matches!(choose_words.as_slice(), [.., "from", "there", "in"]) {
+            references_it = true;
+            choose_words.truncate(choose_words.len().saturating_sub(3));
+            continue;
+        }
+        break;
+    }
     let mut count = ChoiceCount::exactly(1);
     if choose_words.starts_with(&["up", "to"])
         && let Some((value, used)) = parse_number(

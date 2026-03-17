@@ -242,14 +242,14 @@ pub(crate) fn parse_look(
     }
     let clause_words = words(&clause_tokens);
 
-    let mut hand_tokens = clause_tokens;
+    let mut hand_tokens = clause_tokens.clone();
     while hand_tokens
         .first()
         .is_some_and(|token| token.is_word("the") || token.is_word("a") || token.is_word("an"))
     {
-        hand_tokens = &hand_tokens[1..];
+        hand_tokens = hand_tokens[1..].to_vec();
     }
-    let hand_words = words(hand_tokens);
+    let hand_words = words(&hand_tokens);
     if let Some((player, used_words)) = parse_hand_owner(&hand_words) {
         if used_words < hand_words.len() {
             return Err(CardTextError::ParseError(format!(
@@ -262,11 +262,11 @@ pub(crate) fn parse_look(
             PlayerAst::You => TargetAst::Player(PlayerFilter::You, None),
             PlayerAst::Opponent => TargetAst::Player(PlayerFilter::Opponent, None),
             PlayerAst::Target => {
-                TargetAst::Player(PlayerFilter::target_player(), span_from_tokens(hand_tokens))
+                TargetAst::Player(PlayerFilter::target_player(), span_from_tokens(&hand_tokens))
             }
             PlayerAst::TargetOpponent => TargetAst::Player(
                 PlayerFilter::target_opponent(),
-                span_from_tokens(hand_tokens),
+                span_from_tokens(&hand_tokens),
             ),
             PlayerAst::That => TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             PlayerAst::Any => {
@@ -2719,6 +2719,9 @@ pub(crate) fn parse_put_into_hand(
 
     fn apply_source_zone_constraint(target: &mut TargetAst, zone: Zone) {
         match target {
+            TargetAst::Source(span) => {
+                *target = TargetAst::Object(ObjectFilter::source().in_zone(zone), *span, None);
+            }
             TargetAst::Object(filter, _, _) => {
                 filter.zone = Some(zone);
             }
