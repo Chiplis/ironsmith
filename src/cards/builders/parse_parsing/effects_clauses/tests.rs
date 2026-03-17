@@ -82,6 +82,49 @@ fn parse_look_top_x_cards_of_library() {
 }
 
 #[test]
+fn parse_look_at_opponents_hand_clause() {
+    let tokens = tokenize_line("at an opponent's hand", 0);
+    let ast = parse_look(&tokens, None).expect("parse look at opponent hand");
+    assert!(matches!(
+        ast,
+        EffectAst::LookAtHand {
+            target: TargetAst::Player(PlayerFilter::Opponent, None)
+        }
+    ));
+}
+
+#[test]
+fn parse_look_at_that_players_hand_clause() {
+    let tokens = tokenize_line("at that player's hand", 0);
+    let ast = parse_look(&tokens, None).expect("parse look at iterated player hand");
+    assert!(matches!(
+        ast,
+        EffectAst::LookAtHand {
+            target: TargetAst::Player(PlayerFilter::IteratedPlayer, None)
+        }
+    ));
+}
+
+#[test]
+fn parse_effect_sentences_look_at_hand_then_choose_name() {
+    let tokens = tokenize_line("Look at an opponent's hand, then choose any card name.", 0);
+    let effects = parse_effect_sentences(&tokens).expect("parse look-at-hand then choose");
+
+    assert!(
+        effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::LookAtHand { .. })),
+        "expected hand-inspection effect, got {effects:?}"
+    );
+    assert!(
+        effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::ChooseCardName { .. })),
+        "expected follow-up choose-card-name effect, got {effects:?}"
+    );
+}
+
+#[test]
 fn parse_target_phrase_top_two_cards_of_your_library_preserves_count() {
     let tokens = tokenize_line("the top two cards of your library", 0);
     let target = parse_target_phrase(&tokens).expect("parse top-two target");
@@ -2324,6 +2367,48 @@ fn parse_effect_clause_remove_all_minus_counters_from_it() {
         }
         other => panic!("expected RemoveUpToAnyCounters effect, got {other:?}"),
     }
+}
+
+#[test]
+fn parse_get_modifier_tail_until_your_next_turn() {
+    let tokens = tokenize_line("-2/-1 until your next turn", 0);
+    let (power, toughness, duration, condition) =
+        parse_get_modifier_values_with_tail(&tokens, Value::Fixed(-2), Value::Fixed(-1))
+            .expect("parse gets modifier tail");
+
+    assert_eq!(power, Value::Fixed(-2));
+    assert_eq!(toughness, Value::Fixed(-1));
+    assert_eq!(duration, Until::YourNextTurn);
+    assert_eq!(condition, None);
+}
+
+#[test]
+fn parse_get_modifier_tail_until_end_of_combat() {
+    let tokens = tokenize_line("+2/+0 until end of combat", 0);
+    let (power, toughness, duration, condition) =
+        parse_get_modifier_values_with_tail(&tokens, Value::Fixed(2), Value::Fixed(0))
+            .expect("parse gets modifier tail");
+
+    assert_eq!(power, Value::Fixed(2));
+    assert_eq!(toughness, Value::Fixed(0));
+    assert_eq!(duration, Until::EndOfCombat);
+    assert_eq!(condition, None);
+}
+
+#[test]
+fn parse_get_modifier_tail_accepts_morbid_instead_if_glue() {
+    let tokens = tokenize_line(
+        "-13/-13 until end of turn instead if a creature died this turn",
+        0,
+    );
+    let (power, toughness, duration, condition) =
+        parse_get_modifier_values_with_tail(&tokens, Value::Fixed(-13), Value::Fixed(-13))
+            .expect("parse morbid gets modifier tail");
+
+    assert_eq!(power, Value::Fixed(-13));
+    assert_eq!(toughness, Value::Fixed(-13));
+    assert_eq!(duration, Until::EndOfTurn);
+    assert_eq!(condition, None);
 }
 
 #[test]

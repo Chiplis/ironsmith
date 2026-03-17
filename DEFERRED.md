@@ -1,6 +1,6 @@
 # Deferred Parser/Lowering Cases
 
-This worktree only fixes parser/lowering gaps that already fit existing shuffle and move-zone semantics.
+These parser-wave changes intentionally stay within existing lowering and runtime semantics.
 
 ## Still Deferred
 
@@ -14,3 +14,11 @@ This worktree only fixes parser/lowering gaps that already fit existing shuffle 
 
 - reveal/replacement-mechanics follow-ons that would need new execution support
   - Examples: any future fix that depends on introducing new reveal-state tracking or new replacement-effect execution rather than reusing the existing shuffle / move-zone / put-onto-battlefield semantics.
+
+- Generic `where X is ...` follow-up work that would need broader value-grammar expansion beyond the parser-only tails handled here.
+
+- Exact non-target single-opponent chooser support for clauses like `look at an opponent's hand` in multiplayer, which would need dedicated non-target player-choice lowering instead of the existing broad opponent filter semantics.
+
+- New runtime/value mechanics for exact "cards you've drawn this turn" counts, including `Fists of Flame` style `gets +1/+0 for each card you've drawn this turn`.
+
+- New runtime/value mechanics for counting distinct mana values among cards in graveyards, including `All-Seeing Arbiter` style `where X is the number of different mana values among cards in your graveyard`.

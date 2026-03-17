@@ -158,6 +158,42 @@ pub(crate) fn parse_look(
     tokens: &[Token],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    fn parse_hand_owner(words: &[&str]) -> Option<(PlayerAst, usize)> {
+        if words.starts_with(&["your", "hand"]) {
+            return Some((PlayerAst::You, 2));
+        }
+        if words.starts_with(&["each", "player", "hand"])
+            || words.starts_with(&["each", "players", "hand"])
+        {
+            return Some((PlayerAst::Any, 3));
+        }
+        if words.starts_with(&["their", "hand"]) {
+            return Some((PlayerAst::That, 2));
+        }
+        if words.starts_with(&["that", "player", "hand"])
+            || words.starts_with(&["that", "players", "hand"])
+        {
+            return Some((PlayerAst::That, 3));
+        }
+        if words.starts_with(&["target", "player", "hand"])
+            || words.starts_with(&["target", "players", "hand"])
+        {
+            return Some((PlayerAst::Target, 3));
+        }
+        if words.starts_with(&["target", "opponent", "hand"])
+            || words.starts_with(&["target", "opponents", "hand"])
+        {
+            return Some((PlayerAst::TargetOpponent, 3));
+        }
+        if words.starts_with(&["opponent", "hand"]) || words.starts_with(&["opponents", "hand"]) {
+            return Some((PlayerAst::Opponent, 2));
+        }
+        if words.starts_with(&["his", "or", "her", "hand"]) {
+            return Some((PlayerAst::That, 4));
+        }
+        None
+    }
+
     fn parse_library_owner(words: &[&str]) -> Option<(PlayerAst, usize)> {
         if words.starts_with(&["your", "library"]) {
             return Some((PlayerAst::You, 2));
@@ -205,6 +241,51 @@ pub(crate) fn parse_look(
         clause_tokens = trim_commas(&clause_tokens[1..]);
     }
     let clause_words = words(&clause_tokens);
+
+    let mut hand_tokens = clause_tokens;
+    while hand_tokens
+        .first()
+        .is_some_and(|token| token.is_word("the") || token.is_word("a") || token.is_word("an"))
+    {
+        hand_tokens = &hand_tokens[1..];
+    }
+    let hand_words = words(hand_tokens);
+    if let Some((player, used_words)) = parse_hand_owner(&hand_words) {
+        if used_words < hand_words.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing look clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let target = match player {
+            PlayerAst::You => TargetAst::Player(PlayerFilter::You, None),
+            PlayerAst::Opponent => TargetAst::Player(PlayerFilter::Opponent, None),
+            PlayerAst::Target => {
+                TargetAst::Player(PlayerFilter::target_player(), span_from_tokens(hand_tokens))
+            }
+            PlayerAst::TargetOpponent => TargetAst::Player(
+                PlayerFilter::target_opponent(),
+                span_from_tokens(hand_tokens),
+            ),
+            PlayerAst::That => TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            PlayerAst::Any => {
+                return Ok(EffectAst::ForEachPlayer {
+                    effects: vec![EffectAst::LookAtHand {
+                        target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                    }],
+                });
+            }
+            _ => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported look clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+        };
+
+        return Ok(EffectAst::LookAtHand { target });
+    }
 
     let Some(top_idx) = clause_tokens.iter().position(|t| t.is_word("top")) else {
         return Err(CardTextError::ParseError(format!(

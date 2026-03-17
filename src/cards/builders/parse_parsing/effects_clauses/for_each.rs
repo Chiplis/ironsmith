@@ -474,7 +474,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     let clause = words(modifier_tokens).join(" ");
     let mut out_power = power;
     let mut out_toughness = toughness;
-    let duration = Until::EndOfTurn;
+    let mut duration = Until::EndOfTurn;
     let mut condition = None;
 
     if modifier_tokens.is_empty() {
@@ -484,6 +484,13 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     let after_modifier = &modifier_tokens[1..];
     let after_modifier_words = words(after_modifier);
     let until_word_count = if starts_with_until_end_of_turn(&after_modifier_words) {
+        duration = Until::EndOfTurn;
+        4usize
+    } else if after_modifier_words.starts_with(&["until", "your", "next", "turn"]) {
+        duration = Until::YourNextTurn;
+        4usize
+    } else if after_modifier_words.starts_with(&["until", "end", "of", "combat"]) {
+        duration = Until::EndOfCombat;
         4usize
     } else {
         0usize
@@ -500,6 +507,9 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     // "gets +4/+4 until end of turn instead" appears in conditional replacement
     // branches where "instead" is grammatical glue, not an additional modifier.
     if tail_words.as_slice() == ["instead"] {
+        return Ok((out_power, out_toughness, duration, condition));
+    }
+    if tail_words.starts_with(&["instead", "if"]) {
         return Ok((out_power, out_toughness, duration, condition));
     }
     if tail_words.starts_with(&["for", "as", "long", "as"])
@@ -529,6 +539,27 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         if alt_tail.is_empty() || is_until_end_of_turn(alt_tail) {
             return Ok((out_power, out_toughness, duration, condition));
         }
+    }
+    if tail_words.starts_with(&["for", "each"])
+        && let Some(count) = parse_get_for_each_count_value(&tail_tokens)?
+    {
+        let scale_modifier = |modifier: Value| -> Result<Value, CardTextError> {
+            match modifier {
+                Value::Fixed(0) => Ok(Value::Fixed(0)),
+                Value::Fixed(1) => Ok(count.clone()),
+                Value::Fixed(multiplier) => Ok(Value::Scaled(Box::new(count.clone()), multiplier)),
+                other if value_contains_unbound_x(&other) => {
+                    replace_unbound_x_with_value(other, &count, &clause)
+                }
+                _ => Err(CardTextError::ParseError(format!(
+                    "unsupported dynamic gets-for-each clause (clause: '{}')",
+                    clause
+                ))),
+            }
+        };
+        out_power = scale_modifier(out_power)?;
+        out_toughness = scale_modifier(out_toughness)?;
+        return Ok((out_power, out_toughness, duration, condition));
     }
     if !tail_words.starts_with(&["where", "x", "is"]) {
         return Err(CardTextError::ParseError(format!(

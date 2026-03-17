@@ -17229,6 +17229,73 @@ fn strict_parse_shared_parser_regression_cards() {
 }
 
 #[test]
+fn parse_oracle_sorcerous_spyglass_hand_inspection_regression() {
+    let def = parse_oracle_card_definition("Sorcerous Spyglass");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("look at") && rendered.contains("opponent's hand"),
+        "expected opponent-hand inspection to compile, got {rendered}"
+    );
+    assert!(
+        rendered.contains("choose any card name"),
+        "expected follow-up card-name choice to remain present, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_silent_blade_oni_preserves_that_player_hand_reference() {
+    let def = parse_oracle_card_definition("Silent-Blade Oni");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("look at that player's hand"),
+        "expected iterated-player hand reference to survive lowering, got {rendered}"
+    );
+    assert!(
+        rendered.contains("cast a spell from it without paying its mana cost"),
+        "expected downstream hand-cast permission text to remain intact, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_liliana_last_hope_keeps_until_your_next_turn() {
+    let def = parse_oracle_card_definition("Liliana, the Last Hope");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("-2/-1") && rendered.contains("until your next turn"),
+        "expected next-turn PT duration to survive lowering, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_tragic_slip_morbid_branch_stays_parseable() {
+    let def = parse_oracle_card_definition("Tragic Slip");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("gets -1/-1 until end of turn"),
+        "expected base tragic slip branch to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("gets -13/-13 until end of turn"),
+        "expected morbid PT branch to compile, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_behold_the_unspeakable_keeps_next_turn_debuff() {
+    let def = parse_oracle_card_definition("Behold the Unspeakable");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("-2/-0") && rendered.contains("until your next turn"),
+        "expected saga debuff duration to survive lowering, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_skyclave_apparition_where_x_uses_exiled_card_mana_value() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Skyclave Apparition Variant")
         .parse_text(
