@@ -893,6 +893,66 @@ fn parse_put_into_library_from_bottom_still_fails_loudly() {
 }
 
 #[test]
+fn parse_shuffle_it_into_their_library_uses_tagged_move_then_shuffle() {
+    let tokens = tokenize_line("it into their library", 0);
+    let effect = parse_shuffle(&tokens, Some(SubjectAst::Player(PlayerAst::ItsOwner)))
+        .expect("parse shuffle-into-library clause");
+
+    let EffectAst::ForEachTagged { tag, effects } = effect else {
+        panic!("expected tagged move+shuffle lowering, got {effect:?}");
+    };
+    assert_eq!(tag, TagKey::from(IT_TAG));
+    assert_eq!(effects.len(), 2, "expected move + shuffle, got {effects:?}");
+    assert!(matches!(
+        &effects[0],
+        EffectAst::MoveToZone {
+            target: TargetAst::Tagged(tag, _),
+            zone: Zone::Library,
+            to_top: false,
+            ..
+        } if tag == &TagKey::from(IT_TAG)
+    ));
+    assert!(matches!(
+        &effects[1],
+        EffectAst::ShuffleLibrary {
+            player: PlayerAst::ItsOwner
+        }
+    ));
+}
+
+#[test]
+fn parse_put_named_card_onto_battlefield_from_command_zone_sets_source_zone() {
+    let tokens = tokenize_line("Derevi onto the battlefield from the command zone", 0);
+    let effect = parse_put_into_hand(&tokens, None)
+        .expect("parse battlefield move from command zone");
+
+    let EffectAst::MoveToZone { target, zone, .. } = effect else {
+        panic!("expected move-to-zone effect");
+    };
+    assert_eq!(zone, Zone::Battlefield);
+
+    let TargetAst::Object(filter, _, _) = target else {
+        panic!("expected object target");
+    };
+    assert_eq!(filter.zone, Some(Zone::Command));
+}
+
+#[test]
+fn parse_put_onto_battlefield_tapped_and_attacking_still_fails_loudly() {
+    let tokens = tokenize_line(
+        "a creature card from your hand onto the battlefield tapped and attacking",
+        0,
+    );
+    let err = parse_put_into_hand(&tokens, None)
+        .expect_err("attacking battlefield entry should remain deferred");
+    let message = card_text_error_message(err);
+    assert!(
+        message.contains("unsupported put destination after 'onto'"),
+        "expected attacking battlefield entry to stay unsupported, got {message}"
+    );
+}
+
+#[test]
 fn parse_tap_then_it_doesnt_untap_next_step_clause() {
     let tokens = tokenize_line(
         "Tap that creature and it doesn't untap during its controller's next untap step.",

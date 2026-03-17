@@ -346,6 +346,38 @@ pub(crate) fn parse_shuffle(
     tokens: &[Token],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    fn parse_library_destination_player(
+        words: &[&str],
+        default_player: PlayerAst,
+    ) -> Option<(PlayerAst, usize)> {
+        match words {
+            ["library", ..] => Some((default_player, 1)),
+            ["your", "library", ..] => Some((PlayerAst::You, 2)),
+            ["their", "library", ..] => Some((default_player, 2)),
+            ["that", "player", "library", ..] => Some((PlayerAst::That, 3)),
+            ["that", "players", "library", ..] => Some((PlayerAst::That, 3)),
+            ["its", "owner", "library", ..] => Some((PlayerAst::ItsOwner, 3)),
+            ["its", "owners", "library", ..] => Some((PlayerAst::ItsOwner, 3)),
+            ["his", "or", "her", "library", ..] => Some((default_player, 4)),
+            _ => None,
+        }
+    }
+
+    fn is_supported_shuffle_source_tail(words: &[&str]) -> bool {
+        matches!(
+            words,
+            []
+                | ["from", "graveyard"]
+                | ["from", "your", "graveyard"]
+                | ["from", "their", "graveyard"]
+                | ["from", "that", "player", "graveyard"]
+                | ["from", "that", "players", "graveyard"]
+                | ["from", "its", "owner", "graveyard"]
+                | ["from", "its", "owners", "graveyard"]
+                | ["from", "his", "or", "her", "graveyard"]
+        )
+    }
+
     fn is_simple_library_phrase(words: &[&str]) -> bool {
         matches!(
             words,
@@ -370,6 +402,44 @@ pub(crate) fn parse_shuffle(
     }
 
     let clause_words = words(tokens);
+    if let Some(into_idx) = clause_words.iter().position(|word| *word == "into") {
+        let target_words = &clause_words[..into_idx];
+        let destination_words: Vec<&str> = clause_words[into_idx + 1..]
+            .iter()
+            .copied()
+            .filter(|word| !is_article(word))
+            .collect();
+        if matches!(
+            target_words,
+            ["it"] | ["them"] | ["that", "card"] | ["those", "cards"]
+        ) && let Some((destination_player, consumed)) =
+            parse_library_destination_player(&destination_words, player)
+        {
+            let trailing_words = &destination_words[consumed..];
+            if is_supported_shuffle_source_tail(trailing_words) {
+                return Ok(EffectAst::ForEachTagged {
+                    tag: TagKey::from(IT_TAG),
+                    effects: vec![
+                        EffectAst::MoveToZone {
+                            target: TargetAst::Tagged(
+                                TagKey::from(IT_TAG),
+                                span_from_tokens(tokens),
+                            ),
+                            zone: Zone::Library,
+                            to_top: false,
+                            battlefield_controller: ReturnControllerAst::Preserve,
+                            battlefield_tapped: false,
+                            attached_to: None,
+                        },
+                        EffectAst::ShuffleLibrary {
+                            player: destination_player,
+                        },
+                    ],
+                });
+            }
+        }
+    }
+
     if matches!(player, PlayerAst::ItsOwner)
         && matches!(
             clause_words.as_slice(),
@@ -2566,6 +2636,16 @@ pub(crate) fn parse_put_into_hand(
         target
     }
 
+    fn apply_source_zone_constraint(target: &mut TargetAst, zone: Zone) {
+        match target {
+            TargetAst::Object(filter, _, _) => {
+                filter.zone = Some(zone);
+            }
+            TargetAst::WithCount(inner, _) => apply_source_zone_constraint(inner, zone),
+            _ => {}
+        }
+    }
+
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = words(tokens);
@@ -2997,8 +3077,23 @@ pub(crate) fn parse_put_into_hand(
             )));
         }
         let mut destination_tail: Vec<&str> = destination_words[1..].to_vec();
+        let battlefield_attacking = destination_tail.contains(&"attacking");
         let battlefield_tapped = destination_tail.contains(&"tapped");
+        if let Some(from_idx) = destination_tail
+            .windows(3)
+            .position(|window| window == ["from", "command", "zone"])
+        {
+            destination_tail.drain(from_idx..from_idx + 3);
+        }
+        destination_tail.retain(|word| *word != "and");
         destination_tail.retain(|word| *word != "tapped");
+        destination_tail.retain(|word| *word != "attacking");
+        if battlefield_attacking {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported put destination after 'onto' (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
         let supported_control_tail = destination_tail.is_empty()
             || destination_tail.as_slice() == ["under", "your", "control"]
             || destination_tail.as_slice() == ["under", "its", "owners", "control"]
@@ -3062,8 +3157,19 @@ pub(crate) fn parse_put_into_hand(
             });
         }
 
+        let mut target = parse_target_phrase(&target_tokens)?;
+        if words(&tokens[onto_idx + 1..])
+            .windows(4)
+            .any(|window| window == ["from", "the", "command", "zone"])
+            || words(&tokens[onto_idx + 1..])
+                .windows(3)
+                .any(|window| window == ["from", "command", "zone"])
+        {
+            apply_source_zone_constraint(&mut target, Zone::Command);
+        }
+
         return Ok(EffectAst::MoveToZone {
-            target: parse_target_phrase(&target_tokens)?,
+            target,
             zone: Zone::Battlefield,
             to_top: false,
             battlefield_controller,

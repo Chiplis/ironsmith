@@ -16819,6 +16819,105 @@ fn oracle_render_regression_named_cards_compile_cleanly() {
     );
 }
 
+#[test]
+fn parse_oracle_chaos_warp_shuffle_clause_regression() {
+    let def = parse_oracle_card_definition("Chaos Warp");
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("movetozoneeffect")
+            && debug.contains("zone: library")
+            && debug.contains("shufflelibraryeffect"),
+        "expected Chaos Warp to move the permanent into a library and shuffle, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target permanent")
+            && rendered.contains("shuffle")
+            && rendered.contains("their library"),
+        "expected Chaos Warp shuffle wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Chaos Warp to render without unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_oblation_shuffle_clause_regression() {
+    let def = parse_oracle_card_definition("Oblation");
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("movetozoneeffect")
+            && debug.contains("zone: library")
+            && debug.contains("shufflelibraryeffect"),
+        "expected Oblation to move the permanent into a library and shuffle, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("target nonland permanent")
+            && rendered.contains("shuffle")
+            && rendered.contains("their library"),
+        "expected Oblation shuffle wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Oblation to render without unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_derevi_command_zone_put_regression() {
+    let def = parse_oracle_card_definition("Derevi, Empyrial Tactician");
+
+    let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("movetozoneeffect")
+            && debug.contains("zone: command")
+            && debug.contains("zone: battlefield"),
+        "expected Derevi to keep command-zone source and battlefield destination, got {debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("command zone"),
+        "expected Derevi render to mention the command zone, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Derevi to render without unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_put_onto_battlefield_under_your_control_tapped_preserves_behavior() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tapped Reanimate Variant")
+        .parse_text("Put target creature card from a graveyard onto the battlefield tapped under your control.")
+        .expect("tapped under-your-control battlefield move should parse");
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("movetozoneeffect")
+            && debug.contains("zone: battlefield")
+            && debug.contains("battlefield_controller: you")
+            && debug.contains("enters_tapped: true"),
+        "expected tapped under-your-control battlefield behavior, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_ilharg_tapped_attacking_stays_deferred() {
+    assert_oracle_card_fails_strict("Ilharg, the Raze-Boar");
+}
+
+#[test]
+fn parse_oracle_winota_tapped_attacking_stays_deferred() {
+    assert_oracle_card_fails_strict("Winota, Joiner of Forces");
+}
+
 #[derive(serde::Deserialize)]
 struct RegressionCardFaceJson {
     name: String,
