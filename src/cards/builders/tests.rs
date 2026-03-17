@@ -16997,6 +16997,50 @@ fn parse_oracle_winota_tapped_attacking_stays_deferred() {
     assert_oracle_card_fails_strict("Winota, Joiner of Forces");
 }
 
+fn parse_oracle_banefire_threshold_restrictions_regression() {
+    let rendered = oracle_like_lines(&parse_oracle_card_definition("Banefire"))
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("banefire deals x damage to any target"),
+        "expected Banefire damage clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if x is 5 or more"),
+        "expected Banefire threshold clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("this spell can't be countered")
+            || rendered.contains("this spell cant be countered"),
+        "expected Banefire uncounterable clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("damage can't be prevented")
+            || rendered.contains("damage cant be prevented"),
+        "expected Banefire damage-prevention clause, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_drakuseth_maw_of_flames_multi_target_regression() {
+    let rendered = oracle_like_lines(&parse_oracle_card_definition("Drakuseth, Maw of Flames"))
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("4 damage to any target"),
+        "expected Drakuseth primary target clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("3 damage to each of up to two other targets"),
+        "expected Drakuseth secondary target clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Drakuseth to render without unsupported markers, got {rendered}"
+    );
+}
 #[derive(serde::Deserialize)]
 struct RegressionCardFaceJson {
     name: String,
@@ -17159,11 +17203,13 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
+    "Banefire",
     "Blast Zone",
     "Boseiju, Who Endures",
     "Cabal Ritual",
     "Cavern of Souls",
     "Cultivator Colossus",
+    "Drakuseth, Maw of Flames",
     "Echoing Deeps",
     "Fatal Push",
     "Grief",
@@ -17214,11 +17260,16 @@ macro_rules! strict_parse_card_expected_fail_test {
     };
 }
 
+strict_parse_card_test!(strict_parse_banefire, "Banefire");
 strict_parse_card_test!(strict_parse_blast_zone, "Blast Zone");
 strict_parse_card_test!(strict_parse_bridge_from_below, "Bridge from Below");
 strict_parse_card_test!(strict_parse_cabal_ritual, "Cabal Ritual");
 strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
 strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
+strict_parse_card_test!(
+    strict_parse_drakuseth_maw_of_flames,
+    "Drakuseth, Maw of Flames"
+);
 strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
 strict_parse_card_expected_fail_test!(strict_parse_golgari_thug, "Golgari Thug");

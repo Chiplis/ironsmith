@@ -32,3 +32,15 @@ These parser-wave changes intentionally stay within existing lowering and runtim
 - Generic X-expression work remains deferred where existing value parsing cannot lower the expression without broader support.
 
 - Any new mechanic or effect work remains deferred in this pass.
+
+- Fireball-style divided damage and other distributed-target damage phrases remain deferred.
+
+- Coin-flip or random-choice pseudo-targets such as `coin` remain deferred.
+
+- `"the rest"` / pile-splitting / Balance-style restructuring follow-ups remain deferred.
+
+- Player-iteration subject phrases like `each other player` that currently route through non-owned player/for-each parsing paths remain deferred.
+
+- Player-subject restriction clauses with leading condition/duration prefixes, including representative failures like `Island Sanctuary`, `Teferi's Protection`, and `Grand Abolisher`, remain deferred.
+
+- Any new mechanic/effect work beyond existing `ObjectFilter` / `TargetAst` / restriction lowering support remains deferred.

@@ -233,6 +233,41 @@ fn parse_target_phrase_up_to_x_other_target_creatures_preserves_optional_dynamic
 }
 
 #[test]
+fn parse_target_phrase_up_to_two_other_targets_returns_any_other_target() {
+    let tokens = tokenize_line("up to two other targets", 0);
+    let target = parse_target_phrase(&tokens).expect("parse up-to-two other targets");
+
+    let TargetAst::WithCount(inner, count) = target else {
+        panic!("expected counted target");
+    };
+    assert_eq!(count, ChoiceCount::up_to(2));
+    assert!(matches!(*inner, TargetAst::AnyOtherTarget(_)));
+}
+
+#[test]
+fn parse_target_phrase_up_to_three_targets_returns_any_target() {
+    let tokens = tokenize_line("up to three targets", 0);
+    let target = parse_target_phrase(&tokens).expect("parse up-to-three targets");
+
+    let TargetAst::WithCount(inner, count) = target else {
+        panic!("expected counted target");
+    };
+    assert_eq!(count, ChoiceCount::up_to(3));
+    assert!(matches!(*inner, TargetAst::AnyTarget(_)));
+}
+
+#[test]
+fn parse_target_phrase_if_x_is_five_or_more_this_spell_recovers_spell_subject() {
+    let tokens = tokenize_line("if X is 5 or more this spell", 0);
+    let target = parse_target_phrase(&tokens).expect("parse Banefire-style prefixed spell target");
+
+    assert!(
+        matches!(target, TargetAst::Source(_) | TargetAst::Spell(_)),
+        "expected spell/source target, got {target:?}"
+    );
+}
+
+#[test]
 fn parse_spell_filter_power_or_toughness_disjunction() {
     let tokens = tokenize_line("creature spell with power or toughness 2 or less", 0);
     let filter = parse_spell_filter(&tokens);

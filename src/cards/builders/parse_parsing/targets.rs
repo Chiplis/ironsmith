@@ -1,12 +1,44 @@
 use crate::cards::builders::{
     CardTextError, IT_TAG, TargetAst, Token, is_article, parse_card_type,
     parse_filter_counter_constraint_words, parse_non_type, parse_number, parse_number_or_x_value,
-    parse_object_filter, parse_subtype_word, span_from_tokens, token_index_for_word_index, words,
+    parse_object_filter, parse_subtype_word, span_from_tokens, token_index_for_word_index,
+    trim_commas, words,
 };
 use crate::effect::Value;
 use crate::{CardType, ChoiceCount, ObjectFilter, PlayerFilter, TagKey, Zone};
 
 pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
+    match parse_target_phrase_inner(tokens) {
+        Ok(target) => Ok(target),
+        Err(err) => {
+            let all_words = words(tokens);
+            if matches!(all_words.first().copied(), Some("during" | "if" | "until")) {
+                for word_start in (1..all_words.len()).rev() {
+                    let Some(token_start) = token_index_for_word_index(tokens, word_start) else {
+                        continue;
+                    };
+                    let candidate = trim_commas(&tokens[token_start..]);
+                    let candidate_words = words(candidate);
+                    if candidate_words.is_empty() {
+                        continue;
+                    }
+                    if matches!(
+                        candidate_words.first().copied(),
+                        Some("and" | "during" | "if" | "then" | "until")
+                    ) {
+                        continue;
+                    }
+                    if let Ok(target) = parse_target_phrase_inner(candidate) {
+                        return Ok(target);
+                    }
+                }
+            }
+            Err(err)
+        }
+    }
+}
+
+fn parse_target_phrase_inner(tokens: &[Token]) -> Result<TargetAst, CardTextError> {
     let mut tokens = tokens;
     while tokens.first().is_some_and(|token| token.is_word("then")) {
         tokens = &tokens[1..];
@@ -397,6 +429,18 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
         .collect();
     let target_span = if explicit_target { span } else { None };
 
+    if other
+        && matches!(remaining_words.as_slice(), ["target"] | ["targets"])
+    {
+        return Ok(wrap_target_count(
+            TargetAst::AnyOtherTarget(span),
+            target_count,
+        ));
+    }
+    if matches!(remaining_words.as_slice(), ["target"] | ["targets"]) {
+        return Ok(wrap_target_count(TargetAst::AnyTarget(span), target_count));
+    }
+
     let bare_top_library_shorthand = saw_top_prefix
         && !remaining_words.contains(&"library")
         && (matches!(remaining_words.as_slice(), ["top", "card"] | ["card"])
@@ -415,6 +459,14 @@ pub(crate) fn parse_target_phrase(tokens: &[Token]) -> Result<TargetAst, CardTex
     {
         return Ok(wrap_target_count(
             TargetAst::Player(PlayerFilter::You, target_span),
+            target_count,
+        ));
+    }
+    if other
+        && (remaining_words.as_slice() == ["player"] || remaining_words.as_slice() == ["players"])
+    {
+        return Ok(wrap_target_count(
+            TargetAst::Player(PlayerFilter::NotYou, target_span),
             target_count,
         ));
     }
