@@ -2334,6 +2334,18 @@ fn parse_effect_clause_add_any_color_removed_counter_tail_still_fails_loudly() {
 }
 
 #[test]
+fn parse_effect_clause_add_colorless_instead_suffix() {
+    let tokens = tokenize_line("add c c c instead", 0);
+    let effect = parse_effect_clause(&tokens).expect("parse add-mana instead suffix");
+    assert!(matches!(
+        effect,
+        EffectAst::AddMana { mana, player }
+            if mana == vec![ManaSymbol::Colorless, ManaSymbol::Colorless, ManaSymbol::Colorless]
+                && player == PlayerAst::Implicit
+    ));
+}
+
+#[test]
 fn parse_effect_clause_player_gets_multiple_poison_counters() {
     let tokens = tokenize_line("that player gets two poison counters", 0);
     let effect = parse_effect_clause(&tokens).expect("parse effect clause");
@@ -2909,6 +2921,28 @@ fn parse_discard_a_red_or_green_card_qualifier() {
             filter: Some(filter),
             ..
         } if filter.zone == Some(Zone::Hand)
+    ));
+}
+
+#[test]
+fn parse_discard_all_cards_of_that_color() {
+    let tokens = tokenize_line("all cards of that color", 0);
+    let effect = parse_discard(&tokens, Some(SubjectAst::Player(PlayerAst::Target)))
+        .expect("parse discard-all chosen-color clause");
+    assert!(matches!(
+        effect,
+        EffectAst::Discard {
+            count: Value::Count(filter),
+            player: PlayerAst::Target,
+            random: false,
+            filter: Some(discard_filter),
+            ..
+        } if filter.zone == Some(Zone::Hand)
+            && filter.owner == Some(PlayerFilter::target_player())
+            && filter.chosen_color
+            && discard_filter.zone == Some(Zone::Hand)
+            && discard_filter.owner == Some(PlayerFilter::target_player())
+            && discard_filter.chosen_color
     ));
 }
 

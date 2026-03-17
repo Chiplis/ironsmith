@@ -230,13 +230,18 @@ pub(crate) fn parse_discard(
         tokens
     };
     let count_offset = tokens.len().saturating_sub(count_tokens.len());
-    let (count, used_relative) = parse_value(count_tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing discard count (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
-    let used = count_offset + used_relative;
+    let uses_all_count = count_tokens.first().is_some_and(|token| token.is_word("all"));
+    let (mut count, used) = if uses_all_count {
+        (Value::Fixed(0), count_offset + 1)
+    } else {
+        let (count, used_relative) = parse_value(count_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing discard count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        (count, count_offset + used_relative)
+    };
 
     let rest = &tokens[used..];
     let rest_words = words(rest);
@@ -255,6 +260,9 @@ pub(crate) fn parse_discard(
     if !qualifier_tokens.is_empty() {
         let mut filter = if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
             filter
+        } else if let Some(filter) = parse_discard_chosen_color_qualifier_filter(&qualifier_tokens)
+        {
+            filter
         } else if let Some(filter) = parse_discard_color_qualifier_filter(&qualifier_tokens) {
             filter
         } else {
@@ -264,7 +272,26 @@ pub(crate) fn parse_discard(
             )));
         };
         filter.zone = Some(Zone::Hand);
+        if uses_all_count
+            && let Some(owner) = discard_subject_owner_filter(subject)
+            && filter.owner.is_none()
+        {
+            filter.owner = Some(owner);
+        }
         discard_filter = Some(filter);
+    }
+
+    if uses_all_count {
+        count = if let Some(filter) = discard_filter.as_ref() {
+            Value::Count(filter.clone())
+        } else if let Some(owner) = discard_subject_owner_filter(subject) {
+            Value::CardsInHand(owner)
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "missing discard count (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
     }
 
     let trailing_tokens = if card_word_idx + 1 < rest_words.len() {
@@ -318,6 +345,26 @@ pub(crate) fn parse_discard_color_qualifier_filter(tokens: &[Token]) -> Option<O
 
     let mut filter = ObjectFilter::default();
     filter.colors = Some(colors);
+    Some(filter)
+}
+
+pub(crate) fn parse_discard_chosen_color_qualifier_filter(tokens: &[Token]) -> Option<ObjectFilter> {
+    let qualifier_words: Vec<&str> = words(tokens)
+        .into_iter()
+        .filter(|word| !is_article(word))
+        .collect();
+    if !matches!(
+        qualifier_words.as_slice(),
+        ["of", "that", "color"]
+            | ["that", "color"]
+            | ["of", "the", "chosen", "color"]
+            | ["the", "chosen", "color"]
+    ) {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.chosen_color = true;
     Some(filter)
 }
 
@@ -1999,7 +2046,8 @@ pub(crate) fn parse_add_mana(
             && trailing_words
                 .iter()
                 .all(|word| matches!(*word, "to" | "your" | "mana" | "pool"));
-        if !trailing_words.is_empty() && !has_only_pool_tail {
+        let has_only_instead_tail = trailing_words.as_slice() == ["instead"];
+        if !trailing_words.is_empty() && !has_only_pool_tail && !has_only_instead_tail {
             if let Some(last_idx) = last_mana_idx
                 && let Some(conditional) = wrap_instead_if_tail(
                     EffectAst::AddMana {
@@ -3214,6 +3262,16 @@ pub(crate) fn exile_subject_owner_filter(subject: Option<SubjectAst>) -> Option<
         Some(SubjectAst::Player(PlayerAst::TargetOpponent)) => {
             Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
         }
+        Some(SubjectAst::Player(PlayerAst::That)) => Some(PlayerFilter::IteratedPlayer),
+        Some(SubjectAst::Player(PlayerAst::You)) => Some(PlayerFilter::You),
+        _ => None,
+    }
+}
+
+pub(crate) fn discard_subject_owner_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
+    match subject {
+        Some(SubjectAst::Player(PlayerAst::Target)) => Some(PlayerFilter::target_player()),
+        Some(SubjectAst::Player(PlayerAst::TargetOpponent)) => Some(PlayerFilter::target_opponent()),
         Some(SubjectAst::Player(PlayerAst::That)) => Some(PlayerFilter::IteratedPlayer),
         Some(SubjectAst::Player(PlayerAst::You)) => Some(PlayerFilter::You),
         _ => None,

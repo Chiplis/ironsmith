@@ -22,3 +22,13 @@ These parser-wave changes intentionally stay within existing lowering and runtim
 - New runtime/value mechanics for exact "cards you've drawn this turn" counts, including `Fists of Flame` style `gets +1/+0 for each card you've drawn this turn`.
 
 - New runtime/value mechanics for counting distinct mana values among cards in graveyards, including `All-Seeing Arbiter` style `where X is the number of different mana values among cards in your graveyard`.
+
+- Distinct-color mana output remains deferred for `Bloom Tender` and `Faeburrow Elder`. Exact support for "For each color among permanents you control, add one mana of that color" needs new sentence-level color iteration or a dedicated mana effect, which is outside this parser/lowering-only pass.
+
+- Spent-to-cast provenance work remains deferred, including "colors of mana spent to cast" style tracking.
+
+- Keyword-cost work remains deferred, including new lowering for keyword-specific payment machinery.
+
+- Generic X-expression work remains deferred where existing value parsing cannot lower the expression without broader support.
+
+- Any new mechanic or effect work remains deferred in this pass.

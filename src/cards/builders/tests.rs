@@ -8087,6 +8087,62 @@ fn parse_add_mana_chosen_color_tail() {
 }
 
 #[test]
+fn parse_urzas_tower_conditional_mana_output() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Urza's Tower Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "{T}: Add {C}. If you control an Urza's Mine and an Urza's Power-Plant, add {C}{C}{C} instead.",
+        )
+        .expect("urza tower mana followup should parse");
+
+    let mana_line = compiled_lines(&def)
+        .into_iter()
+        .find(|line| line.contains("Mana ability"))
+        .expect("expected mana ability line");
+    assert!(
+        mana_line.contains("Urza's Mine")
+            && mana_line.contains("Urza's Power-Plant")
+            && mana_line.contains("Add {C}{C}{C}")
+            && mana_line.contains("Add {C}"),
+        "expected conditional tron mana render, got {mana_line}"
+    );
+}
+
+#[test]
+fn parse_urza_tron_other_lands_conditional_mana_followups() {
+    for (name, text, other_a, other_b) in [
+        (
+            "Urza's Mine Variant",
+            "{T}: Add {C}. If you control an Urza's Power-Plant and an Urza's Tower, add {C}{C} instead.",
+            "Urza's Power-Plant",
+            "Urza's Tower",
+        ),
+        (
+            "Urza's Power-Plant Variant",
+            "{T}: Add {C}. If you control an Urza's Mine and an Urza's Tower, add {C}{C} instead.",
+            "Urza's Mine",
+            "Urza's Tower",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Land])
+            .parse_text(text)
+            .expect("other tron land mana followup should parse");
+        let mana_line = compiled_lines(&def)
+            .into_iter()
+            .find(|line| line.contains("Mana ability"))
+            .expect("expected mana ability line");
+        assert!(
+            mana_line.contains(other_a)
+                && mana_line.contains(other_b)
+                && mana_line.contains("Add {C}{C}")
+                && mana_line.contains("Add {C}"),
+            "expected conditional tron mana render, got {mana_line}"
+        );
+    }
+}
+
+#[test]
 fn parse_metalcraft_mana_activation_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mox Opal Variant")
         .card_types(vec![CardType::Artifact])
@@ -8610,6 +8666,29 @@ fn parse_discard_up_to_two_then_draw_that_many() {
             && debug.contains("Fixed(2)")
             && (debug.contains("EventValue(Amount)") || debug.contains("EffectValue(EffectId(")),
         "expected discard-count and draw-that-many lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_persecute_discards_all_cards_of_chosen_color() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Persecute Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Choose a color. Target player reveals their hand and discards all cards of that color.")
+        .expect("persecute discard-all chosen-color clause should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        rendered.to_ascii_lowercase().contains("choose a color")
+            && rendered.to_ascii_lowercase().contains("target player"),
+        "expected choose-color setup and target-player discard render, got {rendered}"
+    );
+    assert!(
+        debug.contains("DiscardEffect")
+            && debug.contains("Count(")
+            && debug.contains("chosen_color: true")
+            && debug.contains("zone: Some(Hand)"),
+        "expected discard-all chosen-color lowering, got {debug}"
     );
 }
 
