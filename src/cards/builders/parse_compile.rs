@@ -5277,11 +5277,9 @@ fn try_compile_flow_and_iteration_effect(
         }
         EffectAst::ForEachTagged { tag, effects } => {
             let effective_tag = if tag.as_str() == IT_TAG {
-                ctx.last_object_tag.clone().ok_or_else(|| {
-                    CardTextError::ParseError(
-                        "cannot resolve 'this way/it' tag without prior tagged object".to_string(),
-                    )
-                })?
+                ctx.last_object_tag
+                    .clone()
+                    .unwrap_or_else(|| IT_TAG.to_string())
             } else {
                 tag.as_str().to_string()
             };

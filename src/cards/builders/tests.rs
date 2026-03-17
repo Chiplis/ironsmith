@@ -8087,6 +8087,60 @@ fn parse_add_mana_chosen_color_tail() {
 }
 
 #[test]
+fn parse_urzas_tower_conditional_mana_output() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Urza's Tower Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "{T}: Add {C}. If you control an Urza's Mine and an Urza's Power-Plant, add {C}{C}{C} instead.",
+        )
+        .expect("urza tower mana followup should parse");
+
+    let mana_line = compiled_lines(&def)
+        .into_iter()
+        .find(|line| line.contains("Mana ability"))
+        .expect("expected mana ability line");
+    assert!(
+        mana_line.contains("If you control")
+            && mana_line.contains("Add {C}{C}{C}")
+            && mana_line.contains("Add {C}"),
+        "expected conditional tron mana render, got {mana_line}"
+    );
+}
+
+#[test]
+fn parse_urza_tron_other_lands_conditional_mana_followups() {
+    for (name, text, _other_a, _other_b) in [
+        (
+            "Urza's Mine Variant",
+            "{T}: Add {C}. If you control an Urza's Power-Plant and an Urza's Tower, add {C}{C} instead.",
+            "Urza's Power-Plant",
+            "Urza's Tower",
+        ),
+        (
+            "Urza's Power-Plant Variant",
+            "{T}: Add {C}. If you control an Urza's Mine and an Urza's Tower, add {C}{C} instead.",
+            "Urza's Mine",
+            "Urza's Tower",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Land])
+            .parse_text(text)
+            .expect("other tron land mana followup should parse");
+        let mana_line = compiled_lines(&def)
+            .into_iter()
+            .find(|line| line.contains("Mana ability"))
+            .expect("expected mana ability line");
+        assert!(
+            mana_line.contains("If you control")
+                && mana_line.contains("Add {C}{C}")
+                && mana_line.contains("Add {C}"),
+            "expected conditional tron mana render, got {mana_line}"
+        );
+    }
+}
+
+#[test]
 fn parse_metalcraft_mana_activation_condition() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mox Opal Variant")
         .card_types(vec![CardType::Artifact])
@@ -8610,6 +8664,29 @@ fn parse_discard_up_to_two_then_draw_that_many() {
             && debug.contains("Fixed(2)")
             && (debug.contains("EventValue(Amount)") || debug.contains("EffectValue(EffectId(")),
         "expected discard-count and draw-that-many lowering, got {debug}"
+    );
+}
+
+#[test]
+fn parse_persecute_discards_all_cards_of_chosen_color() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Persecute Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Choose a color. Target player reveals their hand and discards all cards of that color.")
+        .expect("persecute discard-all chosen-color clause should parse");
+
+    let rendered = compiled_lines(&def).join(" ");
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        rendered.to_ascii_lowercase().contains("choose a color")
+            && rendered.to_ascii_lowercase().contains("target player"),
+        "expected choose-color setup and target-player discard render, got {rendered}"
+    );
+    assert!(
+        debug.contains("DiscardEffect")
+            && debug.contains("Count(")
+            && debug.contains("chosen_color: true")
+            && debug.contains("zone: Some(Hand)"),
+        "expected discard-all chosen-color lowering, got {debug}"
     );
 }
 
@@ -16819,6 +16896,128 @@ fn oracle_render_regression_named_cards_compile_cleanly() {
     );
 }
 
+#[test]
+fn parse_oracle_chaos_warp_shuffle_clause_regression() {
+    let def = parse_oracle_card_definition("Chaos Warp");
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("movetozoneeffect")
+            && debug.contains("zone: library")
+            && debug.contains("shufflelibraryeffect"),
+        "expected Chaos Warp to move the permanent into a library and shuffle, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("shuffle") && rendered.contains("library"),
+        "expected Chaos Warp shuffle wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Chaos Warp to render without unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_oblation_shuffle_clause_regression() {
+    let def = parse_oracle_card_definition("Oblation");
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("movetozoneeffect")
+            && debug.contains("zone: library")
+            && debug.contains("shufflelibraryeffect"),
+        "expected Oblation to move the permanent into a library and shuffle, got {debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("shuffle") && rendered.contains("library"),
+        "expected Oblation shuffle wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Oblation to render without unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_derevi_command_zone_put_regression() {
+    let def = parse_oracle_card_definition("Derevi, Empyrial Tactician");
+
+    let debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        debug.contains("movetozoneeffect")
+            && debug.contains("zone: some(command)")
+            && debug.contains("zone: battlefield"),
+        "expected Derevi to keep command-zone source and battlefield destination, got {debug}"
+    );
+}
+
+#[test]
+fn parse_put_onto_battlefield_under_your_control_tapped_preserves_behavior() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tapped Reanimate Variant")
+        .parse_text("Put target creature card from a graveyard onto the battlefield tapped under your control.")
+        .expect("tapped under-your-control battlefield move should parse");
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("movetozoneeffect")
+            && debug.contains("zone: battlefield")
+            && debug.contains("battlefield_controller: you")
+            && debug.contains("enters_tapped: true"),
+        "expected tapped under-your-control battlefield behavior, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_ilharg_tapped_attacking_stays_deferred() {
+    assert_oracle_card_fails_strict("Ilharg, the Raze-Boar");
+}
+
+#[test]
+fn parse_oracle_winota_tapped_attacking_stays_deferred() {
+    assert_oracle_card_fails_strict("Winota, Joiner of Forces");
+}
+
+#[test]
+fn parse_oracle_banefire_threshold_restrictions_regression() {
+    let rendered = oracle_like_lines(&parse_oracle_card_definition("Banefire"))
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("deal x damage to any target"),
+        "expected Banefire damage clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if x is 5 or more"),
+        "expected Banefire threshold clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("this spell can't be countered")
+            || rendered.contains("this spell cant be countered"),
+        "expected Banefire uncounterable clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("damage can't be prevented")
+            || rendered.contains("damage cant be prevented"),
+        "expected Banefire damage-prevention clause, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_drakuseth_maw_of_flames_multi_target_regression() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Drakuseth target phrase")
+        .parse_text("Whenever this creature attacks, it deals 4 damage to any target.")
+        .expect("primary damage clause should still parse");
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("4 damage to any target"),
+        "expected Drakuseth-style primary target clause, got {rendered}"
+    );
+}
 #[derive(serde::Deserialize)]
 struct RegressionCardFaceJson {
     name: String,
@@ -16981,6 +17180,7 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
+    "Banefire",
     "Blast Zone",
     "Boseiju, Who Endures",
     "Cabal Ritual",
@@ -17036,6 +17236,7 @@ macro_rules! strict_parse_card_expected_fail_test {
     };
 }
 
+strict_parse_card_test!(strict_parse_banefire, "Banefire");
 strict_parse_card_test!(strict_parse_blast_zone, "Blast Zone");
 strict_parse_card_test!(strict_parse_bridge_from_below, "Bridge from Below");
 strict_parse_card_test!(strict_parse_cabal_ritual, "Cabal Ritual");
@@ -17127,6 +17328,51 @@ fn strict_parse_shared_parser_regression_cards() {
     ] {
         assert_oracle_card_parses_strict(name);
     }
+}
+
+#[test]
+fn parse_oracle_sorcerous_spyglass_hand_inspection_regression() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sorcerous Spyglass line")
+        .parse_text("Look at an opponent's hand, then choose any card name.")
+        .expect("spyglass hand-inspection line should parse");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("look at") && rendered.contains("opponent's hand"),
+        "expected opponent-hand inspection to compile, got {rendered}"
+    );
+    assert!(
+        rendered.contains("choose any card name") || rendered.contains("choose a card name"),
+        "expected follow-up card-name choice to remain present, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_liliana_last_hope_keeps_until_your_next_turn() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Liliana PT line")
+        .parse_text("Up to one target creature gets -2/-1 until your next turn.")
+        .expect("next-turn PT modifier line should parse");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("-2/-1") && rendered.contains("until your next turn"),
+        "expected next-turn PT duration to survive lowering, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_tragic_slip_morbid_branch_stays_parseable() {
+    let def = parse_oracle_card_definition("Tragic Slip");
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("gets -1/-1 until end of turn"),
+        "expected base tragic slip branch to remain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("gets -13/-13 until end of turn"),
+        "expected morbid PT branch to compile, got {rendered}"
+    );
 }
 
 #[test]
@@ -17611,5 +17857,88 @@ fn parse_choose_color_then_add_devotion_to_that_color() {
             && debug.contains("AddManaOfChosenColorEffect")
             && debug.contains("DevotionToChosenColor"),
         "expected choose-color plus devotion-to-chosen-color mana sequence, got {debug}"
+    );
+}
+
+#[test]
+fn parse_jackal_familiar_attack_or_block_alone_uses_alone_restriction() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Jackal Familiar")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack or block alone.")
+        .expect("jackal familiar restriction should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("AttackOrBlockAlone"),
+        "expected attack-or-block-alone restriction, got {abilities_debug}"
+    );
+
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("can't attack or block alone")
+            || rendered.contains("cant attack or block alone"),
+        "expected alone restriction text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_bonded_horncrest_attack_or_block_alone_uses_alone_restriction() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bonded Horncrest")
+        .card_types(vec![CardType::Creature])
+        .parse_text("This creature can't attack or block alone.")
+        .expect("bonded horncrest restriction should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("AttackOrBlockAlone"),
+        "expected attack-or-block-alone restriction, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_coercion_choose_card_from_it_uses_tagged_hand_choice() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Coercion")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Target opponent reveals their hand. You choose a card from it. That player discards that card.")
+        .expect("coercion hand-choice chain should parse");
+
+    let effects = def.spell_effect.as_ref().expect("spell effects");
+    let debug = format!("{effects:?}");
+    assert!(
+        debug.contains("LookAtHandEffect"),
+        "expected reveal-hand setup, got {debug}"
+    );
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("zone: Some(Hand)")
+            && debug.contains("chooser: You"),
+        "expected a non-targeted hand choice for you, got {debug}"
+    );
+    assert!(
+        debug.contains("IsTaggedObject"),
+        "expected chosen card filter to stay linked to the revealed hand, got {debug}"
+    );
+    assert!(
+        debug.contains("Discard"),
+        "expected follow-up discard effect, got {debug}"
+    );
+}
+
+#[test]
+fn parse_choose_an_opponent_then_that_player_cant_cast_spells() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Xanathar Restriction Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("When this creature enters, choose an opponent. That player can't cast spells this turn.")
+        .expect("choose-opponent then cant-cast should parse");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ChoosePlayerEffect") && abilities_debug.contains("filter: Opponent"),
+        "expected choose-opponent effect, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("CastSpellsMatching(TaggedPlayer")
+            || abilities_debug.contains("CastSpellsMatching(IteratedPlayer"),
+        "expected that-player cant-cast restriction to lower through existing player filters, got {abilities_debug}"
     );
 }

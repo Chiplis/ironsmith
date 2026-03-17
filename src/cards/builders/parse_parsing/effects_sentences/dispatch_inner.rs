@@ -3152,6 +3152,31 @@ pub(crate) fn parse_look_at_hand_sentence(
     tokens: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = words(tokens);
+    if words.as_slice()
+        == [
+            "look",
+            "at",
+            "an",
+            "opponents",
+            "hand",
+            "then",
+            "choose",
+            "any",
+            "card",
+            "name",
+        ]
+    {
+        return Ok(Some(vec![
+            EffectAst::LookAtHand {
+                target: TargetAst::Player(PlayerFilter::Opponent, None),
+            },
+            EffectAst::ChooseCardName {
+                player: PlayerAst::You,
+                filter: None,
+                tag: TagKey::from(IT_TAG),
+            },
+        ]));
+    }
     if words.as_slice() == ["look", "at", "target", "players", "hand"]
         || words.as_slice() == ["look", "at", "target", "player", "hand"]
     {
@@ -3163,6 +3188,16 @@ pub(crate) fn parse_look_at_hand_sentence(
     {
         let target =
             TargetAst::Player(PlayerFilter::target_opponent(), Some(TextSpan::synthetic()));
+        return Ok(Some(vec![EffectAst::LookAtHand { target }]));
+    }
+    if words.as_slice() == ["look", "at", "an", "opponents", "hand"]
+        || words.as_slice() == ["look", "at", "opponents", "hand"]
+    {
+        let target = TargetAst::Player(PlayerFilter::Opponent, None);
+        return Ok(Some(vec![EffectAst::LookAtHand { target }]));
+    }
+    if words.as_slice() == ["look", "at", "that", "players", "hand"] {
+        let target = TargetAst::Player(PlayerFilter::IteratedPlayer, None);
         return Ok(Some(vec![EffectAst::LookAtHand { target }]));
     }
     Ok(None)

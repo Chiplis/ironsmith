@@ -82,6 +82,49 @@ fn parse_look_top_x_cards_of_library() {
 }
 
 #[test]
+fn parse_look_at_opponents_hand_clause() {
+    let tokens = tokenize_line("at an opponent's hand", 0);
+    let ast = parse_look(&tokens, None).expect("parse look at opponent hand");
+    assert!(matches!(
+        ast,
+        EffectAst::LookAtHand {
+            target: TargetAst::Player(PlayerFilter::Opponent, None)
+        }
+    ));
+}
+
+#[test]
+fn parse_look_at_that_players_hand_clause() {
+    let tokens = tokenize_line("at that player's hand", 0);
+    let ast = parse_look(&tokens, None).expect("parse look at iterated player hand");
+    assert!(matches!(
+        ast,
+        EffectAst::LookAtHand {
+            target: TargetAst::Player(PlayerFilter::IteratedPlayer, None)
+        }
+    ));
+}
+
+#[test]
+fn parse_effect_sentences_look_at_hand_then_choose_name() {
+    let tokens = tokenize_line("Look at an opponent's hand, then choose any card name.", 0);
+    let effects = parse_effect_sentences(&tokens).expect("parse look-at-hand then choose");
+
+    assert!(
+        effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::LookAtHand { .. })),
+        "expected hand-inspection effect, got {effects:?}"
+    );
+    assert!(
+        effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::ChooseCardName { .. })),
+        "expected follow-up choose-card-name effect, got {effects:?}"
+    );
+}
+
+#[test]
 fn parse_target_phrase_top_two_cards_of_your_library_preserves_count() {
     let tokens = tokenize_line("the top two cards of your library", 0);
     let target = parse_target_phrase(&tokens).expect("parse top-two target");
@@ -187,6 +230,41 @@ fn parse_target_phrase_up_to_x_other_target_creatures_preserves_optional_dynamic
     };
     assert!(filter.other, "expected `other` filter to be preserved");
     assert_eq!(filter.card_types, vec![CardType::Creature]);
+}
+
+#[test]
+fn parse_target_phrase_up_to_two_other_targets_returns_any_other_target() {
+    let tokens = tokenize_line("up to two other targets", 0);
+    let target = parse_target_phrase(&tokens).expect("parse up-to-two other targets");
+
+    let TargetAst::WithCount(inner, count) = target else {
+        panic!("expected counted target");
+    };
+    assert_eq!(count, ChoiceCount::up_to(2));
+    assert!(matches!(*inner, TargetAst::AnyOtherTarget(_)));
+}
+
+#[test]
+fn parse_target_phrase_up_to_three_targets_returns_any_target() {
+    let tokens = tokenize_line("up to three targets", 0);
+    let target = parse_target_phrase(&tokens).expect("parse up-to-three targets");
+
+    let TargetAst::WithCount(inner, count) = target else {
+        panic!("expected counted target");
+    };
+    assert_eq!(count, ChoiceCount::up_to(3));
+    assert!(matches!(*inner, TargetAst::AnyTarget(_)));
+}
+
+#[test]
+fn parse_target_phrase_if_x_is_five_or_more_this_spell_recovers_spell_subject() {
+    let tokens = tokenize_line("if X is 5 or more this spell", 0);
+    let target = parse_target_phrase(&tokens).expect("parse Banefire-style prefixed spell target");
+
+    assert!(
+        matches!(target, TargetAst::Source(_) | TargetAst::Spell(_)),
+        "expected spell/source target, got {target:?}"
+    );
 }
 
 #[test]
@@ -889,6 +967,66 @@ fn parse_put_into_library_from_bottom_still_fails_loudly() {
     assert!(
         debug.contains("unsupported put clause"),
         "expected unsupported put-clause error, got {debug}"
+    );
+}
+
+#[test]
+fn parse_shuffle_it_into_their_library_uses_tagged_move_then_shuffle() {
+    let tokens = tokenize_line("it into their library", 0);
+    let effect = parse_shuffle(&tokens, Some(SubjectAst::Player(PlayerAst::ItsOwner)))
+        .expect("parse shuffle-into-library clause");
+
+    let EffectAst::ForEachTagged { tag, effects } = effect else {
+        panic!("expected tagged move+shuffle lowering, got {effect:?}");
+    };
+    assert_eq!(tag, TagKey::from(IT_TAG));
+    assert_eq!(effects.len(), 2, "expected move + shuffle, got {effects:?}");
+    assert!(matches!(
+        &effects[0],
+        EffectAst::MoveToZone {
+            target: TargetAst::Tagged(tag, _),
+            zone: Zone::Library,
+            to_top: false,
+            ..
+        } if tag == &TagKey::from(IT_TAG)
+    ));
+    assert!(matches!(
+        &effects[1],
+        EffectAst::ShuffleLibrary {
+            player: PlayerAst::ItsOwner
+        }
+    ));
+}
+
+#[test]
+fn parse_put_named_card_onto_battlefield_from_command_zone_sets_source_zone() {
+    let tokens = tokenize_line("this card onto the battlefield from the command zone", 0);
+    let effect = parse_put_into_hand(&tokens, None)
+        .expect("parse battlefield move from command zone");
+
+    let EffectAst::MoveToZone { target, zone, .. } = effect else {
+        panic!("expected move-to-zone effect");
+    };
+    assert_eq!(zone, Zone::Battlefield);
+
+    let TargetAst::Object(filter, _, _) = target else {
+        panic!("expected object target");
+    };
+    assert_eq!(filter.zone, Some(Zone::Command));
+}
+
+#[test]
+fn parse_put_onto_battlefield_tapped_and_attacking_still_fails_loudly() {
+    let tokens = tokenize_line(
+        "a creature card from your hand onto the battlefield tapped and attacking",
+        0,
+    );
+    let err = parse_put_into_hand(&tokens, None)
+        .expect_err("attacking battlefield entry should remain deferred");
+    let message = card_text_error_message(err);
+    assert!(
+        message.contains("unsupported put destination after 'onto'"),
+        "expected attacking battlefield entry to stay unsupported, got {message}"
     );
 }
 
@@ -2231,6 +2369,18 @@ fn parse_effect_clause_add_any_color_removed_counter_tail_still_fails_loudly() {
 }
 
 #[test]
+fn parse_effect_clause_add_colorless_instead_suffix() {
+    let tokens = tokenize_line("add c c c instead", 0);
+    let effect = parse_effect_clause(&tokens).expect("parse add-mana instead suffix");
+    assert!(matches!(
+        effect,
+        EffectAst::AddMana { mana, player }
+            if mana == vec![ManaSymbol::Colorless, ManaSymbol::Colorless, ManaSymbol::Colorless]
+                && player == PlayerAst::Implicit
+    ));
+}
+
+#[test]
 fn parse_effect_clause_player_gets_multiple_poison_counters() {
     let tokens = tokenize_line("that player gets two poison counters", 0);
     let effect = parse_effect_clause(&tokens).expect("parse effect clause");
@@ -2264,6 +2414,48 @@ fn parse_effect_clause_remove_all_minus_counters_from_it() {
         }
         other => panic!("expected RemoveUpToAnyCounters effect, got {other:?}"),
     }
+}
+
+#[test]
+fn parse_get_modifier_tail_until_your_next_turn() {
+    let tokens = tokenize_line("-2/-1 until your next turn", 0);
+    let (power, toughness, duration, condition) =
+        parse_get_modifier_values_with_tail(&tokens, Value::Fixed(-2), Value::Fixed(-1))
+            .expect("parse gets modifier tail");
+
+    assert_eq!(power, Value::Fixed(-2));
+    assert_eq!(toughness, Value::Fixed(-1));
+    assert_eq!(duration, Until::YourNextTurn);
+    assert_eq!(condition, None);
+}
+
+#[test]
+fn parse_get_modifier_tail_until_end_of_combat() {
+    let tokens = tokenize_line("+2/+0 until end of combat", 0);
+    let (power, toughness, duration, condition) =
+        parse_get_modifier_values_with_tail(&tokens, Value::Fixed(2), Value::Fixed(0))
+            .expect("parse gets modifier tail");
+
+    assert_eq!(power, Value::Fixed(2));
+    assert_eq!(toughness, Value::Fixed(0));
+    assert_eq!(duration, Until::EndOfCombat);
+    assert_eq!(condition, None);
+}
+
+#[test]
+fn parse_get_modifier_tail_accepts_morbid_instead_if_glue() {
+    let tokens = tokenize_line(
+        "-13/-13 until end of turn instead if a creature died this turn",
+        0,
+    );
+    let (power, toughness, duration, condition) =
+        parse_get_modifier_values_with_tail(&tokens, Value::Fixed(-13), Value::Fixed(-13))
+            .expect("parse morbid gets modifier tail");
+
+    assert_eq!(power, Value::Fixed(-13));
+    assert_eq!(toughness, Value::Fixed(-13));
+    assert_eq!(duration, Until::EndOfTurn);
+    assert_eq!(condition, None);
 }
 
 #[test]
@@ -2764,6 +2956,28 @@ fn parse_discard_a_red_or_green_card_qualifier() {
             filter: Some(filter),
             ..
         } if filter.zone == Some(Zone::Hand)
+    ));
+}
+
+#[test]
+fn parse_discard_all_cards_of_that_color() {
+    let tokens = tokenize_line("all cards of that color", 0);
+    let effect = parse_discard(&tokens, Some(SubjectAst::Player(PlayerAst::Target)))
+        .expect("parse discard-all chosen-color clause");
+    assert!(matches!(
+        effect,
+        EffectAst::Discard {
+            count: Value::Count(filter),
+            player: PlayerAst::Target,
+            random: false,
+            filter: Some(discard_filter),
+            ..
+        } if filter.zone == Some(Zone::Hand)
+            && filter.owner == Some(PlayerFilter::target_player())
+            && filter.chosen_color
+            && discard_filter.zone == Some(Zone::Hand)
+            && discard_filter.owner == Some(PlayerFilter::target_player())
+            && discard_filter.chosen_color
     ));
 }
 

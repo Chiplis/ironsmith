@@ -4798,6 +4798,9 @@ fn parse_cant_cast_restriction_words(words: &[&str]) -> Option<crate::effect::Re
 }
 
 fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
+    if words.starts_with(&["that", "player"]) {
+        return Some((PlayerFilter::IteratedPlayer, 2));
+    }
     if words.starts_with(&["your", "opponents", "who", "have"]) {
         return Some((PlayerFilter::Opponent, 4));
     }
@@ -4819,6 +4822,7 @@ fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
     match words.first().copied() {
         Some("players") => Some((PlayerFilter::Any, 1)),
         Some("opponents") => Some((PlayerFilter::Opponent, 1)),
+        Some("they") => Some((PlayerFilter::IteratedPlayer, 1)),
         Some("you") => Some((PlayerFilter::You, 1)),
         _ => None,
     }
@@ -4996,14 +5000,34 @@ pub(crate) fn parse_negated_object_restriction_clause(
         )));
     }
     let remainder_words = normalize_cant_words(&remainder_tokens);
+    let subject_words = normalize_cant_words(&subject_tokens);
+
+    if matches!(
+        subject_words.as_slice(),
+        ["damage"] | ["the", "damage"] | ["that", "damage"]
+    ) && remainder_words.as_slice() == ["be", "prevented"]
+    {
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::prevent_damage(),
+            target: None,
+        }));
+    }
 
     let restriction = match remainder_words.as_slice() {
         ["attack"] => Restriction::attack(filter),
         ["attack", "this", "turn"] => Restriction::attack(filter),
+        ["attack", "alone"] => Restriction::attack_alone(filter),
+        ["attack", "alone", "this", "turn"] => Restriction::attack_alone(filter),
         ["attack", "or", "block"] => Restriction::attack_or_block(filter),
         ["attack", "or", "block", "this", "turn"] => Restriction::attack_or_block(filter),
+        ["attack", "or", "block", "alone"] => Restriction::attack_or_block_alone(filter),
+        ["attack", "or", "block", "alone", "this", "turn"] => {
+            Restriction::attack_or_block_alone(filter)
+        }
         ["block"] => Restriction::block(filter),
         ["block", "this", "turn"] => Restriction::block(filter),
+        ["block", "alone"] => Restriction::block_alone(filter),
+        ["block", "alone", "this", "turn"] => Restriction::block_alone(filter),
         ["be", "blocked"] => Restriction::be_blocked(filter),
         ["be", "blocked", "this", "turn"] => Restriction::be_blocked(filter),
         _ if remainder_words.starts_with(&["be", "blocked", "by"]) && remainder_words.len() > 3 => {
@@ -5281,6 +5305,12 @@ pub(crate) fn parse_subject_object_filter(
     }
 
     let normalized_words = normalize_cant_words(tokens);
+    if matches!(
+        normalized_words.as_slice(),
+        ["damage"] | ["the", "damage"] | ["that", "damage"]
+    ) {
+        return Ok(Some(ObjectFilter::default()));
+    }
     if matches!(
         normalized_words.as_slice(),
         ["it"] | ["they"] | ["them"] | ["itself"] | ["themselves"]
@@ -10074,6 +10104,22 @@ pub(crate) fn parse_you_choose_objects_clause(
         break;
     }
     let mut choose_words = words(&choose_object_tokens);
+    loop {
+        if matches!(
+            choose_words.as_slice(),
+            [.., "from", "it"] | [.., "from", "them"] | [.., "in", "it"] | [.., "in", "them"]
+        ) {
+            references_it = true;
+            choose_words.truncate(choose_words.len().saturating_sub(2));
+            continue;
+        }
+        if matches!(choose_words.as_slice(), [.., "from", "there", "in"]) {
+            references_it = true;
+            choose_words.truncate(choose_words.len().saturating_sub(3));
+            continue;
+        }
+        break;
+    }
     let mut count = ChoiceCount::exactly(1);
     if choose_words.starts_with(&["up", "to"])
         && let Some((value, used)) = parse_number(
@@ -10118,12 +10164,17 @@ pub(crate) fn parse_you_choose_objects_clause(
         return Ok(None);
     }
 
-    let mut choose_filter = parse_object_filter(&choose_filter_tokens, false).map_err(|_| {
-        CardTextError::ParseError(format!(
-            "unsupported chosen object filter in choose clause (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
+    let mut choose_filter =
+        if references_it && matches!(choose_words.as_slice(), ["card"] | ["cards"]) {
+            ObjectFilter::default()
+        } else {
+            parse_object_filter(&choose_filter_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported chosen object filter in choose clause (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?
+        };
     if references_it {
         if choose_filter.zone.is_none() {
             choose_filter.zone = Some(Zone::Hand);
@@ -10215,10 +10266,17 @@ pub(crate) fn parse_you_choose_player_clause(
         }
     }
 
-    if player_words.first() != Some(&"player") {
-        return Ok(None);
-    }
-    player_words = player_words[1..].to_vec();
+    let mut filter = match player_words.first().copied() {
+        Some("player") => {
+            player_words = player_words[1..].to_vec();
+            None
+        }
+        Some("opponent" | "opponents") => {
+            player_words = player_words[1..].to_vec();
+            Some(PlayerFilter::Opponent)
+        }
+        _ => return Ok(None),
+    };
 
     let mut random = false;
     if player_words.starts_with(&["at", "random"]) {
@@ -10226,35 +10284,46 @@ pub(crate) fn parse_you_choose_player_clause(
         player_words = player_words[2..].to_vec();
     }
 
-    let filter = match player_words.as_slice() {
-        [] => PlayerFilter::Any,
-        [
-            "with",
-            "the",
-            "most",
-            "life",
-            "or",
-            "tied",
-            "for",
-            "most",
-            "life",
-        ] => PlayerFilter::MostLifeTied,
-        [
-            "who",
-            "cast",
-            "one",
-            "or",
-            "more",
-            "sorcery",
-            "spells",
-            "this",
-            "turn",
-        ] => PlayerFilter::CastCardTypeThisTurn(CardType::Sorcery),
-        _ => {
+    let filter = if let Some(filter) = filter.take() {
+        if player_words.is_empty() {
+            filter
+        } else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported chosen player filter in choose clause (clause: '{}')",
                 clause_words.join(" ")
             )));
+        }
+    } else {
+        match player_words.as_slice() {
+            [] => PlayerFilter::Any,
+            [
+                "with",
+                "the",
+                "most",
+                "life",
+                "or",
+                "tied",
+                "for",
+                "most",
+                "life",
+            ] => PlayerFilter::MostLifeTied,
+            [
+                "who",
+                "cast",
+                "one",
+                "or",
+                "more",
+                "sorcery",
+                "spells",
+                "this",
+                "turn",
+            ] => PlayerFilter::CastCardTypeThisTurn(CardType::Sorcery),
+            _ => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported chosen player filter in choose clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
         }
     };
 
@@ -10356,6 +10425,79 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
             condition: None,
         },
     ]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::tokenize_line;
+    use crate::effect::Restriction;
+    use crate::zone::Zone;
+
+    #[test]
+    fn parse_negated_object_restriction_clause_supports_attack_or_block_alone() {
+        let tokens = tokenize_line("This creature can't attack or block alone.", 0);
+
+        let parsed = parse_negated_object_restriction_clause(&tokens)
+            .expect("parse attack-or-block-alone restriction")
+            .expect("expected restriction");
+
+        assert!(matches!(
+            parsed.restriction,
+            Restriction::AttackOrBlockAlone(_)
+        ));
+    }
+
+    #[test]
+    fn parse_you_choose_objects_clause_supports_bare_card_from_it() {
+        let tokens = tokenize_line("You choose a card from it.", 0);
+
+        let (chooser, filter, count) = parse_you_choose_objects_clause(&tokens)
+            .expect("parse choose-a-card-from-it clause")
+            .expect("expected choose clause");
+
+        assert_eq!(chooser, PlayerAst::You);
+        assert_eq!(count, ChoiceCount::exactly(1));
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == IT_TAG),
+            "expected hand choice to stay tied to the prior revealed hand, got {filter:?}"
+        );
+        assert!(filter.controller.is_none(), "expected no controller pin, got {filter:?}");
+        assert!(filter.owner.is_none(), "expected no owner pin, got {filter:?}");
+    }
+
+    #[test]
+    fn parse_you_choose_player_clause_supports_choose_an_opponent() {
+        let tokens = tokenize_line("Choose an opponent.", 0);
+
+        let (chooser, filter, random, exclude_previous_choices) =
+            parse_you_choose_player_clause(&tokens)
+                .expect("parse choose-an-opponent clause")
+                .expect("expected choose-player clause");
+
+        assert_eq!(chooser, PlayerAst::You);
+        assert_eq!(filter, PlayerFilter::Opponent);
+        assert!(!random);
+        assert_eq!(exclude_previous_choices, 0);
+    }
+
+    #[test]
+    fn parse_cant_restriction_clause_supports_that_player_cant_cast_spells() {
+        let tokens = tokenize_line("That player can't cast spells.", 0);
+
+        let parsed = parse_cant_restriction_clause(&tokens)
+            .expect("parse that-player cant-cast clause")
+            .expect("expected cant restriction");
+
+        assert_eq!(
+            parsed.restriction,
+            Restriction::cast_spells(PlayerFilter::IteratedPlayer)
+        );
+    }
 }
 
 pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(

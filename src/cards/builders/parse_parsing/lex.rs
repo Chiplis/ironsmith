@@ -423,6 +423,7 @@ pub(crate) fn replace_names_with_map(
                     | b"transformed"
                     | b"exile"
                     | b"return"
+                    | b"put"
                     | b"on"
                     | b"to"
             )
@@ -454,6 +455,7 @@ pub(crate) fn replace_names_with_map(
                     | b"cant"
                     | b"would"
                     | b"remains"
+                    | b"onto"
                     | b"power"
                     | b"toughness"
                     | b"s"

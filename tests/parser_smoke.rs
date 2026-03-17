@@ -80,16 +80,16 @@ fn parser_feature_smoke_spell_trigger_line_becomes_delayed_effect() {
 }
 
 #[test]
-fn parser_feature_smoke_channel_remains_explicitly_unsupported() {
+fn parser_feature_smoke_channel_parses_life_for_mana_sequence() {
     let text = "Until end of turn, any time you could activate a mana ability, you may pay 1 life. If you do, add {C}.";
-    let err = CardDefinitionBuilder::new(CardId::new(), "Channel Smoke")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Channel Smoke")
         .card_types(vec![CardType::Sorcery])
         .parse_text(text)
-        .expect_err("channel smoke should stay unsupported");
-    let rendered = format!("{err:?}").to_ascii_lowercase();
+        .expect("channel smoke should parse");
+    let rendered = format!("{:?}", def.spell_effect).to_ascii_lowercase();
     assert!(
-        rendered.contains("unsupported until-end-of-turn permission clause"),
-        "expected explicit unsupported channel outcome, got {rendered}"
+        rendered.contains("loselifeeffect") && rendered.contains("addmanaeffect"),
+        "expected Channel Smoke to lower into a lose-life then add-mana sequence, got {rendered}"
     );
 }
 

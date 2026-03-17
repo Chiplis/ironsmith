@@ -42,13 +42,13 @@ fn clause_level_unsupported_includes_rule_id() {
 #[test]
 fn sentence_level_unsupported_includes_rule_id() {
     let rendered = parse_error_message(
-        "Vesuva Variant",
-        "You may have this land enter tapped as a copy of any land on the battlefield.",
-        &[CardType::Land],
+        "Ring Variant",
+        "The Ring tempts you.",
+        &[CardType::Sorcery],
     );
     assert!(
-        rendered.contains("unsupported enters-as-copy replacement clause")
-            && rendered.contains("[rule=enters-as-copy]"),
+        rendered.contains("unsupported ring tempts clause")
+            && rendered.contains("[rule=ring-tempts]"),
         "expected sentence-level unsupported diagnostic with rule id, got {rendered}"
     );
 }
