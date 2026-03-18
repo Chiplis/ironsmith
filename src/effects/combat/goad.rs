@@ -6,7 +6,6 @@ use crate::effects::helpers::resolve_objects_for_effect;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
-use crate::types::CardType;
 use crate::zone::Zone;
 
 /// Effect that goads creature(s).
@@ -35,8 +34,7 @@ impl EffectExecutor for GoadEffect {
             let Some(object) = game.object(object_id) else {
                 continue;
             };
-            if object.zone != Zone::Battlefield || !object.card_types.contains(&CardType::Creature)
-            {
+            if object.zone != Zone::Battlefield || !game.current_is_creature(object_id) {
                 continue;
             }
             game.add_goad_effect(object_id, ctx.controller, Until::YourNextTurn, ctx.source);

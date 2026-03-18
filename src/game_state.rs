@@ -2860,6 +2860,106 @@ impl GameState {
         self.calculated_characteristics_with_effects(id, &all_effects)
     }
 
+    /// Return the object's current name in its zone.
+    ///
+    /// Battlefield objects use calculated characteristics so continuous effects
+    /// that change names are reflected consistently. Other zones use the stored
+    /// object name.
+    pub fn current_name(&self, id: ObjectId) -> Option<String> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .map(|chars| chars.name)
+                .or_else(|| Some(object.name.clone()));
+        }
+        Some(object.name.clone())
+    }
+
+    /// Return the object's current controller in its zone.
+    pub fn current_controller(&self, id: ObjectId) -> Option<PlayerId> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .map(|chars| chars.controller)
+                .or_else(|| Some(object.controller));
+        }
+        Some(object.controller)
+    }
+
+    /// Return the object's current card types in its zone.
+    pub fn current_card_types(&self, id: ObjectId) -> Option<Vec<crate::types::CardType>> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .map(|chars| chars.card_types)
+                .or_else(|| Some(object.card_types.clone()));
+        }
+        Some(object.card_types.clone())
+    }
+
+    /// Return the object's current subtypes in its zone.
+    pub fn current_subtypes(&self, id: ObjectId) -> Option<Vec<crate::types::Subtype>> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .map(|chars| chars.subtypes)
+                .or_else(|| Some(object.subtypes.clone()));
+        }
+        Some(object.subtypes.clone())
+    }
+
+    /// Return the object's current supertypes in its zone.
+    pub fn current_supertypes(&self, id: ObjectId) -> Option<Vec<crate::types::Supertype>> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .map(|chars| chars.supertypes)
+                .or_else(|| Some(object.supertypes.clone()));
+        }
+        Some(object.supertypes.clone())
+    }
+
+    /// Return the object's current colors in its zone.
+    pub fn current_colors(&self, id: ObjectId) -> Option<crate::color::ColorSet> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .map(|chars| chars.colors)
+                .or_else(|| Some(object.colors()));
+        }
+        Some(object.colors())
+    }
+
+    /// Return the object's current power in its zone, if any.
+    pub fn current_power(&self, id: ObjectId) -> Option<i32> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .and_then(|chars| chars.power)
+                .or_else(|| object.power());
+        }
+        object.power()
+    }
+
+    /// Return the object's current toughness in its zone, if any.
+    pub fn current_toughness(&self, id: ObjectId) -> Option<i32> {
+        let object = self.object(id)?;
+        if object.zone == Zone::Battlefield {
+            return self
+                .calculated_characteristics(id)
+                .and_then(|chars| chars.toughness)
+                .or_else(|| object.toughness());
+        }
+        object.toughness()
+    }
+
     /// Return the abilities an object currently has in its zone.
     ///
     /// Battlefield objects use calculated characteristics so continuous effects
@@ -2963,6 +3063,15 @@ impl GameState {
         id: ObjectId,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
+        self.current_has_static_ability_id(id, ability_id)
+    }
+
+    /// Check if an object currently has a static ability with the given ID.
+    pub fn current_has_static_ability_id(
+        &self,
+        id: ObjectId,
+        ability_id: crate::static_abilities::StaticAbilityId,
+    ) -> bool {
         if let Some(chars) = self.calculated_characteristics(id) {
             return chars
                 .static_abilities
@@ -2990,7 +3099,13 @@ impl GameState {
 
     /// Check if an object has a specific card type (with continuous effects applied).
     pub fn object_has_card_type(&self, id: ObjectId, card_type: crate::types::CardType) -> bool {
-        self.calculated_card_types(id).contains(&card_type)
+        self.current_card_types(id)
+            .is_some_and(|card_types| card_types.contains(&card_type))
+    }
+
+    /// Check if an object is currently a creature.
+    pub fn current_is_creature(&self, id: ObjectId) -> bool {
+        self.object_has_card_type(id, crate::types::CardType::Creature)
     }
 
     // =========================================================================
@@ -3452,7 +3567,7 @@ impl GameState {
             .filter(|&&id| {
                 self.objects
                     .get(&id)
-                    .is_some_and(|o| o.controller == controller && o.is_creature())
+                    .is_some_and(|o| o.controller == controller && self.current_is_creature(id))
             })
             .copied()
             .collect()
@@ -4419,7 +4534,7 @@ impl GameState {
         if left_obj.zone != Zone::Battlefield || right_obj.zone != Zone::Battlefield {
             return false;
         }
-        if !left_obj.is_creature() || !right_obj.is_creature() {
+        if !self.current_is_creature(left) || !self.current_is_creature(right) {
             return false;
         }
         left_obj.controller == right_obj.controller
@@ -4809,5 +4924,81 @@ mod tests {
             before + 1,
             "gameplay shuffles should mark the action chain as irreversible"
         );
+    }
+
+    #[test]
+    fn creatures_controlled_by_includes_animated_land() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::cards::definitions::basic_mountain;
+        use crate::effect::Effect;
+        use crate::effects::EarthbendEffect;
+        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::ids::CardId;
+        use crate::target::ChooseSpec;
+        use crate::types::CardType;
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(200), "Kyoshi")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let land_id = game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+
+        let effect = Effect::new(EarthbendEffect::new(
+            ChooseSpec::SpecificObject(land_id),
+            8,
+        ));
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        execute_effect(&mut game, &effect, &mut ctx).expect("earthbend should resolve");
+
+        let creatures = game.creatures_controlled_by(alice);
+        assert!(
+            creatures.contains(&land_id),
+            "animated lands should be counted by creature-control helpers"
+        );
+    }
+
+    #[test]
+    fn current_characteristic_helpers_reflect_animation() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::cards::definitions::basic_mountain;
+        use crate::effect::Effect;
+        use crate::effects::EarthbendEffect;
+        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::ids::CardId;
+        use crate::static_abilities::StaticAbilityId;
+        use crate::target::ChooseSpec;
+        use crate::types::CardType;
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(201), "Kyoshi")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let land_id = game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+
+        let effect = Effect::new(EarthbendEffect::new(
+            ChooseSpec::SpecificObject(land_id),
+            8,
+        ));
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        execute_effect(&mut game, &effect, &mut ctx).expect("earthbend should resolve");
+
+        assert!(game.current_is_creature(land_id));
+        assert!(
+            game.current_card_types(land_id)
+                .is_some_and(|types| types.contains(&CardType::Creature))
+        );
+        assert_eq!(game.current_power(land_id), Some(8));
+        assert_eq!(game.current_toughness(land_id), Some(8));
+        assert!(game.current_has_static_ability_id(land_id, StaticAbilityId::Haste));
     }
 }

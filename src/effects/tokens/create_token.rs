@@ -200,8 +200,7 @@ impl EffectExecutor for CreateTokenEffect {
 
             if entered_battlefield {
                 let effective_tapped = entry_result.enters_tapped || self.enters_tapped;
-                let entered_is_creature =
-                    game.object(entered_id).is_some_and(|obj| obj.is_creature());
+                let entered_is_creature = game.current_is_creature(entered_id);
                 let tracks_creature_etb = entered_is_creature || token_is_creature;
                 apply_token_battlefield_entry(
                     game,

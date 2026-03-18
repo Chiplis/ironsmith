@@ -150,7 +150,6 @@ impl CostExecutableEffect for TapEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        use crate::ability::AbilityKind;
         use crate::effects::CostValidationError;
 
         // Only check for Source selection (tap source as cost)
@@ -164,19 +163,9 @@ impl CostExecutableEffect for TapEffect {
         }
 
         // Check summoning sickness for creatures
-        if let Some(obj) = game.object(source)
-            && obj.is_creature()
-            && game.is_summoning_sick(source)
+        if game.object(source).is_some() && game.current_is_creature(source) && game.is_summoning_sick(source)
         {
-            // Check for haste
-            let has_haste = obj.abilities.iter().any(|a| {
-                if let AbilityKind::Static(s) = &a.kind {
-                    s.has_haste()
-                } else {
-                    false
-                }
-            });
-            if !has_haste {
+            if !game.current_has_static_ability_id(source, crate::static_abilities::StaticAbilityId::Haste) {
                 return Err(CostValidationError::SummoningSickness);
             }
         }
@@ -306,6 +295,34 @@ mod tests {
         let effect = TapEffect::target(ChooseSpec::creature());
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("TapEffect"));
+    }
+
+    #[test]
+    fn test_tap_source_cost_allows_summoning_sick_earthbent_land_with_haste() {
+        use crate::cards::definitions::basic_mountain;
+        use crate::effect::Effect;
+        use crate::effects::EarthbendEffect;
+        use crate::executor::execute_effect;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let earthbend_source = create_creature(&mut game, "Kyoshi", alice);
+        let land_id = game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+
+        let effect = Effect::new(EarthbendEffect::new(
+            ChooseSpec::SpecificObject(land_id),
+            8,
+        ));
+        let mut ctx = ExecutionContext::new_default(earthbend_source, alice);
+        execute_effect(&mut game, &effect, &mut ctx).expect("earthbend should resolve");
+        game.set_summoning_sick(land_id);
+
+        let tap_cost = TapEffect::source();
+        assert_eq!(
+            CostExecutableEffect::can_execute_as_cost(&tap_cost, &game, land_id, alice),
+            Ok(()),
+            "earthbend grants haste, so a summoning-sick animated land should still tap for a source cost"
+        );
     }
 
     // === TapAll tests (using TapEffect::all) ===

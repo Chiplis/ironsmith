@@ -2510,6 +2510,54 @@ fn test_unblocked_attacker_uses_calculated_power_from_conditional_anthem() {
 }
 
 #[test]
+fn test_earthbent_land_deals_combat_damage_using_counter_boosted_power() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source_id = create_creature(&mut game, "Earthbender Source", alice, 1, 1);
+    let land_id = game.create_object_from_definition(
+        &crate::cards::definitions::basic_mountain(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let effect = Effect::new(crate::effects::EarthbendEffect::new(
+        ChooseSpec::SpecificObject(land_id),
+        8,
+    ));
+    let mut ctx = ExecutionContext::new_default(source_id, alice);
+    execute_effect(&mut game, &effect, &mut ctx).expect("earthbend should resolve");
+
+    assert_eq!(
+        game.calculated_power(land_id),
+        Some(8),
+        "earthbent land should be an 8-power creature after counters"
+    );
+    assert_eq!(
+        game.calculated_toughness(land_id),
+        Some(8),
+        "earthbent land should be an 8-toughness creature after counters"
+    );
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: land_id,
+        target: AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(land_id, Vec::new());
+
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(events.len(), 1, "earthbent land should deal combat damage");
+    assert_eq!(events[0].amount, 8, "earthbent land should hit for 8 damage");
+    assert_eq!(
+        game.player(bob).unwrap().life,
+        12,
+        "unblocked earthbent land should make Bob lose 8 life"
+    );
+}
+
+#[test]
 fn test_unblocked_attacker_uses_toughness_for_combat_damage_when_static_applies() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

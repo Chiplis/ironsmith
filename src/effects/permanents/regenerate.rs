@@ -86,7 +86,7 @@ impl EffectExecutor for RegenerateEffect {
             let Some(obj) = game.object(target_id) else {
                 continue;
             };
-            if obj.zone != Zone::Battlefield || !obj.is_creature() {
+            if obj.zone != Zone::Battlefield || !game.current_is_creature(target_id) {
                 continue;
             }
             if !game.can_be_regenerated(target_id) {

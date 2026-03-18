@@ -527,9 +527,13 @@ pub fn evaluate_condition_external(
             let total_power = game
                 .battlefield
                 .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| obj.controller == ctx.controller && obj.is_creature())
-                .map(|obj| obj.power().unwrap_or(0).max(0))
+                .copied()
+                .filter(|&id| {
+                    game.object(id).is_some_and(|obj| {
+                        obj.controller == ctx.controller && game.current_is_creature(id)
+                    })
+                })
+                .map(|id| game.current_power(id).unwrap_or(0).max(0))
                 .sum::<i32>();
             total_power >= *required_power as i32
         }
@@ -2248,9 +2252,13 @@ fn evaluate_condition(
             let total_power = game
                 .battlefield
                 .iter()
-                .filter_map(|&id| game.object(id))
-                .filter(|obj| obj.controller == ctx.controller && obj.is_creature())
-                .map(|obj| obj.power().unwrap_or(0).max(0))
+                .copied()
+                .filter(|&id| {
+                    game.object(id).is_some_and(|obj| {
+                        obj.controller == ctx.controller && game.current_is_creature(id)
+                    })
+                })
+                .map(|id| game.current_power(id).unwrap_or(0).max(0))
                 .sum::<i32>();
             Ok(total_power >= *required_power as i32)
         }

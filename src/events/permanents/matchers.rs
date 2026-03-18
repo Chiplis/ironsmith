@@ -276,7 +276,8 @@ impl ReplacementMatcher for RegenerationShieldMatcher {
 
         // Verify the creature is still on the battlefield and is still a creature
         if let Some(obj) = ctx.game.object(destroy.permanent) {
-            obj.is_creature() && obj.zone == crate::zone::Zone::Battlefield
+            obj.zone == crate::zone::Zone::Battlefield
+                && ctx.game.current_is_creature(destroy.permanent)
         } else {
             false
         }

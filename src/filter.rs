@@ -2279,6 +2279,22 @@ impl ObjectFilter {
             }
         }
 
+        let mut adjusted_object_storage = None;
+        if allow_calculated_pt && object.zone == Zone::Battlefield
+            && let Some(chars) = game.calculated_characteristics(object.id)
+        {
+            let mut adjusted = object.clone();
+            adjusted.name = chars.name;
+            adjusted.controller = chars.controller;
+            adjusted.card_types = chars.card_types;
+            adjusted.subtypes = chars.subtypes;
+            adjusted.supertypes = chars.supertypes;
+            adjusted.color_override = Some(chars.colors);
+            adjusted.abilities = chars.abilities;
+            adjusted_object_storage = Some(adjusted);
+        }
+        let object = adjusted_object_storage.as_ref().unwrap_or(object);
+
         if self.modified {
             if object.zone != Zone::Battlefield || !object.card_types.contains(&CardType::Creature)
             {
@@ -2287,13 +2303,29 @@ impl ObjectFilter {
 
             let has_counters = object.counters.values().any(|count| *count > 0);
             let has_equipment = object.attachments.iter().any(|attachment_id| {
-                game.object(*attachment_id)
-                    .is_some_and(|attachment| attachment.subtypes.contains(&Subtype::Equipment))
+                game.object(*attachment_id).is_some_and(|attachment| {
+                    let attachment_subtypes = if allow_calculated_pt
+                        && attachment.zone == Zone::Battlefield
+                    {
+                        game.calculated_subtypes(*attachment_id)
+                    } else {
+                        attachment.subtypes.clone()
+                    };
+                    attachment_subtypes.contains(&Subtype::Equipment)
+                })
             });
             let has_controlled_aura = ctx.you.is_some_and(|you| {
                 object.attachments.iter().any(|attachment_id| {
                     game.object(*attachment_id).is_some_and(|attachment| {
-                        attachment.controller == you && attachment.subtypes.contains(&Subtype::Aura)
+                        let attachment_subtypes = if allow_calculated_pt
+                            && attachment.zone == Zone::Battlefield
+                        {
+                            game.calculated_subtypes(*attachment_id)
+                        } else {
+                            attachment.subtypes.clone()
+                        };
+                        attachment.controller == you
+                            && attachment_subtypes.contains(&Subtype::Aura)
                     })
                 })
             });
@@ -5466,6 +5498,47 @@ mod tests {
         assert!(
             !filter.matches_non_recursive(obj, &ctx, &game),
             "non-recursive matching should avoid layer-calculated power"
+        );
+    }
+
+    #[test]
+    fn test_filter_matches_earthbent_land_as_creature() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::cards::definitions::basic_mountain;
+        use crate::effect::Effect;
+        use crate::effects::EarthbendEffect;
+        use crate::executor::{ExecutionContext, execute_effect};
+        use crate::game_state::GameState;
+        use crate::ids::CardId;
+        use crate::target::ChooseSpec;
+
+        let you = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["You".to_string()], 20);
+
+        let source_card = CardBuilder::new(CardId::from_raw(32), "Earthbend Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source_id = game.create_object_from_card(&source_card, you, Zone::Battlefield);
+        let land_id = game.create_object_from_definition(&basic_mountain(), you, Zone::Battlefield);
+
+        let effect = Effect::new(EarthbendEffect::new(
+            ChooseSpec::SpecificObject(land_id),
+            8,
+        ));
+        let mut exec_ctx = ExecutionContext::new_default(source_id, you);
+        execute_effect(&mut game, &effect, &mut exec_ctx).expect("earthbend should resolve");
+
+        let filter_ctx = FilterContext::new(you).with_source(source_id);
+        let land = game.object(land_id).expect("earthbent land should exist");
+
+        assert!(
+            ObjectFilter::creature().matches(land, &filter_ctx, &game),
+            "calculated creature type should make the animated land match creature filters"
+        );
+        assert!(
+            !ObjectFilter::creature().matches_non_recursive(land, &filter_ctx, &game),
+            "non-recursive matching should keep using base types for layer calculations"
         );
     }
 

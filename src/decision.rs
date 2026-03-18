@@ -3501,16 +3501,12 @@ pub fn get_convoke_creatures(
     game: &GameState,
     player: PlayerId,
 ) -> Vec<(crate::ids::ObjectId, crate::color::ColorSet)> {
-    use crate::ability::AbilityKind;
-
     game.battlefield
         .iter()
         .filter_map(|&id| {
             let obj = game.object(id)?;
             // Must be a creature controlled by player
-            if obj.controller != player
-                || !game.object_has_card_type(id, crate::types::CardType::Creature)
-            {
+            if obj.controller != player || !game.current_is_creature(id) {
                 return None;
             }
             // Must be untapped
@@ -3519,14 +3515,7 @@ pub fn get_convoke_creatures(
             }
             // Must not have summoning sickness (unless has haste)
             if game.is_summoning_sick(id) {
-                let has_haste = obj.abilities.iter().any(|a| {
-                    if let AbilityKind::Static(s) = &a.kind {
-                        s.has_haste()
-                    } else {
-                        false
-                    }
-                });
-                if !has_haste {
+                if !game.current_has_static_ability_id(id, crate::static_abilities::StaticAbilityId::Haste) {
                     return None;
                 }
             }
@@ -5752,10 +5741,10 @@ fn display_game_state(game: &GameState) {
             .filter_map(|&id| {
                 game.object(id).map(|obj| {
                     let tapped = if game.is_tapped(id) { "[T]" } else { "" };
-                    let pt = if obj.is_creature() {
+                    let pt = if game.current_is_creature(id) {
                         // Use calculated power/toughness (includes +1/+1 counters, anthems, etc.)
-                        let power = game.calculated_power(id).unwrap_or(0);
-                        let toughness = game.calculated_toughness(id).unwrap_or(0);
+                        let power = game.current_power(id).unwrap_or(0);
+                        let toughness = game.current_toughness(id).unwrap_or(0);
                         format!(" {}/{}", power, toughness)
                     } else {
                         String::new()
@@ -6965,9 +6954,9 @@ fn prompt_choose_targets(
                             .player(obj.controller)
                             .map(|p| p.name.chars().next().unwrap_or('?'))
                             .unwrap_or('?');
-                        if obj.is_creature() {
-                            let power = game.calculated_power(*id).unwrap_or(0);
-                            let toughness = game.calculated_toughness(*id).unwrap_or(0);
+                        if game.current_is_creature(*id) {
+                            let power = game.current_power(*id).unwrap_or(0);
+                            let toughness = game.current_toughness(*id).unwrap_or(0);
                             format!("{} {}/{} ({})", obj.name, power, toughness, controller_name)
                         } else {
                             format!("{} ({})", obj.name, controller_name)

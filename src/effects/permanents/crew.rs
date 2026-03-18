@@ -34,7 +34,7 @@ impl CrewCostEffect {
                 let Some(obj) = game.object(id) else {
                     return false;
                 };
-                obj.is_creature() && obj.controller == controller && !game.is_tapped(id)
+                game.current_is_creature(id) && obj.controller == controller && !game.is_tapped(id)
             })
             .collect()
     }

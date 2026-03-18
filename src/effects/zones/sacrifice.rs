@@ -406,10 +406,16 @@ impl CostExecutableEffect for SacrificeTargetEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::cards::definitions::basic_mountain;
+    use crate::effect::Effect;
     use crate::effect::ExecutionFact;
+    use crate::effects::CostExecutableEffect;
+    use crate::effects::EarthbendEffect;
+    use crate::executor::{ExecutionContext, execute_effect};
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
+    use crate::target::ChooseSpec;
     use crate::types::CardType;
 
     fn setup_game() -> GameState {
@@ -461,6 +467,28 @@ mod tests {
             result
                 .execution_facts()
                 .contains(&ExecutionFact::AffectedObjects(vec![target_id]))
+        );
+    }
+
+    #[test]
+    fn test_creature_sacrifice_cost_accepts_earthbent_land() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = create_creature_on_battlefield(&mut game, "Kyoshi", alice);
+        let land_id = game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+
+        let effect = Effect::new(EarthbendEffect::new(
+            ChooseSpec::SpecificObject(land_id),
+            8,
+        ));
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        execute_effect(&mut game, &effect, &mut ctx).expect("earthbend should resolve");
+
+        let sacrifice_cost = SacrificeEffect::you_creature(1);
+        assert_eq!(
+            CostExecutableEffect::can_execute_as_cost(&sacrifice_cost, &game, source_id, alice),
+            Ok(()),
+            "animated lands should satisfy creature sacrifice costs"
         );
     }
 }

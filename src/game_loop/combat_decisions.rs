@@ -176,7 +176,7 @@ pub fn apply_attacker_declarations(
             )
             .into());
         }
-        if !creature.is_creature() {
+        if !game.current_is_creature(creature.id) {
             return Err(ResponseError::InvalidAttackers("Not a creature".to_string()).into());
         }
 
