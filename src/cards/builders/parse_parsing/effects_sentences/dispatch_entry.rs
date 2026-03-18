@@ -2589,8 +2589,27 @@ pub(crate) fn parse_token_copy_followup_sentence(tokens: &[Token]) -> Option<Tok
         .collect();
     if matches!(
         filtered.as_slice(),
-        ["sacrifice", "that", "token", "at", "beginning", "of", "next", "end", "step"]
-            | ["sacrifice", "those", "tokens", "at", "beginning", "of", "next", "end", "step"]
+        [
+            "sacrifice",
+            "that",
+            "token",
+            "at",
+            "beginning",
+            "of",
+            "next",
+            "end",
+            "step"
+        ] | [
+            "sacrifice",
+            "those",
+            "tokens",
+            "at",
+            "beginning",
+            "of",
+            "next",
+            "end",
+            "step"
+        ]
     ) {
         return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
     }

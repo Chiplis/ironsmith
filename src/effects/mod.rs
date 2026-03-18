@@ -95,10 +95,9 @@ pub use counters::{
     RemoveUpToCountersEffect,
 };
 pub use damage::{
-    ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect,
-    PreventNextTimeDamageEffect, PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
-    RedirectNextDamageToTargetEffect, RedirectNextTimeDamageSource,
-    RedirectNextTimeDamageToSourceEffect,
+    ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect, PreventNextTimeDamageEffect,
+    PreventNextTimeDamageSource, PreventNextTimeDamageTarget, RedirectNextDamageToTargetEffect,
+    RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
 };
 pub use delayed::{
     ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,
@@ -122,13 +121,15 @@ pub use permanents::{
 pub use player::{
     AdditionalLandPlaysEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect,
     CastTaggedEffect, ChooseCardNameEffect, ChooseColorEffect, ChoosePlayerEffect,
-    ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect, EnergyCountersEffect,
-    ExileInsteadOfGraveyardEffect, ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect,
-    ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, GrantBySpecEffect,
-    GrantEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
-    GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
-    LoseTheGameEffect, PayEnergyEffect, PoisonCountersEffect, SkipCombatPhasesEffect,
-    SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, WinTheGameEffect,
+    ControlPlayerEffect, CreateEmblemEffect, DemonicConsultationEffect, DiscoverEffect,
+    EnergyCountersEffect, ExileInsteadOfGraveyardEffect, ExileUntilMatchCastEffect,
+    ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect,
+    ExtraTurnEffect, GrantBySpecEffect, GrantEffect, GrantPlayTaggedDuration,
+    GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+    GrantTaggedSpellLifeCostByManaValueEffect, LoseTheGameEffect, PayEnergyEffect,
+    PoisonCountersEffect, SavinesReclamationEffect, SkipCombatPhasesEffect,
+    SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TaintedPactEffect,
+    ThassasOracleEffect, WinTheGameEffect,
 };
 pub use replacement::{ApplyReplacementEffect, ReplacementApplyMode};
 pub use restrictions::CantEffect;

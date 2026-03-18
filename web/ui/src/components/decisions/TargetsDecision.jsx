@@ -9,12 +9,12 @@ import { getPlayerAccent } from "@/lib/player-colors";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { X, ArrowRight } from "lucide-react";
 import DecisionSummary from "./DecisionSummary";
-import { getVisibleStackObjects, getVisibleTopStackObject } from "@/lib/stack-targets";
+import { getVisibleStackObjects } from "@/lib/stack-targets";
 
-const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-8 max-w-[360px] min-w-[120px] justify-start self-stretch px-2.5 text-[12px] font-semibold";
+const STRIP_ITEM_BASE_CLASS = "decision-option-row decision-option-row--strip h-7 max-w-[320px] min-w-[104px] justify-start self-stretch px-2 text-[11px] font-semibold";
 const STRIP_ITEM_ACTIVE_CLASS = "is-selected";
 const STRIP_ITEM_DISABLED_CLASS = "is-disabled";
-const STRIP_META_ITEM_CLASS = "decision-target-meta inline-flex h-8 max-w-[460px] min-w-[220px] items-center self-stretch px-2.5 text-[12px] font-semibold whitespace-nowrap";
+const STRIP_META_ITEM_CLASS = "decision-target-meta inline-flex h-7 max-w-[380px] min-w-[176px] items-center self-stretch px-2 text-[11px] font-semibold whitespace-nowrap";
 
 function targetObjectId(target) {
   if (!target || target.kind === "player") return null;
@@ -109,21 +109,33 @@ function stackObjectMatchesDecisionSource(stackObject, decision) {
   return Boolean(decisionSourceName && topName && decisionSourceName === topName);
 }
 
+function findMatchingVisibleStackSource(state, decision) {
+  const visibleStackObjects = getVisibleStackObjects(state);
+  if (visibleStackObjects.length === 0) return null;
+
+  const exactMatch = visibleStackObjects.find((stackObject) =>
+    stackObjectMatchesDecisionSource(stackObject, decision)
+  );
+  if (exactMatch) return exactMatch;
+
+  return visibleStackObjects[0] || null;
+}
+
 function resolveTargetDecisionSourceId(state, decision) {
-  const topStackObject = getVisibleTopStackObject(state);
+  const matchingStackObject = findMatchingVisibleStackSource(state, decision);
   const decisionSourceId = normalizeNumericId(decision?.source_id);
 
-  if (topStackObject && stackObjectMatchesDecisionSource(topStackObject, decision)) {
-    return normalizeNumericId(topStackObject?.id);
+  if (matchingStackObject) {
+    return normalizeNumericId(matchingStackObject?.id);
   }
 
   return decisionSourceId;
 }
 
 function resolveTargetDecisionColor(state, decision) {
-  const topStackObject = getVisibleTopStackObject(state);
-  const controllerId = stackObjectMatchesDecisionSource(topStackObject, decision)
-    ? normalizeNumericId(topStackObject?.controller)
+  const matchingStackObject = findMatchingVisibleStackSource(state, decision);
+  const controllerId = matchingStackObject
+    ? normalizeNumericId(matchingStackObject?.controller)
     : null;
   const fallbackControllerId = normalizeNumericId(decision?.player);
   const accent = getPlayerAccent(state?.players || [], controllerId);
@@ -319,17 +331,17 @@ function ActiveRequirementTargets({
           showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
         )}
       >
-          <div className="flex min-w-max items-center gap-1.5 py-0.5">
+          <div className="flex min-w-max items-center gap-1 py-0">
           <div className={cn(STRIP_META_ITEM_CLASS, !isActive && "opacity-80")}>
             {header}
           </div>
           {showTargetButtons ? targetButtons : (
-            <div className="decision-empty-note px-2 text-[12px] italic whitespace-nowrap">
+            <div className="decision-empty-note px-2 text-[11px] italic whitespace-nowrap">
               {interactionHint || "Click a highlighted card or player to target it directly."}
             </div>
           )}
           {!showRows && showTargetButtons && (
-            <div className="decision-empty-note px-2 text-[12px] italic whitespace-nowrap">
+            <div className="decision-empty-note px-2 text-[11px] italic whitespace-nowrap">
               No legal targets.
             </div>
           )}
@@ -337,7 +349,7 @@ function ActiveRequirementTargets({
             <Button
               variant="ghost"
               size="sm"
-              className={cn(STRIP_ITEM_BASE_CLASS, "h-8 min-w-[140px]")}
+              className={cn(STRIP_ITEM_BASE_CLASS, "h-7 min-w-[124px]")}
               disabled={!canAct}
               onPointerDown={(event) => {
                 if (!canAct || !registerPointerDown(event)) return;
@@ -365,7 +377,7 @@ function ActiveRequirementTargets({
           showRows ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
         )}
       >
-        <div className="decision-panel-header sticky top-0 z-10 px-1.5 py-1">
+        <div className="decision-panel-header pointer-events-none sticky top-0 z-10 px-1.5 py-1">
           {header}
         </div>
         <div
@@ -413,9 +425,19 @@ export default function TargetsDecision({
   showStripSummary = true,
 }) {
   const { dispatch, state } = useGame();
-  const { startDragArrow, updateDragArrow, endDragArrow } = useCombatArrows();
+  const {
+    updateArrows,
+    clearArrows,
+    startDragArrow,
+    updateDragArrow,
+    endDragArrow,
+  } = useCombatArrows();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const stripLayout = layout === "strip";
+  const compactStripLayout =
+    stripLayout
+    && typeof window !== "undefined"
+    && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
   const hoveredObjectId = useHoveredObjectId();
   const requirements = useMemo(() => decision.requirements || [], [decision.requirements]);
   const { objectNames: objectNamesById, playerNames: playerNamesById } = useMemo(
@@ -608,6 +630,40 @@ export default function TargetsDecision({
     updateDragArrow,
   ]);
 
+  useEffect(() => {
+    if (!canAct || liveTargetSourceId == null || allSelections.length === 0) {
+      clearArrows();
+      return undefined;
+    }
+
+    updateArrows(allSelections.map((target, index) => (
+      target.kind === "player"
+        ? {
+          fromId: liveTargetSourceId,
+          toPlayerId: Number(target.player),
+          color: liveTargetColor,
+          key: `selected-target-player-${liveTargetSourceId}-${target.player}-${index}`,
+        }
+        : {
+          fromId: liveTargetSourceId,
+          toId: Number(target.object),
+          color: liveTargetColor,
+          key: `selected-target-object-${liveTargetSourceId}-${target.object}-${index}`,
+        }
+    )));
+
+    return () => {
+      clearArrows();
+    };
+  }, [
+    allSelections,
+    canAct,
+    clearArrows,
+    liveTargetColor,
+    liveTargetSourceId,
+    updateArrows,
+  ]);
+
   const handleRemoveTarget = (reqIdx, selIdx) => {
     setSelectionsByReq((prev) => {
       const next = prev.map((arr) => [...arr]);
@@ -648,23 +704,23 @@ export default function TargetsDecision({
   return (
     <div className={cn(
       "flex w-full min-w-0 flex-col gap-1.5",
-      stripLayout && "gap-1"
+      stripLayout && !compactStripLayout && "gap-1"
     )}>
-      {(!stripLayout || showStripSummary) && (
+      {((!stripLayout || showStripSummary) || compactStripLayout) && (
         <DecisionSummary
           decision={decision}
           hideDescription={hideDescription}
-          layout={layout}
-          className={stripLayout ? "w-full" : ""}
+          layout={compactStripLayout ? "panel" : layout}
+          className={stripLayout && !compactStripLayout ? "w-full" : ""}
         />
       )}
       <div className={cn(
-        stripLayout
+        stripLayout && !compactStripLayout
           ? "min-w-0 overflow-x-auto overflow-y-hidden pb-1"
           : "grid gap-1.5"
       )}>
         <div className={cn(
-          stripLayout
+          stripLayout && !compactStripLayout
             ? "flex min-w-max items-center gap-1.5"
             : "grid gap-1.5"
         )}>
@@ -684,20 +740,20 @@ export default function TargetsDecision({
             const requirementHeader = (
               <div className={cn(
                 "leading-snug",
-                stripLayout
-                  ? "text-[12px] whitespace-nowrap text-[#d5c7ab]"
+                stripLayout && !compactStripLayout
+                  ? "text-[11px] whitespace-nowrap text-[#d5c7ab]"
                   : "text-[13px] text-[#d9ccb1]"
               )}>
                 <span className={cn(
                   "font-semibold",
-                  stripLayout ? "text-[#f0e0bf]" : "text-[#f0e0bf]"
+                  stripLayout && !compactStripLayout ? "text-[#f0e0bf]" : "text-[#f0e0bf]"
                 )}>
                   Target {reqIdx + 1}:
                 </span>{" "}
                 {req.description || "Choose a target"}
                 <span className={cn(
-                  "ml-1 text-[12px]",
-                  stripLayout ? "text-[#bca887]" : "text-[#bca887]"
+                  "ml-1 text-[11px]",
+                  stripLayout && !compactStripLayout ? "text-[#bca887]" : "text-[#bca887]"
                 )}>
                   ({reqMin}-{req.max_targets ?? req.legal_targets?.length ?? "?"}{isOptional ? ", optional" : ""})
                 </span>
@@ -708,21 +764,21 @@ export default function TargetsDecision({
               <div
                 key={reqIdx}
                 className={cn(
-                  stripLayout
+                  stripLayout && !compactStripLayout
                     ? "flex min-w-max items-center gap-1.5"
                     : "decision-target-requirement px-1.5 py-1",
-                  !stripLayout && isActive && "is-active"
+                  (!stripLayout || compactStripLayout) && isActive && "is-active"
                 )}
               >
-                {!shouldShowTargetOptions && !stripLayout && <div className="mb-1">{requirementHeader}</div>}
+                {!shouldShowTargetOptions && (!stripLayout || compactStripLayout) && <div className="mb-1">{requirementHeader}</div>}
 
                 {/* Show current selections for this requirement */}
                 {shouldShowSelectedChips && (
                   <div className={cn(
                     "mb-1 flex",
-                    stripLayout ? "items-center gap-1.5 mb-0" : "flex-wrap gap-0.5"
+                    stripLayout && !compactStripLayout ? "items-center gap-1.5 mb-0" : "flex-wrap gap-0.5"
                   )}>
-                    {stripLayout && (
+                    {stripLayout && !compactStripLayout && (
                       <div className={STRIP_META_ITEM_CLASS}>
                         {requirementHeader}
                       </div>
@@ -746,7 +802,7 @@ export default function TargetsDecision({
                           variant="ghost"
                           size="sm"
                           className={cn(
-                            stripLayout
+                            stripLayout && !compactStripLayout
                               ? cn(STRIP_ITEM_BASE_CLASS, STRIP_ITEM_ACTIVE_CLASS)
                               : "decision-selected-chip h-5 px-1.5 text-[12px]"
                           )}
@@ -783,8 +839,8 @@ export default function TargetsDecision({
                     onSkipRequirement={handleSkipRequirement}
                     showSkip={isActive && (isOptional || currentMet) && !allDone}
                     skipLabel={isOptional ? "Skip (optional)" : <>Next requirement <ArrowRight className="size-3 inline" /></>}
-                    horizontal={stripLayout}
-                    showTargetButtons={!stripLayout}
+                    horizontal={stripLayout && !compactStripLayout}
+                    showTargetButtons={!stripLayout || compactStripLayout}
                     interactionHint={interactionHint}
                   />
                 )}
@@ -795,13 +851,13 @@ export default function TargetsDecision({
       </div>
 
       {inlineSubmit && (
-        <div className={cn("w-full shrink-0", stripLayout ? "pt-0" : "pt-1")}>
+        <div className={cn("w-full shrink-0", stripLayout && !compactStripLayout ? "pt-0" : "pt-1")}>
           <Button
             variant="ghost"
             size="sm"
             className={cn(
               "decision-neon-button decision-submit-button h-6 rounded-none px-2 text-[13px] font-semibold uppercase",
-              stripLayout ? "w-auto ml-1" : "w-full"
+              stripLayout && !compactStripLayout ? "w-auto ml-1" : "w-full"
             )}
             disabled={!canAct || !canSubmit}
             onPointerDown={(event) => {

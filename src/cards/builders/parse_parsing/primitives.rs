@@ -448,10 +448,7 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     ) {
         return Some((Value::EventValue(EventValueSpec::Amount), 5));
     }
-    if matches!(
-        words.get(..4),
-        Some(["that", "much", "excess", "damage"])
-    ) {
+    if matches!(words.get(..4), Some(["that", "much", "excess", "damage"])) {
         return Some((Value::EventValue(EventValueSpec::Amount), 4));
     }
 

@@ -122,6 +122,7 @@ function HorizontalStackEntry({
   const artUrl = scryfallImageUrl(name, "art_crop");
   const kindLabel = horizontalStackKindLabel(entry);
   const subtitle = String(entry?.__subtitle || "").trim();
+  const isTriggerOrderingEntry = !!entry?.__trigger_ordering;
   const isSpell = !entry?.ability_kind;
   const pt = entry?.power_toughness
     || (entry?.power != null && entry?.toughness != null
@@ -138,7 +139,8 @@ function HorizontalStackEntry({
     <div
       className={cn(
         "stack-timeline-entry relative shrink-0",
-        reorderControls && "stack-card-reorderable"
+        reorderControls && "stack-card-reorderable",
+        isTriggerOrderingEntry && "stack-timeline-entry-ordering"
       )}
       style={{
         width: HORIZONTAL_STACK_ENTRY_WIDTH,
@@ -176,6 +178,7 @@ function HorizontalStackEntry({
         className={cn(
           "stack-timeline-entry-surface stack-timeline-circuit relative grid h-full w-full grid-cols-[24px_minmax(0,1fr)] items-start gap-x-1.5 gap-y-0 overflow-hidden border border-[rgba(178,147,96,0.52)] bg-[linear-gradient(180deg,rgba(86,73,58,0.96),rgba(34,29,24,0.98))] px-2 py-[5px] text-left transition-[background,box-shadow,transform] duration-150",
           reorderControls && "pl-8 pr-8",
+          isTriggerOrderingEntry && "stack-timeline-entry-surface-ordering",
           !isActive && "hover:shadow-none",
           isActive && "stack-timeline-item-active",
           isActive && "border-[rgba(224,191,127,0.78)] bg-[linear-gradient(180deg,rgba(108,88,59,0.98),rgba(48,38,27,0.98))]"
@@ -286,11 +289,8 @@ export default function InspectorStackTimeline({
     }));
   }, [decision, triggerOrderingActive, triggerOrderingKey, triggerOrderingState]);
   const visibleLiveStackObjects = useMemo(() => {
-    if (!triggerOrderingActive || pendingTriggerEntries.length === 0) {
-      return stackObjects;
-    }
-    return stackObjects.slice(pendingTriggerEntries.length);
-  }, [pendingTriggerEntries.length, stackObjects, triggerOrderingActive]);
+    return stackObjects;
+  }, [stackObjects]);
   const visibleTimelineEntries = useMemo(
     () => mergeTimelineLeavingEntries(visibleLiveStackObjects, leavingEntries),
     [leavingEntries, visibleLiveStackObjects]
@@ -360,7 +360,7 @@ export default function InspectorStackTimeline({
 
   useLayoutReflow(bodyRef, timelineSignature, {
     children: ".stack-timeline-entry",
-    disabled: collapsed || timelineEntries.length === 0,
+    disabled: collapsed || timelineEntries.length === 0 || (isHorizontal && triggerOrderingActive),
     delay: stagger(34),
     duration: 320,
     bounce: 0.12,

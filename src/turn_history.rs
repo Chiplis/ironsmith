@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::events::EnterBattlefieldEvent;
+use crate::events::combat::{CreatureBecameBlockedEvent, CreatureBlockedEvent};
 use crate::events::other::{
     CardsDrawnEvent, KeywordActionEvent, KeywordActionKind, SearchLibraryEvent,
 };
 use crate::events::permanents::SacrificeEvent;
 use crate::events::spells::SpellCastEvent;
 use crate::events::zones::ZoneChangeEvent;
-use crate::events::combat::{CreatureBecameBlockedEvent, CreatureBlockedEvent};
 use crate::events::{DamageEvent, EventKind, LifeGainEvent, LifeLossEvent};
 use crate::game_state::TurnCounterTracker;
 use crate::ids::{ObjectId, PlayerId, StableId};

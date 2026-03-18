@@ -3649,8 +3649,8 @@ where
 }
 
 fn compile_emblem_description_from_text(text: &str) -> Result<EmblemDescription, CardTextError> {
-    let definition = CardDefinitionBuilder::new(CardId::new(), "Emblem")
-        .parse_text(text.to_string())?;
+    let definition =
+        CardDefinitionBuilder::new(CardId::new(), "Emblem").parse_text(text.to_string())?;
     Ok(EmblemDescription {
         name: "Emblem".to_string(),
         text: text.to_string(),
@@ -4254,8 +4254,7 @@ fn try_compile_player_resource_and_choice_effect(
         }
         EffectAst::CreateEmblem { player, text } => {
             let emblem = compile_emblem_description_from_text(text)?;
-            let (filter, choices) =
-                resolve_effect_player_filter(*player, ctx, true, true, true)?;
+            let (filter, choices) = resolve_effect_player_filter(*player, ctx, true, true, true)?;
             let effect = if matches!(filter, PlayerFilter::You) {
                 Effect::create_emblem(emblem)
             } else {

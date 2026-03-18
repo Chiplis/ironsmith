@@ -59,10 +59,11 @@ impl ReplacementMatcher for WouldPutCountersMatcher {
             return false;
         }
 
-        if !self
-            .cause_filter
-            .matches(&put_counters.cause, ctx.game, put_counters.affected_player(ctx.game))
-        {
+        if !self.cause_filter.matches(
+            &put_counters.cause,
+            ctx.game,
+            put_counters.affected_player(ctx.game),
+        ) {
             return false;
         }
 

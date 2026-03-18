@@ -33,12 +33,10 @@ impl ChooseCardNameEffect {
     }
 
     fn choice_options(filter: Option<&ObjectFilter>) -> Vec<String> {
-        let mut names = CardRegistry::generated_parser_card_names();
-        if let Some(filter) = filter
-            && !filter.card_types.is_empty()
-        {
-            let mut registry = CardRegistry::with_builtin_cards();
-            registry.ensure_cards_loaded(names.iter().map(String::as_str));
+        let mut registry = CardRegistry::with_builtin_cards();
+        registry.ensure_all_generated_cards_loaded();
+        let mut names = CardRegistry::supported_card_names();
+        if let Some(filter) = filter && !filter.card_types.is_empty() {
             names.retain(|name| {
                 registry.get(name).is_some_and(|definition| {
                     filter

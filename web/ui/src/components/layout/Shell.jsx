@@ -299,6 +299,7 @@ export default function Shell() {
         onEnterDeckLoading={() => setDeckLoadingMode((m) => !m)}
         onOpenLobby={() => setLobbyOpen(true)}
         deckLoadingMode={deckLoadingMode}
+        onAddCardFailure={pushNotice}
       />
       <AddCardBar
         zoneViews={zoneViews}

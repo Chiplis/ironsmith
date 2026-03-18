@@ -3,6 +3,7 @@ import { useGame } from "@/context/GameContext";
 import InspectorStackTimeline from "./InspectorStackTimeline";
 import { cn } from "@/lib/utils";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
+import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
 
 const STACK_RAIL_WIDTH = "clamp(240px, 24vw, 360px)";
 const STACK_HORIZONTAL_ENTRY_WIDTH = 230;
@@ -23,36 +24,48 @@ export default function StackTimelineRail({
   const canAct = !!decision && decision.player === state?.perspective;
   const stackObjects = getVisibleStackObjects(state);
   const stackPreview = state?.stack_preview || [];
-  const stackSignature = stackObjects.map((entry) => String(entry.id)).join("|");
+  const stackSignature = stackObjects
+    .map((entry) => String(entry.id))
+    .join("|");
   const rawStackEntryCount = Math.max(stackObjects.length, stackPreview.length);
-  const [displayStackEntryCount, setDisplayStackEntryCount] = useState(rawStackEntryCount);
+  const orderingEntryCount = useMemo(
+    () =>
+      isTriggerOrderingDecision(decision)
+        ? rawStackEntryCount + (decision?.options || []).length
+        : rawStackEntryCount,
+    [decision, rawStackEntryCount],
+  );
+  const [displayStackEntryCount, setDisplayStackEntryCount] =
+    useState(orderingEntryCount);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const previousStackSignatureRef = useRef(stackSignature);
-  const [availableHeight, setAvailableHeight] = useState(STACK_DEFAULT_MAX_HEIGHT);
+  const [availableHeight, setAvailableHeight] = useState(
+    STACK_DEFAULT_MAX_HEIGHT,
+  );
   const [horizontalTopOffset, setHorizontalTopOffset] = useState(0);
   const [horizontalMaxWidth, setHorizontalMaxWidth] = useState(null);
   const railRef = useRef(null);
 
   useEffect(() => {
-    if (rawStackEntryCount === displayStackEntryCount) return undefined;
+    if (orderingEntryCount === displayStackEntryCount) return undefined;
 
-    if (rawStackEntryCount > displayStackEntryCount) {
+    if (orderingEntryCount > displayStackEntryCount) {
       const timeout = setTimeout(() => {
-        setDisplayStackEntryCount(rawStackEntryCount);
+        setDisplayStackEntryCount(orderingEntryCount);
       }, 0);
       return () => clearTimeout(timeout);
     }
 
     const timeout = setTimeout(() => {
-      setDisplayStackEntryCount(rawStackEntryCount);
+      setDisplayStackEntryCount(orderingEntryCount);
     }, STACK_LEAVE_ANIMATION_MS);
     return () => clearTimeout(timeout);
-  }, [rawStackEntryCount, displayStackEntryCount]);
+  }, [orderingEntryCount, displayStackEntryCount]);
 
   useEffect(() => {
     const changed = stackSignature !== previousStackSignatureRef.current;
     let frame = 0;
-    if (isCollapsed && changed && rawStackEntryCount > 0) {
+    if (isCollapsed && changed && orderingEntryCount > 0) {
       frame = window.requestAnimationFrame(() => {
         setIsCollapsed(false);
       });
@@ -61,7 +74,7 @@ export default function StackTimelineRail({
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [stackSignature, isCollapsed, rawStackEntryCount]);
+  }, [stackSignature, isCollapsed, orderingEntryCount]);
 
   useLayoutEffect(() => {
     if (!floating) return undefined;
@@ -82,11 +95,11 @@ export default function StackTimelineRail({
         : STACK_EDGE_MARGIN;
       const myBottom = myZone
         ? myZone.getBoundingClientRect().bottom - rootRect.top
-        : (rootRect.height - STACK_EDGE_MARGIN);
+        : rootRect.height - STACK_EDGE_MARGIN;
 
       const computedAvailableHeight = Math.max(
         150,
-        Math.round(myBottom - opponentsTop - (STACK_EDGE_MARGIN * 2))
+        Math.round(myBottom - opponentsTop - STACK_EDGE_MARGIN * 2),
       );
 
       setAvailableHeight(computedAvailableHeight);
@@ -99,9 +112,10 @@ export default function StackTimelineRail({
 
     scheduleBounds();
 
-    const resizeObserver = typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver(scheduleBounds)
-      : null;
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(scheduleBounds)
+        : null;
     resizeObserver?.observe(root);
     const opponents = root.querySelector("[data-opponents-zones]");
     const myZone = root.querySelector("[data-my-zone]");
@@ -123,11 +137,15 @@ export default function StackTimelineRail({
     if (!railEl) return undefined;
 
     const root = railEl.closest("[data-drop-zone]") ?? railEl.closest("main");
-    const myZone = railEl.closest("[data-my-zone]") ?? root?.querySelector("[data-my-zone]");
+    const myZone =
+      railEl.closest("[data-my-zone]") ?? root?.querySelector("[data-my-zone]");
     const strip = root?.querySelector(".priority-inline-panel");
-    const headerContent = myZone?.querySelector("[data-my-zone-header-content]");
+    const headerContent = myZone?.querySelector(
+      "[data-my-zone-header-content]",
+    );
     const railHost = railEl.parentElement;
-    if (!root || !myZone || !strip || !headerContent || !railHost) return undefined;
+    if (!root || !myZone || !strip || !headerContent || !railHost)
+      return undefined;
     const headerItems = Array.from(headerContent.children);
 
     let rafId = null;
@@ -135,19 +153,27 @@ export default function StackTimelineRail({
       const myZoneRect = myZone.getBoundingClientRect();
       const stripRect = strip.getBoundingClientRect();
       const railHostRect = railHost.getBoundingClientRect();
-      const contentRight = headerItems.length > 0
-        ? Math.max(...headerItems.map((item) => item.getBoundingClientRect().right))
-        : headerContent.getBoundingClientRect().left;
-      if (!myZoneRect.height || !stripRect.height || !railHostRect.width) return;
+      const contentRight =
+        headerItems.length > 0
+          ? Math.max(
+              ...headerItems.map((item) => item.getBoundingClientRect().right),
+            )
+          : headerContent.getBoundingClientRect().left;
+      if (!myZoneRect.height || !stripRect.height || !railHostRect.width)
+        return;
 
       const nextOffset = Math.max(0, myZoneRect.top - stripRect.bottom);
       const nextMaxWidth = Math.max(0, railHostRect.right - contentRight - 8);
-      setHorizontalTopOffset((currentOffset) => (
-        Math.abs(currentOffset - nextOffset) >= 0.5 ? nextOffset : currentOffset
-      ));
-      setHorizontalMaxWidth((currentWidth) => (
-        currentWidth == null || Math.abs(currentWidth - nextMaxWidth) >= 0.5 ? nextMaxWidth : currentWidth
-      ));
+      setHorizontalTopOffset((currentOffset) =>
+        Math.abs(currentOffset - nextOffset) >= 0.5
+          ? nextOffset
+          : currentOffset,
+      );
+      setHorizontalMaxWidth((currentWidth) =>
+        currentWidth == null || Math.abs(currentWidth - nextMaxWidth) >= 0.5
+          ? nextMaxWidth
+          : currentWidth,
+      );
     };
 
     const scheduleMeasure = () => {
@@ -160,9 +186,10 @@ export default function StackTimelineRail({
 
     scheduleMeasure();
 
-    const observer = typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver(scheduleMeasure)
-      : null;
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(scheduleMeasure)
+        : null;
     observer?.observe(root);
     observer?.observe(myZone);
     observer?.observe(strip);
@@ -179,15 +206,15 @@ export default function StackTimelineRail({
     };
   }, [floating, rawStackEntryCount, state?.players?.length]);
 
-  const shouldShowRail = rawStackEntryCount > 0;
+  const shouldShowRail = orderingEntryCount > 0;
   const collapsedPanelHeight = STACK_MIN_HEIGHT;
   const stackPanelMaxHeight = useMemo(
     () => Math.max(STACK_MIN_HEIGHT, Math.round(availableHeight)),
-    [availableHeight]
+    [availableHeight],
   );
   const stackBodyMaxHeight = useMemo(
     () => Math.max(96, stackPanelMaxHeight - 38),
-    [stackPanelMaxHeight]
+    [stackPanelMaxHeight],
   );
   const horizontalRailWidth = useMemo(() => {
     const entryCount = Math.max(displayStackEntryCount, stackPreview.length, 1);
@@ -196,7 +223,8 @@ export default function StackTimelineRail({
     return entriesWidth + gapsWidth + 8;
   }, [displayStackEntryCount, stackPreview.length]);
   const horizontalVisibleWidth = useMemo(() => {
-    if (!Number.isFinite(horizontalMaxWidth) || horizontalMaxWidth == null) return horizontalRailWidth;
+    if (!Number.isFinite(horizontalMaxWidth) || horizontalMaxWidth == null)
+      return horizontalRailWidth;
     return Math.min(horizontalRailWidth, Math.max(0, horizontalMaxWidth));
   }, [horizontalMaxWidth, horizontalRailWidth]);
 
@@ -205,7 +233,9 @@ export default function StackTimelineRail({
       <aside
         className={cn(
           "pointer-events-none absolute right-2 z-[56] transition-[transform,opacity] duration-280 ease-out",
-          shouldShowRail ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+          shouldShowRail
+            ? "translate-y-0 opacity-100"
+            : "translate-y-2 opacity-0",
         )}
         style={{
           width: STACK_RAIL_WIDTH,
@@ -217,7 +247,7 @@ export default function StackTimelineRail({
         <div
           className={cn(
             "pointer-events-auto overflow-hidden transition-[max-height] duration-320 ease-out",
-            shouldShowRail ? "max-h-[90vh]" : "max-h-0"
+            shouldShowRail ? "max-h-[90vh]" : "max-h-0",
           )}
           style={{
             maxHeight: shouldShowRail
@@ -249,7 +279,9 @@ export default function StackTimelineRail({
       ref={railRef}
       className={cn(
         "pointer-events-none absolute right-0 z-[72] overflow-hidden transition-[width,transform,opacity] duration-220 ease-out",
-        shouldShowRail ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0"
+        shouldShowRail
+          ? "translate-x-0 opacity-100"
+          : "translate-x-6 opacity-0",
       )}
       style={{
         width: shouldShowRail ? `${horizontalVisibleWidth}px` : "0px",
@@ -261,7 +293,7 @@ export default function StackTimelineRail({
         className={cn(
           "pointer-events-auto overflow-hidden transition-opacity duration-220 ease-out",
           shouldShowRail ? "opacity-100" : "opacity-0",
-          shouldShowRail ? "pointer-events-auto" : "pointer-events-none"
+          shouldShowRail ? "pointer-events-auto" : "pointer-events-none",
         )}
       >
         {shouldShowRail && (

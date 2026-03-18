@@ -18,14 +18,15 @@ use crate::cards::builders::parse_parsing::{
     parse_sentence_put_onto_battlefield_with_counters_on_it,
     parse_sentence_return_with_counters_on_it, parse_simple_gain_ability_clause,
     parse_simple_lose_ability_clause, parse_subject_object_filter,
-    parse_token_copy_followup_sentence, try_apply_token_copy_followup,
-    parse_unsupported_play_cast_permission_clause, parse_until_end_of_turn_may_play_tagged_clause,
+    parse_token_copy_followup_sentence, parse_unsupported_play_cast_permission_clause,
+    parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause, parse_verb_first_clause,
     parse_win_the_game_clause, run_sentence_primitives, segment_has_effect_head,
     split_effect_chain_on_and, split_leading_result_prefix, split_on_comma_or_semicolon,
     split_segments_on_comma_effect_head, split_segments_on_comma_then,
     starts_with_inline_token_rules_tail, starts_with_target_indicator,
     starts_with_until_end_of_turn, strip_leading_instead_prefix, target_ast_to_object_filter,
+    try_apply_token_copy_followup,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -551,8 +552,12 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup(
     let chain_words = words(tokens);
     if !chain_words.contains(&"sacrifice")
         || !chain_words.contains(&"token")
-        || !chain_words.windows(4).any(|window| window == ["next", "end", "step", "repeat"])
-            && !chain_words.windows(3).any(|window| window == ["next", "end", "step"])
+        || !chain_words
+            .windows(4)
+            .any(|window| window == ["next", "end", "step", "repeat"])
+            && !chain_words
+                .windows(3)
+                .any(|window| window == ["next", "end", "step"])
     {
         return;
     }
@@ -565,7 +570,14 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup(
                 | EffectAst::CreateTokenCopyFromSource { .. }
                 | EffectAst::CreateTokenWithMods { .. },
                 EffectAst::Sacrifice { filter, count, .. },
-            ) => *count == 1 && target_is_generic_token_filter(&TargetAst::Object(filter.clone(), None, None)),
+            ) => {
+                *count == 1
+                    && target_is_generic_token_filter(&TargetAst::Object(
+                        filter.clone(),
+                        None,
+                        None,
+                    ))
+            }
             _ => false,
         };
 

@@ -3,9 +3,10 @@ import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { useDragActions } from "@/context/DragContext";
 import { useHoverActions } from "@/context/HoverContext";
+import useViewportLayout from "@/hooks/useViewportLayout";
 import TableCore from "@/components/board/TableCore";
-import RightRail from "@/components/right-rail/RightRail";
 import HandZone from "@/components/board/HandZone";
+import RightRail from "@/components/right-rail/RightRail";
 import DragOverlay from "@/components/overlays/DragOverlay";
 import CastParticles from "@/components/overlays/CastParticles";
 import ArrowOverlay from "@/components/overlays/ArrowOverlay";
@@ -23,7 +24,6 @@ const HAND_COLLAPSED_SHELL_HEIGHT = HAND_PEEK_HEIGHT;
 const HAND_LANE_HOVER_FUZZ = 6;
 const AUTO_REVEAL_ZONE_IDS = ["graveyard", "exile", "command"];
 const AUTO_REVEAL_DURATION_MS = 2000;
-
 function objectExistsInState(state, objectId) {
   if (!state || objectId == null) return false;
   const needle = String(objectId);
@@ -88,6 +88,32 @@ function rectContainsPoint(rect, x, y, fuzz = 0) {
     && y >= (rect.top - fuzz)
     && y <= (rect.bottom + fuzz)
   );
+}
+
+function rectIntersectsRect(a, b, fuzz = 0) {
+  if (!a || !b) return false;
+  return !(
+    a.right < (b.left - fuzz)
+    || a.left > (b.right + fuzz)
+    || a.bottom < (b.top - fuzz)
+    || a.top > (b.bottom + fuzz)
+  );
+}
+
+function getMobileDragPreviewRect(dragState) {
+  if (!dragState) return null;
+  const x = Number(dragState.currentX);
+  const y = Number(dragState.currentY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  // The mobile drag preview is rendered at 180x140 and translated by about
+  // half its width / 60% of its height relative to the pointer.
+  return {
+    left: x - 90,
+    right: x + 90,
+    top: y - 84,
+    bottom: y + 56,
+  };
 }
 
 function stackSelectionKeys(entry) {
@@ -204,13 +230,14 @@ export default function Workspace({
   const { updateStackArrows, clearStackArrows } = useCombatArrows();
   const { endDrag } = useDragActions();
   const { clearHover, hoverCard } = useHoverActions();
+  const { nonDesktopViewport } = useViewportLayout();
 
   const players = useMemo(() => state?.players || [], [state?.players]);
   const perspective = state?.perspective;
   const me = players.find((p) => p.id === perspective) || players[0];
   const selectedObjectIsValid = objectExistsInState(state, selectedObjectId);
   const inlineInspectorExpanded = shouldExpandInlineInspector(players, selectedObjectId);
-  const handLaneOpen = handLaneHovered;
+  const handLaneOpen = !nonDesktopViewport && handLaneHovered;
   const decision = state?.decision || null;
   const combatDeclarationActive = decision?.kind === "attackers" || decision?.kind === "blockers";
   const legalTargetObjectIds = useMemo(() => {
@@ -484,7 +511,7 @@ export default function Workspace({
 
   useLayoutEffect(() => {
     const root = workspaceRef.current;
-    if (!root || deckLoadingMode) return undefined;
+    if (!root || deckLoadingMode || nonDesktopViewport) return undefined;
 
     let rafId = null;
     let resizeObserver = null;
@@ -555,7 +582,7 @@ export default function Workspace({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", scheduleMeasure);
     };
-  }, [deckLoadingMode, effectiveZoneViews, players.length]);
+  }, [deckLoadingMode, effectiveZoneViews, nonDesktopViewport, players.length]);
 
   const handleInspectObject = useCallback(
     async (objectId, options = null) => {
@@ -625,6 +652,8 @@ export default function Workspace({
       state?.perspective,
     ]
   );
+
+  const mobileZoneHeaderControls = null;
 
   const handleNoticeCopy = useCallback(
     async (copyTarget) => {
@@ -714,7 +743,22 @@ export default function Workspace({
         el.closest(".board-zone-bg")
       );
 
-      if (!isOverTable) return;
+      let isOverMobileSelfZoneDropTarget = false;
+      if (nonDesktopViewport) {
+        const dropTargets = Array.from(
+          document.querySelectorAll("[data-mobile-hand-drop-target]")
+        );
+        const previewRect = getMobileDragPreviewRect(ds);
+        isOverMobileSelfZoneDropTarget = dropTargets.some((target) => {
+          const rect = target.getBoundingClientRect();
+          return (
+            rectContainsPoint(rect, e.clientX, e.clientY, 8)
+            || rectIntersectsRect(previewRect, rect, 8)
+          );
+        });
+      }
+
+      if (!isOverTable && !isOverMobileSelfZoneDropTarget) return;
 
       collapseHandLane();
 
@@ -772,7 +816,15 @@ export default function Workspace({
       document.removeEventListener("pointercancel", onPointerCancel);
       window.removeEventListener("blur", onWindowBlur);
     };
-  }, [clearHover, collapseHandLane, combatDeclarationActive, dispatch, endDrag, state?.decision]);
+  }, [
+    clearHover,
+    collapseHandLane,
+    combatDeclarationActive,
+    dispatch,
+    endDrag,
+    nonDesktopViewport,
+    state?.decision,
+  ]);
 
   useEffect(() => {
     const onDeadZonePointerDown = (event) => {
@@ -897,9 +949,10 @@ export default function Workspace({
           onCancelDeckLoading={onCancelDeckLoading}
           legalTargetPlayerIds={legalTargetPlayerIds}
           legalTargetObjectIds={legalTargetObjectIds}
+          myZoneHeaderControls={mobileZoneHeaderControls}
         />
       </div>
-      {!deckLoadingMode && opponentsInspectorDockTop != null && (
+      {!nonDesktopViewport && !deckLoadingMode && opponentsInspectorDockTop != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-end justify-end overflow-visible px-2"
           style={{ top: `${opponentsInspectorDockTop}px`, height: `${HAND_PEEK_HEIGHT}px` }}
@@ -932,7 +985,7 @@ export default function Workspace({
           </div>
         </div>
       )}
-      {!deckLoadingMode && opponentsZoneHostRect != null && (
+      {!nonDesktopViewport && !deckLoadingMode && opponentsZoneHostRect != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
           style={{
@@ -970,70 +1023,72 @@ export default function Workspace({
           </div>
         </div>
       )}
-      <div
-        className="pointer-events-none fixed inset-x-0 bottom-2 z-30 flex items-end gap-1.5 overflow-visible px-2"
-        style={{ height: `${HAND_PEEK_HEIGHT}px` }}
-        data-bottom-dock
-        data-inspector-dock="bottom"
-      >
+      {!nonDesktopViewport && (
         <div
-          className="pointer-events-none relative min-w-0 flex-1 h-full overflow-visible"
-          data-hand-dock-lane
+          className="pointer-events-none fixed inset-x-0 bottom-2 z-30 flex items-end gap-1.5 overflow-visible px-2"
+          style={{ height: `${HAND_PEEK_HEIGHT}px` }}
+          data-bottom-dock
+          data-inspector-dock="bottom"
         >
           <div
-            ref={handRevealShellRef}
-            className="hand-reveal-shell absolute left-0 bottom-0"
-            data-open={handLaneOpen ? "true" : "false"}
-            aria-expanded={handLaneOpen}
-            style={{
-              height: `${handLaneOpen ? HAND_REVEAL_HEIGHT : HAND_COLLAPSED_SHELL_HEIGHT}px`,
-              "--hand-shell-offset-x": "3vw",
-            }}
-            onMouseEnter={handleHandLaneEnter}
-            onMouseLeave={handleHandLaneLeave}
-            onFocusCapture={handleHandLaneEnter}
-            onBlurCapture={(event) => {
-              if (event.currentTarget.contains(event.relatedTarget)) return;
-              handleHandLaneLeave();
-            }}
+            className="pointer-events-none relative min-w-0 flex-1 h-full overflow-visible"
+            data-hand-dock-lane
           >
             <div
-              className="hand-reveal-body"
-              style={{ height: "100%" }}
+              ref={handRevealShellRef}
+              className="hand-reveal-shell absolute left-0 bottom-0"
+              data-open={handLaneOpen ? "true" : "false"}
+              aria-expanded={handLaneOpen}
+              style={{
+                height: `${handLaneOpen ? HAND_REVEAL_HEIGHT : HAND_COLLAPSED_SHELL_HEIGHT}px`,
+                "--hand-shell-offset-x": "3vw",
+              }}
+              onMouseEnter={handleHandLaneEnter}
+              onMouseLeave={handleHandLaneLeave}
+              onFocusCapture={handleHandLaneEnter}
+              onBlurCapture={(event) => {
+                if (event.currentTarget.contains(event.relatedTarget)) return;
+                handleHandLaneLeave();
+              }}
             >
-              <HandZone
-                player={me}
-                selectedObjectId={selectedObjectId}
-                onInspect={handleInspectObject}
-                isExpanded={handLaneOpen}
-              />
+              <div
+                className="hand-reveal-body"
+                style={{ height: "100%" }}
+              >
+                <HandZone
+                  player={me}
+                  selectedObjectId={selectedObjectId}
+                  onInspect={handleInspectObject}
+                  isExpanded={handLaneOpen}
+                />
+              </div>
             </div>
           </div>
-        </div>
-        <div className="pointer-events-none relative flex shrink-0 items-end gap-1.5 self-end overflow-visible">
-          <RightRail
-            pinnedObjectId={pinnedInspectorObjectId}
-            onInspectObject={handleInspectObject}
-            suppressFallback={suppressFallbackInspector}
-            inline
-            allowTopInlinePlacement={opponentsInspectorDockTop != null}
-            inlineExpanded={inlineInspectorExpanded}
-          />
-          {inspectorDebug && (
+          <div className="pointer-events-none relative flex shrink-0 items-end gap-1.5 self-end overflow-visible">
             <RightRail
               pinnedObjectId={pinnedInspectorObjectId}
               onInspectObject={handleInspectObject}
               suppressFallback={suppressFallbackInspector}
               inline
               allowTopInlinePlacement={opponentsInspectorDockTop != null}
-              dockRole="opposite"
-              inspectorVariant="debug"
               inlineExpanded={inlineInspectorExpanded}
             />
-          )}
+            {inspectorDebug && (
+              <RightRail
+                pinnedObjectId={pinnedInspectorObjectId}
+                onInspectObject={handleInspectObject}
+                suppressFallback={suppressFallbackInspector}
+                inline
+                allowTopInlinePlacement={opponentsInspectorDockTop != null}
+                dockRole="opposite"
+                inspectorVariant="debug"
+                inlineExpanded={inlineInspectorExpanded}
+              />
+            )}
+          </div>
         </div>
-      </div>
-      {!deckLoadingMode && myZoneHostRect != null && (
+      )}
+      {!nonDesktopViewport && !deckLoadingMode && myZoneHostRect != null && (
         <div
           className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
           style={{

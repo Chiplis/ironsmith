@@ -108,6 +108,8 @@ pub struct ExecutionContext<'a> {
     pub decision_maker: &'a mut dyn DecisionMaker,
     /// Which optional costs were paid (kicker, buyback, etc.).
     pub optional_costs_paid: OptionalCostsPaid,
+    /// How the source spell was cast.
+    pub casting_method: crate::alternative_cast::CastingMethod,
     /// The defending player for combat triggers.
     pub defending_player: Option<PlayerId>,
     /// The attacking player for combat triggers.
@@ -169,6 +171,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("iterated_object", &self.iterated_object)
             .field("decision_maker", &"<&mut dyn DecisionMaker>")
             .field("optional_costs_paid", &self.optional_costs_paid)
+            .field("casting_method", &self.casting_method)
             .field("defending_player", &self.defending_player)
             .field("target_snapshots", &self.target_snapshots)
             .field("source_snapshot", &self.source_snapshot)
@@ -211,6 +214,7 @@ impl<'a> ExecutionContext<'a> {
             iterated_object: None,
             decision_maker,
             optional_costs_paid: OptionalCostsPaid::default(),
+            casting_method: crate::alternative_cast::CastingMethod::Normal,
             defending_player: None,
             attacking_player: None,
             target_snapshots: HashMap::new(),
@@ -251,6 +255,7 @@ impl<'a> ExecutionContext<'a> {
             iterated_object: None,
             decision_maker: dm,
             optional_costs_paid: OptionalCostsPaid::default(),
+            casting_method: crate::alternative_cast::CastingMethod::Normal,
             defending_player: None,
             attacking_player: None,
             target_snapshots: HashMap::new(),
@@ -281,6 +286,7 @@ impl<'a> ExecutionContext<'a> {
             iterated_object: self.iterated_object,
             decision_maker: dm,
             optional_costs_paid: self.optional_costs_paid,
+            casting_method: self.casting_method,
             defending_player: self.defending_player,
             attacking_player: self.attacking_player,
             target_snapshots: self.target_snapshots,
@@ -437,6 +443,15 @@ impl<'a> ExecutionContext<'a> {
     /// Set optional costs paid.
     pub fn with_optional_costs_paid(mut self, paid: OptionalCostsPaid) -> Self {
         self.optional_costs_paid = paid;
+        self
+    }
+
+    /// Set how the source spell was cast.
+    pub fn with_casting_method(
+        mut self,
+        casting_method: crate::alternative_cast::CastingMethod,
+    ) -> Self {
+        self.casting_method = casting_method;
         self
     }
 

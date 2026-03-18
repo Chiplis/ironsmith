@@ -604,6 +604,8 @@ function PriorityActionStrip({
   const { attachScrollableRef, hoverSuppressed } = useHoverSuppressedWhileScrolling({
     onScrollStart: onActionHoverEnd,
   });
+  const compactLandscapeViewport = typeof window !== "undefined"
+    && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
   const effectiveLoopCycles = loopEnabled ? BASE_LOOP_CYCLES : 1;
   const middleLoopIndex = Math.floor(effectiveLoopCycles / 2);
   const groupKeysSignature = useMemo(
@@ -650,6 +652,14 @@ function PriorityActionStrip({
     () => groups.filter((group) => isGroupSelectedLinked(group)).map((group) => group.key),
     [groups, isGroupSelectedLinked]
   );
+  const compactActionLabel = useCallback((label) => {
+    const raw = String(label || "").trim();
+    if (!compactLandscapeViewport) return raw;
+    return raw
+      .replace(/\s*\([^)]*\)\s*/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }, [compactLandscapeViewport]);
 
   useEffect(() => {
     const previousHovered = previousHoveredGroupKeysRef.current;
@@ -715,6 +725,13 @@ function PriorityActionStrip({
     if (!viewport || !groups.length) return undefined;
 
     const recomputeLoopEnabled = () => {
+      if (
+        typeof window !== "undefined"
+        && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches
+      ) {
+        setLoopEnabled((prev) => (prev ? false : prev));
+        return;
+      }
       const cycleWidth = viewport.scrollWidth / effectiveLoopCycles;
       if (!(cycleWidth > 0)) return;
       const shouldLoop = cycleWidth > (viewport.clientWidth + 1);
@@ -936,7 +953,7 @@ function PriorityActionStrip({
                 </span>
               )}
               <PriorityActionPillLabel
-                text={group.label}
+                text={compactActionLabel(group.label)}
                 viewportRef={viewportRef}
                 carouselResetVersion={carouselResetByGroupKey[group.key] || 0}
                 highlightText={highlightName}
@@ -1131,12 +1148,14 @@ function PriorityControlStack({
   showActionCount = true,
   className = "",
 }) {
+  const compactLandscapeViewport = typeof window !== "undefined"
+    && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
   const checkboxLabelClass =
     "action-strip-toggle flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer transition-colors";
 
   return (
     <div className={cn("priority-control-stack flex shrink-0 flex-col items-start justify-center py-1.5", className)}>
-      {showActionCount && (
+      {showActionCount && !compactLandscapeViewport && (
         <div className="pointer-events-none pl-[18px] text-[11px] font-bold uppercase tracking-[0.14em] text-[#d9c18b]">
             {actionCount} actions
         </div>
@@ -1148,7 +1167,7 @@ function PriorityControlStack({
             onCheckedChange={(value) => onHoldChange?.(Boolean(value))}
             className="h-3 w-3"
           />
-          Hold
+          <span title="Hold">{compactLandscapeViewport ? "H" : "Hold"}</span>
         </label>
         <label className={checkboxLabelClass}>
           <Checkbox
@@ -1156,7 +1175,7 @@ function PriorityControlStack({
             onCheckedChange={(value) => onConfirmChange?.(Boolean(value))}
             className="h-3 w-3"
           />
-          Confirm
+          <span title="Confirm">{compactLandscapeViewport ? "C" : "Confirm"}</span>
         </label>
       </div>
     </div>
@@ -1370,6 +1389,8 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     && !effectiveSubmitAction.disabled
     && typeof effectiveSubmitAction.onSubmit === "function";
   const canAdvanceViewedCardsStep = !!decision;
+  const compactLandscapeViewport = typeof window !== "undefined"
+    && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
   const completeViewedCardsStep = useCallback(() => {
     if (!viewedCardsToken) return;
     setAcknowledgedViewedCardsToken(viewedCardsToken);
@@ -1438,11 +1459,17 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     return (
       <div
         ref={inlineRootRef}
-        className="pointer-events-none absolute inset-0 z-[120] flex items-start px-2 pt-0.5"
+        className={cn(
+          "pointer-events-none absolute inset-0 z-[120] flex items-start pt-0.5",
+          compactLandscapeViewport ? "px-0" : "px-2"
+        )}
       >
         <ManaPaymentTab manaPayment={manaPayment} anchorRect={inline ? manaTabAnchorRect : null} />
         <div
-          className="priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col px-2 py-0"
+          className={cn(
+            "priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col py-0",
+            compactLandscapeViewport ? "px-0" : "px-2"
+          )}
         >
           {isPriorityDecision ? (
             showViewedCardsStep ? (
@@ -1652,7 +1679,10 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
       style={anchoredStyle || undefined}
     >
       <ManaPaymentTab manaPayment={manaPayment} />
-      <div className="priority-inline-panel pointer-events-auto relative px-2 py-0">
+      <div className={cn(
+        "priority-inline-panel pointer-events-auto relative py-0",
+        compactLandscapeViewport ? "px-0" : "px-2"
+      )}>
         <div className="action-strip-layout flex min-h-[46px] items-start gap-2">
           {isPriorityDecision ? (
             showViewedCardsStep ? (
@@ -1854,12 +1884,15 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   if (!decision || (decision.kind !== "attackers" && decision.kind !== "blockers")) return null;
 
   const anchoredStyle = inline ? null : priorityAnchorStyle(anchor);
+  const compactPortraitViewport = typeof window !== "undefined"
+    && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
   const panelClass = inline
     ? "pointer-events-none absolute inset-0 z-[120] flex items-center px-2"
     : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]";
 
   const innerClass = cn(
     "priority-inline-panel pointer-events-auto flex w-full items-center gap-2 px-2 py-1.5",
+    compactPortraitViewport && "flex-col items-stretch",
     !inline && anchoredStyle ? "fixed" : ""
   );
 
@@ -1879,7 +1912,10 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
           onHoldChange={(value) => setHoldRule(value ? "always" : "never")}
           onConfirmChange={setConfirmEnabled}
           showActionCount={false}
-          className="min-w-[104px]"
+          className={cn(
+            "min-w-[104px]",
+            compactPortraitViewport && "min-w-0 w-full"
+          )}
         />
       </div>
     </div>

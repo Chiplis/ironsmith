@@ -832,9 +832,6 @@ mod tests {
         assert_eq!(applied.damage_dealt, 1);
         assert_eq!(applied.life_lost, 0);
         assert_eq!(applied.total_damage_dealt, 1);
-        assert_eq!(
-            game.player(bob).expect("player exists").poison_counters,
-            1
-        );
+        assert_eq!(game.player(bob).expect("player exists").poison_counters, 1);
     }
 }

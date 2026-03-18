@@ -1638,7 +1638,12 @@ pub(crate) fn parse_get(
         {
             let head = text_words[..this_idx].join(" ");
             let tail = text_words[this_idx..].join(" ");
-            format!("{}{}, {}.", head[..1].to_ascii_uppercase(), &head[1..], tail)
+            format!(
+                "{}{}, {}.",
+                head[..1].to_ascii_uppercase(),
+                &head[1..],
+                tail
+            )
         } else {
             let joined = text_words.join(" ");
             format!("{}{}.", joined[..1].to_ascii_uppercase(), &joined[1..])

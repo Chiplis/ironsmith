@@ -1490,8 +1490,8 @@ pub(crate) fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
     let words = words(tokens);
     if words.as_slice()
         != [
-            "double", "all", "damage", "that", "sources", "you", "control", "of", "the",
-            "chosen", "type", "would", "deal",
+            "double", "all", "damage", "that", "sources", "you", "control", "of", "the", "chosen",
+            "type", "would", "deal",
         ]
     {
         return Ok(None);
@@ -1499,8 +1499,7 @@ pub(crate) fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
 
     Ok(Some(
         StaticAbility::double_damage_from_sources_you_control_of_chosen_type(
-            "Double all damage that sources you control of the chosen type would deal."
-                .to_string(),
+            "Double all damage that sources you control of the chosen type would deal.".to_string(),
         ),
     ))
 }
@@ -2811,9 +2810,9 @@ pub(crate) fn parse_this_spell_cost_condition(
             if tail == ["or", "more", "creatures", "this", "turn"]
                 || tail == ["or", "more", "creature", "this", "turn"]
             {
-                return Some(ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(
-                    n,
-                ));
+                return Some(
+                    ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(n),
+                );
             }
         }
     }

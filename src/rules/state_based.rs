@@ -627,7 +627,11 @@ pub fn apply_legend_rule_choice(game: &mut GameState, keep: ObjectId) {
 
     // Move all others to graveyard
     for id in to_remove {
-        game.move_object(id, Zone::Graveyard, crate::events::cause::EventCause::from_legend_rule(controller));
+        game.move_object(
+            id,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::from_legend_rule(controller),
+        );
     }
 }
 

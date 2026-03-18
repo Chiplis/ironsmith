@@ -26,7 +26,14 @@ function normalizeBattlefieldLane(lane) {
   return ALL_PAPER_LANES.includes(normalized) ? normalized : "other";
 }
 
-function buildPaperRowGroups(battlefieldSide, buckets) {
+function buildPaperRowGroups(battlefieldSide, buckets, options = {}) {
+  const singleRow = options.singleRow === true;
+  const minSlotsPerRow = Math.max(1, Number(options.minSlotsPerRow) || EMPTY_PAPER_SLOT_COLUMNS);
+  if (singleRow) {
+    return [
+      { id: "main", lanes: ALL_PAPER_LANES, rowCount: 1, minSlotsPerRow },
+    ];
+  }
   const frontCount = PAPER_FRONT_LANES.reduce((total, lane) => total + ((buckets.get(lane) || []).length), 0);
   const backCount = PAPER_BACK_LANES.reduce((total, lane) => total + ((buckets.get(lane) || []).length), 0);
   const shouldSplitOpponentRows = battlefieldSide === "top"
@@ -54,14 +61,14 @@ function splitCardsIntoRows(cards, rowCount) {
   return rows;
 }
 
-function buildPaperBattlefieldLayout(cards, battlefieldSide) {
+function buildPaperBattlefieldLayout(cards, battlefieldSide, alignStart = false, options = {}) {
   const buckets = new Map(ALL_PAPER_LANES.map((lane) => [lane, []]));
 
   for (const card of cards) {
     const lane = normalizeBattlefieldLane(card?.lane);
     buckets.get(lane).push(card);
   }
-  const rowGroups = buildPaperRowGroups(battlefieldSide, buckets);
+  const rowGroups = buildPaperRowGroups(battlefieldSide, buckets, options);
 
   const orderedRows = rowGroups.flatMap((group) => {
     const groupedCards = group.lanes.flatMap((lane) => buckets.get(lane) || []);
@@ -93,7 +100,9 @@ function buildPaperBattlefieldLayout(cards, battlefieldSide) {
       });
     }
     if (row.cards.length === 0) return;
-    const startColumn = Math.floor((maxCols - row.cards.length) / 2) + 1;
+    const startColumn = alignStart
+      ? 1
+      : Math.floor((maxCols - row.cards.length) / 2) + 1;
 
     row.cards.forEach((card, columnIndex) => {
       orderedCards.push(card);
@@ -360,6 +369,10 @@ export default function BattlefieldRow({
   cards = [],
   compact = false,
   battlefieldSide = "bottom",
+  alignStart = false,
+  paperLayoutMode = "default",
+  paperMinSlotsPerRow = null,
+  bottomSafeInset = BOTTOM_BATTLEFIELD_SAFE_INSET,
   selectedObjectId,
   onInspect,
   onCardClick,
@@ -381,8 +394,11 @@ export default function BattlefieldRow({
   const isPaperBattlefieldLayout = !compact;
   const canShowBattlefieldUndo = isPaperBattlefieldLayout && battlefieldSide === "bottom";
   const paperLayout = useMemo(
-    () => buildPaperBattlefieldLayout(cards, battlefieldSide),
-    [battlefieldSide, cards]
+    () => buildPaperBattlefieldLayout(cards, battlefieldSide, alignStart, {
+      singleRow: paperLayoutMode === "single-row",
+      minSlotsPerRow: paperMinSlotsPerRow,
+    }),
+    [alignStart, battlefieldSide, cards, paperLayoutMode, paperMinSlotsPerRow]
   );
   const displayCards = isPaperBattlefieldLayout ? paperLayout.orderedCards : cards;
   const priorityActionObjectIds = useMemo(() => {
@@ -450,7 +466,7 @@ export default function BattlefieldRow({
       minHeight,
       height - (
         isPaperBattlefieldLayout && battlefieldSide === "bottom"
-          ? BOTTOM_BATTLEFIELD_SAFE_INSET
+          ? bottomSafeInset
           : 0
       )
     );
@@ -570,6 +586,7 @@ export default function BattlefieldRow({
     });
   }, [
     battlefieldSide,
+    bottomSafeInset,
     cards.length,
     compact,
     forceSingleColumn,
@@ -805,7 +822,7 @@ export default function BattlefieldRow({
   return (
     <div
       ref={rowRef}
-      className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
+      className={`battlefield-row ${displayCards.length === 0 ? "battlefield-row-empty" : ""} ${alignStart ? "battlefield-row--align-start" : ""} relative grid gap-1.5 content-start justify-center min-h-0 h-full`}
       data-bf-side={battlefieldSide}
       style={{
         "--bf-gap": `${BATTLEFIELD_GRID_GAP_PX}px`,

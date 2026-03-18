@@ -2,8 +2,8 @@ use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, ObjectRefAst, PlayerAst, SubjectAst, TagKey, TargetAst,
     Token, extract_subject_player, is_article, parse_card_type, parse_color, parse_number,
     parse_object_filter, parse_subtype_word, parse_target_phrase, parse_value,
-    starts_with_inline_token_rules_tail,
-    target_references_it, token_index_for_word_index, trim_commas, words,
+    starts_with_inline_token_rules_tail, target_references_it, token_index_for_word_index,
+    trim_commas, words,
 };
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
@@ -731,7 +731,9 @@ pub(crate) fn parse_create(
                     let remaining_words = words(&source_tokens[idx..]);
                     if starts_with_inline_token_rules_tail(&remaining_words)
                         || (source_tokens[idx].is_word("and")
-                            && starts_with_inline_token_rules_tail(&words(&source_tokens[idx + 1..])))
+                            && starts_with_inline_token_rules_tail(&words(
+                                &source_tokens[idx + 1..],
+                            )))
                     {
                         source_end = idx;
                         break;

@@ -443,7 +443,13 @@ function SingleSelectDecision({
       onScrollStart: clearHover,
     });
   const stripLayout = layout === "strip";
-  const attachHorizontalWheelRef = useHorizontalWheelScroll(stripLayout);
+  const compactStripLayout =
+    stripLayout
+    && typeof window !== "undefined"
+    && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
+  const attachHorizontalWheelRef = useHorizontalWheelScroll(
+    stripLayout && !compactStripLayout,
+  );
   const attachStripScrollRef = useCallback(
     (node) => {
       attachScrollableRef(node);
@@ -605,7 +611,7 @@ function SingleSelectDecision({
         <div
           className={cn(
             "w-full min-w-0 max-w-full",
-            stripLayout
+            stripLayout && !compactStripLayout
               ? "overflow-x-auto overflow-y-hidden pb-1"
               : "decision-options-panel",
           )}
@@ -613,7 +619,7 @@ function SingleSelectDecision({
         >
           <div
             className={cn(
-              stripLayout
+              stripLayout && !compactStripLayout
                 ? "flex w-max min-w-full flex-nowrap items-center gap-1.5 overflow-visible py-0.5 pr-1"
                 : "w-full divide-y divide-[rgba(128,107,78,0.28)] max-h-[220px] overflow-y-auto",
             )}
@@ -640,7 +646,7 @@ function SingleSelectDecision({
                   isHighlighted={
                     objId != null && String(activeObjectId) === objId
                   }
-                  horizontal={stripLayout}
+                  horizontal={stripLayout && !compactStripLayout}
                   onClick={() =>
                     dispatch(
                       { type: "select_options", option_indices: [opt.index] },

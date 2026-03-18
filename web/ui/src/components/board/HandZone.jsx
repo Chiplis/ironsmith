@@ -163,7 +163,13 @@ function buildHandCardRowStyle(index, total) {
   };
 }
 
-export default function HandZone({ player, selectedObjectId, onInspect, isExpanded = false }) {
+export default function HandZone({
+  player,
+  selectedObjectId,
+  onInspect,
+  isExpanded = false,
+  layout = "fan",
+}) {
   const { state } = useGame();
   const { hoverCard, clearHover, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
@@ -221,17 +227,21 @@ export default function HandZone({ player, selectedObjectId, onInspect, isExpand
     () => [
       handCards.map((card) => card.id).join("|"),
       extraCards.map((card) => `extra-${card.id}`).join("|"),
+      layout,
     ].join("::"),
-    [extraCards, handCards]
+    [extraCards, handCards, layout]
   );
   const renderedHandCardCount = handCards.length + extraCards.length;
   const hasExtra = extraCards.length > 0;
-  const isRoulette = renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
+  const isVerticalRail = layout === "vertical-rail";
+  const isRoulette = !isVerticalRail && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
   const rouletteWidth = useMemo(
     () => computeRouletteWidth(renderedHandCardCount),
     [renderedHandCardCount]
   );
-  const surfaceWidth = isRoulette
+  const surfaceWidth = isVerticalRail
+    ? "100%"
+    : isRoulette
     ? `min(${rouletteWidth}px, calc(100vw - 290px))`
     : "fit-content";
   const rouletteCycleIndexes = isRoulette
@@ -462,6 +472,100 @@ export default function HandZone({ player, selectedObjectId, onInspect, isExpand
   if (!player) return null;
 
   if (player.can_view_hand) {
+    const renderVerticalEntry = (entry) => {
+      if (entry.kind === "separator") {
+        return <div key={entry.key} className="mobile-hand-rail-divider" aria-hidden="true" />;
+      }
+
+      if (entry.kind === "hand") {
+        const { card, visualIndex } = entry;
+        const plays = handPlayable.get(Number(card.id)) || [];
+        const isPlayable = plays.length > 0;
+        const baseGlowKind = isPlayable ? handGlowFromTypes(card.card_types) : null;
+        const isActionLinkedHover = (
+          hoveredLinkedObjectIds.has(String(card.id))
+          || (
+            hoveredObjectId != null
+            && String(hoveredObjectId) === String(card.id)
+            && priorityActionObjectIds.has(String(card.id))
+          )
+        );
+        const glowKind = isActionLinkedHover ? "action-link" : baseGlowKind;
+        const isNew = newIds.has(card.id);
+        const isBumped = bumpedIds.has(card.id);
+        let bumpDir = 0;
+        if (isBumped) {
+          if (visualIndex > 0 && newIds.has(handCards[visualIndex - 1].id)) bumpDir = 1;
+          else if (visualIndex < handCards.length - 1 && newIds.has(handCards[visualIndex + 1].id)) bumpDir = -1;
+        }
+        return (
+          <GameCard
+            key={entry.key}
+            card={card}
+            variant="hand"
+            isPlayable={isPlayable}
+            glowKind={glowKind}
+            isNew={isNew}
+            isBumped={isBumped}
+            bumpDirection={bumpDir}
+            handCircuitMode="full"
+            isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
+            onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
+            onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
+            onMouseEnter={() => handleHoverEnter(card.id)}
+            onMouseLeave={handleHoverLeave}
+            className="mobile-hand-rail-card !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1"
+            style={{
+              width: "100%",
+              minWidth: "0px",
+              maxWidth: "100%",
+              minHeight: "var(--mobile-hand-rail-card-height, 42px)",
+              height: "var(--mobile-hand-rail-card-height, 42px)",
+            }}
+          />
+        );
+      }
+
+      const { extra } = entry;
+      const card = extra.card || { id: extra.id, name: extra.name };
+      const plays = extra.actions;
+      const isPlayable = plays.length > 0;
+      const baseGlowKind = extra.glowKind || (isPlayable ? "extra" : null);
+      const isActionLinkedHover = (
+        hoveredLinkedObjectIds.has(String(extra.id))
+        || (
+          hoveredObjectId != null
+          && String(hoveredObjectId) === String(extra.id)
+          && priorityActionObjectIds.has(String(extra.id))
+        )
+      );
+      return (
+        <GameCard
+          key={entry.key}
+          card={card}
+          variant="hand"
+          isPlayable={isPlayable}
+          glowKind={isActionLinkedHover ? "action-link" : baseGlowKind}
+          handCircuitMode="full"
+          isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
+          onClick={plays.length === 0
+            ? (event) => handleCardClick(event, card)
+            : plays.length <= 1 ? undefined : (event) => handleCardClick(event, card)}
+          onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
+          onMouseEnter={() => handleHoverEnter(extra.id)}
+          onMouseLeave={handleHoverLeave}
+          className="mobile-hand-rail-card mobile-hand-rail-card--extra !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1"
+          style={{
+            width: "100%",
+            minWidth: "0px",
+            maxWidth: "100%",
+            minHeight: "var(--mobile-hand-rail-card-height, 42px)",
+            height: "var(--mobile-hand-rail-card-height, 42px)",
+          }}
+        />
+      );
+    };
+
     const renderHandEntry = (entry, cycleIndex) => {
       const isPrimaryCycle = !isRoulette || cycleIndex === HAND_ROULETTE_CENTER_CYCLE;
 
@@ -555,6 +659,26 @@ export default function HandZone({ player, selectedObjectId, onInspect, isExpand
         />
       );
     };
+
+    if (isVerticalRail) {
+      return (
+        <section className="mobile-hand-rail-zone min-h-0 h-full overflow-hidden">
+          <div className="mobile-hand-rail-scroll min-h-0 h-full overflow-y-auto overflow-x-hidden pr-0.5">
+            <div
+              ref={handListRef}
+              className="mobile-hand-rail-list flex min-h-full flex-col items-stretch gap-1.5 pb-1"
+            >
+              {handEntries.map((entry) => renderVerticalEntry(entry))}
+              {handCards.length === 0 && extraCards.length === 0 && (
+                <div className="mobile-hand-rail-empty text-muted-foreground p-2 text-center text-[11px] italic">
+                  Empty hand
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      );
+    }
 
     return (
       <section

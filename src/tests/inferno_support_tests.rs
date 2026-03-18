@@ -186,7 +186,9 @@ fn scryfall_inferno_cards_parse_without_unsupported_markers() {
         };
 
         if generated_definition_has_unimplemented_content(&definition) {
-            failures.push(format!("{name}: contains unimplemented or unsupported markers"));
+            failures.push(format!(
+                "{name}: contains unimplemented or unsupported markers"
+            ));
         }
     }
 

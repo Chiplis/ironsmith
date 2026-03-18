@@ -483,6 +483,9 @@ export default function HoverArtOverlay({
   inspectorVariant = "normal",
   availableInspectorWidth = null,
   availableInspectorHeight = null,
+  hideOwnershipMetadata = false,
+  minInspectorTextScale = MIN_INSPECTOR_TEXT_SCALE,
+  minInspectorTitleScale = MIN_INSPECTOR_TITLE_SCALE,
   onProtectedTopChange = null,
   onOracleTextHeightChange = null,
   onPreferredWidthChange = null,
@@ -600,17 +603,19 @@ export default function HoverArtOverlay({
 
     const lines = [];
 
-    const ownerLabel = formatInspectorPlayerLabel(details.owner, playerNameById);
-    if (ownerLabel) lines.push(`Owner: ${ownerLabel}`);
+    if (!hideOwnershipMetadata) {
+      const ownerLabel = formatInspectorPlayerLabel(details.owner, playerNameById);
+      if (ownerLabel) lines.push(`Owner: ${ownerLabel}`);
 
-    const controllerLabel = formatInspectorPlayerLabel(details.controller, playerNameById);
-    if (controllerLabel) lines.push(`Controller: ${controllerLabel}`);
+      const controllerLabel = formatInspectorPlayerLabel(details.controller, playerNameById);
+      if (controllerLabel) lines.push(`Controller: ${controllerLabel}`);
+    }
 
     const countersLine = formatInspectorCounterLine(normalizedCounters);
     if (countersLine) lines.push(countersLine);
 
     return lines;
-  }, [details, normalizedCounters, playerNameById]);
+  }, [details, hideOwnershipMetadata, normalizedCounters, playerNameById]);
   const inspectorAccent = useMemo(() => {
     const controllerId = details?.controller ?? hoveredStackObject?.controller ?? null;
     return controllerId == null ? null : getPlayerAccent(state?.players || [], controllerId);
@@ -1128,7 +1133,7 @@ export default function HoverArtOverlay({
 
       const fittedScale = clampNumber(
         (availableWidth / naturalWidth) * 0.995,
-        MIN_INSPECTOR_TITLE_SCALE,
+        minInspectorTitleScale,
         1
       );
       const nextScale = Math.min(activeInspectorTextScale, fittedScale);
@@ -1176,6 +1181,7 @@ export default function HoverArtOverlay({
     displayMode,
     inspectorTitleScaleSessionKey,
     displayObjectName,
+    minInspectorTitleScale,
   ]);
 
   useLayoutEffect(() => {
@@ -1324,7 +1330,7 @@ export default function HoverArtOverlay({
       ) {
         nextScale = Math.min(
           nextScale,
-          clampNumber(availableWidth / preferredWidth, MIN_INSPECTOR_TEXT_SCALE, 1)
+          clampNumber(availableWidth / preferredWidth, minInspectorTextScale, 1)
         );
       }
 
@@ -1332,7 +1338,7 @@ export default function HoverArtOverlay({
       const scrollHeight = scroller.scrollHeight;
       if (clientHeight > 0 && scrollHeight > clientHeight + 1) {
         nextScale = Math.min(nextScale, Math.max(
-          MIN_INSPECTOR_TEXT_SCALE,
+          minInspectorTextScale,
           baseScale * (clientHeight / scrollHeight)
         ));
       }
@@ -1382,6 +1388,7 @@ export default function HoverArtOverlay({
     inspectorScaleSession,
     inspectorScaleSessionKey,
     metadataText,
+    minInspectorTextScale,
     objectIdKey,
     resolvedPreferredInspectorWidth,
     displayStatsText,

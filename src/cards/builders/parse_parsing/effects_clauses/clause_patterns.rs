@@ -490,10 +490,10 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
             lifetime: PermissionLifetime::UntilYourNextTurn,
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
             Ok(Some(EffectAst::GrantPlayTaggedUntilYourNextTurn {
-            tag: TagKey::from(IT_TAG),
-            player: PlayerAst::You,
-            allow_land: true,
-        }))
+                tag: TagKey::from(IT_TAG),
+                player: PlayerAst::You,
+                allow_land: true,
+            }))
         }
         _ => Ok(None),
     }

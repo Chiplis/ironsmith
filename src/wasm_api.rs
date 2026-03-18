@@ -478,6 +478,16 @@ fn build_stack_object_snapshot(
         .source_stable_id
         .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
         .and_then(|id| game.object(id));
+    let id = if entry.is_ability {
+        let provenance_id = entry.provenance.raw();
+        if provenance_id != 0 {
+            provenance_id.saturating_mul(2).saturating_add(1)
+        } else {
+            entry.object_id.0.saturating_mul(2).saturating_add(1)
+        }
+    } else {
+        entry.object_id.0.saturating_mul(2)
+    };
     let source_stable_id = entry.source_stable_id.map(|stable_id| stable_id.0.0);
     let inspect_object_id = if entry.is_ability {
         source_obj.or(obj).map(|object| object.id.0)
@@ -507,7 +517,7 @@ fn build_stack_object_snapshot(
         };
         let ability_text = stack_entry_ability_text(entry, obj);
         StackObjectSnapshot {
-            id: entry.object_id.0,
+            id,
             inspect_object_id,
             stable_id,
             source_stable_id,
@@ -531,7 +541,7 @@ fn build_stack_object_snapshot(
             None
         };
         StackObjectSnapshot {
-            id: entry.object_id.0,
+            id,
             inspect_object_id,
             stable_id,
             source_stable_id,
@@ -548,17 +558,32 @@ fn build_stack_object_snapshot(
     }
 }
 
-fn insert_pending_stack_object_snapshot(
+fn pending_stack_preview_id(index: usize) -> u64 {
+    JS_SAFE_INTEGER_MAX
+        .saturating_sub(100_000)
+        .saturating_sub(index as u64)
+}
+
+fn insert_pending_stack_object_snapshots(
     snapshot: &mut GameSnapshot,
-    stack_object: StackObjectSnapshot,
+    stack_objects: Vec<StackObjectSnapshot>,
 ) {
-    let preview_name = match stack_object.ability_kind.as_deref() {
-        Some(kind) => format!("{} ({kind})", stack_object.name),
-        None => stack_object.name.clone(),
-    };
-    snapshot.stack_preview.insert(0, preview_name);
-    snapshot.stack_objects.insert(0, stack_object);
-    snapshot.stack_size += 1;
+    if stack_objects.is_empty() {
+        return;
+    }
+
+    let preview_names =
+        stack_objects
+            .iter()
+            .map(|stack_object| match stack_object.ability_kind.as_deref() {
+                Some(kind) => format!("{} ({kind})", stack_object.name),
+                None => stack_object.name.clone(),
+            });
+
+    snapshot.stack_preview.splice(0..0, preview_names);
+    let count = stack_objects.len();
+    snapshot.stack_objects.splice(0..0, stack_objects);
+    snapshot.stack_size += count;
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2597,50 +2622,63 @@ impl WasmGame {
         None
     }
 
-    fn pending_trigger_stack_object(&self) -> Option<StackObjectSnapshot> {
+    fn pending_trigger_stack_objects(&self) -> Vec<StackObjectSnapshot> {
         if self.priority_state.pending_cast.is_some()
             || self.priority_state.pending_activation.is_some()
         {
-            return None;
+            return Vec::new();
         }
 
-        let crate::decisions::context::DecisionContext::Targets(ctx) =
-            self.pending_decision.as_ref()?
+        let Some(crate::decisions::context::DecisionContext::Targets(ctx)) =
+            self.pending_decision.as_ref()
         else {
-            return None;
+            return Vec::new();
         };
 
-        let trigger = self.trigger_queue.entries.iter().find(|trigger| {
+        let has_matching_target_prompt = self.trigger_queue.entries.iter().any(|trigger| {
             trigger.source == ctx.source
                 && trigger.controller == ctx.player
                 && !trigger.ability.choices.is_empty()
                 && trigger.ability.choices.len() == ctx.requirements.len()
-        })?;
-
-        let mut entry = StackEntry::ability(
-            trigger.source,
-            trigger.controller,
-            trigger.ability.effects.clone(),
-        )
-        .with_source_info(trigger.source_stable_id, trigger.source_name.clone())
-        .with_triggering_event(trigger.triggering_event.clone())
-        .with_tagged_objects(trigger.tagged_objects.clone());
-        if let Some(snapshot) = trigger.source_snapshot.clone() {
-            entry = entry.with_source_snapshot(snapshot);
-        }
-        if let Some(x_value) = trigger.x_value {
-            entry.x_value = Some(x_value);
-        }
-        if let Some(intervening_if) = trigger.ability.intervening_if.clone() {
-            entry = entry.with_intervening_if(intervening_if);
+        });
+        if !has_matching_target_prompt {
+            return Vec::new();
         }
 
-        Some(build_stack_object_snapshot(
-            &self.game,
-            self.perspective,
-            self.active_viewed_cards.as_ref(),
-            &entry,
-        ))
+        self.trigger_queue
+            .entries
+            .iter()
+            .enumerate()
+            .map(|(index, trigger)| {
+                let mut entry = StackEntry::ability(
+                    trigger.source,
+                    trigger.controller,
+                    trigger.ability.effects.clone(),
+                )
+                .with_source_info(trigger.source_stable_id, trigger.source_name.clone())
+                .with_triggering_event(trigger.triggering_event.clone())
+                .with_tagged_objects(trigger.tagged_objects.clone())
+                .with_provenance(trigger.triggering_event.provenance());
+                if let Some(snapshot) = trigger.source_snapshot.clone() {
+                    entry = entry.with_source_snapshot(snapshot);
+                }
+                if let Some(x_value) = trigger.x_value {
+                    entry.x_value = Some(x_value);
+                }
+                if let Some(intervening_if) = trigger.ability.intervening_if.clone() {
+                    entry = entry.with_intervening_if(intervening_if);
+                }
+
+                let mut snapshot = build_stack_object_snapshot(
+                    &self.game,
+                    self.perspective,
+                    self.active_viewed_cards.as_ref(),
+                    &entry,
+                );
+                snapshot.id = pending_stack_preview_id(index);
+                snapshot
+            })
+            .collect()
     }
 
     /// Construct a demo game with two players.
@@ -2798,9 +2836,7 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
         );
-        if let Some(pending_trigger) = self.pending_trigger_stack_object() {
-            insert_pending_stack_object_snapshot(&mut snap, pending_trigger);
-        }
+        insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
         serde_wasm_bindgen::to_value(&snap)
             .map_err(|e| JsValue::from_str(&format!("snapshot encode failed: {e}")))
     }
@@ -2896,9 +2932,7 @@ impl WasmGame {
             undo_land_stable_id,
             snapshot_id,
         );
-        if let Some(pending_trigger) = self.pending_trigger_stack_object() {
-            insert_pending_stack_object_snapshot(&mut snap, pending_trigger);
-        }
+        insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
         serde_json::to_string_pretty(&snap)
             .map_err(|e| JsValue::from_str(&format!("json encode failed: {e}")))
     }
@@ -7278,6 +7312,20 @@ impl Default for WasmGame {
 
 fn build_object_details_snapshot(game: &GameState, id: ObjectId) -> Option<ObjectDetailsSnapshot> {
     let obj = game.object(id)?;
+    let current_name = game.current_name(id).unwrap_or_else(|| obj.name.clone());
+    let current_controller = game.current_controller(id).unwrap_or(obj.controller);
+    let current_supertypes = game
+        .current_supertypes(id)
+        .unwrap_or_else(|| obj.supertypes.clone());
+    let current_card_types = game
+        .current_card_types(id)
+        .unwrap_or_else(|| obj.card_types.clone());
+    let current_subtypes = game
+        .current_subtypes(id)
+        .unwrap_or_else(|| obj.subtypes.clone());
+    let current_abilities = game
+        .current_abilities(id)
+        .unwrap_or_else(|| obj.abilities.clone());
     let (power, toughness) = if obj.zone == Zone::Battlefield {
         (
             game.calculated_power(id).or_else(|| obj.power()),
@@ -7291,12 +7339,16 @@ fn build_object_details_snapshot(game: &GameState, id: ObjectId) -> Option<Objec
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,
         stable_id: obj.stable_id.0.0,
-        name: obj.name.clone(),
+        name: current_name,
         kind: obj.kind.to_string(),
         zone: zone_name(obj.zone),
         owner: obj.owner.0,
-        controller: obj.controller.0,
-        type_line: format_type_line(obj),
+        controller: current_controller.0,
+        type_line: format_type_line_parts(
+            &current_supertypes,
+            &current_card_types,
+            &current_subtypes,
+        ),
         mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
         oracle_text: obj.oracle_text.clone(),
         power,
@@ -7304,28 +7356,31 @@ fn build_object_details_snapshot(game: &GameState, id: ObjectId) -> Option<Objec
         loyalty: obj.loyalty(),
         tapped: game.is_tapped(obj.id),
         counters,
-        abilities: {
-            let def = obj.to_card_definition();
-            let mut lines = crate::compiled_text::compiled_lines(&def);
-            for granted in obj.level_granted_abilities() {
-                lines.push(format!("Level bonus: {}", granted.display()));
-            }
-            lines
-        },
+        abilities: current_abilities
+            .iter()
+            .filter_map(|ability| ability.text.clone())
+            .collect(),
         raw_compilation: format!("{:#?}", obj.to_card_definition()),
         semantic_score: WasmGame::semantic_score_for_name(obj.name.as_str()),
     })
 }
 
 fn format_type_line(obj: &crate::object::Object) -> String {
+    format_type_line_parts(&obj.supertypes, &obj.card_types, &obj.subtypes)
+}
+
+fn format_type_line_parts(
+    supertypes: &[crate::types::Supertype],
+    card_types: &[crate::types::CardType],
+    subtypes: &[crate::types::Subtype],
+) -> String {
     let mut left = Vec::new();
-    left.extend(obj.supertypes.iter().map(|value| format!("{value:?}")));
-    left.extend(obj.card_types.iter().map(|value| format!("{value:?}")));
+    left.extend(supertypes.iter().map(|value| format!("{value:?}")));
+    left.extend(card_types.iter().map(|value| format!("{value:?}")));
 
     let mut type_line = left.join(" ");
-    if !obj.subtypes.is_empty() {
-        let subtypes = obj
-            .subtypes
+    if !subtypes.is_empty() {
+        let subtypes = subtypes
             .iter()
             .map(|value| format!("{value:?}"))
             .collect::<Vec<_>>()
@@ -8356,9 +8411,9 @@ mod tests {
     use crate::card::CardBuilder;
     use crate::cards::CardRegistry;
     use crate::cards::definitions::{
-        basic_island, basic_mountain, emrakul_the_promised_end, gemstone_caverns, grizzly_bears,
-        lightning_bolt, ornithopter, polluted_delta, serum_powder, urzas_saga,
-        yawgmoth_thran_physician,
+        basic_island, basic_mountain, blood_artist, culling_the_weak, emrakul_the_promised_end,
+        gemstone_caverns, grizzly_bears, lightning_bolt, ornithopter, polluted_delta, serum_powder,
+        urzas_saga, yawgmoth_thran_physician,
     };
     use crate::continuous::ContinuousEffect;
     use crate::cost::OptionalCostsPaid;
@@ -9005,6 +9060,14 @@ mod tests {
         assert!(
             throne.subtypes.contains(&Subtype::Angel),
             "Roaming Throne should gain the selected creature subtype once its choice resolves"
+        );
+
+        let details = build_object_details_snapshot(&wasm.game, throne.id)
+            .expect("Roaming Throne inspector details should exist");
+        assert!(
+            details.type_line.contains("Angel"),
+            "inspector details should use current battlefield subtypes, got {}",
+            details.type_line
         );
     }
 
@@ -11698,6 +11761,307 @@ mod tests {
         assert!(
             stack_objects[1]["ability_kind"].is_null(),
             "the second stack object should remain the Emrakul spell"
+        );
+    }
+
+    #[test]
+    fn emrakul_target_prompt_snapshot_encodes_for_js_with_safe_stack_ids() {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Dana".to_string(),
+            ],
+            20,
+            1,
+        );
+
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let emrakul_id = wasm.game.create_object_from_definition(
+            &emrakul_the_promised_end(),
+            alice,
+            Zone::Stack,
+        );
+        let (emrakul_stable_id, emrakul_name) = wasm
+            .game
+            .object(emrakul_id)
+            .map(|object| (object.stable_id, object.name.clone()))
+            .expect("Emrakul spell object should exist");
+        wasm.game.push_to_stack(
+            StackEntry::new(emrakul_id, alice).with_source_info(emrakul_stable_id, emrakul_name),
+        );
+
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(emrakul_id, alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        for trigger in check_triggers(&wasm.game, &event) {
+            wasm.trigger_queue.add(trigger);
+        }
+
+        let checkpoint = wasm.capture_replay_checkpoint();
+        let outcome = wasm
+            .execute_with_replay(&checkpoint, &ReplayRoot::Advance, &[])
+            .expect("auto-advance should reach Emrakul's trigger decision");
+        let targets_ctx = match outcome {
+            ReplayOutcome::NeedsDecision(DecisionContext::Targets(ctx)) => ctx,
+            other => panic!("expected Emrakul cast trigger target prompt, got {other:?}"),
+        };
+
+        wasm.pending_decision = Some(DecisionContext::Targets(targets_ctx));
+        wasm.pending_replay_action = Some(PendingReplayAction {
+            checkpoint,
+            root: ReplayRoot::Advance,
+            nested_answers: Vec::new(),
+        });
+
+        let snapshot_value = wasm
+            .snapshot()
+            .expect("snapshot should encode for JS with safe stack ids");
+        let snapshot: serde_json::Value =
+            serde_wasm_bindgen::from_value(snapshot_value).expect("snapshot value should parse");
+        let stack_objects = snapshot["stack_objects"]
+            .as_array()
+            .expect("snapshot should include stack objects");
+
+        assert_eq!(
+            stack_objects.len(),
+            2,
+            "snapshot should keep both stack entries"
+        );
+        for entry in stack_objects {
+            let id = entry["id"]
+                .as_u64()
+                .expect("stack entry id should be a JS-safe integer");
+            assert!(
+                id <= 9_007_199_254_740_991,
+                "stack entry id should stay within JS safe integer range, got {id}"
+            );
+        }
+
+        let triggered_id = stack_objects[0]["id"]
+            .as_u64()
+            .expect("triggered ability id should exist");
+        let spell_id = stack_objects[1]["id"]
+            .as_u64()
+            .expect("spell id should exist");
+        assert_ne!(
+            triggered_id, spell_id,
+            "triggered ability and spell should keep distinct UI ids"
+        );
+    }
+
+    #[test]
+    fn target_prompt_snapshot_shows_all_queued_targeted_triggers_while_spell_resolves() {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+
+        let blood_artist_id =
+            wasm.game
+                .create_object_from_definition(&blood_artist(), alice, Zone::Battlefield);
+        let victim_id =
+            wasm.game
+                .create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let victim_snapshot = wasm
+            .game
+            .snapshot_object(victim_id)
+            .expect("victim snapshot should exist");
+        let dies_event = TriggerEvent::new_with_provenance(
+            crate::events::ZoneChangeEvent::with_cause(
+                victim_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_sba(),
+                Some(victim_snapshot),
+            ),
+            ProvNodeId::default(),
+        );
+
+        let trigger = check_triggers(&wasm.game, &dies_event)
+            .into_iter()
+            .find(|entry| entry.source == blood_artist_id)
+            .expect("Blood Artist should trigger when another creature dies");
+        wasm.trigger_queue.add(trigger.clone());
+        wasm.trigger_queue.add(trigger);
+
+        let culling_id =
+            wasm.game
+                .create_object_from_definition(&culling_the_weak(), alice, Zone::Stack);
+        let culling_snapshot = build_stack_object_snapshot(
+            &wasm.game,
+            wasm.perspective,
+            None,
+            &StackEntry::new(culling_id, alice),
+        );
+        wasm.active_resolving_stack_object = Some(culling_snapshot);
+
+        wasm.pending_decision = Some(DecisionContext::Targets(TargetsContext::new(
+            alice,
+            blood_artist_id,
+            "Blood Artist's triggered ability".to_string(),
+            vec![TargetRequirementContext {
+                description: "target for Blood Artist".to_string(),
+                legal_targets: vec![Target::Player(alice), Target::Player(bob)],
+                min_targets: 1,
+                max_targets: Some(1),
+            }],
+        )));
+
+        let snapshot_json = wasm
+            .snapshot_json()
+            .expect("snapshot should render queued Blood Artist triggers");
+        let snapshot: serde_json::Value =
+            serde_json::from_str(&snapshot_json).expect("snapshot json should parse");
+
+        let stack_objects = snapshot["stack_objects"]
+            .as_array()
+            .expect("snapshot should include queued stack objects");
+        assert_eq!(
+            stack_objects.len(),
+            2,
+            "snapshot should show both queued Blood Artist triggers"
+        );
+        assert!(
+            stack_objects.iter().all(
+                |entry| entry["name"] == "Blood Artist" && entry["ability_kind"] == "Triggered"
+            ),
+            "queued stack objects should both be Blood Artist triggers: {stack_objects:?}"
+        );
+        assert_ne!(
+            stack_objects[0]["id"], stack_objects[1]["id"],
+            "queued trigger previews should keep distinct UI ids"
+        );
+
+        let resolving = snapshot["resolving_stack_object"]
+            .as_object()
+            .expect("resolving spell should remain visible separately");
+        assert_eq!(resolving["name"], "Culling the Weak");
+    }
+
+    #[test]
+    fn roaming_throne_blood_artist_culling_flow_reaches_two_trigger_ordering_options() {
+        let mut wasm = WasmGame::new();
+
+        let alice = PlayerId::from_index(0);
+
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        wasm.add_card_to_zone(
+            0,
+            "Roaming Throne".to_string(),
+            "battlefield".to_string(),
+            false,
+        )
+        .expect("should start Roaming Throne battlefield entry");
+
+        let vampire_index = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectOptions(ctx)) => ctx
+                .options
+                .iter()
+                .find(|option| option.description == "Vampire")
+                .map(|option| option.index)
+                .expect("Vampire should be a legal creature type"),
+            other => panic!("expected Roaming Throne type selection, got {other:?}"),
+        };
+        dispatch_select_options(&mut wasm, &[vampire_index]);
+
+        wasm.add_card_to_zone(
+            0,
+            "Blood Artist".to_string(),
+            "battlefield".to_string(),
+            false,
+        )
+        .expect("should add Blood Artist to the battlefield");
+
+        let culling_id = wasm
+            .add_card_to_zone(0, "Culling the Weak".to_string(), "hand".to_string(), false)
+            .expect("should add Culling the Weak to hand");
+
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+        dispatch_matching_priority_action(&mut wasm, |action| {
+            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == ObjectId::from_raw(culling_id))
+        });
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::SelectObjects(ctx)) => {
+                let blood_artist_id = wasm
+                    .game
+                    .battlefield
+                    .iter()
+                    .find_map(|id| {
+                        wasm.game
+                            .object(*id)
+                            .filter(|obj| obj.name == "Blood Artist")
+                            .map(|_| *id)
+                    })
+                    .expect("Blood Artist should be on the battlefield");
+                dispatch_select_objects(&mut wasm, &[blood_artist_id.0]);
+            }
+            other => panic!("expected sacrifice target prompt for Culling the Weak, got {other:?}"),
+        }
+
+        let order_ctx = match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Order(ctx)) => ctx,
+            other => panic!("expected trigger ordering prompt after sacrificing Blood Artist, got {other:?}"),
+        };
+        assert_eq!(
+            order_ctx.items.len(),
+            2,
+            "Roaming Throne should create two Blood Artist ordering items"
+        );
+        assert!(
+            order_ctx
+                .items
+                .iter()
+                .all(|(_, label)| label.starts_with("Blood Artist\n")),
+            "ordering labels should both be Blood Artist triggers: {:?}",
+            order_ctx.items
+        );
+
+        let snapshot_json = wasm
+            .snapshot_json()
+            .expect("snapshot json should encode trigger ordering state");
+        let snapshot: serde_json::Value =
+            serde_json::from_str(&snapshot_json).expect("snapshot json should parse");
+        let decision = snapshot["decision"]
+            .as_object()
+            .expect("snapshot should include ordering decision");
+        assert_eq!(decision["kind"], "select_options");
+        assert_eq!(decision["reason"], "Order triggers");
+        assert_eq!(
+            decision["options"]
+                .as_array()
+                .expect("ordering decision should expose options")
+                .len(),
+            2,
+            "UI decision payload should keep both Blood Artist trigger ordering options"
         );
     }
 

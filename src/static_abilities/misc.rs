@@ -14,11 +14,11 @@ use crate::color::Color;
 use crate::compiled_text::describe_value;
 use crate::effect::{Condition, Effect, Value};
 use crate::events::cards::matchers::{WouldDiscardMatcher, WouldDrawCardMatcher};
+use crate::events::damage::DamageEvent;
 use crate::events::damage::matchers::{
     DamageFromSelfMatcher, DamageToObjectMatcher, DamageToPlayerOrObjectMatcher,
     DamageToSelfCombatMatcher, DamageToSelfFromSourceFilterMatcher,
 };
-use crate::events::damage::DamageEvent;
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{EventKind, ReplacementMatcher, ReplacementPriority, downcast_event};
 use crate::events::zones::matchers::{

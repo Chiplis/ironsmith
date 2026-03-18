@@ -1593,7 +1593,10 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         })?);
         dealt_idx + 6
     } else if let Some(dealt_idx) = clause_words.windows(8).position(|window| {
-        window == ["dealt", "damage", "this", "way", "would", "die", "this", "turn"]
+        window
+            == [
+                "dealt", "damage", "this", "way", "would", "die", "this", "turn",
+            ]
     }) {
         if dealt_idx <= 1 {
             return Ok(None);

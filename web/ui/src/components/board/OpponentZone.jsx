@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import BattlefieldRow from "./BattlefieldRow";
 import DeckZonePile from "./DeckZonePile";
 import ManaPool from "@/components/left-rail/ManaPool";
@@ -7,6 +7,7 @@ import { useGame } from "@/context/GameContext";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command"];
 const SLIDE_IN_ZONE_IDS = new Set(["graveyard", "exile"]);
@@ -18,6 +19,7 @@ const ZONE_LABELS = {
   exile: "Exile",
   command: "CZ",
 };
+const MOBILE_OPPONENT_NAV_BUTTON_CLASS = "inline-flex h-7 w-7 items-center justify-center border border-[rgba(186,155,102,0.42)] bg-[linear-gradient(180deg,rgba(78,63,43,0.94),rgba(23,19,17,0.98))] text-[#f0e2bf] shadow-[inset_0_1px_0_rgba(255,244,220,0.08),0_8px_16px_rgba(0,0,0,0.24)] transition-colors hover:border-[rgba(227,197,142,0.64)] hover:text-[#fff1cb] disabled:cursor-default disabled:opacity-45";
 
 function normalizeZoneViews(zoneViews) {
   const normalized = Array.isArray(zoneViews)
@@ -130,9 +132,77 @@ export default function OpponentZone({
   zoneActivityByPlayer = {},
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
+  mobileViewport = false,
 }) {
   const { state } = useGame();
+  const [activeOpponentIndex, setActiveOpponentIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveOpponentIndex((currentIndex) => {
+      if (opponents.length <= 1) return 0;
+      return Math.min(currentIndex, opponents.length - 1);
+    });
+  }, [opponents.length]);
+
   if (!opponents.length) return <section className="board-zone-bg battlefield-panel battlefield-panel--opponents p-0 min-h-0" />;
+
+  if (mobileViewport) {
+    const activeOpponent = opponents[Math.min(activeOpponentIndex, opponents.length - 1)] || opponents[0];
+    const canCycleOpponents = opponents.length > 1;
+    const cycleOpponent = (direction) => {
+      if (!canCycleOpponents) return;
+      setActiveOpponentIndex((currentIndex) => {
+        const nextIndex = currentIndex + direction;
+        if (nextIndex < 0) return opponents.length - 1;
+        if (nextIndex >= opponents.length) return 0;
+        return nextIndex;
+      });
+    };
+
+    return (
+      <section
+        className="board-zone-bg battlefield-panel battlefield-panel--opponents relative z-[2] p-0 min-h-0 overflow-visible"
+        data-opponents-zones
+        style={{ alignContent: "stretch" }}
+      >
+        <div className="h-full min-h-0">
+          <OpponentSlot
+            player={activeOpponent}
+            selectedObjectId={selectedObjectId}
+            onInspect={onInspect}
+            zoneViews={zoneViews}
+            zoneActivity={zoneActivityByPlayer[String(activeOpponent?.id ?? activeOpponent?.index ?? "")] || {}}
+            state={state}
+            legalTargetPlayerIds={legalTargetPlayerIds}
+            legalTargetObjectIds={legalTargetObjectIds}
+            headerControls={canCycleOpponents ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className={MOBILE_OPPONENT_NAV_BUTTON_CLASS}
+                  onClick={() => cycleOpponent(-1)}
+                  aria-label="Show previous opponent"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <div className="min-w-[54px] text-center text-[10px] font-bold uppercase tracking-[0.14em] text-[#d7c69d]">
+                  {activeOpponentIndex + 1}/{opponents.length}
+                </div>
+                <button
+                  type="button"
+                  className={MOBILE_OPPONENT_NAV_BUTTON_CLASS}
+                  onClick={() => cycleOpponent(1)}
+                  aria-label="Show next opponent"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+            ) : null}
+          />
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="board-zone-bg battlefield-panel battlefield-panel--opponents relative z-[2] p-0 min-h-0 overflow-visible" data-opponents-zones style={{ alignContent: "stretch" }}>
@@ -171,6 +241,7 @@ function OpponentSlot({
   state,
   legalTargetPlayerIds,
   legalTargetObjectIds,
+  headerControls = null,
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { combatModeRef, combatMode, dragArrow } = useCombatArrows();
@@ -358,8 +429,9 @@ function OpponentSlot({
             {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
           </span>
           <ManaPool pool={player.mana_pool} />
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <ZoneCountInline player={player} />
+            {headerControls}
           </div>
         </div>
       </div>

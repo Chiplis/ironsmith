@@ -1661,9 +1661,17 @@ pub(crate) fn parse_predicate(tokens: &[Token]) -> Result<PredicateAst, CardText
 
     if matches!(
         filtered.as_slice(),
-        ["this", "creature", "attacked", "or", "blocked", "this", "turn"]
-            | ["this", "permanent", "attacked", "or", "blocked", "this", "turn"]
-            | ["this", "attacked", "or", "blocked", "this", "turn"]
+        [
+            "this", "creature", "attacked", "or", "blocked", "this", "turn"
+        ] | [
+            "this",
+            "permanent",
+            "attacked",
+            "or",
+            "blocked",
+            "this",
+            "turn"
+        ] | ["this", "attacked", "or", "blocked", "this", "turn"]
             | ["it", "attacked", "or", "blocked", "this", "turn"]
     ) {
         return Ok(PredicateAst::SourceAttackedOrBlockedThisTurn);

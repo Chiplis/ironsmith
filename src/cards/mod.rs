@@ -7,6 +7,7 @@
 
 pub mod builders;
 pub mod definitions;
+mod handwritten_runtime;
 pub mod tokens;
 
 pub use builders::{CardDefinitionBuilder, ParseAnnotations, TextSpan};
@@ -320,6 +321,16 @@ impl CardRegistry {
         generated_registry::generated_parser_card_names()
     }
 
+    /// Names of cards currently supported by the registry implementation.
+    pub fn supported_card_names() -> Vec<String> {
+        let mut registry = Self::with_builtin_cards();
+        registry.ensure_all_generated_cards_loaded();
+        let mut names = registry.cards.keys().cloned().collect::<Vec<_>>();
+        names.sort_unstable();
+        names.dedup();
+        names
+    }
+
     /// Semantic fidelity score for a generated parser card name.
     pub fn generated_parser_semantic_score(name: &str) -> Option<f32> {
         generated_registry::generated_parser_semantic_score(name)
@@ -393,6 +404,7 @@ impl CardRegistry {
         maybe_register!(mindbreak_trap);
         maybe_register!(counterspell);
         maybe_register!(dawn_charm);
+        maybe_register!(demonic_consultation);
         maybe_register!(swords_to_plowshares);
         maybe_register!(basic_forest);
         maybe_register!(basic_island);
@@ -411,6 +423,7 @@ impl CardRegistry {
         maybe_register!(stormbreath_dragon);
         maybe_register!(geist_of_saint_traft);
         maybe_register!(savannah_lions);
+        maybe_register!(savines_reclamation);
         maybe_register!(saw_in_half);
         maybe_register!(white_knight);
         maybe_register!(giant_spider);
@@ -424,6 +437,7 @@ impl CardRegistry {
         maybe_register!(stoke_the_flames);
         maybe_register!(reverse_engineer);
         maybe_register!(the_birth_of_meletis);
+        maybe_register!(thassas_oracle);
         maybe_register!(student_of_warfare);
         maybe_register!(valley_floodcaller);
         maybe_register!(yawgmoth_thran_physician);
@@ -501,6 +515,7 @@ impl CardRegistry {
         maybe_register!(phyrexian_tower);
         maybe_register!(shattered_sanctum);
         maybe_register!(stroke_of_midnight);
+        maybe_register!(tainted_pact);
         maybe_register!(vault_of_champions);
         maybe_register!(tayam_luminous_enigma);
         maybe_register!(village_rites);

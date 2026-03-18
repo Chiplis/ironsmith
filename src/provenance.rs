@@ -7,6 +7,12 @@ use crate::ids::{ObjectId, PlayerId};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct ProvNodeId(u64);
 
+impl ProvNodeId {
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+}
+
 /// Semantic type of a provenance graph node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProvenanceNodeKind {

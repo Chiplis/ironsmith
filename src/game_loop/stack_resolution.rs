@@ -87,6 +87,7 @@ pub(super) fn resolve_stack_entry_full(
     // Resolution effects use EventCause::from_effect to distinguish from cost effects
     let mut ctx = ExecutionContext::new(entry.object_id, entry.controller, decision_maker)
         .with_optional_costs_paid(entry.optional_costs_paid.clone())
+        .with_casting_method(entry.casting_method.clone())
         .with_cause(EventCause::from_effect(entry.object_id, entry.controller))
         .with_provenance(entry.provenance);
     if let Some(x) = entry.x_value {

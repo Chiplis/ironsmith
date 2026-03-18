@@ -965,7 +965,10 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
 }
 
 fn parse_divided_damage_target(target_tokens: &[Token]) -> Result<TargetAst, CardTextError> {
-    let Some(among_idx) = target_tokens.iter().position(|token| token.is_word("among")) else {
+    let Some(among_idx) = target_tokens
+        .iter()
+        .position(|token| token.is_word("among"))
+    else {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage targets after 'among' (clause: '{}')",
             words(target_tokens).join(" ")
@@ -996,11 +999,12 @@ fn parse_divided_damage_target(target_tokens: &[Token]) -> Result<TargetAst, Car
     }
 
     let target_phrase_tokens = &among_tail[target_idx..];
-    let base_target = if among_words[target_idx..] == ["target"] || among_words[target_idx..] == ["targets"] {
-        TargetAst::AnyTarget(span_from_tokens(target_phrase_tokens))
-    } else {
-        parse_target_phrase(target_phrase_tokens)?
-    };
+    let base_target =
+        if among_words[target_idx..] == ["target"] || among_words[target_idx..] == ["targets"] {
+            TargetAst::AnyTarget(span_from_tokens(target_phrase_tokens))
+        } else {
+            parse_target_phrase(target_phrase_tokens)?
+        };
     let count = if among_words.starts_with(&["any", "number", "of"]) {
         ChoiceCount::any_number()
     } else {
@@ -1022,7 +1026,10 @@ fn parse_divided_damage_with_amount(
         )));
     }
     let mut target_tokens = &rest[1..];
-    if target_tokens.first().is_some_and(|token| token.is_word("to")) {
+    if target_tokens
+        .first()
+        .is_some_and(|token| token.is_word("to"))
+    {
         target_tokens = &target_tokens[1..];
     }
     let target = parse_divided_damage_target(target_tokens)?;
@@ -1141,8 +1148,10 @@ pub(crate) fn parse_deal_damage_with_amount(
     if target_words.starts_with(&["each", "of"]) {
         let each_of_tokens = &target_tokens[2..];
         let each_of_words = words(each_of_tokens);
-        if matches!(each_of_words.as_slice(), ["up", "to", _, "target"] | ["up", "to", _, "targets"])
-            && let Some(count) = crate::cards::builders::parse_number_word_u32(each_of_words[2])
+        if matches!(
+            each_of_words.as_slice(),
+            ["up", "to", _, "target"] | ["up", "to", _, "targets"]
+        ) && let Some(count) = crate::cards::builders::parse_number_word_u32(each_of_words[2])
         {
             let target = TargetAst::WithCount(
                 Box::new(TargetAst::AnyTarget(span_from_tokens(each_of_tokens))),

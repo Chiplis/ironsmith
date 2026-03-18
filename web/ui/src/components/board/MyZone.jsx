@@ -2,6 +2,8 @@ import { useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import BattlefieldRow from "./BattlefieldRow";
 import DeckZonePile from "./DeckZonePile";
+import HandZone from "./HandZone";
+import HoverArtOverlay from "@/components/right-rail/HoverArtOverlay";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { getPlayerAccent } from "@/lib/player-colors";
@@ -131,15 +133,20 @@ export default function MyZone({
   zoneActivity = {},
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
+  headerControls = null,
+  embeddedActionBar = null,
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { state } = useGame();
   const playerAccent = getPlayerAccent(state?.players || [], player?.id);
+  const mergedMobileHeader = Boolean(embeddedActionBar);
+  const mobileInspectorVisible = mergedMobileHeader && selectedObjectId != null;
 
   const transientZoneViews = Object.keys(zoneActivity || {});
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
-  const boardZoneEntries = activeZoneEntries.filter((entry) => !SLIDE_IN_ZONE_IDS.has(entry.zone));
+  const mobileHandRailVisible = mergedMobileHeader && Boolean(player?.can_view_hand);
+  const boardZoneEntries = activeZoneEntries.filter((entry) => !SLIDE_IN_ZONE_IDS.has(entry.zone) && (!mobileHandRailVisible || entry.zone !== "hand"));
   const overlayZoneEntries = activeZoneEntries.filter((entry) => SLIDE_IN_ZONE_IDS.has(entry.zone));
   const visibleZones = new Set(
     boardZoneEntries
@@ -250,7 +257,7 @@ export default function MyZone({
     <section
       className="board-zone-bg battlefield-panel battlefield-panel--self relative z-[28] min-h-0 h-full overflow-visible grid p-0"
       style={{
-        gridTemplateRows: `${MY_ZONE_HEADER_HEIGHT}px minmax(0,1fr)`,
+        gridTemplateRows: mergedMobileHeader ? "auto minmax(0,1fr)" : `${MY_ZONE_HEADER_HEIGHT}px minmax(0,1fr)`,
         alignContent: "stretch",
         "--player-accent": playerAccent?.hex || "#d8bf6a",
         "--panel-accent": playerAccent?.hex || "#b98946",
@@ -260,43 +267,73 @@ export default function MyZone({
     >
       <div className="relative min-h-0 overflow-visible">
         <div
-          className="battlefield-panel-header relative z-[1] flex h-full items-center gap-2 overflow-visible pr-2"
-          data-my-zone-header-content
+          className={cn(
+            "battlefield-panel-header relative z-[1] overflow-visible pr-2",
+            mergedMobileHeader
+              ? "battlefield-panel-header--merged flex min-h-[44px] items-stretch gap-1.5"
+              : "flex h-full items-center gap-2"
+          )}
           data-turn-priority={isPriorityPlayer ? "true" : "false"}
         >
-          <span
+          <div
             className={cn(
-              "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums",
-              isPlayerLegalTarget
-                && "text-[#d7ebff] rounded-none px-1 py-0.5 shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
+              mergedMobileHeader
+                ? "my-zone-header-meta flex min-w-0 shrink-0 items-center gap-2"
+                : "flex min-w-0 items-center gap-2"
             )}
-            onPointerDown={handlePlayerTargetPointerDown}
-            onClick={handlePlayerTargetClick}
-            style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+            data-my-zone-header-content
           >
-            {player.life}
-          </span>
-          <span
-            className={cn(
-              "battlefield-name text-[16px] uppercase tracking-wider font-bold",
-              isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
-            )}
-            data-player-target={player.id}
-            data-player-target-name={player.id}
-            onPointerDown={handlePlayerTargetPointerDown}
-            onClick={handlePlayerTargetClick}
-            style={{
-              color: playerAccent?.hex,
-              cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
-            }}
-          >
-            <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-              {player.name}
+            <span
+              className={cn(
+                "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums",
+                isPlayerLegalTarget
+                  && "text-[#d7ebff] rounded-none px-1 py-0.5 shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
+              )}
+              onPointerDown={handlePlayerTargetPointerDown}
+              onClick={handlePlayerTargetClick}
+              style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+            >
+              {player.life}
             </span>
-            {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
-          </span>
-          <ZoneCountInline player={player} />
-          <ManaPool pool={player.mana_pool} />
+            <span
+              className={cn(
+                "battlefield-name text-[16px] uppercase tracking-wider font-bold",
+                isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
+              )}
+              data-player-target={player.id}
+              data-player-target-name={player.id}
+              onPointerDown={handlePlayerTargetPointerDown}
+              onClick={handlePlayerTargetClick}
+              style={{
+                color: playerAccent?.hex,
+                cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
+              }}
+            >
+              <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                {player.name}
+              </span>
+              {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+            </span>
+            <div className="ml-auto flex min-w-0 items-center gap-2">
+              {mergedMobileHeader ? (
+                <div className="my-zone-merged-zone-meta flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-[#bcae93] whitespace-nowrap">
+                  <span className="font-bold text-[#d8cbb0]">Hand</span>
+                  <span className="text-[#efe0bb]">{player.hand_size ?? 0}</span>
+                  <span className="font-bold text-[#d8cbb0]">GY</span>
+                  <span className="text-[#efe0bb]">{player.graveyard_size ?? 0}</span>
+                </div>
+              ) : (
+                <ZoneCountInline player={player} />
+              )}
+              {!mergedMobileHeader && <ManaPool pool={player.mana_pool} />}
+              {headerControls}
+            </div>
+          </div>
+          {mergedMobileHeader ? (
+            <div className="my-zone-merged-action-shell relative z-[1] min-w-0 flex-1 self-stretch">
+              {embeddedActionBar}
+            </div>
+          ) : null}
         </div>
         <StackTimelineRail
           selectedObjectId={selectedObjectId}
@@ -304,7 +341,11 @@ export default function MyZone({
         />
       </div>
       <div
-        className="battlefield-zones-shell relative min-h-0 h-full overflow-visible"
+        className={cn(
+          "battlefield-zones-shell relative min-h-0 h-full overflow-visible",
+          mobileHandRailVisible && "my-zone-mobile-body-grid",
+          mobileInspectorVisible && "has-inline-inspector"
+        )}
         data-turn-active={isActivePlayer ? "true" : "false"}
       >
         {overlayZoneEntries.length > 0 ? (
@@ -358,6 +399,14 @@ export default function MyZone({
             })}
           </div>
         ) : null}
+        <div
+          className={cn(
+            mobileHandRailVisible
+              ? "my-zone-mobile-board-shell min-h-0 h-full"
+              : "min-h-0 h-full"
+          )}
+          data-mobile-hand-drop-target={mobileHandRailVisible ? "board" : undefined}
+        >
         <div className="battlefield-zone-strip flex gap-1 min-h-0 h-full overflow-visible">
         {boardZoneEntries.map((entry) => {
           const isVisible = entry.active && visibleZones.has(entry.zone);
@@ -431,6 +480,8 @@ export default function MyZone({
                     cards={displayCards}
                     compact={entry.zone !== "battlefield"}
                     battlefieldSide="bottom"
+                    alignStart={mergedMobileHeader && entry.zone === "battlefield"}
+                    bottomSafeInset={mergedMobileHeader && entry.zone === "battlefield" ? 0 : undefined}
                     selectedObjectId={selectedObjectId}
                     onCardClick={handleCardClick}
                     onCardPointerDown={handleCardPointerDown}
@@ -444,6 +495,41 @@ export default function MyZone({
           );
         })}
         </div>
+        </div>
+        {mobileInspectorVisible ? (
+          <aside
+            className="my-zone-mobile-inspector-rail"
+            data-mobile-hand-drop-target="inspector"
+          >
+            <div className="my-zone-mobile-inline-inspector">
+              <div className="my-zone-mobile-inline-inspector-stage">
+                <HoverArtOverlay
+                  objectId={selectedObjectId}
+                  displayMode="inspector"
+                  availableInspectorWidth={182}
+                  availableInspectorHeight={116}
+                  hideOwnershipMetadata
+                  minInspectorTextScale={0.46}
+                  minInspectorTitleScale={0.42}
+                  onInspectorAccentChange={null}
+                />
+              </div>
+            </div>
+          </aside>
+        ) : null}
+        {mobileHandRailVisible ? (
+          <aside className="my-zone-hand-rail">
+            <div className="my-zone-hand-rail-body">
+              <HandZone
+                player={player}
+                selectedObjectId={selectedObjectId}
+                onInspect={onInspect}
+                isExpanded
+                layout="vertical-rail"
+              />
+            </div>
+          </aside>
+        ) : null}
       </div>
 
     </section>

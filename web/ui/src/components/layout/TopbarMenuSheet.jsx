@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import useViewportLayout from "@/hooks/useViewportLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Sheet,
   SheetContent,
@@ -46,16 +48,26 @@ export default function TopbarMenuSheet({
   onReset,
   onChangePerspective,
   onRefresh,
+  onToggleLog,
   onEnterDeckLoading,
   onOpenLobby,
   deckLoadingMode,
 }) {
   const [open, setOpen] = useState(false);
+  const { nonDesktopViewport } = useViewportLayout();
   const {
     state,
     wasmRegistryCount,
     wasmRegistryTotal,
     multiplayer,
+    autoPassEnabled,
+    setAutoPassEnabled,
+    holdRule,
+    setHoldRule,
+    confirmEnabled,
+    setConfirmEnabled,
+    inspectorDebug,
+    setInspectorDebug,
   } = useGame();
 
   const players = state?.players || [];
@@ -90,15 +102,15 @@ export default function TopbarMenuSheet({
         <Button
           variant="secondary"
           size="icon-xs"
-          className="stone-pill rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
+          className="stone-pill topbar-menu-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
           aria-label="Open game menu"
         >
           <Settings2 className="size-3.5" />
         </Button>
       </SheetTrigger>
       <SheetContent
-        side="right"
-        className="fantasy-sheet w-[min(92vw,420px)] overflow-y-auto p-0"
+        side={nonDesktopViewport ? "center" : "right"}
+        className="fantasy-sheet settings-sheet w-[min(94vw,420px)] overflow-y-auto p-0"
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
           <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">Menu</div>
@@ -227,6 +239,59 @@ export default function TopbarMenuSheet({
                 Repository
                 <ExternalLink className="size-3" />
               </a>
+            </Button>
+          </MenuSection>
+
+          <MenuSection
+            eyebrow="Live"
+            title="Gameplay Controls"
+            description="Controls moved out of the landscape gameplay lane so the table can stay compact on mobile."
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={labelClass}>
+                Auto-pass Hold
+                <select
+                  className={inputClass}
+                  value={holdRule}
+                  disabled={matchLocked}
+                  onChange={(event) => setHoldRule(event.target.value)}
+                >
+                  <option value="never">Never</option>
+                  <option value="if_actions">If actions</option>
+                  <option value="stack">Stack</option>
+                  <option value="main">Main</option>
+                  <option value="combat">Combat</option>
+                  <option value="ending">Ending</option>
+                  <option value="always">Always</option>
+                </select>
+              </label>
+              <div className="grid gap-2">
+                <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <Checkbox
+                    checked={autoPassEnabled}
+                    disabled={matchLocked}
+                    onCheckedChange={(value) => setAutoPassEnabled(Boolean(value))}
+                  />
+                  Auto-pass
+                </label>
+                <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <Checkbox
+                    checked={confirmEnabled}
+                    onCheckedChange={(value) => setConfirmEnabled(Boolean(value))}
+                  />
+                  Confirm Stops
+                </label>
+                <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <Checkbox
+                    checked={inspectorDebug}
+                    onCheckedChange={(value) => setInspectorDebug(Boolean(value))}
+                  />
+                  Debug
+                </label>
+              </div>
+            </div>
+            <Button variant="secondary" size="sm" className="stone-pill" onClick={onToggleLog}>
+              Open Log
             </Button>
           </MenuSection>
         </div>

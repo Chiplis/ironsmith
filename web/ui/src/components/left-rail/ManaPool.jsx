@@ -25,5 +25,5 @@ export default function ManaPool({ pool }) {
 
   if (!chips.length) return null;
 
-  return <div className="flex flex-wrap items-center gap-1 ml-0.5">{chips}</div>;
+  return <div className="mana-pool-inline flex flex-wrap items-center gap-1 ml-0.5">{chips}</div>;
 }
