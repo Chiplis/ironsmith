@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Ironsmith Table",
+  "short_name": "Ironsmith",
+  "description": "A mobile-first Magic table tuned for landscape play.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#08090b",
+  "theme_color": "#120f0d",
+  "icons": [
+    {
+      "src": "/theme/gem-seal.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -418,6 +418,12 @@ export default function HandZone({
     if (plays.length === 0) return;
     if (e.button !== 0) return;
     e.preventDefault();
+    e.stopPropagation();
+    try {
+      e.currentTarget?.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Touch browsers can reject capture during rapid gesture changes.
+    }
     clearPendingDragListeners();
     activePointerIdRef.current = e.pointerId;
     const sx = e.clientX;
@@ -446,6 +452,11 @@ export default function HandZone({
       if (activePointerIdRef.current != null && ue.pointerId !== activePointerIdRef.current) {
         return;
       }
+      try {
+        e.currentTarget?.releasePointerCapture?.(ue.pointerId);
+      } catch {
+        // No-op if capture was never established.
+      }
       clearPendingDragListeners();
       const dt = dragThresholdRef.current;
       dragThresholdRef.current = null;
@@ -457,6 +468,11 @@ export default function HandZone({
     const onCancel = (ce) => {
       if (activePointerIdRef.current != null && ce.pointerId !== activePointerIdRef.current) {
         return;
+      }
+      try {
+        e.currentTarget?.releasePointerCapture?.(ce.pointerId);
+      } catch {
+        // No-op if capture was never established.
       }
       clearPendingDragListeners();
       dragThresholdRef.current = null;

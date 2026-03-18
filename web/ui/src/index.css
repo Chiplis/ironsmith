@@ -3681,6 +3681,7 @@ body {
 .app-shell {
   position: relative;
   overflow: hidden;
+  min-height: 100dvh;
   border-radius: 28px;
   background:
     radial-gradient(900px 280px at 50% 0%, rgba(255, 221, 145, 0.07), transparent 65%),
@@ -3689,6 +3690,73 @@ body {
     inset 0 0 0 1px rgba(177, 151, 109, 0.18),
     inset 0 1px 0 rgba(255, 244, 217, 0.08),
     0 28px 50px rgba(0, 0, 0, 0.42);
+}
+
+.mobile-landscape-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 16px)
+    calc(env(safe-area-inset-right, 0px) + 16px)
+    calc(env(safe-area-inset-bottom, 0px) + 16px)
+    calc(env(safe-area-inset-left, 0px) + 16px);
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(245, 215, 147, 0.14), transparent 42%),
+    linear-gradient(180deg, rgba(15, 12, 11, 0.98), rgba(7, 7, 8, 0.995));
+}
+
+.mobile-landscape-gate-panel {
+  width: min(92vw, 420px);
+  display: grid;
+  gap: 12px;
+  padding: 18px 18px 16px;
+  border: 1px solid rgba(168, 137, 90, 0.32);
+  background:
+    radial-gradient(120% 120% at 50% -10%, rgba(243, 207, 130, 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(49, 41, 35, 0.94), rgba(19, 17, 16, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 217, 0.06),
+    0 24px 44px rgba(0, 0, 0, 0.44);
+}
+
+.mobile-landscape-gate-kicker {
+  color: #cbb17a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.mobile-landscape-gate-title {
+  margin: 0;
+  color: #f2ead6;
+  font-size: 30px;
+  line-height: 0.96;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.mobile-landscape-gate-copy,
+.mobile-landscape-gate-note {
+  margin: 0;
+  color: #ccb58a;
+  line-height: 1.45;
+}
+
+.mobile-landscape-gate-copy {
+  font-size: 14px;
+}
+
+.mobile-landscape-gate-note {
+  font-size: 12px;
+}
+
+.mobile-landscape-gate-button {
+  justify-content: center;
+  min-height: 38px;
 }
 
 .app-shell::before {
@@ -7118,6 +7186,7 @@ textarea,
   .mobile-hand-rail-scroll {
     scrollbar-width: none;
     -ms-overflow-style: none;
+    touch-action: pan-y;
     padding-right: 0 !important;
   }
 
@@ -7134,7 +7203,13 @@ textarea,
   .mobile-hand-rail-card {
     min-height: var(--mobile-hand-rail-card-height) !important;
     height: var(--mobile-hand-rail-card-height) !important;
+    touch-action: pan-y !important;
     padding: 0 !important;
+  }
+
+  .mobile-hand-rail-card,
+  .mobile-hand-rail-card * {
+    -webkit-user-drag: none;
   }
 
   .mobile-hand-rail-card .hand-card-header {

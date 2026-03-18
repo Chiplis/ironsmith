@@ -284,7 +284,7 @@ export default function Shell() {
 
   return (
     <div
-      className="app-shell w-full h-screen p-2 grid grid-rows-[auto_auto_minmax(0,1fr)] gap-2"
+      className="app-shell w-full h-[100dvh] p-2 grid grid-rows-[auto_auto_minmax(0,1fr)] gap-2"
       data-borderless-preview={borderlessPreview ? "true" : "false"}
     >
       <Topbar
