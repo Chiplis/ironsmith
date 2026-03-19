@@ -251,6 +251,7 @@ function OptionButton({
   onMouseEnter,
   onMouseLeave,
   horizontal = false,
+  className = "",
 }) {
   const disabled = !canAct || opt.legal === false;
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
@@ -269,6 +270,7 @@ function OptionButton({
         horizontal && !isSelected && isHighlighted && STRIP_ITEM_ACTIVE_CLASS,
         !horizontal && !isSelected && isHighlighted && "is-highlighted",
         disabled && (horizontal ? STRIP_ITEM_DISABLED_CLASS : "is-disabled"),
+        className,
       )}
       disabled={disabled}
       onPointerDown={(e) => {
@@ -443,6 +445,7 @@ function SingleSelectDecision({
       onScrollStart: clearHover,
     });
   const stripLayout = layout === "strip";
+  const mobileOverlayLayout = layout === "mobile-overlay";
   const compactStripLayout =
     stripLayout
     && typeof window !== "undefined"
@@ -551,7 +554,7 @@ function SingleSelectDecision({
   );
   const showHoverHint =
     contextual.waitingForHover && options.some((opt) => opt.object_id != null);
-  const showHeader = !stripLayout;
+  const showHeader = !stripLayout && !mobileOverlayLayout;
   const submitAction = useMemo(() => {
     if (paymentDecision) {
       return {
@@ -586,8 +589,8 @@ function SingleSelectDecision({
   useExternalSubmitAction(onSubmitActionChange, submitAction);
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-1">
-      <div className="min-w-0 transition-all duration-200">
+    <div className={cn("flex w-full min-w-0 flex-col gap-1", mobileOverlayLayout && "min-h-0 flex-1 gap-2")}>
+      <div className={cn("min-w-0 transition-all duration-200", mobileOverlayLayout && "flex min-h-0 flex-1 flex-col")}>
         {showHeader && (
           <div
             className={cn(
@@ -613,7 +616,9 @@ function SingleSelectDecision({
             "w-full min-w-0 max-w-full",
             stripLayout && !compactStripLayout
               ? "overflow-x-auto overflow-y-hidden pb-1"
-              : "decision-options-panel",
+              : mobileOverlayLayout
+                ? "flex-1 min-h-0 overflow-hidden"
+                : "decision-options-panel",
           )}
           ref={stripLayout ? attachStripScrollRef : attachScrollableRef}
         >
@@ -621,7 +626,9 @@ function SingleSelectDecision({
             className={cn(
               stripLayout && !compactStripLayout
                 ? "flex w-max min-w-full flex-nowrap items-center gap-1.5 overflow-visible py-0.5 pr-1"
-                : "w-full divide-y divide-[rgba(128,107,78,0.28)] max-h-[220px] overflow-y-auto",
+                : mobileOverlayLayout
+                  ? "w-full divide-y divide-[rgba(128,107,78,0.28)] overflow-y-auto"
+                  : "w-full divide-y divide-[rgba(128,107,78,0.28)] max-h-[220px] overflow-y-auto",
             )}
           >
             {visibleOptions.map((opt) => {
@@ -647,6 +654,7 @@ function SingleSelectDecision({
                     objId != null && String(activeObjectId) === objId
                   }
                   horizontal={stripLayout && !compactStripLayout}
+                  className={mobileOverlayLayout ? "decision-option-row--mobile-overlay" : ""}
                   onClick={() =>
                     dispatch(
                       { type: "select_options", option_indices: [opt.index] },
@@ -697,6 +705,7 @@ function MultiSelectDecision({
       onScrollStart: clearHover,
     });
   const stripLayout = layout === "strip";
+  const mobileOverlayLayout = layout === "mobile-overlay";
   const attachHorizontalWheelRef = useHorizontalWheelScroll(stripLayout);
   const attachStripScrollRef = useCallback(
     (node) => {
@@ -763,7 +772,7 @@ function MultiSelectDecision({
   );
   const showHoverHint =
     contextual.waitingForHover && options.some((opt) => opt.object_id != null);
-  const showHeader = !stripLayout;
+  const showHeader = !stripLayout && !mobileOverlayLayout;
 
   const toggle = (index) => {
     setSelected((prev) => {
@@ -793,12 +802,14 @@ function MultiSelectDecision({
   useExternalSubmitAction(onSubmitActionChange, submitAction);
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-1.5">
+    <div className={cn("flex w-full min-w-0 flex-col gap-1.5", mobileOverlayLayout && "min-h-0 flex-1 gap-2")}>
       <div
         className={cn(
           stripLayout
             ? "min-w-0 transition-all duration-200"
-            : "-mx-1.5 transition-all duration-200",
+            : mobileOverlayLayout
+              ? "min-h-0 flex flex-1 flex-col transition-all duration-200"
+              : "-mx-1.5 transition-all duration-200",
         )}
       >
         {showHeader && (
@@ -832,10 +843,12 @@ function MultiSelectDecision({
             "w-full min-w-0 max-w-full transition-[max-height] duration-300 ease-out",
             stripLayout
               ? "overflow-x-auto overflow-y-hidden pb-1"
-              : "overflow-y-auto overflow-x-hidden",
+              : mobileOverlayLayout
+                ? "flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+                : "overflow-y-auto overflow-x-hidden",
           )}
           style={
-            stripLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }
+            stripLayout || mobileOverlayLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }
           }
         >
           <div
@@ -870,6 +883,7 @@ function MultiSelectDecision({
                   isHighlighted={isHighlighted}
                   isSelected={isSelected}
                   horizontal={stripLayout}
+                  className={mobileOverlayLayout ? "decision-option-row--mobile-overlay" : ""}
                   onClick={() => opt.legal !== false && toggle(opt.index)}
                   onMouseEnter={() => {
                     if (hoverSuppressed || !hoverObjectId) return;

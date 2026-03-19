@@ -7,7 +7,9 @@ import { normalizeDecisionText } from "./decisionText";
 
 function normalizeLine(text) {
   if (typeof text !== "string") return "";
-  return normalizeDecisionText(text).trim();
+  return normalizeDecisionText(text)
+    .replace(/^spell effects(?:\s+\d+)?\s*:\s*/i, "")
+    .trim();
 }
 
 function sameLine(left, right) {

@@ -110,12 +110,15 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
+    background: #08090b;
+    overscroll-behavior: none;
   }
 
   body {
     @apply bg-background text-foreground;
     font-family: "Avenir Next Condensed", "Bahnschrift Condensed", "Arial Narrow", sans-serif;
     letter-spacing: 0.15px;
+    color-scheme: dark;
     background:
       radial-gradient(1200px 640px at 38% -8%, #252f3e 0%, transparent 52%),
       radial-gradient(1000px 700px at 80% 120%, #151e2d 0%, transparent 58%),
@@ -6120,6 +6123,81 @@ textarea,
   display: none;
 }
 
+.topbar-mobile-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.topbar-opponent-chip {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid rgba(170, 141, 94, 0.34);
+  background: linear-gradient(180deg, rgba(69, 57, 43, 0.92), rgba(26, 22, 19, 0.96));
+  color: #ecdcb8;
+}
+
+.topbar-opponent-chip-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  min-width: 22px;
+  border: 0;
+  border-right: 1px solid rgba(170, 141, 94, 0.22);
+  background: transparent;
+  color: #ecdcb8;
+  padding: 0;
+}
+
+.topbar-opponent-chip-nav:last-child {
+  border-right: 0;
+  border-left: 1px solid rgba(170, 141, 94, 0.22);
+}
+
+.topbar-opponent-chip-body {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 7px;
+}
+
+.topbar-opponent-chip-name,
+.topbar-opponent-chip-life,
+.topbar-opponent-chip-meta,
+.topbar-opponent-chip-count {
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.topbar-opponent-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 16ch;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #f0dfba;
+}
+
+.topbar-opponent-chip-life {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #f5d08b;
+}
+
+.topbar-opponent-chip-meta,
+.topbar-opponent-chip-count {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #c9b487;
+}
+
 .topbar-minor-controls {
   display: flex;
   align-items: center;
@@ -6816,6 +6894,1393 @@ textarea,
     padding: 0;
   }
 
+  .mobile-app-shell {
+    background:
+      radial-gradient(120% 84% at 50% 10%, rgba(73, 98, 136, 0.36), transparent 54%),
+      radial-gradient(90% 100% at 50% 100%, rgba(146, 80, 30, 0.18), transparent 46%),
+      linear-gradient(180deg, #040507 0%, #090d12 100%);
+  }
+
+  .topbar-mobile-overlay {
+    position: absolute;
+    inset: 8px 10px auto 10px;
+    z-index: 110;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .topbar-mobile-overlay-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: min(72vw, 560px);
+  }
+
+  .topbar-mobile-overlay-phase,
+  .topbar-mobile-overlay-actions,
+  .topbar-mobile-overlay-opponent {
+    pointer-events: auto;
+  }
+
+  .topbar-mobile-overlay-phase {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 26px;
+    padding: 3px 9px;
+    border: 1px solid rgba(246, 214, 158, 0.22);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(14, 17, 24, 0.88), rgba(8, 10, 14, 0.8));
+    box-shadow:
+      0 10px 24px rgba(0, 0, 0, 0.26),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    color: #efe2be;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    backdrop-filter: blur(14px);
+  }
+
+  .topbar-mobile-overlay-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .topbar-mobile-overlay-opponent {
+    max-width: min(42vw, 280px);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .topbar-mobile-overlay-opponent.is-targetable {
+    box-shadow:
+      0 0 0 1px rgba(111, 192, 255, 0.34),
+      0 0 18px rgba(100, 169, 255, 0.16),
+      0 10px 24px rgba(0, 0, 0, 0.26);
+  }
+
+  .topbar-opponent-chip-body--button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .topbar-opponent-chip-body--button:disabled {
+    cursor: default;
+    opacity: 1;
+  }
+
+  .topbar-mobile-overlay-actions .topbar-add-card-trigger {
+    min-height: 28px !important;
+    min-width: 28px !important;
+    width: 28px !important;
+    padding-inline: 0 !important;
+  }
+
+  .topbar-mobile-overlay-actions .topbar-github-trigger,
+  .topbar-mobile-overlay-actions .topbar-menu-trigger {
+    min-height: 28px !important;
+    min-width: 28px !important;
+    width: 28px !important;
+  }
+
+  .app-shell[data-mobile-overlay-shell="true"] .table-shell,
+  .app-shell[data-mobile-overlay-shell="true"] .table-shell::before,
+  .app-shell[data-mobile-overlay-shell="true"] .board-zone-bg,
+  .app-shell[data-mobile-overlay-shell="true"] .battlefield-panel,
+  .app-shell[data-mobile-overlay-shell="true"] .battlefield-subpanel,
+  .app-shell[data-mobile-overlay-shell="true"] .battlefield-panel::before,
+  .app-shell[data-mobile-overlay-shell="true"] .battlefield-panel::after {
+    border: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .mobile-battle-scene {
+    --mobile-battle-lower-lift: 28px;
+    --mobile-battle-opponent-bottom-inset: 34%;
+    --mobile-battle-self-top: 36%;
+    --mobile-battle-opponent-end: calc(100% - var(--mobile-battle-opponent-bottom-inset));
+    --mobile-battle-divider-top: calc((var(--mobile-battle-opponent-end) + var(--mobile-battle-self-top)) / 2);
+    min-height: 100%;
+    background:
+      radial-gradient(110% 88% at 50% -4%, rgba(252, 218, 168, 0.12), transparent 40%),
+      linear-gradient(180deg, rgba(6, 4, 3, 0.08), rgba(0, 0, 0, 0.18)),
+      url("/theme/mobile-board-bg.svg");
+    background-size: auto, auto, 116% auto;
+    background-position: 0 0, 0 0, center bottom;
+  }
+
+  .mobile-battle-scene-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at center, transparent 40%, rgba(1, 3, 7, 0.08) 68%, rgba(1, 3, 7, 0.28) 100%),
+      linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent 22%, transparent 76%, rgba(0, 0, 0, 0.24));
+    z-index: 1;
+  }
+
+  .mobile-battle-scene-runeband {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--mobile-battle-divider-top);
+    height: 9px;
+    transform: translateY(-50%);
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(255, 120, 216, 0.16), rgba(255, 120, 216, 0.5), rgba(255, 120, 216, 0.16));
+    box-shadow:
+      0 0 0 1px rgba(255, 172, 231, 0.14),
+      0 0 22px rgba(255, 99, 206, 0.2);
+    z-index: 2;
+  }
+
+  .mobile-battle-top-hud {
+    position: absolute;
+    right: 10px;
+    top: 42px;
+    z-index: 35;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+
+  .mobile-battle-top-zones,
+  .mobile-battle-player-chip {
+    pointer-events: auto;
+  }
+
+  .mobile-battle-player-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 5px 10px 5px 5px;
+    border: 1px solid color-mix(in srgb, var(--player-accent, #d4b071) 34%, transparent);
+    border-radius: 14px;
+    background:
+      linear-gradient(180deg, rgba(13, 17, 24, 0.86), rgba(6, 8, 12, 0.8));
+    box-shadow:
+      0 14px 32px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(14px);
+    text-align: left;
+  }
+
+  .mobile-battle-player-chip.is-targetable,
+  .mobile-battle-self-identity.is-targetable {
+    box-shadow:
+      0 0 0 1px rgba(111, 192, 255, 0.42),
+      0 0 22px rgba(100, 169, 255, 0.24),
+      0 14px 32px rgba(0, 0, 0, 0.35);
+  }
+
+  .mobile-battle-player-chip-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 232, 189, 0.2);
+    background:
+      linear-gradient(180deg, rgba(51, 41, 28, 0.98), rgba(21, 18, 14, 0.98));
+    color: #f5e3bd;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+  }
+
+  .mobile-battle-player-chip-meta,
+  .mobile-battle-self-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .mobile-battle-player-chip-name,
+  .mobile-battle-self-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #f1e6c8;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .mobile-battle-player-chip-subline,
+  .mobile-battle-self-meta {
+    color: #bfae8d;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .mobile-battle-top-zones {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mobile-battle-zone-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 26px;
+    padding: 4px 9px;
+    border: 1px solid rgba(245, 208, 139, 0.12);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(14, 18, 25, 0.94), rgba(5, 8, 13, 0.92));
+    color: #cfbf9a;
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-battle-zone-chip--emphasize {
+    border-color: color-mix(in srgb, var(--zone-accent, #d4b071) 34%, rgba(245, 208, 139, 0.16));
+    color: #f5e2bc;
+  }
+
+  .mobile-battle-zone-chip-label {
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .mobile-battle-zone-chip-count {
+    color: #f4e4c4;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .mobile-battle-inline-life {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0 6px;
+    border: 1px solid rgba(255, 212, 134, 0.28);
+    border-radius: 999px;
+    background:
+      radial-gradient(circle at 50% 34%, rgba(255, 239, 193, 0.16), transparent 46%),
+      linear-gradient(180deg, rgba(54, 44, 34, 0.96), rgba(14, 12, 10, 0.96));
+    box-shadow:
+      0 0 0 2px rgba(255, 170, 48, 0.06),
+      0 0 9px rgba(255, 165, 57, 0.13),
+      0 6px 14px rgba(0, 0, 0, 0.22);
+    color: #fff7e6;
+    font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.82);
+  }
+
+  .mobile-battle-scene-opponent-stage {
+    position: absolute;
+    inset: 0 0 var(--mobile-battle-opponent-bottom-inset) 0;
+    z-index: 5;
+    padding-top: 0;
+  }
+
+  .mobile-battle-scene-self-stage {
+    position: absolute;
+    inset: var(--mobile-battle-self-top) 0 0 0;
+    z-index: 8;
+    overflow: visible;
+  }
+
+  .mobile-battle-opponent-slot,
+  .mobile-battle-my-zone {
+    background: transparent !important;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-zones-shell,
+  .mobile-battle-my-zone .battlefield-zones-shell {
+    margin-top: 0;
+    padding-top: 0;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row,
+  .mobile-battle-my-zone .battlefield-row {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row {
+    padding: 12px 56px 20px 54px !important;
+  }
+
+  .mobile-battle-my-zone .battlefield-row {
+    padding: 0 !important;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row::before,
+  .mobile-battle-my-zone .battlefield-row::before {
+    content: none !important;
+    background: none !important;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row::after,
+  .mobile-battle-my-zone .battlefield-row::after {
+    content: none !important;
+    opacity: 0 !important;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-slot,
+  .mobile-battle-my-zone .battlefield-slot {
+    border-radius: 16px;
+    clip-path: none;
+    background:
+      linear-gradient(180deg, rgba(234, 220, 189, 0.035), rgba(32, 30, 29, 0.055)) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 233, 186, 0.05) !important;
+    opacity: 0.11 !important;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card {
+    z-index: 3;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card,
+  .mobile-battle-my-zone .battlefield-row-card {
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-frame,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-frame {
+    background:
+      linear-gradient(180deg, rgba(255, 245, 214, 0.04), rgba(255, 245, 214, 0) 18%, rgba(4, 8, 14, 0.04) 66%, rgba(4, 8, 14, 0.16) 100%),
+      linear-gradient(90deg, rgba(222, 193, 134, 0.08), rgba(222, 193, 134, 0) 12%, rgba(117, 160, 210, 0) 86%, rgba(117, 160, 210, 0.08) 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(225, 236, 248, 0.06),
+      inset 0 0 0 2px rgba(7, 14, 21, 0.5);
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-frame::before,
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-frame::after,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-frame::before,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-frame::after {
+    display: none;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-card-shade,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-card-shade {
+    background:
+      linear-gradient(180deg, rgba(0, 0, 0, 0.08), transparent 22%, transparent 64%, rgba(0, 0, 0, 0.28)),
+      linear-gradient(90deg, rgba(4, 7, 12, 0.12), transparent 18%, transparent 82%, rgba(4, 7, 12, 0.16));
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-header,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-header {
+    top: 3px;
+    left: 3px;
+    right: 3px;
+    gap: 2px;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-nameplate,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-nameplate {
+    padding: 1px 5px;
+    border: 0;
+    border-radius: 999px;
+    clip-path: none;
+    background: rgba(8, 12, 18, 0.7);
+    box-shadow: none;
+    font-size: 8px;
+    line-height: 1.1;
+    font-weight: 700;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-mana-rack,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-mana-rack {
+    display: none;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-counter-rail,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-counter-rail {
+    display: none;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-footer,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-footer {
+    left: 3px;
+    right: 3px;
+    bottom: 3px;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-group-badge,
+  .mobile-battle-opponent-slot .battlefield-row-card .battlefield-pt-badge,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-group-badge,
+  .mobile-battle-my-zone .battlefield-row-card .battlefield-pt-badge {
+    min-height: 14px;
+    padding: 1px 5px;
+    font-size: 9px;
+    letter-spacing: 0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-group-back {
+    opacity: 0.92;
+    filter: saturate(0.92) brightness(0.96);
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-group-front {
+    z-index: 5;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-1 {
+    transform:
+      translate3d(calc(var(--card-translate-x) - 2px), calc(var(--card-translate-y) + 18px), 0)
+      rotate(calc(var(--card-rotate) - 0.5deg))
+      scale(calc(var(--card-scale) * 0.94));
+    transform-origin: 50% 100%;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-1 .battlefield-footer,
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-1 .battlefield-footer-left,
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-1 .battlefield-pt-badge,
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-1 .battlefield-group-badge {
+    display: none;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-1 .battlefield-nameplate {
+    max-width: 70%;
+    background: rgba(7, 10, 16, 0.56);
+    color: rgba(241, 246, 255, 0.9);
+    font-size: 7px;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-2 {
+    transform:
+      translate3d(var(--card-translate-x), calc(var(--card-translate-y) + 26px), 0)
+      rotate(var(--card-rotate))
+      scale(var(--card-scale));
+    transform-origin: 50% 100%;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-2 .battlefield-nameplate {
+    max-width: 78%;
+    background: rgba(7, 10, 16, 0.82);
+    font-size: 8px;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card--paper-row-2 .battlefield-footer-left {
+    display: none;
+  }
+
+  .mobile-battle-opponent-slot .battlefield-row-card[data-card-tapped="true"] {
+    margin-top: 4px;
+  }
+
+  .mobile-battle-my-zone .battlefield-row-card {
+    z-index: 2;
+  }
+
+  .mobile-battle-my-zone .battlefield-row-card--paper-group-back {
+    opacity: 0.9;
+    filter: saturate(0.9) brightness(0.94);
+  }
+
+  .mobile-battle-my-zone .battlefield-row-card--paper-row-1 {
+    transform:
+      translate3d(var(--card-translate-x), calc(var(--card-translate-y) + 18px), 0)
+      rotate(var(--card-rotate))
+      scale(calc(var(--card-scale) * 0.98));
+    transform-origin: 50% 100%;
+  }
+
+  .mobile-battle-my-zone .battlefield-row-card--paper-row-2 {
+    transform:
+      translate3d(var(--card-translate-x), calc(var(--card-translate-y) + 32px), 0)
+      rotate(var(--card-rotate))
+      scale(calc(var(--card-scale) * 0.96));
+    transform-origin: 50% 100%;
+  }
+
+  .mobile-battle-my-zone .battlefield-row-card--paper-row-2 .battlefield-nameplate {
+    max-width: 72%;
+    background: rgba(7, 10, 16, 0.6);
+    font-size: 7px;
+  }
+
+  .mobile-battle-my-zone .battlefield-row-card--paper-row-2 .battlefield-footer-left {
+    display: none;
+  }
+
+  .battlefield-row--mobile-bottom-inline-fit {
+    justify-content: start !important;
+    transform: translateX(var(--mobile-battle-bottom-inline-offset, 0px));
+  }
+
+  .mobile-battle-opponent-slot .battlefield-slot::before,
+  .mobile-battle-opponent-slot .battlefield-slot::after,
+  .mobile-battle-my-zone .battlefield-slot::before,
+  .mobile-battle-my-zone .battlefield-slot::after {
+    content: none !important;
+  }
+
+  .mobile-battle-my-zone {
+    position: relative;
+    height: 100%;
+  }
+
+  .mobile-battle-my-zone-stage {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+  }
+
+  .mobile-battle-my-zone-battlefield {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+  }
+
+  .mobile-battle-stack-tray {
+    position: absolute;
+    left: 10px;
+    bottom: calc(108px + var(--mobile-battle-lower-lift));
+    z-index: 19;
+    width: min(
+      calc(132px + ((var(--mobile-stack-count, 1) - 1) * 58px)),
+      calc(100% - 20px)
+    );
+    max-width: calc(100% - 20px);
+    padding: 8px 8px 10px;
+    border: 1px solid rgba(132, 187, 255, 0.18);
+    border-radius: 20px;
+    background:
+      linear-gradient(180deg, rgba(14, 19, 28, 0.96), rgba(7, 10, 16, 0.92)),
+      radial-gradient(circle at 18% 16%, rgba(107, 171, 255, 0.16), transparent 34%);
+    box-shadow:
+      0 22px 34px rgba(0, 0, 0, 0.34),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(14px);
+    overflow: hidden;
+    pointer-events: auto;
+  }
+
+  .mobile-battle-stack-tray-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+    padding: 0 2px;
+  }
+
+  .mobile-battle-stack-tray-label,
+  .mobile-battle-stack-tray-count {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .mobile-battle-stack-tray-label {
+    color: #9ed0ff;
+  }
+
+  .mobile-battle-stack-tray-count {
+    color: #f5d08b;
+  }
+
+  .mobile-battle-stack-tray-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .mobile-battle-stack-tray-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-battle-stack-tray-row {
+    display: flex;
+    align-items: stretch;
+    width: max-content;
+    min-width: 100%;
+    padding-left: 2px;
+  }
+
+  .mobile-battle-stack-entry,
+  .mobile-battle-stack-preview {
+    width: 132px;
+    min-width: 132px;
+  }
+
+  .mobile-battle-stack-entry + .mobile-battle-stack-entry,
+  .mobile-battle-stack-preview + .mobile-battle-stack-preview {
+    margin-left: -58px;
+  }
+
+  .mobile-battle-stack-card {
+    min-height: 104px;
+    border-radius: 16px;
+    box-shadow:
+      0 10px 24px rgba(0, 0, 0, 0.28),
+      0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+
+  .mobile-battle-stack-card .stack-card-body {
+    min-height: 104px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .mobile-battle-stack-card .stack-card-title {
+    font-size: 12px;
+  }
+
+  .mobile-battle-stack-card .stack-card-effect {
+    font-size: 10px;
+  }
+
+  .mobile-battle-stack-preview {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    min-height: 104px;
+    padding: 12px 12px 10px;
+    border: 1px solid rgba(120, 164, 211, 0.24);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(17, 27, 43, 0.96), rgba(9, 14, 23, 0.94));
+    box-shadow:
+      0 10px 24px rgba(0, 0, 0, 0.26),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+    color: #d7eaff;
+  }
+
+  .mobile-battle-stack-preview-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8ec4ff;
+  }
+
+  .mobile-battle-stack-preview-name {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #edf5ff;
+  }
+
+  .mobile-battle-self-hud {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: var(--mobile-battle-lower-lift);
+    height: 158px;
+    z-index: 22;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .mobile-battle-self-hud:has(.game-card.hand-card.inspected) {
+    z-index: 182;
+  }
+
+  .mobile-battle-self-identity-shell,
+  .mobile-battle-self-hand {
+    pointer-events: auto;
+  }
+
+  .mobile-battle-self-identity-shell {
+    position: fixed;
+    right: 10px;
+    left: auto;
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 126px);
+    width: auto;
+    max-width: min(148px, calc(100vw - 22px));
+    z-index: 156;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .mobile-battle-self-identity {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    min-height: 32px;
+    padding: 3px calc(7px + max(7px, env(safe-area-inset-right))) 3px 7px;
+    border: 1px solid rgba(255, 225, 170, 0.16);
+    border-right: none;
+    border-radius: 12px 0 0 12px;
+    background:
+      linear-gradient(180deg, rgba(16, 19, 25, 0.88), rgba(6, 8, 12, 0.82));
+    box-shadow:
+      0 12px 28px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+  }
+
+  .mobile-battle-self-name {
+    font-size: 9px;
+    letter-spacing: 0.03em;
+  }
+
+  .mobile-battle-self-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .mobile-battle-self-meta {
+    font-size: 4.5px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .mobile-battle-self-identity .mobile-battle-inline-life {
+    min-width: 22px;
+    min-height: 22px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+
+  .mobile-battle-self-hand {
+    position: absolute;
+    left: 102px;
+    right: 190px;
+    bottom: calc(2px - 20vh);
+    height: 154px;
+    overflow: visible;
+  }
+
+  .mobile-battle-self-hand .hand-zone-surface-mobile-fan {
+    padding-inline: 0;
+    padding-top: 8px;
+    padding-bottom: 0;
+  }
+
+  .mobile-battle-self-hand .hand-zone-viewport-mobile-fan {
+    overflow: visible;
+  }
+
+  .mobile-battle-self-hand .hand-zone-scroll-mobile-fan {
+    overflow-x: visible;
+    overflow-y: visible;
+    padding-inline: 0;
+    margin-inline: 0;
+  }
+
+  .mobile-battle-self-hand .hand-zone-row-mobile-fan {
+    min-height: 100%;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 12px 6px;
+  }
+
+  .mobile-battle-self-hand .game-card.hand-card {
+    border-radius: 10px;
+    transform-origin: 50% 100%;
+    box-shadow:
+      0 10px 20px rgba(0, 0, 0, 0.42),
+      0 24px 44px rgba(0, 0, 0, 0.24),
+      inset 0 0 8px 2px rgba(0, 0, 0, 0.3),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+
+  .mobile-battle-self-hand .game-card.hand-card:hover,
+  .mobile-battle-self-hand .game-card.hand-card.hovered,
+  .mobile-battle-self-hand .game-card.hand-card.inspected {
+    transform:
+      translate3d(
+        calc(var(--card-translate-x) + var(--card-jolt-x)),
+        calc(var(--card-translate-y) - 10px + var(--card-jolt-y)),
+        0
+      )
+      rotate(calc(var(--card-rotate) + var(--card-jolt-rotate)))
+      scale(calc(var(--card-scale) * 1.02))
+      scale(var(--card-jolt-scale));
+  }
+
+  .mobile-battle-self-hand .game-card.hand-card.inspected {
+    transform:
+      translate3d(
+        calc(var(--card-translate-x) + var(--mobile-hand-selected-shift-x, 0px) + var(--card-jolt-x)),
+        calc(var(--card-translate-y) - var(--mobile-hand-selected-shift-y, 92px) + var(--card-jolt-y)),
+        0
+      )
+      rotate(var(--card-jolt-rotate))
+      scale(calc(var(--card-scale) * 1.17))
+      scale(var(--card-jolt-scale));
+    z-index: 220 !important;
+  }
+
+  .mobile-battle-self-hand .hand-card-header {
+    padding-top: 4px;
+  }
+
+  .mobile-battle-self-hand .hand-card-title {
+    font-size: 9px;
+  }
+
+  .mobile-battle-self-hand .game-card.hand-card .card-frame {
+    border-radius: 10px;
+  }
+
+  .mobile-battle-inline-overlays {
+    position: absolute;
+    right: 154px;
+    bottom: calc(132px + var(--mobile-battle-lower-lift));
+    z-index: 24;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mobile-battle-overlay-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 24px;
+    padding: 4px 8px;
+    border: 1px solid rgba(246, 213, 156, 0.18);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(15, 18, 24, 0.94), rgba(5, 7, 11, 0.94));
+    color: #ead7b0;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    backdrop-filter: blur(10px);
+  }
+
+  .mobile-battle-scene-inspector {
+    position: absolute;
+    left: 50%;
+    bottom: calc(104px + var(--mobile-battle-lower-lift));
+    z-index: 70;
+    width: min(34vw, 244px);
+    height: 168px;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .mobile-battle-scene-inspector .hover-art-shell,
+  .mobile-battle-scene-inspector .hover-art-stage {
+    height: 100% !important;
+  }
+
+  .mobile-battle-scene-action-dock {
+    position: absolute;
+    inset: 0;
+    z-index: 90;
+    pointer-events: none;
+  }
+
+  .mobile-decision-dock {
+    position: fixed;
+    right: 0;
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 24px);
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    pointer-events: none;
+  }
+
+  .mobile-decision-dock-label {
+    max-width: min(38vw, 180px);
+    padding: 4px 10px;
+    border: 1px solid rgba(245, 214, 162, 0.16);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(15, 19, 25, 0.88), rgba(6, 9, 14, 0.84));
+    color: #d8c5a2;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.26),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(14px);
+    pointer-events: auto;
+  }
+
+  .mobile-decision-dock-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    pointer-events: auto;
+  }
+
+  .mobile-decision-primary-button,
+  .mobile-decision-secondary-button {
+    min-height: 38px;
+    border-radius: 14px 0 0 14px;
+    font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+    text-transform: none;
+    letter-spacing: 0;
+    box-shadow:
+      0 18px 36px rgba(0, 0, 0, 0.32),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    border-right: none;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .mobile-decision-primary-button {
+    min-width: 0;
+    padding: 4px calc(10px + max(7px, env(safe-area-inset-right))) 4px 10px;
+    border: 1px solid rgba(255, 213, 138, 0.3);
+    border-right: none;
+    background:
+      linear-gradient(180deg, rgba(255, 190, 116, 0.98), rgba(255, 118, 56, 0.97));
+    color: #fff8ec;
+    box-shadow:
+      0 0 0 4px rgba(255, 135, 48, 0.1),
+      0 0 24px rgba(255, 118, 58, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+
+  .mobile-decision-primary-button--full {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .mobile-decision-primary-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+    text-align: left;
+  }
+
+  .mobile-decision-primary-subtitle {
+    display: block;
+    margin-top: 1px;
+    font-size: 7px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: rgba(255, 245, 228, 0.86);
+    text-align: left;
+  }
+
+  .mobile-decision-secondary-button {
+    min-width: 70px;
+    padding: 0 calc(10px + max(7px, env(safe-area-inset-right))) 0 10px;
+    border: 1px solid rgba(192, 148, 126, 0.22);
+    border-right: none;
+    background:
+      linear-gradient(180deg, rgba(47, 34, 31, 0.96), rgba(16, 12, 13, 0.96));
+    color: #efd4c7;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .mobile-decision-secondary-button--wide {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .mobile-decision-sheet-backdrop,
+  .mobile-decision-overlay-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 146;
+    background:
+      linear-gradient(180deg, rgba(4, 6, 10, 0.08), rgba(4, 6, 10, 0.28) 60%, rgba(2, 4, 8, 0.5));
+  }
+
+  .mobile-decision-sheet-shell {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 147;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .mobile-decision-sheet {
+    width: min(100vw, 720px);
+    min-height: 42vh;
+    max-height: 62vh;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 18px calc(14px + env(safe-area-inset-bottom));
+    border-top-left-radius: 26px;
+    border-top-right-radius: 26px;
+    border: 1px solid rgba(214, 183, 129, 0.14);
+    border-bottom: 0;
+    background:
+      radial-gradient(120% 120% at 50% 0%, rgba(218, 171, 97, 0.14), transparent 34%),
+      linear-gradient(180deg, rgba(22, 17, 13, 0.985), rgba(8, 10, 14, 0.99));
+    box-shadow:
+      0 -22px 46px rgba(0, 0, 0, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(18px);
+    pointer-events: auto;
+  }
+
+  .mobile-decision-overlay-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 148;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 22px 18px;
+    pointer-events: none;
+  }
+
+  .mobile-decision-overlay {
+    width: min(84vw, 460px);
+    max-height: min(76vh, 520px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px;
+    border-radius: 26px;
+    border: 1px solid rgba(216, 186, 129, 0.18);
+    background:
+      radial-gradient(120% 100% at 50% 0%, rgba(216, 168, 94, 0.16), transparent 34%),
+      linear-gradient(180deg, rgba(23, 17, 13, 0.985), rgba(7, 9, 13, 0.99));
+    box-shadow:
+      0 28px 60px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(18px);
+    pointer-events: auto;
+  }
+
+  .mobile-decision-overlay--select-options {
+    width: min(calc(100vw - 18px), 980px);
+    max-height: min(calc(100vh - 18px), 680px);
+    height: min(calc(100vh - 18px), 680px);
+    padding: 16px 16px 14px;
+    gap: 10px;
+  }
+
+  .mobile-decision-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+    min-width: 0;
+  }
+
+  .mobile-decision-header-trailing {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+
+  .mobile-decision-eyebrow {
+    color: #d1b17b;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .mobile-decision-title {
+    color: #f2e5c6;
+    font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .mobile-decision-subtitle {
+    color: #cfbea1;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .mobile-decision-header-details {
+    min-width: 0;
+  }
+
+  .mobile-decision-sheet-body,
+  .mobile-decision-overlay-body {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .mobile-decision-overlay-body--select-options {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+
+  .mobile-decision-sheet-footer,
+  .mobile-decision-overlay-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobile-select-options-header {
+    padding-right: 42px;
+    gap: 6px;
+  }
+
+  .mobile-select-options-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(210, 180, 132, 0.22);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(42, 31, 25, 0.98), rgba(16, 12, 11, 0.98));
+    color: #f1dcc0;
+    box-shadow:
+      0 10px 20px rgba(0, 0, 0, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .mobile-select-options-summary {
+    color: #dbc7a2;
+    font-size: clamp(12px, 1.25vw, 18px);
+    line-height: 1.26;
+  }
+
+  .mobile-select-options-summary.is-compact {
+    font-size: clamp(11px, 1.05vw, 15px);
+    line-height: 1.22;
+  }
+
+  .mobile-select-options-summary.is-tight {
+    font-size: clamp(10px, 0.94vw, 13px);
+    line-height: 1.18;
+  }
+
+  .mobile-decision-action-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .mobile-decision-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 54px;
+    padding: 0 16px;
+    border: 1px solid rgba(211, 181, 129, 0.16);
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(54, 43, 32, 0.96), rgba(18, 14, 13, 0.98));
+    color: #f0e1bf;
+    font-size: 16px;
+    font-weight: 700;
+    text-align: left;
+    transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+  }
+
+  .mobile-decision-action-row:hover {
+    border-color: rgba(244, 205, 138, 0.28);
+    background:
+      linear-gradient(180deg, rgba(74, 58, 42, 0.98), rgba(26, 19, 16, 0.99));
+    transform: translateY(-1px);
+  }
+
+  .mobile-decision-action-text {
+    min-width: 0;
+  }
+
+  .mobile-decision-action-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid rgba(245, 211, 148, 0.24);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.24);
+    color: #f5ddb0;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .mobile-decision-empty-state {
+    padding: 10px 2px;
+    color: #ccb894;
+    font-size: 14px;
+    font-style: italic;
+  }
+
+  .mobile-decision-sheet .decision-panel-header {
+    position: static;
+    padding-inline: 0;
+    padding-top: 0;
+    padding-bottom: 8px;
+    background: transparent;
+  }
+
+  .mobile-decision-sheet .decision-neon-button,
+  .mobile-decision-sheet .decision-option-row,
+  .mobile-decision-sheet .decision-inline-input,
+  .mobile-decision-overlay .action-strip-view-card {
+    border-radius: 16px !important;
+  }
+
+  .mobile-decision-overlay .decision-option-row--mobile-overlay {
+    min-height: 72px;
+    padding: 14px 16px;
+    border-radius: 18px !important;
+    font-size: 17px;
+  }
+
+  .mobile-decision-overlay .decision-option-row--mobile-overlay .decision-option-label {
+    font-size: clamp(14px, 1.45vw, 20px);
+    line-height: 1.18;
+  }
+
+  .mobile-decision-sheet .decision-option-row--panel,
+  .mobile-decision-sheet .decision-option-row {
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  .mobile-decision-sheet .decision-neon-button {
+    min-height: 48px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .mobile-battle-inspect-overlay-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 134;
+    border: 0;
+    background:
+      linear-gradient(180deg, rgba(2, 4, 8, 0.42), rgba(3, 5, 9, 0.58));
+    pointer-events: auto;
+  }
+
+  .mobile-battle-action-popover-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 151;
+    border: 0;
+    background: transparent;
+    pointer-events: auto;
+  }
+
+  .mobile-battle-inspect-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 135;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    pointer-events: none;
+  }
+
+  .mobile-battle-inspect-overlay-shell {
+    position: relative;
+    width: min(56vw, 360px);
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 12px;
+    border-radius: 22px;
+    border: 1px solid rgba(217, 186, 131, 0.18);
+    background:
+      radial-gradient(120% 100% at 50% 0%, rgba(216, 171, 97, 0.15), transparent 34%),
+      linear-gradient(180deg, rgba(23, 17, 13, 0.985), rgba(7, 9, 13, 0.99));
+    box-shadow:
+      0 26px 58px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(18px);
+    pointer-events: auto;
+  }
+
+  .mobile-battle-inspect-overlay-stage {
+    position: relative;
+    min-height: 0;
+    height: min(58vh, 228px);
+    max-height: calc(100vh - 48px);
+    overflow: hidden;
+    border-radius: 16px;
+  }
+
+  .mobile-battle-inspect-overlay-stage .hover-art-shell,
+  .mobile-battle-inspect-overlay-stage .hover-art-stage {
+    height: 100% !important;
+  }
+
+  .mobile-battle-inspect-overlay-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid rgba(191, 148, 124, 0.22);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(47, 34, 31, 0.96), rgba(16, 12, 13, 0.96));
+    color: #efd4c7;
+    font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow:
+      0 10px 22px rgba(0, 0, 0, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
   .topbar-shell {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -6844,6 +8309,11 @@ textarea,
     white-space: nowrap;
   }
 
+  .topbar-mobile-status {
+    gap: 4px;
+    min-width: 0;
+  }
+
   .topbar-side-cluster--left {
     gap: 4px;
   }
@@ -6862,6 +8332,24 @@ textarea,
     letter-spacing: 0.1em;
     text-transform: uppercase;
     white-space: nowrap;
+  }
+
+  .topbar-opponent-chip {
+    max-width: min(40vw, 255px);
+  }
+
+  .topbar-opponent-chip-nav {
+    width: 20px;
+    min-width: 20px;
+  }
+
+  .topbar-opponent-chip-body {
+    gap: 4px;
+    padding: 2px 5px;
+  }
+
+  .topbar-opponent-chip-name {
+    max-width: 9ch;
   }
 
   .topbar-phase-chip-label {
@@ -7187,6 +8675,7 @@ textarea,
     scrollbar-width: none;
     -ms-overflow-style: none;
     touch-action: pan-y;
+    overscroll-behavior: contain;
     padding-right: 0 !important;
   }
 
@@ -7205,6 +8694,12 @@ textarea,
     height: var(--mobile-hand-rail-card-height) !important;
     touch-action: pan-y !important;
     padding: 0 !important;
+  }
+
+  .mobile-hand-rail-card--draggable,
+  .mobile-hand-rail-card--draggable * {
+    touch-action: none !important;
+    -webkit-touch-callout: none;
   }
 
   .mobile-hand-rail-card,

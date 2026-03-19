@@ -7,7 +7,6 @@ import { useGame } from "@/context/GameContext";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command"];
 const SLIDE_IN_ZONE_IDS = new Set(["graveyard", "exile"]);
@@ -19,7 +18,6 @@ const ZONE_LABELS = {
   exile: "Exile",
   command: "CZ",
 };
-const MOBILE_OPPONENT_NAV_BUTTON_CLASS = "inline-flex h-7 w-7 items-center justify-center border border-[rgba(186,155,102,0.42)] bg-[linear-gradient(180deg,rgba(78,63,43,0.94),rgba(23,19,17,0.98))] text-[#f0e2bf] shadow-[inset_0_1px_0_rgba(255,244,220,0.08),0_8px_16px_rgba(0,0,0,0.24)] transition-colors hover:border-[rgba(227,197,142,0.64)] hover:text-[#fff1cb] disabled:cursor-default disabled:opacity-45";
 
 function normalizeZoneViews(zoneViews) {
   const normalized = Array.isArray(zoneViews)
@@ -110,6 +108,26 @@ function collectCardObjectIds(card) {
   return ids.filter((id) => Number.isFinite(id));
 }
 
+function buildActivatableMap(decision) {
+  const activatableMap = new Map();
+  if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) {
+    return activatableMap;
+  }
+
+  for (const action of decision.actions) {
+    if (
+      (action.kind === "activate_ability" || action.kind === "activate_mana_ability")
+      && action.object_id != null
+    ) {
+      const objId = Number(action.object_id);
+      if (!activatableMap.has(objId)) activatableMap.set(objId, []);
+      activatableMap.get(objId).push(action);
+    }
+  }
+
+  return activatableMap;
+}
+
 function ZoneCountInline({ player }) {
   const counts = zoneCounts(player);
   return (
@@ -133,31 +151,30 @@ export default function OpponentZone({
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
   mobileViewport = false,
+  mobileBattleScene = false,
+  activeOpponentIndex: controlledActiveOpponentIndex,
+  setActiveOpponentIndex: controlledSetActiveOpponentIndex,
+  onMobileCardActionMenu = null,
+  onMobileCardLongPress = null,
 }) {
   const { state } = useGame();
   const [activeOpponentIndex, setActiveOpponentIndex] = useState(0);
+  const resolvedActiveOpponentIndex = typeof controlledActiveOpponentIndex === "number"
+    ? controlledActiveOpponentIndex
+    : activeOpponentIndex;
+  const setResolvedActiveOpponentIndex = controlledSetActiveOpponentIndex || setActiveOpponentIndex;
 
   useEffect(() => {
-    setActiveOpponentIndex((currentIndex) => {
+    setResolvedActiveOpponentIndex((currentIndex) => {
       if (opponents.length <= 1) return 0;
       return Math.min(currentIndex, opponents.length - 1);
     });
-  }, [opponents.length]);
+  }, [opponents.length, setResolvedActiveOpponentIndex]);
 
   if (!opponents.length) return <section className="board-zone-bg battlefield-panel battlefield-panel--opponents p-0 min-h-0" />;
 
   if (mobileViewport) {
-    const activeOpponent = opponents[Math.min(activeOpponentIndex, opponents.length - 1)] || opponents[0];
-    const canCycleOpponents = opponents.length > 1;
-    const cycleOpponent = (direction) => {
-      if (!canCycleOpponents) return;
-      setActiveOpponentIndex((currentIndex) => {
-        const nextIndex = currentIndex + direction;
-        if (nextIndex < 0) return opponents.length - 1;
-        if (nextIndex >= opponents.length) return 0;
-        return nextIndex;
-      });
-    };
+    const activeOpponent = opponents[Math.min(resolvedActiveOpponentIndex, opponents.length - 1)] || opponents[0];
 
     return (
       <section
@@ -175,29 +192,10 @@ export default function OpponentZone({
             state={state}
             legalTargetPlayerIds={legalTargetPlayerIds}
             legalTargetObjectIds={legalTargetObjectIds}
-            headerControls={canCycleOpponents ? (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  className={MOBILE_OPPONENT_NAV_BUTTON_CLASS}
-                  onClick={() => cycleOpponent(-1)}
-                  aria-label="Show previous opponent"
-                >
-                  <ChevronLeft className="size-4" />
-                </button>
-                <div className="min-w-[54px] text-center text-[10px] font-bold uppercase tracking-[0.14em] text-[#d7c69d]">
-                  {activeOpponentIndex + 1}/{opponents.length}
-                </div>
-                <button
-                  type="button"
-                  className={MOBILE_OPPONENT_NAV_BUTTON_CLASS}
-                  onClick={() => cycleOpponent(1)}
-                  aria-label="Show next opponent"
-                >
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            ) : null}
+            mobileViewport
+            mobileBattleScene={mobileBattleScene}
+            onMobileCardActionMenu={onMobileCardActionMenu}
+            onMobileCardLongPress={onMobileCardLongPress}
           />
         </div>
       </section>
@@ -225,6 +223,8 @@ export default function OpponentZone({
             state={state}
             legalTargetPlayerIds={legalTargetPlayerIds}
             legalTargetObjectIds={legalTargetObjectIds}
+            onMobileCardActionMenu={onMobileCardActionMenu}
+            onMobileCardLongPress={onMobileCardLongPress}
           />
         ))}
       </div>
@@ -242,6 +242,10 @@ function OpponentSlot({
   legalTargetPlayerIds,
   legalTargetObjectIds,
   headerControls = null,
+  mobileViewport = false,
+  mobileBattleScene = false,
+  onMobileCardActionMenu = null,
+  onMobileCardLongPress = null,
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { combatModeRef, combatMode, dragArrow } = useCombatArrows();
@@ -275,6 +279,7 @@ function OpponentSlot({
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
     && state?.decision?.player === state?.perspective;
+  const activatableMap = buildActivatableMap(state?.decision);
   const activeAttackerId = (
     combatMode?.mode === "attackers"
       ? Number(combatMode?.selectedAttacker ?? dragArrow?.fromId ?? NaN)
@@ -378,7 +383,8 @@ function OpponentSlot({
     <div
       className={cn(
         "battlefield-subpanel rounded-none grid min-h-0 h-full overflow-hidden",
-        zoneIsAttackHoverTarget && "attack-target-zone"
+        zoneIsAttackHoverTarget && "attack-target-zone",
+        mobileBattleScene && "mobile-battle-opponent-slot"
       )}
       style={{
         gridTemplateRows: "auto minmax(0,1fr)",
@@ -392,48 +398,50 @@ function OpponentSlot({
       onClickCapture={handleClickCapture}
     >
       <div>
-        <div
-          className="battlefield-panel-header battlefield-panel-header--compact flex items-center gap-2"
-          data-turn-priority={isPriorityPlayer ? "true" : "false"}
-        >
-          <span
-            className={cn(
-              "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums px-1 py-0.5 rounded-none",
-              isPlayerLegalTarget
-                && "text-[#d7ebff] shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
-            )}
-            data-player-target={player.index ?? player.id}
-            onPointerDown={handlePlayerTargetPointerDown}
-            onClick={handlePlayerTargetClick}
-            style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+        {!mobileViewport ? (
+          <div
+            className="battlefield-panel-header battlefield-panel-header--compact flex items-center gap-2"
+            data-turn-priority={isPriorityPlayer ? "true" : "false"}
           >
-            {player.life}
-          </span>
-          <span
-            className={cn(
-              "battlefield-name text-[16px] uppercase tracking-wider font-bold",
-              isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
-            )}
-            data-player-target={player.index ?? player.id}
-            data-player-target-name={player.index ?? player.id}
-            onPointerDown={handlePlayerTargetPointerDown}
-            onClick={handlePlayerTargetClick}
-            style={{
-              color: playerAccent?.hex,
-              cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
-            }}
-          >
-            <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
-              {player.name}
+            <span
+              className={cn(
+                "battlefield-life text-[23px] font-bold leading-none text-[#f5d08b] tabular-nums px-1 py-0.5 rounded-none",
+                isPlayerLegalTarget
+                  && "text-[#d7ebff] shadow-[0_0_10px_rgba(100,169,255,0.5)] ring-1 ring-[#64a9ff]/55"
+              )}
+              data-player-target={player.index ?? player.id}
+              onPointerDown={handlePlayerTargetPointerDown}
+              onClick={handlePlayerTargetClick}
+              style={{ cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined }}
+            >
+              {player.life}
             </span>
-            {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
-          </span>
-          <ManaPool pool={player.mana_pool} />
-          <div className="ml-auto flex items-center gap-2">
-            <ZoneCountInline player={player} />
-            {headerControls}
+            <span
+              className={cn(
+                "battlefield-name text-[16px] uppercase tracking-wider font-bold",
+                isPlayerLegalTarget && "drop-shadow-[0_0_7px_rgba(100,169,255,0.7)]"
+              )}
+              data-player-target={player.index ?? player.id}
+              data-player-target-name={player.index ?? player.id}
+              onPointerDown={handlePlayerTargetPointerDown}
+              onClick={handlePlayerTargetClick}
+              style={{
+                color: playerAccent?.hex,
+                cursor: isPlayerLegalTarget && canPickTargetFromBoard ? "pointer" : undefined,
+              }}
+            >
+              <span className={cn(isActivePlayer && "battlefield-name-text--active")}>
+                {player.name}
+              </span>
+              {zoneName && <span className="text-muted-foreground">{zoneName}</span>}
+            </span>
+            <ManaPool pool={player.mana_pool} />
+            <div className="ml-auto flex items-center gap-2">
+              <ZoneCountInline player={player} />
+              {headerControls}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
       <div
         className="battlefield-zones-shell relative min-h-0 h-full overflow-visible"
@@ -479,6 +487,9 @@ function OpponentSlot({
                       selectedObjectId={selectedObjectId}
                       onCardClick={handleCardClick}
                       onCardPointerDown={handleCardPointerDown}
+                      onMobileCardActionMenu={mobileBattleScene ? onMobileCardActionMenu : null}
+                      onMobileCardLongPress={mobileBattleScene ? onMobileCardLongPress : null}
+                      activatableMap={activatableMap}
                       legalTargetObjectIds={legalTargetObjectIds}
                       allowVerticalScroll
                       forceSingleColumn
@@ -562,9 +573,14 @@ function OpponentSlot({
                     cards={displayCards}
                     compact={entry.zone !== "battlefield"}
                     battlefieldSide="top"
+                    paperLayoutMode={mobileBattleScene && entry.zone === "battlefield" ? "mobile-battle-top" : "default"}
+                    paperMinSlotsPerRow={mobileBattleScene && entry.zone === "battlefield" ? 7 : null}
                     selectedObjectId={selectedObjectId}
                     onCardClick={handleCardClick}
                     onCardPointerDown={handleCardPointerDown}
+                    onMobileCardActionMenu={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardActionMenu : null}
+                    onMobileCardLongPress={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardLongPress : null}
+                    activatableMap={activatableMap}
                     legalTargetObjectIds={legalTargetObjectIds}
                     allowVerticalScroll={entry.zone === "hand"}
                   />

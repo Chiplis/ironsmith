@@ -38,24 +38,24 @@ use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum BattlefieldLane {
+    Artifacts,
     Lands,
     Creatures,
+    Enchantments,
     Planeswalkers,
     Battles,
-    Artifacts,
-    Enchantments,
     Other,
 }
 
 impl BattlefieldLane {
     fn as_str(self) -> &'static str {
         match self {
+            BattlefieldLane::Artifacts => "artifacts",
             BattlefieldLane::Lands => "lands",
             BattlefieldLane::Creatures => "creatures",
+            BattlefieldLane::Enchantments => "enchantments",
             BattlefieldLane::Planeswalkers => "planeswalkers",
             BattlefieldLane::Battles => "battles",
-            BattlefieldLane::Artifacts => "artifacts",
-            BattlefieldLane::Enchantments => "enchantments",
             BattlefieldLane::Other => "other",
         }
     }
@@ -73,23 +73,23 @@ struct BattlefieldGroupKey {
 }
 
 fn battlefield_lane_for_object(obj: &crate::object::Object) -> BattlefieldLane {
-    if obj.has_card_type(CardType::Land) {
-        return BattlefieldLane::Lands;
+    if obj.has_card_type(CardType::Enchantment) {
+        return BattlefieldLane::Enchantments;
     }
     if obj.has_card_type(CardType::Creature) {
         return BattlefieldLane::Creatures;
+    }
+    if obj.has_card_type(CardType::Artifact) {
+        return BattlefieldLane::Artifacts;
+    }
+    if obj.has_card_type(CardType::Land) {
+        return BattlefieldLane::Lands;
     }
     if obj.has_card_type(CardType::Planeswalker) {
         return BattlefieldLane::Planeswalkers;
     }
     if obj.has_card_type(CardType::Battle) {
         return BattlefieldLane::Battles;
-    }
-    if obj.has_card_type(CardType::Artifact) {
-        return BattlefieldLane::Artifacts;
-    }
-    if obj.has_card_type(CardType::Enchantment) {
-        return BattlefieldLane::Enchantments;
     }
     BattlefieldLane::Other
 }
@@ -8403,8 +8403,9 @@ mod tests {
     use super::{
         CustomCardFaceInput, CustomCardInput, CustomCardLayoutInput, GameSnapshot,
         MatchFormatInput, PendingReplayAction, PregameState, ReplayOutcome, ReplayRoot,
-        TargetChoiceView, TargetInput, WasmGame, build_object_details_snapshot,
-        build_stack_object_snapshot, convert_and_validate_targets,
+        TargetChoiceView, TargetInput, WasmGame, battlefield_lane_for_object,
+        build_object_details_snapshot, build_stack_object_snapshot, convert_and_validate_targets,
+        grouped_battlefield_for_player,
     };
     use crate::ability::Ability;
     use crate::alternative_cast::CastingMethod;
@@ -8542,6 +8543,79 @@ mod tests {
         dispatch_matching_priority_action(wasm, |action| {
             matches!(action, LegalAction::PassPriority)
         });
+    }
+
+    #[test]
+    fn battlefield_lane_prefers_artifact_over_land() {
+        let artifact_land = CardBuilder::new(CardId::from_raw(70_100), "Seat of the Synod")
+            .card_types(vec![CardType::Artifact, CardType::Land])
+            .build();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let object_id = game.create_object_from_card(&artifact_land, alice, Zone::Battlefield);
+        let object = game.object(object_id).expect("artifact land should exist");
+
+        assert_eq!(
+            battlefield_lane_for_object(object),
+            super::BattlefieldLane::Artifacts
+        );
+    }
+
+    #[test]
+    fn battlefield_lane_prefers_creature_over_artifact() {
+        let artifact_creature = CardBuilder::new(CardId::from_raw(70_103), "Ornithopter")
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .power(0)
+            .toughness(2)
+            .build();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let object_id = game.create_object_from_card(&artifact_creature, alice, Zone::Battlefield);
+        let object = game
+            .object(object_id)
+            .expect("artifact creature should exist");
+
+        assert_eq!(
+            battlefield_lane_for_object(object),
+            super::BattlefieldLane::Creatures
+        );
+    }
+
+    #[test]
+    fn battlefield_lane_prefers_enchantment_over_creature_and_sorts_after_creatures() {
+        let creature = CardBuilder::new(CardId::from_raw(70_101), "Grizzly Bears")
+            .card_types(vec![CardType::Creature])
+            .power(2)
+            .toughness(2)
+            .build();
+        let enchantment_creature = CardBuilder::new(CardId::from_raw(70_102), "Nyxborn Wolf")
+            .card_types(vec![CardType::Enchantment, CardType::Creature])
+            .power(3)
+            .toughness(1)
+            .build();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let protected_ids = std::collections::HashSet::new();
+        let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let enchantment_creature_id =
+            game.create_object_from_card(&enchantment_creature, alice, Zone::Battlefield);
+
+        let enchantment_creature_object = game
+            .object(enchantment_creature_id)
+            .expect("enchantment creature should exist");
+        assert_eq!(
+            battlefield_lane_for_object(enchantment_creature_object),
+            super::BattlefieldLane::Enchantments
+        );
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &protected_ids);
+        let ordered_ids: Vec<u64> = battlefield.iter().map(|permanent| permanent.id).collect();
+
+        assert_eq!(
+            ordered_ids,
+            vec![creature_id.0, enchantment_creature_id.0],
+            "creatures should render before enchantments"
+        );
     }
 
     #[test]

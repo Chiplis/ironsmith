@@ -5,6 +5,7 @@ import OpponentZone from "./OpponentZone";
 import MyZone from "./MyZone";
 import DeckLoadingView from "./DeckLoadingView";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
+import MobileBattleScene from "./MobileBattleScene";
 export default function TableCore({
   selectedObjectId,
   onInspect,
@@ -16,6 +17,8 @@ export default function TableCore({
   legalTargetPlayerIds = new Set(),
   legalTargetObjectIds = new Set(),
   myZoneHeaderControls = null,
+  mobileOpponentIndex = 0,
+  setMobileOpponentIndex,
 }) {
   const { state } = useGame();
   const tableRef = useRef(null);
@@ -65,6 +68,23 @@ export default function TableCore({
     </div>
   );
 
+  if (landscapeMobileViewport) {
+    return (
+      <MobileBattleScene
+        me={me}
+        opponents={opponents}
+        selectedObjectId={selectedObjectId}
+        onInspect={onInspect}
+        zoneViews={zoneViews}
+        zoneActivityByPlayer={zoneActivityByPlayer}
+        legalTargetPlayerIds={legalTargetPlayerIds}
+        legalTargetObjectIds={legalTargetObjectIds}
+        mobileOpponentIndex={mobileOpponentIndex}
+        setMobileOpponentIndex={setMobileOpponentIndex}
+      />
+    );
+  }
+
   return (
     <main
       ref={tableRef}
@@ -85,6 +105,8 @@ export default function TableCore({
         legalTargetPlayerIds={legalTargetPlayerIds}
         legalTargetObjectIds={legalTargetObjectIds}
         mobileViewport={nonDesktopViewport}
+        activeOpponentIndex={mobileOpponentIndex}
+        setActiveOpponentIndex={setMobileOpponentIndex}
       />
       {!mergeActionBarIntoMyZone && (
         <div className="relative z-20 flex items-center">

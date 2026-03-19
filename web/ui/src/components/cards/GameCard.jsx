@@ -276,6 +276,9 @@ export default function GameCard({
   onClick,
   onContextMenu,
   onPointerDown,
+  onPointerUp,
+  onPointerCancel,
+  onPointerLeave,
   onMouseEnter,
   onMouseLeave,
   style,
@@ -283,6 +286,7 @@ export default function GameCard({
   centerOverlay = null,
   handCircuitMode = "full",
   hideDebugBadge = false,
+  suppressTooltip = false,
 }) {
   const { game, inspectorDebug } = useGame();
   const name = card.name || "";
@@ -707,10 +711,13 @@ export default function GameCard({
       data-stable-id={stableId}
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
-      title={groupSize > 1 ? `${name} (${groupSize} grouped permanents)` : name}
+      title={suppressTooltip ? undefined : (groupSize > 1 ? `${name} (${groupSize} grouped permanents)` : name)}
       onClick={onClick}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{

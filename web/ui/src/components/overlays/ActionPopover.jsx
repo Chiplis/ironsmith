@@ -19,7 +19,7 @@ export default function ActionPopover({
   variant = "light",
 }) {
   const ref = useRef(null);
-  const openedAtRef = useRef(Date.now());
+  const openedAtRef = useRef(0);
   const { hoverCard, clearHover } = useHoverActions();
   const [phase, setPhase] = useState("entering");
   const [hoveredIdx, setHoveredIdx] = useState(-1);
@@ -45,10 +45,10 @@ export default function ActionPopover({
     function handleEscape(e) {
       if (e.key === "Escape") handleClose();
     }
-    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", handleClickOutside);
     document.addEventListener("keydown", handleEscape);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("pointerdown", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
     };
   }, [handleClose]);
@@ -109,7 +109,7 @@ export default function ActionPopover({
   return (
     <div
       ref={ref}
-      className="fixed z-50"
+      className="fixed z-[152]"
       style={{
         left: `${left}px`,
         top: `${top}px`,

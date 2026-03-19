@@ -23,12 +23,18 @@ import {
 } from "@/lib/trigger-ordering";
 import { useHoverSuppressedWhileScrolling } from "@/lib/useHoverSuppressedWhileScrolling";
 import { cn } from "@/lib/utils";
+import { X } from "lucide-react";
 
 const ACTION_STRIP_BODY_CLASS = "min-h-0 h-full";
 const MANA_PAYMENT_TAB_EXIT_MS = 320;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function renderMobileBattlePortal(content) {
+  if (typeof document === "undefined") return content;
+  return createPortal(content, document.body);
 }
 
 function isSingleGenericPip(symbols) {
@@ -1015,6 +1021,41 @@ function resolveDecisionTitle(decision) {
   }
 }
 
+function buildBattlefieldObjectIdSet(players) {
+  const ids = new Set();
+  for (const player of players || []) {
+    for (const card of player?.battlefield || []) {
+      if (card?.id != null) ids.add(String(card.id));
+      for (const memberId of card?.member_ids || []) {
+        ids.add(String(memberId));
+      }
+    }
+  }
+  return ids;
+}
+
+function canUseMobileBoardSelection(state, decision) {
+  if (!decision) return false;
+  const battlefieldObjectIds = buildBattlefieldObjectIdSet(state?.players);
+
+  if (decision.kind === "targets") {
+    return (decision.requirements || []).every((req) =>
+      (req.legal_targets || []).every((target) => (
+        target?.kind === "player"
+          || (target?.kind === "object" && target.object != null && battlefieldObjectIds.has(String(target.object)))
+      ))
+    );
+  }
+
+  if (decision.kind === "select_objects") {
+    return (decision.candidates || [])
+      .filter((candidate) => candidate?.legal !== false)
+      .every((candidate) => candidate?.id != null && battlefieldObjectIds.has(String(candidate.id)));
+  }
+
+  return false;
+}
+
 function buildViewedCardsIdentity(viewedCards) {
   if (!viewedCards) return "";
   const cardIds = Array.isArray(viewedCards.card_ids) ? viewedCards.card_ids.join(",") : "";
@@ -1026,6 +1067,30 @@ function buildViewedCardsIdentity(viewedCards) {
     viewedCards.description || "",
     cardIds,
   ].join("|");
+}
+
+function normalizeMobileDecisionSummaryText(text) {
+  if (typeof text !== "string") return "";
+  return normalizeDecisionText(text)
+    .replace(/^spell effects(?:\s+\d+)?\s*:\s*/i, "")
+    .trim();
+}
+
+function decisionTextMatches(left, right) {
+  return normalizeDecisionText(String(left || "")).trim().toLowerCase()
+    === normalizeDecisionText(String(right || "")).trim().toLowerCase();
+}
+
+function buildMobileSelectOptionsSummary(decision) {
+  const segments = [
+    decision?.context_text,
+    decision?.consequence_text,
+  ]
+    .map((value) => normalizeMobileDecisionSummaryText(value))
+    .filter(Boolean);
+
+  if (segments.length > 0) return segments.join(" ");
+  return normalizeMobileDecisionSummaryText(decision?.description || "");
 }
 
 function ViewedCardsStrip({
@@ -1136,6 +1201,718 @@ function ViewedCardsStrip({
         </div>
       )}
     </div>
+  );
+}
+
+function MobileDecisionHeader({
+  eyebrow,
+  title,
+  subtitle = "",
+  details = null,
+  trailing = null,
+  className = "",
+}) {
+  return (
+    <div className={cn("mobile-decision-header", className)}>
+      {trailing ? (
+        <div className="mobile-decision-header-trailing">
+          {trailing}
+        </div>
+      ) : null}
+      {eyebrow ? (
+        <div className="mobile-decision-eyebrow">
+          {eyebrow}
+        </div>
+      ) : null}
+      <div className="mobile-decision-title">
+        {normalizeDecisionText(title || "Decision")}
+      </div>
+      {subtitle ? (
+        <div className="mobile-decision-subtitle">
+          <SymbolText text={normalizeDecisionText(subtitle)} />
+        </div>
+      ) : null}
+      {details ? (
+        <div className="mobile-decision-header-details">
+          {details}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MobileDecisionDock({
+  subtitle = "",
+  primaryLabel = "Continue",
+  primaryDisabled = false,
+  onPrimary,
+  secondaryLabel = "",
+  secondaryDisabled = false,
+  onSecondary,
+}) {
+  return (
+    <div className="mobile-decision-dock">
+      <div className="mobile-decision-dock-actions">
+        {secondaryLabel ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mobile-decision-secondary-button"
+            disabled={secondaryDisabled}
+            onClick={onSecondary}
+          >
+            {secondaryLabel}
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mobile-decision-primary-button"
+          disabled={primaryDisabled}
+          onClick={onPrimary}
+        >
+          <span className="mobile-decision-primary-label">
+            {primaryLabel}
+          </span>
+          {subtitle ? (
+            <span className="mobile-decision-primary-subtitle">
+              <SymbolText text={normalizeDecisionText(subtitle)} noWrap />
+            </span>
+          ) : null}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MobileDecisionSheet({
+  eyebrow = "",
+  title = "",
+  subtitle = "",
+  headerDetails = null,
+  headerTrailing = null,
+  headerClassName = "",
+  children,
+  footer = null,
+  onBackdropClick = null,
+  className = "",
+  bodyClassName = "",
+}) {
+  return (
+    <>
+      <div
+        className="mobile-decision-sheet-backdrop"
+        onClick={onBackdropClick || undefined}
+        aria-hidden="true"
+      />
+      <div className="mobile-decision-sheet-shell">
+        <section className={cn("mobile-decision-sheet", className)} aria-modal="true" role="dialog">
+          <MobileDecisionHeader
+            eyebrow={eyebrow}
+            title={title}
+            subtitle={subtitle}
+            details={headerDetails}
+            trailing={headerTrailing}
+            className={headerClassName}
+          />
+          <div className={cn("mobile-decision-sheet-body", bodyClassName)}>
+            {children}
+          </div>
+          {footer ? (
+            <div className="mobile-decision-sheet-footer">
+              {footer}
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </>
+  );
+}
+
+function MobileDecisionOverlay({
+  eyebrow = "",
+  title = "",
+  subtitle = "",
+  headerDetails = null,
+  headerTrailing = null,
+  headerClassName = "",
+  children,
+  footer = null,
+  onBackdropClick = null,
+  className = "",
+  bodyClassName = "",
+}) {
+  return (
+    <>
+      <div
+        className="mobile-decision-overlay-backdrop"
+        onClick={onBackdropClick || undefined}
+        aria-hidden="true"
+      />
+      <div className="mobile-decision-overlay-shell">
+        <section className={cn("mobile-decision-overlay", className)} aria-modal="true" role="dialog">
+          <MobileDecisionHeader
+            eyebrow={eyebrow}
+            title={title}
+            subtitle={subtitle}
+            details={headerDetails}
+            trailing={headerTrailing}
+            className={headerClassName}
+          />
+          <div className={cn("mobile-decision-overlay-body", bodyClassName)}>
+            {children}
+          </div>
+          {footer ? (
+            <div className="mobile-decision-overlay-footer">
+              {footer}
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </>
+  );
+}
+
+function MobilePriorityActionList({
+  groups,
+  canAct,
+  onActionClick,
+  onActionHoverStart,
+  onActionHoverEnd,
+}) {
+  if (!groups.length) {
+    return (
+      <div className="mobile-decision-empty-state">
+        No additional actions.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mobile-decision-action-list">
+      {groups.map((group) => (
+        <button
+          key={group.key}
+          type="button"
+          className="mobile-decision-action-row"
+          disabled={!canAct}
+          onClick={() => onActionClick(group.firstAction)}
+          onMouseEnter={() => onActionHoverStart?.(group)}
+          onMouseLeave={() => onActionHoverEnd?.()}
+        >
+          <span className="mobile-decision-action-text">
+            {normalizeDecisionText(group.label || group.firstAction?.label || "Action")}
+          </span>
+          {group.count > 1 ? (
+            <span className="mobile-decision-action-count">
+              {group.count}
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MobileBattleDecisionLayer({ selectedObjectId = null }) {
+  const {
+    state,
+    dispatch,
+    cancelDecision,
+    triggerOrderingState,
+  } = useGame();
+  const {
+    hoveredObjectId,
+    hoverCard,
+    clearHover,
+    setHoverLinkedObjects,
+    clearHoverLinkedObjects,
+  } = useHover();
+  const decision = state?.decision || null;
+  const canAct = !!decision && state?.perspective === decision.player;
+
+  const [actionsSheetState, setActionsSheetState] = useState({ key: "", open: false });
+  const [acknowledgedViewedCardsToken, setAcknowledgedViewedCardsToken] = useState("");
+  const [submitState, setSubmitState] = useState({ key: "", action: null });
+
+  const decisionIdentity = [
+    decision?.kind || "",
+    decision?.player ?? "",
+    decision?.source_id ?? "",
+    decision?.source_name || "",
+    decision?.reason || "",
+    decision?.description || "",
+    decision?.context_text || "",
+    decision?.consequence_text || "",
+  ].join("|");
+  const viewedCards = state?.viewed_cards || null;
+  const viewedCardsLabel = viewedCards?.visibility === "public" ? "Revealed" : "Look";
+  const viewedCardsIdentity = useMemo(
+    () => buildViewedCardsIdentity(viewedCards),
+    [viewedCards]
+  );
+  const viewedCardsToken = viewedCardsIdentity ? `${decisionIdentity}|${viewedCardsIdentity}` : "";
+  const showViewedCardsStep = Boolean(viewedCardsToken)
+    && acknowledgedViewedCardsToken !== viewedCardsToken;
+  const actionsSheetOpen = actionsSheetState.key === decisionIdentity
+    ? actionsSheetState.open
+    : false;
+  const canCancelDecision = canAct && !!state?.cancelable;
+  const isPriorityDecision = decision?.kind === "priority";
+  const isCombatDecision = decision?.kind === "attackers" || decision?.kind === "blockers";
+  const stackSize = Number(state?.stack_size || 0);
+  const decisionActions = useMemo(() => decision?.actions || [], [decision]);
+  const passAction = useMemo(
+    () => decisionActions.find((action) => action.kind === "pass_priority"),
+    [decisionActions]
+  );
+  const otherActions = useMemo(
+    () => decisionActions.filter((action) => action.kind !== "pass_priority"),
+    [decisionActions]
+  );
+  const battlefieldFamilies = useMemo(
+    () => buildBattlefieldFamilies(state?.players),
+    [state?.players]
+  );
+  const actionGroups = useMemo(
+    () => buildPriorityActionGroups(otherActions, battlefieldFamilies),
+    [otherActions, battlefieldFamilies]
+  );
+  const showPriorityAdvanceButton = !!passAction;
+  const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
+  const passLabel = showPriorityAdvanceButton
+    ? (
+      hasCustomPassLabel
+        ? passAction.label
+        : nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)
+    )
+    : (actionGroups[0]?.label || "Continue");
+  const objectNameById = useMemo(
+    () => buildObjectNameById(state),
+    [state]
+  );
+  const objectControllerById = useMemo(
+    () => buildObjectControllerById(state),
+    [state]
+  );
+  const viewedCardEntries = useMemo(
+    () => {
+      if (Array.isArray(viewedCards?.cards) && viewedCards.cards.length > 0) {
+        return viewedCards.cards.map((card) => ({
+          id: String(card.id),
+          name: card.name || `Card #${card.id}`,
+          controller: viewedCards?.subject,
+        }));
+      }
+      return (viewedCards?.card_ids || []).map((id) => ({
+        id: String(id),
+        name: objectNameById.get(String(id)) || `Card #${id}`,
+        controller: viewedCards?.subject,
+      }));
+    },
+    [objectNameById, viewedCards]
+  );
+  const viewedCardsSourceName = (() => {
+    if (viewedCards?.source != null) {
+      const sourceName = objectNameById.get(String(viewedCards.source));
+      if (sourceName) return sourceName;
+    }
+    return decision?.source_name || "";
+  })();
+  const toolbarDecisionSummary = useMemo(() => {
+    const parts = [
+      decision?.description,
+      decision?.context_text,
+    ]
+      .map((value) => normalizeDecisionText(value))
+      .filter(Boolean);
+    return parts[0] || "";
+  }, [decision?.context_text, decision?.description]);
+  const mobileDockSubtitle = useMemo(() => {
+    if (toolbarDecisionSummary) return toolbarDecisionSummary;
+    if (stackSize > 0) {
+      return `Resolve ${stackSize}`;
+    }
+    return nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize);
+  }, [stackSize, state?.phase, state?.step, toolbarDecisionSummary]);
+
+  const triggerPriorityAction = useCallback(
+    (action) => {
+      if (!canAct || !action) return;
+      clearHoverLinkedObjects();
+      clearHover();
+      dispatch(
+        { type: "priority_action", action_index: action.index },
+        action.label
+      );
+      setActionsSheetState({ key: decisionIdentity, open: false });
+    },
+    [canAct, clearHover, clearHoverLinkedObjects, decisionIdentity, dispatch]
+  );
+  const handleActionHoverStart = useCallback(
+    (group) => {
+      if (!canAct || !group) return;
+      setHoverLinkedObjects(group.linkedObjectIds || []);
+      if (group.hoverObjectId != null) hoverCard(group.hoverObjectId);
+    },
+    [canAct, hoverCard, setHoverLinkedObjects]
+  );
+  const handleActionHoverEnd = useCallback(() => {
+    clearHoverLinkedObjects();
+    clearHover();
+  }, [clearHover, clearHoverLinkedObjects]);
+  const handleViewedCardHoverStart = useCallback((card) => {
+    if (!card?.id) return;
+    clearHoverLinkedObjects();
+    hoverCard(card.id);
+  }, [clearHoverLinkedObjects, hoverCard]);
+  const handleViewedCardHoverEnd = useCallback(() => {
+    clearHoverLinkedObjects();
+    clearHover();
+  }, [clearHoverLinkedObjects, clearHover]);
+  const handleSubmitActionChange = useCallback(
+    (nextAction) => {
+      setSubmitState({ key: decisionIdentity, action: nextAction || null });
+    },
+    [decisionIdentity]
+  );
+  const submitAction = submitState.key === decisionIdentity ? submitState.action : null;
+  const triggerOrderingDecision = isTriggerOrderingDecision(decision);
+  const triggerOrderingSubmitAction = useMemo(() => {
+    if (!triggerOrderingDecision) return null;
+    const order = triggerOrderingState?.order?.length
+      ? normalizeTriggerOrderingOrder(triggerOrderingState.order, decision)
+      : defaultTriggerOrderingOrder(decision);
+    return {
+      label: "Submit Order",
+      disabled: !canAct,
+      onSubmit: () => {
+        clearHover();
+        dispatch({ type: "select_options", option_indices: order }, "Order submitted");
+      },
+    };
+  }, [canAct, clearHover, decision, dispatch, triggerOrderingDecision, triggerOrderingState]);
+  const effectiveSubmitAction = triggerOrderingSubmitAction || submitAction;
+  const canSubmitFocused = canAct
+    && !!effectiveSubmitAction
+    && !effectiveSubmitAction.disabled
+    && typeof effectiveSubmitAction.onSubmit === "function";
+  const boardSelectionDecision = (
+    (decision?.kind === "targets" || decision?.kind === "select_objects")
+    && canUseMobileBoardSelection(state, decision)
+  );
+  const completeViewedCardsStep = useCallback(() => {
+    if (!viewedCardsToken) return;
+    setAcknowledgedViewedCardsToken(viewedCardsToken);
+  }, [viewedCardsToken]);
+
+  if (!decision) return null;
+
+  if (showViewedCardsStep) {
+    return renderMobileBattlePortal(
+      <MobileDecisionOverlay
+        eyebrow={canAct ? "Your Action" : "Opponent Action"}
+        title={viewedCardsLabel}
+        subtitle={viewedCards?.description || viewedCardsSourceName}
+      >
+        <ViewedCardsStrip
+          label={viewedCardsLabel}
+          description={viewedCards?.description || ""}
+          sourceName={viewedCardsSourceName}
+          cards={viewedCardEntries}
+          players={state?.players || []}
+          perspective={state?.perspective}
+          objectControllerById={objectControllerById}
+          hoveredObjectId={hoveredObjectId}
+          selectedObjectId={selectedObjectId}
+          onCardHoverStart={handleViewedCardHoverStart}
+          onCardHoverEnd={handleViewedCardHoverEnd}
+        />
+        <div className="mobile-decision-overlay-footer">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mobile-decision-primary-button mobile-decision-primary-button--full"
+            disabled={!decision}
+            onClick={completeViewedCardsStep}
+          >
+            <span className="mobile-decision-primary-label">Done</span>
+          </Button>
+        </div>
+      </MobileDecisionOverlay>
+    );
+  }
+
+  if (isPriorityDecision) {
+    const dockTitle = canAct ? "Your Action" : "Opponent Action";
+    const singleActionGroup = actionGroups.length === 1 ? actionGroups[0] : null;
+    const secondaryAction = showPriorityAdvanceButton
+      ? (actionGroups.length > 1
+        ? {
+          label: "Actions",
+          disabled: !canAct,
+          onClick: () => setActionsSheetState({ key: decisionIdentity, open: true }),
+        }
+        : singleActionGroup?.firstAction
+          ? {
+            label: normalizeDecisionText(singleActionGroup.label || singleActionGroup.firstAction.label || "Action"),
+            disabled: !canAct,
+            onClick: () => triggerPriorityAction(singleActionGroup.firstAction),
+          }
+          : (canCancelDecision
+            ? {
+              label: "Cancel",
+              disabled: !canCancelDecision,
+              onClick: () => cancelDecision(),
+            }
+            : null))
+      : (actionGroups.length > 1
+        ? {
+          label: "Actions",
+          disabled: !canAct,
+          onClick: () => setActionsSheetState({ key: decisionIdentity, open: true }),
+        }
+        : (canCancelDecision
+          ? {
+            label: "Cancel",
+            disabled: !canCancelDecision,
+            onClick: () => cancelDecision(),
+          }
+          : null));
+    const primaryDisabled = !canAct || (!showPriorityAdvanceButton && actionGroups.length === 0);
+    const resolvedDockSubtitle = decisionTextMatches(mobileDockSubtitle, passLabel)
+      ? ""
+      : mobileDockSubtitle;
+    const handlePrimary = () => {
+      if (showPriorityAdvanceButton) {
+        triggerPriorityAction(passAction);
+        return;
+      }
+      if (actionGroups[0]?.firstAction) {
+        triggerPriorityAction(actionGroups[0].firstAction);
+      }
+    };
+
+    return renderMobileBattlePortal(
+      <>
+        <MobileDecisionDock
+          title={dockTitle}
+          subtitle={resolvedDockSubtitle}
+          primaryLabel={passLabel}
+          primaryDisabled={primaryDisabled}
+          onPrimary={handlePrimary}
+          secondaryLabel={secondaryAction?.label || ""}
+          secondaryDisabled={secondaryAction?.disabled || false}
+          onSecondary={secondaryAction?.onClick}
+        />
+        {actionsSheetOpen ? (
+          <MobileDecisionSheet
+            eyebrow={dockTitle}
+            title="Available Actions"
+            subtitle={`${actionGroups.length} action${actionGroups.length === 1 ? "" : "s"}`}
+            onBackdropClick={() => setActionsSheetState({ key: decisionIdentity, open: false })}
+            footer={canCancelDecision ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mobile-decision-secondary-button mobile-decision-secondary-button--wide"
+                disabled={!canCancelDecision}
+                onClick={() => {
+                  cancelDecision();
+                  setActionsSheetState({ key: decisionIdentity, open: false });
+                }}
+              >
+                Cancel
+              </Button>
+            ) : null}
+          >
+            <MobilePriorityActionList
+              groups={actionGroups}
+              canAct={canAct}
+              onActionClick={triggerPriorityAction}
+              onActionHoverStart={handleActionHoverStart}
+              onActionHoverEnd={handleActionHoverEnd}
+            />
+          </MobileDecisionSheet>
+        ) : null}
+      </>
+    );
+  }
+
+  if (decision.kind === "select_options") {
+    const optionSummary = buildMobileSelectOptionsSummary(decision);
+    const optionFooter = effectiveSubmitAction ? (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="mobile-decision-primary-button mobile-decision-primary-button--full"
+        disabled={!canSubmitFocused}
+        onClick={() => effectiveSubmitAction.onSubmit()}
+      >
+        <span className="mobile-decision-primary-label">
+          {effectiveSubmitAction.label || "Submit"}
+        </span>
+      </Button>
+    ) : null;
+
+    return renderMobileBattlePortal(
+      <MobileDecisionOverlay
+        eyebrow={canAct ? "Your Action" : "Opponent Action"}
+        title={resolveDecisionTitle(decision)}
+        subtitle={decision?.source_name || ""}
+        headerClassName="mobile-select-options-header"
+        headerDetails={
+          optionSummary ? (
+            <div
+              className={cn(
+                "mobile-select-options-summary",
+                optionSummary.length > 220 && "is-compact",
+                optionSummary.length > 340 && "is-tight"
+              )}
+            >
+              <SymbolText text={optionSummary} />
+            </div>
+          ) : null
+        }
+        headerTrailing={canCancelDecision ? (
+          <button
+            type="button"
+            className="mobile-select-options-close"
+            aria-label="Close option picker"
+            onClick={() => cancelDecision()}
+          >
+            <X className="size-4" />
+          </button>
+        ) : null}
+        className="mobile-decision-overlay--select-options"
+        bodyClassName="mobile-decision-overlay-body--select-options"
+        onBackdropClick={canCancelDecision ? () => cancelDecision() : null}
+        footer={optionFooter}
+      >
+        <DecisionRouter
+          decision={decision}
+          canAct={canAct}
+          selectedObjectId={selectedObjectId}
+          inlineSubmit={false}
+          onSubmitActionChange={handleSubmitActionChange}
+          hideDescription
+          combatInline={false}
+          layout="mobile-overlay"
+          showStripSummary={false}
+        />
+      </MobileDecisionOverlay>
+    );
+  }
+
+  if (boardSelectionDecision) {
+    const boardSelectionSubtitle = decision.kind === "targets"
+      ? "Tap a highlighted card or player on the battlefield."
+      : "Tap highlighted permanents on the battlefield.";
+
+    return renderMobileBattlePortal(
+      <>
+        <MobileDecisionDock
+          title={canAct ? "Your Action" : "Opponent Action"}
+          subtitle={boardSelectionSubtitle}
+          primaryLabel={effectiveSubmitAction?.label || "Submit"}
+          primaryDisabled={!canSubmitFocused}
+          onPrimary={() => effectiveSubmitAction?.onSubmit?.()}
+          secondaryLabel={canCancelDecision ? "Cancel" : ""}
+          secondaryDisabled={!canCancelDecision}
+          onSecondary={canCancelDecision ? () => cancelDecision() : null}
+        />
+        <div className="hidden" aria-hidden="true">
+          <DecisionRouter
+            decision={decision}
+            canAct={canAct}
+            selectedObjectId={selectedObjectId}
+            inlineSubmit={false}
+            onSubmitActionChange={handleSubmitActionChange}
+            hideDescription={false}
+            combatInline={false}
+            layout="panel"
+            showStripSummary={false}
+          />
+        </div>
+      </>
+    );
+  }
+
+  const footer = isCombatDecision ? (
+    canCancelDecision ? (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="mobile-decision-secondary-button mobile-decision-secondary-button--wide"
+        disabled={!canCancelDecision}
+        onClick={() => cancelDecision()}
+      >
+        Cancel
+      </Button>
+    ) : null
+  ) : (
+    <>
+      {canCancelDecision ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mobile-decision-secondary-button"
+          disabled={!canCancelDecision}
+          onClick={() => cancelDecision()}
+        >
+          Cancel
+        </Button>
+      ) : null}
+      {effectiveSubmitAction ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mobile-decision-primary-button"
+          disabled={!canSubmitFocused}
+          onClick={() => effectiveSubmitAction.onSubmit()}
+        >
+          <span className="mobile-decision-primary-label">
+            {effectiveSubmitAction.label || "Submit"}
+          </span>
+        </Button>
+      ) : null}
+    </>
+  );
+
+  return renderMobileBattlePortal(
+    <MobileDecisionSheet
+      eyebrow={canAct ? "Your Action" : "Opponent Action"}
+      title={
+        decision.kind === "attackers"
+          ? "Declare Attackers"
+          : decision.kind === "blockers"
+            ? "Declare Blockers"
+            : resolveDecisionTitle(decision)
+      }
+      subtitle={decision?.source_name || ""}
+      onBackdropClick={canCancelDecision ? () => cancelDecision() : null}
+      footer={footer}
+    >
+      <DecisionRouter
+        decision={decision}
+        canAct={canAct}
+        selectedObjectId={selectedObjectId}
+        inlineSubmit={false}
+        onSubmitActionChange={isCombatDecision ? null : handleSubmitActionChange}
+        hideDescription={false}
+        combatInline={isCombatDecision}
+        layout="panel"
+        showStripSummary={false}
+      />
+    </MobileDecisionSheet>
   );
 }
 
@@ -1922,12 +2699,20 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   );
 }
 
-export default function DecisionPopupLayer({ anchor = null, priorityInline = false, selectedObjectId = null }) {
+export default function DecisionPopupLayer({
+  anchor = null,
+  priorityInline = false,
+  selectedObjectId = null,
+  mobileBattle = false,
+}) {
   const { state } = useGame();
   const decision = state?.decision || null;
   const canAct = !!decision && state?.perspective === decision.player;
 
   if (!decision) return null;
+  if (mobileBattle) {
+    return <MobileBattleDecisionLayer selectedObjectId={selectedObjectId} />;
+  }
   if (decision?.kind === "priority") {
     return <PriorityBar anchor={anchor} inline={priorityInline} selectedObjectId={selectedObjectId} />;
   }

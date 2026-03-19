@@ -9,6 +9,8 @@ import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 
 const HAND_CARD_WIDTH = 124;
 const HAND_CARD_BASE_OVERLAP = 20;
+const MOBILE_FAN_CARD_WIDTH = 104;
+const MOBILE_FAN_BASE_OVERLAP = 46;
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
 const HAND_ROULETTE_EDGE_PADDING = 12;
@@ -132,34 +134,49 @@ function buildPlayableMaps(state, player) {
   return { handPlayable, extraPlayable };
 }
 
-function computeHandOverlap(total) {
-  return Math.min(30, HAND_CARD_BASE_OVERLAP + Math.max(0, total - 5) * 1.5);
+function computeHandOverlap(total, { mobileFan = false } = {}) {
+  const baseOverlap = mobileFan ? MOBILE_FAN_BASE_OVERLAP : HAND_CARD_BASE_OVERLAP;
+  const overlapGrowth = mobileFan ? 2.4 : 1.5;
+  const maxOverlap = mobileFan ? 74 : 30;
+  return Math.min(maxOverlap, baseOverlap + Math.max(0, total - 5) * overlapGrowth);
 }
 
-function computeRouletteWidth(total) {
+function computeRouletteWidth(total, { mobileFan = false } = {}) {
   const visibleCards = Math.min(HAND_ROULETTE_VISIBLE_CARDS, total);
-  const overlap = computeHandOverlap(total);
-  const stride = HAND_CARD_WIDTH - overlap;
+  const cardWidth = mobileFan ? MOBILE_FAN_CARD_WIDTH : HAND_CARD_WIDTH;
+  const overlap = computeHandOverlap(total, { mobileFan });
+  const stride = cardWidth - overlap;
   return Math.round(
-    HAND_CARD_WIDTH
+    cardWidth
     + Math.max(0, visibleCards - 1) * stride
     + (HAND_ROULETTE_EDGE_PADDING * 2)
   );
 }
 
-function buildHandCardRowStyle(index, total) {
-  const overlap = computeHandOverlap(total);
+function buildHandCardRowStyle(index, total, { mobileFan = false } = {}) {
+  const cardWidth = mobileFan ? MOBILE_FAN_CARD_WIDTH : HAND_CARD_WIDTH;
+  const overlap = computeHandOverlap(total, { mobileFan });
+  const middleIndex = (total - 1) / 2;
+  const distanceFromMiddle = index - middleIndex;
+  const normalizedOffset = total > 1
+    ? distanceFromMiddle / Math.max(1, middleIndex)
+    : 0;
+  const fanRotate = mobileFan ? `${(normalizedOffset * 15).toFixed(2)}deg` : "0deg";
+  const fanTranslateX = mobileFan ? `${(normalizedOffset * 3.5).toFixed(1)}px` : "0px";
+  const fanTranslateY = mobileFan
+    ? `${(Math.abs(normalizedOffset) * 18 - 8).toFixed(1)}px`
+    : "0px";
 
   return {
-    flex: `0 0 ${HAND_CARD_WIDTH}px`,
-    width: `${HAND_CARD_WIDTH}px`,
-    minWidth: `${HAND_CARD_WIDTH}px`,
-    maxWidth: `${HAND_CARD_WIDTH}px`,
+    flex: `0 0 ${cardWidth}px`,
+    width: `${cardWidth}px`,
+    minWidth: `${cardWidth}px`,
+    maxWidth: `${cardWidth}px`,
     marginLeft: index === 0 ? "0px" : `-${overlap.toFixed(1)}px`,
     zIndex: index + 2,
-    "--card-rotate": "0deg",
-    "--card-translate-x": "0px",
-    "--card-translate-y": "0px",
+    "--card-rotate": fanRotate,
+    "--card-translate-x": fanTranslateX,
+    "--card-translate-y": fanTranslateY,
   };
 }
 
@@ -176,12 +193,14 @@ export default function HandZone({
   const dragThresholdRef = useRef(null);
   const activePointerIdRef = useRef(null);
   const dragHandlersRef = useRef(null);
+  const dragScrollLockRef = useRef(null);
   const hoverClearTimerRef = useRef(null);
   const handListRef = useRef(null);
   const handScrollRef = useRef(null);
   const centerCycleRef = useRef(null);
   const rouletteCycleSpanRef = useRef(0);
   const rouletteRecenteringRef = useRef(false);
+  const mobileSelectedPreviewRafRef = useRef(null);
   const handCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
     [player?.can_view_hand, player?.hand_cards]
@@ -233,13 +252,16 @@ export default function HandZone({
   );
   const renderedHandCardCount = handCards.length + extraCards.length;
   const hasExtra = extraCards.length > 0;
+  const isMobileFan = layout === "mobile-fan";
   const isVerticalRail = layout === "vertical-rail";
-  const isRoulette = !isVerticalRail && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
+  const isRoulette = !isVerticalRail && !isMobileFan && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
   const rouletteWidth = useMemo(
-    () => computeRouletteWidth(renderedHandCardCount),
-    [renderedHandCardCount]
+    () => computeRouletteWidth(renderedHandCardCount, { mobileFan: isMobileFan }),
+    [isMobileFan, renderedHandCardCount]
   );
   const surfaceWidth = isVerticalRail
+    ? "100%"
+    : isMobileFan
     ? "100%"
     : isRoulette
     ? `min(${rouletteWidth}px, calc(100vw - 290px))`
@@ -284,6 +306,17 @@ export default function HandZone({
     onInspect?.(card.id, { candidateObjectIds });
   };
 
+  const releaseDragScrollLock = useCallback(() => {
+    const scrollLock = dragScrollLockRef.current;
+    if (!scrollLock) return;
+    const { element, touchAction, overscrollBehavior } = scrollLock;
+    if (element) {
+      element.style.touchAction = touchAction;
+      element.style.overscrollBehavior = overscrollBehavior;
+    }
+    dragScrollLockRef.current = null;
+  }, []);
+
   const clearPendingDragListeners = () => {
     const handlers = dragHandlersRef.current;
     if (!handlers) return;
@@ -292,6 +325,7 @@ export default function HandZone({
     document.removeEventListener("pointercancel", handlers.onCancel);
     dragHandlersRef.current = null;
     activePointerIdRef.current = null;
+    releaseDragScrollLock();
   };
 
   useEffect(() => {
@@ -307,8 +341,9 @@ export default function HandZone({
       document.removeEventListener("pointercancel", handlers.onCancel);
       dragHandlersRef.current = null;
       activePointerIdRef.current = null;
+      releaseDragScrollLock();
     };
-  }, []);
+  }, [releaseDragScrollLock]);
 
   useEffect(() => {
     const wasExpanded = previousExpandedRef.current;
@@ -319,6 +354,52 @@ export default function HandZone({
       }
     }
   }, [clearHover, hoverableHandObjectIds, hoveredObjectId, isExpanded]);
+
+  useLayoutEffect(() => {
+    const handList = handListRef.current;
+    if (!handList) return undefined;
+
+    const clearSelectedPreviewVars = () => {
+      const cards = handList.querySelectorAll(".game-card.hand-card");
+      for (const node of cards) {
+        node.style.removeProperty("--mobile-hand-selected-shift-x");
+        node.style.removeProperty("--mobile-hand-selected-shift-y");
+      }
+    };
+
+    clearSelectedPreviewVars();
+
+    if (!isMobileFan || selectedObjectId == null || typeof window === "undefined") {
+      return clearSelectedPreviewVars;
+    }
+
+    mobileSelectedPreviewRafRef.current = window.requestAnimationFrame(() => {
+      mobileSelectedPreviewRafRef.current = null;
+      const selectedCard = handList.querySelector(".game-card.hand-card.inspected");
+      if (!selectedCard) return;
+
+      const rect = selectedCard.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const targetCenterX = Math.min(
+        viewportWidth - rect.width * 0.65,
+        Math.max(rect.width * 0.65, viewportWidth * 0.46)
+      );
+      const shiftX = Math.max(-260, Math.min(260, targetCenterX - (rect.left + (rect.width / 2))));
+      const shiftY = Math.max(78, Math.min(116, window.innerHeight * 0.24));
+
+      selectedCard.style.setProperty("--mobile-hand-selected-shift-x", `${shiftX.toFixed(1)}px`);
+      selectedCard.style.setProperty("--mobile-hand-selected-shift-y", `${shiftY.toFixed(1)}px`);
+    });
+
+    return () => {
+      if (mobileSelectedPreviewRafRef.current != null) {
+        cancelAnimationFrame(mobileSelectedPreviewRafRef.current);
+        mobileSelectedPreviewRafRef.current = null;
+      }
+      clearSelectedPreviewVars();
+    };
+  }, [isMobileFan, selectedObjectId]);
+
 
   const handleHoverEnter = useCallback((objectId) => {
     if (hoverClearTimerRef.current) {
@@ -441,9 +522,26 @@ export default function HandZone({
       const dy = me.clientY - dt.sy;
       if (!dt.dragging && (dx * dx + dy * dy) > 64) {
         dt.dragging = true;
+        if (
+          dragScrollLockRef.current == null
+          && isVerticalRail
+          && me.pointerType !== "mouse"
+          && handScrollRef.current
+        ) {
+          dragScrollLockRef.current = {
+            element: handScrollRef.current,
+            touchAction: handScrollRef.current.style.touchAction,
+            overscrollBehavior: handScrollRef.current.style.overscrollBehavior,
+          };
+          handScrollRef.current.style.touchAction = "none";
+          handScrollRef.current.style.overscrollBehavior = "none";
+        }
         startDrag(card.id, card.name, plays, glowKind, me.clientX, me.clientY, dt.sourceRect || null);
       }
       if (dt.dragging) {
+        if (me.cancelable) {
+          me.preventDefault();
+        }
         updateDrag(me.clientX, me.clientY);
       }
     };
@@ -525,12 +623,13 @@ export default function HandZone({
             isBumped={isBumped}
             bumpDirection={bumpDir}
             handCircuitMode="full"
+            suppressTooltip={isMobileFan}
             isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
             onClick={isPlayable ? undefined : (event) => handleCardClick(event, card)}
             onPointerDown={isPlayable ? (event) => handlePointerDown(event, card, plays, glowKind) : undefined}
             onMouseEnter={() => handleHoverEnter(card.id)}
             onMouseLeave={handleHoverLeave}
-            className="mobile-hand-rail-card !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1"
+            className={`mobile-hand-rail-card${isPlayable ? " mobile-hand-rail-card--draggable" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
             style={{
               width: "100%",
               minWidth: "0px",
@@ -563,6 +662,7 @@ export default function HandZone({
           isPlayable={isPlayable}
           glowKind={isActionLinkedHover ? "action-link" : baseGlowKind}
           handCircuitMode="full"
+          suppressTooltip={isMobileFan}
           isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
           onClick={plays.length === 0
             ? (event) => handleCardClick(event, card)
@@ -570,7 +670,7 @@ export default function HandZone({
           onPointerDown={plays.length > 0 ? (event) => handlePointerDown(event, card, plays, baseGlowKind || "extra") : undefined}
           onMouseEnter={() => handleHoverEnter(extra.id)}
           onMouseLeave={handleHoverLeave}
-          className="mobile-hand-rail-card mobile-hand-rail-card--extra !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1"
+          className={`mobile-hand-rail-card mobile-hand-rail-card--extra${plays.length > 0 ? " mobile-hand-rail-card--draggable" : ""} !w-full !max-w-none !min-w-0 !basis-auto !flex-none self-stretch p-1`}
           style={{
             width: "100%",
             minWidth: "0px",
@@ -626,13 +726,14 @@ export default function HandZone({
             isBumped={isBumped}
             bumpDirection={bumpDir}
             handCircuitMode={isExpanded ? "full" : "top"}
+            suppressTooltip={isMobileFan}
             isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
             onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
             onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
             onMouseEnter={() => handleHoverEnter(card.id)}
             onMouseLeave={handleHoverLeave}
             style={{
-              ...buildHandCardRowStyle(visualIndex, renderedHandCardCount),
+              ...buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
               scrollSnapAlign: isRoulette ? "start" : undefined,
             }}
           />
@@ -661,6 +762,7 @@ export default function HandZone({
           glowKind={isActionLinkedHover ? "action-link" : baseGlowKind}
           isNew={isPrimaryCycle}
           handCircuitMode={isExpanded ? "full" : "top"}
+          suppressTooltip={isMobileFan}
           isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
           onClick={plays.length === 0
             ? (e) => handleCardClick(e, card)
@@ -669,7 +771,7 @@ export default function HandZone({
           onMouseEnter={() => handleHoverEnter(extra.id)}
           onMouseLeave={handleHoverLeave}
           style={{
-            ...buildHandCardRowStyle(visualIndex, renderedHandCardCount),
+            ...buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
             scrollSnapAlign: isRoulette ? "start" : undefined,
           }}
         />
@@ -696,20 +798,20 @@ export default function HandZone({
       );
     }
 
-    return (
-      <section
-        className={`hand-zone-surface min-w-0 bg-transparent px-2 py-1 h-full min-h-0 overflow-visible ${isRoulette ? "hand-zone-surface-roulette" : "max-w-full"}`}
-        style={{ width: surfaceWidth, maxWidth: isRoulette ? surfaceWidth : "100%" }}
-      >
-        <div className={`hand-zone-viewport min-h-0 h-full w-full min-w-0 overflow-visible ${isRoulette ? "hand-zone-viewport-roulette" : ""}`}>
+      return (
+        <section
+          className={`hand-zone-surface min-w-0 bg-transparent px-2 py-1 h-full min-h-0 overflow-visible ${isRoulette ? "hand-zone-surface-roulette" : "max-w-full"} ${isMobileFan ? "hand-zone-surface-mobile-fan" : ""}`}
+          style={{ width: surfaceWidth, maxWidth: isRoulette ? surfaceWidth : "100%" }}
+        >
+        <div className={`hand-zone-viewport min-h-0 h-full w-full min-w-0 overflow-visible ${isRoulette ? "hand-zone-viewport-roulette" : ""} ${isMobileFan ? "hand-zone-viewport-mobile-fan" : ""}`}>
           <div
             ref={handScrollRef}
-            className={`hand-zone-scroll min-h-0 h-full w-full min-w-0 -mx-2 px-2 overflow-x-auto overflow-y-hidden overscroll-x-contain ${isRoulette ? "hand-zone-scroll-roulette" : ""}`}
+            className={`hand-zone-scroll min-h-0 h-full w-full min-w-0 -mx-2 px-2 overflow-x-auto overflow-y-hidden overscroll-x-contain ${isRoulette ? "hand-zone-scroll-roulette" : ""} ${isMobileFan ? "hand-zone-scroll-mobile-fan" : ""}`}
             onScroll={handleRouletteScroll}
           >
             <div
               ref={handListRef}
-              className={`hand-zone-row flex min-h-full w-max flex-nowrap items-end pt-1 pb-2 overflow-visible ${isRoulette ? "hand-zone-row-roulette justify-start px-1.5" : "mx-auto min-w-full justify-center pl-4 pr-4"}`}
+              className={`hand-zone-row flex min-h-full w-max flex-nowrap items-end pt-1 pb-2 overflow-visible ${isRoulette ? "hand-zone-row-roulette justify-start px-1.5" : "mx-auto min-w-full justify-center pl-4 pr-4"} ${isMobileFan ? "hand-zone-row-mobile-fan" : ""}`}
             >
               {rouletteCycleIndexes.map((cycleIndex) => (
                 <Fragment key={`cycle-${cycleIndex}`}>

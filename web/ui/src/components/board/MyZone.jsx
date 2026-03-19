@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import BattlefieldRow from "./BattlefieldRow";
 import DeckZonePile from "./DeckZonePile";
@@ -111,6 +111,26 @@ function collectCardObjectIds(card) {
   return ids.filter((id) => Number.isFinite(id));
 }
 
+function buildActivatableMap(decision) {
+  const activatableMap = new Map();
+  if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) {
+    return activatableMap;
+  }
+
+  for (const action of decision.actions) {
+    if (
+      (action.kind === "activate_ability" || action.kind === "activate_mana_ability")
+      && action.object_id != null
+    ) {
+      const objId = Number(action.object_id);
+      if (!activatableMap.has(objId)) activatableMap.set(objId, []);
+      activatableMap.get(objId).push(action);
+    }
+  }
+
+  return activatableMap;
+}
+
 function ZoneCountInline({ player }) {
   const counts = zoneCounts(player);
   return (
@@ -135,10 +155,19 @@ export default function MyZone({
   legalTargetObjectIds = new Set(),
   headerControls = null,
   embeddedActionBar = null,
+  mobileBattleScene = false,
+  playerAccent: explicitPlayerAccent = null,
+  onMobileCardActionMenu = null,
+  onMobileCardLongPress = null,
 }) {
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const { state } = useGame();
-  const playerAccent = getPlayerAccent(state?.players || [], player?.id);
+  const mobileZoneRef = useRef(null);
+  const mobileHandRef = useRef(null);
+  const mobileHandMeasureRafRef = useRef(null);
+  const [mobileHandViewportBounds, setMobileHandViewportBounds] = useState(null);
+  const [mobileHandOcclusionViewportTop, setMobileHandOcclusionViewportTop] = useState(null);
+  const playerAccent = explicitPlayerAccent || getPlayerAccent(state?.players || [], player?.id);
   const mergedMobileHeader = Boolean(embeddedActionBar);
   const mobileInspectorVisible = mergedMobileHeader && selectedObjectId != null;
 
@@ -173,19 +202,7 @@ export default function MyZone({
     && state?.decision?.player === state?.perspective;
 
   // Build activatable map from decision actions (activate_ability + activate_mana_ability)
-  const activatableMap = new Map();
-  if (state?.decision?.kind === "priority" && state.decision.actions) {
-    for (const action of state.decision.actions) {
-      if (
-        (action.kind === "activate_ability" || action.kind === "activate_mana_ability") &&
-        action.object_id != null
-      ) {
-        const objId = Number(action.object_id);
-        if (!activatableMap.has(objId)) activatableMap.set(objId, []);
-        activatableMap.get(objId).push(action);
-      }
-    }
-  }
+  const activatableMap = buildActivatableMap(state?.decision);
 
   const handleCardClick = (_e, card) => {
     if (canPickTargetFromBoard && !shouldHandleClick(_e)) return;
@@ -252,6 +269,234 @@ export default function MyZone({
     event.stopPropagation();
     dispatchPlayerTargetChoice();
   }, [dispatchPlayerTargetChoice, shouldHandleClick]);
+
+  const measureMobileHandOcclusion = useCallback(() => {
+    const handEl = mobileHandRef.current;
+    if (!handEl) {
+      setMobileHandViewportBounds(null);
+      setMobileHandOcclusionViewportTop(null);
+      return;
+    }
+
+    const handRect = handEl.getBoundingClientRect();
+    let nextTop = handRect.top;
+    let nextLeft = handRect.left;
+    let nextRight = handRect.right;
+    let nextBottom = handRect.bottom;
+    const stableCards = Array.from(
+      handEl.querySelectorAll(".game-card.hand-card:not(.hovered):not(.inspected)")
+    );
+    const measuredCards = stableCards.length > 0
+      ? stableCards
+      : Array.from(handEl.querySelectorAll(".game-card.hand-card"));
+
+    for (const cardEl of measuredCards) {
+      const rect = cardEl.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      nextTop = Math.min(nextTop, rect.top);
+      nextLeft = Math.min(nextLeft, rect.left);
+      nextRight = Math.max(nextRight, rect.right);
+      nextBottom = Math.max(nextBottom, rect.bottom);
+    }
+
+    setMobileHandViewportBounds((currentBounds) => {
+      if (
+        currentBounds
+        && Math.abs(currentBounds.top - nextTop) < 1
+        && Math.abs(currentBounds.left - nextLeft) < 1
+        && Math.abs(currentBounds.right - nextRight) < 1
+        && Math.abs(currentBounds.bottom - nextBottom) < 1
+      ) {
+        return currentBounds;
+      }
+      return {
+        top: nextTop,
+        left: nextLeft,
+        right: nextRight,
+        bottom: nextBottom,
+      };
+    });
+    setMobileHandOcclusionViewportTop((currentTop) => (
+      currentTop != null && Math.abs(currentTop - nextTop) < 1
+        ? currentTop
+        : nextTop
+    ));
+  }, []);
+
+  const scheduleMobileHandMeasure = useCallback(() => {
+    if (mobileHandMeasureRafRef.current != null) return;
+    mobileHandMeasureRafRef.current = window.requestAnimationFrame(() => {
+      mobileHandMeasureRafRef.current = null;
+      measureMobileHandOcclusion();
+    });
+  }, [measureMobileHandOcclusion]);
+
+  useLayoutEffect(() => {
+    if (!mobileBattleScene) return undefined;
+    scheduleMobileHandMeasure();
+    return undefined;
+  }, [
+    mobileBattleScene,
+    player?.hand_size,
+    player?.hand_cards?.length,
+    selectedObjectId,
+    scheduleMobileHandMeasure,
+    state?.snapshot_id,
+  ]);
+
+  useEffect(() => {
+    if (!mobileBattleScene) return undefined;
+
+    const zoneEl = mobileZoneRef.current;
+    const handEl = mobileHandRef.current;
+    if (!zoneEl || !handEl) return undefined;
+
+    const observer = new ResizeObserver(() => {
+      scheduleMobileHandMeasure();
+    });
+    observer.observe(zoneEl);
+    observer.observe(handEl);
+    const onResize = () => scheduleMobileHandMeasure();
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", onResize);
+    };
+  }, [mobileBattleScene, scheduleMobileHandMeasure]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const root = document.documentElement;
+    if (!mobileBattleScene || !mobileHandViewportBounds) {
+      root.style.removeProperty("--mobile-battle-hand-top");
+      root.style.removeProperty("--mobile-battle-hand-left");
+      root.style.removeProperty("--mobile-battle-hand-right");
+      root.style.removeProperty("--mobile-battle-hand-bottom");
+      return undefined;
+    }
+
+    root.style.setProperty("--mobile-battle-hand-top", `${mobileHandViewportBounds.top}px`);
+    root.style.setProperty("--mobile-battle-hand-left", `${mobileHandViewportBounds.left}px`);
+    root.style.setProperty("--mobile-battle-hand-right", `${mobileHandViewportBounds.right}px`);
+    root.style.setProperty("--mobile-battle-hand-bottom", `${mobileHandViewportBounds.bottom}px`);
+    window.dispatchEvent(new CustomEvent("ironsmith:mobile-hand-bounds-change"));
+
+    return () => {
+      root.style.removeProperty("--mobile-battle-hand-top");
+      root.style.removeProperty("--mobile-battle-hand-left");
+      root.style.removeProperty("--mobile-battle-hand-right");
+      root.style.removeProperty("--mobile-battle-hand-bottom");
+      window.dispatchEvent(new CustomEvent("ironsmith:mobile-hand-bounds-change"));
+    };
+  }, [mobileBattleScene, mobileHandViewportBounds]);
+
+  useEffect(() => () => {
+    if (mobileHandMeasureRafRef.current != null) {
+      cancelAnimationFrame(mobileHandMeasureRafRef.current);
+      mobileHandMeasureRafRef.current = null;
+    }
+  }, []);
+
+  if (mobileBattleScene) {
+    const battlefieldEntry = boardZoneEntries.find((entry) => entry.zone === "battlefield");
+    const battlefieldCards = battlefieldEntry?.cards || [];
+    const graveyardCount = getZoneCount(player, "graveyard");
+    const libraryCount = getZoneCount(player, "library");
+    const handCount = getZoneCount(player, "hand");
+    const exileCount = getZoneCount(player, "exile");
+
+    return (
+      <section
+        ref={mobileZoneRef}
+        className="mobile-battle-my-zone board-zone-bg battlefield-panel battlefield-panel--self relative z-[28] min-h-0 h-full overflow-visible"
+        style={{
+          "--player-accent": playerAccent?.hex || "#d8bf6a",
+          "--panel-accent": playerAccent?.hex || "#b98946",
+          "--player-accent-rgb": playerAccent?.rgb || "216, 191, 106",
+        }}
+        data-my-zone
+      >
+        {overlayZoneEntries.length > 0 ? (
+          <div className="mobile-battle-inline-overlays">
+            {overlayZoneEntries.map((entry) => {
+              const activity = zoneActivity?.[entry.zone] || null;
+              const displayCount = Number.isFinite(activity?.displayCount) ? activity.displayCount : entry.count;
+              return (
+                <div
+                  key={entry.zone}
+                  className={cn(
+                    "mobile-battle-overlay-pill",
+                    activity && formatZoneActivityClass(activity.direction)
+                  )}
+                >
+                  <span>{entry.label}</span>
+                  <span>{displayCount}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <div
+          className="mobile-battle-my-zone-stage"
+          data-turn-active={isActivePlayer ? "true" : "false"}
+          data-mobile-hand-drop-target="board"
+        >
+          <div className="mobile-battle-my-zone-battlefield">
+            <BattlefieldRow
+              cards={battlefieldCards}
+              battlefieldSide="bottom"
+              paperLayoutMode="mobile-battle-bottom"
+              paperMinSlotsPerRow={7}
+              selectedObjectId={selectedObjectId}
+              onCardClick={handleCardClick}
+              onCardPointerDown={handleCardPointerDown}
+              onMobileCardActionMenu={onMobileCardActionMenu}
+              onMobileCardLongPress={onMobileCardLongPress}
+              activatableMap={activatableMap}
+              legalTargetObjectIds={legalTargetObjectIds}
+              bottomSafeInset={84}
+              bottomOcclusionViewportTop={mobileHandOcclusionViewportTop}
+            />
+          </div>
+        </div>
+
+        <div className="mobile-battle-self-identity-shell">
+          <button
+            type="button"
+            className={cn(
+              "mobile-battle-self-identity",
+              isPlayerLegalTarget && canPickTargetFromBoard && "is-targetable"
+            )}
+            onPointerDown={handlePlayerTargetPointerDown}
+            onClick={handlePlayerTargetClick}
+          >
+            <span className="mobile-battle-self-copy">
+              <span className="mobile-battle-self-meta">
+                H {handCount} G {graveyardCount} X {exileCount} D {libraryCount}
+              </span>
+            </span>
+            <span className="mobile-battle-inline-life" aria-hidden="true">
+              {player.life}
+            </span>
+          </button>
+        </div>
+
+        <div className="mobile-battle-self-hud">
+          <div ref={mobileHandRef} className="mobile-battle-self-hand">
+            <HandZone
+              player={player}
+              selectedObjectId={selectedObjectId}
+              onInspect={onInspect}
+              isExpanded
+              layout="mobile-fan"
+            />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -388,6 +633,8 @@ export default function MyZone({
                       selectedObjectId={selectedObjectId}
                       onCardClick={handleCardClick}
                       onCardPointerDown={handleCardPointerDown}
+                      onMobileCardActionMenu={onMobileCardActionMenu}
+                      onMobileCardLongPress={onMobileCardLongPress}
                       activatableMap={activatableMap}
                       legalTargetObjectIds={legalTargetObjectIds}
                       allowVerticalScroll
@@ -485,6 +732,8 @@ export default function MyZone({
                     selectedObjectId={selectedObjectId}
                     onCardClick={handleCardClick}
                     onCardPointerDown={handleCardPointerDown}
+                    onMobileCardActionMenu={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardActionMenu : null}
+                    onMobileCardLongPress={mobileBattleScene && entry.zone === "battlefield" ? onMobileCardLongPress : null}
                     activatableMap={activatableMap}
                     legalTargetObjectIds={legalTargetObjectIds}
                     allowVerticalScroll={entry.zone === "hand"}

@@ -20,6 +20,7 @@ export default function StackCard({
   className = "",
   onClick,
   reorderControls = null,
+  entryMotion = "default",
 }) {
   const { state } = useGame();
   const name = entry.name || `Object#${entry.id}`;
@@ -63,8 +64,10 @@ export default function StackCard({
         ease: "out(2)",
       });
     } else if (isNew) {
+      const enterX = entryMotion === "mobile-stack" ? [-16, 0] : [0, 0];
       motionRef.current = createTimeline({ autoplay: true }).add(node, {
         opacity: [0, 1],
+        x: enterX,
         y: [18, 0],
         scale: [0.92, 1],
         duration: 380,
@@ -75,7 +78,7 @@ export default function StackCard({
         },
       });
     }
-  }, [isLeaving, isNew]);
+  }, [entryMotion, isLeaving, isNew]);
 
   useEffect(() => () => {
     cancelMotion(motionRef.current);

@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { parseNames } from "@/lib/constants";
 import { UI_NOTICE_EVENT } from "@/lib/ui-notices";
+import useViewportLayout from "@/hooks/useViewportLayout";
 import Topbar from "./Topbar";
 import LobbyOverlay from "./LobbyOverlay";
 import AddCardBar from "./AddCardBar";
@@ -29,7 +30,9 @@ export default function Shell() {
   const [lobbyOpen, setLobbyOpen] = useState(false);
   const [zoneViews, setZoneViews] = useState(["battlefield"]);
   const [deckLoadingMode, setDeckLoadingMode] = useState(false);
+  const [mobileOpponentIndex, setMobileOpponentIndex] = useState(0);
   const [notices, setNotices] = useState([]);
+  const { landscapeMobileViewport } = useViewportLayout();
   const nextNoticeIdRef = useRef(1);
   const autoJoinAttemptedLobbyRef = useRef("");
   const initialLobbyQueryRef = useRef(readLobbyQueryParams());
@@ -70,6 +73,21 @@ export default function Shell() {
       setDeckLoadingMode(false);
     }
   }, [multiplayer.matchStarted]);
+
+  useEffect(() => {
+    const players = state?.players || [];
+    const perspective = state?.perspective;
+    const me = players.find((player) => player.id === perspective) || players[0];
+    const meIndex = players.findIndex((player) => player.id === me?.id);
+    const ordered = meIndex >= 0
+      ? [...players.slice(meIndex), ...players.slice(0, meIndex)]
+      : players;
+    const opponentCount = ordered.filter((player) => player.id !== me?.id).length;
+    setMobileOpponentIndex((currentIndex) => {
+      if (opponentCount <= 1) return 0;
+      return Math.min(currentIndex, opponentCount - 1);
+    });
+  }, [state?.players, state?.perspective]);
 
   useEffect(() => {
     if (loading || wasmError || !state || multiplayer.mode !== "idle") return;
@@ -284,8 +302,13 @@ export default function Shell() {
 
   return (
     <div
-      className="app-shell w-full h-[100dvh] p-2 grid grid-rows-[auto_auto_minmax(0,1fr)] gap-2"
+      className={
+        landscapeMobileViewport
+          ? "app-shell mobile-app-shell relative w-full h-[100dvh] overflow-hidden"
+          : "app-shell w-full h-[100dvh] p-2 grid grid-rows-[auto_auto_minmax(0,1fr)] gap-2"
+      }
       data-borderless-preview={borderlessPreview ? "true" : "false"}
+      data-mobile-overlay-shell={landscapeMobileViewport ? "true" : "false"}
     >
       <Topbar
         playerNames={playerNames}
@@ -300,12 +323,17 @@ export default function Shell() {
         onOpenLobby={() => setLobbyOpen(true)}
         deckLoadingMode={deckLoadingMode}
         onAddCardFailure={pushNotice}
+        mobileOpponentIndex={mobileOpponentIndex}
+        setMobileOpponentIndex={setMobileOpponentIndex}
+        mobileOverlay={landscapeMobileViewport}
       />
-      <AddCardBar
-        zoneViews={zoneViews}
-        setZoneViews={setZoneViews}
-        onAddCardFailure={pushNotice}
-      />
+      {!landscapeMobileViewport ? (
+        <AddCardBar
+          zoneViews={zoneViews}
+          setZoneViews={setZoneViews}
+          onAddCardFailure={pushNotice}
+        />
+      ) : null}
       <Workspace
         zoneViews={zoneViews}
         deckLoadingMode={deckLoadingMode}
@@ -313,6 +341,8 @@ export default function Shell() {
         onCancelDeckLoading={() => setDeckLoadingMode(false)}
         notices={notices}
         onDismissNotice={dismissNotice}
+        mobileOpponentIndex={mobileOpponentIndex}
+        setMobileOpponentIndex={setMobileOpponentIndex}
       />
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
       {lobbyOpen ? (
@@ -332,7 +362,25 @@ export default function Shell() {
 }
 
 async function addStartingBattlefieldPreset(game) {
-  await game.addCardToZone(0, "Omniscience", "battlefield", true);
+  const openingBattlefield = [
+    "Omniscience",
+    "Forest",
+    "Plains",
+    "Island",
+    "Mountain",
+    "Swamp",
+    "Tropical Island",
+    "Volcanic Island",
+    "Yawgmoth, Thran Physician",
+    "Ornithopter",
+    "Myr Moonvessel",
+  ];
+
+  for (const playerIndex of [0, 1]) {
+    for (const cardName of openingBattlefield) {
+      await game.addCardToZone(playerIndex, cardName, "battlefield", true);
+    }
+  }
 }
 
 function decodeBase64Utf8(raw) {

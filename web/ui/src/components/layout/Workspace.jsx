@@ -201,6 +201,8 @@ export default function Workspace({
   onCancelDeckLoading,
   notices = [],
   onDismissNotice,
+  mobileOpponentIndex = 0,
+  setMobileOpponentIndex,
 }) {
   const [selectedObjectId, setSelectedObjectId] = useState(null);
   const [pinnedInspectorObjectId, setPinnedInspectorObjectId] = useState(null);
@@ -617,6 +619,7 @@ export default function Workspace({
               detail: { objectId: matchedCandidate.id },
             })
           );
+          return;
         }
       }
       const stackEntry = options?.source === "stack" ? options?.stackEntry : null;
@@ -950,6 +953,8 @@ export default function Workspace({
           legalTargetPlayerIds={legalTargetPlayerIds}
           legalTargetObjectIds={legalTargetObjectIds}
           myZoneHeaderControls={mobileZoneHeaderControls}
+          mobileOpponentIndex={mobileOpponentIndex}
+          setMobileOpponentIndex={setMobileOpponentIndex}
         />
       </div>
       {!nonDesktopViewport && !deckLoadingMode && opponentsInspectorDockTop != null && (

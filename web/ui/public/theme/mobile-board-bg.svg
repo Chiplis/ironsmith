@@ -1,0 +1,82 @@
+<svg width="1536" height="1152" viewBox="0 0 1536 1152" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="768" y1="0" x2="768" y2="1152" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#131313"/>
+      <stop offset="1" stop-color="#080604"/>
+    </linearGradient>
+    <linearGradient id="leather" x1="768" y1="20" x2="768" y2="366" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2B2A29"/>
+      <stop offset="1" stop-color="#171513"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="768" y1="394" x2="768" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5228"/>
+      <stop offset="0.52" stop-color="#76431F"/>
+      <stop offset="1" stop-color="#5E3216"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="768" y1="392" x2="768" y2="1084" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5F4A39"/>
+      <stop offset="0.55" stop-color="#3C3026"/>
+      <stop offset="1" stop-color="#231C16"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="768" y1="10" x2="768" y2="250" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#91604A"/>
+      <stop offset="1" stop-color="#5C3527"/>
+    </linearGradient>
+    <filter id="shadow" x="-20" y="-20" width="1576" height="1192" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000000" flood-opacity="0.32"/>
+    </filter>
+  </defs>
+
+  <rect width="1536" height="1152" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1536" height="372" fill="url(#leather)"/>
+  <g opacity="0.14">
+    <path d="M60 46H356L336 72H38L60 46Z" fill="#4A4039"/>
+    <path d="M1180 46H1476L1498 72H1158L1180 46Z" fill="#4A4039"/>
+    <path d="M0 344H1536V384H0V344Z" fill="#100E0C"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M68 58L182 58L205 22H132L104 40H68V58Z" fill="url(#copper)"/>
+    <path d="M1468 58L1354 58L1331 22H1404L1432 40H1468V58Z" fill="url(#copper)"/>
+    <path d="M96 58H1440L1388 178H148L96 58Z" fill="#1D1A17"/>
+    <path d="M148 178L220 58H1316L1388 178H148Z" stroke="#8A604A" stroke-width="10"/>
+  </g>
+
+  <rect x="0" y="386" width="1536" height="766" fill="url(#wood)"/>
+
+  <g opacity="0.5">
+    <rect x="170" y="430" width="1196" height="4" fill="#4B2C1A"/>
+    <rect x="170" y="542" width="1196" height="4" fill="#4B2C1A"/>
+    <rect x="170" y="654" width="1196" height="4" fill="#4B2C1A"/>
+    <rect x="170" y="766" width="1196" height="4" fill="#4B2C1A"/>
+    <rect x="170" y="878" width="1196" height="4" fill="#4B2C1A"/>
+    <rect x="170" y="990" width="1196" height="4" fill="#4B2C1A"/>
+  </g>
+
+  <g opacity="0.16">
+    <rect x="0" y="386" width="136" height="766" fill="#20150F"/>
+    <rect x="1400" y="386" width="136" height="766" fill="#20150F"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="150" y="462" width="1236" height="410" rx="26" fill="url(#metal)"/>
+    <rect x="206" y="510" width="1124" height="318" rx="10" fill="url(#wood)"/>
+    <rect x="174" y="486" width="1188" height="10" fill="#6A5342"/>
+    <rect x="174" y="838" width="1188" height="10" fill="#231C16"/>
+    <rect x="750" y="510" width="10" height="318" fill="#564335" opacity="0.85"/>
+    <rect x="206" y="666" width="1124" height="10" fill="#564335" opacity="0.85"/>
+    <rect x="176" y="486" width="46" height="362" fill="#3D3026"/>
+    <rect x="1314" y="486" width="46" height="362" fill="#3D3026"/>
+  </g>
+
+  <g opacity="0.35">
+    <circle cx="214" cy="500" r="5" fill="#8D6F57"/>
+    <circle cx="1322" cy="500" r="5" fill="#8D6F57"/>
+    <circle cx="214" cy="838" r="5" fill="#8D6F57"/>
+    <circle cx="1322" cy="838" r="5" fill="#8D6F57"/>
+    <circle cx="768" cy="671" r="5" fill="#8D6F57"/>
+    <circle cx="768" cy="1042" r="5" fill="#8D6F57"/>
+    <circle cx="262" cy="1042" r="5" fill="#8D6F57"/>
+    <circle cx="1274" cy="1042" r="5" fill="#8D6F57"/>
+  </g>
+</svg>
