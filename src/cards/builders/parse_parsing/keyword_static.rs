@@ -23,10 +23,13 @@ use crate::cards::builders::parse_parsing::{
     parse_mana_symbol, parse_named_number, parse_number, parse_number_word_i32,
     parse_object_filter, parse_permission_clause_spec, parse_source_must_be_blocked_if_able_line,
     parse_spell_filter, parse_subtype_flexible, parse_subtype_word, parse_triggered_line,
-    parse_value, parse_zone_word, parser_trace, parser_trace_stack, replace_unbound_x_with_value,
-    scale_dynamic_cost_modifier_value, spell_filter_has_identity, split_on_and, split_on_comma,
-    split_on_comma_or_semicolon, split_on_period, starts_with_until_end_of_turn, trim_commas,
-    trim_edge_punctuation, value_contains_unbound_x, words,
+    parse_value, parse_zone_word, parse_choose_basic_land_type_phrase_words,
+    parse_choose_color_phrase_words, parse_choose_creature_type_phrase_words,
+    parse_choose_player_phrase_words, parser_trace, parser_trace_stack,
+    replace_unbound_x_with_value, scale_dynamic_cost_modifier_value,
+    spell_filter_has_identity, split_on_and, split_on_comma, split_on_comma_or_semicolon,
+    split_on_period, starts_with_until_end_of_turn, trim_commas, trim_edge_punctuation,
+    value_contains_unbound_x, words,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -114,6 +117,8 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> &'static [&'static s
         "parse_double_damage_from_sources_you_control_of_chosen_type_line" => &["double"],
         "parse_source_can_attack_as_though_no_defender_as_long_as_line" => &["this"],
         "parse_no_maximum_hand_size_line" => &["you"],
+        "parse_you_may_static_grant_line" => &["you"],
+        "parse_you_may_look_top_card_any_time_line" => &["you"],
         "parse_additional_land_play_line" => &["you"],
         "parse_play_lands_from_graveyard_line" => &["you"],
         "parse_legend_rule_doesnt_apply_line" => &["the"],
@@ -146,6 +151,8 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> &'static [&'static s
             Some("attached") => &["attached"],
             Some("soulbond") => &["soulbond"],
             Some("may") => &["may"],
+            Some("warp") => &["warp"],
+            Some("melee") => &["melee"],
             Some("equipped") => &["equipped"],
             Some("as") => &["as"],
             Some("prevent") => &["prevent"],
@@ -277,9 +284,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_spell_cost_increase_per_target_beyond_first_line),
         single_static_ability_ast_rule!(parse_flashback_cost_modifier_line),
         single_static_ability_ast_rule!(parse_spells_cost_modifier_line),
-        single_static_ability_ast_rule!(
-            parse_other_chosen_type_creature_triggers_additional_time_line
-        ),
+        single_static_ability_ast_passthrough_rule!(parse_trigger_duplication_line_ast),
         single_static_ability_ast_rule!(
             parse_double_damage_from_sources_you_control_of_chosen_type_line
         ),
@@ -379,6 +384,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_flying_restriction_line),
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
+        single_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
@@ -395,8 +401,11 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_enters_tapped_for_filter_line),
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
+        single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
         single_static_ability_ast_rule!(parse_play_lands_from_graveyard_line),
         single_static_ability_ast_rule!(parse_cast_spells_from_hand_without_paying_mana_costs_line),
+        single_static_ability_ast_rule!(parse_warp_keyword_marker_line),
+        single_static_ability_ast_rule!(parse_melee_keyword_marker_line),
         single_static_ability_ast_rule!(parse_cost_reduction_line),
         single_static_ability_ast_rule!(parse_can_block_additional_creature_each_combat_line),
         single_static_ability_ast_passthrough_rule!(parse_all_creatures_able_to_block_source_line),
@@ -1264,20 +1273,23 @@ pub(crate) fn parse_damage_not_removed_cleanup_line(
     Ok(None)
 }
 
-pub(crate) fn parse_choose_basic_land_type_as_enters_line(
-    tokens: &[Token],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = words(tokens);
-    if words.len() < 8 || words[0] != "as" {
-        return Ok(None);
+fn parse_as_enters_choice_subject_words<'a>(
+    words: &'a [&'a str],
+    this_kind_display_pairs: &[(&str, &'static str)],
+) -> Option<(usize, &'static str)> {
+    if words.first().copied() != Some("as") {
+        return None;
     }
 
-    let mut idx = 1;
+    let mut idx = 1usize;
     let display_subject = if words.get(idx) == Some(&"this") {
         idx += 1;
-        if words.get(idx) == Some(&"aura") {
+        if let Some((_, display)) = this_kind_display_pairs
+            .iter()
+            .find(|(kind, _)| words.get(idx) == Some(kind))
+        {
             idx += 1;
-            "this Aura"
+            *display
         } else {
             "this"
         }
@@ -1285,11 +1297,11 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
         idx += 1;
         "it"
     } else {
-        return Ok(None);
+        return None;
     };
 
     if words.get(idx) != Some(&"enters") {
-        return Ok(None);
+        return None;
     }
     idx += 1;
 
@@ -1297,24 +1309,22 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
         idx += 2;
     }
 
-    if words.get(idx) != Some(&"choose") {
+    Some((idx, display_subject))
+}
+
+pub(crate) fn parse_choose_basic_land_type_as_enters_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&words, &[("aura", "this Aura")])
+    else {
         return Ok(None);
-    }
-    idx += 1;
-
-    if words.get(idx) == Some(&"a") {
-        idx += 1;
-    }
-
-    if words.get(idx) != Some(&"basic")
-        || words.get(idx + 1) != Some(&"land")
-        || words.get(idx + 2) != Some(&"type")
-    {
+    };
+    let Some(consumed) = parse_choose_basic_land_type_phrase_words(&words[idx..]) else {
         return Ok(None);
-    }
-    idx += 3;
-
-    if idx != words.len() {
+    };
+    if idx + consumed != words.len() {
         return Ok(None);
     }
 
@@ -1397,91 +1407,294 @@ pub(crate) fn parse_choose_creature_type_as_enters_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
-    if words.len() < 7 || words[0] != "as" {
+    let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
+        &words,
+        &[
+            ("land", "this land"),
+            ("creature", "this creature"),
+            ("artifact", "this artifact"),
+            ("enchantment", "this enchantment"),
+            ("permanent", "this permanent"),
+        ],
+    ) else {
+        return Ok(None);
+    };
+    let Some((consumed, excluded_subtypes)) =
+        parse_choose_creature_type_phrase_words(&words[idx..])?
+    else {
+        return Ok(None);
+    };
+    if !excluded_subtypes.is_empty() {
+        return Ok(None);
+    }
+    if idx + consumed != words.len() {
         return Ok(None);
     }
 
-    let mut idx = 1usize;
-    if words.get(idx).copied() == Some("this") {
-        idx += 1;
-        if words.get(idx).is_some_and(|word| {
-            matches!(
-                *word,
-                "land" | "creature" | "artifact" | "enchantment" | "permanent"
-            )
-        }) {
-            idx += 1;
+    Ok(Some(StaticAbility::choose_creature_type_as_enters(format!(
+        "As {display_subject} enters, choose a creature type."
+    ))))
+}
+
+fn trigger_duplication_tail_matches(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["it", "triggers", "an", "additional", "time"]
+            | ["that", "ability", "triggers", "an", "additional", "time"]
+    )
+}
+
+fn parse_trigger_duplication_source_filter(
+    tokens: &[Token],
+) -> Result<ObjectFilter, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let filter_words = words(&tokens);
+    if matches!(
+        filter_words.as_slice(),
+        ["this", "creature", "or", "an", "emblem", "you", "own"]
+            | ["this", "creature", "or", "emblem", "you", "own"]
+    ) {
+        let mut emblem = ObjectFilter::default();
+        emblem.zone = Some(Zone::Command);
+        emblem.owner = Some(PlayerFilter::You);
+
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![ObjectFilter::source(), emblem];
+        return Ok(filter);
+    }
+
+    parse_object_filter(&tokens, false)
+}
+
+fn parse_trigger_duplication_event_matcher(tokens: &[Token]) -> Result<Trigger, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let phrase_words = words(&tokens);
+
+    let build_filter = |subject_tokens: &[Token]| -> Result<ObjectFilter, CardTextError> {
+        parse_object_filter(&trim_edge_punctuation(subject_tokens), false)
+    };
+
+    if phrase_words.starts_with(&["turning"]) && phrase_words.ends_with(&["face", "up"]) {
+        if tokens.len() <= 3 {
+            return Err(CardTextError::ParseError(format!(
+                "missing turned-face-up subject in trigger-duplication clause (clause: '{}')",
+                phrase_words.join(" ")
+            )));
         }
-    } else if words.get(idx).copied() == Some("it") {
-        idx += 1;
-    } else {
-        return Ok(None);
+        let filter = build_filter(&tokens[1..tokens.len() - 2])?;
+        return Ok(Trigger::turned_face_up(filter));
     }
 
-    if words.get(idx).copied() != Some("enters") {
-        return Ok(None);
-    }
-    idx += 1;
-    if words.get(idx).copied() == Some("the") && words.get(idx + 1).copied() == Some("battlefield")
-    {
-        idx += 2;
-    }
-    if words.get(idx).copied() != Some("choose") {
-        return Ok(None);
-    }
-    idx += 1;
-    if words.get(idx).is_some_and(|word| is_article(word)) {
-        idx += 1;
-    }
-    if words.get(idx).copied() != Some("creature") || words.get(idx + 1).copied() != Some("type") {
-        return Ok(None);
-    }
-    idx += 2;
-
-    if idx != words.len() {
-        return Ok(None);
+    if phrase_words.starts_with(&["you", "casting", "or", "copying"]) {
+        if tokens.len() <= 4 {
+            return Err(CardTextError::ParseError(format!(
+                "missing spell subject in trigger-duplication clause (clause: '{}')",
+                phrase_words.join(" ")
+            )));
+        }
+        let filter = build_filter(&tokens[4..])?;
+        return Ok(Trigger::either(
+            Trigger::spell_cast_qualified(Some(filter.clone()), PlayerFilter::You, None, None, None, false),
+            Trigger::spell_copied(Some(filter), PlayerFilter::You),
+        ));
     }
 
-    Ok(Some(StaticAbility::choose_creature_type_as_enters(
-        words.join(" "),
+    let suffixes: &[(&[&str], fn(ObjectFilter) -> Trigger)] = &[
+        (&["dealing", "combat", "damage", "to", "a", "player"], |filter| {
+            Trigger::deals_combat_damage_to_player(filter, PlayerFilter::Any)
+        }),
+        (&["becoming", "the", "target", "of", "a", "spell", "or", "ability"], |filter| {
+            Trigger::becomes_targeted_object(filter)
+        }),
+        (&["being", "dealt", "damage"], |filter| {
+            Trigger::is_dealt_damage(ChooseSpec::Object(filter))
+        }),
+        (&["entering", "or", "leaving", "the", "battlefield"], |filter| {
+            Trigger::either(
+                Trigger::enters_battlefield(filter.clone()),
+                Trigger::leaves_battlefield(filter),
+            )
+        }),
+        (&["entering", "the", "battlefield"], |filter| {
+            Trigger::enters_battlefield(filter)
+        }),
+        (&["leaving", "the", "battlefield"], |filter| {
+            Trigger::leaves_battlefield(filter)
+        }),
+        (&["drawing", "a", "card"], |_filter| {
+            Trigger::player_draws_card(PlayerFilter::Any)
+        }),
+        (&["attacking"], |filter| Trigger::attacks(filter)),
+        (&["dying"], |filter| Trigger::dies(filter)),
+        (&["entering"], |filter| Trigger::enters_battlefield(filter)),
+    ];
+
+    for (suffix, build) in suffixes {
+        if !phrase_words.ends_with(suffix) || phrase_words.len() <= suffix.len() {
+            continue;
+        }
+        let subject_len = phrase_words.len() - suffix.len();
+        if *suffix == ["drawing", "a", "card"] {
+            let subject_words = &phrase_words[..subject_len];
+            if matches!(subject_words, ["a", "player"] | ["player"]) {
+                return Ok(Trigger::player_draws_card(PlayerFilter::Any));
+            }
+            if matches!(subject_words, ["you"]) {
+                return Ok(Trigger::player_draws_card(PlayerFilter::You));
+            }
+            if matches!(subject_words, ["an", "opponent"] | ["opponent"]) {
+                return Ok(Trigger::player_draws_card(PlayerFilter::Opponent));
+            }
+        }
+        let Some(subject_end_token_idx) = token_index_for_word_index(&tokens, subject_len) else {
+            return Err(CardTextError::ParseError(format!(
+                "failed to split trigger-duplication subject (clause: '{}')",
+                phrase_words.join(" ")
+            )));
+        };
+        let filter = build_filter(&tokens[..subject_end_token_idx])?;
+        return Ok(build(filter));
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "unsupported trigger-duplication cause clause (clause: '{}')",
+        phrase_words.join(" ")
     )))
 }
 
-pub(crate) fn parse_other_chosen_type_creature_triggers_additional_time_line(
+fn parse_trigger_duplication_core(
     tokens: &[Token],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = words(tokens);
-    if words.as_slice()
-        != [
-            "if",
-            "a",
-            "triggered",
-            "ability",
-            "of",
-            "another",
-            "creature",
-            "you",
-            "control",
-            "of",
-            "the",
-            "chosen",
-            "type",
-            "triggers",
-            "it",
-            "triggers",
-            "an",
-            "additional",
-            "time",
-        ]
-    {
+) -> Result<Option<(StaticAbility, Option<crate::ConditionExpr>)>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let segments = split_on_comma(&tokens);
+    if segments.len() != 2 {
         return Ok(None);
     }
 
-    Ok(Some(
-        StaticAbility::other_chosen_type_creature_triggered_abilities_trigger_additional_time(
-            "If a triggered ability of another creature you control of the chosen type triggers, it triggers an additional time.".to_string(),
-        ),
-    ))
+    let head_tokens = trim_commas(&segments[0]);
+    let tail_tokens = trim_commas(&segments[1]);
+    if head_tokens.is_empty() || tail_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let tail_words = words(&tail_tokens);
+    if !trigger_duplication_tail_matches(&tail_words) {
+        return Ok(None);
+    }
+
+    let head_words = words(&head_tokens);
+    if !head_words.starts_with(&["if"]) || head_tokens.len() < 2 {
+        return Ok(None);
+    }
+
+    let body_tokens = &head_tokens[1..];
+    let body_words = words(body_tokens);
+
+    let ability_prefixes: &[&[&str]] = &[
+        &["a", "triggered", "ability", "of"],
+        &["an", "ability", "of"],
+    ];
+
+    let mut parsed: Option<(Option<ObjectFilter>, Option<Trigger>, Option<crate::ConditionExpr>)> =
+        None;
+
+    for prefix in ability_prefixes {
+        if !body_words.starts_with(prefix) || body_tokens.len() <= prefix.len() + 1 {
+            continue;
+        }
+        let Some(triggers_idx) = body_words.iter().position(|word| *word == "triggers") else {
+            continue;
+        };
+        if triggers_idx <= prefix.len() {
+            continue;
+        }
+
+        let condition = if body_words
+            .get(triggers_idx + 1..)
+            .is_some_and(|tail| tail.starts_with(&["while"]))
+        {
+            Some(parse_static_condition_clause(&body_tokens[triggers_idx + 2..])?)
+        } else if triggers_idx + 1 == body_tokens.len() {
+            None
+        } else {
+            continue;
+        };
+
+        let source_filter =
+            parse_trigger_duplication_source_filter(&body_tokens[prefix.len()..triggers_idx])?;
+        parsed = Some((Some(source_filter), None, condition));
+        break;
+    }
+
+    if parsed.is_none()
+        && let Some(causes_idx) = body_words.iter().position(|word| *word == "causes")
+    {
+        let cause_tokens = &body_tokens[..causes_idx];
+        let source_body_tokens = &body_tokens[causes_idx + 1..];
+        for prefix in ability_prefixes {
+            if !words(source_body_tokens).starts_with(prefix)
+                || source_body_tokens.len() <= prefix.len() + 2
+            {
+                continue;
+            }
+            let source_words = words(source_body_tokens);
+            if !source_words.ends_with(&["to", "trigger"]) {
+                continue;
+            }
+            let source_filter = parse_trigger_duplication_source_filter(
+                &source_body_tokens[prefix.len()..source_body_tokens.len() - 2],
+            )?;
+            let event_matcher = parse_trigger_duplication_event_matcher(cause_tokens)?;
+            parsed = Some((Some(source_filter), Some(event_matcher), None));
+            break;
+        }
+    }
+
+    Ok(parsed.map(|(source_filter, event_matcher, condition)| {
+        (
+            StaticAbility::duplicate_matching_triggered_abilities(
+                source_filter,
+                event_matcher,
+                1,
+                words(&tokens).join(" "),
+            ),
+            condition,
+        )
+    }))
+}
+
+pub(crate) fn parse_trigger_duplication_line_ast(
+    tokens: &[Token],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let token_words = words(&tokens);
+    if token_words.starts_with(&["as", "long", "as"]) {
+        let Some(comma_idx) = tokens.iter().position(|token| matches!(token, Token::Comma(_))) else {
+            return Ok(None);
+        };
+        let condition = parse_static_condition_clause(&tokens[3..comma_idx])?;
+        let remainder = trim_commas(&tokens[comma_idx + 1..]);
+        let Some(inner) = parse_trigger_duplication_line_ast(&remainder)? else {
+            return Ok(None);
+        };
+        return Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(inner),
+            condition,
+        }));
+    }
+
+    let Some((ability, condition)) = parse_trigger_duplication_core(&tokens)? else {
+        return Ok(None);
+    };
+    let ast = StaticAbilityAst::Static(ability);
+    Ok(Some(if let Some(condition) = condition {
+        StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(ast),
+            condition,
+        }
+    } else {
+        ast
+    }))
 }
 
 pub(crate) fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
@@ -1601,88 +1814,37 @@ pub(crate) fn parse_choose_color_as_enters_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
-    if words.len() < 6 || words[0] != "as" {
-        return Ok(None);
-    }
-
-    let mut idx = 1;
-    let subject = if words.get(idx) == Some(&"this") {
-        idx += 1;
-        if words.get(idx).is_some_and(|word| {
-            matches!(
-                *word,
-                "land" | "creature" | "artifact" | "enchantment" | "aura" | "permanent"
-            )
-        }) {
-            let kind = words[idx];
-            idx += 1;
-            match kind {
-                "land" => "this land",
-                "creature" => "this creature",
-                "artifact" => "this artifact",
-                "enchantment" => "this enchantment",
-                "aura" => "this aura",
-                _ => "this permanent",
-            }
-        } else {
-            "this"
-        }
-    } else if words.get(idx) == Some(&"it") {
-        idx += 1;
-        "it"
-    } else {
+    let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
+        &words,
+        &[
+            ("land", "this land"),
+            ("creature", "this creature"),
+            ("artifact", "this artifact"),
+            ("enchantment", "this enchantment"),
+            ("aura", "this aura"),
+            ("permanent", "this permanent"),
+        ],
+    ) else {
         return Ok(None);
     };
-
-    if words.get(idx) != Some(&"enters") {
+    let Some((consumed, excluded_color_set)) = parse_choose_color_phrase_words(&words[idx..])?
+    else {
+        return Ok(None);
+    };
+    if idx + consumed != words.len() {
         return Ok(None);
     }
-    idx += 1;
 
-    if words.get(idx) == Some(&"the") && words.get(idx + 1) == Some(&"battlefield") {
-        idx += 2;
-    }
-
-    if words.get(idx) != Some(&"choose") {
-        return Ok(None);
-    }
-    idx += 1;
-    if words.get(idx) == Some(&"a") {
-        idx += 1;
-    }
-    if words.get(idx) != Some(&"color") {
-        return Ok(None);
-    }
-    idx += 1;
-
-    let mut excluded = None;
-    if words.get(idx) == Some(&"other") && words.get(idx + 1) == Some(&"than") {
-        let Some(color_word) = words.get(idx + 2) else {
-            return Ok(None);
-        };
-        let color_set = parse_color(color_word).ok_or_else(|| {
+    let excluded = if let Some(color_set) = excluded_color_set {
+        Some(color_from_color_set(color_set).ok_or_else(|| {
             CardTextError::ParseError(format!(
-                "unsupported color choice '{}' (clause: '{}')",
-                color_word,
+                "ambiguous color choice in choose-color clause (clause: '{}')",
                 words.join(" ")
             ))
-        })?;
-        let color = color_from_color_set(color_set).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "ambiguous color choice '{}' (clause: '{}')",
-                color_word,
-                words.join(" ")
-            ))
-        })?;
-        excluded = Some(color);
-        idx += 3;
-    }
-
-    if idx != words.len() {
-        return Ok(None);
-    }
-
-    let display_subject = if subject == "it" { "it" } else { subject };
+        })?)
+    } else {
+        None
+    };
     let display = match excluded {
         Some(color) => format!(
             "As {display_subject} enters, choose a color other than {}.",
@@ -1700,65 +1862,26 @@ pub(crate) fn parse_choose_player_as_enters_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = words(tokens);
-    if words.len() < 6 || words[0] != "as" {
-        return Ok(None);
-    }
-
-    let mut idx = 1;
-    let subject = if words.get(idx) == Some(&"this") {
-        idx += 1;
-        if words.get(idx).is_some_and(|word| {
-            matches!(
-                *word,
-                "land" | "creature" | "artifact" | "enchantment" | "aura" | "permanent"
-            )
-        }) {
-            let kind = words[idx];
-            idx += 1;
-            match kind {
-                "land" => "this land",
-                "creature" => "this creature",
-                "artifact" => "this artifact",
-                "enchantment" => "this enchantment",
-                "aura" => "this aura",
-                _ => "this permanent",
-            }
-        } else {
-            "this"
-        }
-    } else if words.get(idx) == Some(&"it") {
-        idx += 1;
-        "it"
-    } else {
+    let Some((idx, display_subject)) = parse_as_enters_choice_subject_words(
+        &words,
+        &[
+            ("land", "this land"),
+            ("creature", "this creature"),
+            ("artifact", "this artifact"),
+            ("enchantment", "this enchantment"),
+            ("aura", "this aura"),
+            ("permanent", "this permanent"),
+        ],
+    ) else {
         return Ok(None);
     };
-
-    if words.get(idx) != Some(&"enters") {
+    let Some(consumed) = parse_choose_player_phrase_words(&words[idx..]) else {
         return Ok(None);
-    }
-    idx += 1;
-
-    if words.get(idx) == Some(&"the") && words.get(idx + 1) == Some(&"battlefield") {
-        idx += 2;
-    }
-
-    if words.get(idx) != Some(&"choose") {
-        return Ok(None);
-    }
-    idx += 1;
-    if words.get(idx) == Some(&"a") {
-        idx += 1;
-    }
-    if words.get(idx) != Some(&"player") {
-        return Ok(None);
-    }
-    idx += 1;
-
-    if idx != words.len() {
+    };
+    if idx + consumed != words.len() {
         return Ok(None);
     }
 
-    let display_subject = if subject == "it" { "it" } else { subject };
     Ok(Some(StaticAbility::choose_player_as_enters(format!(
         "As {display_subject} enters, choose a player."
     ))))
@@ -4922,6 +5045,74 @@ pub(crate) fn parse_grant_flash_to_noncreature_spells_line(
     }
 }
 
+pub(crate) fn parse_you_may_static_grant_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    match parse_permission_clause_spec(tokens)? {
+        Some(crate::cards::builders::parse_parsing::PermissionClauseSpec::GrantBySpec {
+            player:
+                crate::cards::builders::PlayerAst::You
+                | crate::cards::builders::PlayerAst::Implicit,
+            spec,
+            lifetime: crate::cards::builders::parse_parsing::PermissionLifetime::Static,
+        }) => Ok(Some(StaticAbility::grants(spec))),
+        _ => Ok(None),
+    }
+}
+
+pub(crate) fn parse_you_may_look_top_card_any_time_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.as_slice()
+        == [
+            "you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any",
+            "time",
+        ]
+        || words.as_slice()
+            == [
+                "you", "may", "look", "at", "top", "card", "of", "your", "library", "any",
+                "time",
+            ]
+    {
+        return Ok(Some(StaticAbility::rule_text_placeholder(
+            "You may look at the top card of your library any time.",
+        )));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_warp_keyword_marker_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.first().copied() != Some("warp") {
+        return Ok(None);
+    }
+    let tail = words
+        .iter()
+        .skip(1)
+        .take_while(|word| **word != "you")
+        .copied()
+        .collect::<Vec<_>>();
+    let marker = if tail.is_empty() {
+        "warp".to_string()
+    } else {
+        format!("warp {}", tail.join(" "))
+    };
+    Ok(Some(StaticAbility::keyword_marker(marker)))
+}
+
+pub(crate) fn parse_melee_keyword_marker_line(
+    tokens: &[Token],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = words(tokens);
+    if words.first().copied() == Some("melee") {
+        return Ok(Some(StaticAbility::keyword_marker("melee")));
+    }
+    Ok(None)
+}
+
 pub(crate) fn parse_cast_this_spell_as_though_it_had_flash_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -5010,13 +5201,7 @@ pub(crate) fn parse_additional_land_play_line(
         return Ok(None);
     }
 
-    let abilities = (0..count)
-        .map(|_| StaticAbility::additional_land_play())
-        .collect::<Vec<_>>();
-    if !abilities.is_empty() {
-        return Ok(Some(abilities));
-    }
-    Ok(None)
+    Ok(Some(vec![StaticAbility::additional_land_plays(count)]))
 }
 
 pub(crate) fn parse_play_lands_from_graveyard_line(

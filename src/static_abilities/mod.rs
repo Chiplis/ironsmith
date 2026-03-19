@@ -813,9 +813,10 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
-    /// Returns true when this static ability makes matching creature triggers fire again.
-    fn duplicates_triggers_of_other_chosen_type_creatures_you_control(&self) -> bool {
-        false
+    /// Return a trigger-duplication descriptor, if this ability causes matching triggers
+    /// to trigger additional times.
+    fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
+        None
     }
 
     /// Return a "Cast this spell only ..." restriction descriptor, if any.
@@ -854,6 +855,14 @@ pub struct EnterAsCopyAsEntersSpec {
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
     pub added_subtypes: Vec<crate::types::Subtype>,
+}
+
+/// Spec for static abilities that duplicate matching triggered abilities.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TriggerDuplicationSpec {
+    pub source_filter: Option<crate::target::ObjectFilter>,
+    pub event_matcher: Option<crate::triggers::Trigger>,
+    pub copies: usize,
 }
 
 // Implement Clone for Box<dyn StaticAbilityKind>
@@ -916,9 +925,8 @@ impl StaticAbility {
         self.0.conditional_spell_keyword_spec()
     }
 
-    pub fn duplicates_triggers_of_other_chosen_type_creatures_you_control(&self) -> bool {
-        self.0
-            .duplicates_triggers_of_other_chosen_type_creatures_you_control()
+    pub fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
+        self.0.trigger_duplication_spec()
     }
 
     pub fn this_spell_cast_restriction_kind(&self) -> Option<ThisSpellCastRestrictionKind> {
@@ -1979,8 +1987,16 @@ impl StaticAbility {
         Self::new(LegendRuleDoesntApply)
     }
 
-    pub fn additional_land_play() -> Self {
-        Self::new(AdditionalLandPlay)
+    pub fn additional_land_plays(count: u32) -> Self {
+        let display = match count {
+            1 => "You may play an additional land on each of your turns.".to_string(),
+            2 => "You may play two additional lands on each of your turns.".to_string(),
+            _ => format!("You may play {count} additional lands on each of your turns."),
+        };
+        Self::restriction(
+            crate::effect::Restriction::additional_land_plays(crate::target::PlayerFilter::You, count),
+            display,
+        )
     }
 
     pub fn creatures_entering_dont_cause_abilities_to_trigger() -> Self {
@@ -1990,7 +2006,17 @@ impl StaticAbility {
     pub fn other_chosen_type_creature_triggered_abilities_trigger_additional_time(
         display: String,
     ) -> Self {
-        Self::new(OtherChosenTypeCreatureTriggeredAbilitiesTriggerAdditionalTime::new(display))
+        Self::duplicate_matching_triggered_abilities(
+            Some(
+                crate::target::ObjectFilter::creature()
+                    .you_control()
+                    .other()
+                    .of_chosen_creature_type(),
+            ),
+            None,
+            1,
+            display,
+        )
     }
 
     pub fn double_damage_from_sources_you_control_of_chosen_type(display: String) -> Self {
@@ -1999,6 +2025,20 @@ impl StaticAbility {
 
     pub fn library_of_leng_discard_replacement() -> Self {
         Self::new(LibraryOfLengDiscardReplacement)
+    }
+
+    pub fn duplicate_matching_triggered_abilities(
+        source_filter: Option<crate::target::ObjectFilter>,
+        event_matcher: Option<crate::triggers::Trigger>,
+        copies: usize,
+        display: String,
+    ) -> Self {
+        Self::new(DuplicateMatchingTriggeredAbilities::new(
+            source_filter,
+            event_matcher,
+            copies,
+            display,
+        ))
     }
 
     pub fn draw_replacement_exile_top_face_down() -> Self {

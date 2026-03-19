@@ -541,13 +541,25 @@ fn parse_create_copy_tapped_attacking_that_player_or_planeswalker_they_control()
 }
 
 #[test]
-fn parse_line_look_top_card_any_time_is_rejected() {
-    let err = parse_line("You may look at the top card of your library any time.", 0)
-        .expect_err("look-top-any-time fallback line should be rejected");
+fn parse_line_look_top_card_any_time_uses_static_parser() {
+    let parsed = parse_line("You may look at the top card of your library any time.", 0)
+        .expect("look-top-any-time line should parse");
+    let ability = extract_single_static_ability(parsed);
+    let debug = format!("{ability:#?}");
+    assert!(
+        debug.contains("RuleTextPlaceholder") || debug.contains("You may look at the top card"),
+        "expected shared static parser path, got {debug}"
+    );
+}
+
+#[test]
+fn parse_line_look_top_two_cards_any_time_is_still_rejected() {
+    let err = parse_line("You may look at the top two cards of your library any time.", 0)
+        .expect_err("unsupported look-top variant should still be rejected");
     let debug = format!("{err:?}");
     assert!(
-        debug.contains("unsupported static clause"),
-        "expected unsupported static clause error, got {debug}"
+        debug.contains("unsupported static clause") || debug.contains("unsupported trailing look clause"),
+        "expected unsupported look-top diagnostic, got {debug}"
     );
 }
 

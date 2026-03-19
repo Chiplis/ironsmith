@@ -26,6 +26,31 @@ use crate::target::{
 use crate::types::Subtype;
 use crate::zone::Zone;
 
+fn split_chosen_creature_type_qualifier(
+    tokens: &[Token],
+) -> Option<(Vec<Token>, bool, bool)> {
+    let words = words(tokens);
+    let patterns: [(&[&str], bool, bool); 5] = [
+        (&["that", "arent", "of", "the", "chosen", "type"], false, true),
+        (&["that", "aren't", "of", "the", "chosen", "type"], false, true),
+        (&["that", "are", "not", "of", "the", "chosen", "type"], false, true),
+        (&["of", "the", "chosen", "type"], true, false),
+        (&["that", "are", "of", "the", "chosen", "type"], true, false),
+    ];
+
+    for (suffix, chosen_type, excluded_chosen_type) in patterns {
+        if words.len() < suffix.len() || &words[words.len() - suffix.len()..] != suffix {
+            continue;
+        }
+        let cutoff = words.len() - suffix.len();
+        let token_cutoff = token_index_for_word_index(tokens, cutoff).unwrap_or(tokens.len());
+        let base_tokens = trim_commas(&tokens[..token_cutoff]).to_vec();
+        return Some((base_tokens, chosen_type, excluded_chosen_type));
+    }
+
+    None
+}
+
 pub(crate) fn parse_tap(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
@@ -699,7 +724,17 @@ pub(crate) fn parse_return(tokens: &[Token]) -> Result<EffectAst, CardTextError>
                 delayed_timing,
             ));
         }
-        let mut filter = parse_object_filter(return_filter_tokens, false)?;
+        let (base_filter_tokens, chosen_creature_type, excluded_chosen_creature_type) =
+            if let Some((base_tokens, chosen_type, excluded_chosen_type)) =
+                split_chosen_creature_type_qualifier(return_filter_tokens)
+            {
+                (base_tokens, chosen_type, excluded_chosen_type)
+            } else {
+                (return_filter_tokens.to_vec(), false, false)
+            };
+        let mut filter = parse_object_filter(&base_filter_tokens, false)?;
+        filter.chosen_creature_type |= chosen_creature_type;
+        filter.excluded_chosen_creature_type |= excluded_chosen_creature_type;
         for subtype in destination_excluded_subtypes {
             if !filter.excluded_subtypes.contains(&subtype) {
                 filter.excluded_subtypes.push(subtype);

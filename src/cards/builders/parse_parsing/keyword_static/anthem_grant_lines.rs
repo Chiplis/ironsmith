@@ -1402,6 +1402,9 @@ pub(crate) fn parse_static_condition_clause(
     if clause_words == ["equipped", "creature", "is", "untapped"] {
         return Ok(crate::ConditionExpr::EquippedCreatureUntapped);
     }
+    if clause_words == ["equipped", "creature", "is", "attacking"] {
+        return Ok(crate::ConditionExpr::EquippedCreatureAttacking);
+    }
     if clause_words == ["it", "is", "attacking"]
         || clause_words == ["its", "attacking"]
         || clause_words == ["this", "creature", "is", "attacking"]

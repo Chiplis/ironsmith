@@ -243,6 +243,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::EnergyCounters { .. } => {}
         EffectAst::ChooseCardName { .. } => {}
         EffectAst::ChooseColor { .. } => {}
+        EffectAst::ChooseCreatureType { .. } => {}
         EffectAst::RepeatThisProcess => {}
         EffectAst::RepeatThisProcessOnce => {}
         EffectAst::May { .. } => {}

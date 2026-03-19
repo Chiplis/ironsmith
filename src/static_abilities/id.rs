@@ -184,12 +184,11 @@ pub enum StaticAbilityId {
     DrawReplacementExileTopFaceDown,
     ExileToCounteredExileInsteadOfGraveyard,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
-    OtherChosenTypeCreatureTriggeredAbilitiesTriggerAdditionalTime,
+    DuplicateMatchingTriggeredAbilities,
     DoubleDamageFromSourcesYouControlOfChosenType,
     StartingLifeBonus,
     BuybackCostReduction,
     LegendRuleDoesntApply,
-    AdditionalLandPlay,
     SpendManaAsAnyColor,
     SpendManaAsAnyColorActivationCosts,
 
@@ -398,12 +397,11 @@ impl StaticAbilityId {
             | DrawReplacementExileTopFaceDown
             | ExileToCounteredExileInsteadOfGraveyard
             | CreaturesEnteringDontCauseAbilitiesToTrigger
-            | OtherChosenTypeCreatureTriggeredAbilitiesTriggerAdditionalTime
+            | DuplicateMatchingTriggeredAbilities
             | DoubleDamageFromSourcesYouControlOfChosenType
             | StartingLifeBonus
             | BuybackCostReduction
             | LegendRuleDoesntApply
-            | AdditionalLandPlay
             | SpendManaAsAnyColor
             | SpendManaAsAnyColorActivationCosts
             | RuleRestriction

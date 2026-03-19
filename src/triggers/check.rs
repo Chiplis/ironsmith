@@ -9,9 +9,11 @@ use std::hash::{Hash, Hasher};
 use crate::Effect;
 use crate::ability::{AbilityKind, TriggeredAbility};
 use crate::continuous::ContinuousEffect;
+use crate::filter::ObjectFilter;
 use crate::filter::ObjectRef;
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
@@ -240,39 +242,40 @@ fn suppresses_creature_etb_triggers_with_effects(
     )
 }
 
-fn trigger_source_matches_other_chosen_type_creature(
+fn trigger_source_matches_duplication_filter(
     game: &GameState,
     view: &crate::derived_view::DerivedGameView<'_>,
     entry: &TriggeredAbilityEntry,
     controller: PlayerId,
     static_source: ObjectId,
-    chosen_type: crate::types::Subtype,
+    filter: &ObjectFilter,
 ) -> bool {
-    if entry.controller != controller || entry.source == static_source {
-        return false;
-    }
+    let ctx = game.filter_context_for(controller, Some(static_source));
 
     if let Some(snapshot) = entry.source_snapshot.as_ref() {
-        return snapshot.controller == controller
-            && snapshot.zone == Zone::Battlefield
-            && snapshot.card_types.contains(&CardType::Creature)
-            && snapshot.subtypes.contains(&chosen_type);
+        return filter.matches_snapshot(snapshot, &ctx, game);
     }
 
     let Some(source_obj) = game.object(entry.source) else {
         return false;
     };
-    if source_obj.controller != controller
-        || source_obj.zone != Zone::Battlefield
-        || source_obj.id == static_source
-    {
-        return false;
-    }
+    let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+        source_obj,
+        game,
+        view.effects(),
+    );
+    filter.matches_snapshot(&snapshot, &ctx, game)
+}
 
-    view.object_has_card_type(entry.source, CardType::Creature)
-        && view
-            .calculated_subtypes(entry.source)
-            .contains(&chosen_type)
+fn trigger_event_matches_duplication_matcher(
+    game: &GameState,
+    entry: &TriggeredAbilityEntry,
+    controller: PlayerId,
+    static_source: ObjectId,
+    matcher: &Trigger,
+) -> bool {
+    let ctx = TriggerContext::for_source(static_source, controller, game);
+    matcher.matches(&entry.triggering_event, &ctx)
 }
 
 fn additional_trigger_copies_for_entry(
@@ -289,24 +292,35 @@ fn additional_trigger_copies_for_entry(
         let Some(static_abilities) = view.static_abilities(obj_id) else {
             continue;
         };
-        let Some(chosen_type) = game.chosen_creature_type(obj_id) else {
-            continue;
-        };
 
         for static_ability in static_abilities {
-            if !static_ability.duplicates_triggers_of_other_chosen_type_creatures_you_control() {
+            let Some(spec) = static_ability.trigger_duplication_spec() else {
+                continue;
+            };
+            if let Some(filter) = spec.source_filter.as_ref()
+                && !trigger_source_matches_duplication_filter(
+                    game,
+                    view,
+                    entry,
+                    obj.controller,
+                    obj_id,
+                    filter,
+                )
+            {
                 continue;
             }
-            if trigger_source_matches_other_chosen_type_creature(
-                game,
-                view,
-                entry,
-                obj.controller,
-                obj_id,
-                chosen_type,
-            ) {
-                copies += 1;
+            if let Some(matcher) = spec.event_matcher.as_ref()
+                && !trigger_event_matches_duplication_matcher(
+                    game,
+                    entry,
+                    obj.controller,
+                    obj_id,
+                    matcher,
+                )
+            {
+                continue;
             }
+            copies += spec.copies;
         }
     }
 

@@ -1557,6 +1557,14 @@ pub(super) fn pluralize_noun_phrase(phrase: &str) -> String {
             trailing
         );
     }
+    if let Some((head, tail)) = base.split_once(" that ") {
+        return format!(
+            "{} that {}{}",
+            pluralize_noun_phrase(head),
+            tail.trim(),
+            trailing
+        );
+    }
     for suffix in [
         " you control",
         " you own",
@@ -1592,6 +1600,8 @@ pub(super) fn pluralize_noun_phrase(phrase: &str) -> String {
         " in that player's library",
         " in a library",
         " in exile",
+        " of the chosen type",
+        " that aren't of the chosen type",
     ] {
         if let Some(head) = base.strip_suffix(suffix) {
             let head = head.trim_end();
@@ -4737,6 +4747,24 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let chooser = describe_player_filter(&choose_color.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         return format!("{chooser} {choose_verb} a color");
+    }
+    if let Some(choose_creature_type) =
+        effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
+    {
+        let chooser = describe_player_filter(&choose_creature_type.chooser);
+        let choose_verb = player_verb(&chooser, "choose", "chooses");
+        if choose_creature_type.excluded_subtypes.is_empty() {
+            return format!("{chooser} {choose_verb} a creature type");
+        }
+        let excluded = choose_creature_type
+            .excluded_subtypes
+            .iter()
+            .map(|subtype| subtype.to_string().to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        return format!(
+            "{chooser} {choose_verb} a creature type other than {}",
+            join_with_or(&excluded)
+        );
     }
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         let target = describe_choose_spec(&move_to_zone.target);

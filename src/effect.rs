@@ -2121,6 +2121,9 @@ pub enum Condition {
     /// Static condition for equipment: "as long as equipped creature is untapped".
     EquippedCreatureUntapped,
 
+    /// Static condition for equipment: "as long as equipped creature is attacking".
+    EquippedCreatureAttacking,
+
     /// Static count-based condition ("as long as you control three or more artifacts", etc.)
     CountComparison {
         count: crate::static_abilities::AnthemCountExpression,
@@ -3657,6 +3660,15 @@ impl Effect {
     pub fn choose_color(chooser: PlayerFilter) -> Self {
         use crate::effects::ChooseColorEffect;
         Self::new(ChooseColorEffect::new(chooser))
+    }
+
+    /// Choose a creature type and store it on the source object for later effects.
+    pub fn choose_creature_type(
+        chooser: PlayerFilter,
+        excluded_subtypes: Vec<crate::types::Subtype>,
+    ) -> Self {
+        use crate::effects::ChooseCreatureTypeEffect;
+        Self::new(ChooseCreatureTypeEffect::new(chooser, excluded_subtypes))
     }
 
     /// Create a conditional effect based on game state.

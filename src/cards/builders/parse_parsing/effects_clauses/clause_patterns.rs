@@ -314,6 +314,52 @@ pub(crate) fn parse_permission_clause_spec(
         }));
     }
 
+    if allow_land
+        && rest.starts_with(&["lands", "and", "cast"])
+        && let Some(from_idx) = rest.iter().position(|word| *word == "from")
+    {
+        let zone_words = &rest[from_idx..];
+        if zone_words == ["from", "the", "top", "of", "your", "library"] {
+            let subject_words = &rest[3..from_idx];
+            let filter = if subject_words == ["spells"] {
+                ObjectFilter::default()
+            } else {
+                let filter_start_word_idx = prefix_len + lead_len + 3;
+                let Some(filter_start_token_idx) =
+                    token_index_for_word_index(tokens, filter_start_word_idx)
+                else {
+                    return Ok(None);
+                };
+                let Some(filter_end_token_idx) =
+                    token_index_for_word_index(tokens, filter_start_word_idx + subject_words.len())
+                else {
+                    return Ok(None);
+                };
+                let subject_tokens =
+                    trim_commas(&tokens[filter_start_token_idx..filter_end_token_idx]);
+                let Some(spell_filter) =
+                    parse_permission_subject_filter_tokens(&subject_tokens)?
+                else {
+                    return Ok(None);
+                };
+                ObjectFilter {
+                    any_of: vec![ObjectFilter::land(), spell_filter],
+                    ..ObjectFilter::default()
+                }
+            };
+
+            return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                player,
+                spec: crate::grant::GrantSpec::new(
+                    crate::grant::Grantable::play_from(),
+                    filter,
+                    Zone::Library,
+                ),
+                lifetime: PermissionLifetime::Static,
+            }));
+        }
+    }
+
     if !allow_land {
         let (spec, subject_len) = if rest.starts_with(&["spells"]) {
             (crate::grant::GrantSpec::flash_to_spells(), 1usize)
@@ -353,6 +399,47 @@ pub(crate) fn parse_permission_clause_spec(
                     lifetime,
                 }));
             }
+        }
+
+        let flash_tail_specs: &[(&[&str], PermissionLifetime)] = &[
+            (&["as", "though", "they", "had", "flash"], PermissionLifetime::Static),
+            (&["as", "though", "they", "have", "flash"], PermissionLifetime::Static),
+            (&["this", "turn", "as", "though", "they", "had", "flash"], PermissionLifetime::ThisTurn),
+            (&["this", "turn", "as", "though", "they", "have", "flash"], PermissionLifetime::ThisTurn),
+            (&["until", "end", "of", "turn", "as", "though", "they", "had", "flash"], PermissionLifetime::UntilEndOfTurn),
+            (&["until", "the", "end", "of", "turn", "as", "though", "they", "had", "flash"], PermissionLifetime::UntilEndOfTurn),
+        ];
+        for (tail, lifetime) in flash_tail_specs {
+            if rest.len() <= tail.len() || !rest.ends_with(tail) {
+                continue;
+            }
+
+            let subject_word_len = rest.len() - tail.len();
+            let filter_start_word_idx = prefix_len + lead_len;
+            let Some(filter_start_token_idx) =
+                token_index_for_word_index(tokens, filter_start_word_idx)
+            else {
+                continue;
+            };
+            let Some(filter_end_token_idx) =
+                token_index_for_word_index(tokens, filter_start_word_idx + subject_word_len)
+            else {
+                continue;
+            };
+            let filter_tokens = trim_commas(&tokens[filter_start_token_idx..filter_end_token_idx]);
+            if filter_tokens.is_empty() {
+                continue;
+            }
+
+            let Some(filter) = parse_permission_subject_filter_tokens(&filter_tokens)? else {
+                continue;
+            };
+
+            return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                player,
+                spec: crate::grant::GrantSpec::flash_to_spells_matching(filter),
+                lifetime: *lifetime,
+            }));
         }
     }
 
@@ -405,6 +492,51 @@ pub(crate) fn parse_permission_clause_spec(
             spec: crate::grant::GrantSpec::cast_from_hand_without_paying_mana_cost_matching(filter),
             lifetime: PermissionLifetime::Static,
         }));
+    }
+
+    Ok(None)
+}
+
+fn normalize_permission_subject_filter(mut filter: ObjectFilter) -> ObjectFilter {
+    filter.zone = None;
+    filter.stack_kind = None;
+    filter.has_mana_cost = false;
+    filter
+}
+
+fn parse_permission_subject_filter_tokens(
+    filter_tokens: &[Token],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    for separator in ["and", "or"] {
+        let Some(split_idx) = filter_tokens.iter().position(|token| token.is_word(separator)) else {
+            continue;
+        };
+        let left_tokens = trim_commas(&filter_tokens[..split_idx]);
+        let right_tokens = trim_commas(&filter_tokens[split_idx + 1..]);
+        if left_tokens.is_empty() || right_tokens.is_empty() {
+            continue;
+        }
+        let Ok(left) = parse_object_filter(&left_tokens, false) else {
+            continue;
+        };
+        let Ok(right) = parse_object_filter(&right_tokens, false) else {
+            continue;
+        };
+        return Ok(Some(ObjectFilter {
+            any_of: vec![
+                normalize_permission_subject_filter(left),
+                normalize_permission_subject_filter(right),
+            ],
+            ..ObjectFilter::default()
+        }));
+    }
+
+    if let Ok(filter) = parse_object_filter(filter_tokens, false) {
+        return Ok(Some(normalize_permission_subject_filter(filter)));
     }
 
     Ok(None)

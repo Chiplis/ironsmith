@@ -883,60 +883,6 @@ pub(super) fn normalize_enchanted_creature_dies_clause(text: &str) -> Option<Str
     None
 }
 
-pub(super) fn normalize_chosen_creature_type_clause(text: &str) -> Option<String> {
-    let rest = strip_prefix_ascii_ci(
-        text.trim(),
-        "You choose exactly 1 creature in the battlefield and tags it as 'chosen_creature_type_ref'. ",
-    )?;
-    let rest = rest.trim();
-
-    let shared_get_prefixes = [
-        "creature that shares a creature types with that object get ",
-        "creature that shares a creature type with that object get ",
-    ];
-    let shared_gain_prefixes = [
-        "creature that shares a creature types with that object gain ",
-        "creature that shares a creature type with that object gain ",
-    ];
-
-    for get_prefix in shared_get_prefixes {
-        if let Some((pump_clause, gain_clause)) = rest.split_once(". ")
-            && let Some(pump_amount) = strip_prefix_ascii_ci(pump_clause.trim(), get_prefix)
-        {
-            for gain_prefix in shared_gain_prefixes {
-                if let Some(gain_text) = strip_prefix_ascii_ci(gain_clause.trim(), gain_prefix)
-                    && let Some(gain_body) =
-                        strip_suffix_ascii_ci(gain_text.trim(), " until end of turn.").or_else(
-                            || strip_suffix_ascii_ci(gain_text.trim(), " until end of turn"),
-                        )
-                {
-                    let pump_amount =
-                        strip_suffix_ascii_ci(pump_amount.trim(), " until end of turn.")
-                            .or_else(|| {
-                                strip_suffix_ascii_ci(pump_amount.trim(), " until end of turn")
-                            })
-                            .unwrap_or_else(|| pump_amount.trim());
-                    return Some(format!(
-                        "Creatures of the creature type of your choice get {} and gain {} until end of turn.",
-                        pump_amount.trim(),
-                        gain_body.trim()
-                    ));
-                }
-            }
-        }
-    }
-
-    shared_get_prefixes
-        .iter()
-        .find_map(|prefix| strip_prefix_ascii_ci(rest, prefix))
-        .map(|buff_clause| {
-            format!(
-                "Creatures of the creature type of your choice get {}",
-                buff_clause.trim()
-            )
-        })
-}
-
 pub(super) fn normalize_subject_signature_for_get_gain(subject: &str) -> String {
     let mut words = Vec::new();
     for raw_word in subject.split_whitespace() {
@@ -1378,13 +1324,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if let Some(rewritten) = normalize_enchanted_creature_dies_clause(&normalized) {
         normalized = rewritten;
-    }
-    if let Some(rewritten) = normalize_chosen_creature_type_clause(&normalized) {
-        normalized = rewritten;
-    } else if let Some((head, tail)) = split_once_ascii_ci(&normalized, ": ")
-        && let Some(rewritten_tail) = normalize_chosen_creature_type_clause(tail)
-    {
-        normalized = format!("{}: {}", head.trim(), rewritten_tail);
     }
     if let Some(rewritten) = normalize_pump_and_gain_until_end_of_turn(&normalized) {
         normalized = rewritten;
@@ -7804,6 +7743,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::EquippedCreatureTapped => "equipped creature is tapped".to_string(),
         Condition::EquippedCreatureUntapped => "equipped creature is untapped".to_string(),
+        Condition::EquippedCreatureAttacking => "equipped creature is attacking".to_string(),
         Condition::CountComparison { display, .. } => display
             .as_ref()
             .map(|s| s.to_string())

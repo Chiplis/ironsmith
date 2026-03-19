@@ -6,7 +6,7 @@ use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec,
     ChoosePlayerAsEntersSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
     EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId, StaticAbilityKind,
-    ThisSpellCastRestrictionKind,
+    ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::LevelAbility;
@@ -1813,26 +1813,6 @@ impl StaticAbilityKind for LegendRuleDoesntApply {
     }
 }
 
-/// You may play an additional land on each of your turns.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct AdditionalLandPlay;
-
-impl StaticAbilityKind for AdditionalLandPlay {
-    fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::AdditionalLandPlay
-    }
-
-    fn display(&self) -> String {
-        "You may play an additional land on each of your turns".to_string()
-    }
-
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        if let Some(player) = game.player_mut(controller) {
-            player.land_plays_per_turn = player.land_plays_per_turn.saturating_add(1);
-        }
-    }
-}
-
 /// Creatures entering don't cause abilities to trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CreaturesEnteringDontCauseAbilitiesToTrigger;
@@ -1849,28 +1829,45 @@ impl StaticAbilityKind for CreaturesEnteringDontCauseAbilitiesToTrigger {
 
 /// "If a triggered ability of another creature you control of the chosen type triggers,
 /// it triggers an additional time."
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OtherChosenTypeCreatureTriggeredAbilitiesTriggerAdditionalTime {
+#[derive(Debug, Clone, PartialEq)]
+pub struct DuplicateMatchingTriggeredAbilities {
+    pub source_filter: Option<ObjectFilter>,
+    pub event_matcher: Option<crate::triggers::Trigger>,
+    pub copies: usize,
     pub display: String,
 }
 
-impl OtherChosenTypeCreatureTriggeredAbilitiesTriggerAdditionalTime {
-    pub fn new(display: String) -> Self {
-        Self { display }
+impl DuplicateMatchingTriggeredAbilities {
+    pub fn new(
+        source_filter: Option<ObjectFilter>,
+        event_matcher: Option<crate::triggers::Trigger>,
+        copies: usize,
+        display: String,
+    ) -> Self {
+        Self {
+            source_filter,
+            event_matcher,
+            copies,
+            display,
+        }
     }
 }
 
-impl StaticAbilityKind for OtherChosenTypeCreatureTriggeredAbilitiesTriggerAdditionalTime {
+impl StaticAbilityKind for DuplicateMatchingTriggeredAbilities {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::OtherChosenTypeCreatureTriggeredAbilitiesTriggerAdditionalTime
+        StaticAbilityId::DuplicateMatchingTriggeredAbilities
     }
 
     fn display(&self) -> String {
         self.display.clone()
     }
 
-    fn duplicates_triggers_of_other_chosen_type_creatures_you_control(&self) -> bool {
-        true
+    fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
+        Some(TriggerDuplicationSpec {
+            source_filter: self.source_filter.clone(),
+            event_matcher: self.event_matcher.clone(),
+            copies: self.copies,
+        })
     }
 }
 

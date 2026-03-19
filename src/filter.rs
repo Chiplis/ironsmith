@@ -1077,6 +1077,12 @@ pub struct ObjectFilter {
     /// If true, object must have the color previously chosen for the source.
     pub chosen_color: bool,
 
+    /// If true, object must have the creature type previously chosen for the source.
+    pub chosen_creature_type: bool,
+
+    /// If true, object must not have the creature type previously chosen for the source.
+    pub excluded_chosen_creature_type: bool,
+
     /// Excluded colors (object must have none of these colors)
     pub excluded_colors: ColorSet,
 
@@ -1672,6 +1678,18 @@ impl ObjectFilter {
     /// Require the object to have the previously chosen color of the source.
     pub fn of_chosen_color(mut self) -> Self {
         self.chosen_color = true;
+        self
+    }
+
+    /// Require the object to have the previously chosen creature type of the source.
+    pub fn of_chosen_creature_type(mut self) -> Self {
+        self.chosen_creature_type = true;
+        self
+    }
+
+    /// Exclude objects that have the previously chosen creature type of the source.
+    pub fn not_of_chosen_creature_type(mut self) -> Self {
+        self.excluded_chosen_creature_type = true;
         self
     }
 
@@ -2420,6 +2438,28 @@ impl ObjectFilter {
         {
             return false;
         }
+        if self.chosen_creature_type {
+            let Some(chosen_type) = ctx
+                .source
+                .and_then(|source| game.chosen_creature_type(source))
+            else {
+                return false;
+            };
+            if !object.subtypes.contains(&chosen_type) {
+                return false;
+            }
+        }
+        if self.excluded_chosen_creature_type {
+            let Some(chosen_type) = ctx
+                .source
+                .and_then(|source| game.chosen_creature_type(source))
+            else {
+                return false;
+            };
+            if object.subtypes.contains(&chosen_type) {
+                return false;
+            }
+        }
 
         // Supertypes (must have at least one if specified)
         if !self.supertypes.is_empty()
@@ -2856,6 +2896,28 @@ impl ObjectFilter {
             .any(|t| snapshot.subtypes.contains(t))
         {
             return false;
+        }
+        if self.chosen_creature_type {
+            let Some(chosen_type) = ctx
+                .source
+                .and_then(|source| game.chosen_creature_type(source))
+            else {
+                return false;
+            };
+            if !snapshot.subtypes.contains(&chosen_type) {
+                return false;
+            }
+        }
+        if self.excluded_chosen_creature_type {
+            let Some(chosen_type) = ctx
+                .source
+                .and_then(|source| game.chosen_creature_type(source))
+            else {
+                return false;
+            };
+            if snapshot.subtypes.contains(&chosen_type) {
+                return false;
+            }
         }
 
         // Supertypes (must have at least one if specified)
@@ -3298,6 +3360,12 @@ impl ObjectFilter {
         }
         if self.chosen_color {
             post_noun_qualifiers.push("of the chosen color".to_string());
+        }
+        if self.chosen_creature_type {
+            post_noun_qualifiers.push("of the chosen type".to_string());
+        }
+        if self.excluded_chosen_creature_type {
+            post_noun_qualifiers.push("that aren't of the chosen type".to_string());
         }
         for constraint in &self.tagged_constraints {
             match constraint.relation {

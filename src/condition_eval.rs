@@ -272,6 +272,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::EnchantedPermanentIsVehicle => {}
         Condition::EquippedCreatureTapped => {}
         Condition::EquippedCreatureUntapped => {}
+        Condition::EquippedCreatureAttacking => {}
         Condition::CountComparison { .. } => {}
         Condition::OwnsCardExiledWithCounter(..) => {}
         Condition::SourceAttackedThisTurn => {}
@@ -879,6 +880,14 @@ pub fn evaluate_condition_external(
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to)
             .is_some_and(|attached| !game.is_tapped(attached)),
+        Condition::EquippedCreatureAttacking => game
+            .object(ctx.source)
+            .and_then(|source_obj| source_obj.attached_to)
+            .is_some_and(|attached| {
+                game.combat
+                    .as_ref()
+                    .is_some_and(|combat| crate::combat_state::is_attacking(combat, attached))
+            }),
         Condition::CountComparison {
             count, comparison, ..
         } => comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
@@ -1484,6 +1493,7 @@ fn evaluate_condition_simple(
         | Condition::EnchantedPermanentIsVehicle
         | Condition::EquippedCreatureTapped
         | Condition::EquippedCreatureUntapped
+        | Condition::EquippedCreatureAttacking
         | Condition::CountComparison { .. }
         | Condition::OwnsCardExiledWithCounter(_)
         | Condition::SourceAttackedThisTurn
@@ -2329,6 +2339,14 @@ fn evaluate_condition(
             .object(ctx.source)
             .and_then(|source_obj| source_obj.attached_to)
             .is_some_and(|attached| !game.is_tapped(attached))),
+        Condition::EquippedCreatureAttacking => Ok(game
+            .object(ctx.source)
+            .and_then(|source_obj| source_obj.attached_to)
+            .is_some_and(|attached| {
+                game.combat
+                    .as_ref()
+                    .is_some_and(|combat| crate::combat_state::is_attacking(combat, attached))
+            })),
         Condition::CountComparison {
             count, comparison, ..
         } => Ok(

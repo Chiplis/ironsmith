@@ -529,6 +529,9 @@ fn advance_reference_frame_for_effect(
         EffectAst::ChooseColor { player } => {
             track_effect_player(*player, frame, true, true)?;
         }
+        EffectAst::ChooseCreatureType { player, .. } => {
+            track_effect_player(*player, frame, true, true)?;
+        }
         EffectAst::DrawForEachTaggedMatching { player, .. } => {
             track_effect_player(*player, frame, true, true)?;
         }
@@ -1509,6 +1512,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         }
         EffectAst::ChooseCardName { tag, .. } => bind_unresolved_it_in_tag(tag, seed_tag),
         EffectAst::ChooseColor { .. } => 0,
+        EffectAst::ChooseCreatureType { .. } => 0,
         EffectAst::Sacrifice { filter, .. }
         | EffectAst::SacrificeAll { filter, .. }
         | EffectAst::ExchangeControl { filter, .. }

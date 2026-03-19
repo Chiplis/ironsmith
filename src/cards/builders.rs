@@ -1955,6 +1955,10 @@ pub(crate) enum EffectAst {
     ChooseColor {
         player: PlayerAst,
     },
+    ChooseCreatureType {
+        player: PlayerAst,
+        excluded_subtypes: Vec<Subtype>,
+    },
     RepeatThisProcess,
     RepeatThisProcessOnce,
     May {
@@ -12138,10 +12142,16 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
             .parse_text("You may play two additional lands on each of your turns.")
             .expect("multiple additional-land-play static line should parse");
 
-        let debug = format!("{:?}", def);
         assert!(
-            debug.matches("AdditionalLandPlay").count() >= 2,
-            "expected at least two AdditionalLandPlay static abilities, got {debug}"
+            def.abilities.len() == 1,
+            "expected a single shared restriction-based static ability, got {:#?}",
+            def.abilities
+        );
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("RuleRestriction")
+                && debug.contains("AdditionalLandPlays(You, 2)"),
+            "expected shared additional-land-play restriction, got {debug}"
         );
     }
 

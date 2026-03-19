@@ -10617,51 +10617,120 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     ]))
 }
 
+pub(crate) fn parse_choose_creature_type_phrase_words(
+    words: &[&str],
+) -> Result<Option<(usize, Vec<Subtype>)>, CardTextError> {
+    let Some(mut idx) = parse_choose_phrase_prefix_words(words) else {
+        return Ok(None);
+    };
+    if words.get(idx) != Some(&"creature") || words.get(idx + 1) != Some(&"type") {
+        return Ok(None);
+    }
+    idx += 2;
+
+    let mut excluded_subtypes = Vec::new();
+    if words.get(idx) == Some(&"other") && words.get(idx + 1) == Some(&"than") {
+        let subtype_word = words.get(idx + 2).copied().ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing creature subtype exclusion in creature-type choice clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?;
+        let subtype = parse_subtype_word(subtype_word)
+            .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word))
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported creature subtype exclusion in creature-type choice clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+        excluded_subtypes.push(subtype);
+        idx += 3;
+    }
+
+    Ok(Some((idx, excluded_subtypes)))
+}
+
+fn parse_choose_phrase_prefix_words(words: &[&str]) -> Option<usize> {
+    if words.is_empty() || !matches!(words[0], "choose" | "chooses") {
+        return None;
+    }
+
+    let mut idx = 1usize;
+    if words.get(idx).is_some_and(|word| is_article(word)) {
+        idx += 1;
+    }
+    Some(idx)
+}
+
+pub(crate) fn parse_choose_color_phrase_words(
+    words: &[&str],
+) -> Result<Option<(usize, Option<ColorSet>)>, CardTextError> {
+    let Some(mut idx) = parse_choose_phrase_prefix_words(words) else {
+        return Ok(None);
+    };
+    if words.get(idx) != Some(&"color") {
+        return Ok(None);
+    }
+    idx += 1;
+
+    let mut excluded = None;
+    if words.get(idx) == Some(&"other") && words.get(idx + 1) == Some(&"than") {
+        let color_word = words.get(idx + 2).copied().ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing color exclusion in choose-color clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?;
+        excluded = Some(parse_color(color_word).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported color exclusion in choose-color clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?);
+        idx += 3;
+    }
+
+    Ok(Some((idx, excluded)))
+}
+
+pub(crate) fn parse_choose_player_phrase_words(words: &[&str]) -> Option<usize> {
+    let mut idx = parse_choose_phrase_prefix_words(words)?;
+    if words.get(idx) != Some(&"player") {
+        return None;
+    }
+    idx += 1;
+    Some(idx)
+}
+
+pub(crate) fn parse_choose_basic_land_type_phrase_words(words: &[&str]) -> Option<usize> {
+    let mut idx = parse_choose_phrase_prefix_words(words)?;
+    if words.get(idx) != Some(&"basic")
+        || words.get(idx + 1) != Some(&"land")
+        || words.get(idx + 2) != Some(&"type")
+    {
+        return None;
+    }
+    idx += 3;
+    Some(idx)
+}
+
 pub(crate) fn parse_choose_creature_type_then_become_type(
     first: &[Token],
     second: &[Token],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(first);
     let first_words = words(&first_tokens);
-    if first_words.is_empty() || !matches!(first_words[0], "choose" | "chooses") {
+    let Some((consumed, excluded_subtypes)) =
+        parse_choose_creature_type_phrase_words(&first_words)?
+    else {
         return Ok(None);
-    }
-
-    let mut idx = 1usize;
-    if first_words.get(idx).is_some_and(|word| is_article(word)) {
-        idx += 1;
-    }
-    if first_words.get(idx) != Some(&"creature") || first_words.get(idx + 1) != Some(&"type") {
-        return Ok(None);
-    }
-    idx += 2;
-
-    let mut excluded_subtypes = Vec::new();
-    if idx < first_words.len() {
-        if first_words.get(idx) == Some(&"other") && first_words.get(idx + 1) == Some(&"than") {
-            let subtype_word = first_words.get(idx + 2).copied().ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing creature subtype exclusion in creature-type choice clause (clause: '{}')",
-                    first_words.join(" ")
-                ))
-            })?;
-            let subtype = parse_subtype_word(subtype_word)
-                .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word))
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported creature subtype exclusion in creature-type choice clause (clause: '{}')",
-                        first_words.join(" ")
-                    ))
-                })?;
-            excluded_subtypes.push(subtype);
-            idx += 3;
-        }
-        if idx != first_words.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported creature-type choice clause (clause: '{}')",
-                first_words.join(" ")
-            )));
-        }
+    };
+    if consumed != first_words.len() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported creature-type choice clause (clause: '{}')",
+            first_words.join(" ")
+        )));
     }
 
     let second_words = words(second);

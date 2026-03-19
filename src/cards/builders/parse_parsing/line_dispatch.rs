@@ -11,7 +11,7 @@ use crate::cards::builders::{
     parse_escape_line, parse_if_this_spell_costs_less_to_cast_line, parse_kicker_line,
     parse_level_up_line, parse_loyalty_shorthand_activation_cost, parse_madness_line,
     parse_mana_symbol, parse_mana_symbol_group, parse_morph_keyword_line, parse_multikicker_line,
-    parse_offspring_line, parse_reinforce_line, parse_saga_chapter_prefix,
+    parse_offspring_line, parse_permission_clause_spec, parse_reinforce_line, parse_saga_chapter_prefix,
     parse_scryfall_mana_cost, parse_squad_line, parse_static_ability_ast_line,
     parse_this_spell_cost_condition, parse_transmute_line, parse_triggered_line, parser_trace,
     parser_trace_line, split_on_or, starts_with_until_end_of_turn, tokenize_line, trim_commas,
@@ -599,15 +599,29 @@ fn line_has_no_creatures_trigger_clause(view: &ClauseView<'_>) -> bool {
 
 fn line_has_play_from_top_of_library_clause(view: &ClauseView<'_>) -> bool {
     let normalized = normalized_line_without_braces(view);
-    normalized == "you may play lands and cast spells from the top of your library"
-        || normalized == "play lands and cast spells from the top of your library"
-        || normalized == "all mountains are plains"
+    let looks_like_top_library_permission = normalized.contains("from the top of your library")
+        && (normalized.starts_with("you may play")
+            || normalized.starts_with("you may cast")
+            || normalized.starts_with("play ")
+            || normalized.starts_with("cast "));
+    looks_like_top_library_permission
+        && parse_permission_clause_spec(view.tokens)
+            .ok()
+            .flatten()
+            .is_none()
 }
 
 fn line_has_look_top_card_any_time_clause(view: &ClauseView<'_>) -> bool {
     let normalized = normalized_line_without_braces(view);
-    normalized.starts_with("you may look at top card of your library any time")
-        || normalized.starts_with("you may look at the top card of your library any time")
+    let looks_like_top_library_look = normalized.starts_with("you may look")
+        && normalized.contains("top card")
+        && normalized.contains("your library")
+        && normalized.contains("any time");
+    looks_like_top_library_look
+        && parse_static_ability_ast_line(view.tokens)
+            .ok()
+            .flatten()
+            .is_none()
 }
 
 fn line_has_once_each_turn_play_from_exile_clause(view: &ClauseView<'_>) -> bool {
@@ -1608,6 +1622,15 @@ fn parse_statement_verb_leading_rule(
         || line_is_damage_prevent_with_remove_static(words)
         || line_is_prevent_all_damage_to_source_by_creatures_static(words)
         || line_is_prevent_all_combat_damage_to_source_static(words)
+    {
+        return Ok(None);
+    }
+
+    if parse_static_ability_ast_line(view.tokens)?.is_some()
+        && (words.first().copied() == Some("if")
+            || words.starts_with(&["you", "may"])
+            || words.first().copied() == Some("cast")
+            || words.first().copied() == Some("play"))
     {
         return Ok(None);
     }

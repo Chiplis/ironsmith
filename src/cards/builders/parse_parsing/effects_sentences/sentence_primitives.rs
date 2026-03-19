@@ -2331,16 +2331,13 @@ pub(crate) fn parse_sentence_destroy_then_land_controller_graveyard_count_damage
     parse_destroy_then_land_controller_graveyard_count_damage_sentence(tokens)
 }
 
-pub(crate) fn add_tagged_subtype_constraint_to_target(target: &mut TargetAst, tag: TagKey) -> bool {
+pub(crate) fn add_chosen_creature_type_constraint_to_target(target: &mut TargetAst) -> bool {
     match target {
         TargetAst::Object(filter, _, _) => {
-            filter.tagged_constraints.push(TaggedObjectConstraint {
-                tag,
-                relation: TaggedOpbjectRelation::SharesSubtypeWithTagged,
-            });
+            filter.chosen_creature_type = true;
             true
         }
-        TargetAst::WithCount(inner, _) => add_tagged_subtype_constraint_to_target(inner, tag),
+        TargetAst::WithCount(inner, _) => add_chosen_creature_type_constraint_to_target(inner),
         _ => false,
     }
 }
@@ -2442,21 +2439,13 @@ pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
         return Ok(None);
     }
 
-    let chosen_type_tag: TagKey = "chosen_creature_type_ref".into();
-    let mut choose_filter = ObjectFilter::creature();
-    choose_filter.controller = Some(PlayerFilter::Any);
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
-            filter: choose_filter,
-            count: ChoiceCount::exactly(1),
+        EffectAst::ChooseCreatureType {
             player: PlayerAst::You,
-            tag: chosen_type_tag.clone(),
+            excluded_subtypes: vec![],
         },
         EffectAst::DestroyAll {
-            filter: ObjectFilter::creature().match_tagged(
-                chosen_type_tag,
-                TaggedOpbjectRelation::SharesSubtypeWithTagged,
-            ),
+            filter: ObjectFilter::creature().of_chosen_creature_type(),
         },
     ]))
 }
@@ -2493,10 +2482,6 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
         )));
     }
 
-    let chosen_type_tag: TagKey = "chosen_creature_type_ref".into();
-    let mut choose_filter = ObjectFilter::creature();
-    choose_filter.controller = Some(PlayerFilter::Any);
-
     // Handle composed clauses like:
     // "Creatures of the creature type of your choice get +2/+2 and gain trample until end of turn."
     let mut gain_candidate_tokens = trimmed_subject_tokens.clone();
@@ -2508,26 +2493,16 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
                 EffectAst::PumpAll { filter, .. }
                 | EffectAst::GrantAbilitiesAll { filter, .. }
                 | EffectAst::GrantAbilitiesChoiceAll { filter, .. } => {
-                    if !filter.tagged_constraints.iter().any(|constraint| {
-                        constraint.tag == chosen_type_tag
-                            && constraint.relation == TaggedOpbjectRelation::SharesSubtypeWithTagged
-                    }) {
-                        filter.tagged_constraints.push(TaggedObjectConstraint {
-                            tag: chosen_type_tag.clone(),
-                            relation: TaggedOpbjectRelation::SharesSubtypeWithTagged,
-                        });
-                    }
+                    filter.chosen_creature_type = true;
                     patched = true;
                 }
                 _ => {}
             }
         }
         if patched {
-            let mut effects = vec![EffectAst::ChooseObjects {
-                filter: choose_filter,
-                count: ChoiceCount::exactly(1),
+            let mut effects = vec![EffectAst::ChooseCreatureType {
                 player: PlayerAst::You,
-                tag: chosen_type_tag,
+                excluded_subtypes: vec![],
             }];
             effects.extend(gain_effects);
             return Ok(Some(effects));
@@ -2580,17 +2555,12 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
         )));
     }
 
-    filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: chosen_type_tag.clone(),
-        relation: TaggedOpbjectRelation::SharesSubtypeWithTagged,
-    });
+    filter.chosen_creature_type = true;
 
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
-            filter: choose_filter,
-            count: ChoiceCount::exactly(1),
+        EffectAst::ChooseCreatureType {
             player: PlayerAst::You,
-            tag: chosen_type_tag,
+            excluded_subtypes: vec![],
         },
         EffectAst::PumpAll {
             filter,
@@ -2640,22 +2610,17 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
     }
 
     let mut target = parse_target_phrase(&trimmed_target)?;
-    let chosen_type_tag: TagKey = "chosen_creature_type_ref".into();
-    if !add_tagged_subtype_constraint_to_target(&mut target, chosen_type_tag.clone()) {
+    if !add_chosen_creature_type_constraint_to_target(&mut target) {
         return Err(CardTextError::ParseError(format!(
             "creature-type choice return target must be object-based (clause: '{}')",
             words(tokens).join(" ")
         )));
     }
 
-    let mut choose_filter = ObjectFilter::creature();
-    choose_filter.controller = Some(PlayerFilter::Any);
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
-            filter: choose_filter,
-            count: ChoiceCount::exactly(1),
+        EffectAst::ChooseCreatureType {
             player: PlayerAst::You,
-            tag: chosen_type_tag,
+            excluded_subtypes: vec![],
         },
         EffectAst::ReturnToHand {
             target,

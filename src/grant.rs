@@ -258,6 +258,25 @@ impl GrantSpec {
             }
         }
 
+        fn castable_filter_description(filter: &ObjectFilter) -> String {
+            if !filter.any_of.is_empty() {
+                return filter
+                    .any_of
+                    .iter()
+                    .map(castable_filter_description)
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+            }
+            let description = filter.description();
+            if description.contains("permanent") {
+                description.replace("permanent", "spell")
+            } else if description.contains("spell") || description.contains("card") {
+                description
+            } else {
+                format!("{description} spells")
+            }
+        }
+
         let mut filter = self.filter.clone();
         filter.zone.get_or_insert(self.zone);
         let filter_desc = filter.description();
@@ -273,6 +292,49 @@ impl GrantSpec {
             && self.filter == ObjectFilter::default()
         {
             return "You may play lands and cast spells from your graveyard".to_string();
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Library
+            && self.filter == ObjectFilter::default()
+        {
+            return "You may play lands and cast spells from the top of your library".to_string();
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Library
+            && self.filter.card_types.as_slice() == [CardType::Land]
+        {
+            return "You may play lands from the top of your library".to_string();
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Library
+            && self.filter.any_of.len() == 2
+        {
+            let land_branch = self
+                .filter
+                .any_of
+                .iter()
+                .find(|branch| branch.card_types.as_slice() == [CardType::Land]);
+            let other_branch = self
+                .filter
+                .any_of
+                .iter()
+                .find(|branch| branch.card_types.as_slice() != [CardType::Land]);
+            if land_branch.is_some()
+                && let Some(other) = other_branch
+            {
+                return format!(
+                    "You may play lands and cast {} from the top of your library",
+                    castable_filter_description(other)
+                );
+            }
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Library
+        {
+            return format!(
+                "You may play {} from the top of your library",
+                filter_desc
+            );
         }
         if let Grantable::AlternativeCast(method) = &self.grantable
             && self.zone == Zone::Hand
@@ -308,9 +370,10 @@ impl GrantSpec {
             if self.filter == ObjectFilter::nonland() {
                 return "You may cast spells as though they had flash".to_string();
             }
-            if self.filter == ObjectFilter::noncreature_spell() {
-                return "You may cast noncreature spells as though they had flash".to_string();
-            }
+            return format!(
+                "You may cast {} as though they had flash",
+                castable_filter_description(&self.filter)
+            );
         }
         format!(
             "Cards in {} have {}",

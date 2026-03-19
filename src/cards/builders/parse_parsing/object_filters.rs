@@ -2568,6 +2568,8 @@ pub(crate) fn parse_object_filter(
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
         || filter.chosen_color
+        || filter.chosen_creature_type
+        || filter.excluded_chosen_creature_type
         || filter.colors.is_some()
         || !filter.tagged_constraints.is_empty()
         || filter.targets_player.is_some()
@@ -2699,6 +2701,8 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
         || filter.chosen_color
+        || filter.chosen_creature_type
+        || filter.excluded_chosen_creature_type
         || filter.colors.is_some()
         || filter.power.is_some()
         || filter.toughness.is_some()
@@ -2731,6 +2735,8 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
         base.colors = Some(existing.union(colors));
     }
     base.chosen_color |= extra.chosen_color;
+    base.chosen_creature_type |= extra.chosen_creature_type;
+    base.excluded_chosen_creature_type |= extra.excluded_chosen_creature_type;
     if base.alternative_cast.is_none() {
         base.alternative_cast = extra.alternative_cast;
     }

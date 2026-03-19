@@ -3622,28 +3622,6 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_creature_type_choice_pump_sentence() {
-        let normalized = normalize_common_semantic_phrasing(
-            "You choose exactly 1 creature in the battlefield and tags it as 'chosen_creature_type_ref'. creature that shares a creature types with that object get +0/+4 until end of turn.",
-        );
-        assert_eq!(
-            normalized,
-            "Creatures of the creature type of your choice get +0/+4 until end of turn."
-        );
-    }
-
-    #[test]
-    fn normalizes_creature_type_choice_pump_and_gain_sentence() {
-        let normalized = normalize_common_semantic_phrasing(
-            "You choose exactly 1 creature in the battlefield and tags it as 'chosen_creature_type_ref'. creature that shares a creature types with that object get +2/+2 until end of turn. creature that shares a creature types with that object gain Trample until end of turn.",
-        );
-        assert_eq!(
-            normalized,
-            "Creatures of the creature type of your choice get +2/+2 and gain Trample until end of turn."
-        );
-    }
-
-    #[test]
     fn normalizes_pump_and_gain_until_end_of_turn_sentence() {
         let normalized = normalize_common_semantic_phrasing(
             "Each creature you control gets +3/+3 until end of turn. creatures you control gain Trample until end of turn.",

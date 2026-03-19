@@ -1212,6 +1212,28 @@ fn test_parse_choose_basic_land_type_as_enters_for_aura() {
 }
 
 #[test]
+fn test_parse_choose_player_as_enters_without_placeholder() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Player Choice Artifact")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("As this artifact enters, choose a player.")
+        .expect("parse as this artifact enters choose a player");
+
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(ids.contains(&StaticAbilityId::ChoosePlayerAsEnters));
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "expected typed choose-player-as-enters static ability, got {ids:?}"
+    );
+}
+
+#[test]
 fn test_parse_enchanted_land_is_chosen_type_without_placeholder() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phantasmal Terrain Variant")
         .card_types(vec![CardType::Enchantment])
@@ -1317,9 +1339,7 @@ fn test_roaming_throne_variant_parses_without_placeholders() {
     assert!(ids.contains(&StaticAbilityId::Ward));
     assert!(ids.contains(&StaticAbilityId::ChooseCreatureTypeAsEnters));
     assert!(ids.contains(&StaticAbilityId::AddChosenCreatureType));
-    assert!(ids.contains(
-        &StaticAbilityId::OtherChosenTypeCreatureTriggeredAbilitiesTriggerAdditionalTime
-    ));
+    assert!(ids.contains(&StaticAbilityId::DuplicateMatchingTriggeredAbilities));
     assert!(
         !ids.contains(&StaticAbilityId::RuleTextPlaceholder)
             && !ids.contains(&StaticAbilityId::UnsupportedParserLine),
@@ -15880,6 +15900,109 @@ fn parse_choose_creature_type_then_each_creature_becomes_that_type() {
 }
 
 #[test]
+fn parse_standalone_choose_creature_type_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Creature Type Choice Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Choose a creature type.")
+        .expect("standalone choose-creature-type clause should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("choosecreaturetypeeffect"),
+        "expected standalone creature-type choice effect, got {spell_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ");
+    assert_eq!(rendered, "Spell effects: You choose a creature type.");
+}
+
+#[test]
+fn parse_raise_the_palisade_uses_chosen_creature_type_filter() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Raise the Palisade")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose a creature type. Return all creatures that aren't of the chosen type to their owners' hands.",
+        )
+        .expect("Raise the Palisade should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("choosecreaturetypeeffect"),
+        "expected typed creature-type choice effect, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("excluded_chosen_creature_type: true"),
+        "expected return filter to exclude the chosen creature type, got {spell_debug}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("choose a creature type")
+            && rendered.contains("return all creatures")
+            && rendered.contains("chosen type"),
+        "expected rendered text to preserve chosen-type bounce wording, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_creature_type_choice_pump_sentence_uses_shared_choice_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Alpha Status Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Creatures of the creature type of your choice get +2/+2 and gain trample until end of turn.")
+        .expect("creature-type choice pump sentence should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("choosecreaturetypeeffect"),
+        "expected shared creature-type choice effect, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("chosen_creature_type: true"),
+        "expected chosen-type filter on follow-up effects, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("chosen_creature_type_ref"),
+        "expected no tagged-creature scaffolding after cleanup, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_return_target_of_creature_type_of_choice_uses_shared_choice_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Peer Pressure Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Return target creature of the creature type of your choice to its owner's hand.")
+        .expect("creature-type choice return sentence should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("choosecreaturetypeeffect"),
+        "expected shared creature-type choice effect, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("chosen_creature_type: true"),
+        "expected chosen-type constraint on return target, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("chosen_creature_type_ref"),
+        "expected no tagged-creature scaffolding after cleanup, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_standalone_choose_player_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Player Choice Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Choose a player.")
+        .expect("standalone choose-player clause should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("chooseplayereffect"),
+        "expected standalone choose-player effect, got {spell_debug}"
+    );
+}
+
+#[test]
 fn parse_this_creature_cant_be_blocked_by_creatures_with_flying() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gnat Alley Variant")
         .card_types(vec![CardType::Creature])
@@ -18073,5 +18196,68 @@ fn parse_choose_an_opponent_then_that_player_cant_cast_spells() {
         abilities_debug.contains("CastSpellsMatching(TaggedPlayer")
             || abilities_debug.contains("CastSpellsMatching(IteratedPlayer"),
         "expected that-player cant-cast restriction to lower through existing player filters, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn parse_traveling_chocobo_top_library_lines_compile() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Traveling Chocobo")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "You may look at the top card of your library any time.\nYou may play lands and cast Bird spells from the top of your library.\nIf a land or Bird you control entering the battlefield causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
+        )
+        .expect("traveling chocobo text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.to_ascii_lowercase().contains("top card of your library")
+            && rendered.contains("Bird spells from the top of your library")
+            && rendered.to_ascii_lowercase().contains("triggers an additional time"),
+        "expected top-of-library and trigger-doubling text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_starfield_vocalist_with_warp_marker() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Starfield Vocalist")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "If a permanent entering the battlefield causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.\nWarp {1}{U} (You may cast this card from your hand for its warp cost. Exile this creature at the beginning of the next end step, then you may cast it from exile on a later turn.)",
+        )
+        .expect("starfield vocalist text should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Warp {1}{U}")
+            && rendered.to_ascii_lowercase().contains("triggers an additional time"),
+        "expected warp marker plus trigger doubling, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_gandalf_flash_union_uses_generic_permission_parser() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gandalf Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "You may cast legendary spells and artifact spells as though they had flash.",
+        )
+        .expect("gandalf-style flash union should parse");
+
+    let rendered = oracle_like_lines(&def).join(" ");
+    assert!(
+        rendered.to_ascii_lowercase().contains("legendary")
+            && rendered.to_ascii_lowercase().contains("artifact")
+            && rendered.to_ascii_lowercase().contains("flash")
+            && !rendered.to_ascii_lowercase().contains("noncreature"),
+        "expected generic flash-union rendering, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("any_of")
+            && debug.contains("Legendary")
+            && debug.contains("Artifact")
+            && !debug.contains("RuleTextPlaceholder"),
+        "expected shared permission filter union without placeholders, got {debug}"
     );
 }

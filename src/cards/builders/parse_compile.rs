@@ -7785,6 +7785,23 @@ fn try_compile_object_zone_and_exchange_effect(
             ctx.last_player_filter = Some(chooser);
             (effects, choices)
         }
+        EffectAst::ChooseCreatureType {
+            player,
+            excluded_subtypes,
+        } => {
+            let (chooser, choices) = resolve_effect_player_filter(*player, ctx, true, true, false)?;
+            let mut effects: Vec<Effect> = choices
+                .iter()
+                .cloned()
+                .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
+                .collect();
+            effects.push(Effect::choose_creature_type(
+                chooser.clone(),
+                excluded_subtypes.clone(),
+            ));
+            ctx.last_player_filter = Some(chooser);
+            (effects, choices)
+        }
         EffectAst::Sacrifice {
             filter,
             player,
