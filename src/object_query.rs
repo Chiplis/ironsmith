@@ -61,6 +61,8 @@ pub(crate) fn candidate_ids_for_filter(game: &GameState, filter: &ObjectFilter) 
     if ids.is_empty() {
         candidate_ids_for_zone(game, None)
     } else {
-        ids.into_iter().collect()
+        let mut ordered: Vec<_> = ids.into_iter().collect();
+        ordered.sort_unstable();
+        ordered
     }
 }

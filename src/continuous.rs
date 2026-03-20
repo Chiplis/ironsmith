@@ -1565,7 +1565,13 @@ fn apply_modification_to_chars(
             let commanders = &game.commanders;
             let battlefield = &game.battlefield;
 
-            for candidate in objects.values() {
+            let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
+            candidate_ids.sort_unstable();
+
+            for candidate_id in candidate_ids {
+                let Some(candidate) = objects.get(&candidate_id) else {
+                    continue;
+                };
                 if *exclude_source_id && candidate.id == object.id {
                     continue;
                 }
@@ -2076,7 +2082,13 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     use crate::static_ability_processor::get_all_continuous_effects;
 
                     let effects = get_all_continuous_effects(ctx.game);
-                    for candidate in ctx.objects.values() {
+                    let mut candidate_ids: Vec<_> = ctx.objects.keys().copied().collect();
+                    candidate_ids.sort_unstable();
+
+                    for candidate_id in candidate_ids {
+                        let Some(candidate) = ctx.objects.get(&candidate_id) else {
+                            continue;
+                        };
                         if *exclude_source_id && candidate.id == object.id {
                             continue;
                         }

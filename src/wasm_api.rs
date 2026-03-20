@@ -61,6 +61,77 @@ impl BattlefieldLane {
     }
 }
 
+const DETERMINISTIC_MATCH_SEED_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const DETERMINISTIC_MATCH_SEED_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+fn mix_match_seed_bytes(seed: &mut u64, bytes: &[u8]) {
+    for &byte in bytes {
+        *seed ^= byte as u64;
+        *seed = seed.wrapping_mul(DETERMINISTIC_MATCH_SEED_PRIME);
+    }
+    *seed ^= 0xff;
+    *seed = seed.wrapping_mul(DETERMINISTIC_MATCH_SEED_PRIME);
+}
+
+fn mix_match_seed_str(seed: &mut u64, value: &str) {
+    mix_match_seed_bytes(seed, value.as_bytes());
+}
+
+fn mix_match_seed_u64(seed: &mut u64, value: u64) {
+    mix_match_seed_bytes(seed, &value.to_le_bytes());
+}
+
+fn deterministic_match_seed(
+    player_names: &[String],
+    starting_life: i32,
+    format: MatchFormatInput,
+    decks: Option<&[Vec<String>]>,
+    commanders: Option<&[Vec<String>]>,
+    opening_hand_size: usize,
+) -> u64 {
+    let mut seed = DETERMINISTIC_MATCH_SEED_OFFSET;
+    mix_match_seed_str(&mut seed, "ironsmith-match-seed-v1");
+    mix_match_seed_str(
+        &mut seed,
+        match format {
+            MatchFormatInput::Normal => "normal",
+            MatchFormatInput::Commander => "commander",
+        },
+    );
+    mix_match_seed_u64(&mut seed, starting_life as i64 as u64);
+    mix_match_seed_u64(&mut seed, opening_hand_size as u64);
+    mix_match_seed_u64(&mut seed, player_names.len() as u64);
+    for name in player_names {
+        mix_match_seed_str(&mut seed, name);
+    }
+
+    if let Some(decks) = decks {
+        mix_match_seed_u64(&mut seed, decks.len() as u64);
+        for deck in decks {
+            mix_match_seed_u64(&mut seed, deck.len() as u64);
+            for card_name in deck {
+                mix_match_seed_str(&mut seed, card_name);
+            }
+        }
+    }
+
+    if let Some(commanders) = commanders {
+        mix_match_seed_u64(&mut seed, commanders.len() as u64);
+        for commander_list in commanders {
+            mix_match_seed_u64(&mut seed, commander_list.len() as u64);
+            for commander_name in commander_list {
+                mix_match_seed_str(&mut seed, commander_name);
+            }
+        }
+    }
+
+    if seed == 0 {
+        0x9e37_79b9_7f4a_7c15
+    } else {
+        seed
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct BattlefieldGroupKey {
     lane: BattlefieldLane,
@@ -2731,7 +2802,14 @@ impl WasmGame {
             return Err(JsValue::from_str("player_names cannot be empty"));
         }
 
-        let seed = self.generate_match_seed();
+        let seed = deterministic_match_seed(
+            &names,
+            starting_life,
+            MatchFormatInput::Normal,
+            None,
+            None,
+            7,
+        );
         self.initialize_empty_match(names, starting_life, seed);
         self.populate_demo_libraries()?;
         self.finish_match_setup(7)
@@ -3255,7 +3333,15 @@ impl WasmGame {
     pub fn load_demo_decks(&mut self) -> Result<(), JsValue> {
         let names: Vec<String> = self.game.players.iter().map(|p| p.name.clone()).collect();
         let starting_life = self.game.players.first().map_or(20, |p| p.life);
-        self.initialize_empty_match(names, starting_life, self.generate_match_seed());
+        let seed = deterministic_match_seed(
+            &names,
+            starting_life,
+            MatchFormatInput::Normal,
+            None,
+            None,
+            7,
+        );
+        self.initialize_empty_match(names, starting_life, seed);
         self.populate_demo_libraries()?;
         self.finish_match_setup(7)
     }
@@ -3279,7 +3365,15 @@ impl WasmGame {
 
         let names: Vec<String> = self.game.players.iter().map(|p| p.name.clone()).collect();
         let starting_life = self.game.players.first().map_or(20, |p| p.life);
-        self.initialize_empty_match(names, starting_life, self.generate_match_seed());
+        let seed = deterministic_match_seed(
+            &names,
+            starting_life,
+            MatchFormatInput::Normal,
+            Some(&decks),
+            None,
+            7,
+        );
+        self.initialize_empty_match(names, starting_life, seed);
 
         let mut loaded: u32 = 0;
         let mut failed: Vec<String> = Vec::new();
@@ -5873,15 +5967,6 @@ impl WasmGame {
             self.match_format,
         ));
         self.recompute_ui_decision()
-    }
-
-    fn generate_match_seed(&self) -> u64 {
-        let bits = (js_sys::Math::random() * (u64::MAX as f64)) as u64;
-        if bits == 0 {
-            0x9e37_79b9_7f4a_7c15
-        } else {
-            bits
-        }
     }
 
     fn reset_runtime_state(&mut self) {

@@ -1,6 +1,6 @@
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
-use rand::rng;
+use rand::{SeedableRng, rngs::StdRng};
 use std::collections::HashMap;
 
 /// Mana pool tracking by color/type.
@@ -678,11 +678,22 @@ impl Player {
 
     /// Shuffles the library.
     ///
-    /// This uses a simple randomization. In a real implementation, you might
-    /// want to use a seeded RNG for reproducibility in tests.
+    /// This derives a deterministic seed from the current library contents so
+    /// direct engine consumers don't depend on ambient process RNG state.
     pub fn shuffle_library(&mut self) {
         use rand::seq::SliceRandom;
-        self.library.shuffle(&mut rng());
+
+        let mut seed = 0xcbf2_9ce4_8422_2325u64;
+        for object_id in &self.library {
+            seed ^= object_id.0;
+            seed = seed.wrapping_mul(0x1000_0000_01b3);
+        }
+        if seed == 0 {
+            seed = 0x9e37_79b9_7f4a_7c15;
+        }
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        self.library.shuffle(&mut rng);
     }
 }
 

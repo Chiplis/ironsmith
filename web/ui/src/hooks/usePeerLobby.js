@@ -14,6 +14,10 @@ const PROTOCOL_VERSION = 3;
 const DEFAULT_OPENING_HAND_SIZE = 7;
 const PEER_OPEN_TIMEOUT_MS = 10000;
 const PEER_CONNECT_TIMEOUT_MS = 15000;
+const MATCH_SEED_OFFSET = 0xcbf29ce484222325n;
+const MATCH_SEED_PRIME = 0x100000001b3n;
+const MATCH_SEED_MASK = 0xffffffffffffffffn;
+const matchSeedEncoder = new TextEncoder();
 
 function createEmptyState() {
   return {
@@ -44,8 +48,50 @@ function sanitizePlayerName(raw, fallback = "Player") {
   return trimmed || fallback;
 }
 
-function createMatchSeed() {
-  const seed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+function mixMatchSeedBytes(hash, bytes) {
+  let next = hash;
+  for (const byte of bytes) {
+    next ^= BigInt(byte);
+    next = (next * MATCH_SEED_PRIME) & MATCH_SEED_MASK;
+  }
+  next ^= 0xffn;
+  return (next * MATCH_SEED_PRIME) & MATCH_SEED_MASK;
+}
+
+function mixMatchSeedString(hash, value) {
+  return mixMatchSeedBytes(hash, matchSeedEncoder.encode(String(value ?? "")));
+}
+
+function mixMatchSeedNumber(hash, value) {
+  return mixMatchSeedString(hash, Number(value ?? 0));
+}
+
+function mixMatchSeedCardLists(hash, lists) {
+  let next = mixMatchSeedNumber(hash, lists?.length ?? 0);
+  for (const cards of lists || []) {
+    next = mixMatchSeedNumber(next, cards.length);
+    for (const card of cards) {
+      next = mixMatchSeedString(next, card);
+    }
+  }
+  return next;
+}
+
+function createMatchSeed({ players, format, decks, commanders, startingLife, openingHandSize }) {
+  let hash = MATCH_SEED_OFFSET;
+  hash = mixMatchSeedString(hash, "ironsmith-match-seed-v1");
+  hash = mixMatchSeedString(hash, format || MATCH_FORMAT_NORMAL);
+  hash = mixMatchSeedNumber(hash, startingLife ?? 20);
+  hash = mixMatchSeedNumber(hash, openingHandSize ?? DEFAULT_OPENING_HAND_SIZE);
+  hash = mixMatchSeedNumber(hash, players?.length ?? 0);
+  for (const player of players || []) {
+    hash = mixMatchSeedString(hash, player?.name || "");
+    hash = mixMatchSeedNumber(hash, player?.index ?? -1);
+  }
+  hash = mixMatchSeedCardLists(hash, decks);
+  hash = mixMatchSeedCardLists(hash, commanders);
+
+  const seed = Number(hash & BigInt(Number.MAX_SAFE_INTEGER));
   return seed > 0 ? seed : 1;
 }
 
@@ -510,9 +556,9 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
       decks,
       commanders: commanders || undefined,
       startingLife: session.startingLife,
-      seed: createMatchSeed(),
       openingHandSize: DEFAULT_OPENING_HAND_SIZE,
     };
+    payload.seed = createMatchSeed(payload);
 
     updateMultiplayer((prev) => ({ ...prev, mode: "starting", players }));
 

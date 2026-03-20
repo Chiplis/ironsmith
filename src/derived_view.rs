@@ -141,7 +141,9 @@ impl<'a> DerivedGameView<'a> {
         if ids.is_empty() {
             self.candidate_ids_for_zone(None)
         } else {
-            ids.into_iter().collect()
+            let mut ordered: Vec<_> = ids.into_iter().collect();
+            ordered.sort_unstable();
+            ordered
         }
     }
 
