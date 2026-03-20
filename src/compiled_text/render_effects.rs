@@ -5299,8 +5299,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(proliferate) = effect.downcast_ref::<crate::effects::ProliferateEffect>() {
-        let _ = proliferate;
-        return "Proliferate".to_string();
+        return match &proliferate.count {
+            crate::effect::Value::Fixed(1) => "Proliferate".to_string(),
+            crate::effect::Value::Fixed(2) => "Proliferate twice".to_string(),
+            count => format!("Proliferate {} times", describe_value(count)),
+        };
     }
     if let Some(reveal_from_hand) = effect.downcast_ref::<crate::effects::RevealFromHandEffect>() {
         return reveal_from_hand.cost_display();

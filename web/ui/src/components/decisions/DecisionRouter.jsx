@@ -68,6 +68,7 @@ export default function DecisionRouter({
   combatInline = false,
   layout = "panel",
   showStripSummary = true,
+  onCombatActionChange = null,
 }) {
   if (!decision) return null;
 
@@ -91,9 +92,25 @@ export default function DecisionRouter({
         />
       );
     case "attackers":
-      return <AttackersDecision key={key} decision={decision} canAct={canAct} compact={combatInline} />;
+      return (
+        <AttackersDecision
+          key={key}
+          decision={decision}
+          canAct={canAct}
+          compact={combatInline}
+          onCompactActionChange={onCombatActionChange}
+        />
+      );
     case "blockers":
-      return <BlockersDecision key={key} decision={decision} canAct={canAct} compact={combatInline} />;
+      return (
+        <BlockersDecision
+          key={key}
+          decision={decision}
+          canAct={canAct}
+          compact={combatInline}
+          onCompactActionChange={onCombatActionChange}
+        />
+      );
     case "select_objects":
       return (
         <SelectObjectsDecision

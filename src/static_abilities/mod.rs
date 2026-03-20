@@ -1874,12 +1874,28 @@ impl StaticAbility {
         Self::new(GrantObjectAbilityForFilter::new(filter, ability, display))
     }
 
+    pub fn mana_spend_permission(
+        permission: crate::effect::ManaSpendPermission,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(ManaSpendPermissionAbility::new(permission, display.into()))
+    }
+
     pub fn spend_mana_as_any_color_players() -> Self {
-        Self::new(SpendManaAsAnyColor)
+        Self::mana_spend_permission(
+            crate::effect::ManaSpendPermission::any_color(crate::target::PlayerFilter::Any),
+            "Players may spend mana as though it were mana of any color",
+        )
     }
 
     pub fn spend_mana_as_any_color_activation_costs() -> Self {
-        Self::new(SpendManaAsAnyColorForSourceActivation)
+        Self::mana_spend_permission(
+            crate::effect::ManaSpendPermission::any_color_for_activation(
+                crate::target::PlayerFilter::You,
+                crate::target::ObjectFilter::source(),
+            ),
+            "You may spend mana as though it were mana of any color to pay activation costs of this",
+        )
     }
 
     pub fn krrik_black_mana_may_be_paid_with_life() -> Self {

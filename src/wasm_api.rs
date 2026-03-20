@@ -26,10 +26,7 @@ use crate::game_loop::{
     run_priority_loop_with,
 };
 use crate::game_state::{GameState, StackEntry, Target};
-use crate::ids::{
-    CardId, ObjectId, PlayerId, reset_runtime_id_counters, restore_id_counters,
-    snapshot_id_counters,
-};
+use crate::ids::{CardId, ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::targeting::{normalize_targets_for_requirements, validate_flat_target_assignment};
 use crate::triggers::TriggerQueue;
@@ -1395,6 +1392,7 @@ enum DecisionView {
         description: String,
         min: usize,
         max: Option<usize>,
+        allow_partial_completion: bool,
         candidates: Vec<ObjectChoiceView>,
         source_id: Option<u64>,
         source_name: Option<String>,
@@ -1754,6 +1752,7 @@ impl DecisionView {
                 ),
                 min: 0,
                 max: Some(partition.cards.len()),
+                allow_partial_completion: false,
                 candidates: partition
                     .cards
                     .iter()
@@ -1817,6 +1816,7 @@ impl DecisionView {
                 description: objects.description.clone(),
                 min: objects.min,
                 max: objects.max,
+                allow_partial_completion: objects.allow_partial_completion,
                 candidates: objects
                     .candidates
                     .iter()
@@ -2150,12 +2150,16 @@ impl DecisionMaker for WasmReplayDecisionMaker {
             }
             _ => {
                 self.capture_once_for_game(game, DecisionContext::SelectObjects(ctx.clone()));
-                ctx.candidates
-                    .iter()
-                    .filter(|candidate| candidate.legal)
-                    .map(|candidate| candidate.id)
-                    .take(ctx.min)
-                    .collect()
+                if ctx.allow_partial_completion {
+                    Vec::new()
+                } else {
+                    ctx.candidates
+                        .iter()
+                        .filter(|candidate| candidate.legal)
+                        .map(|candidate| candidate.id)
+                        .take(ctx.min)
+                        .collect()
+                }
             }
         }
     }
@@ -5191,9 +5195,8 @@ impl WasmGame {
     }
 
     fn initialize_empty_match(&mut self, player_names: Vec<String>, starting_life: i32, seed: u64) {
-        reset_runtime_id_counters();
         crate::cards::clear_runtime_custom_cards();
-        self.game = GameState::new(player_names, starting_life);
+        self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
         self.game.set_random_seed(seed);
         self.match_format = MatchFormatInput::Normal;
         self.pregame = None;
@@ -5796,9 +5799,13 @@ impl WasmGame {
                     .filter(|candidate| candidate.legal)
                     .map(|candidate| candidate.id.0)
                     .collect();
-                if let Err(err) =
-                    validate_object_selection(objects.min, objects.max, &object_ids, &legal_ids)
-                {
+                if let Err(err) = validate_object_selection(
+                    objects.min,
+                    objects.max,
+                    objects.allow_partial_completion,
+                    &object_ids,
+                    &legal_ids,
+                ) {
                     return restore(self, pending_ctx, err);
                 }
                 let selected: Vec<ObjectId> =
@@ -6272,8 +6279,14 @@ impl WasmGame {
                     .filter(|c| c.legal)
                     .map(|c| c.id.0)
                     .collect();
-                validate_object_selection(obj_ctx.min, obj_ctx.max, &object_ids, &legal_ids)
-                    .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
+                validate_object_selection(
+                    obj_ctx.min,
+                    obj_ctx.max,
+                    obj_ctx.allow_partial_completion,
+                    &object_ids,
+                    &legal_ids,
+                )
+                .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
 
                 let cards: Vec<ObjectId> = object_ids
                     .iter()
@@ -6805,7 +6818,13 @@ impl WasmGame {
                     .filter(|obj| obj.legal)
                     .map(|obj| obj.id.0)
                     .collect();
-                validate_object_selection(objects.min, objects.max, &object_ids, &legal_ids)?;
+                validate_object_selection(
+                    objects.min,
+                    objects.max,
+                    objects.allow_partial_completion,
+                    &object_ids,
+                    &legal_ids,
+                )?;
                 Ok(ReplayDecisionAnswer::Objects(
                     object_ids
                         .into_iter()
@@ -6982,7 +7001,13 @@ impl WasmGame {
             }
             (DecisionContext::Partition(partition), UiCommand::SelectObjects { object_ids }) => {
                 let legal_ids: Vec<u64> = partition.cards.iter().map(|(id, _)| id.0).collect();
-                validate_object_selection(0, Some(legal_ids.len()), &object_ids, &legal_ids)?;
+                validate_object_selection(
+                    0,
+                    Some(legal_ids.len()),
+                    false,
+                    &object_ids,
+                    &legal_ids,
+                )?;
                 Ok(ReplayDecisionAnswer::Partition(
                     unique_object_ids(&object_ids)
                         .into_iter()
@@ -7162,7 +7187,13 @@ impl WasmGame {
                     .filter(|obj| obj.legal)
                     .map(|obj| obj.id.0)
                     .collect();
-                validate_object_selection(objects.min, objects.max, &object_ids, &legal_ids)?;
+                validate_object_selection(
+                    objects.min,
+                    objects.max,
+                    objects.allow_partial_completion,
+                    &object_ids,
+                    &legal_ids,
+                )?;
 
                 let chosen = object_ids.first().copied().ok_or_else(|| {
                     JsValue::from_str("select_objects requires one chosen object")
@@ -8421,10 +8452,11 @@ fn validate_option_selection(
 fn validate_object_selection(
     min: usize,
     max: Option<usize>,
+    allow_partial_completion: bool,
     selected: &[u64],
     legal_ids: &[u64],
 ) -> Result<(), JsValue> {
-    if selected.len() < min {
+    if !allow_partial_completion && selected.len() < min {
         return Err(JsValue::from_str(&format!(
             "must select at least {min} object(s)"
         )));

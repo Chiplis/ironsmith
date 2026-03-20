@@ -1541,6 +1541,7 @@ function MobileBattleDecisionLayer({
   const [actionsSheetState, setActionsSheetState] = useState({ key: "", open: false });
   const [acknowledgedViewedCardsToken, setAcknowledgedViewedCardsToken] = useState("");
   const [submitState, setSubmitState] = useState({ key: "", action: null });
+  const [combatActionState, setCombatActionState] = useState({ key: "", action: null });
 
   const decisionIdentity = [
     decision?.kind || "",
@@ -1683,7 +1684,14 @@ function MobileBattleDecisionLayer({
     },
     [decisionIdentity]
   );
+  const handleCombatActionChange = useCallback(
+    (nextAction) => {
+      setCombatActionState({ key: decisionIdentity, action: nextAction || null });
+    },
+    [decisionIdentity]
+  );
   const submitAction = submitState.key === decisionIdentity ? submitState.action : null;
+  const combatAction = combatActionState.key === decisionIdentity ? combatActionState.action : null;
   const triggerOrderingDecision = isTriggerOrderingDecision(decision);
   const triggerOrderingSubmitAction = useMemo(() => {
     if (!triggerOrderingDecision) return null;
@@ -1956,20 +1964,41 @@ function MobileBattleDecisionLayer({
     );
   }
 
-  const footer = isCombatDecision ? (
-    canCancelDecision ? (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="mobile-decision-secondary-button mobile-decision-secondary-button--wide"
-        disabled={!canCancelDecision}
-        onClick={() => cancelDecision()}
-      >
-        Cancel
-      </Button>
-    ) : null
-  ) : (
+  if (isCombatDecision) {
+    if (dockHidden) return null;
+
+    return renderMobileBattlePortal(
+      <>
+        <MobileDecisionDock
+          primaryLabel={
+            combatAction?.label
+            || (decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)")
+          }
+          primaryDisabled={combatAction?.disabled ?? !canAct}
+          onPrimary={combatAction?.onSubmit}
+          secondaryLabel={canCancelDecision ? "Cancel" : ""}
+          secondaryDisabled={!canCancelDecision}
+          onSecondary={canCancelDecision ? () => cancelDecision() : null}
+          inline={dockInline}
+        />
+        <DecisionRouter
+          decision={decision}
+          canAct={canAct}
+          selectedObjectId={selectedObjectId}
+          inlineSubmit={false}
+          onSubmitActionChange={null}
+          onCombatActionChange={handleCombatActionChange}
+          hideDescription
+          combatInline
+          layout="strip"
+          showStripSummary={false}
+        />
+      </>,
+      portalTarget
+    );
+  }
+
+  const footer = (
     <>
       {canCancelDecision ? (
         <Button

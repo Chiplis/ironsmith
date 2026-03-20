@@ -6,6 +6,7 @@ import { getCardElement, getCardRect, getPlayerTargetRect, centerOf } from "@/ho
 const ARROW_DASH_ARRAY = "8 4";
 const STACK_ROUTE_GAP = 6;
 const TARGETING_ARROW_OPACITY = 0.7;
+const PLAYER_TARGET_GAP = 16;
 
 function curvedArrowPath(x1, y1, x2, y2) {
   const dx = x2 - x1;
@@ -157,20 +158,30 @@ export default function ArrowOverlay() {
       const fromRect = getCardRect(arrow.fromId);
       let toRect = null;
       let toEl = null;
+      let targetIsPlayerAnchor = false;
       if (arrow.toPlayerId != null) {
         toRect = getPlayerTargetRect(arrow.toPlayerId);
+        targetIsPlayerAnchor = !!toRect;
       } else if (arrow.toId != null) {
         toEl = getCardElement(arrow.toId);
         toRect = getCardRect(arrow.toId);
+        if (!toRect && arrow.toFallbackPlayerId != null) {
+          toRect = getPlayerTargetRect(arrow.toFallbackPlayerId);
+          targetIsPlayerAnchor = !!toRect;
+        }
       }
       if (!fromRect || !toRect || !fromEl) continue;
 
       const sourceCenter = centerOf(fromRect);
       const sourceIsStackAnchor = fromEl.getAttribute("data-arrow-anchor") === "stack";
       const targetIsStackAnchor = toEl?.getAttribute("data-arrow-anchor") === "stack";
-      const initialTo = arrow.toPlayerId != null
-        || targetIsStackAnchor
-        ? pointBeforeRect(sourceCenter, toRect, targetIsStackAnchor ? 14 : 9)
+      const targetGap = targetIsStackAnchor
+        ? 14
+        : targetIsPlayerAnchor
+          ? PLAYER_TARGET_GAP
+          : 9;
+      const initialTo = targetIsPlayerAnchor || targetIsStackAnchor
+        ? pointBeforeRect(sourceCenter, toRect, targetGap)
         : centerOf(toRect);
       const stackToStack = sourceIsStackAnchor && targetIsStackAnchor;
       const from = stackToStack
@@ -183,8 +194,8 @@ export default function ArrowOverlay() {
       const to = stackToStack
         ? rectBottomAnchor(toRect, 2)
         : (
-          arrow.toPlayerId != null || targetIsStackAnchor
-            ? pointBeforeRect(from, toRect, targetIsStackAnchor ? 14 : 9)
+          targetIsPlayerAnchor || targetIsStackAnchor
+            ? pointBeforeRect(from, toRect, targetGap)
             : centerOf(toRect)
         );
       const d = stackToStack

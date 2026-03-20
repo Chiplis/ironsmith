@@ -2,11 +2,21 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
+import { buildObjectControllerById } from "@/lib/decision-object-meta";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 const ATTACKER_COLOR = "#ff3b30";
+
+function focusTargetPlayer(playerId) {
+  if (!Number.isFinite(Number(playerId))) return;
+  window.dispatchEvent(
+    new CustomEvent("ironsmith:focus-player-target", {
+      detail: { player: Number(playerId) },
+    })
+  );
+}
 
 function decodeAttackTargetChoice(choice) {
   if (choice && typeof choice === "object") {
@@ -64,21 +74,30 @@ function resolveDropTarget(x, y, validTargets) {
   // Legacy: Check player target (life total / name)
   const playerEl = el.closest("[data-player-target]");
   if (playerEl) {
-    const playerIdx = Number(playerEl.dataset.playerTarget);
+    const playerCandidates = [
+      Number(playerEl.dataset.playerTargetName),
+      Number(playerEl.dataset.playerTarget),
+    ].filter((value) => Number.isFinite(value));
     for (const t of validTargets) {
       const decoded = decodeAttackTargetChoice(t);
-      if (decoded.kind === "player" && decoded.player === playerIdx) return decoded;
+      if (decoded.kind === "player" && playerCandidates.includes(decoded.player)) return decoded;
     }
   }
 
   return null;
 }
 
-export default function AttackersDecision({ decision, canAct, compact = false }) {
+export default function AttackersDecision({
+  decision,
+  canAct,
+  compact = false,
+  onCompactActionChange = null,
+}) {
   const { dispatch, state } = useGame();
   const { updateArrows, clearArrows, startDragArrow, updateDragArrow, endDragArrow, setCombatMode } = useCombatArrows();
   const options = useMemo(() => decision.attacker_options || [], [decision.attacker_options]);
   const players = state?.players || [];
+  const objectControllerById = useMemo(() => buildObjectControllerById(state), [state]);
   const optionsRef = useRef(options);
 
   const [declarations, setDeclarations] = useState(() => {
@@ -137,15 +156,21 @@ export default function AttackersDecision({ decision, canAct, compact = false })
     }
   }, []);
 
-  const selectTarget = useCallback((creatureId, target) => {
+  const commitTargetSelection = useCallback((creatureId, decodedTarget) => {
     creatureId = Number(creatureId);
-    const decoded = decodeAttackTargetChoice(target);
     setDeclarations((prev) => [
       ...prev.filter((d) => d.creature !== creatureId),
-      { creature: creatureId, target: decoded },
+      { creature: creatureId, target: decodedTarget },
     ]);
+    if (decodedTarget?.kind === "player") {
+      focusTargetPlayer(decodedTarget.player);
+    }
     setSelectedAttackerId(null);
   }, []);
+
+  const selectTarget = useCallback((creatureId, target) => {
+    commitTargetSelection(creatureId, decodeAttackTargetChoice(target));
+  }, [commitTargetSelection]);
 
   // When selectedAttackerId is set, start a drag arrow from the creature
   // and track mouse movement so the arrow follows the cursor
@@ -161,14 +186,31 @@ export default function AttackersDecision({ decision, canAct, compact = false })
       startDragArrow(selectedAttackerId, center.x, center.y, ATTACKER_COLOR);
     }
 
-    const onMouseMove = (e) => {
+    const onPointerMove = (e) => {
       updateDragArrow(e.clientX, e.clientY);
     };
-    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("pointermove", onPointerMove, { passive: true });
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("pointermove", onPointerMove);
     };
   }, [selectedAttackerId, startDragArrow, updateDragArrow, endDragArrow]);
+
+  const handleTargetCardClick = useCallback((targetId) => {
+    const attackerId = selectedAttackerRef.current;
+    if (attackerId == null) return false;
+    const opt = (optionsRef.current || []).find((entry) => Number(entry.creature) === Number(attackerId));
+    if (!opt) return false;
+
+    for (const target of opt.valid_targets || []) {
+      const decoded = decodeAttackTargetChoice(target);
+      if (decoded.kind === "planeswalker" && Number(decoded.object) === Number(targetId)) {
+        selectTarget(attackerId, target);
+        return true;
+      }
+    }
+
+    return false;
+  }, [selectTarget]);
 
   // Handle target area click from opponent zone
   const handleTargetAreaClick = useCallback((playerIdx, planeswalkerObjId) => {
@@ -210,25 +252,24 @@ export default function AttackersDecision({ decision, canAct, compact = false })
     // If only one target, declare immediately on any drag release
     if (validTargets.length === 1) {
       const creatureId = Number(fromId);
+      const decodedTarget = decodeAttackTargetChoice(validTargets[0]);
       setDeclarations((prev) => (
         prev.some((d) => d.creature === creatureId)
           ? prev
-          : [...prev, { creature: creatureId, target: decodeAttackTargetChoice(validTargets[0]) }]
+          : [...prev, { creature: creatureId, target: decodedTarget }]
       ));
+      if (decodedTarget.kind === "player") {
+        focusTargetPlayer(decodedTarget.player);
+      }
       return;
     }
 
     // Multiple targets — resolve drop position
     const target = resolveDropTarget(x, y, validTargets);
     if (target) {
-      const creatureId = Number(fromId);
-      setDeclarations((prev) => [
-        ...prev.filter((d) => d.creature !== creatureId),
-        { creature: creatureId, target },
-      ]);
-      setSelectedAttackerId(null);
+      commitTargetSelection(Number(fromId), target);
     }
-  }, []);
+  }, [commitTargetSelection]);
 
   const combatOptionsKey = options
     .map((o) => {
@@ -289,10 +330,11 @@ export default function AttackersDecision({ decision, canAct, compact = false })
         const opt = (optionsRef.current || []).find((o) => Number(o.creature) === Number(creatureId));
         if (opt) toggleAttacker(opt);
       },
+      onTargetCardClick: handleTargetCardClick,
       onTargetAreaClick: handleTargetAreaClick,
     });
     return () => setCombatMode(null);
-  }, [canAct, combatOptionsKey, handleDrop, selectedAttackerId, handleTargetAreaClick, setCombatMode, toggleAttacker]);
+  }, [canAct, combatOptionsKey, handleDrop, handleTargetCardClick, selectedAttackerId, handleTargetAreaClick, setCombatMode, toggleAttacker]);
 
   // Update combat arrows when declarations change
   useEffect(() => {
@@ -300,13 +342,34 @@ export default function AttackersDecision({ decision, canAct, compact = false })
       fromId: d.creature,
       toId: d.target.kind === "planeswalker" ? d.target.object : null,
       toPlayerId: d.target.kind === "player" ? d.target.player : null,
+      toFallbackPlayerId: d.target.kind === "planeswalker"
+        ? objectControllerById.get(String(d.target.object)) ?? null
+        : null,
       color: ATTACKER_COLOR,
       key: `atk-${d.creature}`,
     }));
     updateArrows(arrowData);
-  }, [declarations, updateArrows]);
+  }, [declarations, objectControllerById, updateArrows]);
 
   useEffect(() => clearArrows, [clearArrows]);
+
+  useEffect(() => {
+    if (typeof onCompactActionChange !== "function") return;
+    if (!compact) {
+      onCompactActionChange(null);
+      return;
+    }
+
+    onCompactActionChange({
+      label: `Confirm Attackers (${declarations.length})`,
+      disabled: !canAct,
+      onSubmit: () =>
+        dispatch(
+          { type: "declare_attackers", declarations },
+          `Declared ${declarations.length} attacker(s)`
+        ),
+    });
+  }, [canAct, compact, declarations, dispatch, onCompactActionChange]);
 
   const creatureNameById = useMemo(() => {
     const map = new Map();
@@ -318,76 +381,7 @@ export default function AttackersDecision({ decision, canAct, compact = false })
   }, [options]);
 
   if (compact) {
-    const pendingOnlySelection = (
-      selectedAttackerId != null
-      && !declarations.some((d) => d.creature === Number(selectedAttackerId))
-    );
-
-    return (
-      <div className="flex h-full min-w-0 items-center gap-2">
-        <div className="shrink-0 flex min-w-[308px] min-h-[34px] items-stretch gap-2">
-          <div className="min-w-[110px] flex flex-col justify-center">
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#d8c18c]">
-              {canAct ? "Your Action" : "Opponent Action"}
-            </div>
-            <div className="text-[10px] text-[#d6c8ac]">
-              Attackers
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="decision-neon-button decision-submit-button w-[176px] shrink-0 self-stretch rounded-none px-2 py-1 text-[13px] font-bold uppercase"
-            disabled={!canAct}
-            onClick={() =>
-              dispatch(
-                { type: "declare_attackers", declarations },
-                `Declared ${declarations.length} attacker(s)`
-              )
-            }
-          >
-            Confirm ({declarations.length})
-          </Button>
-        </div>
-
-        <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap">
-          <div className="flex w-max min-w-full items-center gap-1.5 pr-2">
-            {declarations.length === 0 && !pendingOnlySelection && (
-              <span className="text-[12px] text-[#d6c8ac]">
-                Select a creature, then point to a player or planeswalker.
-              </span>
-            )}
-
-            {pendingOnlySelection && (
-              <button
-                type="button"
-                className="decision-option-row inline-flex h-7 items-center border border-[rgba(164,118,99,0.75)] bg-[rgba(66,38,30,0.82)] px-2.5 text-[12px] font-semibold text-[#f0d0c0]"
-                disabled={!canAct}
-                onClick={() => setSelectedAttackerId(null)}
-              >
-                {(creatureNameById.get(Number(selectedAttackerId)) || `Creature ${Number(selectedAttackerId)}`)} -&gt; ?
-              </button>
-            )}
-
-            {declarations.map((decl) => {
-              const creatureName = creatureNameById.get(Number(decl.creature)) || `Creature ${Number(decl.creature)}`;
-              const targetName = attackTargetLabel(decl.target, players);
-              return (
-                <button
-                  key={`compact-atk-${decl.creature}`}
-                  type="button"
-                  className="decision-option-row inline-flex h-7 items-center border border-[rgba(164,137,96,0.6)] bg-[rgba(53,44,36,0.84)] px-2.5 text-[12px] font-semibold text-[#eadfc4] transition-colors hover:border-[rgba(208,181,131,0.72)] hover:bg-[rgba(82,65,45,0.92)]"
-                  disabled={!canAct}
-                  onClick={() => setSelectedAttackerId(Number(decl.creature))}
-                >
-                  {creatureName} -&gt; {targetName}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

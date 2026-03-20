@@ -111,6 +111,8 @@ pub struct ChooseObjectsSpec {
     pub min: usize,
     /// Maximum number of objects to choose (None = unlimited).
     pub max: Option<usize>,
+    /// Whether the chooser may submit fewer than `min`.
+    pub allow_partial_completion: bool,
 }
 
 impl ChooseObjectsSpec {
@@ -128,7 +130,13 @@ impl ChooseObjectsSpec {
             candidates,
             min,
             max,
+            allow_partial_completion: false,
         }
+    }
+
+    pub fn allow_partial_completion(mut self) -> Self {
+        self.allow_partial_completion = true;
+        self
     }
 }
 
@@ -171,14 +179,21 @@ impl DecisionSpec for ChooseObjectsSpec {
             })
             .collect();
 
-        DecisionContext::SelectObjects(SelectObjectsContext::new(
+        let ctx = SelectObjectsContext::new(
             player,
             Some(self.source),
             self.description.clone(),
             candidates,
             self.min,
             self.max,
-        ))
+        );
+        let ctx = if self.allow_partial_completion {
+            ctx.allow_partial_completion()
+        } else {
+            ctx
+        };
+
+        DecisionContext::SelectObjects(ctx)
     }
 }
 
@@ -462,14 +477,21 @@ impl DecisionSpec for SearchSpec {
             "Search library".to_string()
         };
 
-        DecisionContext::SelectObjects(SelectObjectsContext::new(
+        let ctx = SelectObjectsContext::new(
             player,
             Some(self.source),
             description,
             candidates,
             if self.may_fail_to_find { 0 } else { 1 },
             Some(1),
-        ))
+        );
+        let ctx = if self.may_fail_to_find {
+            ctx.allow_partial_completion()
+        } else {
+            ctx
+        };
+
+        DecisionContext::SelectObjects(ctx)
     }
 }
 

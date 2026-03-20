@@ -1,7 +1,8 @@
 //! Proliferate effect implementation.
 
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_value;
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -16,15 +17,26 @@ use crate::triggers::TriggerEvent;
 /// # Example
 ///
 /// ```ignore
-/// let effect = ProliferateEffect;
+/// let effect = ProliferateEffect::new(1);
 /// ```
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct ProliferateEffect;
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProliferateEffect {
+    /// How many times to proliferate.
+    pub count: Value,
+}
 
 impl ProliferateEffect {
     /// Create a new proliferate effect.
-    pub fn new() -> Self {
-        Self
+    pub fn new(count: impl Into<Value>) -> Self {
+        Self {
+            count: count.into(),
+        }
+    }
+}
+
+impl Default for ProliferateEffect {
+    fn default() -> Self {
+        Self::new(1)
     }
 }
 
@@ -34,88 +46,95 @@ impl EffectExecutor for ProliferateEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Find all permanents and players with counters
-        // For simplicity, add one counter of each type they already have
+        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        if count == 0 {
+            return Ok(EffectOutcome::resolved());
+        }
 
-        let mut proliferated_count = 0;
+        let mut proliferated_total = 0;
         let mut outcome = EffectOutcome::count(0);
+        let mut action_events = Vec::with_capacity(count);
 
-        // Collect permanents with counters and their counter types
-        let permanents_with_counters: Vec<(crate::ids::ObjectId, Vec<CounterType>)> = game
-            .battlefield
-            .iter()
-            .filter_map(|&perm_id| {
-                game.object(perm_id).and_then(|obj| {
-                    if obj.counters.is_empty() {
-                        None
-                    } else {
-                        Some((perm_id, obj.counters.keys().copied().collect()))
-                    }
+        for _ in 0..count {
+            let mut proliferated_count = 0;
+
+            let permanents_with_counters: Vec<(crate::ids::ObjectId, Vec<CounterType>)> = game
+                .battlefield
+                .iter()
+                .filter_map(|&perm_id| {
+                    game.object(perm_id).and_then(|obj| {
+                        if obj.counters.is_empty() {
+                            None
+                        } else {
+                            Some((perm_id, obj.counters.keys().copied().collect()))
+                        }
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        // Proliferate permanents using centralized method
-        for (perm_id, counter_types) in permanents_with_counters {
-            for ct in counter_types {
-                if let Some(event) = game.add_counters_with_source(
-                    perm_id,
-                    ct,
-                    1,
-                    Some(ctx.source),
-                    Some(ctx.controller),
-                ) {
-                    outcome = outcome.with_event(event);
+            for (perm_id, counter_types) in permanents_with_counters {
+                for ct in counter_types {
+                    if let Some(event) = game.add_counters_with_source(
+                        perm_id,
+                        ct,
+                        1,
+                        Some(ctx.source),
+                        Some(ctx.controller),
+                    ) {
+                        outcome = outcome.with_event(event);
+                    }
                 }
+                proliferated_count += 1;
             }
-            proliferated_count += 1;
+
+            let players_with_counters: Vec<(crate::ids::PlayerId, Vec<CounterType>)> = game
+                .players
+                .iter()
+                .map(|p| {
+                    let mut counters = Vec::new();
+                    if p.poison_counters > 0 {
+                        counters.push(CounterType::Poison);
+                    }
+                    if p.energy_counters > 0 {
+                        counters.push(CounterType::Energy);
+                    }
+                    if p.experience_counters > 0 {
+                        counters.push(CounterType::Experience);
+                    }
+                    (p.id, counters)
+                })
+                .filter(|(_, counters)| !counters.is_empty())
+                .collect();
+
+            for (player_id, counters) in players_with_counters {
+                for counter_type in counters {
+                    if let Some(event) = game.add_player_counters_with_source(
+                        player_id,
+                        counter_type,
+                        1,
+                        Some(ctx.source),
+                        Some(ctx.controller),
+                    ) {
+                        outcome = outcome.with_event(event);
+                    }
+                }
+                proliferated_count += 1;
+            }
+
+            proliferated_total += proliferated_count;
+            action_events.push(TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(
+                    KeywordActionKind::Proliferate,
+                    ctx.controller,
+                    ctx.source,
+                    1,
+                ),
+                ctx.provenance,
+            ));
         }
 
-        // Proliferate players and emit marker events for player counters.
-        let players_with_counters: Vec<(crate::ids::PlayerId, Vec<CounterType>)> = game
-            .players
-            .iter()
-            .map(|p| {
-                let mut counters = Vec::new();
-                if p.poison_counters > 0 {
-                    counters.push(CounterType::Poison);
-                }
-                if p.energy_counters > 0 {
-                    counters.push(CounterType::Energy);
-                }
-                if p.experience_counters > 0 {
-                    counters.push(CounterType::Experience);
-                }
-                (p.id, counters)
-            })
-            .filter(|(_, counters)| !counters.is_empty())
-            .collect();
-
-        for (player_id, counters) in players_with_counters {
-            for counter_type in counters {
-                if let Some(event) = game.add_player_counters_with_source(
-                    player_id,
-                    counter_type,
-                    1,
-                    Some(ctx.source),
-                    Some(ctx.controller),
-                ) {
-                    outcome = outcome.with_event(event);
-                }
-            }
-            proliferated_count += 1;
-        }
-
-        outcome.set_value(crate::effect::OutcomeValue::Count(proliferated_count));
-        Ok(outcome.with_event(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(
-                KeywordActionKind::Proliferate,
-                ctx.controller,
-                ctx.source,
-                1,
-            ),
-            ctx.provenance,
-        )))
+        outcome.set_value(crate::effect::OutcomeValue::Count(proliferated_total));
+        Ok(outcome.with_events(action_events))
     }
 }
 
@@ -173,7 +192,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        let effect = ProliferateEffect::new();
+        let effect = ProliferateEffect::new(1);
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1)); // 1 permanent proliferated
@@ -196,7 +215,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        let effect = ProliferateEffect::new();
+        let effect = ProliferateEffect::new(1);
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1)); // 1 permanent proliferated
@@ -216,7 +235,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        let effect = ProliferateEffect::new();
+        let effect = ProliferateEffect::new(1);
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1)); // 1 player counter proliferated
@@ -234,7 +253,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        let effect = ProliferateEffect::new();
+        let effect = ProliferateEffect::new(1);
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
@@ -249,7 +268,7 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(source, alice);
 
         // No permanents with counters, no players with counters
-        let effect = ProliferateEffect::new();
+        let effect = ProliferateEffect::new(1);
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
@@ -279,7 +298,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        let effect = ProliferateEffect::new();
+        let effect = ProliferateEffect::new(1);
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2)); // 2 permanents proliferated
@@ -293,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_proliferate_clone_box() {
-        let effect = ProliferateEffect::new();
+        let effect = ProliferateEffect::new(1);
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("ProliferateEffect"));
     }
@@ -301,6 +320,28 @@ mod tests {
     #[test]
     fn test_proliferate_default() {
         let effect = ProliferateEffect::default();
-        assert_eq!(effect, ProliferateEffect);
+        assert_eq!(effect, ProliferateEffect::new(1));
+    }
+
+    #[test]
+    fn test_proliferate_twice_repeats_action() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature_with_counters(
+            &mut game,
+            "Hangarback Walker",
+            alice,
+            CounterType::PlusOnePlusOne,
+            3,
+        );
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = ProliferateEffect::new(2);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        let obj = game.object(creature_id).unwrap();
+        assert_eq!(obj.counters.get(&CounterType::PlusOnePlusOne), Some(&5));
     }
 }

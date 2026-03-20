@@ -499,7 +499,11 @@ export default function MobileBattleScene({
     const hitElement = document.elementFromPoint(event.clientX, event.clientY);
     const cardEl = hitElement?.closest(".game-card[data-object-id]");
     const objectId = cardEl ? Number(cardEl.dataset.objectId) : null;
-    currentCombatMode.onTargetAreaClick(activeOpponent.index ?? activeOpponent.id, objectId);
+    const validTargets = currentCombatMode.validTargetPlayersByAttacker?.[Number(currentCombatMode.selectedAttacker)];
+    const directId = Number(activeOpponent.id);
+    const fallbackId = Number(activeOpponent.index);
+    const playerId = validTargets?.has?.(directId) ? directId : fallbackId;
+    currentCombatMode.onTargetAreaClick(playerId, objectId);
   }, [activeOpponent, combatModeRef]);
 
   const opponentTargetable = activeOpponent != null && (
@@ -675,8 +679,8 @@ export default function MobileBattleScene({
               onClose={closeActionPopover}
               closeLabel="Close action menu"
               inline={false}
-              className="mobile-decision-sheet--action-list"
-              bodyClassName="mobile-decision-sheet-body--action-list"
+              className="mobile-decision-sheet--action-list mobile-battle-action-menu-sheet"
+              bodyClassName="mobile-decision-sheet-body--action-list mobile-battle-action-menu-sheet-body"
             >
               <MobileDecisionActionList
                 items={actionPopoverState.actions.map((action) => ({
@@ -856,6 +860,8 @@ export default function MobileBattleScene({
             "mobile-battle-opponent-target-chip",
             opponentTargetable && canPickTargets && "is-targetable"
           )}
+          data-player-target={activeOpponent.index ?? activeOpponent.id}
+          data-player-target-name={activeOpponent.id ?? activeOpponent.index}
           style={opponentAccent ? { "--player-accent": opponentAccent.hex } : undefined}
           onPointerDown={(event) => {
             if (!registerPointerDown(event)) return;

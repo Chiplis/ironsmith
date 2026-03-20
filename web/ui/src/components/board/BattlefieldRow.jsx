@@ -1082,6 +1082,7 @@ export default function BattlefieldRow({
     const onUp = (ue) => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
       const dt = dragRef.current;
       dragRef.current = null;
       endDragArrow();
@@ -1102,6 +1103,7 @@ export default function BattlefieldRow({
 
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   }, [combatModeRef, startDragArrow, updateDragArrow, endDragArrow, hoverCard, clearHover]);
 
   const handleCardSelectionClick = useCallback((event, card) => {

@@ -9,10 +9,17 @@ export function getCardRect(objectId) {
   return el ? el.getBoundingClientRect() : null;
 }
 
+export function getPlayerTargetElement(playerIndex) {
+  return document.querySelector(
+    `[data-player-target-name="${playerIndex}"], ` +
+    `[data-player-target="${playerIndex}"], ` +
+    `[data-player-nav-target-name="${playerIndex}"], ` +
+    `[data-player-nav-target="${playerIndex}"]`
+  );
+}
+
 export function getPlayerTargetRect(playerIndex) {
-  const el =
-    document.querySelector(`[data-player-target-name="${playerIndex}"]`) ||
-    document.querySelector(`[data-player-target="${playerIndex}"]`);
+  const el = getPlayerTargetElement(playerIndex);
   return el ? el.getBoundingClientRect() : null;
 }
 

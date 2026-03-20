@@ -122,7 +122,7 @@ pub(super) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEachCounterKindPutOrRemove { .. } => {}
         EffectAst::PutCountersAll { .. } => {}
         EffectAst::DoubleCountersOnEach { .. } => {}
-        EffectAst::Proliferate => {}
+        EffectAst::Proliferate { .. } => {}
         EffectAst::Tap { .. } => {}
         EffectAst::TapAll { .. } => {}
         EffectAst::Untap { .. } => {}

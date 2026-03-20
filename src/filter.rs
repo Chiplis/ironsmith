@@ -582,7 +582,7 @@ fn resolve_filter_comparison_rhs_value(
         ),
         Value::Count(filter) => {
             let mut count = 0i32;
-            for object in game.objects_iter() {
+            for object in game.objects_in_deterministic_order() {
                 if filter.matches(object, ctx, game) {
                     count += 1;
                 }
@@ -591,7 +591,7 @@ fn resolve_filter_comparison_rhs_value(
         }
         Value::CountScaled(filter, factor) => {
             let mut count = 0i32;
-            for object in game.objects_iter() {
+            for object in game.objects_in_deterministic_order() {
                 if filter.matches(object, ctx, game) {
                     count += 1;
                 }

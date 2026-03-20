@@ -28,6 +28,7 @@ export default function SelectObjectsDecision({
   const [selected, setSelected] = useState(new Set());
   const min = decision.min ?? 0;
   const max = decision.max ?? candidates.length;
+  const allowPartialCompletion = decision.allow_partial_completion === true;
   const hideTimerRef = useRef(null);
   const optionsMaxHeight = useMemo(() => {
     const oracleHeight = Number(inspectorOracleTextHeight);
@@ -86,9 +87,13 @@ export default function SelectObjectsDecision({
     };
   }, [canAct, candidates, toggleObject]);
 
-  const canSubmit = selected.size >= min && selected.size <= max;
+  const canSubmit = selected.size <= max
+    && (allowPartialCompletion || selected.size >= min);
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
-  const submitLabel = `Submit (${selected.size}/${min === max ? min : `${min}-${max}`})`;
+  const submitRangeLabel = allowPartialCompletion
+    ? `0-${max}`
+    : (min === max ? min : `${min}-${max}`);
+  const submitLabel = `Submit (${selected.size}/${submitRangeLabel})`;
   const handleSubmit = useCallback(() => {
     dispatch(
       { type: "select_objects", object_ids: selectedIds },
@@ -150,7 +155,9 @@ export default function SelectObjectsDecision({
             />
             {!stripLayout && (
               <div className="decision-helper-text text-[13px] leading-snug">
-                Select {min === max ? min : `${min}-${max}`} object(s)
+                {allowPartialCompletion
+                  ? `Select up to ${max} object(s)`
+                  : `Select ${min === max ? min : `${min}-${max}`} object(s)`}
               </div>
             )}
             {!stripLayout && focusedToHover && (

@@ -1412,6 +1412,13 @@ pub(crate) fn parse_static_condition_clause(
     {
         return Ok(crate::ConditionExpr::SourceIsAttacking);
     }
+    if clause_words == ["it", "attacked", "this", "turn"]
+        || clause_words == ["this", "creature", "attacked", "this", "turn"]
+        || clause_words == ["this", "permanent", "attacked", "this", "turn"]
+        || clause_words == ["that", "creature", "attacked", "this", "turn"]
+    {
+        return Ok(crate::ConditionExpr::SourceAttackedThisTurn);
+    }
     if clause_words == ["it", "is", "your", "turn"] || clause_words == ["its", "your", "turn"] {
         return Ok(crate::ConditionExpr::YourTurn);
     }

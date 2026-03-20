@@ -1088,6 +1088,42 @@ pub enum Restriction {
     AttackOrBlockAlone(ObjectFilter),
 }
 
+/// Permission to spend mana as though it were mana of any color.
+///
+/// This models rules text like:
+/// - "Players may spend mana as though it were mana of any color."
+/// - "You may spend mana as though it were mana of any color to activate abilities of creatures you control."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaSpendPermission {
+    pub player: PlayerFilter,
+    pub scope: ManaSpendScope,
+}
+
+impl ManaSpendPermission {
+    pub fn any_color(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::AllCosts,
+        }
+    }
+
+    pub fn any_color_for_activation(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::ActivationCostsOf(filter),
+        }
+    }
+}
+
+/// Scope for "spend mana as though it were mana of any color" permissions.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ManaSpendScope {
+    /// Applies to all mana payments the matching player makes.
+    AllCosts,
+    /// Applies only while paying activation costs of abilities of matching objects.
+    ActivationCostsOf(ObjectFilter),
+}
+
 impl Restriction {
     pub fn additional_land_plays(filter: PlayerFilter, count: u32) -> Self {
         Self::AdditionalLandPlays(filter, count)
@@ -2772,9 +2808,9 @@ impl Effect {
     }
 
     /// Create a "proliferate" effect.
-    pub fn proliferate() -> Self {
+    pub fn proliferate(count: impl Into<Value>) -> Self {
         use crate::effects::ProliferateEffect;
-        Self::new(ProliferateEffect::new())
+        Self::new(ProliferateEffect::new(count))
     }
 
     /// Create a "+N/+M" effect with explicit duration.

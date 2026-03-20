@@ -12,7 +12,7 @@ use crate::continuous::{ContinuousEffect, ContinuousEffectManager};
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
 use crate::events::{Event, EventKind};
-use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
 use crate::object::Object;
 use crate::player::Player;
 use crate::prevention::PreventionEffectManager;
@@ -813,10 +813,15 @@ impl CantEffectTracker {
 
 #[derive(Debug, Clone, Default)]
 pub struct ManaSpendEffectTracker {
-    /// Players who may spend mana as though it were any color for all costs.
-    pub any_color_players: HashSet<PlayerId>,
-    /// Sources whose activation costs may be paid as though mana were any color.
-    pub any_color_activation_sources: HashSet<ObjectId>,
+    /// Active permissions that let a player spend mana as though it were mana
+    /// of any color.
+    pub permissions: Vec<ActiveManaSpendPermission>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActiveManaSpendPermission {
+    pub permission: crate::effect::ManaSpendPermission,
+    pub controller: PlayerId,
 }
 
 impl ManaSpendEffectTracker {
@@ -825,8 +830,36 @@ impl ManaSpendEffectTracker {
     }
 
     pub fn clear(&mut self) {
-        self.any_color_players.clear();
-        self.any_color_activation_sources.clear();
+        self.permissions.clear();
+    }
+}
+
+impl ActiveManaSpendPermission {
+    pub fn allows(&self, game: &GameState, payer: PlayerId, source: Option<ObjectId>) -> bool {
+        let combat = game.combat.as_ref();
+        if !crate::game_loop::player_matches_filter_with_combat(
+            payer,
+            &self.permission.player,
+            game,
+            self.controller,
+            combat,
+        ) {
+            return false;
+        }
+
+        match &self.permission.scope {
+            crate::effect::ManaSpendScope::AllCosts => true,
+            crate::effect::ManaSpendScope::ActivationCostsOf(filter) => {
+                let Some(source_id) = source else {
+                    return false;
+                };
+                let Some(source_obj) = game.object(source_id) else {
+                    return false;
+                };
+                let filter_ctx = game.filter_context_for(self.controller, Some(source_id));
+                filter.matches(source_obj, &filter_ctx, game)
+            }
+        }
     }
 }
 
@@ -1506,6 +1539,17 @@ impl GameState {
             random_state: Cell::new(Self::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
         }
+    }
+
+    /// Creates a new game state after explicitly resetting runtime player/object IDs.
+    ///
+    /// Frontend/bootstrap paths should prefer this constructor when they need a
+    /// fresh match identity space. Plain `new()` intentionally does not reset
+    /// global counters so existing engine tests and embedded callers keep their
+    /// current behavior.
+    pub fn new_with_runtime_id_reset(player_names: Vec<String>, starting_life: i32) -> Self {
+        reset_runtime_id_counters();
+        Self::new(player_names, starting_life)
     }
 
     fn normalize_random_seed(seed: u64) -> u64 {
@@ -3428,24 +3472,10 @@ impl GameState {
     ///
     /// If `source` is provided, this also checks for source-specific activation permissions.
     pub fn can_spend_mana_as_any_color(&self, payer: PlayerId, source: Option<ObjectId>) -> bool {
-        if self.mana_spend_effects.any_color_players.contains(&payer) {
-            return true;
-        }
-
-        let Some(source_id) = source else {
-            return false;
-        };
-
-        if !self
-            .mana_spend_effects
-            .any_color_activation_sources
-            .contains(&source_id)
-        {
-            return false;
-        }
-
-        self.object(source_id)
-            .is_some_and(|obj| obj.controller == payer)
+        self.mana_spend_effects
+            .permissions
+            .iter()
+            .any(|permission| permission.allows(self, payer, source))
     }
 
     fn with_active_battlefield_static_abilities<T>(
@@ -3900,16 +3930,42 @@ impl GameState {
 
     /// Returns all object IDs in a given zone.
     pub fn objects_in_zone(&self, zone: Zone) -> Vec<ObjectId> {
-        self.objects
-            .values()
-            .filter(|o| o.zone == zone)
-            .map(|o| o.id)
-            .collect()
+        match zone {
+            Zone::Battlefield => self.battlefield.clone(),
+            Zone::Graveyard => self
+                .players
+                .iter()
+                .flat_map(|player| player.graveyard.iter().copied())
+                .collect(),
+            Zone::Hand => self
+                .players
+                .iter()
+                .flat_map(|player| player.hand.iter().copied())
+                .collect(),
+            Zone::Library => self
+                .players
+                .iter()
+                .flat_map(|player| player.library.iter().copied())
+                .collect(),
+            Zone::Stack => self.stack.iter().map(|entry| entry.object_id).collect(),
+            Zone::Exile => self.exile.clone(),
+            Zone::Command => self.command_zone.clone(),
+        }
     }
 
-    /// Returns an iterator over all objects in the game.
-    pub fn objects_iter(&self) -> impl Iterator<Item = &Object> {
-        self.objects.values()
+    /// Returns all object IDs in deterministic order.
+    pub fn object_ids_in_deterministic_order(&self) -> Vec<ObjectId> {
+        let mut ids: Vec<_> = self.objects.keys().copied().collect();
+        ids.sort();
+        ids
+    }
+
+    /// Returns all objects in deterministic order by object ID.
+    pub fn objects_in_deterministic_order(&self) -> Vec<&Object> {
+        self.object_ids_in_deterministic_order()
+            .into_iter()
+            .filter_map(|id| self.objects.get(&id))
+            .collect()
     }
 
     /// Returns all permanents controlled by a player.
@@ -5443,5 +5499,41 @@ mod tests {
                 .can_play_land(),
             "the third total land play should exhaust Azusa's extra allowance"
         );
+    }
+
+    #[test]
+    fn filtered_activation_mana_spend_permissions_match_allowed_sources() {
+        use crate::card::CardBuilder;
+        use crate::effect::ManaSpendPermission;
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let creature_card = CardBuilder::new(CardId::from_raw(300), "Test Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let artifact_card = CardBuilder::new(CardId::from_raw(301), "Test Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+
+        let alice_creature = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+        let bob_creature = game.create_object_from_card(&creature_card, bob, Zone::Battlefield);
+        let alice_artifact = game.create_object_from_card(&artifact_card, alice, Zone::Battlefield);
+
+        game.mana_spend_effects
+            .permissions
+            .push(ActiveManaSpendPermission {
+                permission: ManaSpendPermission::any_color_for_activation(
+                    crate::target::PlayerFilter::You,
+                    crate::target::ObjectFilter::creature().you_control(),
+                ),
+                controller: alice,
+            });
+
+        assert!(game.can_spend_mana_as_any_color(alice, Some(alice_creature)));
+        assert!(!game.can_spend_mana_as_any_color(alice, Some(alice_artifact)));
+        assert!(!game.can_spend_mana_as_any_color(alice, Some(bob_creature)));
+        assert!(!game.can_spend_mana_as_any_color(bob, Some(bob_creature)));
     }
 }

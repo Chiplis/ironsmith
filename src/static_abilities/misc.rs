@@ -986,46 +986,38 @@ impl StaticAbilityKind for AllPermanentsEnterTapped {
     }
 }
 
-/// Players may spend mana as though it were mana of any color.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct SpendManaAsAnyColor;
+/// Generic static mana-spend permission.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaSpendPermissionAbility {
+    pub permission: crate::effect::ManaSpendPermission,
+    pub display: String,
+}
 
-impl StaticAbilityKind for SpendManaAsAnyColor {
-    fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::SpendManaAsAnyColor
-    }
-
-    fn display(&self) -> String {
-        "Players may spend mana as though it were mana of any color".to_string()
-    }
-
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, _controller: PlayerId) {
-        for player in &game.players {
-            if player.is_in_game() {
-                game.mana_spend_effects.any_color_players.insert(player.id);
-            }
+impl ManaSpendPermissionAbility {
+    pub fn new(permission: crate::effect::ManaSpendPermission, display: String) -> Self {
+        Self {
+            permission,
+            display,
         }
     }
 }
 
-/// You may spend mana as though it were mana of any color to pay activation costs of this.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct SpendManaAsAnyColorForSourceActivation;
-
-impl StaticAbilityKind for SpendManaAsAnyColorForSourceActivation {
+impl StaticAbilityKind for ManaSpendPermissionAbility {
     fn id(&self) -> StaticAbilityId {
-        StaticAbilityId::SpendManaAsAnyColorActivationCosts
+        StaticAbilityId::ManaSpendPermission
     }
 
     fn display(&self) -> String {
-        "You may spend mana as though it were mana of any color to pay activation costs of this"
-            .to_string()
+        self.display.clone()
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
+    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         game.mana_spend_effects
-            .any_color_activation_sources
-            .insert(source);
+            .permissions
+            .push(crate::game_state::ActiveManaSpendPermission {
+                permission: self.permission.clone(),
+                controller,
+            });
     }
 }
 

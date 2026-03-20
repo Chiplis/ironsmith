@@ -2510,7 +2510,8 @@ pub fn process_etb_with_event_and_dm(
                 if let Some(spec) = s.enter_as_copy_as_enters() {
                     let filter_ctx = game.filter_context_for(controller, Some(object));
                     let mut candidates = game
-                        .objects_iter()
+                        .objects_in_deterministic_order()
+                        .into_iter()
                         .filter(|candidate| candidate.id != object)
                         .filter(|candidate| spec.filter.matches(candidate, &filter_ctx, game))
                         .map(|candidate| candidate.id)

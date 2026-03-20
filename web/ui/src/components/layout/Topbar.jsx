@@ -1,4 +1,5 @@
 import { useGame } from "@/context/GameContext";
+import { useCombatArrows } from "@/context/useCombatArrows";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import { formatPhase, formatStep } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +47,7 @@ export default function Topbar({
     setInspectorDebug,
     state,
   } = useGame();
+  const { combatMode, combatModeRef } = useCombatArrows();
   const { nonDesktopViewport } = useViewportLayout();
 
   const players = state?.players || [];
@@ -63,6 +65,12 @@ export default function Topbar({
     : 0;
   const activeMobileOpponent = hasMobileOpponent
     ? opponents[resolvedOpponentIndex] || opponents[0]
+    : null;
+  const previousMobileOpponent = opponents.length > 1
+    ? opponents[(resolvedOpponentIndex - 1 + opponents.length) % opponents.length]
+    : null;
+  const nextMobileOpponent = opponents.length > 1
+    ? opponents[(resolvedOpponentIndex + 1) % opponents.length]
     : null;
   const cycleMobileOpponent = (direction) => {
     if (!setMobileOpponentIndex || opponents.length <= 1) return;
@@ -87,13 +95,47 @@ export default function Topbar({
   }
   const canPickTargets = state?.decision?.kind === "targets"
     && state?.decision?.player === state?.perspective;
+  const activeCombatAttackerId = combatMode?.mode === "attackers"
+    ? Number(combatMode?.selectedAttacker ?? NaN)
+    : NaN;
+  const activeCombatTargetPlayers = Number.isFinite(activeCombatAttackerId)
+    ? combatMode?.validTargetPlayersByAttacker?.[activeCombatAttackerId]
+    : null;
+  const activeMobileOpponentCombatTargetable = (
+    Number.isFinite(activeCombatAttackerId)
+    && (
+      !!activeCombatTargetPlayers?.has?.(Number(activeMobileOpponent?.id ?? NaN))
+      || !!activeCombatTargetPlayers?.has?.(Number(activeMobileOpponent?.index ?? NaN))
+    )
+  );
   const activeMobileOpponentIsTargetable = activeMobileOpponent != null && (
     legalTargetPlayerIds.has(Number(activeMobileOpponent.id))
     || legalTargetPlayerIds.has(Number(activeMobileOpponent.index))
   );
+  const activeMobileOpponentButtonEnabled = (
+    (activeMobileOpponentIsTargetable && canPickTargets)
+    || activeMobileOpponentCombatTargetable
+  );
   const handleMobileOpponentTarget = () => {
     if (!canPickTargets || !activeMobileOpponentIsTargetable || !activeMobileOpponent) return;
     dispatchPlayerTargetChoice(activeMobileOpponent, legalTargetPlayerIds);
+  };
+  const handleCombatOpponentTarget = (event) => {
+    const currentCombatMode = combatModeRef.current;
+    if (!activeMobileOpponent || !currentCombatMode?.onTargetAreaClick || currentCombatMode.selectedAttacker == null) {
+      return false;
+    }
+    const validTargets = currentCombatMode.validTargetPlayersByAttacker?.[Number(currentCombatMode.selectedAttacker)];
+    const directId = Number(activeMobileOpponent.id);
+    const fallbackId = Number(activeMobileOpponent.index);
+    const playerId = validTargets?.has?.(directId) ? directId : fallbackId;
+    if (!validTargets?.has?.(playerId)) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    currentCombatMode.onTargetAreaClick(playerId, null);
+    return true;
   };
 
   if (mobileOverlay) {
@@ -106,13 +148,15 @@ export default function Topbar({
           </div>
           {activeMobileOpponent ? (
             <div
-              className={`topbar-opponent-chip topbar-mobile-overlay-opponent${activeMobileOpponentIsTargetable && canPickTargets ? " is-targetable" : ""}`}
+              className={`topbar-opponent-chip topbar-mobile-overlay-opponent${activeMobileOpponentButtonEnabled ? " is-targetable" : ""}`}
               aria-label={`Viewing opponent ${activeMobileOpponent.name}`}
             >
               {opponents.length > 1 ? (
                 <button
                   type="button"
                   className="topbar-opponent-chip-nav"
+                  data-player-nav-target={previousMobileOpponent?.index ?? previousMobileOpponent?.id}
+                  data-player-nav-target-name={previousMobileOpponent?.id ?? previousMobileOpponent?.index}
                   onClick={() => cycleMobileOpponent(-1)}
                   aria-label="Show previous opponent"
                 >
@@ -122,8 +166,13 @@ export default function Topbar({
               <button
                 type="button"
                 className="topbar-opponent-chip-body topbar-opponent-chip-body--button"
-                onClick={handleMobileOpponentTarget}
-                disabled={!activeMobileOpponentIsTargetable || !canPickTargets}
+                data-player-target={activeMobileOpponent.index ?? activeMobileOpponent.id}
+                data-player-target-name={activeMobileOpponent.id ?? activeMobileOpponent.index}
+                onClick={(event) => {
+                  if (handleCombatOpponentTarget(event)) return;
+                  handleMobileOpponentTarget();
+                }}
+                disabled={!activeMobileOpponentButtonEnabled}
                 aria-label={`Opponent ${activeMobileOpponent.name}, life ${activeMobileOpponent.life}`}
               >
                 <span
@@ -141,6 +190,8 @@ export default function Topbar({
                 <button
                   type="button"
                   className="topbar-opponent-chip-nav"
+                  data-player-nav-target={nextMobileOpponent?.index ?? nextMobileOpponent?.id}
+                  data-player-nav-target-name={nextMobileOpponent?.id ?? nextMobileOpponent?.index}
                   onClick={() => cycleMobileOpponent(1)}
                   aria-label="Show next opponent"
                 >
@@ -185,18 +236,34 @@ export default function Topbar({
               <span className="topbar-phase-chip-turn">T{state?.turn_number ?? "-"}</span>
             </div>
             {activeMobileOpponent ? (
-              <div className="topbar-opponent-chip" aria-label={`Viewing opponent ${activeMobileOpponent.name}`}>
+              <div
+                className={`topbar-opponent-chip${activeMobileOpponentButtonEnabled ? " is-targetable" : ""}`}
+                aria-label={`Viewing opponent ${activeMobileOpponent.name}`}
+              >
                 {opponents.length > 1 ? (
                   <button
                     type="button"
                     className="topbar-opponent-chip-nav"
+                    data-player-nav-target={previousMobileOpponent?.index ?? previousMobileOpponent?.id}
+                    data-player-nav-target-name={previousMobileOpponent?.id ?? previousMobileOpponent?.index}
                     onClick={() => cycleMobileOpponent(-1)}
                     aria-label="Show previous opponent"
                   >
                     <ChevronLeft className="size-3.5" />
                   </button>
                 ) : null}
-                <div className="topbar-opponent-chip-body">
+                <button
+                  type="button"
+                  className="topbar-opponent-chip-body topbar-opponent-chip-body--button"
+                  data-player-target={activeMobileOpponent.index ?? activeMobileOpponent.id}
+                  data-player-target-name={activeMobileOpponent.id ?? activeMobileOpponent.index}
+                  onClick={(event) => {
+                    if (handleCombatOpponentTarget(event)) return;
+                    handleMobileOpponentTarget();
+                  }}
+                  disabled={!activeMobileOpponentButtonEnabled}
+                  aria-label={`Opponent ${activeMobileOpponent.name}, life ${activeMobileOpponent.life}`}
+                >
                   <span className="topbar-opponent-chip-name" style={{ color: activeMobileOpponent.id === activePlayer?.id ? "#fff0ca" : undefined }}>
                     {activeMobileOpponent.name}
                   </span>
@@ -204,11 +271,13 @@ export default function Topbar({
                   <span className="topbar-opponent-chip-meta">
                     H {activeMobileOpponent.hand_size ?? 0} G {activeMobileOpponent.graveyard_size ?? 0} D {activeMobileOpponent.library_size ?? 0}
                   </span>
-                </div>
+                </button>
                 {opponents.length > 1 ? (
                   <button
                     type="button"
                     className="topbar-opponent-chip-nav"
+                    data-player-nav-target={nextMobileOpponent?.index ?? nextMobileOpponent?.id}
+                    data-player-nav-target-name={nextMobileOpponent?.id ?? nextMobileOpponent?.index}
                     onClick={() => cycleMobileOpponent(1)}
                     aria-label="Show next opponent"
                   >

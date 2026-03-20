@@ -1566,7 +1566,7 @@ fn apply_modification_to_chars(
             let battlefield = &game.battlefield;
 
             let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
-            candidate_ids.sort_unstable();
+            candidate_ids.sort();
 
             for candidate_id in candidate_ids {
                 let Some(candidate) = objects.get(&candidate_id) else {
@@ -2083,7 +2083,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
 
                     let effects = get_all_continuous_effects(ctx.game);
                     let mut candidate_ids: Vec<_> = ctx.objects.keys().copied().collect();
-                    candidate_ids.sort_unstable();
+                    candidate_ids.sort();
 
                     for candidate_id in candidate_ids {
                         let Some(candidate) = ctx.objects.get(&candidate_id) else {

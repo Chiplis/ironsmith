@@ -1651,7 +1651,7 @@ export default function HoverArtOverlay({
             {(displayManaCost || displayStatsText) && (
               <div className="flex items-center justify-end gap-1.5">
                 {displayManaCost && (
-                  <div className="inspector-banner inspector-banner--mana rounded-none bg-[rgba(0,0,0,0.52)] px-2 py-1 backdrop-blur-[1.8px]" style={inspectorManaStyle}>
+                  <div className="inspector-banner inspector-banner--mana rounded-none bg-[rgba(0,0,0,0.52)] px-2 py-1" style={inspectorManaStyle}>
                     <ManaCostIcons cost={displayManaCost} size={compact ? 14 : Math.max(13, Math.round(18 * inspectorScale))} />
                   </div>
                 )}

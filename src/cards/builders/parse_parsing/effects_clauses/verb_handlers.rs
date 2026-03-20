@@ -81,7 +81,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Sacrifice => parse_sacrifice(tokens, subject),
         Verb::Create => parse_create(tokens, subject),
         Verb::Investigate => parse_investigate(tokens),
-        Verb::Proliferate => Ok(EffectAst::Proliferate),
+        Verb::Proliferate => parse_proliferate(tokens),
         Verb::Tap => parse_tap(tokens),
         Verb::Attach => parse_attach(tokens),
         Verb::Untap => parse_untap(tokens),
@@ -104,6 +104,46 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Pay => parse_pay(tokens, subject),
         Verb::Goad => parse_goad(tokens),
     }
+}
+
+fn parse_proliferate(tokens: &[Token]) -> Result<EffectAst, CardTextError> {
+    if tokens.is_empty() {
+        return Ok(EffectAst::Proliferate {
+            count: Value::Fixed(1),
+        });
+    }
+
+    let (count, used) = if let Some(first) = tokens.first().and_then(Token::as_word) {
+        match first {
+            "once" => (Value::Fixed(1), 1),
+            "twice" => (Value::Fixed(2), 1),
+            _ => parse_value(tokens).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing proliferate count (clause: '{}')",
+                    words(tokens).join(" ")
+                ))
+            })?,
+        }
+    } else {
+        return Err(CardTextError::ParseError(format!(
+            "missing proliferate count (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    };
+
+    let trailing = trim_commas(&tokens[used..]);
+    let trailing_words = words(&trailing);
+    let trailing_ok = trailing_words.is_empty()
+        || trailing_words.as_slice() == ["time"]
+        || trailing_words.as_slice() == ["times"];
+    if !trailing_ok {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing proliferate clause (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    Ok(EffectAst::Proliferate { count })
 }
 
 fn parse_library_nth_from_top_destination(tokens: &[Token]) -> Option<Value> {

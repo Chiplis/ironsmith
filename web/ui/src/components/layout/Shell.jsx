@@ -90,6 +90,32 @@ export default function Shell() {
   }, [state?.players, state?.perspective]);
 
   useEffect(() => {
+    const handleFocusPlayerTarget = (event) => {
+      const targetPlayer = Number(event?.detail?.player);
+      if (!Number.isFinite(targetPlayer)) return;
+
+      const players = state?.players || [];
+      const perspective = state?.perspective;
+      const me = players.find((player) => player.id === perspective) || players[0];
+      const meIndex = players.findIndex((player) => player.id === me?.id);
+      const ordered = meIndex >= 0
+        ? [...players.slice(meIndex), ...players.slice(0, meIndex)]
+        : players;
+      const opponents = ordered.filter((player) => player.id !== me?.id);
+      const nextIndex = opponents.findIndex((player) => (
+        Number(player.id) === targetPlayer || Number(player.index) === targetPlayer
+      ));
+      if (nextIndex < 0) return;
+      setMobileOpponentIndex(nextIndex);
+    };
+
+    window.addEventListener("ironsmith:focus-player-target", handleFocusPlayerTarget);
+    return () => {
+      window.removeEventListener("ironsmith:focus-player-target", handleFocusPlayerTarget);
+    };
+  }, [state?.players, state?.perspective]);
+
+  useEffect(() => {
     if (loading || wasmError || !state || multiplayer.mode !== "idle") return;
 
     const queryLobby = initialLobbyQueryRef.current;

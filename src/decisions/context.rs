@@ -248,6 +248,12 @@ pub struct SelectObjectsContext {
     pub min: usize,
     /// Maximum objects to select (None = unlimited).
     pub max: Option<usize>,
+    /// Whether the chooser may stop short of `min` after seeing the candidates.
+    ///
+    /// Used for hidden-zone searches where "fail to find" means the player can
+    /// submit any number from 0 to `max`, even if the effect text asks for an
+    /// exact count.
+    pub allow_partial_completion: bool,
     /// Optional richer UI hints for contextual rendering.
     pub ui_hints: DecisionUiHints,
 }
@@ -269,8 +275,14 @@ impl SelectObjectsContext {
             candidates,
             min,
             max,
+            allow_partial_completion: false,
             ui_hints: DecisionUiHints::default(),
         }
+    }
+
+    pub fn allow_partial_completion(mut self) -> Self {
+        self.allow_partial_completion = true;
+        self
     }
 
     pub fn with_context_text(mut self, text: impl Into<String>) -> Self {

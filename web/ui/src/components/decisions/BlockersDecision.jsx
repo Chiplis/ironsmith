@@ -39,7 +39,12 @@ function pivotToBlockerCentric(attackerOptions) {
   return Array.from(blockerMap.values());
 }
 
-export default function BlockersDecision({ decision, canAct, compact = false }) {
+export default function BlockersDecision({
+  decision,
+  canAct,
+  compact = false,
+  onCompactActionChange = null,
+}) {
   const { dispatch } = useGame();
   const {
     updateArrows,
@@ -133,12 +138,12 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
       startDragArrow(selectedBlockerId, center.x, center.y, BLOCKER_COLOR);
     }
 
-    const onMouseMove = (event) => {
+    const onPointerMove = (event) => {
       updateDragArrow(event.clientX, event.clientY);
     };
-    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("pointermove", onPointerMove, { passive: true });
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("pointermove", onPointerMove);
     };
   }, [endDragArrow, selectedBlockerId, startDragArrow, updateDragArrow]);
 
@@ -236,6 +241,24 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
 
   useEffect(() => clearArrows, [clearArrows]);
 
+  useEffect(() => {
+    if (typeof onCompactActionChange !== "function") return;
+    if (!compact) {
+      onCompactActionChange(null);
+      return;
+    }
+
+    onCompactActionChange({
+      label: `Confirm Blockers (${declarations.length})`,
+      disabled: !canAct,
+      onSubmit: () =>
+        dispatch(
+          { type: "declare_blockers", declarations },
+          `Declared ${declarations.length} blocker(s)`
+        ),
+    });
+  }, [canAct, compact, declarations, dispatch, onCompactActionChange]);
+
   const blockerNameById = useMemo(() => {
     const map = new Map();
     for (const opt of blockerOptions) {
@@ -254,74 +277,7 @@ export default function BlockersDecision({ decision, canAct, compact = false }) 
   }, [attackerOptions]);
 
   if (compact) {
-    const pendingOnlySelection = (
-      selectedBlockerId != null
-      && !declarations.some((d) => d.blocker === Number(selectedBlockerId))
-    );
-
-    return (
-      <div className="flex h-full min-w-0 items-center gap-2">
-        <div className="shrink-0 flex min-w-[308px] min-h-[34px] items-stretch gap-2">
-          <div className="min-w-[110px] flex flex-col justify-center">
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#d8c18c]">
-              {canAct ? "Your Action" : "Opponent Action"}
-            </div>
-            <div className="text-[10px] text-[#d6c8ac]">
-              Blockers
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="decision-neon-button decision-submit-button w-[176px] shrink-0 self-stretch rounded-none px-2 py-1 text-[13px] font-bold uppercase"
-            disabled={!canAct}
-            onClick={() =>
-              dispatch(
-                { type: "declare_blockers", declarations },
-                `Declared ${declarations.length} blocker(s)`
-              )
-            }
-          >
-            Confirm ({declarations.length})
-          </Button>
-        </div>
-
-        <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap">
-          <div className="flex w-max min-w-full items-center gap-1.5 pr-2">
-            {declarations.length === 0 && !pendingOnlySelection && (
-              <span className="text-[12px] text-[#d6c8ac]">
-                Select a blocker, then point to the attacker it should block.
-              </span>
-            )}
-            {pendingOnlySelection && (
-              <button
-                type="button"
-                className="decision-option-row inline-flex h-7 items-center border border-[rgba(164,137,96,0.6)] bg-[rgba(53,44,36,0.84)] px-2.5 text-[12px] font-semibold text-[#eadfc4]"
-                disabled={!canAct}
-                onClick={() => setSelectedBlockerId(null)}
-              >
-                {(blockerNameById.get(Number(selectedBlockerId)) || `Creature ${Number(selectedBlockerId)}`)} -&gt; ?
-              </button>
-            )}
-            {declarations.map((decl) => {
-              const blockerName = blockerNameById.get(Number(decl.blocker)) || `Creature ${Number(decl.blocker)}`;
-              const attackerName = attackerNameById.get(Number(decl.blocking)) || `Attacker ${Number(decl.blocking)}`;
-              return (
-                <button
-                  type="button"
-                  key={`compact-blk-${decl.blocker}-${decl.blocking}`}
-                  className="decision-option-row inline-flex h-7 items-center border border-[rgba(164,137,96,0.6)] bg-[rgba(53,44,36,0.84)] px-2.5 text-[12px] font-semibold text-[#eadfc4] transition-colors hover:border-[rgba(208,181,131,0.72)] hover:bg-[rgba(82,65,45,0.92)]"
-                  disabled={!canAct}
-                  onClick={() => setSelectedBlockerId(Number(decl.blocker))}
-                >
-                  {blockerName} -&gt; {attackerName}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

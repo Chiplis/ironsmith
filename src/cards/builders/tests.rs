@@ -1990,7 +1990,7 @@ fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way() {
             "As an additional cost to cast this spell, you may sacrifice one or more creatures. When you do, copy this spell for each creature sacrificed this way.\nYou draw a card and you lose 1 life.",
         )
         .expect("Plumb-style additional cost should parse");
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains(
             "as an additional cost to cast this spell, you may sacrifice one or more creatures"
@@ -2181,7 +2181,7 @@ fn test_parse_target_opponent_gains_control_clause() {
         debug.contains("ChangeControllerToPlayer(Target(Opponent))"),
         "expected gain-control runtime modification to resolve target opponent, got {debug}"
     );
-    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let rendered = oracle_like_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         rendered.contains("target opponent gains control of this"),
         "expected compiled text to preserve target opponent control change, got {rendered}"
@@ -14872,6 +14872,55 @@ fn parse_conditional_doesnt_untap_static_line() {
 }
 
 #[test]
+fn parse_agathas_soul_cauldron_static_lines() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Agatha's Soul Cauldron")
+        .parse_text(
+            "You may spend mana as though it were mana of any color to activate abilities of creatures you control.\n\
+Creatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with Agatha's Soul Cauldron.\n\
+{T}: Exile target card from a graveyard. When a creature card is exiled this way, put a +1/+1 counter on target creature you control.",
+        )
+        .expect("Agatha's Soul Cauldron text should parse");
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "spend mana as though it were mana of any color to activate abilities of creatures you control"
+        ),
+        "expected filtered mana-spend permission, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "creatures you control with +1/+1 counters on them have all activated abilities of"
+        ) && rendered.contains("creature cards exiled with"),
+        "expected granted copied activated abilities clause, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_existing_mana_spend_as_any_color_static_patterns() {
+    let lattice = CardDefinitionBuilder::new(CardId::from_raw(1), "Mycosynth Lattice Variant")
+        .parse_text("Players may spend mana as though it were mana of any color.")
+        .expect("global mana-spend permission should parse");
+    let lattice_rendered = compiled_lines(&lattice).join(" ").to_ascii_lowercase();
+    assert!(
+        lattice_rendered.contains("players may spend mana as though it were mana of any color"),
+        "expected global mana-spend permission, got {lattice_rendered}"
+    );
+
+    let refractor = CardDefinitionBuilder::new(CardId::from_raw(1), "Manascape Refractor")
+        .parse_text(
+            "You may spend mana as though it were mana of any color to pay the activation costs of Manascape Refractor's abilities.",
+        )
+        .expect("source activation mana-spend permission should parse");
+    let refractor_rendered = compiled_lines(&refractor).join(" ").to_ascii_lowercase();
+    assert!(
+        refractor_rendered
+            .contains("spend mana as though it were mana of any color to pay the activation costs"),
+        "expected source activation mana-spend permission, got {refractor_rendered}"
+    );
+}
+
+#[test]
 fn parse_then_if_conditional_sentence_is_preserved() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Then If Variant")
         .parse_text(
@@ -15754,6 +15803,43 @@ fn parse_as_long_as_its_enchanted_condition_line() {
     assert!(
         rendered.contains("as long as this creature is enchanted"),
         "expected enchanted condition in rendered static text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_as_long_as_it_attacked_this_turn_condition_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Agent Frank Horrigan")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Trample\nThis creature has indestructible as long as it attacked this turn.\nWhenever this creature enters or attacks, proliferate twice.",
+        )
+        .expect("attacked-this-turn static line should parse");
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !static_ids.contains(&StaticAbilityId::RuleTextPlaceholder),
+        "attacked-this-turn static line should not fall back to placeholder static ability: {static_ids:?}"
+    );
+
+    let rendered = compiled_lines(&def).join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("indestructible"),
+        "expected indestructible in rendered static text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("as long as this creature attacked this turn"),
+        "expected attacked-this-turn condition in rendered static text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("proliferate twice"),
+        "expected proliferate trigger to remain in compiled output, got {rendered}"
     );
 }
 

@@ -1519,7 +1519,9 @@ pub(crate) enum EffectAst {
         counter_type: CounterType,
         filter: ObjectFilter,
     },
-    Proliferate,
+    Proliferate {
+        count: Value,
+    },
     Tap {
         target: TargetAst,
     },

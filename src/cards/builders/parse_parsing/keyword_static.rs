@@ -255,9 +255,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_toph_first_metalbender_line),
         single_static_ability_ast_rule!(parse_discard_or_redirect_replacement_line),
         single_static_ability_ast_rule!(parse_pay_life_or_enter_tapped_line),
-        single_static_ability_ast_rule!(parse_copy_activated_abilities_line),
-        single_static_ability_ast_rule!(parse_players_spend_mana_as_any_color_line),
-        single_static_ability_ast_rule!(parse_source_activation_spend_mana_as_any_color_line),
+        single_static_ability_ast_passthrough_rule!(parse_copy_activated_abilities_line),
+        single_static_ability_ast_passthrough_rule!(parse_spend_mana_as_any_color_line),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_enchanted_has_activated_ability_line),
             rule: StaticAbilityLineRuleAst::Single(parse_enchanted_has_activated_ability_line),
@@ -5975,19 +5974,19 @@ pub(crate) fn parse_pay_life_or_enter_tapped_line(
 
 pub(crate) fn parse_copy_activated_abilities_line(
     tokens: &[Token],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = words(tokens);
-    if words.len() < 6 {
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let clause_words = words(tokens);
+    if clause_words.len() < 6 {
         return Ok(None);
     }
 
     let mut has_idx = None;
-    for idx in 0..words.len().saturating_sub(4) {
-        if words[idx] == "has"
-            && words[idx + 1] == "all"
-            && words[idx + 2] == "activated"
-            && words[idx + 3] == "abilities"
-            && words[idx + 4] == "of"
+    for idx in 0..clause_words.len().saturating_sub(4) {
+        if (clause_words[idx] == "has" || clause_words[idx] == "have")
+            && clause_words[idx + 1] == "all"
+            && clause_words[idx + 2] == "activated"
+            && clause_words[idx + 3] == "abilities"
+            && clause_words[idx + 4] == "of"
         {
             has_idx = Some(idx);
             break;
@@ -5997,55 +5996,38 @@ pub(crate) fn parse_copy_activated_abilities_line(
         return Ok(None);
     };
 
-    let mut condition = None;
-    let prefix = &words[..has_idx];
-    if prefix.starts_with(&["as", "long", "as"])
-        && prefix.contains(&"own")
-        && prefix.contains(&"exiled")
-        && prefix.contains(&"counter")
-    {
-        if let Some(counter_word) = prefix
-            .iter()
-            .zip(prefix.iter().skip(1))
-            .find_map(|(word, next)| {
-                if *next == "counter" {
-                    Some(*word)
-                } else {
-                    None
-                }
-            })
-            .and_then(parse_counter_type_word)
-        {
-            condition = Some(crate::ConditionExpr::OwnsCardExiledWithCounter(
-                counter_word,
-            ));
-        }
-    }
-
-    let after_of = &words[(has_idx + 5)..];
-    let mut filter = None;
-    if after_of.contains(&"land") || after_of.contains(&"lands") {
-        filter = Some(ObjectFilter::land());
-    } else if after_of.contains(&"creature") || after_of.contains(&"creatures") {
-        let mut base = ObjectFilter::creature();
-        if after_of.contains(&"control") {
-            base = base.you_control();
-        }
-        filter = Some(base);
-    } else if after_of.contains(&"card") && after_of.contains(&"exiled") {
-        filter = Some(ObjectFilter {
-            zone: Some(Zone::Exile),
-            ..Default::default()
-        });
-    }
-
-    let Some(filter) = filter else {
+    let (condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_idx) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    let subject_tokens = trim_commas(&tokens[subject_start..has_idx]);
+    if subject_tokens.is_empty() {
         return Ok(None);
+    }
+    let subject = match parse_anthem_subject(&subject_tokens) {
+        Ok(subject) => subject,
+        Err(_) => return Ok(None),
     };
 
-    let counter = after_of
+    let mut filter_tokens = trim_edge_punctuation(&tokens[(has_idx + 5)..]);
+    while filter_tokens
+        .first()
+        .is_some_and(|token| token.is_word("all") || token.is_word("each"))
+    {
+        filter_tokens.remove(0);
+    }
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = match parse_object_filter(&filter_tokens, false) {
+        Ok(filter) => filter,
+        Err(_) => return Ok(None),
+    };
+
+    let after_of_words = words(&filter_tokens);
+    let counter = after_of_words
         .iter()
-        .zip(after_of.iter().skip(1))
+        .zip(after_of_words.iter().skip(1))
         .find_map(|(word, next)| {
             if *next == "counter" {
                 parse_counter_type_word(word)
@@ -6054,7 +6036,7 @@ pub(crate) fn parse_copy_activated_abilities_line(
             }
         });
 
-    let exclude_source_name = words.windows(5).any(|window| {
+    let exclude_source_name = clause_words.windows(5).any(|window| {
         window == ["same", "name", "as", "this", "creature"]
             || window == ["same", "name", "as", "thiss", "creature"]
     });
@@ -6062,66 +6044,84 @@ pub(crate) fn parse_copy_activated_abilities_line(
     let mut ability = crate::static_abilities::CopyActivatedAbilities::new(filter)
         .with_exclude_source_name(exclude_source_name)
         .with_exclude_source_id(true)
-        .with_display(words.join(" "));
+        .with_display(clause_words.join(" "));
     if let Some(counter) = counter {
         ability = ability.with_counter(counter);
     }
-    if let Some(condition) = condition {
-        ability = ability.with_condition(condition);
-    }
 
-    Ok(Some(StaticAbility::copy_activated_abilities(ability)))
+    let ability = StaticAbility::copy_activated_abilities(ability);
+    let ast = match subject {
+        AnthemSubjectAst::Source => match condition {
+            Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(StaticAbilityAst::Static(ability)),
+                condition,
+            },
+            None => StaticAbilityAst::Static(ability),
+        },
+        AnthemSubjectAst::Filter(subject_filter) => StaticAbilityAst::GrantStaticAbility {
+            filter: subject_filter,
+            ability: Box::new(StaticAbilityAst::Static(ability)),
+            condition,
+        },
+    };
+
+    Ok(Some(ast))
 }
 
-pub(crate) fn parse_players_spend_mana_as_any_color_line(
+pub(crate) fn parse_spend_mana_as_any_color_line(
     tokens: &[Token],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = words(tokens);
-    if words.starts_with(&[
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let clause_words = words(tokens);
+    let (player, tail_start, display) = if clause_words.starts_with(&[
         "players", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
         "color",
     ]) {
-        return Ok(Some(StaticAbility::spend_mana_as_any_color_players()));
-    }
-
-    Ok(None)
-}
-
-pub(crate) fn parse_source_activation_spend_mana_as_any_color_line(
-    tokens: &[Token],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    let words = words(tokens);
-    if !words.starts_with(&[
-        "you",
-        "may",
-        "spend",
-        "mana",
-        "as",
-        "though",
-        "it",
-        "were",
-        "mana",
-        "of",
-        "any",
-        "color",
-        "to",
-        "pay",
-        "the",
-        "activation",
-        "costs",
-        "of",
+        (
+            PlayerFilter::Any,
+            12usize,
+            "Players may spend mana as though it were mana of any color".to_string(),
+        )
+    } else if clause_words.starts_with(&[
+        "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any", "color",
     ]) {
+        (PlayerFilter::You, 12usize, clause_words.join(" "))
+    } else {
         return Ok(None);
-    }
+    };
 
-    if words
-        .iter()
-        .any(|word| *word == "abilities" || *word == "ability")
-    {
-        return Ok(Some(
-            StaticAbility::spend_mana_as_any_color_activation_costs(),
-        ));
-    }
+    let tail_tokens = trim_edge_punctuation(&tokens[tail_start..]);
+    let permission = if tail_tokens.is_empty() {
+        crate::effect::ManaSpendPermission::any_color(player)
+    } else {
+        let tail_words = words(&tail_tokens);
+        if tail_words.starts_with(&["to", "pay", "the", "activation", "costs", "of"]) {
+            let ability_words = words(&tail_tokens[6..]);
+            if !ability_words
+                .iter()
+                .any(|word| *word == "abilities" || *word == "ability")
+            {
+                return Ok(None);
+            }
+            crate::effect::ManaSpendPermission::any_color_for_activation(
+                player,
+                ObjectFilter::source(),
+            )
+        } else if tail_words.starts_with(&["to", "activate", "abilities", "of"]) {
+            let filter_tokens = trim_edge_punctuation(&tail_tokens[4..]);
+            if filter_tokens.is_empty() {
+                return Ok(None);
+            }
+            let filter = match parse_object_filter(&filter_tokens, false) {
+                Ok(filter) => filter,
+                Err(_) => return Ok(None),
+            };
+            crate::effect::ManaSpendPermission::any_color_for_activation(player, filter)
+        } else {
+            return Ok(None);
+        }
+    };
 
-    Ok(None)
+    Ok(Some(StaticAbilityAst::Static(
+        StaticAbility::mana_spend_permission(permission, display),
+    )))
 }

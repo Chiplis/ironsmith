@@ -185,8 +185,8 @@ export interface InitOutput {
     readonly wasmgame_setPerspective: (a: number, b: number) => [number, number];
     readonly wasmgame_cancelDecision: (a: number) => [number, number, number];
     readonly wasmgame_dispatch: (a: number, b: any) => [number, number, number];
-    readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly wasm_start: () => void;
+    readonly wasmgame_uiState: (a: number) => [number, number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

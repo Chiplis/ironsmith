@@ -62,7 +62,7 @@ pub(crate) fn candidate_ids_for_filter(game: &GameState, filter: &ObjectFilter) 
         candidate_ids_for_zone(game, None)
     } else {
         let mut ordered: Vec<_> = ids.into_iter().collect();
-        ordered.sort_unstable();
+        ordered.sort();
         ordered
     }
 }

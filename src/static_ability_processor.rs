@@ -48,8 +48,7 @@ pub fn generate_continuous_effects_from_static_abilities(
 ) -> Vec<ContinuousEffect> {
     let mut effects = Vec::new();
 
-    let mut object_ids: Vec<_> = game.objects_iter().map(|object| object.id).collect();
-    object_ids.sort_unstable();
+    let object_ids = game.object_ids_in_deterministic_order();
 
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {

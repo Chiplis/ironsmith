@@ -196,6 +196,7 @@ pub enum StaticAbilityId {
     StartingLifeBonus,
     BuybackCostReduction,
     LegendRuleDoesntApply,
+    ManaSpendPermission,
     SpendManaAsAnyColor,
     SpendManaAsAnyColorActivationCosts,
 
@@ -416,6 +417,7 @@ impl StaticAbilityId {
             | StartingLifeBonus
             | BuybackCostReduction
             | LegendRuleDoesntApply
+            | ManaSpendPermission
             | SpendManaAsAnyColor
             | SpendManaAsAnyColorActivationCosts
             | RuleRestriction

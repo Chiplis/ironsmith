@@ -844,8 +844,15 @@ export default function GameCard({
           </div>
         ) : (
           <div className="battlefield-header">
-            <span className="battlefield-nameplate text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
-              {name}
+            <span className="battlefield-header-copy">
+              <span className="battlefield-nameplate text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
+                {name}
+              </span>
+              {groupSize > 1 && (
+                <span className="battlefield-group-badge">
+                  x{groupSize}
+                </span>
+              )}
             </span>
             <span className="flex items-center gap-1">
               {showDebugSimilarityBadge && (
@@ -884,15 +891,8 @@ export default function GameCard({
           </div>
         )}
 
-        {variant === "battlefield" && (groupSize > 1 || card.power_toughness) && (
+        {variant === "battlefield" && card.power_toughness && (
           <div className="battlefield-footer">
-            <div className="battlefield-footer-left">
-              {groupSize > 1 && (
-                <span className="battlefield-group-badge">
-                  x{groupSize}
-                </span>
-              )}
-            </div>
             {card.power_toughness && (
               <span className="battlefield-pt-badge">
                 {card.power_toughness}

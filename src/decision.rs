@@ -1305,7 +1305,8 @@ fn calculate_effective_activation_mana_cost_with_view(
             }
 
             let multiplier = if let Some(per_filter) = &reduction.per_matching_objects {
-                game.objects_iter()
+                game.objects_in_deterministic_order()
+                    .into_iter()
                     .filter(|obj| per_filter.matches(obj, &filter_ctx, game))
                     .count() as u32
             } else {
@@ -5044,7 +5045,7 @@ impl DecisionMaker for NumericInputDecisionMaker {
             );
         }
 
-        if trimmed.is_empty() && ctx.min == 0 {
+        if trimmed.is_empty() && (ctx.min == 0 || ctx.allow_partial_completion) {
             return Vec::new();
         }
 
@@ -5071,11 +5072,13 @@ impl DecisionMaker for NumericInputDecisionMaker {
         }
 
         // If we didn't select enough, auto-select from beginning
-        while selected.len() < ctx.min && selected.len() < legal.len() {
-            if !selected.contains(&legal[selected.len()]) {
-                selected.push(legal[selected.len()]);
-            } else {
-                break;
+        if !ctx.allow_partial_completion {
+            while selected.len() < ctx.min && selected.len() < legal.len() {
+                if !selected.contains(&legal[selected.len()]) {
+                    selected.push(legal[selected.len()]);
+                } else {
+                    break;
+                }
             }
         }
 
@@ -5692,7 +5695,13 @@ impl DecisionMaker for CliDecisionMaker {
             player_name(game, ctx.player)
         );
         println!("{}", ctx.description);
-        prompt_select_objects(game, &ctx.candidates, ctx.min, ctx.max)
+        prompt_select_objects(
+            game,
+            &ctx.candidates,
+            ctx.min,
+            ctx.max,
+            ctx.allow_partial_completion,
+        )
     }
 
     fn decide_options(
@@ -6635,6 +6644,7 @@ fn prompt_select_objects(
     candidates: &[crate::decisions::context::SelectableObject],
     min: usize,
     max: Option<usize>,
+    allow_partial_completion: bool,
 ) -> Vec<ObjectId> {
     if candidates.is_empty() {
         return vec![];
@@ -6658,10 +6668,17 @@ fn prompt_select_objects(
     let max_display = max
         .map(|m| m.to_string())
         .unwrap_or_else(|| "any".to_string());
-    println!(
-        "Select {} to {} objects (comma-separated indices, or empty for none):",
-        min, max_display
-    );
+    if allow_partial_completion {
+        println!(
+            "Select up to {} objects (comma-separated indices, or empty for none):",
+            max_display
+        );
+    } else {
+        println!(
+            "Select {} to {} objects (comma-separated indices, or empty for none):",
+            min, max_display
+        );
+    }
 
     loop {
         print!("Selection: ");
@@ -6672,7 +6689,7 @@ fn prompt_select_objects(
 
         // Handle empty input
         if trimmed.is_empty() {
-            if min == 0 {
+            if min == 0 || allow_partial_completion {
                 return vec![];
             }
             println!("Must select at least {} object(s).", min);
@@ -6703,7 +6720,7 @@ fn prompt_select_objects(
         }
 
         // Validate count
-        if selected.len() < min {
+        if !allow_partial_completion && selected.len() < min {
             println!("Must select at least {} object(s).", min);
             continue;
         }

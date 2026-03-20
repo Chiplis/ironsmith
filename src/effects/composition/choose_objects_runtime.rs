@@ -373,12 +373,13 @@ fn normalize_chosen_objects(
     candidates: &[ObjectId],
     min: usize,
     max: usize,
+    fill_to_min: bool,
 ) -> Vec<ObjectId> {
     chosen.truncate(max);
     chosen.sort();
     chosen.dedup();
 
-    if chosen.len() < min {
+    if fill_to_min && chosen.len() < min {
         for id in candidates {
             if chosen.len() >= min {
                 break;
@@ -520,14 +521,15 @@ pub(crate) fn run_choose_objects(
 
         if effect.count.up_to_x {
             (0, x.min(candidates.len()))
-        } else if x > candidates.len() {
+        } else if x > candidates.len() && !effect.is_search {
             return Err(ExecutionError::Impossible(format!(
                 "Not enough candidates to choose X objects (X={}, {} available)",
                 x,
                 candidates.len()
             )));
         } else {
-            (x, x)
+            let bounded = x.min(candidates.len());
+            (bounded, bounded)
         }
     } else {
         compute_choice_bounds(effect.count, candidates.len())
@@ -558,13 +560,17 @@ pub(crate) fn run_choose_objects(
     } else {
         effect.description.to_string()
     };
-    let chosen: Vec<ObjectId> = if should_auto_choose_single_candidate(&candidates, min, max) {
-        candidates.clone()
-    } else {
-        let spec =
-            ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
-        make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
-    };
+    let chosen: Vec<ObjectId> =
+        if !effect.is_search && should_auto_choose_single_candidate(&candidates, min, max) {
+            candidates.clone()
+        } else {
+            let mut spec =
+                ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
+            if effect.is_search {
+                spec = spec.allow_partial_completion();
+            }
+            make_decision(game, ctx.decision_maker, chooser_id, Some(ctx.source), spec)
+        };
     if ctx.decision_maker.awaiting_choice() {
         ctx.clear_object_tag(effect.tag.as_str());
         let outcome = EffectOutcome::count(0);
@@ -574,7 +580,7 @@ pub(crate) fn run_choose_objects(
             outcome
         });
     }
-    let chosen = normalize_chosen_objects(chosen, &candidates, min, max);
+    let chosen = normalize_chosen_objects(chosen, &candidates, min, max, !effect.is_search);
     let chosen =
         enforce_single_graveyard_choice_constraint(effect, game, &candidates, chosen, min, max);
 
@@ -680,11 +686,95 @@ mod tests {
             ObjectId::from_raw(2),
         ];
 
-        let normalized = normalize_chosen_objects(chosen, &candidates, 2, 2);
+        let normalized = normalize_chosen_objects(chosen, &candidates, 2, 2, true);
         assert_eq!(
             normalized,
             vec![ObjectId::from_raw(3), ObjectId::from_raw(1)]
         );
+    }
+
+    #[test]
+    fn test_search_with_single_candidate_can_fail_to_find() {
+        struct FailToFindDecisionMaker;
+
+        impl DecisionMaker for FailToFindDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                assert!(
+                    ctx.allow_partial_completion,
+                    "search prompts should allow partial completion"
+                );
+                Vec::new()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let _only = create_library_card(&mut game, "Only Match", alice);
+        let source = game.new_object_id();
+        let mut dm = FailToFindDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let filter = ObjectFilter::default().in_zone(Zone::Library);
+        let effect = ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "chosen")
+            .in_zone(Zone::Library)
+            .as_search();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
+
+        let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
+            panic!("expected object selection result");
+        };
+        assert!(
+            chosen.is_empty(),
+            "single-candidate searches must still allow failing to find"
+        );
+    }
+
+    #[test]
+    fn test_search_exact_count_can_partially_complete() {
+        struct ChooseOneDecisionMaker;
+
+        impl DecisionMaker for ChooseOneDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                assert_eq!(ctx.min, 2, "exact-count search should still describe count");
+                assert!(
+                    ctx.allow_partial_completion,
+                    "exact-count searches should still allow stopping early"
+                );
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .take(1)
+                    .collect()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_library_card(&mut game, "First Match", alice);
+        let _second = create_library_card(&mut game, "Second Match", alice);
+        let source = game.new_object_id();
+        let mut dm = ChooseOneDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let filter = ObjectFilter::default().in_zone(Zone::Library);
+        let effect = ChooseObjectsEffect::new(filter, 2, PlayerFilter::You, "chosen")
+            .in_zone(Zone::Library)
+            .as_search();
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx).expect("search resolves");
+
+        let crate::effect::OutcomeValue::Objects(chosen) = outcome.value else {
+            panic!("expected object selection result");
+        };
+        assert_eq!(chosen, vec![first]);
     }
 
     #[test]

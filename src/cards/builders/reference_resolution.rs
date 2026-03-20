@@ -744,7 +744,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ForEachCounterKindPutOrRemove { .. }
         | EffectAst::PutCountersAll { .. }
         | EffectAst::DoubleCountersOnEach { .. }
-        | EffectAst::Proliferate
+        | EffectAst::Proliferate { .. }
         | EffectAst::TapAll { .. }
         | EffectAst::UntapAll { .. }
         | EffectAst::LoseGame { .. }
@@ -1135,6 +1135,7 @@ fn resolve_effect_result_values_in_fields(
         | EffectAst::CopySpell { count: amount, .. }
         | EffectAst::CreateToken { count: amount, .. }
         | EffectAst::Investigate { count: amount }
+        | EffectAst::Proliferate { count: amount }
         | EffectAst::CreateTokenCopy { count: amount, .. }
         | EffectAst::CreateTokenCopyFromSource { count: amount, .. }
         | EffectAst::RemoveUpToAnyCounters { amount, .. } => {
@@ -1550,9 +1551,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             replacements
         }
-        EffectAst::CreateToken { count, .. } | EffectAst::Investigate { count } => {
-            bind_unresolved_it_in_value(count, seed_tag)
-        }
+        EffectAst::CreateToken { count, .. }
+        | EffectAst::Investigate { count }
+        | EffectAst::Proliferate { count } => bind_unresolved_it_in_value(count, seed_tag),
         EffectAst::CreateTokenCopy { object, count, .. } => {
             bind_unresolved_it_in_object_ref_ast(object, seed_tag)
                 + bind_unresolved_it_in_value(count, seed_tag)
