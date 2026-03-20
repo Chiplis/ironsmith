@@ -147,7 +147,9 @@ mod tests {
             .find_object_by_stable_id(stable_id)
             .expect("creature should still be findable after replacement");
         assert_eq!(
-            game.object(exiled_id).expect("exiled creature should exist").zone,
+            game.object(exiled_id)
+                .expect("exiled creature should exist")
+                .zone,
             Zone::Exile
         );
     }
@@ -192,7 +194,9 @@ mod tests {
             .find_object_by_stable_id(stable_id)
             .expect("creature should still be findable after moving to hand");
         assert_eq!(
-            game.object(moved_id).expect("moved creature should exist").zone,
+            game.object(moved_id)
+                .expect("moved creature should exist")
+                .zone,
             Zone::Hand
         );
     }

@@ -3645,11 +3645,11 @@ mod priority_mana_tests {
         game.object_mut(cavern_id)
             .expect("cavern test land should exist")
             .abilities
-                .push(Ability {
-                    kind: AbilityKind::Activated(ActivatedAbility {
-                        mana_cost: TotalCost::free(),
-                        effects: crate::resolution::ResolutionProgram::default(),
-                        choices: vec![],
+            .push(Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: TotalCost::free(),
+                    effects: crate::resolution::ResolutionProgram::default(),
+                    choices: vec![],
                     timing: crate::ability::ActivationTiming::AnyTime,
                     additional_restrictions: vec![],
                     activation_restrictions: vec![],

@@ -127,7 +127,11 @@ impl TriggerQueue {
 pub fn compute_trigger_identity(trigger_ability: &TriggeredAbility) -> TriggerIdentity {
     let mut hasher = DefaultHasher::new();
     trigger_ability.trigger.display().hash(&mut hasher);
-    trigger_ability.effects.all_effects().len().hash(&mut hasher);
+    trigger_ability
+        .effects
+        .all_effects()
+        .len()
+        .hash(&mut hasher);
     trigger_ability.choices.len().hash(&mut hasher);
     trigger_ability.intervening_if.is_some().hash(&mut hasher);
     for effect in trigger_ability.effects.all_effects() {
@@ -451,18 +455,18 @@ fn add_monarch_designation_triggers(
         push_monarch_trigger(
             triggered,
             monarch,
-                TriggeredAbility {
-                    trigger: Trigger::custom(
-                        "monarch_end_step",
-                        "At the beginning of the monarch's end step".to_string(),
-                    ),
-                    effects: ResolutionProgram::from_effects(vec![Effect::target_draws(
-                        1,
-                        PlayerFilter::Specific(monarch),
-                    )]),
-                    choices: vec![],
-                    intervening_if: None,
-                },
+            TriggeredAbility {
+                trigger: Trigger::custom(
+                    "monarch_end_step",
+                    "At the beginning of the monarch's end step".to_string(),
+                ),
+                effects: ResolutionProgram::from_effects(vec![Effect::target_draws(
+                    1,
+                    PlayerFilter::Specific(monarch),
+                )]),
+                choices: vec![],
+                intervening_if: None,
+            },
             trigger_event,
         );
     }

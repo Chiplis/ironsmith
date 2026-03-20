@@ -3778,9 +3778,9 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::exile(ChooseSpec::Source),
-                ]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::exile(
+                    ChooseSpec::Source,
+                )]),
                 choices: vec![ChooseSpec::target(ChooseSpec::creature())],
                 intervening_if: None,
             }),
@@ -3806,7 +3806,9 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::this_attacks(),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![untap, must_block]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    untap, must_block,
+                ]),
                 choices: vec![target_spec],
                 intervening_if: None,
             }),
@@ -3829,11 +3831,13 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(vec![
-                    Effect::sacrifice(creature_filter, 1),
-                    Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
-                    Effect::may_choose_new_targets(EffectId(0)),
-                ])]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(
+                    vec![
+                        Effect::sacrifice(creature_filter, 1),
+                        Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
+                        Effect::may_choose_new_targets(EffectId(0)),
+                    ],
+                )]),
                 choices: vec![],
                 intervening_if: None,
             }),
@@ -3859,11 +3863,13 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(vec![
-                    Effect::tap(ChooseSpec::All(creature_filter)),
-                    Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
-                    Effect::may_choose_new_targets(EffectId(0)),
-                ])]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::may(
+                    vec![
+                        Effect::tap(ChooseSpec::All(creature_filter)),
+                        Effect::with_id(0, Effect::copy_spell(ChooseSpec::Source)),
+                        Effect::may_choose_new_targets(EffectId(0)),
+                    ],
+                )]),
                 choices: vec![],
                 intervening_if: None,
             }),
@@ -3971,17 +3977,19 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::beginning_of_upkeep(PlayerFilter::Any),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::conditional(
-                    Condition::SourceIsFaceDown,
-                    vec![Effect::conditional_only(
-                        Condition::SpellsWereCastLastTurnOrMore(2),
-                        vec![Effect::transform(ChooseSpec::Source)],
-                    )],
-                    vec![Effect::conditional_only(
-                        Condition::NoSpellsWereCastLastTurn,
-                        vec![Effect::transform(ChooseSpec::Source)],
-                    )],
-                )]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::conditional(
+                        Condition::SourceIsFaceDown,
+                        vec![Effect::conditional_only(
+                            Condition::SpellsWereCastLastTurnOrMore(2),
+                            vec![Effect::transform(ChooseSpec::Source)],
+                        )],
+                        vec![Effect::conditional_only(
+                            Condition::NoSpellsWereCastLastTurn,
+                            vec![Effect::transform(ChooseSpec::Source)],
+                        )],
+                    ),
+                ]),
                 choices: vec![],
                 intervening_if: None,
             }),
@@ -3997,17 +4005,19 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::beginning_of_upkeep(PlayerFilter::Any),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::conditional(
-                    Condition::SourceIsFaceDown,
-                    vec![Effect::conditional_only(
-                        Condition::SpellsWereCastLastTurnOrMore(2),
-                        vec![Effect::transform(ChooseSpec::Source)],
-                    )],
-                    vec![Effect::conditional_only(
-                        Condition::NoSpellsWereCastLastTurn,
-                        vec![Effect::transform(ChooseSpec::Source)],
-                    )],
-                )]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::conditional(
+                        Condition::SourceIsFaceDown,
+                        vec![Effect::conditional_only(
+                            Condition::SpellsWereCastLastTurnOrMore(2),
+                            vec![Effect::transform(ChooseSpec::Source)],
+                        )],
+                        vec![Effect::conditional_only(
+                            Condition::NoSpellsWereCastLastTurn,
+                            vec![Effect::transform(ChooseSpec::Source)],
+                        )],
+                    ),
+                ]),
                 choices: vec![],
                 intervening_if: None,
             }),

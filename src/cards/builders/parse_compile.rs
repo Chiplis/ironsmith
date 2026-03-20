@@ -339,11 +339,13 @@ pub(crate) fn compile_statement_effects_with_imports(
 pub(crate) fn materialize_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    if let [EffectAst::SelfReplacement {
-        predicate,
-        if_true,
-        if_false,
-    }] = prepared.effects.as_slice()
+    if let [
+        EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = prepared.effects.as_slice()
     {
         let default_effects =
             compile_statement_effects_with_imports(if_false, &prepared.imports)?.effects;
@@ -386,11 +388,13 @@ pub(crate) fn materialize_prepared_statement_effects(
 pub(crate) fn materialize_prepared_effects_with_trigger_context(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    if let [EffectAst::SelfReplacement {
-        predicate,
-        if_true,
-        if_false,
-    }] = prepared.effects.as_slice()
+    if let [
+        EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = prepared.effects.as_slice()
     {
         let default_lowered = compile_statement_effects_with_imports(if_false, &prepared.imports)?;
         let replacement_lowered =
@@ -408,7 +412,10 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
                     default_effects: default_lowered.effects.flattened_default_effects().to_vec(),
                     self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                         condition,
-                        replacement_lowered.effects.flattened_default_effects().to_vec(),
+                        replacement_lowered
+                            .effects
+                            .flattened_default_effects()
+                            .to_vec(),
                     )],
                 },
             ]),

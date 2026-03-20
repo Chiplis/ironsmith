@@ -1504,8 +1504,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             replacements
         }
-        EffectAst::Conditional { predicate, .. }
-        | EffectAst::SelfReplacement { predicate, .. } => {
+        EffectAst::Conditional { predicate, .. } | EffectAst::SelfReplacement { predicate, .. } => {
             bind_unresolved_it_in_predicate(predicate, seed_tag)
         }
         EffectAst::ChooseObjects { filter, tag, .. } => {

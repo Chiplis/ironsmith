@@ -183,19 +183,20 @@ export default function DecisionMiniInspector({
     () => {
       const relevantLines = pickRelevantOracleLines(
         details?.oracle_text,
-        details?.abilities,
+        details?.compiled_text || details?.abilities,
         needleText,
         stackObject?.ability_kind || ""
       );
       if (relevantLines.length > 0) return relevantLines;
       return pickDefaultOracleLines(
         details?.oracle_text,
-        details?.abilities,
+        details?.compiled_text || details?.abilities,
         stackObject?.ability_kind || ""
       );
     },
     [
       details?.abilities,
+      details?.compiled_text,
       details?.oracle_text,
       needleText,
       stackObject?.ability_kind,

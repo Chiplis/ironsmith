@@ -1,16 +1,15 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, LineInfo, LoweredEffects,
+    CardDefinitionBuilder, CardTextError, EffectAst, InsteadSemantics, LineInfo, LoweredEffects,
     NormalizedAdditionalCostChoiceOptionAst, NormalizedParsedAbility, NormalizedPreparedAbility,
     ParsedAbility, PreparedEffectsForLowering, ReferenceExports, ReferenceImports, TriggerSpec,
-    InsteadSemantics,
-    collect_tag_spans_from_effects_with_context, compile_trigger_spec,
-    materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
-    materialize_prepared_triggered_effects, prepare_effects_for_lowering,
-    prepare_effects_with_trigger_context_for_lowering, prepare_triggered_effects_for_lowering,
-    trigger_binds_player_reference_context, validate_iterated_player_bindings_in_lowered_effects,
-    classify_instead_followup_text,
+    classify_instead_followup_text, collect_tag_spans_from_effects_with_context,
+    compile_trigger_spec, materialize_prepared_effects_with_trigger_context,
+    materialize_prepared_statement_effects, materialize_prepared_triggered_effects,
+    prepare_effects_for_lowering, prepare_effects_with_trigger_context_for_lowering,
+    prepare_triggered_effects_for_lowering, trigger_binds_player_reference_context,
+    validate_iterated_player_bindings_in_lowered_effects,
 };
 use crate::effect::EffectMode;
 use crate::zone::Zone;
@@ -225,7 +224,7 @@ pub(crate) fn apply_instead_followup_statement_to_last_ability(
                     replacement.condition.clone(),
                     replacement.replacement_effects.clone(),
                 ));
-        },
+        }
         AbilityKind::Activated(ability) => {
             let Some(segment) = ability.effects.last_segment_mut() else {
                 return Ok(false);
@@ -239,7 +238,7 @@ pub(crate) fn apply_instead_followup_statement_to_last_ability(
                     replacement.condition.clone(),
                     replacement.replacement_effects.clone(),
                 ));
-        },
+        }
         _ => return Ok(false),
     }
 

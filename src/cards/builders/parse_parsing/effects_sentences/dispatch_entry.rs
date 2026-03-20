@@ -6,8 +6,7 @@ use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
     InsteadSemantics, KeywordAction, PlayerAst, SubjectAst, TagKey, TargetAst, TextSpan, Token,
     TokenCopyFollowup, ZoneReplacementDurationAst, append_token_reminder_to_last_create_effect,
-    build_may_cast_tagged_effect,
-    classify_instead_followup_text,
+    build_may_cast_tagged_effect, classify_instead_followup_text,
     collapse_token_copy_end_of_combat_exile_followup,
     collapse_token_copy_next_end_step_exile_followup, effect_creates_any_token,
     effect_creates_eldrazi_spawn_or_scion, explicit_player_for_carry, helper_tag_for_tokens,
@@ -1872,8 +1871,7 @@ pub(crate) fn parse_effect_sentences(tokens: &[Token]) -> Result<Vec<EffectAst>,
         if matches!(
             classify_instead_followup_text(&sentence_text),
             InsteadSemantics::SelfReplacement
-        )
-            && sentence_effects.len() == 1
+        ) && sentence_effects.len() == 1
             && effects.len() >= 1
         {
             if matches!(

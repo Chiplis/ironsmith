@@ -7551,8 +7551,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "If a card would be put into {graveyard_owner} graveyard from anywhere this turn, exile that card instead"
         );
     }
-    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()
-    {
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>() {
         let target = describe_choose_spec(&register.target);
         let from = register
             .from_zone

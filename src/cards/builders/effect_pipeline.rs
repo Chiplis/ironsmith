@@ -3,16 +3,15 @@ use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
     AnnotatedEffectSequence, CardTextError, EffectAst, EffectReferenceResolutionConfig,
-    KeywordAction, LineAst, LineInfo, LoweredEffects, ParsedAbility, ParsedCardAst, ParsedCardItem,
-    ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst, ParsedModalAst,
-    ParsedModalHeader, ParsedRestrictions, PredicateAst, ReferenceEnv, ReferenceExports,
-    ReferenceImports, StaticAbilityAst, TriggerSpec, annotate_effect_sequence,
-    apply_instead_followup_statement_to_last_ability, collect_tag_spans_from_effects_with_context,
-    classify_instead_followup_text,
-    combine_mana_activation_condition, effects_reference_it_tag, effects_reference_its_controller,
-    effects_reference_tag, ensure_concrete_trigger_spec, inferred_trigger_player_filter,
-    InsteadSemantics,
-    lower_prepared_ability, lower_prepared_additional_cost_choice_modes_with_exports,
+    InsteadSemantics, KeywordAction, LineAst, LineInfo, LoweredEffects, ParsedAbility,
+    ParsedCardAst, ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst,
+    ParsedModalAst, ParsedModalHeader, ParsedRestrictions, PredicateAst, ReferenceEnv,
+    ReferenceExports, ReferenceImports, StaticAbilityAst, TriggerSpec, annotate_effect_sequence,
+    apply_instead_followup_statement_to_last_ability, classify_instead_followup_text,
+    collect_tag_spans_from_effects_with_context, combine_mana_activation_condition,
+    effects_reference_it_tag, effects_reference_its_controller, effects_reference_tag,
+    ensure_concrete_trigger_spec, inferred_trigger_player_filter, lower_prepared_ability,
+    lower_prepared_additional_cost_choice_modes_with_exports,
     lower_prepared_effects_with_trigger_context, lower_prepared_statement_effects,
     lower_static_abilities_ast, lower_static_ability_ast, normalize_effects_ast,
     parse_activate_only_timing, parse_activation_condition, parse_mana_usage_restriction_sentence,
@@ -1375,8 +1374,7 @@ fn apply_line_ast(
             if matches!(
                 classify_instead_followup_text(&normalized_line),
                 InsteadSemantics::SelfReplacement
-            )
-                && compiled.len() == 1
+            ) && compiled.len() == 1
                 && builder.spell_effect.is_none()
                 && compiled[0]
                     .downcast_ref::<crate::effects::ConditionalEffect>()
@@ -1390,8 +1388,7 @@ fn apply_line_ast(
             if matches!(
                 classify_instead_followup_text(&normalized_line),
                 InsteadSemantics::SelfReplacement
-            )
-                && compiled.len() == 1
+            ) && compiled.len() == 1
                 && let Some(ref mut existing) = builder.spell_effect
                 && !existing.is_empty()
                 && let Some(replacement) =
@@ -1402,7 +1399,9 @@ fn apply_line_ast(
                 if replacement.if_true.len() == 1
                     && let Some(previous_target) = existing
                         .last()
-                        .and_then(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())
+                        .and_then(|effect| {
+                            effect.downcast_ref::<crate::effects::DealDamageEffect>()
+                        })
                         .map(|damage| damage.target.clone())
                     && let Some(replacement_damage) =
                         replacement.if_true[0].downcast_ref::<crate::effects::DealDamageEffect>()
@@ -1421,12 +1420,12 @@ fn apply_line_ast(
                             .to_string(),
                     ));
                 };
-                segment.self_replacements.push(
-                    crate::resolution::SelfReplacementBranch::new(
+                segment
+                    .self_replacements
+                    .push(crate::resolution::SelfReplacementBranch::new(
                         replacement.condition,
                         replacement.if_true,
-                    ),
-                );
+                    ));
             } else if let Some(ref mut existing) = builder.spell_effect {
                 existing.extend(compiled);
             } else {

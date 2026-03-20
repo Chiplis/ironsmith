@@ -51,18 +51,17 @@ impl ResolutionProgram {
         if let Some(segment) = self.segments.last_mut() {
             segment.default_effects.push(effect);
         } else {
-            self.segments.push(ResolutionSegment::from_effects(vec![effect]));
+            self.segments
+                .push(ResolutionSegment::from_effects(vec![effect]));
         }
     }
 
     pub fn pop(&mut self) -> Option<Effect> {
         let effect = self.segments.last_mut()?.default_effects.pop()?;
         self.flattened_default_effects.pop();
-        if self
-            .segments
-            .last()
-            .is_some_and(|segment| segment.default_effects.is_empty() && segment.self_replacements.is_empty())
-        {
+        if self.segments.last().is_some_and(|segment| {
+            segment.default_effects.is_empty() && segment.self_replacements.is_empty()
+        }) {
             self.segments.pop();
         }
         Some(effect)
@@ -71,7 +70,8 @@ impl ResolutionProgram {
     pub fn insert(&mut self, index: usize, effect: Effect) {
         self.flattened_default_effects.insert(index, effect.clone());
         if self.segments.is_empty() {
-            self.segments.push(ResolutionSegment::from_effects(vec![effect]));
+            self.segments
+                .push(ResolutionSegment::from_effects(vec![effect]));
             return;
         }
 

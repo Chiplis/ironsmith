@@ -499,7 +499,10 @@ impl ReplacementEffectManager {
     }
 
     /// Add a replacement effect that lasts until cleanup.
-    pub fn add_until_end_of_turn_effect(&mut self, effect: ReplacementEffect) -> ReplacementEffectId {
+    pub fn add_until_end_of_turn_effect(
+        &mut self,
+        effect: ReplacementEffect,
+    ) -> ReplacementEffectId {
         let id = self.add_effect(effect);
         self.until_end_of_turn_effects.insert(id);
         id

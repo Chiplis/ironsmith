@@ -8231,7 +8231,6 @@ fn parse_urzas_tower_conditional_mana_output() {
             && mana_line.contains("Add {C}"),
         "expected conditional tron mana render, got {mana_line}"
     );
-
 }
 
 #[test]
@@ -8254,7 +8253,10 @@ fn parse_activated_ability_instead_followup_builds_stack_self_replacement_progra
         PlayerId::from_index(0),
         ability.effects.clone(),
     );
-    let program = entry.ability_effects.as_ref().expect("stack ability program");
+    let program = entry
+        .ability_effects
+        .as_ref()
+        .expect("stack ability program");
     assert_eq!(program.segments.len(), 1);
     assert_eq!(program.segments[0].self_replacements.len(), 1);
 }

@@ -624,6 +624,7 @@ export default function HoverArtOverlay({
   const imageUrl = artObjectName ? scryfallImageUrl(artObjectName, "art_crop") : "";
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
   const topStackObject = getVisibleTopStackObject(state);
+  const detailCompiledText = Array.isArray(details?.compiled_text) ? details.compiled_text : null;
   const detailAbilities = Array.isArray(details?.abilities) ? details.abilities : null;
   const detailStableId = details?.stable_id != null ? String(details.stable_id) : null;
   const topStackId = topStackObject?.inspect_object_id != null
@@ -644,7 +645,9 @@ export default function HoverArtOverlay({
   const similarityBadgeLabel = hasSemanticScore
     ? `Similarity ${(semanticScore * 100).toFixed(1)}%`
     : "Similarity --";
-  const compiledText = detailAbilities && detailAbilities.length > 0
+  const compiledText = detailCompiledText && detailCompiledText.length > 0
+    ? stripInspectorAbilityPrefixes(detailCompiledText.join("\n"))
+    : detailAbilities && detailAbilities.length > 0
     ? stripInspectorAbilityPrefixes(detailAbilities.join("\n"))
     : stripInspectorAbilityPrefixes(
       hoveredStackAbilityText
@@ -659,6 +662,11 @@ export default function HoverArtOverlay({
       .filter(Boolean);
   }, [details?.oracle_text]);
   const compiledRulesLines = useMemo(() => {
+    if (detailCompiledText && detailCompiledText.length > 0) {
+      return detailCompiledText
+        .map((line) => stripInspectorAbilityPrefixes(String(line || "")).trim())
+        .filter(Boolean);
+    }
     if (detailAbilities && detailAbilities.length > 0) {
       return detailAbilities
         .map((line) => stripInspectorAbilityPrefixes(String(line || "")).trim())
@@ -674,7 +682,7 @@ export default function HoverArtOverlay({
       .split(/\n+/)
       .map((line) => line.trim())
       .filter(Boolean);
-  }, [detailAbilities, hoveredStackAbilityText, hoveredStackEffectText, oracleText]);
+  }, [detailAbilities, detailCompiledText, hoveredStackAbilityText, hoveredStackEffectText, oracleText]);
   const shouldPreferStackAbilityRules = (
     Boolean(hoveredStackObject?.ability_kind)
     && compiledRulesLines.length > 0

@@ -36,13 +36,15 @@ fn representative_segment_targets(
         let Some(spec) = effect.0.get_target_spec() else {
             return Ok(None);
         };
-        let object_id = match crate::effects::helpers::resolve_single_object_for_effect(game, ctx, spec)
-        {
-            Ok(id) => id,
-            Err(crate::executor::ExecutionError::InvalidTarget) => return Ok(None),
-            Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
-        };
-        Ok(Some(vec![crate::executor::ResolvedTarget::Object(object_id)]))
+        let object_id =
+            match crate::effects::helpers::resolve_single_object_for_effect(game, ctx, spec) {
+                Ok(id) => id,
+                Err(crate::executor::ExecutionError::InvalidTarget) => return Ok(None),
+                Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
+            };
+        Ok(Some(vec![crate::executor::ResolvedTarget::Object(
+            object_id,
+        )]))
     })
 }
 
@@ -91,23 +93,28 @@ fn evaluate_self_replacement_branch(
     let Some(effect) = representative_effect else {
         let result =
             crate::condition_eval::evaluate_condition_resolution(game, &branch.condition, ctx)
-            .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()));
+                .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()));
         ctx.tagged_objects = original_tagged_objects;
         return result;
     };
 
     let representative_targets =
         representative_segment_targets(game, ctx, effect, representative_assignments.clone())?;
-    let result = ctx.with_temp_target_assignments(representative_assignments, |ctx| {
-        if let Some(targets) = representative_targets {
-            ctx.with_temp_targets(targets, |ctx| {
+    let result = ctx
+        .with_temp_target_assignments(representative_assignments, |ctx| {
+            if let Some(targets) = representative_targets {
+                ctx.with_temp_targets(targets, |ctx| {
+                    crate::condition_eval::evaluate_condition_resolution(
+                        game,
+                        &branch.condition,
+                        ctx,
+                    )
+                })
+            } else {
                 crate::condition_eval::evaluate_condition_resolution(game, &branch.condition, ctx)
-            })
-        } else {
-            crate::condition_eval::evaluate_condition_resolution(game, &branch.condition, ctx)
-        }
-    })
-    .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()));
+            }
+        })
+        .map_err(|err| GameLoopError::ResolutionFailed(err.to_string()));
     ctx.tagged_objects = original_tagged_objects;
     result
 }
@@ -125,7 +132,8 @@ pub(crate) fn execute_resolution_program(
     let mut consumed_modal_selection = false;
     let mut assignment_cursor = 0usize;
     for segment in &program.segments {
-        let (selected_effects, selected_self_replacement) = if segment.self_replacements.is_empty() {
+        let (selected_effects, selected_self_replacement) = if segment.self_replacements.is_empty()
+        {
             (segment.default_effects.clone(), false)
         } else {
             let representative_effect = segment

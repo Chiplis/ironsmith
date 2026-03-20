@@ -695,6 +695,7 @@ struct ObjectDetailsSnapshot {
     loyalty: Option<u32>,
     tapped: bool,
     counters: Vec<CounterSnapshot>,
+    compiled_text: Vec<String>,
     abilities: Vec<String>,
     raw_compilation: String,
     semantic_score: Option<f32>,
@@ -7422,6 +7423,7 @@ fn build_object_details_snapshot(game: &GameState, id: ObjectId) -> Option<Objec
         (obj.power(), obj.toughness())
     };
     let counters = counter_snapshots_for_object(obj);
+    let compiled_text = crate::compiled_text::compiled_lines(&obj.to_card_definition());
 
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,
@@ -7443,6 +7445,7 @@ fn build_object_details_snapshot(game: &GameState, id: ObjectId) -> Option<Objec
         loyalty: obj.loyalty(),
         tapped: game.is_tapped(obj.id),
         counters,
+        compiled_text,
         abilities: current_abilities
             .iter()
             .filter_map(|ability| ability.text.clone())
@@ -8502,6 +8505,7 @@ mod tests {
     use crate::alternative_cast::CastingMethod;
     use crate::card::CardBuilder;
     use crate::cards::CardRegistry;
+    use crate::cards::builders::CardDefinitionBuilder;
     use crate::cards::definitions::{
         basic_island, basic_mountain, blood_artist, culling_the_weak, emrakul_the_promised_end,
         gemstone_caverns, grizzly_bears, lightning_bolt, ornithopter, polluted_delta, serum_powder,
@@ -8808,6 +8812,41 @@ mod tests {
             build_object_details_snapshot(&game, bears_id).expect("expected object details");
         assert_eq!(details.power, Some(5));
         assert_eq!(details.toughness, Some(2));
+    }
+
+    #[test]
+    fn object_details_include_compiled_spell_effects_for_spells_with_static_abilities() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Nexus of Fate")
+            .card_types(vec![CardType::Instant])
+            .parse_text(
+                "Take an extra turn after this one.\nIf Nexus of Fate would be put into a graveyard from anywhere, reveal Nexus of Fate and shuffle it into its owner's library instead.",
+            )
+            .expect("Nexus of Fate test definition should parse");
+        let object_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+
+        let details =
+            build_object_details_snapshot(&game, object_id).expect("expected object details");
+
+        assert!(
+            details
+                .compiled_text
+                .iter()
+                .any(|line| line.contains("take an extra turn after this one")),
+            "expected compiled inspector text to include the spell effect, got {:?}",
+            details.compiled_text
+        );
+        assert!(
+            details
+                .compiled_text
+                .iter()
+                .any(|line| line.contains("shuffle it into its owner's library instead")),
+            "expected compiled inspector text to include the static ability, got {:?}",
+            details.compiled_text
+        );
+        assert_eq!(details.abilities.len(), 1);
     }
 
     #[test]
