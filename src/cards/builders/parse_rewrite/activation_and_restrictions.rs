@@ -1,10 +1,10 @@
-use super::ported_effects_sentences::{
+use super::effect_sentences::{
     is_beginning_of_end_step_words, is_end_of_combat_words, is_negated_untap_clause,
     parse_effect_sentence, parse_effect_sentences, parse_mana_symbol, parse_mana_symbol_group,
     parse_restriction_duration, parse_scryfall_mana_cost, parse_subtype_word, parse_supertype_word,
     replace_unbound_x_in_effect_anywhere, strip_leading_articles, trim_edge_punctuation,
 };
-use super::ported_activation_helpers::{
+use super::activation_helpers::{
     contains_discard_source_phrase, contains_source_from_your_graveyard_phrase,
     contains_source_from_your_hand_phrase, find_activation_cost_start, is_article,
     is_basic_color_word, is_comparison_or_delimiter, is_source_from_your_graveyard_words,
@@ -12,12 +12,12 @@ use super::ported_activation_helpers::{
     parse_next_end_step_token_delay_flags, parse_subtype_flexible, split_cost_segments,
     token_index_for_word_index, value_contains_unbound_x,
 };
-use super::ported_keyword_static::{
+use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_cost_modifier_amount, parse_cost_modifier_mana_cost,
     parse_dynamic_cost_modifier_value, parse_where_x_value_clause,
 };
-use super::ported_effects_sentences::find_verb;
-use super::ported_object_filters::{parse_object_filter, parse_spell_filter};
+use super::effect_sentences::find_verb;
+use super::object_filters::{parse_object_filter, parse_spell_filter};
 use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 use super::util::{
     is_source_reference_words, parse_card_type, parse_color, parse_counter_type_from_tokens,

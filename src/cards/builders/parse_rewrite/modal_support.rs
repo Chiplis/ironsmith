@@ -11,11 +11,11 @@ use super::modal_helpers::{
     find_activation_cost_start, parse_if_result_predicate, replace_unbound_x_with_value,
     starts_with_activation_cost, value_contains_unbound_x,
 };
-use super::ported_activation_and_restrictions::{
+use super::activation_and_restrictions::{
     infer_activated_functional_zones, parse_activation_cost,
     parse_loyalty_shorthand_activation_cost,
 };
-use super::ported_keyword_static::parse_where_x_value_clause;
+use super::keyword_static::parse_where_x_value_clause;
 use super::util::{
     parse_number_or_x_value, split_on_period, token_index_for_word_index, tokenize_line,
     trim_commas, words,

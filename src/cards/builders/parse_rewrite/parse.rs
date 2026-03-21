@@ -1,6 +1,8 @@
 use crate::PtValue;
 use crate::ability::ActivationTiming;
-use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ParseAnnotations};
+use crate::cards::builders::{
+    CardDefinitionBuilder, CardTextError, ParseAnnotations, ParsedLevelAbilityItemAst,
+};
 
 use super::clause_support::{
     rewrite_parse_ability_line, rewrite_parse_effect_sentences,
@@ -21,10 +23,15 @@ use super::ir::{
 };
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_rewrite};
 use super::lexer::TokenKind;
-use super::ported_activation_and_restrictions::{
+use super::lower::{
+    lower_rewrite_activated_to_chunk, lower_rewrite_keyword_to_chunk,
+    lower_rewrite_statement_to_chunks, lower_rewrite_static_to_chunk,
+    lower_rewrite_triggered_to_chunk,
+};
+use super::activation_and_restrictions::{
     parse_channel_line, parse_cycling_line, parse_equip_line,
 };
-use super::ported_keyword_static::parse_if_this_spell_costs_less_to_cast_line;
+use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line;
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
 };
@@ -1685,10 +1692,12 @@ fn lower_document_cst(
                     }
                     KeywordLineKindCst::Warp => RewriteKeywordLineKind::Warp,
                 };
+                let parsed = lower_rewrite_keyword_to_chunk(keyword.info.clone(), &keyword.text, kind)?;
                 items.push(RewriteSemanticItem::Keyword(RewriteKeywordLine {
                     info: keyword.info,
                     text: keyword.text,
                     kind,
+                    parsed,
                 }));
             }
             RewriteLineCst::Activated(activated) => {
@@ -1705,15 +1714,32 @@ fn lower_document_cst(
                         return Err(err);
                     }
                 };
+                let lowered = lower_rewrite_activated_to_chunk(
+                    activated.info.clone(),
+                    cost.clone(),
+                    activated.effect_text.clone(),
+                    ActivationTiming::AnyTime,
+                    activated.chosen_option_label.clone(),
+                )?;
                 items.push(RewriteSemanticItem::Activated(RewriteActivatedLine {
                     info: activated.info,
                     cost,
                     effect_text: activated.effect_text,
                     timing_hint: ActivationTiming::AnyTime,
                     chosen_option_label: activated.chosen_option_label,
+                    parsed: lowered.chunk,
+                    restrictions: lowered.restrictions,
                 }));
             }
             RewriteLineCst::Triggered(triggered) => {
+                let parsed = lower_rewrite_triggered_to_chunk(
+                    triggered.info.clone(),
+                    &triggered.full_text,
+                    &triggered.trigger_text,
+                    &triggered.effect_text,
+                    triggered.max_triggers_per_turn,
+                    triggered.chosen_option_label.as_deref(),
+                )?;
                 items.push(RewriteSemanticItem::Triggered(RewriteTriggeredLine {
                     info: triggered.info,
                     full_text: triggered.full_text,
@@ -1721,19 +1747,29 @@ fn lower_document_cst(
                     effect_text: triggered.effect_text,
                     max_triggers_per_turn: triggered.max_triggers_per_turn,
                     chosen_option_label: triggered.chosen_option_label,
+                    parsed,
                 }));
             }
             RewriteLineCst::Static(static_line) => {
+                let parsed = lower_rewrite_static_to_chunk(
+                    static_line.info.clone(),
+                    &static_line.text,
+                    static_line.chosen_option_label.as_deref(),
+                )?;
                 items.push(RewriteSemanticItem::Static(RewriteStaticLine {
                     info: static_line.info,
                     text: static_line.text,
                     chosen_option_label: static_line.chosen_option_label,
+                    parsed,
                 }));
             }
             RewriteLineCst::Statement(statement_line) => {
+                let parsed_chunks =
+                    lower_rewrite_statement_to_chunks(statement_line.info.clone(), &statement_line.text)?;
                 items.push(RewriteSemanticItem::Statement(RewriteStatementLine {
                     info: statement_line.info,
                     text: statement_line.text,
+                    parsed_chunks,
                 }));
             }
             RewriteLineCst::Modal(modal) => {
@@ -1742,11 +1778,21 @@ fn lower_document_cst(
                     modes: modal
                         .modes
                         .into_iter()
-                        .map(|mode| RewriteModalMode {
-                            info: mode.info,
-                            text: mode.text,
+                        .map(|mode| {
+                            let parse_text =
+                                strip_non_keyword_label_prefix(mode.info.normalized.normalized.as_str())
+                                    .trim();
+                            let effects_ast = rewrite_parse_effect_sentences(&tokenize_line(
+                                parse_text,
+                                mode.info.line_index,
+                            ))?;
+                            Ok(RewriteModalMode {
+                                info: mode.info,
+                                text: mode.text,
+                                effects_ast,
+                            })
                         })
-                        .collect(),
+                        .collect::<Result<Vec<_>, CardTextError>>()?,
                 }));
             }
             RewriteLineCst::LevelHeader(level) => {
@@ -1757,26 +1803,55 @@ fn lower_document_cst(
                     items: level
                         .items
                         .into_iter()
-                        .map(|item| RewriteLevelItem {
-                            info: item.info,
-                            text: item.text,
-                            kind: match item.kind {
+                        .map(|item| {
+                            let parsed = match item.kind {
                                 LevelItemKindCst::KeywordActions => {
-                                    RewriteLevelItemKind::KeywordActions
+                                    let tokens = tokenize_line(item.text.as_str(), item.info.line_index);
+                                    let actions = rewrite_parse_ability_line(&tokens).ok_or_else(|| {
+                                        CardTextError::ParseError(format!(
+                                            "rewrite level lowering could not parse keyword line '{}'",
+                                            item.info.raw_line
+                                        ))
+                                    })?;
+                                    ParsedLevelAbilityItemAst::KeywordActions(actions)
                                 }
                                 LevelItemKindCst::StaticAbilities => {
-                                    RewriteLevelItemKind::StaticAbilities
+                                    let tokens = tokenize_line(item.text.as_str(), item.info.line_index);
+                                    let abilities = rewrite_parse_static_ability_ast_line(&tokens)?
+                                        .ok_or_else(|| {
+                                            CardTextError::ParseError(format!(
+                                                "rewrite level lowering could not parse static line '{}'",
+                                                item.info.raw_line
+                                            ))
+                                        })?;
+                                    ParsedLevelAbilityItemAst::StaticAbilities(abilities)
                                 }
-                            },
+                            };
+                            Ok(RewriteLevelItem {
+                                info: item.info,
+                                text: item.text,
+                                kind: match item.kind {
+                                    LevelItemKindCst::KeywordActions => {
+                                        RewriteLevelItemKind::KeywordActions
+                                    }
+                                    LevelItemKindCst::StaticAbilities => {
+                                        RewriteLevelItemKind::StaticAbilities
+                                    }
+                                },
+                                parsed,
+                            })
                         })
-                        .collect(),
+                        .collect::<Result<Vec<_>, CardTextError>>()?,
                 }));
             }
             RewriteLineCst::SagaChapter(saga) => {
+                let effects_ast =
+                    rewrite_parse_effect_sentences(&tokenize_line(saga.text.as_str(), saga.info.line_index))?;
                 items.push(RewriteSemanticItem::SagaChapter(RewriteSagaChapterLine {
                     info: saga.info,
                     chapters: saga.chapters,
                     text: saga.text,
+                    effects_ast,
                 }));
             }
             RewriteLineCst::Unsupported(unsupported) => {

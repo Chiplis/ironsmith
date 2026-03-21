@@ -3,15 +3,15 @@ use crate::effect::Value;
 use crate::mana::ManaSymbol;
 use crate::target::ObjectFilter;
 
-pub(crate) use super::ported_object_filters::is_comparison_or_delimiter;
-use super::ported_activation_and_restrictions::parse_devotion_value_from_add_clause;
-use super::ported_effects_sentences::clause_pattern_helpers::extract_subject_player;
-use super::ported_effects_sentences::conditionals::parse_predicate;
-use super::ported_keyword_static::{
+pub(crate) use super::object_filters::is_comparison_or_delimiter;
+use super::activation_and_restrictions::parse_devotion_value_from_add_clause;
+use super::effect_sentences::clause_pattern_helpers::extract_subject_player;
+use super::effect_sentences::conditionals::parse_predicate;
+use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_add_mana_that_much_value,
     parse_dynamic_cost_modifier_value, parse_where_x_is_number_of_filter_value,
 };
-use super::ported_object_filters::parse_object_filter;
+use super::object_filters::parse_object_filter;
 pub(crate) use super::util::{
     contains_discard_source_phrase, contains_source_from_your_graveyard_phrase,
     contains_source_from_your_hand_phrase, find_activation_cost_start, is_article,

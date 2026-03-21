@@ -2,16 +2,16 @@ use super::{
     Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_sentence_primitives,
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
 };
-use super::super::ported_keyword_static::{
+use super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier, parse_pt_modifier_values,
 };
-use super::super::ported_activation_and_restrictions::{
+use super::super::activation_and_restrictions::{
     find_negation_span, parse_cant_restrictions, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause,
 };
-use super::super::ported_object_filters::parse_object_filter;
+use super::super::object_filters::parse_object_filter;
 use super::for_each_helpers::{
     has_demonstrative_object_reference, is_mana_replacement_clause_words,
     is_mana_trigger_additional_clause_words, is_target_player_dealt_damage_by_this_turn_subject,

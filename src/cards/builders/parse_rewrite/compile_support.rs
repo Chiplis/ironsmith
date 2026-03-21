@@ -76,7 +76,7 @@ use super::static_ability_helpers::lower_granted_abilities_ast;
 use super::util::{
     contains_until_end_of_turn, map_span_to_original, parse_card_type, parse_number_word_i32,
 };
-use super::ported_effects_sentences::parse_subtype_word;
+use super::effect_sentences::parse_subtype_word;
 
 pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {

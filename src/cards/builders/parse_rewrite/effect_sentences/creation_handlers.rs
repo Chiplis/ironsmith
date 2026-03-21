@@ -9,7 +9,7 @@ use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-use super::super::ported_object_filters::parse_object_filter;
+use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_article, parse_card_type, parse_color, parse_number, parse_target_phrase, parse_value,
     token_index_for_word_index, trim_commas, words,

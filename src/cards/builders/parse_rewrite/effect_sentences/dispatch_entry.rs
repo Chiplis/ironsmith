@@ -1,12 +1,12 @@
 use super::{
     parse_effect_sentence, parse_search_library_disjunction_filter, parse_token_copy_modifier_sentence,
 };
-use super::legacy_helpers::*;
+use super::sentence_helpers::*;
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
 };
-use super::super::ported_object_filters::parse_object_filter;
-use super::super::ported_keyword_static::parse_where_x_value_clause;
+use super::super::object_filters::parse_object_filter;
+use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::util::{
     is_article, parse_number, parse_subject, parse_target_phrase, span_from_tokens,
     token_index_for_word_index, trim_commas, words,

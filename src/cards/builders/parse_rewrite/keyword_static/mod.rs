@@ -1,10 +1,10 @@
-use super::ported_activation_and_restrictions::parse_cycling_line;
-use super::ported_activation_and_restrictions::{
+use super::activation_and_restrictions::parse_cycling_line;
+use super::activation_and_restrictions::{
     parse_ability_phrase, parse_activated_line, parse_activation_cost, parse_triggered_line,
 };
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
-use super::ported_keyword_static_helpers::*;
-use super::ported_object_filters::parse_object_filter;
+use super::keyword_static_helpers::*;
+use super::object_filters::parse_object_filter;
 use super::util::{
     is_source_reference_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
     parse_counter_type_word, parse_flashback_keyword_line, parse_subtype_flexible, parse_value,
@@ -44,10 +44,10 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use std::sync::LazyLock;
 
-include!("keyword_static/keyword_lines.rs");
-include!("keyword_static/anthem_grant_lines.rs");
-include!("keyword_static/etb_static_lines.rs");
-include!("keyword_static/attached_object_static_lines.rs");
+include!("keyword_lines.rs");
+include!("anthem_grant_lines.rs");
+include!("etb_static_lines.rs");
+include!("attached_object_static_lines.rs");
 
 #[derive(Clone, Copy)]
 enum StaticAbilityLineRuleAst {

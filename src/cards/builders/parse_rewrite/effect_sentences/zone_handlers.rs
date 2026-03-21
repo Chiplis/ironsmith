@@ -12,16 +12,16 @@ use crate::target::{
 use crate::types::Subtype;
 use crate::zone::Zone;
 
-use super::super::ported_activation_and_restrictions::{
+use super::super::activation_and_restrictions::{
     controller_filter_for_token_player, parse_devotion_value_from_add_clause,
     target_ast_to_object_filter,
 };
-use super::super::ported_keyword_static::{
+use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_add_mana_that_much_value,
     parse_dynamic_cost_modifier_value, parse_pt_modifier, parse_pt_modifier_values,
 };
-use super::super::ported_object_filters::parse_object_filter;
-use super::super::ported_keyword_static::parse_where_x_is_number_of_filter_value;
+use super::super::object_filters::parse_object_filter;
+use super::super::keyword_static::parse_where_x_is_number_of_filter_value;
 use super::super::util::{
     intern_counter_name, is_article, parse_color, parse_counter_type_word, parse_mana_symbol,
     parse_number, parse_number_word_i32, parse_target_phrase, parse_value,

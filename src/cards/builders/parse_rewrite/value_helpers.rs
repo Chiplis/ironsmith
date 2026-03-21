@@ -2,8 +2,8 @@ use crate::cards::builders::{CardTextError, IT_TAG, TagKey, Token};
 use crate::effect::Value;
 use crate::target::{ChooseSpec, PlayerFilter};
 
-use super::ported_effects_sentences::trim_edge_punctuation;
-use super::ported_object_filters::parse_object_filter;
+use super::effect_sentences::trim_edge_punctuation;
+use super::object_filters::parse_object_filter;
 use super::util::{
     is_article, parse_counter_type_word, parse_number, parse_number_word_i32,
     parse_value_expr_words, parse_value, token_index_for_word_index, trim_commas, words,

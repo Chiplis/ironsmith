@@ -10,10 +10,10 @@ use super::chain_carry::{
 };
 use super::conditionals::negated_action_word_index;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
-use super::super::ported_keyword_static::{
+use super::super::keyword_static::{
     parse_pt_modifier, parse_pt_modifier_values, parse_where_x_value_clause,
 };
-use super::super::ported_object_filters::parse_object_filter;
+use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     contains_until_end_of_turn, is_until_end_of_turn, parse_number,
     parse_target_count_range_prefix, parse_target_phrase, parse_value,

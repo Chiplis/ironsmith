@@ -1,7 +1,7 @@
 use crate::card::{PowerToughness, PtValue};
 use super::parse_effect_chain;
-use super::super::ported_activation_and_restrictions::{contains_word_sequence, parse_named_number};
-use super::super::ported_object_filters::parse_object_filter;
+use super::super::activation_and_restrictions::{contains_word_sequence, parse_named_number};
+use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_article, is_permanent_type, parse_card_type, parse_counter_type_word,
     parse_mana_symbol_word_flexible, parse_number, parse_target_phrase, span_from_tokens,

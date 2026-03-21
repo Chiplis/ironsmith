@@ -9,11 +9,11 @@ use crate::zone::Zone;
 use crate::{ChooseSpec, CounterType, TagKey, Value};
 
 use super::conditionals::parse_predicate;
-use super::super::ported_activation_and_restrictions::parse_devotion_value_from_add_clause;
-use super::super::ported_keyword_static::{
+use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
+use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
 };
-use super::super::ported_object_filters::parse_object_filter;
+use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_target_phrase,
     parse_value, span_from_tokens, trim_commas, words,

@@ -4,7 +4,7 @@ use crate::cards::builders::{
 };
 
 use super::lexer::lex_line;
-use super::ported_activation_and_restrictions::parse_single_word_keyword_action;
+use super::activation_and_restrictions::parse_single_word_keyword_action;
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
 };

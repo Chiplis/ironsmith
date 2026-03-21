@@ -1,4 +1,4 @@
-pub(crate) use super::super::ported_activation_and_restrictions::{
+pub(crate) use super::super::activation_and_restrictions::{
     append_token_reminder_to_last_create_effect, build_may_cast_tagged_effect,
     effect_creates_any_token, effect_creates_eldrazi_spawn_or_scion, find_negation_span,
     is_activate_only_restriction_sentence, is_generic_token_reminder_sentence,
@@ -15,7 +15,7 @@ pub(crate) use super::super::ported_activation_and_restrictions::{
     parse_trigger_clause, parse_you_choose_player_clause, starts_with_target_indicator,
     strip_embedded_token_rules_text, target_ast_to_object_filter,
 };
-pub(crate) use super::super::ported_keyword_static::{
+pub(crate) use super::super::keyword_static::{
     parse_ability_line, parse_pt_modifier_values, reject_unimplemented_keyword_actions,
 };
 pub(crate) use super::super::permission_helpers::{

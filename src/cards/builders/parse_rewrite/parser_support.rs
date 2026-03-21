@@ -2,7 +2,7 @@ use crate::cards::builders::{CardDefinitionBuilder, ParsedRestrictions, Token};
 use crate::types::CardType;
 
 use super::lexer::OwnedLexToken;
-use super::ported_activation_and_restrictions::{
+use super::activation_and_restrictions::{
     is_activate_only_restriction_sentence, is_trigger_only_restriction_sentence,
 };
 use super::util::tokenize_line;

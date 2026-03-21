@@ -12,11 +12,11 @@ use crate::types::{CardType, Subtype};
 #[allow(unused_imports)]
 use crate::zone::Zone;
 #[allow(unused_imports)]
-use super::ported_keyword_static::parse_where_x_value_clause;
+use super::keyword_static::parse_where_x_value_clause;
 #[allow(unused_imports)]
-use super::ported_object_filters::parse_object_filter;
+use super::object_filters::parse_object_filter;
 #[allow(unused_imports)]
-use self::legacy_helpers::*;
+use self::sentence_helpers::*;
 #[allow(unused_imports)]
 use super::util::{
     is_source_reference_words, parse_counter_type_from_tokens, parse_subject, parse_target_phrase,
@@ -33,7 +33,7 @@ pub(crate) enum TokenCopyFollowup {
     SacrificeAtEndOfCombat,
 }
 
-mod legacy_helpers;
+mod sentence_helpers;
 mod clause_dispatch;
 pub(crate) mod clause_pattern_helpers;
 mod chain_carry;

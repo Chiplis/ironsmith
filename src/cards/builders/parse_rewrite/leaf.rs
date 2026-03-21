@@ -16,8 +16,8 @@ use crate::object::CounterType;
 use crate::target::PlayerFilter;
 use crate::types::{CardType, Subtype, Supertype};
 
-use super::ported_object_filters::parse_object_filter;
-use super::ported_effects_sentences::parse_subtype_word;
+use super::object_filters::parse_object_filter;
+use super::effect_sentences::parse_subtype_word;
 use super::util::tokenize_line;
 
 #[derive(Debug, Clone)]

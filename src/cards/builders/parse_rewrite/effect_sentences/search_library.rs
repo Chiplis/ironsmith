@@ -1,6 +1,6 @@
 use super::{find_verb, parse_effect_chain, parse_effect_chain_with_sentence_primitives, parse_effect_clause};
-use super::legacy_helpers::*;
-use super::super::ported_object_filters::{parse_object_filter, split_on_or};
+use super::sentence_helpers::*;
+use super::super::object_filters::{parse_object_filter, split_on_or};
 use super::super::util::{
     is_article, parse_number, parse_subject, parse_target_phrase, parse_zone_word,
     span_from_tokens, token_index_for_word_index, trim_commas, words,

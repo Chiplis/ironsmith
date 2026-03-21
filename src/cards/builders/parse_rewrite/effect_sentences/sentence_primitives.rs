@@ -30,9 +30,9 @@ use super::super::util::{
     parse_counter_type_from_tokens, split_on_and, split_on_period, token_index_for_word_index,
     words,
 };
-use super::super::ported_keyword_static::parse_where_x_value_clause;
-use super::super::ported_object_filters::parse_object_filter;
-use super::legacy_helpers::*;
+use super::super::keyword_static::parse_where_x_value_clause;
+use super::super::object_filters::parse_object_filter;
+use super::sentence_helpers::*;
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IfResultPredicate, PlayerAst, PredicateAst,

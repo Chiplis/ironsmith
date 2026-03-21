@@ -1,33 +1,36 @@
-# `winnow` + `logos` Migration Checklist
+# `winnow` + `logos` Rewrite Status
 
-## Completed
-- [x] Add `logos` and `winnow` dependencies.
-- [x] Create a parallel `parse_rewrite` module tree.
-- [x] Introduce rewrite preprocessing, CST, semantic IR, and an internal rewrite entrypoint.
-- [x] Add a `logos` lexer with span-carrying rewrite tokens.
-- [x] Implement first `winnow` leaf parsers for mana symbols/costs, count words, type lines, and a subset of activation costs.
-- [x] Add rewrite-focused unit tests and differential checks against legacy parsers for the stable leaf slices.
-- [x] Preserve metadata lines as first-class rewrite items through preprocessing, CST, and semantic IR.
-- [x] Add stronger document-level differential tests for rewrite-vs-legacy behavior on the currently supported slice.
-- [x] Expand activation-cost leaf coverage to include untap, energy, mill, exile-self / exile-from-hand, and source counter add/remove costs.
-- [x] Recognize modal bullet blocks, level headers, and saga chapter prefixes as first-class rewrite structure.
-- [x] Parse document structure beyond ordinary lines: bullets, modal blocks, level headers, and saga chapter prefixes.
-- [x] Port triggered-line parsing into rewrite CST/IR.
-- [x] Port static-line parsing into rewrite CST/IR.
-- [x] Port statement/effect-line parsing into rewrite CST/IR.
-- [x] Add a rewrite-to-legacy-AST lowering bridge for currently supported line families.
-- [x] Keep rewrite-native activated lowering for inline-restriction lines by attaching `ParsedRestrictions` instead of falling back to whole-line legacy parsing.
-- [x] Add a controlled cutover seam in `effect_pipeline::parse_text_with_annotations`.
+## Landed Runtime Contract
 
-## Final Status
-- [x] Continue expanding leaf grammars toward near-full activation-cost coverage for the currently supported rewrite slice.
-- [x] Build rewrite-native unsupported-reason classification instead of the current generic placeholder.
-- [x] Rebuild semantic lowering from rewrite IR into the existing runtime card model.
-- [x] Rebuild reference resolution/import-export threading on top of rewrite IR.
-- [x] Add document-level differential tests comparing legacy and rewrite parse classes/annotations.
-- [x] Add corpus-driven audit wiring so report binaries can compare rewrite and legacy behavior.
-- [x] Remove legacy parser internals after rewrite parity is proven.
+- Rewrite parsing/lowering is the runtime path behind `parse_text(...)` and
+  `parse_text_allow_unsupported(...)`.
+- Lexing is rewrite-owned in
+  [lexer.rs](/Users/chiplis/ironsmith/src/cards/builders/parse_rewrite/lexer.rs)
+  via `logos`.
+- Rewrite leaf parsing is rewrite-owned in
+  [leaf.rs](/Users/chiplis/ironsmith/src/cards/builders/parse_rewrite/leaf.rs)
+  via `winnow`.
+- Sentence, trigger, static, keyword, restriction, and filter parsing now live
+  under stable rewrite-owned modules:
+  [effect_sentences](/Users/chiplis/ironsmith/src/cards/builders/parse_rewrite/effect_sentences),
+  [activation_and_restrictions.rs](/Users/chiplis/ironsmith/src/cards/builders/parse_rewrite/activation_and_restrictions.rs),
+  [keyword_static](/Users/chiplis/ironsmith/src/cards/builders/parse_rewrite/keyword_static),
+  and [object_filters.rs](/Users/chiplis/ironsmith/src/cards/builders/parse_rewrite/object_filters.rs).
+- Runtime parser/lowering entrypoints no longer import `ported_*` modules or
+  `legacy_helpers`.
+- Rewrite semantic IR carries parsed runtime payloads for keywords,
+  activations, triggers, statics, statements, modal modes, level items, and
+  saga chapters.
+- Lowering consumes those parsed payloads directly and does not reparse
+  semantic line text after IR creation.
+- Unsupported-card behavior remains first-class: strict parsing still errors,
+  `allow_unsupported` still threads explicit unsupported markers/diagnostics.
 
-The rewrite parser is now the sole parser/lowering/reference-resolution implementation
-used by runtime parsing. The legacy parser support/lowering modules have been removed
-from `src/cards/builders/`.
+## Notes
+
+- The compatibility `Token` view in
+  [util.rs](/Users/chiplis/ironsmith/src/cards/builders/parse_rewrite/util.rs)
+  is now derived from the rewrite `logos` lexer so the runtime lexer boundary is
+  still rewrite-owned.
+- Supported-card behavior is verified by the library test suite and corpus/tool
+  audits rather than by preserving the deleted `ported_*` module tree.

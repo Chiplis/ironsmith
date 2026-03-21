@@ -8,7 +8,7 @@ use super::clause_pattern_helpers::{
     parse_can_attack_as_though_no_defender_clause, parse_prevent_all_damage_clause,
     parse_prevent_next_damage_clause,
 };
-use super::super::ported_keyword_static::parse_ability_line;
+use super::super::keyword_static::parse_ability_line;
 use super::super::util::{trim_commas, words};
 
 pub(crate) fn strip_leading_instead_prefix(tokens: &[Token]) -> Option<Vec<Token>> {

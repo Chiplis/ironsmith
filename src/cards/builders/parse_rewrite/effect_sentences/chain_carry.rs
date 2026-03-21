@@ -4,12 +4,12 @@ use super::{
     parse_simple_lose_ability_clause, parse_token_copy_followup_sentence,
     split_leading_result_prefix, try_apply_token_copy_followup,
 };
-use super::legacy_helpers::*;
-use super::super::ported_activation_and_restrictions::parse_triggered_line;
+use super::sentence_helpers::*;
+use super::super::activation_and_restrictions::parse_triggered_line;
 use super::super::compile_support::effects_reference_it_tag;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
-use super::super::ported_object_filters::{parse_object_filter, split_on_or};
+use super::super::object_filters::{parse_object_filter, split_on_or};
 use super::super::util::{
     is_article, parse_subject, parse_target_phrase, parse_value, span_from_tokens,
     split_on_comma_or_semicolon, trim_commas, words,

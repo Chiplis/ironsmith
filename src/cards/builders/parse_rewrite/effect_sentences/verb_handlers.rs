@@ -12,15 +12,15 @@ use crate::target::{
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-use super::super::ported_activation_and_restrictions::{
+use super::super::activation_and_restrictions::{
     parse_cycling_line, parse_devotion_value_from_add_clause,
 };
-use super::super::ported_activation_helpers::parse_add_mana;
-use super::super::ported_keyword_static::{
+use super::super::activation_helpers::parse_add_mana;
+use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
     parse_where_x_value_clause,
 };
-use super::super::ported_object_filters::parse_object_filter;
+use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_article, is_source_reference_words, parse_card_type, parse_color, parse_mana_symbol,
     parse_number, parse_number_word_u32, parse_target_count_range_prefix, parse_target_phrase,

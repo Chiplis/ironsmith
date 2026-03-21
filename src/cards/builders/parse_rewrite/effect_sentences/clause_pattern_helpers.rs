@@ -12,11 +12,11 @@ use crate::zone::Zone;
 use super::chain_carry::find_verb;
 use super::sentence_primitives::parse_distribute_counters_sentence;
 use super::verb_dispatch::parse_effect_with_verb;
-use super::super::ported_activation_and_restrictions::{
+use super::super::activation_and_restrictions::{
     starts_with_target_indicator, title_case_token_word,
 };
-use super::super::ported_object_filters::parse_object_filter;
-use super::super::ported_keyword_static::parse_ability_line;
+use super::super::object_filters::parse_object_filter;
+use super::super::keyword_static::parse_ability_line;
 use super::super::util::{
     parse_card_type, parse_color, parse_counter_type_from_tokens, parse_counter_type_word,
     parse_number, parse_subject, parse_target_count_range_prefix, parse_target_phrase,
@@ -360,13 +360,13 @@ pub(crate) fn parse_copy_spell_clause(
         if let Some(then_idx) = tokens.iter().position(|token| token.is_word("then")) {
             let tail_tokens = trim_commas(&tokens[then_idx + 1..]);
             if let Some(spec) =
-                super::super::ported_activation_and_restrictions::parse_may_cast_it_sentence(
+                super::super::activation_and_restrictions::parse_may_cast_it_sentence(
                     &tail_tokens,
                 )
                 && spec.as_copy
             {
                 return Ok(Some(
-                    super::super::ported_activation_and_restrictions::build_may_cast_tagged_effect(
+                    super::super::activation_and_restrictions::build_may_cast_tagged_effect(
                         &spec,
                     ),
                 ));

@@ -13,8 +13,8 @@ use super::util::{
     parse_subtype_flexible, parse_unsigned_pt_word, parse_zone_word, push_outlaw_subtypes,
     split_on_and, token_index_for_word_index, trim_commas, words,
 };
-use super::ported_effects_sentences::{parse_subtype_word, parse_supertype_word};
-use super::ported_keyword_static::parse_pt_modifier;
+use super::effect_sentences::{parse_subtype_word, parse_supertype_word};
+use super::keyword_static::parse_pt_modifier;
 use super::value_helpers::parse_filter_comparison_tokens;
 
 fn parse_attached_reference_or_another_disjunction(

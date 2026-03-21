@@ -17,55 +17,47 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use crate::{ChoiceCount, PowerToughness, PtValue, TagKey};
 
+use super::lexer::{TokenKind, lex_line};
 use super::clause_support::rewrite_parse_effect_sentences;
-use super::ported_activation_and_restrictions::{parse_ability_phrase, parse_activation_cost};
-use super::ported_effects_sentences::{find_verb, parse_subtype_word, parse_supertype_word};
-use super::ported_keyword_static::keyword_action_to_static_ability;
-use super::ported_keyword_static::parse_this_spell_cost_condition;
-use super::ported_object_filters::{parse_object_filter, split_on_or};
+use super::activation_and_restrictions::{parse_ability_phrase, parse_activation_cost};
+use super::effect_sentences::{find_verb, parse_subtype_word, parse_supertype_word};
+use super::keyword_static::keyword_action_to_static_ability;
+use super::keyword_static::parse_this_spell_cost_condition;
+use super::object_filters::{parse_object_filter, split_on_or};
 
-pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
-    let mut tokens = Vec::new();
+fn push_legacy_compat_words(
+    slice: &str,
+    span: TextSpan,
+    in_mana_braces: bool,
+    out: &mut Vec<Token>,
+) {
     let mut buffer = String::new();
     let mut word_start: Option<usize> = None;
-    let mut word_end: usize = 0;
-    let mut in_mana_braces = false;
+    let mut word_end = span.start;
+    let chars: Vec<(usize, char)> = slice.char_indices().collect();
 
-    let flush = |buffer: &mut String,
-                 tokens: &mut Vec<Token>,
-                 word_start: &mut Option<usize>,
-                 word_end: &mut usize| {
-        if !buffer.is_empty() {
-            let start = word_start.unwrap_or(0);
-            tokens.push(Token::Word(
-                buffer.clone(),
-                TextSpan {
-                    line: line_index,
-                    start,
-                    end: *word_end,
-                },
-            ));
-            buffer.clear();
-        }
-        *word_start = None;
-        *word_end = 0;
-    };
+    let flush =
+        |buffer: &mut String, out: &mut Vec<Token>, word_start: &mut Option<usize>, word_end: &mut usize| {
+            if !buffer.is_empty() {
+                let start = word_start.unwrap_or(span.start);
+                out.push(Token::Word(
+                    buffer.clone(),
+                    TextSpan {
+                        line: span.line,
+                        start,
+                        end: *word_end,
+                    },
+                ));
+                buffer.clear();
+            }
+            *word_start = None;
+        };
 
-    let chars: Vec<(usize, char)> = line.char_indices().collect();
-    for (idx, (byte_idx, mut ch)) in chars.iter().copied().enumerate() {
+    for (idx, (rel_idx, mut ch)) in chars.iter().copied().enumerate() {
         if ch == '−' {
             ch = '-';
         }
-        if ch == '{' {
-            flush(&mut buffer, &mut tokens, &mut word_start, &mut word_end);
-            in_mana_braces = true;
-            continue;
-        }
-        if ch == '}' {
-            flush(&mut buffer, &mut tokens, &mut word_start, &mut word_end);
-            in_mana_braces = false;
-            continue;
-        }
+        let abs_idx = span.start + rel_idx;
         let prev = if idx > 0 { chars[idx - 1].1 } else { '\0' };
         let next = if idx + 1 < chars.len() {
             chars[idx + 1].1
@@ -88,48 +80,89 @@ pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
 
         if ch.is_ascii_alphanumeric() || is_counter_char || is_mana_hybrid_slash {
             if word_start.is_none() {
-                word_start = Some(byte_idx);
+                word_start = Some(abs_idx);
             }
-            word_end = byte_idx + ch.len_utf8();
+            word_end = abs_idx + ch.len_utf8();
             buffer.push(ch.to_ascii_lowercase());
             continue;
         }
 
-        if ch == '"' || ch == '“' || ch == '”' {
-            flush(&mut buffer, &mut tokens, &mut word_start, &mut word_end);
-            tokens.push(Token::Quote(TextSpan {
-                line: line_index,
-                start: byte_idx,
-                end: byte_idx + ch.len_utf8(),
-            }));
-            continue;
-        }
-
-        if ch == '\'' || ch == '’' || ch == '‘' {
+        if matches!(ch, '\'' | '’' | '‘') {
             if word_start.is_some() {
-                word_end = byte_idx + ch.len_utf8();
+                word_end = abs_idx + ch.len_utf8();
             }
             continue;
         }
 
-        flush(&mut buffer, &mut tokens, &mut word_start, &mut word_end);
-
-        let span = TextSpan {
-            line: line_index,
-            start: byte_idx,
-            end: byte_idx + ch.len_utf8(),
-        };
-
-        match ch {
-            ',' => tokens.push(Token::Comma(span)),
-            '.' => tokens.push(Token::Period(span)),
-            ':' => tokens.push(Token::Colon(span)),
-            ';' => tokens.push(Token::Semicolon(span)),
-            _ => {}
-        }
+        flush(&mut buffer, out, &mut word_start, &mut word_end);
     }
 
-    flush(&mut buffer, &mut tokens, &mut word_start, &mut word_end);
+    flush(&mut buffer, out, &mut word_start, &mut word_end);
+}
+
+pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<Token> {
+    let Ok(lexed) = lex_line(line, line_index) else {
+        return Vec::new();
+    };
+
+    let mut tokens = Vec::new();
+    let mut idx = 0usize;
+    while idx < lexed.len() {
+        let token = &lexed[idx];
+        match token.kind {
+            TokenKind::Word => {
+                push_legacy_compat_words(token.slice.as_str(), token.span, false, &mut tokens);
+            }
+            TokenKind::ManaGroup => {
+                let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
+                if !inner.is_empty() {
+                    push_legacy_compat_words(
+                        inner,
+                        TextSpan {
+                            line: token.span.line,
+                            start: token.span.start.saturating_add(1),
+                            end: token.span.end.saturating_sub(1),
+                        },
+                        true,
+                        &mut tokens,
+                    );
+                }
+            }
+            TokenKind::Dash
+                if lexed
+                    .get(idx + 1)
+                    .is_some_and(|next| next.kind == TokenKind::Word)
+                    && token.span.end == lexed[idx + 1].span.start =>
+            {
+                let next = &lexed[idx + 1];
+                let combined = format!("-{}", next.slice);
+                push_legacy_compat_words(
+                    combined.as_str(),
+                    TextSpan {
+                        line: token.span.line,
+                        start: token.span.start,
+                        end: next.span.end,
+                    },
+                    false,
+                    &mut tokens,
+                );
+                idx += 1;
+            }
+            TokenKind::Comma => tokens.push(Token::Comma(token.span)),
+            TokenKind::Period => tokens.push(Token::Period(token.span)),
+            TokenKind::Colon => tokens.push(Token::Colon(token.span)),
+            TokenKind::Semicolon => tokens.push(Token::Semicolon(token.span)),
+            TokenKind::Quote => {
+                if matches!(token.slice.as_str(), "\"" | "“" | "”") {
+                    tokens.push(Token::Quote(token.span));
+                }
+            }
+            TokenKind::Half => tokens.push(Token::Word("1/2".to_string(), token.span)),
+            _ => {}
+        }
+        idx += 1;
+    }
+
     tokens
 }
 

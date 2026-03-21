@@ -1,7 +1,7 @@
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming, TriggeredAbility};
 use crate::cards::builders::{ParsedRestrictions, Token};
 
-use super::ported_activation_and_restrictions::{
+use super::activation_and_restrictions::{
     combine_mana_activation_condition, parse_activate_only_timing, parse_activation_condition,
     parse_mana_usage_restriction_sentence, parse_triggered_times_each_turn_from_words,
 };

@@ -2,10 +2,10 @@ use super::{
     LeadingResultPrefixKind, TokenCopyFollowup, parse_search_library_sentence,
     parse_simple_gain_ability_clause, split_leading_result_prefix,
 };
-use super::legacy_helpers::*;
-use super::super::ported_keyword_static::parse_pt_modifier;
-use super::super::ported_keyword_static::parse_where_x_value_clause;
-use super::super::ported_object_filters::parse_object_filter;
+use super::sentence_helpers::*;
+use super::super::keyword_static::parse_pt_modifier;
+use super::super::keyword_static::parse_where_x_value_clause;
+use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_article, is_source_reference_words, parse_card_type, parse_subject, parse_value,
     parse_target_phrase, split_on_and, token_index_for_word_index, words,

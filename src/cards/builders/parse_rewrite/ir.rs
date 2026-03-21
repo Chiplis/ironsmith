@@ -1,5 +1,8 @@
 use crate::ability::ActivationTiming;
-use crate::cards::builders::{CardDefinitionBuilder, ParseAnnotations};
+use crate::cards::builders::{
+    CardDefinitionBuilder, EffectAst, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
+    ParsedRestrictions,
+};
 use crate::cost::TotalCost;
 
 use super::shared_types::LineInfo;
@@ -31,6 +34,7 @@ pub(crate) struct RewriteKeywordLine {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
     pub(crate) kind: RewriteKeywordLineKind,
+    pub(crate) parsed: LineAst,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +69,8 @@ pub(crate) struct RewriteActivatedLine {
     pub(crate) effect_text: String,
     pub(crate) timing_hint: ActivationTiming,
     pub(crate) chosen_option_label: Option<String>,
+    pub(crate) parsed: LineAst,
+    pub(crate) restrictions: ParsedRestrictions,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +81,7 @@ pub(crate) struct RewriteTriggeredLine {
     pub(crate) effect_text: String,
     pub(crate) max_triggers_per_turn: Option<u32>,
     pub(crate) chosen_option_label: Option<String>,
+    pub(crate) parsed: LineAst,
 }
 
 #[derive(Debug, Clone)]
@@ -82,12 +89,14 @@ pub(crate) struct RewriteStaticLine {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
     pub(crate) chosen_option_label: Option<String>,
+    pub(crate) parsed: LineAst,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct RewriteStatementLine {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
+    pub(crate) parsed_chunks: Vec<LineAst>,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +109,7 @@ pub(crate) struct RewriteModalBlock {
 pub(crate) struct RewriteModalMode {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
+    pub(crate) effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]
@@ -121,6 +131,7 @@ pub(crate) struct RewriteLevelItem {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
     pub(crate) kind: RewriteLevelItemKind,
+    pub(crate) parsed: ParsedLevelAbilityItemAst,
 }
 
 #[derive(Debug, Clone)]
@@ -128,6 +139,7 @@ pub(crate) struct RewriteSagaChapterLine {
     pub(crate) info: LineInfo,
     pub(crate) chapters: Vec<u32>,
     pub(crate) text: String,
+    pub(crate) effects_ast: Vec<EffectAst>,
 }
 
 #[derive(Debug, Clone)]

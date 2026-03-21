@@ -12566,10 +12566,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[test]
     fn parser_sentence_helpers_do_not_use_legacy_fixed_helper_tags() {
         for source in [
-            include_str!("builders/parse_rewrite/ported_effects_sentences/dispatch_entry.rs"),
-            include_str!("builders/parse_rewrite/ported_effects_sentences/dispatch_inner.rs"),
-            include_str!("builders/parse_rewrite/ported_effects_sentences/search_library.rs"),
-            include_str!("builders/parse_rewrite/ported_effects_sentences/sentence_primitives.rs"),
+            include_str!("builders/parse_rewrite/effect_sentences/dispatch_entry.rs"),
+            include_str!("builders/parse_rewrite/effect_sentences/dispatch_inner.rs"),
+            include_str!("builders/parse_rewrite/effect_sentences/search_library.rs"),
+            include_str!("builders/parse_rewrite/effect_sentences/sentence_primitives.rs"),
         ] {
             for legacy in [
                 "\"exiled_0\"",

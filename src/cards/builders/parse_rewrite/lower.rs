@@ -1,7 +1,7 @@
-use crate::ability::{Ability, AbilityKind, ActivatedAbility};
+use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::cards::builders::{
     CardDefinition, CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, InsteadSemantics,
-    LineAst, OptionalCost, ParseAnnotations, ParsedAbility, ParsedCardItem,
+    LineAst, LineInfo, OptionalCost, ParseAnnotations, ParsedAbility, ParsedCardItem,
     ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst, ParsedModalAst,
     ParsedModalModeAst, ParsedRestrictions, ReferenceImports, TriggerSpec,
 };
@@ -42,15 +42,15 @@ use super::lowering_support::{
 use super::reference_model::{LoweredEffects, ReferenceExports};
 use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects_ast};
 use super::parser_support::split_text_for_parse;
-use super::ported_activation_and_restrictions::{
+use super::activation_and_restrictions::{
     infer_activated_functional_zones, is_any_player_may_activate_sentence,
     parse_mana_usage_restriction_sentence,
 };
-use super::ported_activation_and_restrictions::{
+use super::activation_and_restrictions::{
     parse_channel_line, parse_cycling_line, parse_equip_line,
 };
-use super::ported_keyword_static::parse_if_this_spell_costs_less_to_cast_line;
-use super::ported_object_filters::parse_spell_filter;
+use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line;
+use super::object_filters::parse_spell_filter;
 use super::restriction_support::{
     apply_pending_mana_restriction, apply_pending_restrictions_to_ability, is_restrictable_ability,
 };
@@ -1434,7 +1434,18 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
     })
 }
 
-fn lower_rewrite_statement_to_chunks(
+pub(crate) fn lower_rewrite_statement_to_chunks(
+    info: LineInfo,
+    text: &str,
+) -> Result<Vec<LineAst>, CardTextError> {
+    lower_rewrite_statement_to_chunks_impl(&super::RewriteStatementLine {
+        info,
+        text: text.to_string(),
+        parsed_chunks: Vec::new(),
+    })
+}
+
+fn lower_rewrite_statement_to_chunks_impl(
     line: &super::RewriteStatementLine,
 ) -> Result<Vec<LineAst>, CardTextError> {
     if let Some(pact_chunk) = lower_rewrite_pact_statement_to_chunk(line)? {
@@ -1497,7 +1508,28 @@ fn lower_rewrite_soul_partition_statement_to_chunk(
     Ok(Some(LineAst::Statement { effects }))
 }
 
-fn lower_rewrite_triggered_to_chunk(
+pub(crate) fn lower_rewrite_triggered_to_chunk(
+    info: LineInfo,
+    full_text: &str,
+    trigger_text: &str,
+    effect_text: &str,
+    max_triggers_per_turn: Option<u32>,
+    chosen_option_label: Option<&str>,
+) -> Result<LineAst, CardTextError> {
+    lower_rewrite_triggered_to_chunk_impl(&super::RewriteTriggeredLine {
+        info,
+        full_text: full_text.to_string(),
+        trigger_text: trigger_text.to_string(),
+        effect_text: effect_text.to_string(),
+        max_triggers_per_turn,
+        chosen_option_label: chosen_option_label.map(str::to_string),
+        parsed: LineAst::Statement {
+            effects: Vec::new(),
+        },
+    })
+}
+
+fn lower_rewrite_triggered_to_chunk_impl(
     line: &super::RewriteTriggeredLine,
 ) -> Result<LineAst, CardTextError> {
     let chosen_option_label =
@@ -1654,7 +1686,22 @@ fn lower_special_rewrite_triggered_chunk(
     Ok(None)
 }
 
-fn lower_rewrite_static_to_chunk(
+pub(crate) fn lower_rewrite_static_to_chunk(
+    info: LineInfo,
+    text: &str,
+    chosen_option_label: Option<&str>,
+) -> Result<LineAst, CardTextError> {
+    lower_rewrite_static_to_chunk_impl(&super::RewriteStaticLine {
+        info,
+        text: text.to_string(),
+        chosen_option_label: chosen_option_label.map(str::to_string),
+        parsed: LineAst::Statement {
+            effects: Vec::new(),
+        },
+    })
+}
+
+fn lower_rewrite_static_to_chunk_impl(
     line: &super::RewriteStaticLine,
 ) -> Result<LineAst, CardTextError> {
     let chosen_option_label =
@@ -1926,7 +1973,22 @@ fn rewrite_keyword_dash_parse_text_for_lowering(text: &str) -> String {
     trimmed.to_string()
 }
 
-fn lower_rewrite_keyword_to_chunk(
+pub(crate) fn lower_rewrite_keyword_to_chunk(
+    info: LineInfo,
+    text: &str,
+    kind: super::RewriteKeywordLineKind,
+) -> Result<LineAst, CardTextError> {
+    lower_rewrite_keyword_to_chunk_impl(&super::RewriteKeywordLine {
+        info,
+        text: text.to_string(),
+        kind,
+        parsed: LineAst::Statement {
+            effects: Vec::new(),
+        },
+    })
+}
+
+fn lower_rewrite_keyword_to_chunk_impl(
     line: &super::RewriteKeywordLine,
 ) -> Result<LineAst, CardTextError> {
     if let Some(chunk) = try_lower_optional_cost_with_cast_trigger(line)? {
@@ -2317,9 +2379,7 @@ fn lower_rewrite_modal_to_item(
 
     let mut modes = Vec::with_capacity(modal.modes.len());
     for mode in modal.modes {
-        let parse_text = strip_modal_mode_label_for_parse(&mode.info.normalized.normalized);
-        let mut effects_ast =
-            rewrite_parse_effect_sentences(&tokenize_line(parse_text, mode.info.line_index))?;
+        let mut effects_ast = mode.effects_ast;
         if let Some(replacement) = header.x_replacement.as_ref() {
             replace_modal_header_x_in_effects_ast(
                 &mut effects_ast,
@@ -2588,9 +2648,9 @@ fn split_rewrite_activated_effect_text(
     }
 }
 
-struct LoweredRewriteActivatedLine {
-    chunk: LineAst,
-    restrictions: ParsedRestrictions,
+pub(crate) struct LoweredRewriteActivatedLine {
+    pub(crate) chunk: LineAst,
+    pub(crate) restrictions: ParsedRestrictions,
 }
 
 fn apply_pending_mana_restrictions(
@@ -2986,7 +3046,27 @@ fn normalize_mana_replacement_effects(effects: Vec<EffectAst>) -> Vec<EffectAst>
     normalized
 }
 
-fn lower_rewrite_activated_to_chunk(
+pub(crate) fn lower_rewrite_activated_to_chunk(
+    info: LineInfo,
+    cost: TotalCost,
+    effect_text: String,
+    timing_hint: ActivationTiming,
+    chosen_option_label: Option<String>,
+) -> Result<LoweredRewriteActivatedLine, CardTextError> {
+    lower_rewrite_activated_to_chunk_impl(&super::RewriteActivatedLine {
+        info,
+        cost,
+        effect_text,
+        timing_hint,
+        chosen_option_label,
+        parsed: LineAst::Statement {
+            effects: Vec::new(),
+        },
+        restrictions: ParsedRestrictions::default(),
+    })
+}
+
+fn lower_rewrite_activated_to_chunk_impl(
     line: &super::RewriteActivatedLine,
 ) -> Result<LoweredRewriteActivatedLine, CardTextError> {
     let SplitRewriteActivatedEffectText {
@@ -3308,35 +3388,23 @@ fn rewrite_item_to_normalized_item(
         RewriteSemanticItem::Keyword(line) => {
             Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
                 line.info.clone(),
-                vec![lower_rewrite_keyword_to_chunk(&line)?],
+                vec![line.parsed],
                 ParsedRestrictions::default(),
                 state,
             )?)))
         }
-        RewriteSemanticItem::Activated(line) => match lower_rewrite_activated_to_chunk(&line) {
-            Ok(lowered) => Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+        RewriteSemanticItem::Activated(line) => Ok(Some(NormalizedCardItem::Line(
+            normalize_rewrite_line_ast(
                 line.info.clone(),
-                vec![lowered.chunk],
-                lowered.restrictions,
+                vec![line.parsed],
+                line.restrictions,
                 state,
-            )?))),
-            Err(err) if allow_unsupported => {
-                Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
-                    line.info.clone(),
-                    vec![rewrite_unsupported_line_ast(
-                        line.info.raw_line.as_str(),
-                        format!("{err:?}"),
-                    )],
-                    ParsedRestrictions::default(),
-                    state,
-                )?)))
-            }
-            Err(err) => Err(err),
-        },
+            )?,
+        ))),
         RewriteSemanticItem::Triggered(line) => {
             Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
                 line.info.clone(),
-                vec![lower_rewrite_triggered_to_chunk(&line)?],
+                vec![line.parsed],
                 ParsedRestrictions::default(),
                 state,
             )?)))
@@ -3344,7 +3412,7 @@ fn rewrite_item_to_normalized_item(
         RewriteSemanticItem::Static(line) => {
             Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
                 line.info.clone(),
-                vec![lower_rewrite_static_to_chunk(&line)?],
+                vec![line.parsed],
                 ParsedRestrictions::default(),
                 state,
             )?)))
@@ -3352,7 +3420,7 @@ fn rewrite_item_to_normalized_item(
         RewriteSemanticItem::Statement(line) => {
             Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
                 line.info.clone(),
-                lower_rewrite_statement_to_chunks(&line)?,
+                line.parsed_chunks,
                 ParsedRestrictions::default(),
                 state,
             )?)))
@@ -3375,21 +3443,24 @@ fn rewrite_item_to_normalized_item(
             })?,
         ))),
         RewriteSemanticItem::LevelHeader(level) => {
-            Ok(Some(match lower_rewrite_level_to_item(level)? {
-                ParsedCardItem::LevelAbility(level) => NormalizedCardItem::LevelAbility(level),
-                _ => unreachable!("rewrite level lowering returned non-level item"),
-            }))
+            Ok(Some(NormalizedCardItem::LevelAbility(ParsedLevelAbilityAst {
+                min_level: level.min_level,
+                max_level: level.max_level,
+                pt: level.pt,
+                items: level.items.into_iter().map(|item| item.parsed).collect(),
+            })))
         }
         RewriteSemanticItem::SagaChapter(saga) => {
-            Ok(Some(match lower_rewrite_saga_to_item(saga)? {
-                ParsedCardItem::Line(line) => NormalizedCardItem::Line(normalize_rewrite_line_ast(
-                    line.info,
-                    line.chunks,
-                    line.restrictions,
-                    state,
-                )?),
-                _ => unreachable!("rewrite saga lowering returned non-line item"),
-            }))
+            Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
+                saga.info.clone(),
+                vec![LineAst::Triggered {
+                    trigger: TriggerSpec::SagaChapter(saga.chapters),
+                    effects: saga.effects_ast,
+                    max_triggers_per_turn: None,
+                }],
+                ParsedRestrictions::default(),
+                state,
+            )?)))
         }
     }
 }

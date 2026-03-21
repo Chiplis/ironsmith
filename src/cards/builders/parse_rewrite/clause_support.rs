@@ -2,7 +2,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, KeywordAction, LineAst, StaticAbilityAst, Token, TriggerSpec,
 };
 
-use super::ported_activation_and_restrictions::parse_ability_phrase;
+use super::activation_and_restrictions::parse_ability_phrase;
 use super::util::{
     parse_card_type, parse_color, parse_flashback_keyword_line, parse_subtype_flexible,
     split_on_and, split_on_comma_or_semicolon, words,
@@ -120,19 +120,19 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[Token]) -> Option<Vec<Keyword
 pub(crate) fn rewrite_parse_effect_sentences(
     tokens: &[Token],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    super::ported_effects_sentences::parse_effect_sentences(tokens)
+    super::effect_sentences::parse_effect_sentences(tokens)
 }
 
 pub(crate) fn rewrite_parse_triggered_line(tokens: &[Token]) -> Result<LineAst, CardTextError> {
-    super::ported_activation_and_restrictions::parse_triggered_line(tokens)
+    super::activation_and_restrictions::parse_triggered_line(tokens)
 }
 
 pub(crate) fn rewrite_parse_trigger_clause(tokens: &[Token]) -> Result<TriggerSpec, CardTextError> {
-    super::ported_activation_and_restrictions::parse_trigger_clause(tokens)
+    super::activation_and_restrictions::parse_trigger_clause(tokens)
 }
 
 pub(crate) fn rewrite_parse_static_ability_ast_line(
     tokens: &[Token],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    super::ported_keyword_static::parse_static_ability_ast_line(tokens)
+    super::keyword_static::parse_static_ability_ast_line(tokens)
 }

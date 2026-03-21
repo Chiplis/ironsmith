@@ -1,11 +1,11 @@
 #[allow(unused_imports)]
 use super::{Verb, find_verb, parse_effect_chain};
-use super::legacy_helpers::*;
+use super::sentence_helpers::*;
 use super::dispatch_inner::trim_edge_punctuation;
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::compile_support::compile_statement_effects;
-use super::super::ported_activation_and_restrictions::parse_triggered_line;
-use super::super::ported_object_filters::{parse_object_filter, split_on_or};
+use super::super::activation_and_restrictions::parse_triggered_line;
+use super::super::object_filters::{parse_object_filter, split_on_or};
 use super::super::util::{
     is_article, is_source_reference_words, parse_mana_symbol, parse_target_phrase, span_from_tokens,
     token_index_for_word_index, trim_commas, words,
