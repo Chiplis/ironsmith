@@ -1,6 +1,6 @@
 # Ironsmith
 
-Ironsmith is a Magic: The Gathering rules engine, oracle-text compiler, and browser-playable game runtime built primarily in Rust.
+Ironsmith is a Magic: The Gathering rules engine, oracle-text compiler, and browser-playable game runtime built primarily in Rust. You can try it out (and even play with your friends!) at [https://chiplis.com/ironsmith](https://chiplis.com/ironsmith)
 
 The project is organized around one central idea: card behavior should come from parsed rules text whenever possible, not from hand-written one-off logic. That design shows up everywhere in the codebase:
 
