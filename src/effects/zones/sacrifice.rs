@@ -210,10 +210,20 @@ impl EffectExecutor for SacrificeEffect {
         if self.player != PlayerFilter::You {
             return None;
         }
+        let description = self.filter.description();
         Some(if count == 1 {
-            format!("Sacrifice a {}", self.filter.description())
+            if description.starts_with("a ")
+                || description.starts_with("an ")
+                || description.starts_with("another ")
+                || description.starts_with("target ")
+                || description.starts_with("this ")
+            {
+                format!("Sacrifice {description}")
+            } else {
+                format!("Sacrifice a {description}")
+            }
         } else {
-            format!("Sacrifice {} {}", count, self.filter.description())
+            format!("Sacrifice {} {}", count, description)
         })
     }
 }

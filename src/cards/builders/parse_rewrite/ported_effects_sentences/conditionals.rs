@@ -1,5 +1,5 @@
 use crate::card::{PowerToughness, PtValue};
-use crate::cards::builders::parse_parsing::primitives::is_permanent_type;
+use crate::cards::builders::is_permanent_type;
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, IT_TAG, IfResultPredicate, PlayerAst,

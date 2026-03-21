@@ -1,6 +1,6 @@
 use crate::cards::builders::CardTextError;
 use crate::cards::builders::Token;
-use crate::cards::builders::parse_parsing::lex::words;
+use crate::cards::builders::words;
 
 pub(crate) const RULE_SHAPE_HAS_COLON: u32 = 1 << 0;
 pub(crate) const RULE_SHAPE_HAS_COMMA: u32 = 1 << 1;
@@ -29,9 +29,6 @@ pub(crate) struct ClauseView<'a> {
     pub(crate) tokens: &'a [Token],
     pub(crate) words: Vec<&'a str>,
     pub(crate) key: RuleKey<'a>,
-    pub(crate) normalized: Option<&'a str>,
-    pub(crate) normalized_without_braces: Option<&'a str>,
-    pub(crate) line_index: Option<usize>,
 }
 
 impl<'a> ClauseView<'a> {
@@ -44,30 +41,6 @@ impl<'a> ClauseView<'a> {
             tokens,
             words,
             key: RuleKey::new(head, shape),
-            normalized: None,
-            normalized_without_braces: None,
-            line_index: None,
-        }
-    }
-
-    pub(crate) fn from_line(
-        raw: &'a str,
-        normalized: &'a str,
-        normalized_without_braces: &'a str,
-        tokens: &'a [Token],
-        line_index: usize,
-    ) -> Self {
-        let words = words(tokens);
-        let head = words.first().copied().unwrap_or("");
-        let shape = clause_shape(tokens, &words);
-        Self {
-            raw: Some(raw),
-            tokens,
-            words,
-            key: RuleKey::new(head, shape),
-            normalized: Some(normalized),
-            normalized_without_braces: Some(normalized_without_braces),
-            line_index: Some(line_index),
         }
     }
 

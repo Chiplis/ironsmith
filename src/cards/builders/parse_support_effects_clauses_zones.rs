@@ -1,8 +1,8 @@
-use super::super::effects_sentences::find_color_choice_phrase;
-use crate::cards::builders::parse_parsing::keyword_static::parse_add_mana_that_much_value;
-use crate::cards::builders::parse_parsing::{
+use crate::cards::builders::find_color_choice_phrase;
+use crate::cards::builders::{
     controller_filter_for_token_player, extract_subject_player, intern_counter_name,
-    parse_add_mana_equal_amount_value, parse_devotion_value_from_add_clause,
+    parse_add_mana_equal_amount_value, parse_add_mana_that_much_value,
+    parse_devotion_value_from_add_clause,
     parse_dynamic_cost_modifier_value, parse_get_modifier_values_with_tail, parse_mana_symbol,
     parse_mana_symbol_group, parse_number, parse_number_word_i32, parse_pt_modifier,
     parse_pt_modifier_values, parse_restriction_duration, parse_subtype_word,

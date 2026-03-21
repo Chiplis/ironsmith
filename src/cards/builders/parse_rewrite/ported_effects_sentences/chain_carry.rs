@@ -1,32 +1,35 @@
 use crate::cards::builders::ability_lowering::parsed_triggered_ability;
 use crate::cards::builders::effect_ast_traversal::for_each_nested_effects_mut;
 use crate::cards::builders::parse_compile::effects_reference_it_tag;
-use crate::cards::builders::parse_parsing::{
+use super::{
+    parse_cant_effect_sentence, parse_mana_symbol, parse_restriction_duration,
+    parse_search_library_sentence, parse_simple_gain_ability_clause,
+    parse_simple_lose_ability_clause, parse_token_copy_followup_sentence,
+    split_leading_result_prefix, try_apply_token_copy_followup,
+};
+use crate::cards::builders::{
     POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, POST_CONDITIONAL_SENTENCE_PRIMITIVES,
-    PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, PRE_CONDITIONAL_SENTENCE_PRIMITIVES, find_verb,
+    PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
     has_effect_head_without_verb, is_token_creation_context, parse_additional_land_plays_clause,
     parse_can_attack_as_though_no_defender_clause,
-    parse_can_block_additional_creature_this_turn_clause, parse_cant_effect_sentence,
+    parse_can_block_additional_creature_this_turn_clause,
     parse_cast_or_play_tagged_clause, parse_cast_spells_as_though_they_had_flash_clause,
     parse_choose_target_and_verb_clause, parse_connive_clause, parse_copy_spell_clause,
     parse_distribute_counters_clause, parse_double_counters_clause, parse_for_each_object_subject,
     parse_for_each_opponent_clause, parse_for_each_player_clause,
-    parse_for_each_target_players_clause, parse_mana_symbol, parse_number, parse_object_filter,
+    parse_for_each_target_players_clause, parse_number, parse_object_filter,
     parse_permission_clause_spec, parse_prevent_all_damage_clause,
-    parse_prevent_next_damage_clause, parse_restriction_duration, parse_search_library_sentence,
+    parse_prevent_next_damage_clause, parse_until_end_of_turn_may_play_tagged_clause,
+    parse_until_your_next_turn_may_play_tagged_clause,
     parse_sentence_exile_source_with_counters,
     parse_sentence_put_onto_battlefield_with_counters_on_it,
-    parse_sentence_return_with_counters_on_it, parse_simple_gain_ability_clause,
-    parse_simple_lose_ability_clause, parse_subject_object_filter,
-    parse_token_copy_followup_sentence, parse_unsupported_play_cast_permission_clause,
-    parse_until_end_of_turn_may_play_tagged_clause,
-    parse_until_your_next_turn_may_play_tagged_clause, parse_verb_first_clause,
+    parse_sentence_return_with_counters_on_it, parse_subject_object_filter,
+    parse_unsupported_play_cast_permission_clause, parse_verb_first_clause,
     parse_win_the_game_clause, run_sentence_primitives, segment_has_effect_head,
-    split_effect_chain_on_and, split_leading_result_prefix, split_on_comma_or_semicolon,
-    split_segments_on_comma_effect_head, split_segments_on_comma_then,
-    starts_with_inline_token_rules_tail, starts_with_target_indicator,
-    starts_with_until_end_of_turn, strip_leading_instead_prefix, target_ast_to_object_filter,
-    try_apply_token_copy_followup,
+    split_effect_chain_on_and, split_on_comma_or_semicolon, split_segments_on_comma_effect_head,
+    split_segments_on_comma_then, starts_with_inline_token_rules_tail,
+    starts_with_target_indicator, starts_with_until_end_of_turn, strip_leading_instead_prefix,
+    target_ast_to_object_filter,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -40,6 +43,65 @@ use crate::effect::ChoiceCount;
 use crate::mana::ManaSymbol;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
+
+pub(crate) fn find_verb(tokens: &[Token]) -> Option<(Verb, usize)> {
+    for (idx, token) in tokens.iter().enumerate() {
+        let Some(word) = token.as_word() else {
+            continue;
+        };
+        if matches!(word, "counter" | "counters")
+            && tokens
+                .get(idx + 1)
+                .and_then(Token::as_word)
+                .is_some_and(|next| matches!(next, "on" | "from" | "among"))
+        {
+            continue;
+        }
+        let local = match word {
+            "adds" | "add" => Verb::Add,
+            "moves" | "move" => Verb::Move,
+            "deals" | "deal" => Verb::Deal,
+            "draws" | "draw" => Verb::Draw,
+            "counters" | "counter" => Verb::Counter,
+            "destroys" | "destroy" => Verb::Destroy,
+            "exiles" | "exile" => Verb::Exile,
+            "reveals" | "reveal" => Verb::Reveal,
+            "looks" | "look" => Verb::Look,
+            "loses" | "lose" => Verb::Lose,
+            "gains" | "gain" => Verb::Gain,
+            "puts" | "put" => Verb::Put,
+            "sacrifices" | "sacrifice" => Verb::Sacrifice,
+            "creates" | "create" => Verb::Create,
+            "investigates" | "investigate" => Verb::Investigate,
+            "proliferates" | "proliferate" => Verb::Proliferate,
+            "taps" | "tap" => Verb::Tap,
+            "attaches" | "attach" => Verb::Attach,
+            "untaps" | "untap" => Verb::Untap,
+            "scries" | "scry" => Verb::Scry,
+            "discards" | "discard" => Verb::Discard,
+            "transforms" | "transform" => Verb::Transform,
+            "flips" | "flip" => Verb::Flip,
+            "regenerates" | "regenerate" => Verb::Regenerate,
+            "mills" | "mill" => Verb::Mill,
+            "gets" | "get" => Verb::Get,
+            "removes" | "remove" => Verb::Remove,
+            "returns" | "return" => Verb::Return,
+            "exchanges" | "exchange" => Verb::Exchange,
+            "becomes" | "become" => Verb::Become,
+            "switches" | "switch" => Verb::Switch,
+            "skips" | "skip" => Verb::Skip,
+            "surveils" | "surveil" => Verb::Surveil,
+            "shuffles" | "shuffle" => Verb::Shuffle,
+            "reorders" | "reorder" => Verb::Reorder,
+            "pays" | "pay" => Verb::Pay,
+            "goads" | "goad" => Verb::Goad,
+            _ => continue,
+        };
+        return Some((local, idx));
+    }
+
+    None
+}
 
 pub(crate) fn parse_effect_chain(tokens: &[Token]) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(stripped) = strip_leading_instead_prefix(tokens) {

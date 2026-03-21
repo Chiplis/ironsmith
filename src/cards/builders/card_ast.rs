@@ -2,18 +2,7 @@ use crate::ability::ActivationTiming;
 use crate::effect::{EffectPredicate, Value};
 use crate::zone::Zone;
 
-use super::{
-    CardDefinitionBuilder, EffectAst, LineAst, LineInfo, ParseAnnotations, StaticAbilityAst,
-    TotalCost, TriggerSpec,
-};
-
-#[derive(Debug, Clone)]
-pub(crate) struct ParsedCardAst {
-    pub(crate) builder: CardDefinitionBuilder,
-    pub(crate) annotations: ParseAnnotations,
-    pub(crate) items: Vec<ParsedCardItem>,
-    pub(crate) allow_unsupported: bool,
-}
+use super::{EffectAst, LineAst, LineInfo, StaticAbilityAst, TotalCost, TriggerSpec};
 
 #[derive(Debug, Clone)]
 pub(crate) enum ParsedCardItem {

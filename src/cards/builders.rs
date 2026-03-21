@@ -36,7 +36,6 @@ use super::CardDefinition;
 mod effect_ast_normalization;
 mod effect_ast_traversal;
 mod effect_pipeline;
-mod parser;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardTextError {
@@ -2437,11 +2436,11 @@ pub(crate) use static_ability_lowering::*;
 mod cost_components;
 pub(crate) use cost_components::*;
 
-mod parse_parsing;
-pub(crate) use parse_parsing::*;
-
 mod parse_rewrite;
 pub(crate) use parse_rewrite::*;
+
+mod parse_support;
+pub(crate) use parse_support::*;
 
 mod reference_model;
 pub(crate) use reference_model::*;
@@ -12619,10 +12618,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     #[test]
     fn parser_sentence_helpers_do_not_use_legacy_fixed_helper_tags() {
         for source in [
-            include_str!("builders/parse_parsing/effects_sentences/dispatch_entry.rs"),
-            include_str!("builders/parse_parsing/effects_sentences/dispatch_inner.rs"),
-            include_str!("builders/parse_parsing/effects_sentences/search_library.rs"),
-            include_str!("builders/parse_parsing/effects_sentences/sentence_primitives.rs"),
+            include_str!("builders/parse_rewrite/ported_effects_sentences/dispatch_entry.rs"),
+            include_str!("builders/parse_rewrite/ported_effects_sentences/dispatch_inner.rs"),
+            include_str!("builders/parse_rewrite/ported_effects_sentences/search_library.rs"),
+            include_str!("builders/parse_rewrite/ported_effects_sentences/sentence_primitives.rs"),
         ] {
             for legacy in [
                 "\"exiled_0\"",

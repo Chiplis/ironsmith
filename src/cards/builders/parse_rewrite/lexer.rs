@@ -7,25 +7,41 @@ use crate::cards::builders::{CardTextError, TextSpan};
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq)]
 #[logos(skip r"[ \t\r\n\f]+")]
 pub(crate) enum TokenKind {
+    #[token("!")]
+    Bang,
     #[token(":")]
     Colon,
     #[token(",")]
     Comma,
+    #[token("[")]
+    LBracket,
+    #[token("]")]
+    RBracket,
+    #[token("?")]
+    Question,
     #[token(".")]
     Period,
+    #[token("+")]
+    Plus,
+    #[token("|")]
+    Pipe,
     #[token(";")]
     Semicolon,
     #[token("•")]
+    #[token("*")]
     Bullet,
     #[token("-")]
+    #[token("−")]
     Dash,
     #[token("—")]
     EmDash,
-    #[regex(r#""|“|”"#)]
+    #[token("½")]
+    Half,
+    #[regex(r#""|'|‘|’|“|”"#)]
     Quote,
     #[regex(r"\{[^}\r\n]+\}")]
     ManaGroup,
-    #[regex(r"[A-Za-z0-9][A-Za-z0-9/'’+\-]*")]
+    #[regex(r"(?:\+[\p{L}0-9][\p{L}0-9/'’+\-−]*|[\p{L}0-9][\p{L}0-9/'’+\-−]*)")]
     Word,
 }
 

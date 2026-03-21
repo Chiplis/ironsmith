@@ -1123,16 +1123,32 @@ pub(super) fn normalize_inline_ability_text(ability: &Ability, text: &str) -> St
     }
 }
 
+fn normalize_duplicate_sacrifice_article(text: &str) -> String {
+    if let Some(rest) = text.strip_prefix("Sacrifice a a ") {
+        return format!("Sacrifice a {rest}");
+    }
+    if let Some(rest) = text.strip_prefix("Sacrifice a an ") {
+        return format!("Sacrifice an {rest}");
+    }
+    if let Some(rest) = text.strip_prefix("sacrifice a a ") {
+        return format!("sacrifice a {rest}");
+    }
+    if let Some(rest) = text.strip_prefix("sacrifice a an ") {
+        return format!("sacrifice an {rest}");
+    }
+    text.to_string()
+}
+
 pub(super) fn normalize_cost_phrase(text: &str) -> String {
     if let Some(rest) = text.strip_prefix("you ") {
         let normalized = normalize_you_verb_phrase(rest);
-        return capitalize_first(&normalized);
+        return normalize_duplicate_sacrifice_article(&capitalize_first(&normalized));
     }
     if let Some(rest) = text.strip_prefix("You ") {
         let normalized = normalize_you_verb_phrase(rest);
-        return capitalize_first(&normalized);
+        return normalize_duplicate_sacrifice_article(&capitalize_first(&normalized));
     }
-    text.to_string()
+    normalize_duplicate_sacrifice_article(text)
 }
 
 pub(super) fn describe_cost_component(cost: &crate::costs::Cost) -> String {

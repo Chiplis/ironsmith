@@ -8740,6 +8740,38 @@ fn mana_ability_render_uses_colon_separator() {
 }
 
 #[test]
+fn metadata_land_dual_mana_line_stays_a_mana_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tundra Variant")
+        .parse_text("Type: Land\n{T}: Add {W} or {U}.")
+        .expect("metadata-driven dual mana land should parse");
+
+    let line = compiled_lines(&def)
+        .into_iter()
+        .find(|line| line.contains("Mana ability"))
+        .expect("expected mana ability line");
+    assert!(
+        line.contains("{T}: Add {W} or {U}"),
+        "expected dual mana output to stay a mana ability, got {line}"
+    );
+}
+
+#[test]
+fn metadata_basic_typed_dual_land_mana_line_stays_a_mana_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tundra")
+        .parse_text("Type: Land — Plains Island\n{T}: Add {W} or {U}.")
+        .expect("typed dual land should parse");
+
+    let lines = compiled_lines(&def);
+    let joined = lines.join("\n");
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("Mana ability") && line.contains("{T}: Add {W} or {U}")),
+        "expected typed dual land output to stay a mana ability, got {joined}"
+    );
+}
+
+#[test]
 fn parse_reveal_hand_clause_with_trailing_effect_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Retraced Image Variant")
             .parse_text(
@@ -11005,6 +11037,24 @@ fn render_multi_sacrifice_artifacts_cost_uses_compact_filter_text() {
     assert!(
         joined.contains("sacrifice two artifacts"),
         "expected compact multi-artifact sacrifice rendering, got {joined}"
+    );
+}
+
+#[test]
+fn render_single_sacrifice_cost_does_not_duplicate_article() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Greta Variant")
+        .parse_text("{G}, Sacrifice a Food you control: Draw a card.")
+        .expect("single sacrifice activated cost should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("sacrifice a food you control"),
+        "expected oracle-like singular sacrifice rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("sacrifice a a food"),
+        "expected no duplicated article in sacrifice rendering, got {joined}"
     );
 }
 

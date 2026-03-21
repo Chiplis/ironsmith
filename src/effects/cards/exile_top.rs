@@ -1,10 +1,11 @@
 //! Exile top cards of library effect implementation.
 
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
@@ -28,6 +29,10 @@ impl ExileTopOfLibraryEffect {
 }
 
 impl EffectExecutor for ExileTopOfLibraryEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -53,5 +58,42 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         }
 
         Ok(EffectOutcome::count(moved))
+    }
+}
+
+impl CostExecutableEffect for ExileTopOfLibraryEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let player_id = match self.player {
+            PlayerFilter::You => controller,
+            PlayerFilter::Specific(id) => id,
+            _ => controller,
+        };
+        let count = match &self.count {
+            Value::Fixed(count) => (*count).max(0) as usize,
+            Value::X => {
+                return Err(CostValidationError::Other(
+                    "dynamic X exile-top costs are not supported".to_string(),
+                ));
+            }
+            _ => {
+                let ctx = ExecutionContext::new_default(source, controller);
+                resolve_value(game, &self.count, &ctx)
+                    .map_err(|err| CostValidationError::Other(format!("{err:?}")))?
+                    .max(0) as usize
+            }
+        };
+        let available = game.player(player_id).map_or(0, |p| p.library.len());
+        if available >= count {
+            Ok(())
+        } else {
+            Err(CostValidationError::Other(
+                "not enough cards in library to pay exile-top cost".to_string(),
+            ))
+        }
     }
 }

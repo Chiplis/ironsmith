@@ -1,52 +1,13 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
-use crate::cards::ParseAnnotations;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, InsteadSemantics, LineInfo, LoweredEffects,
-    NormalizedAdditionalCostChoiceOptionAst, NormalizedParsedAbility, NormalizedPreparedAbility,
-    ParsedAbility, PreparedEffectsForLowering, ReferenceExports, ReferenceImports, TriggerSpec,
-    classify_instead_followup_text, collect_tag_spans_from_effects_with_context,
-    compile_trigger_spec, materialize_prepared_effects_with_trigger_context,
-    materialize_prepared_statement_effects, materialize_prepared_triggered_effects,
-    prepare_effects_for_lowering, prepare_effects_with_trigger_context_for_lowering,
-    prepare_triggered_effects_for_lowering, trigger_binds_player_reference_context,
+    CardTextError, EffectAst, NormalizedPreparedAbility, ParsedAbility, ReferenceImports,
+    TriggerSpec, compile_trigger_spec,
+    materialize_prepared_effects_with_trigger_context, materialize_prepared_triggered_effects,
+    prepare_effects_with_trigger_context_for_lowering, prepare_triggered_effects_for_lowering,
+    trigger_binds_player_reference_context,
     validate_iterated_player_bindings_in_lowered_effects,
 };
-use crate::effect::EffectMode;
 use crate::zone::Zone;
-
-pub(crate) fn lower_prepared_statement_effects(
-    prepared: &PreparedEffectsForLowering,
-) -> Result<LoweredEffects, CardTextError> {
-    materialize_prepared_statement_effects(prepared)
-}
-
-pub(crate) fn lower_prepared_effects_with_trigger_context(
-    prepared: &PreparedEffectsForLowering,
-) -> Result<LoweredEffects, CardTextError> {
-    materialize_prepared_effects_with_trigger_context(prepared)
-}
-
-pub(crate) fn lower_prepared_additional_cost_choice_modes_with_exports(
-    options: &[NormalizedAdditionalCostChoiceOptionAst],
-) -> Result<(Vec<EffectMode>, ReferenceExports), CardTextError> {
-    let mut exports = ReferenceExports::default();
-    let mut first = true;
-    let mut modes = Vec::with_capacity(options.len());
-    for option in options {
-        let lowered = lower_prepared_statement_effects(&option.prepared)?;
-        if first {
-            exports = lowered.exports.clone();
-            first = false;
-        } else {
-            exports = ReferenceExports::join(&exports, &lowered.exports);
-        }
-        modes.push(EffectMode {
-            description: option.description.trim().to_string(),
-            effects: lowered.effects.flattened_default_effects().to_vec(),
-        });
-    }
-    Ok((modes, exports))
-}
 
 fn prepare_parsed_ability_payload(
     parsed: &ParsedAbility,
@@ -155,94 +116,6 @@ fn lower_parsed_ability_internal(
     activated.effects = lowered.effects;
     activated.choices = lowered.choices;
     Ok(parsed)
-}
-
-pub(crate) fn lower_prepared_ability(
-    normalized: NormalizedParsedAbility,
-) -> Result<ParsedAbility, CardTextError> {
-    lower_parsed_ability_internal(normalized.parsed, normalized.prepared)
-}
-
-pub(crate) fn apply_instead_followup_statement_to_last_ability(
-    builder: &mut CardDefinitionBuilder,
-    last_restrictable_ability: Option<usize>,
-    effects: &[EffectAst],
-    info: &LineInfo,
-    annotations: &mut ParseAnnotations,
-) -> Result<bool, CardTextError> {
-    let Some(index) = last_restrictable_ability else {
-        return Ok(false);
-    };
-    if index >= builder.abilities.len() {
-        return Ok(false);
-    }
-
-    let normalized = info.normalized.normalized.as_str().to_ascii_lowercase();
-    if !normalized.starts_with("if ")
-        || !matches!(
-            classify_instead_followup_text(&normalized),
-            InsteadSemantics::SelfReplacement
-        )
-    {
-        return Ok(false);
-    }
-
-    let compiled = lower_prepared_statement_effects(&prepare_effects_for_lowering(
-        effects,
-        ReferenceImports::default(),
-    )?)?;
-    if compiled.effects.len() != 1 {
-        return Ok(false);
-    }
-
-    let segment = match compiled.effects.segments.as_slice() {
-        [segment] => segment,
-        _ => return Ok(false),
-    };
-    if !segment.default_effects.is_empty() || segment.self_replacements.len() != 1 {
-        return Ok(false);
-    }
-
-    let replacement = &segment.self_replacements[0];
-    if !compiled.choices.is_empty() {
-        return Ok(false);
-    }
-
-    collect_tag_spans_from_effects_with_context(effects, annotations, &info.normalized);
-
-    match &mut builder.abilities[index].kind {
-        AbilityKind::Triggered(ability) => {
-            let Some(segment) = ability.effects.last_segment_mut() else {
-                return Ok(false);
-            };
-            if segment.default_effects.is_empty() {
-                return Ok(false);
-            }
-            segment
-                .self_replacements
-                .push(crate::resolution::SelfReplacementBranch::new(
-                    replacement.condition.clone(),
-                    replacement.replacement_effects.clone(),
-                ));
-        }
-        AbilityKind::Activated(ability) => {
-            let Some(segment) = ability.effects.last_segment_mut() else {
-                return Ok(false);
-            };
-            if segment.default_effects.is_empty() {
-                return Ok(false);
-            }
-            segment
-                .self_replacements
-                .push(crate::resolution::SelfReplacementBranch::new(
-                    replacement.condition.clone(),
-                    replacement.replacement_effects.clone(),
-                ));
-        }
-        _ => return Ok(false),
-    }
-
-    Ok(true)
 }
 
 pub(crate) fn parsed_triggered_ability(

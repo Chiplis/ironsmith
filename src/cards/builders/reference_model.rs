@@ -1,6 +1,6 @@
 use crate::ChooseSpec;
 use crate::cards::builders::EffectAst;
-use crate::cards::builders::parse_parsing::LoweringFrame;
+use crate::cards::builders::LoweringFrame;
 use crate::effect::EffectId;
 use crate::{PlayerFilter, TagKey};
 

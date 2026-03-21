@@ -203,13 +203,6 @@ pub(crate) fn parser_trace(stage: &str, tokens: &[Token]) {
     );
 }
 
-pub(crate) fn parser_trace_line(stage: &str, line: &str) {
-    if !parser_trace_enabled() {
-        return;
-    }
-    eprintln!("[parser-flow] stage={stage} line='{}'", line.trim());
-}
-
 pub(crate) fn parser_trace_stack(stage: &str, tokens: &[Token]) {
     if !parser_stacktrace_enabled() {
         return;
@@ -604,6 +597,7 @@ pub(crate) fn is_labeled_ability_word_prefix(prefix: &str) -> bool {
             | "alliance"
             | "ascend"
             | "battalion"
+            | "enrage"
             | "boast"
             | "buyback"
             | "cycling"
@@ -1479,55 +1473,6 @@ pub(crate) fn split_cost_segments(tokens: &[Token]) -> Vec<Vec<Token>> {
     segments
 }
 
-pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, &str)> {
-    let (prefix, rest) = line.split_once('—').or_else(|| line.split_once(" - "))?;
-
-    let mut chapters = Vec::new();
-    for part in prefix.split(',') {
-        let roman = part.trim();
-        if roman.is_empty() {
-            continue;
-        }
-        let value = roman_to_int(roman)?;
-        chapters.push(value);
-    }
-
-    if chapters.is_empty() {
-        return None;
-    }
-
-    Some((chapters, rest.trim()))
-}
-
-pub(crate) fn roman_to_int(roman: &str) -> Option<u32> {
-    match roman {
-        "i" => Some(1),
-        "ii" => Some(2),
-        "iii" => Some(3),
-        "iv" => Some(4),
-        "v" => Some(5),
-        "vi" => Some(6),
-        _ => None,
-    }
-}
-
-pub(crate) fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
-    let lower = line.trim().to_ascii_lowercase();
-    let rest = lower.strip_prefix("level ")?;
-    let token = rest.split_whitespace().next()?;
-    if let Some(without_plus) = token.strip_suffix('+') {
-        let min = without_plus.parse::<u32>().ok()?;
-        return Some((min, None));
-    }
-    if let Some((start, end)) = token.split_once('-') {
-        let min = start.parse::<u32>().ok()?;
-        let max = end.parse::<u32>().ok()?;
-        return Some((min, Some(max)));
-    }
-    let value = token.parse::<u32>().ok()?;
-    Some((value, Some(value)))
-}
-
 pub(crate) fn is_untap_during_each_other_players_untap_step_words(words: &[&str]) -> bool {
     if words.first().copied() != Some("untap") {
         return false;
@@ -1536,30 +1481,4 @@ pub(crate) fn is_untap_during_each_other_players_untap_step_words(words: &[&str]
         window == ["during", "each", "other", "player", "untap", "step"]
             || window == ["during", "each", "other", "players", "untap", "step"]
     })
-}
-
-pub(crate) fn is_non_mana_additional_cost_modifier_line(normalized_line: &str) -> bool {
-    let has_additional_cost = normalized_line.contains(" cost an additional ")
-        || normalized_line.contains(" costs an additional ");
-    if !has_additional_cost {
-        return false;
-    }
-    let has_activation_or_cast_tail =
-        normalized_line.contains(" to activate") || normalized_line.contains(" to cast");
-    if !has_activation_or_cast_tail {
-        return false;
-    }
-    normalized_line.contains('"') || normalized_line.contains('“') || normalized_line.contains('”')
-}
-
-pub(crate) fn dash_labeled_remainder_starts_with_trigger(line: &str) -> bool {
-    let lower = line.trim().to_ascii_lowercase();
-    let remainder = lower
-        .split_once('—')
-        .map(|(_, rest)| rest.trim())
-        .or_else(|| lower.split_once(" - ").map(|(_, rest)| rest.trim()));
-    let Some(rest) = remainder else {
-        return false;
-    };
-    rest.starts_with("whenever ") || rest.starts_with("when ") || rest.starts_with("at ")
 }

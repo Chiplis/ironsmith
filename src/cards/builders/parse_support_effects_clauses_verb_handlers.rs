@@ -1,4 +1,4 @@
-use crate::cards::builders::parse_parsing::effects_clauses::{
+use crate::cards::builders::{
     parse_add_mana, parse_become, parse_create, parse_delayed_return_timing_words, parse_destroy,
     parse_discard, parse_equal_to_aggregate_filter_value,
     parse_equal_to_number_of_counters_on_reference_value,
@@ -10,7 +10,7 @@ use crate::cards::builders::parse_parsing::effects_clauses::{
     parse_transform, parse_untap, parse_who_did_this_way_predicate,
     wrap_return_with_delayed_timing,
 };
-use crate::cards::builders::parse_parsing::{
+use crate::cards::builders::{
     extract_subject_player, parse_add_mana_equal_amount_value,
     parse_devotion_value_from_add_clause, parse_dynamic_cost_modifier_value, parse_mana_symbol,
     parse_number, parse_target_count_range_prefix, try_build_unless, wrap_target_count,

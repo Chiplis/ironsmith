@@ -1,29 +1,1239 @@
 #![allow(dead_code)]
 
+use crate::PtValue;
 use crate::ability::ActivationTiming;
-use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, ParseAnnotations, TextSpan,
-};
+use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ParseAnnotations, TextSpan, TriggerSpec};
 
 use super::cst::{
-    ActivatedLineCst, MetadataLineCst, RewriteDocumentCst, RewriteLineCst, UnsupportedLineCst,
+    ActivatedLineCst, KeywordLineCst, KeywordLineKindCst, LevelHeaderCst, LevelItemCst,
+    LevelItemKindCst, MetadataLineCst, ModalBlockCst, ModalModeCst, RewriteDocumentCst,
+    RewriteLineCst, SagaChapterLineCst, StatementLineCst, StaticLineCst, StaticLineKindCst,
+    TriggerIntroCst, TriggeredLineCst, UnsupportedLineCst,
+};
+use super::clause_support::{
+    rewrite_parse_ability_line, rewrite_parse_effect_sentences,
+    rewrite_parse_static_ability_ast_line, rewrite_parse_trigger_clause,
+    rewrite_parse_triggered_line,
 };
 use super::ir::{
-    RewriteActivatedLine, RewriteSemanticDocument, RewriteSemanticItem, RewriteUnsupportedLine,
+    RewriteActivatedLine, RewriteKeywordLine, RewriteKeywordLineKind, RewriteLevelHeader,
+    RewriteLevelItem, RewriteLevelItemKind, RewriteMetadataLine, RewriteModalBlock,
+    RewriteModalMode, RewriteSagaChapterLine, RewriteSemanticDocument, RewriteSemanticItem,
+    RewriteStatementLine, RewriteStaticLine, RewriteStaticLineKind, RewriteTriggerIntro,
+    RewriteTriggeredLine, RewriteUnsupportedLine,
 };
 use super::leaf::{
     lower_activation_cost_cst, metadata_type_line_cst, parse_activation_cost_rewrite,
 };
-use super::preprocess::{PreprocessedDocument, preprocess_document};
+use super::lexer::TokenKind;
+use super::ported_activation_and_restrictions::{parse_channel_line, parse_cycling_line, parse_equip_line};
+use super::ported_keyword_static::parse_if_this_spell_costs_less_to_cast_line;
+use super::preprocess::{
+    PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
+};
+use super::util::{
+    parse_additional_cost_choice_options, parse_bestow_line, parse_buyback_line,
+    parse_cast_this_spell_only_line, parse_entwine_line, parse_escape_line,
+    parse_flashback_line, parse_if_conditional_alternative_cost_line, parse_kicker_line,
+    parse_level_header, parse_level_up_line, parse_madness_line, parse_morph_keyword_line,
+    parse_multikicker_line, parse_offspring_line, parse_power_toughness, parse_reinforce_line,
+    parse_saga_chapter_prefix, parse_self_free_cast_alternative_cost_line, parse_squad_line,
+    parse_transmute_line, parse_warp_line, parse_you_may_rather_than_spell_cost_line,
+    preserve_keyword_prefix_for_parse, tokenize_line, words,
+};
+
+fn is_bullet_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with('•') || trimmed.starts_with('*') {
+        return true;
+    }
+    if let Some(rest) = trimmed.strip_prefix('-') {
+        let next = rest.chars().next();
+        if next.is_some_and(|ch| ch.is_ascii_digit()) {
+            return false;
+        }
+        return true;
+    }
+    false
+}
+
+fn parse_trigger_intro(word: &str) -> Option<TriggerIntroCst> {
+    match word {
+        "when" => Some(TriggerIntroCst::When),
+        "whenever" => Some(TriggerIntroCst::Whenever),
+        "at" => Some(TriggerIntroCst::At),
+        _ => None,
+    }
+}
+
+fn split_trigger_frequency_suffix(trigger_text: &str) -> (String, Option<u32>) {
+    for suffix in [
+        " for the first time each turn",
+        " for the first time this turn",
+    ] {
+        if let Some(trimmed) = trigger_text.strip_suffix(suffix) {
+            return (trimmed.trim().to_string(), Some(1));
+        }
+    }
+    (trigger_text.trim().to_string(), None)
+}
+
+fn split_trailing_trigger_cap_suffix(text: &str) -> (String, Option<u32>) {
+    let trimmed = text.trim();
+    for (suffix, count) in [
+        (". this ability triggers only once each turn.", 1),
+        (". this ability triggers only once each turn", 1),
+        (". this ability triggers only twice each turn.", 2),
+        (". this ability triggers only twice each turn", 2),
+    ] {
+        if let Some(head) = trimmed.strip_suffix(suffix) {
+            return (head.trim().to_string(), Some(count));
+        }
+    }
+    (trimmed.to_string(), None)
+}
+
+fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst, CardTextError> {
+    let Some(first_token) = line.tokens.first() else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite triggered parser received empty token stream for '{}'",
+            line.info.raw_line
+        )));
+    };
+    let Some(intro) = parse_trigger_intro(first_token.slice.as_str()) else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite triggered parser expected trigger intro for '{}'",
+            line.info.raw_line
+        )));
+    };
+    let Some(condition_start) = line.tokens.get(1).map(|token| token.span.start) else {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite triggered line is missing trigger body: '{}'",
+            line.info.raw_line
+        )));
+    };
+    let (normalized, trailing_cap) =
+        split_trailing_trigger_cap_suffix(line.info.normalized.normalized.as_str());
+    if let Some(err) = diagnose_known_unsupported_rewrite_line(normalized.as_str()) {
+        return Err(err);
+    }
+
+    if normalized.starts_with("at the beginning of each combat, unless you pay ")
+        && let Some((_, nested_trigger)) = normalized.split_once(", whenever ")
+    {
+        let nested_text = format!("whenever {nested_trigger}");
+        let nested_line = rewrite_line_normalized(line, nested_text.as_str())?;
+        if let Ok(parsed) = parse_triggered_line_cst(&nested_line) {
+            return Ok(parsed);
+        }
+    }
+
+    let mut best_supported_split = None;
+    let mut best_fallback_split = None;
+
+    for separator in line
+        .tokens
+        .iter()
+        .filter(|token| token.kind == TokenKind::Comma)
+    {
+        let trigger_candidate = normalized[condition_start..separator.span.start].trim();
+        let effect_candidate = normalized[separator.span.end..].trim();
+        if trigger_candidate.is_empty() || effect_candidate.is_empty() {
+            continue;
+        }
+
+        let (trigger_text, max_triggers_per_turn) =
+            split_trigger_frequency_suffix(trigger_candidate);
+        let max_triggers_per_turn = max_triggers_per_turn.or(trailing_cap);
+        if trigger_text.is_empty() {
+            continue;
+        }
+
+        let trigger_probe =
+            rewrite_parse_trigger_clause(&tokenize_line(trigger_text.as_str(), line.info.line_index));
+        let effect_probe =
+            rewrite_parse_effect_sentences(&tokenize_line(effect_candidate, line.info.line_index));
+        let trigger_is_supported =
+            matches!(trigger_probe, Ok(trigger) if !matches!(trigger, TriggerSpec::Custom(_)));
+        if trigger_is_supported && effect_probe.is_ok() {
+            if best_supported_split.is_none() {
+                best_supported_split = Some(TriggeredLineCst {
+                    info: line.info.clone(),
+                    intro,
+                    full_text: format!(
+                        "{} {}, {}",
+                        first_token.slice.as_str(),
+                        trigger_text,
+                        effect_candidate
+                    ),
+                    trigger_text,
+                    effect_text: effect_candidate.to_string(),
+                    separator_span: separator.span,
+                    max_triggers_per_turn,
+                    chosen_option_label: None,
+                });
+            }
+            continue;
+        }
+
+        let full_text = format!(
+            "{} {}, {}",
+            first_token.slice.as_str(),
+            trigger_text,
+            effect_candidate
+        );
+        let full_tokens = tokenize_line(full_text.as_str(), line.info.line_index);
+        if rewrite_parse_triggered_line(&full_tokens).is_ok() && best_fallback_split.is_none() {
+            best_fallback_split = Some(TriggeredLineCst {
+                info: line.info.clone(),
+                intro,
+                full_text,
+                trigger_text,
+                effect_text: effect_candidate.to_string(),
+                separator_span: separator.span,
+                max_triggers_per_turn,
+                chosen_option_label: None,
+            });
+        }
+    }
+
+    if let Some(split) = best_supported_split.or(best_fallback_split) {
+        return Ok(split);
+    }
+
+    let full_tokens = tokenize_line(&normalized, line.info.line_index);
+    match rewrite_parse_triggered_line(&full_tokens) {
+        Ok(_) => Ok(TriggeredLineCst {
+            info: line.info.clone(),
+            intro,
+            full_text: normalized.to_string(),
+            trigger_text: normalized[condition_start..].trim().to_string(),
+            effect_text: String::new(),
+            separator_span: first_token.span,
+            max_triggers_per_turn: trailing_cap,
+            chosen_option_label: None,
+        }),
+        Err(err) => Err(err),
+    }
+}
+
+fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst>, CardTextError> {
+    let normalized = line.info.normalized.normalized.as_str();
+    let legacy_parse_text = rewrite_keyword_dash_parse_text(normalized);
+    let legacy_tokens = tokenize_line(legacy_parse_text.as_str(), line.info.line_index);
+    let token_words = words(&legacy_tokens);
+    let mut deferred_error = None;
+
+    if normalized.starts_with("level up ") && parse_level_up_line(&legacy_tokens)?.is_some() {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: StaticLineKindCst::StaticAbilities,
+            item_count: 1,
+            chosen_option_label: None,
+        }));
+    }
+
+    if is_doesnt_untap_during_your_untap_step_words(token_words.as_slice()) {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: StaticLineKindCst::StaticAbilities,
+            item_count: 1,
+            chosen_option_label: None,
+        }));
+    }
+
+    if parse_if_this_spell_costs_less_to_cast_line(&legacy_tokens)?.is_some() {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: StaticLineKindCst::StaticAbilities,
+            item_count: 1,
+            chosen_option_label: None,
+        }));
+    }
+
+    if normalized == "activate only once each turn." {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: StaticLineKindCst::StaticAbilities,
+            item_count: 1,
+            chosen_option_label: None,
+        }));
+    }
+
+    if split_compound_buff_and_unblockable_sentence(normalized).is_some() {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: StaticLineKindCst::StaticAbilities,
+            item_count: 2,
+            chosen_option_label: None,
+        }));
+    }
+
+    if !should_skip_keyword_action_static_probe(normalized)
+        && let Some(actions) = rewrite_parse_ability_line(&legacy_tokens)
+    {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: StaticLineKindCst::KeywordActions,
+            item_count: actions.len(),
+            chosen_option_label: None,
+        }));
+    }
+
+    match rewrite_parse_static_ability_ast_line(&legacy_tokens) {
+        Ok(Some(abilities)) => {
+            return Ok(Some(StaticLineCst {
+                info: line.info.clone(),
+                text: normalized.to_string(),
+                kind: StaticLineKindCst::StaticAbilities,
+                item_count: abilities.len(),
+                chosen_option_label: None,
+            }));
+        }
+        Ok(None) => {}
+        Err(err) => deferred_error = Some(err),
+    }
+
+    if let Some(item_count) = parse_split_static_item_count(normalized, line.info.line_index)? {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: StaticLineKindCst::StaticAbilities,
+            item_count,
+            chosen_option_label: None,
+        }));
+    }
+
+    if let Some(err) = deferred_error {
+        return Err(err);
+    }
+
+    Ok(None)
+}
+
+fn parse_split_static_item_count(
+    text: &str,
+    line_index: usize,
+) -> Result<Option<usize>, CardTextError> {
+    let sentences = text
+        .split('.')
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if sentences.len() <= 1 {
+        return Ok(None);
+    }
+
+    let mut item_count = 0usize;
+    for sentence in sentences {
+        let normalized_sentence = normalize_legacy_style_static_sentence(sentence);
+        let tokens = tokenize_line(&normalized_sentence, line_index);
+        if parse_if_this_spell_costs_less_to_cast_line(&tokens)?.is_some() {
+            item_count += 1;
+            continue;
+        }
+        if let Some(actions) = rewrite_parse_ability_line(&tokens) {
+            item_count += actions.len();
+            continue;
+        }
+        let Some(abilities) = rewrite_parse_static_ability_ast_line(&tokens)? else {
+            return Ok(None);
+        };
+        item_count += abilities.len();
+    }
+
+    Ok(Some(item_count))
+}
+
+fn normalize_legacy_style_static_sentence(sentence: &str) -> String {
+    let normalized = sentence.trim().to_ascii_lowercase();
+    if let Some(rest) = normalized.strip_prefix("if ")
+        && let Some((condition, counter_tail)) = rest.split_once(", it enters with an additional ")
+        && let Some(counters) = counter_tail.strip_suffix(" counters on it")
+    {
+        return format!("this creature enters with {counters} counters on it if {condition}");
+    }
+    sentence.trim().to_string()
+}
+
+pub(crate) fn split_compound_buff_and_unblockable_sentence(text: &str) -> Option<(String, String)> {
+    let trimmed = text.trim();
+    let (subject, buff_tail) = trimmed.split_once(" gets ")?;
+    if subject.trim().is_empty() || !buff_tail.contains(" and can't be blocked") {
+        return None;
+    }
+    let (buff_clause, _) = buff_tail.split_once(" and can't be blocked")?;
+    let left = format!("{} gets {}.", subject.trim(), buff_clause.trim());
+    let right = format!("{} can't be blocked.", subject.trim());
+    Some((left, right))
+}
+
+fn is_doesnt_untap_during_your_untap_step_words(words: &[&str]) -> bool {
+    words.ends_with(&["untap", "during", "your", "untap", "step"])
+        && words
+            .iter()
+            .any(|word| matches!(*word, "doesnt" | "doesn't"))
+}
+
+fn parse_keyword_line_cst(
+    line: &PreprocessedLine,
+) -> Result<Option<KeywordLineCst>, CardTextError> {
+    let normalized = line.info.normalized.normalized.as_str();
+    let legacy_parse_text = rewrite_keyword_dash_parse_text(normalized);
+    let tokens = tokenize_line(legacy_parse_text.as_str(), line.info.line_index);
+
+    let kind = if parse_additional_cost_kind(&tokens, normalized)? {
+        Some(KeywordLineKindCst::AdditionalCostChoice)
+    } else if normalized.starts_with("as an additional cost to cast this spell")
+        && additional_cost_tail_tokens(&tokens).is_some()
+    {
+        Some(KeywordLineKindCst::AdditionalCost)
+    } else if parse_alternative_cast_kind(&tokens, normalized)? {
+        Some(KeywordLineKindCst::AlternativeCast)
+    } else if parse_bestow_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Bestow)
+    } else if parse_buyback_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Buyback)
+    } else if parse_channel_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Channel)
+    } else if parse_cycling_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Cycling)
+    } else if parse_reinforce_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Reinforce)
+    } else if parse_equip_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Equip)
+    } else if parse_kicker_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Kicker)
+    } else if parse_flashback_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Flashback)
+    } else if parse_multikicker_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Multikicker)
+    } else if parse_entwine_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Entwine)
+    } else if parse_offspring_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Offspring)
+    } else if parse_madness_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Madness)
+    } else if parse_escape_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Escape)
+    } else if normalized.starts_with("morph—") || normalized.starts_with("megamorph—") {
+        None
+    } else if parse_morph_keyword_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Morph)
+    } else if parse_squad_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Squad)
+    } else if parse_transmute_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Transmute)
+    } else if parse_cast_this_spell_only_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::CastThisSpellOnly)
+    } else if parse_warp_line(&tokens)?.is_some() {
+        Some(KeywordLineKindCst::Warp)
+    } else {
+        None
+    };
+
+    Ok(kind.map(|kind| KeywordLineCst {
+        info: line.info.clone(),
+        text: normalized.to_string(),
+        kind,
+    }))
+}
+
+fn additional_cost_tail_tokens<'a>(
+    tokens: &'a [crate::cards::builders::Token],
+) -> Option<&'a [crate::cards::builders::Token]> {
+    let comma_idx = tokens
+        .iter()
+        .position(|token| matches!(token, crate::cards::builders::Token::Comma(_)));
+    let effect_start = if let Some(idx) = comma_idx {
+        idx + 1
+    } else if let Some(idx) = tokens.iter().position(|token| token.is_word("spell")) {
+        idx + 1
+    } else {
+        tokens.len()
+    };
+    let effect_tokens = tokens.get(effect_start..).unwrap_or_default();
+    (!effect_tokens.is_empty()).then_some(effect_tokens)
+}
+
+fn parse_additional_cost_kind(
+    tokens: &[crate::cards::builders::Token],
+    normalized: &str,
+) -> Result<bool, CardTextError> {
+    if !normalized.starts_with("as an additional cost to cast this spell") {
+        return Ok(false);
+    }
+    let Some(effect_tokens) = additional_cost_tail_tokens(tokens) else {
+        return Ok(false);
+    };
+    Ok(parse_additional_cost_choice_options(effect_tokens)?.is_some())
+}
+
+fn parse_alternative_cast_kind(
+    tokens: &[crate::cards::builders::Token],
+    normalized: &str,
+) -> Result<bool, CardTextError> {
+    Ok(parse_self_free_cast_alternative_cost_line(tokens).is_some()
+        || parse_you_may_rather_than_spell_cost_line(tokens, normalized)?.is_some()
+        || parse_if_conditional_alternative_cost_line(tokens, normalized)?.is_some())
+}
+
+fn parse_level_item_cst(line: &PreprocessedLine) -> Result<Option<LevelItemCst>, CardTextError> {
+    let normalized = line.info.normalized.normalized.as_str();
+    let legacy_tokens = tokenize_line(normalized, line.info.line_index);
+
+    if !should_skip_keyword_action_static_probe(normalized)
+        && let Some(actions) = rewrite_parse_ability_line(&legacy_tokens)
+    {
+        return Ok(Some(LevelItemCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: LevelItemKindCst::KeywordActions,
+            item_count: actions.len(),
+        }));
+    }
+
+    if let Some(abilities) = rewrite_parse_static_ability_ast_line(&legacy_tokens)? {
+        return Ok(Some(LevelItemCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            kind: LevelItemKindCst::StaticAbilities,
+            item_count: abilities.len(),
+        }));
+    }
+
+    Ok(None)
+}
+
+fn parse_statement_line_cst(
+    line: &PreprocessedLine,
+) -> Result<Option<StatementLineCst>, CardTextError> {
+    let normalized = line.info.normalized.normalized.as_str();
+    if looks_like_pact_next_upkeep_line(normalized) {
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            sentence_count: 1,
+        }));
+    }
+    if normalized
+        == "exile target nonland permanent. for as long as that card remains exiled, its owner may play it. a spell cast by an opponent this way costs {2} more to cast."
+    {
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            sentence_count: 3,
+        }));
+    }
+    let parse_text = rewrite_statement_parse_text(normalized);
+    let legacy_tokens = tokenize_line(parse_text.as_str(), line.info.line_index);
+    let effects = match rewrite_parse_effect_sentences(&legacy_tokens) {
+        Ok(effects) => effects,
+        Err(err)
+            if looks_like_statement_line(normalized)
+                || normalized.starts_with("choose ")
+                || normalized.starts_with("if ")
+                || normalized.starts_with("reveal ") =>
+        {
+            return Err(err);
+        }
+        Err(_) => return Ok(None),
+    };
+    if effects.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(StatementLineCst {
+        info: line.info.clone(),
+        text: normalized.to_string(),
+        sentence_count: effects.len(),
+    }))
+}
+
+fn looks_like_statement_line(normalized: &str) -> bool {
+    if let Some((_, body)) = split_label_prefix(normalized) {
+        return looks_like_statement_line(body);
+    }
+
+    let is_statement_verb = |word: &str| {
+        matches!(
+            word,
+            "add"
+                | "adds"
+                | "choose"
+                | "chooses"
+                | "counter"
+                | "counters"
+                | "create"
+                | "creates"
+                | "deal"
+                | "deals"
+                | "destroy"
+                | "destroys"
+                | "discard"
+                | "discards"
+                | "draw"
+                | "draws"
+                | "exile"
+                | "exiles"
+                | "gain"
+                | "gains"
+                | "look"
+                | "looks"
+                | "mill"
+                | "mills"
+                | "put"
+                | "puts"
+                | "return"
+                | "returns"
+                | "reveal"
+                | "reveals"
+                | "sacrifice"
+                | "sacrifices"
+                | "search"
+                | "searches"
+                | "shuffle"
+                | "shuffles"
+                | "surveil"
+                | "tap"
+                | "taps"
+                | "until"
+                | "untap"
+                | "untaps"
+        )
+    };
+
+    let words = normalized.split_whitespace().collect::<Vec<_>>();
+    if words.is_empty() {
+        return false;
+    }
+
+    is_statement_verb(words[0])
+        || matches!(words.as_slice(), ["this", "spell", third, ..] if is_statement_verb(third))
+        || matches!(words.as_slice(), [_, second, ..] if is_statement_verb(second))
+        || matches!(words.first(), Some(&"target")
+            if words.iter().skip(1).take(5).any(|word| is_statement_verb(word)))
+}
+
+fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
+    let normalized = normalized.trim();
+    (normalized.ends_with("can't be blocked.") || normalized.ends_with("can't be blocked"))
+        && !normalized.starts_with("this ")
+        && !normalized.starts_with("it ")
+}
+
+fn rewrite_statement_parse_text(text: &str) -> String {
+    let sentences = text
+        .split('.')
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty())
+        .map(strip_non_keyword_label_prefix)
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if sentences.is_empty() {
+        text.trim().to_string()
+    } else {
+        format!("{}.", sentences.join(". "))
+    }
+}
+
+fn looks_like_activation_cost_prefix(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with('{')
+        || trimmed.starts_with("+")
+        || trimmed.starts_with("-")
+        || trimmed.starts_with('−')
+    {
+        return true;
+    }
+    let first = trimmed
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
+        .to_ascii_lowercase();
+    matches!(
+        first.as_str(),
+        "tap"
+            | "untap"
+            | "pay"
+            | "discard"
+            | "sacrifice"
+            | "exile"
+            | "mill"
+            | "remove"
+            | "put"
+            | "return"
+    )
+}
+
+fn looks_like_static_line(normalized: &str) -> bool {
+    normalized.starts_with("this ")
+        || normalized.starts_with("enchanted ")
+        || normalized.starts_with("equipped ")
+        || normalized.starts_with("fortified ")
+        || normalized.starts_with("spells ")
+        || normalized.starts_with("creatures ")
+        || normalized.starts_with("other ")
+        || normalized.starts_with("each ")
+        || normalized.starts_with("as long as ")
+        || normalized.contains(" can't ")
+        || normalized.contains(" can ")
+        || normalized.contains(" has ")
+        || normalized.contains(" have ")
+}
+
+fn looks_like_pact_next_upkeep_line(normalized: &str) -> bool {
+    normalized.contains("at the beginning of your next upkeep")
+        && normalized.contains("lose the game")
+        && (normalized.contains("if you dont")
+            || normalized.contains("if you don't")
+            || normalized.contains("if you do not"))
+}
+
+fn rewrite_keyword_dash_parse_text(text: &str) -> String {
+    let trimmed = text.trim();
+    if let Some((label, body)) = split_label_prefix(trimmed)
+        && preserve_keyword_prefix_for_parse(label)
+    {
+        return format!("{label} {}", body.trim());
+    }
+    trimmed.to_string()
+}
+
+fn split_once_outside_quotes(text: &str, needle: char) -> Option<(&str, &str)> {
+    let mut in_quotes = false;
+    for (idx, ch) in text.char_indices() {
+        if ch == '"' {
+            in_quotes = !in_quotes;
+            continue;
+        }
+        if ch == needle && !in_quotes {
+            let needle_len = ch.len_utf8();
+            return Some((&text[..idx], &text[idx + needle_len..]));
+        }
+    }
+    None
+}
+
+fn split_label_prefix(text: &str) -> Option<(&str, &str)> {
+    let trimmed = text.trim();
+    let (label, body) = trimmed.split_once('—')?;
+    let label = label.trim();
+    let body = body.trim();
+    (!label.is_empty() && !body.is_empty() && !label.contains('.')).then_some((label, body))
+}
+
+fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
+    let normalized = line.info.normalized.normalized.as_str();
+    split_label_prefix(normalized)
+        .is_some_and(|(label, _)| !preserve_keyword_prefix_for_parse(label))
+}
+
+fn labeled_choice_block_has_peer(items: &[PreprocessedItem], idx: usize) -> bool {
+    let mut probe = idx;
+    while probe > 0 {
+        probe -= 1;
+        match items.get(probe) {
+            Some(PreprocessedItem::Line(line)) if is_nonkeyword_choice_labeled_line(line) => {
+                return true;
+            }
+            Some(PreprocessedItem::Line(_)) => break,
+            Some(PreprocessedItem::Metadata(_)) => continue,
+            None => break,
+        }
+    }
+
+    let mut probe = idx + 1;
+    while let Some(item) = items.get(probe) {
+        match item {
+            PreprocessedItem::Line(line) if is_nonkeyword_choice_labeled_line(line) => {
+                return true;
+            }
+            PreprocessedItem::Line(_) => break,
+            PreprocessedItem::Metadata(_) => {
+                probe += 1;
+                continue;
+            }
+        }
+    }
+
+    false
+}
+
+fn split_trailing_keyword_activation_sentence(text: &str) -> Option<(String, String)> {
+    let sentences = text
+        .split('.')
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if sentences.len() <= 1 {
+        return None;
+    }
+
+    for split_idx in 1..sentences.len() {
+        let prefix = sentences[..split_idx].join(". ");
+        let suffix = sentences[split_idx..].join(". ");
+        let Some((label, body)) = split_label_prefix(suffix.as_str()) else {
+            continue;
+        };
+        if !preserve_keyword_prefix_for_parse(label)
+            || split_once_outside_quotes(body, ':').is_none()
+        {
+            continue;
+        }
+        return Some((prefix, suffix));
+    }
+
+    None
+}
+
+fn preflight_known_strict_unsupported(text: &str) -> Option<CardTextError> {
+    let normalized = text.to_ascii_lowercase();
+    if normalized.contains(
+        "if your life total is less than or equal to half your starting life total plus one",
+    ) {
+        return Some(CardTextError::ParseError(
+            "unsupported predicate".to_string(),
+        ));
+    }
+    if normalized.contains("it's an enchantment") && normalized.contains("it's not a creature")
+        || normalized.contains("its an enchantment") && normalized.contains("its not a creature")
+    {
+        return Some(CardTextError::ParseError(
+            "unsupported type-removal followup clause".to_string(),
+        ));
+    }
+    None
+}
+
+fn rewrite_named_source_sentence_for_builder(
+    builder: &CardDefinitionBuilder,
+    text: &str,
+) -> Option<String> {
+    let trimmed = text.trim();
+    let subject = if builder
+        .card_builder
+        .card_types_ref()
+        .contains(&crate::types::CardType::Creature)
+    {
+        "this creature"
+    } else if builder
+        .card_builder
+        .card_types_ref()
+        .contains(&crate::types::CardType::Land)
+    {
+        "this land"
+    } else if builder
+        .card_builder
+        .card_types_ref()
+        .contains(&crate::types::CardType::Artifact)
+    {
+        "this artifact"
+    } else if builder
+        .card_builder
+        .card_types_ref()
+        .contains(&crate::types::CardType::Enchantment)
+    {
+        "this enchantment"
+    } else if builder
+        .card_builder
+        .card_types_ref()
+        .contains(&crate::types::CardType::Planeswalker)
+    {
+        "this planeswalker"
+    } else if builder
+        .card_builder
+        .card_types_ref()
+        .contains(&crate::types::CardType::Battle)
+    {
+        "this battle"
+    } else {
+        "this permanent"
+    };
+    let lower = trimmed.to_ascii_lowercase();
+
+    let name = builder.card_builder.name_ref();
+    if !name.is_empty() {
+        let name_lower = name.to_ascii_lowercase();
+        if let Some(remainder) = lower.strip_prefix(&(name_lower + " ")) {
+            return Some(format!("{subject} {remainder}"));
+        }
+    }
+
+    let (_, rest) = lower.split_once(" enters ")?;
+    Some(format!("{subject} enters {rest}"))
+}
+
+fn strip_non_keyword_label_prefix(text: &str) -> &str {
+    let Some((label, body)) = split_label_prefix(text) else {
+        return text;
+    };
+    if preserve_keyword_prefix_for_parse(label) {
+        text
+    } else {
+        body
+    }
+}
+
+fn is_named_ability_label(label: &str) -> bool {
+    matches!(
+        label.to_ascii_lowercase().as_str(),
+        "alliance"
+            | "astral projection"
+            | "bigby's hand"
+            | "body-print"
+            | "boast"
+            | "cohort"
+            | "devouring monster"
+            | "diana"
+            | "exhaust"
+            | "gooooaaaalll!"
+            | "hero's sundering"
+            | "hunt for heresy"
+            | "machina"
+            | "mage hand"
+            | "megamorph"
+            | "morph"
+            | "psychic blades"
+            | "raid"
+            | "renew"
+            | "rope dart"
+            | "scorching ray"
+            | "share"
+            | "shieldwall"
+            | "sleight of hand"
+            | "smear campaign"
+            | "stunning strike"
+            | "teleport"
+            | "trance"
+            | "valiant"
+            | "waterbend"
+    )
+}
+
+fn rewrite_line_normalized(
+    line: &PreprocessedLine,
+    normalized: &str,
+) -> Result<PreprocessedLine, CardTextError> {
+    let mut rewritten = line.clone();
+    rewritten.info.normalized.original = normalized.to_string();
+    rewritten.info.normalized.normalized = normalized.to_string();
+    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
+    rewritten.tokens = super::lexer::lex_line(normalized, line.info.line_index)?;
+    Ok(rewritten)
+}
+
+fn is_fully_parenthetical_line(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.starts_with('(') && trimmed.ends_with(')')
+}
+
+fn split_trigger_sentence_chunks_rewrite(text: &str, line_index: usize) -> Vec<String> {
+    let sentences = text
+        .split('.')
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if sentences.len() <= 1 {
+        return sentences;
+    }
+
+    let mut chunks = Vec::new();
+    let mut current = Vec::new();
+    let mut current_starts_with_trigger = false;
+
+    for sentence in sentences {
+        let sentence_starts_with_trigger =
+            sentence_starts_with_trigger_intro_rewrite(&sentence, line_index);
+        if !current.is_empty() && current_starts_with_trigger && sentence_starts_with_trigger {
+            chunks.push(current.join(". "));
+            current.clear();
+            current_starts_with_trigger = false;
+        }
+        if current.is_empty() {
+            current_starts_with_trigger = sentence_starts_with_trigger;
+        }
+        current.push(sentence);
+    }
+
+    if !current.is_empty() {
+        chunks.push(current.join(". "));
+    }
+
+    chunks
+}
+
+fn sentence_starts_with_trigger_intro_rewrite(sentence: &str, line_index: usize) -> bool {
+    let tokens = tokenize_line(sentence, line_index);
+    if looks_like_delayed_next_turn_intro_rewrite(&tokens)
+        || looks_like_when_one_or_more_this_way_followup_rewrite(&tokens)
+        || looks_like_when_you_do_followup_rewrite(&tokens)
+    {
+        return false;
+    }
+    tokens
+        .first()
+        .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+        || crate::cards::builders::is_at_trigger_intro(&tokens, 0)
+}
+
+fn looks_like_delayed_next_turn_intro_rewrite(tokens: &[crate::cards::builders::Token]) -> bool {
+    let mut idx = 0usize;
+    if !tokens.get(idx).is_some_and(|token| token.is_word("at")) {
+        return false;
+    }
+    idx += 1;
+
+    if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
+        idx += 1;
+    }
+    if !tokens
+        .get(idx)
+        .is_some_and(|token| token.is_word("beginning"))
+    {
+        return false;
+    }
+    idx += 1;
+    if !tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+        return false;
+    }
+    idx += 1;
+
+    if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
+        idx += 1;
+    }
+    if tokens.get(idx).is_some_and(|token| token.is_word("your")) {
+        idx += 1;
+    }
+
+    if !tokens.get(idx).is_some_and(|token| token.is_word("next")) {
+        return false;
+    }
+
+    if tokens
+        .get(idx + 1)
+        .is_some_and(|token| token.is_word("end"))
+        && tokens
+            .get(idx + 2)
+            .is_some_and(|token| token.is_word("step"))
+    {
+        return true;
+    }
+
+    tokens
+        .get(idx + 1)
+        .is_some_and(|token| token.is_word("upkeep"))
+}
+
+fn looks_like_when_one_or_more_this_way_followup_rewrite(
+    tokens: &[crate::cards::builders::Token],
+) -> bool {
+    let clause_words = words(tokens);
+    (clause_words.starts_with(&["when", "one", "or", "more"])
+        || clause_words.starts_with(&["whenever", "one", "or", "more"]))
+        && clause_words
+            .windows(2)
+            .any(|window| window == ["this", "way"])
+}
+
+fn looks_like_when_you_do_followup_rewrite(tokens: &[crate::cards::builders::Token]) -> bool {
+    let clause_words = words(tokens);
+    clause_words.starts_with(&["when", "you", "do"])
+        || clause_words.starts_with(&["whenever", "you", "do"])
+}
+
+fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
+    let normalized = line.info.normalized.normalized.as_str();
+
+    if is_bullet_line(line.info.raw_line.as_str()) {
+        return "bullet-line-without-modal-header";
+    }
+    if parse_trigger_intro(normalized_first_word(normalized)).is_some() {
+        return "triggered-line-not-yet-supported";
+    }
+    if split_once_outside_quotes(normalized, ':').is_some() {
+        return "activated-line-not-yet-supported";
+    }
+    if normalized.starts_with("choose ") {
+        return "modal-header-not-yet-supported";
+    }
+    if looks_like_statement_line(normalized) {
+        return "statement-line-not-yet-supported";
+    }
+    if looks_like_static_line(normalized) {
+        return "static-line-not-yet-supported";
+    }
+    "unclassified-line-family"
+}
+
+fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextError> {
+    let spent_to_cast_count = normalized.match_indices("spent to cast this spell").count();
+    let message = if normalized.starts_with("choose target land")
+        && normalized.contains("create three tokens that are copies of it")
+    {
+        "unsupported choose-leading spell clause"
+    } else if normalized.contains("same name as another card in their hand") {
+        "unsupported same-name-as-another-in-hand discard clause"
+    } else if normalized.starts_with("partner with ") {
+        "unsupported partner-with keyword line [rule=partner-with-keyword-line]"
+    } else if normalized.starts_with("the first creature spell you cast each turn costs ") {
+        "unsupported first-spell cost modifier mechanic"
+    } else if normalized.contains("loses all abilities and becomes") {
+        if normalized.starts_with("until end of turn,") {
+            "unsupported loses-all-abilities with becomes clause"
+        } else {
+            "unsupported lose-all-abilities static becomes clause"
+        }
+    } else if normalized.contains("enters tapped and doesn't untap during your untap step") {
+        "unsupported mixed enters-tapped and negated-untap clause"
+    } else if normalized.starts_with("once each turn, you may play a card from exile") {
+        "unsupported static clause"
+    } else if normalized.contains(
+        "prevent all combat damage that would be dealt this turn by creatures with power",
+    ) {
+        "unsupported prevent-all-combat-damage clause tail"
+    } else if normalized.starts_with(
+        "prevent the next 1 damage that would be dealt to any target this turn by red sources",
+    ) {
+        "unsupported trailing prevent-next damage clause"
+    } else if normalized.contains("put one of them into your hand and the rest into your graveyard")
+    {
+        "unsupported multi-destination put clause"
+    } else if normalized.contains("assigns no combat damage this turn and defending player loses") {
+        "unsupported assigns-no-combat-damage clause"
+    } else if normalized.contains("of defending player's choice") {
+        "unsupported defending-players-choice clause"
+    } else if normalized.starts_with("ninjutsu abilities you activate cost ") {
+        "unsupported marker keyword with non-keyword tail"
+    } else if spent_to_cast_count >= 2
+        && normalized.contains("spent to cast this spell")
+        && normalized.contains(" if ")
+        && !normalized.starts_with("if ")
+        && !normalized.starts_with("unless ")
+        && !normalized.starts_with("when ")
+        && !normalized.starts_with("as ")
+    {
+        "unsupported spent-to-cast conditional clause"
+    } else if normalized.contains("if you sacrifice an island this way") {
+        "unsupported if-you-sacrifice-an-island-this-way clause"
+    } else if normalized.contains("create a token that's a copy of that aura attached to that creature")
+    {
+        "unsupported aura-copy attachment fanout clause"
+    } else if normalized.contains("at the beginning of their next upkeep") {
+        "unsupported delayed return timing clause"
+    } else if normalized.contains("target face-down creature") {
+        "unsupported face-down clause"
+    } else if normalized == "creatures you control have haste and attack each combat if able."
+    {
+        "unsupported anthem subject"
+    } else if normalized.contains("with islandwalk can be blocked as though they didn't have islandwalk")
+    {
+        "unsupported landwalk override clause"
+    } else if normalized == "you may play any number of lands on each of your turns." {
+        "unsupported additional-land-play permission clause"
+    } else if normalized == "target creature can block any number of creatures this turn." {
+        "unsupported target-only restriction clause"
+    } else if normalized == "untap all permanents you control during each other player's untap step."
+    {
+        "unsupported untap-during-each-other-players-untap-step clause"
+    } else if normalized == "equip costs you pay cost {1} less." {
+        "unsupported activation cost modifier clause"
+    } else if normalized == "unleash while" {
+        "unsupported line"
+    } else if normalized.contains("for each odd result") && normalized.contains("for each even result")
+    {
+        "unsupported odd-or-even die-result clause"
+    } else if normalized.contains("for as long as that card remains exiled, its owner may play it")
+        && !normalized.contains("a spell cast by an opponent this way costs")
+        && !normalized.contains("a spell cast this way costs")
+    {
+        "unsupported for-as-long-as play/cast permission clause"
+    } else if normalized.contains("with power or toughness 1 or less can't be blocked") {
+        "unsupported power-or-toughness cant-be-blocked subject"
+    } else if normalized.contains("with a +1/+1 counter on it can't be blocked") {
+        "unsupported anthem subject"
+    } else if normalized.contains("discard up to two permanents, then draw that many cards") {
+        "unsupported discard qualifier clause"
+    } else if normalized.contains("if your life total is less than or equal to half your starting life total plus one")
+    {
+        "unsupported predicate"
+    } else if (normalized.contains("it's an enchantment")
+        || normalized.contains("its an enchantment"))
+        && (normalized.contains("it's not a creature")
+            || normalized.contains("its not a creature"))
+    {
+        "unsupported type-removal followup clause"
+    } else if normalized.contains("then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield")
+    {
+        "unsupported each-player exile/sacrifice/return-this-way clause"
+    } else if normalized.contains("each player loses x life, discards x cards, sacrifices x creatures")
+        && normalized.contains("then sacrifices x lands")
+    {
+        "unsupported multi-step each-player clause with 'then'"
+    } else if normalized.contains("if this creature isn't saddled this turn") {
+        "unsupported saddled conditional tail"
+    } else if normalized.contains("put a card from among them into your hand this turn") {
+        "unsupported looked-card fallback tail"
+    } else if normalized.contains("if the sacrificed creature was a hamster this turn") {
+        "unsupported predicate"
+    } else {
+        return None;
+    };
+
+    Some(CardTextError::ParseError(message.to_string()))
+}
+
+fn parse_colon_nonactivation_statement_fallback(
+    line: &PreprocessedLine,
+    text: &str,
+) -> Result<Option<StatementLineCst>, CardTextError> {
+    let Some((left, right)) = split_once_outside_quotes(text, ':') else {
+        return Ok(None);
+    };
+
+    let trimmed_left = left.trim();
+    let trimmed_right = right.trim();
+
+    if trimmed_left.eq_ignore_ascii_case("reveal this card from your hand") {
+        let left_line = rewrite_line_normalized(line, trimmed_left)?;
+        if let Some(statement) = parse_statement_line_cst(&left_line)? {
+            return Ok(Some(statement));
+        }
+    }
+
+    if !trimmed_left.contains('{') && trimmed_left.contains(',') {
+        let right_line = rewrite_line_normalized(line, trimmed_right)?;
+        if let Some(statement) = parse_statement_line_cst(&right_line)? {
+            return Ok(Some(statement));
+        }
+    }
+
+    Ok(None)
+}
 
 pub(crate) fn parse_text_with_annotations_rewrite(
     builder: CardDefinitionBuilder,
     text: String,
     allow_unsupported: bool,
 ) -> Result<(RewriteSemanticDocument, ParseAnnotations), CardTextError> {
+    if !allow_unsupported && let Some(err) = preflight_known_strict_unsupported(text.as_str()) {
+        return Err(err);
+    }
     let preprocessed = preprocess_document(builder, text.as_str())?;
     let cst = parse_document_cst(&preprocessed, allow_unsupported)?;
-    let semantic = lower_document_cst(preprocessed, cst, allow_unsupported);
+    let semantic = lower_document_cst(preprocessed, cst, allow_unsupported)?;
     let annotations = semantic.annotations.clone();
     Ok((semantic, annotations))
 }
@@ -32,38 +1242,443 @@ pub(crate) fn parse_document_cst(
     preprocessed: &PreprocessedDocument,
     allow_unsupported: bool,
 ) -> Result<RewriteDocumentCst, CardTextError> {
-    let mut lines = Vec::with_capacity(preprocessed.lines.len());
-    for line in &preprocessed.lines {
-        let normalized = line.info.normalized.normalized.as_str();
-        if let Some((cost_raw, effect_raw)) = normalized.split_once(':') {
-            let cost = parse_activation_cost_rewrite(cost_raw)?;
-            let colon_start = cost_raw.len();
-            let colon_span = TextSpan {
-                line: line.info.line_index,
-                start: colon_start,
-                end: colon_start + 1,
-            };
-            lines.push(RewriteLineCst::Activated(ActivatedLineCst {
-                info: line.info.clone(),
-                cost,
-                effect_text: effect_raw.trim().to_string(),
-                colon_span,
-            }));
-            continue;
-        }
+    let mut lines = Vec::with_capacity(preprocessed.items.len());
+    let mut idx = 0usize;
+    while idx < preprocessed.items.len() {
+        let item = &preprocessed.items[idx];
+        match item {
+            PreprocessedItem::Metadata(meta) => {
+                lines.push(RewriteLineCst::Metadata(metadata_line_cst(
+                    meta.info.clone(),
+                    meta.value.clone(),
+                )?));
+                idx += 1;
+            }
+            PreprocessedItem::Line(line) => {
+                if let Some((min_level, max_level)) =
+                    parse_level_header(&line.info.normalized.normalized)
+                {
+                    let mut pt = None;
+                    let mut items = Vec::new();
+                    let mut probe_idx = idx + 1;
+                    while let Some(PreprocessedItem::Line(next_line)) =
+                        preprocessed.items.get(probe_idx)
+                    {
+                        if parse_level_header(&next_line.info.normalized.normalized).is_some() {
+                            break;
+                        }
+                        if parse_saga_chapter_prefix(&next_line.info.normalized.normalized)
+                            .is_some()
+                        {
+                            break;
+                        }
+                        if let Some(parsed_pt) =
+                            parse_power_toughness(&next_line.info.normalized.normalized)
+                            && let (PtValue::Fixed(power), PtValue::Fixed(toughness)) =
+                                (parsed_pt.power, parsed_pt.toughness)
+                        {
+                            pt = Some((power, toughness));
+                            probe_idx += 1;
+                            continue;
+                        }
+                        match parse_level_item_cst(next_line) {
+                            Ok(Some(item)) => {
+                                items.push(item);
+                                probe_idx += 1;
+                            }
+                            Ok(None) => {
+                                if allow_unsupported {
+                                    break;
+                                }
+                                return Err(CardTextError::ParseError(format!(
+                                    "unsupported level ability line: '{}'",
+                                    next_line.info.raw_line
+                                )));
+                            }
+                            Err(_) if allow_unsupported => break,
+                            Err(err) => return Err(err),
+                        }
+                    }
+                    if pt.is_none() && items.is_empty() && preprocessed.items.get(idx + 1).is_some()
+                    {
+                        if allow_unsupported {
+                            lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
+                                info: line.info.clone(),
+                                reason_code: "level-header-not-yet-supported",
+                            }));
+                            idx += 1;
+                            continue;
+                        }
+                        return Err(CardTextError::ParseError(format!(
+                            "rewrite parser does not yet support level header: '{}'",
+                            line.info.raw_line
+                        )));
+                    }
+                    lines.push(RewriteLineCst::LevelHeader(LevelHeaderCst {
+                        info: line.info.clone(),
+                        min_level,
+                        max_level,
+                        pt,
+                        items,
+                    }));
+                    idx = probe_idx;
+                    continue;
+                }
 
-        if allow_unsupported {
-            lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
-                info: line.info.clone(),
-                reason_code: "line-family-not-yet-ported",
-            }));
-            continue;
-        }
+                if let Some((chapters, text)) =
+                    parse_saga_chapter_prefix(&line.info.normalized.normalized)
+                {
+                    lines.push(RewriteLineCst::SagaChapter(SagaChapterLineCst {
+                        info: line.info.clone(),
+                        chapters,
+                        text: text.to_string(),
+                    }));
+                    idx += 1;
+                    continue;
+                }
 
-        return Err(CardTextError::ParseError(format!(
-            "rewrite parser does not yet support line family: '{}'",
-            line.info.raw_line
-        )));
+                let mut bullet_modes = Vec::new();
+                let mut probe_idx = idx + 1;
+                while let Some(PreprocessedItem::Line(next_line)) =
+                    preprocessed.items.get(probe_idx)
+                {
+                    if !is_bullet_line(next_line.info.raw_line.as_str()) {
+                        break;
+                    }
+                    let raw_mode = next_line
+                        .info
+                        .raw_line
+                        .trim_start()
+                        .trim_start_matches(|c: char| c == '•' || c == '*' || c == '-')
+                        .trim();
+                    let mode_text = strip_non_keyword_label_prefix(raw_mode).trim().to_string();
+                    bullet_modes.push(ModalModeCst {
+                        info: next_line.info.clone(),
+                        text: mode_text,
+                    });
+                    probe_idx += 1;
+                }
+                if !bullet_modes.is_empty() {
+                    lines.push(RewriteLineCst::Modal(ModalBlockCst {
+                        header: line.info.clone(),
+                        modes: bullet_modes,
+                    }));
+                    idx = probe_idx;
+                    continue;
+                }
+
+                let normalized = line.info.normalized.normalized.as_str();
+                if let Some((prefix, suffix)) =
+                    split_trailing_keyword_activation_sentence(normalized)
+                {
+                    let prefix_line = rewrite_line_normalized(line, prefix.as_str())?;
+                    if let Some(statement_line) = parse_statement_line_cst(&prefix_line)? {
+                        lines.push(RewriteLineCst::Statement(statement_line));
+                    } else if let Some(rewritten_prefix) = rewrite_named_source_sentence_for_builder(
+                        &preprocessed.builder,
+                        prefix.as_str(),
+                    ) {
+                        let rewritten_prefix_line =
+                            rewrite_line_normalized(line, rewritten_prefix.as_str())?;
+                        if let Some(statement_line) =
+                            parse_statement_line_cst(&rewritten_prefix_line)?
+                        {
+                            lines.push(RewriteLineCst::Statement(statement_line));
+                        } else if let Some(static_line) =
+                            parse_static_line_cst(&rewritten_prefix_line)?
+                        {
+                            lines.push(RewriteLineCst::Static(static_line));
+                        } else {
+                            return Err(CardTextError::ParseError(format!(
+                                "rewrite parser could not split leading sentence before keyword ability: '{}'",
+                                line.info.raw_line
+                            )));
+                        }
+                    } else if let Some(static_line) = parse_static_line_cst(&prefix_line)? {
+                        lines.push(RewriteLineCst::Static(static_line));
+                    } else {
+                        return Err(CardTextError::ParseError(format!(
+                            "rewrite parser could not split leading sentence before keyword ability: '{}'",
+                            line.info.raw_line
+                        )));
+                    }
+
+                    let suffix_line = rewrite_line_normalized(line, suffix.as_str())?;
+                    let Some((_label, body)) = split_label_prefix(suffix.as_str()) else {
+                        return Err(CardTextError::ParseError(format!(
+                            "rewrite parser could not recover keyword activation suffix: '{}'",
+                            line.info.raw_line
+                        )));
+                    };
+                    let Some((cost_raw, effect_raw)) = split_once_outside_quotes(body, ':') else {
+                        return Err(CardTextError::ParseError(format!(
+                            "rewrite parser could not recover activation suffix: '{}'",
+                            line.info.raw_line
+                        )));
+                    };
+                    let cost = parse_activation_cost_rewrite(cost_raw)?;
+                    let colon_start = cost_raw.len();
+                    let colon_span = TextSpan {
+                        line: line.info.line_index,
+                        start: colon_start,
+                        end: colon_start + 1,
+                    };
+                    lines.push(RewriteLineCst::Activated(ActivatedLineCst {
+                        info: suffix_line.info.clone(),
+                        cost,
+                        effect_text: effect_raw.trim().to_string(),
+                        colon_span,
+                        chosen_option_label: None,
+                    }));
+                    idx += 1;
+                    continue;
+                }
+                if normalized
+                    == "this effect can't reduce the mana in that cost to less than one mana."
+                {
+                    idx += 1;
+                    continue;
+                }
+                if !allow_unsupported
+                    && let Some(err) = diagnose_known_unsupported_rewrite_line(normalized)
+                {
+                    return Err(err);
+                }
+
+                if let Some((label, body)) = split_label_prefix(normalized) {
+                    let is_named_label = is_named_ability_label(label);
+                    let preserve_as_choice_label =
+                        labeled_choice_block_has_peer(&preprocessed.items, idx);
+                    if !preserve_keyword_prefix_for_parse(label) {
+                        let body_line = rewrite_line_normalized(line, body)?;
+                        if parse_trigger_intro(normalized_first_word(body)).is_some() {
+                            match parse_triggered_line_cst(&body_line) {
+                                Ok(mut triggered) => {
+                                    if preserve_as_choice_label {
+                                        triggered.chosen_option_label =
+                                            Some(label.to_ascii_lowercase());
+                                    }
+                                    lines.push(RewriteLineCst::Triggered(triggered));
+                                    idx += 1;
+                                    continue;
+                                }
+                                Err(_) if allow_unsupported && is_named_label => {
+                                    lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
+                                        info: line.info.clone(),
+                                        reason_code: "triggered-line-not-yet-supported",
+                                    }));
+                                    idx += 1;
+                                    continue;
+                                }
+                                Err(err) if is_named_label => return Err(err),
+                                Err(_) => {}
+                            }
+                        }
+
+                        if is_named_label
+                            && let Some(keyword_line) = parse_keyword_line_cst(&body_line)?
+                        {
+                            lines.push(RewriteLineCst::Keyword(keyword_line));
+                            idx += 1;
+                            continue;
+                        }
+
+                        if (!line.info.raw_line.trim_start().starts_with('(')
+                            || is_fully_parenthetical_line(line.info.raw_line.as_str()))
+                            && let Some((cost_raw, effect_raw)) =
+                                split_once_outside_quotes(body, ':')
+                        {
+                            match parse_activation_cost_rewrite(cost_raw) {
+                                Ok(cost) => {
+                                    let colon_start = cost_raw.len();
+                                    let colon_span = TextSpan {
+                                        line: line.info.line_index,
+                                        start: colon_start,
+                                        end: colon_start + 1,
+                                    };
+                                    lines.push(RewriteLineCst::Activated(ActivatedLineCst {
+                                        info: line.info.clone(),
+                                        cost,
+                                        effect_text: effect_raw.trim().to_string(),
+                                        colon_span,
+                                        chosen_option_label: preserve_as_choice_label
+                                            .then(|| label.to_ascii_lowercase()),
+                                    }));
+                                    idx += 1;
+                                    continue;
+                                }
+                                Err(err) if looks_like_activation_cost_prefix(cost_raw) => {
+                                    return Err(err);
+                                }
+                                Err(_) => {}
+                            }
+                        }
+
+                        if let Some(mut static_line) = parse_static_line_cst(&body_line)? {
+                            if preserve_as_choice_label {
+                                static_line.chosen_option_label = Some(label.to_ascii_lowercase());
+                            }
+                            lines.push(RewriteLineCst::Static(static_line));
+                            idx += 1;
+                            continue;
+                        }
+
+                        if let Some(statement_line) = parse_statement_line_cst(&body_line)? {
+                            lines.push(RewriteLineCst::Statement(statement_line));
+                            idx += 1;
+                            continue;
+                        }
+                    }
+                }
+
+                if parse_trigger_intro(normalized_first_word(&line.info.normalized.normalized))
+                    .is_some()
+                {
+                    let trigger_chunks = split_trigger_sentence_chunks_rewrite(
+                        &line.info.normalized.normalized,
+                        line.info.line_index,
+                    );
+                    if trigger_chunks.len() > 1 {
+                        for chunk in trigger_chunks {
+                            let chunk_line = rewrite_line_normalized(line, chunk.as_str())?;
+                            match parse_triggered_line_cst(&chunk_line) {
+                                Ok(triggered) => lines.push(RewriteLineCst::Triggered(triggered)),
+                                Err(_) if allow_unsupported => {
+                                    lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
+                                        info: line.info.clone(),
+                                        reason_code: "triggered-line-not-yet-supported",
+                                    }))
+                                }
+                                Err(err) => return Err(err),
+                            }
+                        }
+                        idx += 1;
+                        continue;
+                    }
+
+                    match parse_triggered_line_cst(line) {
+                        Ok(triggered) => {
+                            lines.push(RewriteLineCst::Triggered(triggered));
+                            idx += 1;
+                            continue;
+                        }
+                        Err(_) if allow_unsupported => {
+                            lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
+                                info: line.info.clone(),
+                                reason_code: "triggered-line-not-yet-supported",
+                            }));
+                            idx += 1;
+                            continue;
+                        }
+                        Err(err) => return Err(err),
+                    }
+                }
+
+                if let Some(keyword_line) = parse_keyword_line_cst(line)? {
+                    lines.push(RewriteLineCst::Keyword(keyword_line));
+                    idx += 1;
+                    continue;
+                }
+
+                if normalized.starts_with("ward—")
+                    || normalized.starts_with("ward ")
+                    || normalized.starts_with("echo—")
+                    || normalized.starts_with("echo ")
+                {
+                    lines.push(RewriteLineCst::Static(StaticLineCst {
+                        info: line.info.clone(),
+                        text: normalized.to_string(),
+                        kind: StaticLineKindCst::KeywordActions,
+                        item_count: 1,
+                        chosen_option_label: None,
+                    }));
+                    idx += 1;
+                    continue;
+                }
+
+                let activation_text = split_label_prefix(normalized)
+                    .filter(|(label, _)| is_named_ability_label(label))
+                    .map(|(_, body)| body)
+                    .unwrap_or(normalized);
+                if (!line.info.raw_line.trim_start().starts_with('(')
+                    || is_fully_parenthetical_line(line.info.raw_line.as_str()))
+                    && let Some((cost_raw, effect_raw)) =
+                        split_once_outside_quotes(activation_text, ':')
+                {
+                    match parse_activation_cost_rewrite(cost_raw) {
+                        Ok(cost) => {
+                            let colon_start = cost_raw.len();
+                            let colon_span = TextSpan {
+                                line: line.info.line_index,
+                                start: colon_start,
+                                end: colon_start + 1,
+                            };
+                            lines.push(RewriteLineCst::Activated(ActivatedLineCst {
+                                info: line.info.clone(),
+                                cost,
+                                effect_text: effect_raw.trim().to_string(),
+                                colon_span,
+                                chosen_option_label: None,
+                            }));
+                            idx += 1;
+                            continue;
+                        }
+                        Err(err) if looks_like_activation_cost_prefix(cost_raw) => {
+                            return Err(err);
+                        }
+                        Err(_) => {}
+                    }
+                }
+
+                if looks_like_pact_next_upkeep_line(normalized)
+                    || looks_like_statement_line(normalized)
+                {
+                    if let Some(statement_line) = parse_statement_line_cst(line)? {
+                        lines.push(RewriteLineCst::Statement(statement_line));
+                        idx += 1;
+                        continue;
+                    }
+                }
+
+                if let Some(static_line) = parse_static_line_cst(line)? {
+                    lines.push(RewriteLineCst::Static(static_line));
+                    idx += 1;
+                    continue;
+                }
+
+                if let Some(statement_line) = parse_statement_line_cst(line)? {
+                    lines.push(RewriteLineCst::Statement(statement_line));
+                    idx += 1;
+                    continue;
+                }
+
+                if let Some(statement_line) =
+                    parse_colon_nonactivation_statement_fallback(line, normalized)?
+                {
+                    lines.push(RewriteLineCst::Statement(statement_line));
+                    idx += 1;
+                    continue;
+                }
+
+                if allow_unsupported {
+                    lines.push(RewriteLineCst::Unsupported(UnsupportedLineCst {
+                        info: line.info.clone(),
+                        reason_code: if looks_like_pact_next_upkeep_line(normalized) {
+                            "statement-line-not-yet-supported"
+                        } else {
+                            classify_unsupported_line_reason(line)
+                        },
+                    }));
+                    idx += 1;
+                    continue;
+                }
+
+                return Err(CardTextError::ParseError(format!(
+                    "rewrite parser does not yet support line family: '{}'",
+                    line.info.raw_line
+                )));
+            }
+        }
     }
 
     Ok(RewriteDocumentCst { lines })
@@ -73,20 +1688,158 @@ fn lower_document_cst(
     preprocessed: PreprocessedDocument,
     cst: RewriteDocumentCst,
     allow_unsupported: bool,
-) -> RewriteSemanticDocument {
+) -> Result<RewriteSemanticDocument, CardTextError> {
+    let mut builder = preprocessed.builder;
     let mut items = Vec::with_capacity(cst.lines.len());
 
     for line in cst.lines {
         match line {
-            RewriteLineCst::Metadata(MetadataLineCst { .. }) => {}
+            RewriteLineCst::Metadata(MetadataLineCst {
+                info,
+                value,
+                type_line: _,
+            }) => {
+                builder = builder.apply_metadata(value.clone())?;
+                items.push(RewriteSemanticItem::Metadata(RewriteMetadataLine {
+                    info,
+                    value,
+                }));
+            }
+            RewriteLineCst::Keyword(keyword) => {
+                let kind = match keyword.kind {
+                    KeywordLineKindCst::AdditionalCost => RewriteKeywordLineKind::AdditionalCost,
+                    KeywordLineKindCst::AdditionalCostChoice => {
+                        RewriteKeywordLineKind::AdditionalCostChoice
+                    }
+                    KeywordLineKindCst::AlternativeCast => RewriteKeywordLineKind::AlternativeCast,
+                    KeywordLineKindCst::Bestow => RewriteKeywordLineKind::Bestow,
+                    KeywordLineKindCst::Buyback => RewriteKeywordLineKind::Buyback,
+                    KeywordLineKindCst::Channel => RewriteKeywordLineKind::Channel,
+                    KeywordLineKindCst::Cycling => RewriteKeywordLineKind::Cycling,
+                    KeywordLineKindCst::Equip => RewriteKeywordLineKind::Equip,
+                    KeywordLineKindCst::Escape => RewriteKeywordLineKind::Escape,
+                    KeywordLineKindCst::Flashback => RewriteKeywordLineKind::Flashback,
+                    KeywordLineKindCst::Kicker => RewriteKeywordLineKind::Kicker,
+                    KeywordLineKindCst::Madness => RewriteKeywordLineKind::Madness,
+                    KeywordLineKindCst::Morph => RewriteKeywordLineKind::Morph,
+                    KeywordLineKindCst::Multikicker => RewriteKeywordLineKind::Multikicker,
+                    KeywordLineKindCst::Offspring => RewriteKeywordLineKind::Offspring,
+                    KeywordLineKindCst::Reinforce => RewriteKeywordLineKind::Reinforce,
+                    KeywordLineKindCst::Squad => RewriteKeywordLineKind::Squad,
+                    KeywordLineKindCst::Transmute => RewriteKeywordLineKind::Transmute,
+                    KeywordLineKindCst::Entwine => RewriteKeywordLineKind::Entwine,
+                    KeywordLineKindCst::CastThisSpellOnly => {
+                        RewriteKeywordLineKind::CastThisSpellOnly
+                    }
+                    KeywordLineKindCst::Warp => RewriteKeywordLineKind::Warp,
+                };
+                items.push(RewriteSemanticItem::Keyword(RewriteKeywordLine {
+                    info: keyword.info,
+                    text: keyword.text,
+                    kind,
+                }));
+            }
             RewriteLineCst::Activated(activated) => {
-                let cost = lower_activation_cost_cst(&activated.cost)
-                    .expect("rewrite activation-cost CST should lower after parsing");
+                let cost = match lower_activation_cost_cst(&activated.cost) {
+                    Ok(cost) => cost,
+                    Err(err) => {
+                        if allow_unsupported {
+                            items.push(RewriteSemanticItem::Unsupported(RewriteUnsupportedLine {
+                                info: activated.info,
+                                reason_code: "activated-cost-not-yet-supported",
+                            }));
+                            continue;
+                        }
+                        return Err(err);
+                    }
+                };
                 items.push(RewriteSemanticItem::Activated(RewriteActivatedLine {
                     info: activated.info,
                     cost,
                     effect_text: activated.effect_text,
                     timing_hint: ActivationTiming::AnyTime,
+                    chosen_option_label: activated.chosen_option_label,
+                }));
+            }
+            RewriteLineCst::Triggered(triggered) => {
+                let intro = match triggered.intro {
+                    TriggerIntroCst::When => RewriteTriggerIntro::When,
+                    TriggerIntroCst::Whenever => RewriteTriggerIntro::Whenever,
+                    TriggerIntroCst::At => RewriteTriggerIntro::At,
+                };
+                items.push(RewriteSemanticItem::Triggered(RewriteTriggeredLine {
+                    info: triggered.info,
+                    intro,
+                    full_text: triggered.full_text,
+                    trigger_text: triggered.trigger_text,
+                    effect_text: triggered.effect_text,
+                    max_triggers_per_turn: triggered.max_triggers_per_turn,
+                    chosen_option_label: triggered.chosen_option_label,
+                }));
+            }
+            RewriteLineCst::Static(static_line) => {
+                let kind = match static_line.kind {
+                    StaticLineKindCst::KeywordActions => RewriteStaticLineKind::KeywordActions,
+                    StaticLineKindCst::StaticAbilities => RewriteStaticLineKind::StaticAbilities,
+                };
+                items.push(RewriteSemanticItem::Static(RewriteStaticLine {
+                    info: static_line.info,
+                    text: static_line.text,
+                    kind,
+                    item_count: static_line.item_count,
+                    chosen_option_label: static_line.chosen_option_label,
+                }));
+            }
+            RewriteLineCst::Statement(statement_line) => {
+                items.push(RewriteSemanticItem::Statement(RewriteStatementLine {
+                    info: statement_line.info,
+                    text: statement_line.text,
+                    sentence_count: statement_line.sentence_count,
+                }));
+            }
+            RewriteLineCst::Modal(modal) => {
+                items.push(RewriteSemanticItem::Modal(RewriteModalBlock {
+                    header: modal.header,
+                    modes: modal
+                        .modes
+                        .into_iter()
+                        .map(|mode| RewriteModalMode {
+                            info: mode.info,
+                            text: mode.text,
+                        })
+                        .collect(),
+                }));
+            }
+            RewriteLineCst::LevelHeader(level) => {
+                items.push(RewriteSemanticItem::LevelHeader(RewriteLevelHeader {
+                    info: level.info,
+                    min_level: level.min_level,
+                    max_level: level.max_level,
+                    pt: level.pt,
+                    items: level
+                        .items
+                        .into_iter()
+                        .map(|item| RewriteLevelItem {
+                            info: item.info,
+                            text: item.text,
+                            kind: match item.kind {
+                                LevelItemKindCst::KeywordActions => {
+                                    RewriteLevelItemKind::KeywordActions
+                                }
+                                LevelItemKindCst::StaticAbilities => {
+                                    RewriteLevelItemKind::StaticAbilities
+                                }
+                            },
+                            item_count: item.item_count,
+                        })
+                        .collect(),
+                }));
+            }
+            RewriteLineCst::SagaChapter(saga) => {
+                items.push(RewriteSemanticItem::SagaChapter(RewriteSagaChapterLine {
+                    info: saga.info,
+                    chapters: saga.chapters,
+                    text: saga.text,
                 }));
             }
             RewriteLineCst::Unsupported(unsupported) => {
@@ -98,12 +1851,12 @@ fn lower_document_cst(
         }
     }
 
-    RewriteSemanticDocument {
-        builder: preprocessed.builder,
+    Ok(RewriteSemanticDocument {
+        builder,
         annotations: preprocessed.annotations,
         items,
         allow_unsupported,
-    }
+    })
 }
 
 pub(crate) fn metadata_line_cst(
@@ -115,4 +1868,8 @@ pub(crate) fn metadata_line_cst(
         type_line: metadata_type_line_cst(&value)?,
         value,
     })
+}
+
+fn normalized_first_word(line: &str) -> &str {
+    line.split_whitespace().next().unwrap_or("")
 }

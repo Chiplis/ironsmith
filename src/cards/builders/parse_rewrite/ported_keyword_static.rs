@@ -4,10 +4,9 @@ use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::alternative_cast::AlternativeCastingMethod;
 #[allow(unused_imports)]
 use crate::cards::builders::ability_lowering::parsed_triggered_ability;
-#[cfg(test)]
-use crate::cards::builders::materialize_static_abilities_ast;
+use super::ported_activation_and_restrictions::parse_cycling_line;
 #[allow(unused_imports)]
-use crate::cards::builders::parse_parsing::{
+use crate::cards::builders::{
     color_from_color_set, contains_until_end_of_turn, intern_counter_name, is_article,
     is_at_trigger_intro, is_land_subtype, is_negated_untap_clause, is_source_reference_words,
     is_untap_during_each_other_players_untap_step_words, merge_spell_filters, normalize_cant_words,
@@ -16,7 +15,7 @@ use crate::cards::builders::parse_parsing::{
     parse_choose_basic_land_type_phrase_words, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words, parse_color,
     parse_cost_reduction_line, parse_counter_type_from_tokens, parse_counter_type_word,
-    parse_cycling_line, parse_devotion_value_from_add_clause, parse_enters_tapped_line,
+    parse_devotion_value_from_add_clause, parse_enters_tapped_line,
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_counters_on_reference_value,
     parse_equal_to_number_of_filter_plus_or_minus_fixed_value,
     parse_equal_to_number_of_filter_value, parse_equal_to_number_of_opponents_you_have_value,
@@ -443,16 +442,6 @@ pub(crate) fn parse_static_ability_ast_line(
         }
     }
     Ok(None)
-}
-
-#[cfg(test)]
-pub(crate) fn parse_static_ability_line(
-    tokens: &[Token],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
-    let Some(abilities) = parse_static_ability_ast_line(tokens)? else {
-        return Ok(None);
-    };
-    Ok(Some(materialize_static_abilities_ast(abilities)?))
 }
 
 pub(crate) fn parse_activated_abilities_cant_be_activated_line(
@@ -2704,8 +2693,6 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line(
         return Ok(None);
     }
 
-    // Expected shape:
-    // "If <condition>, this spell costs {N} less to cast."
     let Some(comma_idx) = tokens.iter().position(|t| matches!(t, Token::Comma(_))) else {
         return Ok(None);
     };
@@ -5260,10 +5247,10 @@ pub(crate) fn parse_grant_flash_to_noncreature_spells_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     match parse_permission_clause_spec(tokens)? {
-        Some(crate::cards::builders::parse_parsing::PermissionClauseSpec::GrantBySpec {
+        Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: crate::cards::builders::parse_parsing::PermissionLifetime::Static,
+            lifetime: crate::cards::builders::PermissionLifetime::Static,
         }) if spec == crate::grant::GrantSpec::flash_to_noncreature_spells() => {
             Ok(Some(StaticAbility::grants(spec)))
         }
@@ -5275,11 +5262,11 @@ pub(crate) fn parse_you_may_static_grant_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     match parse_permission_clause_spec(tokens)? {
-        Some(crate::cards::builders::parse_parsing::PermissionClauseSpec::GrantBySpec {
+        Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
             player:
                 crate::cards::builders::PlayerAst::You | crate::cards::builders::PlayerAst::Implicit,
             spec,
-            lifetime: crate::cards::builders::parse_parsing::PermissionLifetime::Static,
+            lifetime: crate::cards::builders::PermissionLifetime::Static,
         }) => Ok(Some(StaticAbility::grants(spec))),
         _ => Ok(None),
     }
@@ -5412,10 +5399,10 @@ pub(crate) fn parse_cast_spells_from_hand_without_paying_mana_costs_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     match parse_permission_clause_spec(tokens)? {
-        Some(crate::cards::builders::parse_parsing::PermissionClauseSpec::GrantBySpec {
+        Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
             player: crate::cards::builders::PlayerAst::You,
             spec,
-            lifetime: crate::cards::builders::parse_parsing::PermissionLifetime::Static,
+            lifetime: crate::cards::builders::PermissionLifetime::Static,
         }) if spec.zone == Zone::Hand
             && matches!(
                 &spec.grantable,

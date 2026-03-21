@@ -1,48 +1,37 @@
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
-use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::builders::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut,
 };
-use crate::cards::builders::parse_parsing::effects_clauses::{
-    find_verb, looks_like_pt_word, parse_add_mana, parse_counter_type_from_tokens,
-    parse_filter_comparison_tokens, parse_next_end_step_token_delay_flags,
-    value_contains_unbound_x,
-};
-use crate::cards::builders::parse_parsing::effects_sentences::{
+use super::ported_effects_sentences::{
     is_beginning_of_end_step_words, is_end_of_combat_words, is_negated_untap_clause,
     parse_effect_sentence, parse_mana_symbol, parse_mana_symbol_group, parse_restriction_duration,
     parse_scryfall_mana_cost, parse_subtype_word, parse_supertype_word,
     replace_unbound_x_in_effect_anywhere, strip_leading_articles, trim_edge_punctuation,
 };
-use crate::cards::builders::parse_parsing::keyword_static::{
+use super::ported_keyword_static::{
     parse_add_mana_equal_amount_value, parse_cost_modifier_amount, parse_cost_modifier_mana_cost,
     parse_dynamic_cost_modifier_value,
 };
-use crate::cards::builders::parse_parsing::lex::{
-    is_basic_color_word, join_sentences_with_period, split_cost_segments, split_on_and,
-};
-use crate::cards::builders::parse_parsing::object_filters::{
-    is_comparison_or_delimiter, parse_spell_filter,
-};
-use crate::cards::builders::parse_parsing::primitives::{
-    parse_non_type, parse_number, parse_number_word_u32, parse_subtype_flexible,
-};
-use crate::cards::builders::parse_parsing::targets::{
-    contains_discard_source_phrase, contains_source_from_your_graveyard_phrase,
-    contains_source_from_your_hand_phrase, is_source_from_your_graveyard_words,
-    parse_target_count_range_prefix,
-};
+use super::ported_object_filters::parse_object_filter;
 use crate::cards::builders::{
     CardTextError, DamageBySpec, EffectAst, IT_TAG, KeywordAction, LineAst, ParsedAbility,
     PlayerAst, ReferenceImports, ReturnControllerAst, StaticAbilityAst, TagKey, TargetAst,
-    TextSpan, Token, TriggerSpec, find_activation_cost_start, is_article,
-    is_source_reference_words, parse_card_type, parse_color, parse_effect_sentences,
-    parse_object_filter, parse_target_phrase, parse_where_x_value_clause, span_from_tokens,
-    split_on_period, token_index_for_word_index, trim_commas, words,
+    TextSpan, Token, TriggerSpec, contains_discard_source_phrase,
+    contains_source_from_your_graveyard_phrase, contains_source_from_your_hand_phrase,
+    find_activation_cost_start, find_verb, is_article,
+    is_basic_color_word, is_comparison_or_delimiter, is_source_from_your_graveyard_words,
+    is_source_reference_words, join_sentences_with_period, parse_add_mana, parse_card_type,
+    parse_color,
+    parse_counter_type_from_tokens, parse_effect_sentences, parse_filter_comparison_tokens,
+    parse_next_end_step_token_delay_flags, parse_non_type, parse_number,
+    parse_number_word_u32, parse_spell_filter, parse_subtype_flexible,
+    parse_target_count_range_prefix, parse_target_phrase, parse_where_x_value_clause,
+    span_from_tokens, split_cost_segments, split_on_and, split_on_period,
+    token_index_for_word_index, trim_commas, value_contains_unbound_x, words,
 };
 use crate::color::ColorSet;
-use crate::cost::{OptionalCost, TotalCost};
+use crate::cost::TotalCost;
 use crate::effect::{ChoiceCount, Effect, Until, Value};
 use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::mana::{ManaCost, ManaSymbol};
@@ -892,55 +881,6 @@ pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
     parse_number_word_u32(word)
 }
 
-pub(crate) fn parse_level_up_line(
-    tokens: &[Token],
-) -> Result<Option<ParsedAbility>, CardTextError> {
-    let words = words(tokens);
-    if words.len() < 3 || words[0] != "level" || words[1] != "up" {
-        return Ok(None);
-    }
-
-    let mut symbols = Vec::new();
-    for word in words.iter().skip(2) {
-        if let Ok(symbol) = parse_mana_symbol(word) {
-            symbols.push(symbol);
-        }
-    }
-
-    if symbols.is_empty() {
-        return Err(CardTextError::ParseError(
-            "level up missing mana cost".to_string(),
-        ));
-    }
-
-    let pips = symbols.into_iter().map(|symbol| vec![symbol]).collect();
-    let mana_cost = ManaCost::from_pips(pips);
-    let level_up_text = format!("Level up {}", mana_cost.to_oracle());
-
-    Ok(Some(ParsedAbility {
-        ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                mana_cost: TotalCost::mana(mana_cost),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::put_counters_on_source(CounterType::Level, 1),
-                ]),
-                choices: vec![],
-                timing: ActivationTiming::SorcerySpeed,
-                additional_restrictions: vec![],
-                activation_restrictions: vec![],
-                mana_output: None,
-                activation_condition: None,
-                mana_usage_restrictions: vec![],
-            }),
-            functional_zones: vec![Zone::Battlefield],
-            text: Some(level_up_text),
-        },
-        effects_ast: None,
-        reference_imports: ReferenceImports::default(),
-        trigger_spec: None,
-    }))
-}
-
 pub(crate) fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
     let words_all = words(tokens);
     if words_all.is_empty() {
@@ -1047,92 +987,6 @@ pub(crate) fn parse_cycling_line(tokens: &[Token]) -> Result<Option<ParsedAbilit
     }))
 }
 
-pub(crate) fn parse_transmute_line(
-    tokens: &[Token],
-) -> Result<Option<ParsedAbility>, CardTextError> {
-    let words_all = words(tokens);
-    if words_all.first().copied() != Some("transmute") {
-        return Ok(None);
-    }
-    if words_all
-        .iter()
-        .any(|word| *word == "has" || *word == "have")
-    {
-        return Ok(None);
-    }
-
-    let mut consumed = 1usize;
-    while consumed < tokens.len() {
-        let Some(word) = tokens[consumed].as_word() else {
-            break;
-        };
-        if parse_mana_symbol(word).is_ok() {
-            consumed += 1;
-        } else {
-            break;
-        }
-    }
-    if consumed <= 1 {
-        return Err(CardTextError::ParseError(format!(
-            "transmute keyword missing mana cost (clause: '{}')",
-            words_all.join(" ")
-        )));
-    }
-
-    let cost_tokens = &tokens[1..consumed];
-    let base_cost = parse_activation_cost(cost_tokens)?;
-    let mut merged_costs = base_cost.costs().to_vec();
-    merged_costs.push(crate::costs::Cost::discard_source());
-    let mana_cost = crate::cost::TotalCost::from_costs(merged_costs);
-
-    let mut parsed_mana_value: Option<u32> = None;
-    for idx in 0..tokens.len().saturating_sub(2) {
-        if tokens[idx].is_word("mana") && tokens[idx + 1].is_word("value") {
-            parsed_mana_value = parse_number(&tokens[idx + 2..]).map(|(value, _)| value);
-            if parsed_mana_value.is_some() {
-                break;
-            }
-        }
-    }
-    let filter = if let Some(mana_value) = parsed_mana_value {
-        ObjectFilter::default().with_mana_value(crate::filter::Comparison::Equal(mana_value as i32))
-    } else {
-        ObjectFilter::default().with_mana_value(crate::filter::Comparison::EqualExpr(Box::new(
-            crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)),
-        )))
-    };
-    let text = format!(
-        "Transmute {}",
-        base_cost
-            .mana_cost()
-            .map(|cost| cost.to_oracle())
-            .unwrap_or_else(|| words(cost_tokens).join(" "))
-    );
-
-    Ok(Some(ParsedAbility {
-        ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                mana_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::search_library_to_hand(filter, true),
-                ]),
-                choices: Vec::new(),
-                timing: ActivationTiming::SorcerySpeed,
-                additional_restrictions: Vec::new(),
-                activation_restrictions: Vec::new(),
-                mana_output: None,
-                activation_condition: None,
-                mana_usage_restrictions: vec![],
-            }),
-            functional_zones: vec![Zone::Hand],
-            text: Some(text),
-        },
-        effects_ast: None,
-        reference_imports: ReferenceImports::default(),
-        trigger_spec: None,
-    }))
-}
-
 pub(crate) fn parse_channel_line(tokens: &[Token]) -> Result<Option<ParsedAbility>, CardTextError> {
     let words_all = words(tokens);
     if words_all.first().copied() != Some("channel") {
@@ -1158,98 +1012,6 @@ pub(crate) fn parse_channel_line(tokens: &[Token]) -> Result<Option<ParsedAbilit
     parsed.ability.text = Some("Channel".to_string());
     parsed.ability.functional_zones = vec![Zone::Hand];
     Ok(Some(parsed))
-}
-
-pub(crate) fn parse_reinforce_line(
-    tokens: &[Token],
-) -> Result<Option<ParsedAbility>, CardTextError> {
-    let words_all = words(tokens);
-    if words_all.is_empty() {
-        return Ok(None);
-    }
-    if words_all.first().copied() != Some("reinforce") {
-        return Ok(None);
-    }
-    if words_all
-        .iter()
-        .any(|word| *word == "has" || *word == "have")
-    {
-        return Ok(None);
-    }
-
-    let (amount, used_amount) =
-        parse_number(tokens.get(1..).unwrap_or_default()).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "reinforce line missing counter amount (clause: '{}')",
-                words_all.join(" ")
-            ))
-        })?;
-
-    let cost_start = 1 + used_amount;
-    if cost_start >= tokens.len() {
-        return Err(CardTextError::ParseError(format!(
-            "reinforce line missing mana cost (clause: '{}')",
-            words_all.join(" ")
-        )));
-    }
-
-    let mut cost_end = cost_start;
-    while cost_end < tokens.len() {
-        let Some(word) = tokens[cost_end].as_word() else {
-            break;
-        };
-        if parse_mana_symbol(word).is_ok() {
-            cost_end += 1;
-        } else {
-            break;
-        }
-    }
-    if cost_end == cost_start {
-        return Err(CardTextError::ParseError(format!(
-            "reinforce line missing mana symbols (clause: '{}')",
-            words_all.join(" ")
-        )));
-    }
-
-    let cost_tokens = &tokens[cost_start..cost_end];
-    let base_cost = parse_activation_cost(cost_tokens)?;
-    let mut merged_costs = base_cost.costs().to_vec();
-    merged_costs.push(crate::costs::Cost::discard_source());
-    let mana_cost = crate::cost::TotalCost::from_costs(merged_costs);
-
-    let mut creature_filter = ObjectFilter::default();
-    creature_filter.zone = Some(Zone::Battlefield);
-    creature_filter.card_types.push(CardType::Creature);
-
-    let target = ChooseSpec::target(ChooseSpec::Object(creature_filter));
-    let effect = Effect::put_counters(CounterType::PlusOnePlusOne, amount as i32, target);
-
-    let cost_text = base_cost
-        .mana_cost()
-        .map(|cost| cost.to_oracle())
-        .unwrap_or_else(|| words(cost_tokens).join(" "));
-    let render_text = format!("Reinforce {amount} {cost_text}");
-
-    Ok(Some(ParsedAbility {
-        ability: Ability {
-            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                mana_cost,
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![effect]),
-                choices: Vec::new(),
-                timing: ActivationTiming::AnyTime,
-                additional_restrictions: vec![],
-                activation_restrictions: vec![],
-                mana_output: None,
-                activation_condition: None,
-                mana_usage_restrictions: vec![],
-            }),
-            functional_zones: vec![Zone::Hand],
-            text: Some(render_text),
-        },
-        effects_ast: None,
-        reference_imports: ReferenceImports::default(),
-        trigger_spec: None,
-    }))
 }
 
 pub(crate) fn parse_cycling_keyword_cost_groups(tokens: &[Token]) -> Vec<(Vec<Token>, Vec<Token>)> {
@@ -1374,7 +1136,7 @@ pub(crate) fn parse_cycling_keyword_group_text(tokens: &[Token]) -> Option<Strin
         if keyword.is_empty() {
             continue;
         }
-        let cost_words = super::words(&cost_tokens);
+        let cost_words = crate::cards::builders::words(&cost_tokens);
         let cost = if cost_words.len() >= 3 && cost_words[0] == "pay" && cost_words[2] == "life" {
             format!("pay {} life", cost_words[1])
         } else {
@@ -1402,286 +1164,6 @@ pub(crate) fn is_cycling_cost_word(word: &str) -> bool {
                     '{' | '}' | '/' | 'w' | 'u' | 'b' | 'r' | 'g' | 'c' | 'x'
                 )
         })
-}
-
-pub(crate) fn parse_madness_line(
-    tokens: &[Token],
-) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("madness")) {
-        return Ok(None);
-    }
-
-    let cost_start = 1;
-    if cost_start >= tokens.len() {
-        return Err(CardTextError::ParseError(
-            "madness keyword missing mana cost".to_string(),
-        ));
-    }
-
-    let cost_end = tokens[cost_start..]
-        .iter()
-        .position(|token| matches!(token, Token::Comma(_)))
-        .map(|idx| cost_start + idx)
-        .unwrap_or(tokens.len());
-    if cost_end <= cost_start {
-        return Err(CardTextError::ParseError(
-            "madness keyword missing mana cost".to_string(),
-        ));
-    }
-
-    let total_cost = parse_activation_cost(&tokens[cost_start..cost_end])?;
-    let mana_cost = total_cost.mana_cost().cloned().ok_or_else(|| {
-        CardTextError::ParseError("madness keyword missing mana symbols".to_string())
-    })?;
-
-    Ok(Some(AlternativeCastingMethod::Madness { cost: mana_cost }))
-}
-
-pub(crate) fn parse_buyback_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("buyback")) {
-        return Ok(None);
-    }
-
-    // "Buyback costs cost {2} less" is a static cost-modifier line, not the keyword cost line.
-    if tokens.get(1).is_some_and(|token| token.is_word("costs")) {
-        return Ok(None);
-    }
-
-    if tokens.len() <= 1 {
-        return Err(CardTextError::ParseError(
-            "buyback keyword missing cost".to_string(),
-        ));
-    }
-
-    let tail = &tokens[1..];
-    let reminder_start = tail
-        .windows(3)
-        .position(|window| {
-            window[0].is_word("you") && window[1].is_word("may") && window[2].is_word("pay")
-        })
-        .or_else(|| {
-            tail.windows(2)
-                .position(|window| window[0].is_word("you") && window[1].is_word("may"))
-        })
-        .unwrap_or(tail.len());
-    let cost_tokens = trim_commas(&tail[..reminder_start]);
-    if cost_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "buyback keyword missing cost".to_string(),
-        ));
-    }
-
-    let total_cost = parse_activation_cost(&cost_tokens)?;
-    Ok(Some(OptionalCost::buyback(total_cost)))
-}
-
-pub(crate) fn parse_optional_cost_keyword_line(
-    tokens: &[Token],
-    keyword: &str,
-    constructor: fn(TotalCost) -> OptionalCost,
-) -> Result<Option<OptionalCost>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word(keyword)) {
-        return Ok(None);
-    }
-
-    if tokens.len() <= 1 {
-        return Err(CardTextError::ParseError(format!(
-            "{keyword} keyword missing cost"
-        )));
-    }
-
-    let tail = &tokens[1..];
-    let reminder_start = tail
-        .windows(3)
-        .position(|window| {
-            window[0].is_word("you") && window[1].is_word("may") && window[2].is_word("pay")
-        })
-        .or_else(|| {
-            tail.windows(2)
-                .position(|window| window[0].is_word("you") && window[1].is_word("may"))
-        })
-        .unwrap_or(tail.len());
-
-    let sentence_end = tail
-        .iter()
-        .position(|token| matches!(token, Token::Period(_)))
-        .unwrap_or(tail.len());
-
-    let end = reminder_start.min(sentence_end);
-    let cost_tokens = trim_commas(&tail[..end]);
-    if cost_tokens.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "{keyword} keyword missing cost"
-        )));
-    }
-
-    let total_cost = parse_activation_cost(&cost_tokens)?;
-    Ok(Some(constructor(total_cost)))
-}
-
-pub(crate) fn parse_kicker_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
-    parse_optional_cost_keyword_line(tokens, "kicker", OptionalCost::kicker)
-}
-
-pub(crate) fn parse_multikicker_line(
-    tokens: &[Token],
-) -> Result<Option<OptionalCost>, CardTextError> {
-    parse_optional_cost_keyword_line(tokens, "multikicker", OptionalCost::multikicker)
-}
-
-pub(crate) fn parse_squad_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
-    parse_optional_cost_keyword_line(tokens, "squad", OptionalCost::squad)
-}
-
-pub(crate) fn parse_offspring_line(
-    tokens: &[Token],
-) -> Result<Option<OptionalCost>, CardTextError> {
-    parse_optional_cost_keyword_line(tokens, "offspring", OptionalCost::offspring)
-}
-
-pub(crate) fn parse_entwine_line(tokens: &[Token]) -> Result<Option<OptionalCost>, CardTextError> {
-    parse_optional_cost_keyword_line(tokens, "entwine", OptionalCost::entwine)
-}
-
-pub(crate) fn parse_morph_keyword_line(
-    tokens: &[Token],
-) -> Result<Option<ParsedAbility>, CardTextError> {
-    let Some(first_word) = tokens.first().and_then(Token::as_word) else {
-        return Ok(None);
-    };
-
-    let is_megamorph = match first_word {
-        "morph" => false,
-        "megamorph" => true,
-        _ => return Ok(None),
-    };
-
-    let mut symbols = Vec::new();
-    let mut consumed = 1usize;
-    for token in &tokens[1..] {
-        let Some(word) = token.as_word() else {
-            break;
-        };
-        let Ok(symbol) = parse_mana_symbol(word) else {
-            break;
-        };
-        symbols.push(symbol);
-        consumed += 1;
-    }
-
-    if symbols.is_empty() {
-        let mechanic = if is_megamorph { "megamorph" } else { "morph" };
-        return Err(CardTextError::ParseError(format!(
-            "{mechanic} keyword missing mana cost"
-        )));
-    }
-
-    let trailing_words = words(&tokens[consumed..]);
-    if !trailing_words.is_empty() {
-        let mechanic = if is_megamorph { "megamorph" } else { "morph" };
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing {mechanic} clause (line: '{}')",
-            trailing_words.join(" ")
-        )));
-    }
-
-    let cost = ManaCost::from_symbols(symbols);
-    let label = if is_megamorph { "Megamorph" } else { "Morph" };
-    let text = format!("{label} {}", cost.to_oracle());
-    let static_ability = if is_megamorph {
-        StaticAbility::megamorph(cost)
-    } else {
-        StaticAbility::morph(cost)
-    };
-
-    Ok(Some(ParsedAbility {
-        ability: Ability::static_ability(static_ability).with_text(&text),
-        effects_ast: None,
-        reference_imports: ReferenceImports::default(),
-        trigger_spec: None,
-    }))
-}
-
-pub(crate) fn parse_escape_line(
-    tokens: &[Token],
-) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("escape")) {
-        return Ok(None);
-    }
-
-    let cost_start = 1;
-    if cost_start >= tokens.len() {
-        return Err(CardTextError::ParseError(
-            "escape keyword missing mana cost".to_string(),
-        ));
-    }
-
-    let comma_idx = tokens[cost_start..]
-        .iter()
-        .position(|token| matches!(token, Token::Comma(_)))
-        .map(|idx| cost_start + idx)
-        .ok_or_else(|| {
-            CardTextError::ParseError("escape keyword missing exile clause separator".to_string())
-        })?;
-    if comma_idx <= cost_start {
-        return Err(CardTextError::ParseError(
-            "escape keyword missing mana cost".to_string(),
-        ));
-    }
-
-    let total_cost = parse_activation_cost(&tokens[cost_start..comma_idx])?;
-    let mana_cost = total_cost.mana_cost().cloned().ok_or_else(|| {
-        CardTextError::ParseError("escape keyword missing mana symbols".to_string())
-    })?;
-
-    let tail_tokens = trim_commas(&tokens[comma_idx + 1..]);
-    if tail_tokens.is_empty() {
-        return Err(CardTextError::ParseError(
-            "escape keyword missing exile clause".to_string(),
-        ));
-    }
-
-    let tail_words = words(&tail_tokens);
-    if tail_words.first().copied() != Some("exile") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported escape clause tail (clause: '{}')",
-            tail_words.join(" ")
-        )));
-    }
-    let (exile_count, used) = parse_number(&tail_tokens[1..]).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "escape keyword missing exile count (clause: '{}')",
-            tail_words.join(" ")
-        ))
-    })?;
-    let mut idx = 1 + used;
-    if tail_words.get(idx).copied() == Some("other") {
-        idx += 1;
-    }
-    if !matches!(tail_words.get(idx).copied(), Some("card") | Some("cards")) {
-        return Err(CardTextError::ParseError(format!(
-            "escape keyword missing exiled card noun (clause: '{}')",
-            tail_words.join(" ")
-        )));
-    }
-    idx += 1;
-    if tail_words.get(idx..idx + 3) != Some(&["from", "your", "graveyard"]) {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported escape clause tail (clause: '{}')",
-            tail_words.join(" ")
-        )));
-    }
-    if idx + 3 != tail_words.len() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing escape clause segment (clause: '{}')",
-            tail_words.join(" ")
-        )));
-    }
-
-    Ok(Some(AlternativeCastingMethod::Escape {
-        cost: Some(mana_cost),
-        exile_count,
-    }))
 }
 
 pub(crate) fn parse_cycling_search_filter(
@@ -3059,265 +2541,6 @@ pub(crate) fn parse_enters_tapped_line(
     Ok(None)
 }
 
-pub(crate) fn parse_cast_this_spell_only_line(
-    tokens: &[Token],
-) -> Result<Option<StaticAbility>, CardTextError> {
-    let line_words = words(tokens);
-    if !line_words.starts_with(&["cast", "this", "spell", "only"]) {
-        return Ok(None);
-    }
-
-    let tail = &line_words[4..];
-    let declare_attackers_tails: &[&[&str]] = &[
-        &["during", "the", "declare", "attackers", "step"],
-        &["during", "declare", "attackers", "step"],
-    ];
-    let declare_attackers_if_attacked_tails: &[&[&str]] = &[
-        &[
-            "during",
-            "the",
-            "declare",
-            "attackers",
-            "step",
-            "and",
-            "only",
-            "if",
-            "youve",
-            "been",
-            "attacked",
-            "this",
-            "step",
-        ],
-        &[
-            "during",
-            "declare",
-            "attackers",
-            "step",
-            "and",
-            "only",
-            "if",
-            "youve",
-            "been",
-            "attacked",
-            "this",
-            "step",
-        ],
-    ];
-
-    if declare_attackers_tails.contains(&tail) {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_declare_attackers_step(),
-            "Cast this spell only during the declare attackers step.",
-        )));
-    }
-
-    if declare_attackers_if_attacked_tails.contains(&tail) {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_declare_attackers_step_if_you_were_attacked_this_step(),
-            "Cast this spell only during the declare attackers step and only if you've been attacked this step.",
-        )));
-    }
-
-    if tail == ["during", "combat"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_combat(),
-            "Cast this spell only during combat.",
-        )));
-    }
-
-    if tail == ["during", "combat", "before", "blockers", "are", "declared"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_combat_before_blockers_are_declared(),
-            "Cast this spell only during combat before blockers are declared.",
-        )));
-    }
-
-    if tail == ["during", "combat", "after", "blockers", "are", "declared"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_combat_after_blockers_are_declared(),
-            "Cast this spell only during combat after blockers are declared.",
-        )));
-    }
-
-    if tail
-        == [
-            "during", "combat", "on", "your", "turn", "before", "blockers", "are", "declared",
-        ]
-    {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_combat_on_your_turn_before_blockers_are_declared(),
-            "Cast this spell only during combat on your turn before blockers are declared.",
-        )));
-    }
-
-    if tail == ["during", "combat", "on", "an", "opponents", "turn"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_combat_on_opponents_turn(
-            ),
-            "Cast this spell only during combat on an opponent's turn.",
-        )));
-    }
-
-    if tail == ["before", "attackers", "are", "declared"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::before_attackers_are_declared(),
-            "Cast this spell only before attackers are declared.",
-        )));
-    }
-
-    if tail == ["before", "the", "combat", "damage", "step"]
-        || tail == ["before", "combat", "damage", "step"]
-    {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::before_combat_damage_step(),
-            "Cast this spell only before the combat damage step.",
-        )));
-    }
-
-    if tail == ["during", "an", "opponents", "upkeep"] || tail == ["during", "opponents", "upkeep"]
-    {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_opponents_upkeep(),
-            "Cast this spell only during an opponent's upkeep.",
-        )));
-    }
-
-    if tail
-        == [
-            "during",
-            "an",
-            "opponents",
-            "turn",
-            "after",
-            "their",
-            "upkeep",
-            "step",
-        ]
-    {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_opponents_turn_after_upkeep(),
-            "Cast this spell only during an opponent's turn after their upkeep step.",
-        )));
-    }
-
-    if tail == ["during", "your", "end", "step"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::during_your_end_step(),
-            "Cast this spell only during your end step.",
-        )));
-    }
-
-    if tail == ["if", "youve", "cast", "another", "spell", "this", "turn"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_you_cast_another_spell_this_turn(),
-            "Cast this spell only if you've cast another spell this turn.",
-        )));
-    }
-
-    if tail
-        == [
-            "if", "youve", "cast", "another", "green", "spell", "this", "turn",
-        ]
-    {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_you_cast_another_green_spell_this_turn(),
-            "Cast this spell only if you've cast another green spell this turn.",
-        )));
-    }
-
-    if tail
-        == [
-            "if", "an", "opponent", "cast", "a", "creature", "spell", "this", "turn",
-        ]
-    {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_opponent_cast_creature_spell_this_turn(),
-            "Cast this spell only if an opponent cast a creature spell this turn.",
-        )));
-    }
-
-    if tail == ["if", "a", "creature", "is", "attacking", "you"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_creature_is_attacking_you(),
-            "Cast this spell only if a creature is attacking you.",
-        )));
-    }
-
-    if tail == ["after", "combat"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::after_combat(),
-            "Cast this spell only after combat.",
-        )));
-    }
-
-    if tail
-        == [
-            "if",
-            "no",
-            "permanents",
-            "named",
-            "tidal",
-            "influence",
-            "are",
-            "on",
-            "the",
-            "battlefield",
-        ]
-    {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_no_permanents_named_on_battlefield("Tidal Influence"),
-            "Cast this spell only if no permanents named Tidal Influence are on the battlefield.",
-        )));
-    }
-
-    if tail == ["if", "you", "control", "a", "snow", "land"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_you_control_snow_land(),
-            "Cast this spell only if you control a snow land.",
-        )));
-    }
-
-    if tail
-        == [
-            "if",
-            "you",
-            "control",
-            "fewer",
-            "creatures",
-            "than",
-            "each",
-            "opponent",
-        ]
-    {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_you_control_fewer_creatures_than_each_opponent(),
-            "Cast this spell only if you control fewer creatures than each opponent.",
-        )));
-    }
-
-    if tail == ["if", "you", "control", "two", "or", "more", "doctors"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_you_control_subtype_or_more(
-                Subtype::Doctor,
-                2,
-            ),
-            "Cast this spell only if you control two or more Doctors.",
-        )));
-    }
-
-    if tail == ["if", "you", "control", "two", "or", "more", "vampires"] {
-        return Ok(Some(StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::if_you_control_subtype_or_more(
-                Subtype::Vampire,
-                2,
-            ),
-            "Cast this spell only if you control two or more Vampires.",
-        )));
-    }
-
-    Ok(None)
-}
-
 pub(crate) fn parse_cost_reduction_line(
     tokens: &[Token],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -3679,13 +2902,13 @@ pub(crate) fn parse_cant_clauses(
             if find_negation_span(segment).is_none() {
                 continue;
             }
-            let mut expanded = segment.clone();
+            let mut expanded = segment.to_vec();
             if idx > 0
                 && !shared_subject.is_empty()
                 && matches!(find_negation_span(segment), Some((0, _)))
             {
                 let mut with_subject = shared_subject.clone();
-                with_subject.extend(segment.clone());
+                with_subject.extend(segment.iter().cloned());
                 expanded = with_subject;
             } else if idx > 0
                 && !shared_subject.is_empty()
@@ -4781,13 +4004,13 @@ pub(crate) fn parse_cant_restrictions(
             if find_negation_span(segment).is_none() {
                 continue;
             }
-            let mut expanded = segment.clone();
+            let mut expanded = segment.to_vec();
             if idx > 0
                 && !shared_subject.is_empty()
                 && matches!(find_negation_span(segment), Some((0, _)))
             {
                 let mut with_subject = shared_subject.clone();
-                with_subject.extend(segment.clone());
+                with_subject.extend(segment.iter().cloned());
                 expanded = with_subject;
             } else if idx > 0
                 && !shared_subject.is_empty()
@@ -5410,7 +4633,7 @@ pub(crate) fn starts_with_target_indicator(tokens: &[Token]) -> bool {
     } else if let Some((_, used)) = parse_number(&tokens[idx..])
         && tokens
             .get(idx + used)
-            .is_some_and(|token| token.is_word("target"))
+            .is_some_and(|token: &Token| token.is_word("target"))
     {
         idx += used;
     } else if tokens.get(idx).is_some_and(|token| token.is_word("x"))
@@ -5840,7 +5063,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[Token]) -> Option<KeywordAction> {
             .position(|token| matches!(token, Token::Period(_)))
             .unwrap_or(tokens.len());
         let cost_tokens = trim_commas(&tokens[2..reminder_start]).to_vec();
-        let cost_words = super::words(&cost_tokens);
+        let cost_words = crate::cards::builders::words(&cost_tokens);
 
         if cost_words.len() == 3
             && cost_words[0] == "pay"
@@ -7021,10 +6244,10 @@ pub(crate) fn strip_leading_one_or_more(tokens: &[Token]) -> &[Token] {
 
 fn parse_leading_or_more_quantifier(tokens: &[Token]) -> Option<(u32, &[Token])> {
     let (count, used) = parse_number(tokens)?;
-    if tokens.get(used).is_some_and(|token| token.is_word("or"))
+    if tokens.get(used).is_some_and(|token: &Token| token.is_word("or"))
         && tokens
             .get(used + 1)
-            .is_some_and(|token| token.is_word("more"))
+            .is_some_and(|token: &Token| token.is_word("more"))
     {
         Some((count, &tokens[used + 2..]))
     } else {
@@ -9837,67 +9060,6 @@ pub(crate) fn title_case_token_word(word: &str) -> String {
     }
 }
 
-#[allow(dead_code)]
-pub(crate) fn linked_token_name_from_create_name(raw_name: &str) -> Option<String> {
-    let words: Vec<&str> = raw_name.split_whitespace().collect();
-    if words.is_empty() {
-        return None;
-    }
-
-    let mut name_words = Vec::new();
-    for word in words {
-        if looks_like_pt_word(word)
-            || is_basic_color_word(word)
-            || is_article(word)
-            || matches!(
-                word,
-                "legendary"
-                    | "snow"
-                    | "basic"
-                    | "artifact"
-                    | "enchantment"
-                    | "land"
-                    | "creature"
-                    | "battle"
-                    | "instant"
-                    | "sorcery"
-                    | "planeswalker"
-                    | "token"
-                    | "tokens"
-                    | "with"
-                    | "that"
-                    | "which"
-                    | "named"
-                    | "and"
-                    | "or"
-            )
-            || parse_card_type(word).is_some()
-            || parse_subtype_word(word).is_some()
-        {
-            if !name_words.is_empty() {
-                break;
-            }
-            continue;
-        }
-        if !word
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '\'' || ch == '-')
-        {
-            if !name_words.is_empty() {
-                break;
-            }
-            continue;
-        }
-        name_words.push(title_case_token_word(word));
-    }
-
-    if name_words.is_empty() {
-        None
-    } else {
-        Some(name_words.join(" "))
-    }
-}
-
 pub(crate) fn controller_filter_for_token_player(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
@@ -10017,7 +9179,6 @@ pub(crate) fn strip_embedded_token_rules_text(tokens: &[Token]) -> Vec<Token> {
     tokens.to_vec()
 }
 
-#[allow(dead_code)]
 pub(crate) fn append_token_reminder_to_last_create_effect(
     effects: &mut Vec<EffectAst>,
     tokens: &[Token],
@@ -10056,7 +9217,6 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
     append_token_reminder_to_effect(effects.last_mut(), &reminder, &reminder_words)
 }
 
-#[allow(dead_code)]
 pub(crate) fn append_token_reminder_to_effect(
     effect: Option<&mut EffectAst>,
     reminder: &str,

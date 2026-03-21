@@ -18,11 +18,6 @@ use crate::cards::builders::effect_pipeline::{
     prepare_effects_with_trigger_context_for_lowering, prepare_triggered_effects_for_lowering,
 };
 #[allow(unused_imports)]
-use crate::cards::builders::parse_parsing::{
-    EffectLoweringContext, IdGenContext, LoweringFrame, NormalizedLine, contains_until_end_of_turn,
-    map_span_to_original, parse_card_type, parse_number_word_i32, parse_subtype_word,
-};
-#[allow(unused_imports)]
 use crate::cards::builders::reference_resolution::{
     EffectReferenceResolutionConfig, annotate_effect_sequence,
 };
@@ -30,15 +25,18 @@ use crate::cards::builders::reference_resolution::{
 use crate::cards::builders::{
     AnnotatedEffect, AnnotatedEffectSequence, CardDefinitionBuilder, CardTextError,
     ClashOpponentAst, ControlDurationAst, DamageBySpec, EffectAst, ExtraTurnAnchorAst,
-    GrantedAbilityAst, IT_TAG, IfResultPredicate, LineAst, LoweredEffects, NewTargetRestrictionAst,
-    ObjectRefAst, ParseAnnotations, PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst,
+    EffectLoweringContext, GrantedAbilityAst, IT_TAG, IdGenContext, IfResultPredicate, LineAst,
+    LoweredEffects, LoweringFrame, NewTargetRestrictionAst, NormalizedLine, ObjectRefAst,
+    ParseAnnotations, PlayerAst, PredicateAst, PreventNextTimeDamageSourceAst,
     PreventNextTimeDamageTargetAst, ReferenceEnv, ReferenceExports, ReferenceImports,
     RetargetModeAst, ReturnControllerAst, SharedTypeConstraintAst, TagKey, TargetAst, TriggerSpec,
-    choose_spec_targets_object, infer_player_filter_from_object_filter,
-    lower_granted_abilities_ast, object_filter_as_tagged_reference, resolve_attach_object_spec,
-    resolve_choose_spec_it_tag, resolve_it_tag, resolve_it_tag_key,
-    resolve_non_target_player_filter, resolve_restriction_it_tag, resolve_target_spec_with_choices,
-    resolve_unless_player_filter, resolve_value_it_tag, watch_tag_from_filter,
+    choose_spec_targets_object, contains_until_end_of_turn,
+    infer_player_filter_from_object_filter, lower_granted_abilities_ast, map_span_to_original,
+    object_filter_as_tagged_reference, parse_card_type, parse_number_word_i32,
+    parse_subtype_word, resolve_attach_object_spec, resolve_choose_spec_it_tag, resolve_it_tag,
+    resolve_it_tag_key, resolve_non_target_player_filter, resolve_restriction_it_tag,
+    resolve_target_spec_with_choices, resolve_unless_player_filter, resolve_value_it_tag,
+    watch_tag_from_filter,
 };
 #[allow(unused_imports)]
 use crate::color::ColorSet;
@@ -2191,32 +2189,6 @@ fn prepend_missing_target_choice_prelude(
     }
     prelude.append(&mut compiled);
     prelude
-}
-
-pub(crate) fn collect_tag_spans_from_line(
-    line: &LineAst,
-    annotations: &mut ParseAnnotations,
-    ctx: &NormalizedLine,
-) {
-    match line {
-        LineAst::Triggered { effects, .. }
-        | LineAst::Statement { effects }
-        | LineAst::AdditionalCost { effects }
-        | LineAst::OptionalCostWithCastTrigger { effects, .. } => {
-            collect_tag_spans_from_effects_with_context(effects, annotations, ctx);
-        }
-        LineAst::AdditionalCostChoice { options } => {
-            for option in options {
-                collect_tag_spans_from_effects_with_context(&option.effects, annotations, ctx);
-            }
-        }
-        LineAst::AlternativeCastingMethod(_)
-        | LineAst::OptionalCost(_)
-        | LineAst::StaticAbilities(_)
-        | LineAst::StaticAbility(_)
-        | LineAst::Ability(_)
-        | LineAst::Abilities(_) => {}
-    }
 }
 
 pub(crate) fn collect_tag_spans_from_effects_with_context(
