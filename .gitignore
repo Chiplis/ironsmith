@@ -11,3 +11,17 @@ scripts/__pycache__*
 *.json
 *.csv
 web/ui/node_modules
+web/ui/.pnpm
+web/ui/dist
+web/ui/.vite
+web/wasm_demo/dist
+web/wasm_demo/.vite
+pkg/
+.pnpm-store
+.env
+.env.local
+*.log
+.DS_Store
+.turbo
+*.swp
+*.swo

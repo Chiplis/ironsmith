@@ -616,7 +616,10 @@ fn default_replay_path() -> Option<String> {
     Some(dir.join(file_name).to_string_lossy().into_owned())
 }
 
-fn main() {
+// Loading the handwritten registry can exceed the default Windows main-thread stack.
+const CLI_STACK_SIZE: usize = 64 * 1024 * 1024;
+
+fn run_cli() {
     let args = parse_args();
 
     if !args.meta_cards.is_empty() {
@@ -856,4 +859,16 @@ fn main() {
 
     // Run the game (pass whether players have custom hands to skip drawing)
     run_game_with_custom_hands(&mut game, !hand1.is_empty(), !hand2.is_empty());
+}
+
+fn main() {
+    let handle = std::thread::Builder::new()
+        .name("ironsmith-cli".to_string())
+        .stack_size(CLI_STACK_SIZE)
+        .spawn(run_cli)
+        .expect("failed to spawn ironsmith CLI thread");
+
+    if let Err(payload) = handle.join() {
+        std::panic::resume_unwind(payload);
+    }
 }

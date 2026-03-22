@@ -1,5 +1,5 @@
-import initWasm, { WasmGame } from "../../../../pkg/ironsmith.js";
-import wasmUrl from "../../../../pkg/ironsmith_bg.wasm?url";
+import initWasm, { WasmGame } from "../../../wasm_demo/pkg/ironsmith.js";
+import wasmUrl from "../../../wasm_demo/pkg/ironsmith_bg.wasm?url";
 
 const WASM_ESTIMATED_SIZE = 12_500_000; // ~12MB fallback estimate
 
