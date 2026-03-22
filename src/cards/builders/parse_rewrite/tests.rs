@@ -2,6 +2,7 @@ use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
 use crate::ids::CardId;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
+use crate::static_abilities::StaticAbilityId;
 use crate::types::{CardType, Subtype, Supertype};
 
 use super::{
@@ -802,5 +803,110 @@ fn rewrite_semantic_parse_marks_plumb_additional_cost_as_non_choice() -> Result<
         Some(RewriteSemanticItem::Keyword(keyword))
             if keyword.kind == RewriteKeywordLineKind::AdditionalCost
     ));
+    Ok(())
+}
+
+#[test]
+fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result<(), CardTextError>
+{
+    let cases = vec![
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Poison")
+                .card_types(vec![CardType::Creature]),
+            "Whenever this creature deals damage to a player, that player gets a poison counter. The player gets another poison counter at the beginning of their next upkeep unless they pay {2} before that step. (A player with ten or more poison counters loses the game.)",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Unearth")
+                .card_types(vec![CardType::Artifact, CardType::Creature]),
+            "Permanents you control have \"Ward—Sacrifice a permanent.\"\nEach artifact card in your graveyard has unearth {1}{B}{R}. ({1}{B}{R}: Return the card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. Unearth only as a sorcery.)",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Sticker")
+                .card_types(vec![CardType::Sorcery]),
+            "Put an art sticker on a nonland permanent you own. Then ask a person outside the game to rate its new art on a scale from 1 to 5, where 5 is the best. When they rate the art, up to that many target creatures can't block this turn.",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Can’t Block")
+                .card_types(vec![CardType::Creature]),
+            "This creature can't be blocked by more than one creature.\nEach creature you control with a +1/+1 counter on it can't be blocked by more than one creature.",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 White Destroy")
+                .card_types(vec![CardType::Sorcery]),
+            "Destroy target creature if it's white. A creature destroyed this way can't be regenerated.\nDraw a card at the beginning of the next turn's upkeep.",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Spent")
+                .card_types(vec![CardType::Instant]),
+            "Create two 1/1 white Kithkin Soldier creature tokens if {W} was spent to cast this spell. Counter up to one target creature spell if {U} was spent to cast this spell. (Do both if {W}{U} was spent.)",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Goats")
+                .card_types(vec![CardType::Artifact]),
+            "{T}: Add {C}.\n{4}, {T}: Create a 0/1 white Goat creature token.\n{T}, Sacrifice X Goats: Add X mana of any one color. You gain X life.",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Exile Top")
+                .card_types(vec![CardType::Sorcery]),
+            "Shuffle your library, then exile the top four cards. You may cast any number of spells with mana value 5 or less from among them without paying their mana costs. Lands you control don't untap during your next untap step.",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Cloak")
+                .card_types(vec![CardType::Sorcery]),
+            "Exile target nontoken creature you own and the top two cards of your library in a face-down pile, shuffle that pile, then cloak those cards. They enter tapped. (To cloak a card, put it onto the battlefield face down as a 2/2 creature with ward {2}. Turn it face up any time for its mana cost if it's a creature card.)",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Toughness")
+                .card_types(vec![CardType::Instant]),
+            "Destroy target creature unless its controller pays life equal to its toughness. A creature destroyed this way can't be regenerated.",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Or")
+                .card_types(vec![CardType::Sorcery]),
+            "Destroy all lands or all creatures. Creatures destroyed this way can't be regenerated.",
+        ),
+        (
+            CardDefinitionBuilder::new(CardId::new(), "Section 9 Nonblack")
+                .card_types(vec![CardType::Sorcery]),
+            "Destroy two target nonblack creatures unless either one is a color the other isn't. They can't be regenerated.",
+        ),
+    ];
+
+    let mut failures = Vec::new();
+
+    for (builder, text) in cases {
+        let (definition, _) = match parse_text_with_annotations_rewrite_lowered(
+            builder,
+            text.to_string(),
+            false,
+        ) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                failures.push(format!(
+                    "former section-9 case failed to parse: {text}\n{err:?}"
+                ));
+                continue;
+            }
+        };
+        let has_fallback_text = crate::ability::extract_static_abilities(&definition.abilities)
+            .iter()
+            .any(|ability| {
+                matches!(
+                    ability.id(),
+                    StaticAbilityId::RuleFallbackText | StaticAbilityId::KeywordFallbackText
+                )
+            });
+        assert!(
+            !has_fallback_text,
+            "former section-9 case should lower without fallback text: {text}"
+        );
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{}",
+        failures.join("\n\n")
+    );
+
     Ok(())
 }

@@ -2797,16 +2797,41 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
 
 function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   const {
+    state,
     holdRule,
     setHoldRule,
     confirmEnabled,
     setConfirmEnabled,
+    cancelDecision,
   } = useGame();
+  const decisionIdentity = [
+    decision?.kind || "",
+    decision?.player ?? "",
+    decision?.source_id ?? "",
+    decision?.source_name || "",
+    decision?.reason || "",
+    decision?.description || "",
+    decision?.context_text || "",
+    decision?.consequence_text || "",
+  ].join("|");
+  const [combatActionState, setCombatActionState] = useState({ key: "", action: null });
+  const handleCombatActionChange = useCallback(
+    (nextAction) => {
+      setCombatActionState({ key: decisionIdentity, action: nextAction || null });
+    },
+    [decisionIdentity]
+  );
   if (!decision || (decision.kind !== "attackers" && decision.kind !== "blockers")) return null;
 
   const anchoredStyle = inline ? null : priorityAnchorStyle(anchor);
   const compactPortraitViewport = typeof window !== "undefined"
     && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
+  const combatAction = combatActionState.key === decisionIdentity ? combatActionState.action : null;
+  const canCancelDecision = canAct && !!state?.cancelable;
+  const canSubmitCombat = canAct
+    && !!combatAction
+    && !combatAction.disabled
+    && typeof combatAction.onSubmit === "function";
   const panelClass = inline
     ? "pointer-events-none absolute inset-0 z-[120] flex items-center px-2"
     : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]";
@@ -2820,11 +2845,37 @@ function CombatBar({ anchor = null, inline = false, decision, canAct }) {
   return (
     <div className={panelClass}>
       <div className={innerClass} style={anchoredStyle || undefined}>
-        <div className="min-w-0 flex-1">
+        <div className={cn("min-w-0 flex-1", compactPortraitViewport && "w-full")}>
+          <div className={cn("flex min-h-[46px] items-stretch gap-2", compactPortraitViewport && "flex-col")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="decision-neon-button decision-submit-button h-full min-w-[140px] flex-[1.2_1_0] self-stretch rounded-none px-3 text-[clamp(11px,0.88vw,14px)] font-bold uppercase"
+              disabled={!canSubmitCombat}
+              onClick={() => combatAction?.onSubmit?.()}
+            >
+              {combatAction?.label || (
+                decision.kind === "attackers" ? "Confirm Attackers (0)" : "Confirm Blockers (0)"
+              )}
+            </Button>
+            {canCancelDecision ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[96px] flex-[0.75_1_0] self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide"
+                disabled={!canCancelDecision}
+                onClick={() => cancelDecision()}
+              >
+                Cancel
+              </Button>
+            ) : null}
+          </div>
           <DecisionRouter
             decision={decision}
             canAct={canAct}
             combatInline
+            onCombatActionChange={handleCombatActionChange}
           />
         </div>
         <PriorityControlStack

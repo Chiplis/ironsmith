@@ -5692,6 +5692,25 @@ fn test_parse_each_creature_cant_be_blocked_by_more_than_one_creature() {
 }
 
 #[test]
+fn test_parse_each_creature_with_counter_cant_be_blocked_by_more_than_one_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Max Blockers Probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Each creature you control with a +1/+1 counter on it can't be blocked by more than one creature.")
+        .expect("filtered max-blockers line should parse");
+
+    let has_grant = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability) if static_ability.grants_abilities()
+        )
+    });
+    assert!(
+        has_grant,
+        "expected filtered max-blockers line to compile to an ability-granting static ability"
+    );
+}
+
+#[test]
 fn test_parse_each_creature_can_block_additional_creature_each_combat() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "High Ground Probe")
         .card_types(vec![CardType::Enchantment])

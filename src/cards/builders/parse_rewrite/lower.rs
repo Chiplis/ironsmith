@@ -66,7 +66,8 @@ use super::util::{
     parse_if_conditional_alternative_cost_line_lexed, parse_kicker_line_lexed,
     parse_level_up_line_lexed, parse_madness_line_lexed, parse_mana_symbol,
     parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_number_or_x_value,
-    parse_number_or_x_value_lexed, parse_offspring_line_lexed, parse_reinforce_line_lexed, parse_scryfall_mana_cost,
+    parse_number_or_x_value_lexed, parse_offspring_line_lexed, parse_reinforce_line_lexed,
+    parse_scryfall_mana_cost,
     parse_self_free_cast_alternative_cost_line_lexed, parse_squad_line_lexed,
     parse_transmute_line_lexed, parse_warp_line_lexed,
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
@@ -82,37 +83,6 @@ fn rewrite_unsupported_line_ast(
     reason: impl Into<String>,
 ) -> crate::cards::builders::LineAst {
     LineAst::StaticAbility(StaticAbility::unsupported_parser_line(raw_line, reason).into())
-}
-
-fn section9_compatibility_oracle_lines(text: &str) -> Option<Vec<String>> {
-    let lines = text
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            (!trimmed.is_empty()
-                && !trimmed.starts_with("Mana cost:")
-                && !trimmed.starts_with("Type:")
-                && !trimmed.starts_with("Color indicator:"))
-            .then_some(trimmed.to_string())
-        })
-        .collect::<Vec<_>>();
-    let oracle = lines.join("\n");
-    let supported = matches!(
-        oracle.as_str(),
-        "Whenever this creature deals damage to a player, that player gets a poison counter. The player gets another poison counter at the beginning of their next upkeep unless they pay {2} before that step. (A player with ten or more poison counters loses the game.)"
-            | "Permanents you control have \"Ward—Sacrifice a permanent.\"\nEach artifact card in your graveyard has unearth {1}{B}{R}. ({1}{B}{R}: Return the card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. Unearth only as a sorcery.)"
-            | "Put an art sticker on a nonland permanent you own. Then ask a person outside the game to rate its new art on a scale from 1 to 5, where 5 is the best. When they rate the art, up to that many target creatures can't block this turn."
-            | "This creature can't be blocked by more than one creature.\nEach creature you control with a +1/+1 counter on it can't be blocked by more than one creature."
-            | "Destroy target creature if it's white. A creature destroyed this way can't be regenerated.\nDraw a card at the beginning of the next turn's upkeep."
-            | "Create two 1/1 white Kithkin Soldier creature tokens if {W} was spent to cast this spell. Counter up to one target creature spell if {U} was spent to cast this spell. (Do both if {W}{U} was spent.)"
-            | "{T}: Add {C}.\n{4}, {T}: Create a 0/1 white Goat creature token.\n{T}, Sacrifice X Goats: Add X mana of any one color. You gain X life."
-            | "Shuffle your library, then exile the top four cards. You may cast any number of spells with mana value 5 or less from among them without paying their mana costs. Lands you control don't untap during your next untap step."
-            | "Exile target nontoken creature you own and the top two cards of your library in a face-down pile, shuffle that pile, then cloak those cards. They enter tapped. (To cloak a card, put it onto the battlefield face down as a 2/2 creature with ward {2}. Turn it face up any time for its mana cost if it's a creature card.)"
-            | "Destroy target creature unless its controller pays life equal to its toughness. A creature destroyed this way can't be regenerated."
-            | "Destroy all lands or all creatures. Creatures destroyed this way can't be regenerated."
-            | "Destroy two target nonblack creatures unless either one is a color the other isn't. They can't be regenerated."
-    );
-    supported.then_some(lines)
 }
 
 fn compat_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, CardTextError> {
@@ -142,50 +112,6 @@ fn parse_trigger_clause_from_text(
 fn parse_triggered_line_from_text(text: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     let tokens = lexed_tokens(text, line_index)?;
     rewrite_parse_triggered_line_lexed(&tokens)
-}
-
-fn try_section9_compatibility_definition(
-    mut builder: CardDefinitionBuilder,
-    text: &str,
-) -> Result<Option<(CardDefinition, ParseAnnotations)>, CardTextError> {
-    let Some(oracle_lines) = section9_compatibility_oracle_lines(text) else {
-        return Ok(None);
-    };
-
-    let mut card_types = Vec::new();
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("Mana cost:") {
-            builder = builder.mana_cost(parse_scryfall_mana_cost(rest.trim())?);
-        } else if let Some(rest) = trimmed.strip_prefix("Type:") {
-            let parsed = super::leaf::parse_type_line_rewrite(rest.trim())?;
-            card_types = parsed.card_types.clone();
-            builder = builder
-                .supertypes(parsed.supertypes)
-                .card_types(parsed.card_types)
-                .subtypes(parsed.subtypes);
-        }
-    }
-
-    let zones = if card_types
-        .iter()
-        .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery))
-    {
-        vec![Zone::Stack]
-    } else {
-        vec![Zone::Battlefield]
-    };
-
-    builder = builder.oracle_text(oracle_lines.join("\n"));
-    for line in oracle_lines {
-        builder.abilities.push(
-            Ability::static_ability(StaticAbility::rule_fallback_text(line.clone()))
-                .in_zones(zones.clone())
-                .with_text(&line),
-        );
-    }
-
-    Ok(Some((builder.build(), ParseAnnotations::default())))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1486,6 +1412,9 @@ pub(crate) fn lower_rewrite_statement_to_chunks(
 fn lower_rewrite_statement_to_chunks_impl(
     line: &super::RewriteStatementLine,
 ) -> Result<Vec<LineAst>, CardTextError> {
+    if let Some(unsupported_chunk) = lower_rewrite_statement_to_unsupported_chunk(line) {
+        return Ok(vec![unsupported_chunk]);
+    }
     if let Some(pact_chunk) = lower_rewrite_pact_statement_to_chunk(line)? {
         return Ok(vec![pact_chunk]);
     }
@@ -1501,6 +1430,21 @@ fn lower_rewrite_statement_to_chunks_impl(
         chunks.push(LineAst::Statement { effects });
     }
     Ok(chunks)
+}
+
+fn lower_rewrite_statement_to_unsupported_chunk(
+    line: &super::RewriteStatementLine,
+) -> Option<LineAst> {
+    let normalized = line.text.trim().to_ascii_lowercase();
+    if normalized.contains("ask a person outside the game to rate its new art on a scale from 1 to 5")
+    {
+        return Some(rewrite_unsupported_line_ast(
+            line.info.raw_line.as_str(),
+            "unsupported outside-the-game rating clause",
+        ));
+    }
+
+    None
 }
 
 fn lower_rewrite_soul_partition_statement_to_chunk(
@@ -3855,29 +3799,6 @@ pub(crate) fn parse_text_with_annotations_rewrite_lowered(
     text: String,
     allow_unsupported: bool,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let (doc, _) =
-        match parse_text_with_annotations_rewrite(builder.clone(), text.clone(), allow_unsupported)
-        {
-            Ok(parsed) => parsed,
-            Err(err) => {
-                if !allow_unsupported
-                    && let Some(compat) =
-                        try_section9_compatibility_definition(builder.clone(), &text)?
-                {
-                    return Ok(compat);
-                }
-                return Err(err);
-            }
-        };
-    match lower_rewrite_document(doc) {
-        Ok(lowered) => Ok(lowered),
-        Err(err) => {
-            if !allow_unsupported
-                && let Some(compat) = try_section9_compatibility_definition(builder, &text)?
-            {
-                return Ok(compat);
-            }
-            Err(err)
-        }
-    }
+    let (doc, _) = parse_text_with_annotations_rewrite(builder, text, allow_unsupported)?;
+    lower_rewrite_document(doc)
 }

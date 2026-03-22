@@ -12,6 +12,7 @@ use super::sentence_helpers::*;
 use super::{
     parse_effect_sentence, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
     parse_token_copy_modifier_sentence,
+    trim_edge_punctuation,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -1648,7 +1649,8 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
         let mut sentence_tokens = strip_embedded_token_rules_text(sentence);
-        if sentence_tokens.is_empty() {
+        sentence_tokens = trim_edge_punctuation(&sentence_tokens);
+        if sentence_tokens.is_empty() || words(&sentence_tokens).is_empty() {
             sentence_idx += 1;
             continue;
         }

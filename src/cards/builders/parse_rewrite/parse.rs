@@ -499,6 +499,13 @@ fn parse_statement_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+    if normalized.contains("ask a person outside the game to rate its new art on a scale from 1 to 5")
+    {
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+        }));
+    }
     if looks_like_pact_next_upkeep_line(normalized) {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
@@ -535,6 +542,33 @@ fn parse_statement_line_cst(
         info: line.info.clone(),
         text: normalized.to_string(),
     }))
+}
+
+fn parse_former_section9_unsupported_line_cst(
+    line: &PreprocessedLine,
+) -> Option<UnsupportedLineCst> {
+    let normalized = line.info.normalized.normalized.as_str();
+    let canonical = normalized.replace(['\'', '’'], "");
+    let canonical_without_hyphens = canonical.replace('-', "");
+    let matches_former_section9_gap = canonical
+        == "destroy target creature if its white. a creature destroyed this way cant be regenerated."
+        || canonical
+            == "create two 1/1 white kithkin soldier creature tokens if {w} was spent to cast this spell. counter up to one target creature spell if {u} was spent to cast this spell."
+        || canonical == "{t}, sacrifice x goats: add x mana of any one color. you gain x life."
+        || canonical
+            == "shuffle your library, then exile the top four cards. you may cast any number of spells with mana value 5 or less from among them without paying their mana costs. lands you control dont untap during your next untap step."
+        || canonical_without_hyphens
+            == "exile target nontoken creature you own and the top two cards of your library in a facedown pile, shuffle that pile, then cloak those cards. they enter tapped."
+        || canonical
+            == "destroy target creature unless its controller pays life equal to its toughness. a creature destroyed this way cant be regenerated."
+        || canonical
+            == "destroy all lands or all creatures. creatures destroyed this way cant be regenerated."
+        || canonical
+            == "destroy two target nonblack creatures unless either one is a color the other isnt. they cant be regenerated.";
+    matches_former_section9_gap.then(|| UnsupportedLineCst {
+        info: line.info.clone(),
+        reason_code: "former-section9-line-not-yet-supported",
+    })
 }
 
 fn looks_like_statement_line(normalized: &str) -> bool {
@@ -1058,8 +1092,6 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
     } else if normalized.contains("create a token that's a copy of that aura attached to that creature")
     {
         "unsupported aura-copy attachment fanout clause"
-    } else if normalized.contains("at the beginning of their next upkeep") {
-        "unsupported delayed return timing clause"
     } else if normalized.contains("target face-down creature") {
         "unsupported face-down clause"
     } else if normalized == "creatures you control have haste and attack each combat if able."
@@ -1089,8 +1121,6 @@ fn diagnose_known_unsupported_rewrite_line(normalized: &str) -> Option<CardTextE
         "unsupported for-as-long-as play/cast permission clause"
     } else if normalized.contains("with power or toughness 1 or less can't be blocked") {
         "unsupported power-or-toughness cant-be-blocked subject"
-    } else if normalized.contains("with a +1/+1 counter on it can't be blocked") {
-        "unsupported anthem subject"
     } else if normalized.contains("discard up to two permanents, then draw that many cards") {
         "unsupported discard qualifier clause"
     } else if normalized.contains("if your life total is less than or equal to half your starting life total plus one")
@@ -1294,6 +1324,11 @@ pub(crate) fn parse_document_cst(
                 }
 
                 let normalized = line.info.normalized.normalized.as_str();
+                if let Some(unsupported) = parse_former_section9_unsupported_line_cst(line) {
+                    lines.push(RewriteLineCst::Unsupported(unsupported));
+                    idx += 1;
+                    continue;
+                }
                 if let Some((prefix, suffix)) =
                     split_trailing_keyword_activation_sentence(normalized)
                 {

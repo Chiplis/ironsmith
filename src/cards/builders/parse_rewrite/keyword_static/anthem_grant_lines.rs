@@ -500,10 +500,14 @@ pub(crate) fn parse_granted_keyword_static_line(
             return Ok(Some(compiled));
         }
 
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing granted-keyword clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
+        let keyword_words = words(&keyword_tokens);
+        let ignore_keyword_reminder = matches!(keyword_words.first().copied(), Some("unearth"));
+        if !ignore_keyword_reminder {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing granted-keyword clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
     }
 
     let Some(actions) = parse_ability_line(&keyword_tokens) else {
@@ -581,25 +585,25 @@ pub(crate) fn parse_all_creatures_lose_flying_line(
 pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    // Familiar Ground: "Each creature can't be blocked by more than one creature."
     let clause_words = words(tokens);
     if clause_words.len() < 10 {
         return Ok(None);
     }
-    let (subject_len, you_control) = if clause_words.starts_with(&[
-        "each", "creature", "you", "control", "cant", "be", "blocked", "by", "more", "than",
-    ]) {
-        (4usize, true)
-    } else if clause_words.starts_with(&[
-        "each", "creature", "cant", "be", "blocked", "by", "more", "than",
-    ]) {
-        (2usize, false)
-    } else {
+    let Some(cant_idx) = clause_words
+        .windows(3)
+        .position(|window| window == ["cant", "be", "blocked"])
+    else {
         return Ok(None);
     };
+    if cant_idx < 2 || !clause_words.starts_with(&["each", "creature"]) {
+        return Ok(None);
+    }
+    let tail = &clause_words[cant_idx..];
+    if !tail.starts_with(&["cant", "be", "blocked", "by", "more", "than"]) {
+        return Ok(None);
+    }
 
-    // "Each creature (you control) can't be blocked by more than <N> creature(s)"
-    let amount_word_idx = subject_len + 6;
+    let amount_word_idx = cant_idx + 6;
     let Some(amount_token_idx) = token_index_for_word_index(tokens, amount_word_idx) else {
         return Ok(None);
     };
@@ -614,11 +618,22 @@ pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
         .first()
         .is_some_and(|w| *w == "creature" || *w == "creatures")
     {
-        let filter = if you_control {
-            ObjectFilter::creature().you_control()
-        } else {
-            ObjectFilter::creature()
+        let Some(subject_end) = token_index_for_word_index(tokens, cant_idx) else {
+            return Ok(None);
         };
+        let mut filter_tokens = trim_commas(&tokens[..subject_end]);
+        if filter_tokens.first().is_some_and(|token| token.is_word("each")) {
+            filter_tokens = trim_commas(&filter_tokens[1..]);
+        }
+        if filter_tokens.is_empty() {
+            return Ok(None);
+        }
+        let filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported cant-be-blocked-by-more-than subject (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
         let granted = StaticAbility::cant_be_blocked_by_more_than(amount as usize);
         return Ok(Some(StaticAbilityAst::GrantStaticAbility {
             filter,
