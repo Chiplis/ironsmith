@@ -8039,6 +8039,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         return "Unearth".to_string();
     }
+    if let Some(_effect) = effect.downcast_ref::<crate::effects::DemonicConsultationEffect>() {
+        return "Exile the top six cards of your library, then reveal cards from the top of your library until you reveal the chosen card. Put that card into your hand and exile all other cards revealed this way".to_string();
+    }
+    if let Some(_effect) = effect.downcast_ref::<crate::effects::SavinesReclamationEffect>() {
+        return "If this spell was cast from a graveyard, copy this spell and you may choose a new target for the copy".to_string();
+    }
+    if let Some(_effect) = effect.downcast_ref::<crate::effects::TaintedPactEffect>() {
+        return "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first".to_string();
+    }
+    if let Some(_effect) = effect.downcast_ref::<crate::effects::ThassasOracleEffect>() {
+        return "Look at the top X cards of your library, where X is your devotion to blue. Put up to one of them on top of your library and the rest on the bottom of your library in a random order. If X is greater than or equal to the number of cards in your library, you win the game".to_string();
+    }
+    if let Some(_effect) = effect.downcast_ref::<crate::effects::YasharnImplacableEarthEffect>() {
+        return "Search your library for a basic Forest card and a basic Plains card, reveal those cards, put them into your hand, then shuffle".to_string();
+    }
     if let Some(vote) = effect.downcast_ref::<crate::effects::VoteEffect>() {
         let choices = vote
             .options

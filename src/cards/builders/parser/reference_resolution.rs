@@ -784,6 +784,10 @@ fn advance_reference_frame_for_effect(
         | EffectAst::GrantPlayTaggedUntilYourNextTurn { .. }
         | EffectAst::CastTagged { .. }
         | EffectAst::ExileInsteadOfGraveyardThisTurn { .. }
+        | EffectAst::DemonicConsultation { .. }
+        | EffectAst::SavinesReclamationFlashbackCopy
+        | EffectAst::TaintedPact
+        | EffectAst::ThassasOracle
         | EffectAst::RepeatThisProcess
         | EffectAst::RepeatThisProcessOnce
         | EffectAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
@@ -816,7 +820,8 @@ fn advance_reference_frame_for_effect(
         | EffectAst::VoteOption { .. }
         | EffectAst::VoteExtra { .. }
         | EffectAst::ReturnAllToHand { .. }
-        | EffectAst::ReturnAllToHandOfChosenColor { .. } => {}
+        | EffectAst::ReturnAllToHandOfChosenColor { .. }
+        | EffectAst::YasharnImplacableEarthSearch => {}
     }
 
     Ok(())

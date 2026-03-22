@@ -1110,12 +1110,18 @@ mod tests {
     impl DecisionMaker for ChooseAirshipReplacementDecisionMaker {
         fn decide_options(
             &mut self,
-            _game: &GameState,
+            game: &GameState,
             ctx: &crate::decisions::context::SelectOptionsContext,
         ) -> Vec<usize> {
             ctx.options
                 .iter()
-                .find(|option| option.legal && option.description.contains("this permanent"))
+                .find(|option| {
+                    option.legal
+                        && option.object_id.is_some_and(|object_id| {
+                            game.current_name(object_id)
+                                .is_some_and(|name| name == "Airship Engine Room")
+                        })
+                })
                 .map(|option| vec![option.index])
                 .unwrap_or_default()
         }
@@ -1127,12 +1133,18 @@ mod tests {
     impl DecisionMaker for ChooseSpelunkingReplacementDecisionMaker {
         fn decide_options(
             &mut self,
-            _game: &GameState,
+            game: &GameState,
             ctx: &crate::decisions::context::SelectOptionsContext,
         ) -> Vec<usize> {
             ctx.options
                 .iter()
-                .find(|option| option.legal && !option.description.contains("this permanent"))
+                .find(|option| {
+                    option.legal
+                        && option.object_id.is_some_and(|object_id| {
+                            game.current_name(object_id)
+                                .is_some_and(|name| name == "Spelunking")
+                        })
+                })
                 .map(|option| vec![option.index])
                 .unwrap_or_default()
         }

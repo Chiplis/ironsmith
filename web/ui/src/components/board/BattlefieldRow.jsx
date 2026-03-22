@@ -558,12 +558,12 @@ export default function BattlefieldRow({
     if (!allowVerticalScroll || !layout) {
       row.style.overflowY = "visible";
       row.style.overflowX = "visible";
+      row.style.overscrollBehaviorY = "";
       return;
     }
-    const contentHeight =
-      (layout.rows * layout.cardHeight) + (Math.max(layout.rows - 1, 0) * layout.gap);
-    row.style.overflowY = contentHeight > (layout.viewportHeight + 1) ? "auto" : "visible";
-    row.style.overflowX = "visible";
+    row.style.overflowY = "auto";
+    row.style.overflowX = "hidden";
+    row.style.overscrollBehaviorY = "contain";
   }, [allowVerticalScroll]);
   const handleGhostDone = useCallback((ghostKey) => {
     setGhosts((existing) => existing.filter((entry) => entry.key !== ghostKey));

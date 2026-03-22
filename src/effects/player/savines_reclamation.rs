@@ -12,12 +12,27 @@ use crate::zone::Zone;
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavinesReclamationEffect {
     pub target: ChooseSpec,
+    mode: SavinesReclamationMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SavinesReclamationMode {
+    Full,
+    CopyIfCastFromGraveyard,
 }
 
 impl SavinesReclamationEffect {
     pub fn new() -> Self {
         Self {
             target: Self::target_spec(),
+            mode: SavinesReclamationMode::Full,
+        }
+    }
+
+    pub fn copy_if_cast_from_graveyard() -> Self {
+        Self {
+            target: Self::target_spec(),
+            mode: SavinesReclamationMode::CopyIfCastFromGraveyard,
         }
     }
 
@@ -56,7 +71,10 @@ impl EffectExecutor for SavinesReclamationEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let return_effect =
             Effect::return_from_graveyard_to_battlefield(self.target.clone(), false);
-        let first = execute_effect(game, &return_effect, ctx)?;
+        let first = match self.mode {
+            SavinesReclamationMode::Full => execute_effect(game, &return_effect, ctx)?,
+            SavinesReclamationMode::CopyIfCastFromGraveyard => EffectOutcome::resolved(),
+        };
 
         if !Self::was_cast_from_graveyard(game, ctx) {
             return Ok(first);
@@ -113,6 +131,9 @@ impl EffectExecutor for SavinesReclamationEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
+        match self.mode {
+            SavinesReclamationMode::Full => Some(&self.target),
+            SavinesReclamationMode::CopyIfCastFromGraveyard => None,
+        }
     }
 }

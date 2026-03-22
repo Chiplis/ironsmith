@@ -1918,6 +1918,9 @@ pub(crate) enum EffectAst {
         filter: Option<ObjectFilter>,
         tag: TagKey,
     },
+    DemonicConsultation {
+        chosen_name_tag: TagKey,
+    },
     ChoosePlayer {
         chooser: PlayerAst,
         filter: PlayerFilter,
@@ -1925,6 +1928,7 @@ pub(crate) enum EffectAst {
         random: bool,
         exclude_previous_choices: usize,
     },
+    SavinesReclamationFlashbackCopy,
     ChooseSpellCastHistory {
         chooser: PlayerAst,
         cast_by: PlayerAst,
@@ -1938,6 +1942,8 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         excluded_subtypes: Vec<Subtype>,
     },
+    TaintedPact,
+    ThassasOracle,
     RepeatThisProcess,
     RepeatThisProcessOnce,
     May {
@@ -2274,6 +2280,7 @@ pub(crate) enum EffectAst {
         count: ChoiceCount,
         tapped: bool,
     },
+    YasharnImplacableEarthSearch,
     ShuffleGraveyardIntoLibrary {
         player: PlayerAst,
     },

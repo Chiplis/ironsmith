@@ -1,6 +1,10 @@
 //! Savine's Reclamation card definition.
 
+use super::CardDefinitionBuilder;
 use crate::cards::CardDefinition;
+use crate::ids::CardId;
+use crate::mana::{ManaCost, ManaSymbol};
+use crate::types::CardType;
 
 /// Savine's Reclamation - {4}{W}
 /// Sorcery
@@ -8,7 +12,16 @@ use crate::cards::CardDefinition;
 /// If this spell was cast from a graveyard, copy this spell and you may choose a new target for the copy.
 /// Flashback {5}{W}
 pub fn savines_reclamation() -> CardDefinition {
-    crate::cards::handwritten_runtime::savines_reclamation()
+    CardDefinitionBuilder::new(CardId::new(), "Savine's Reclamation")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return target permanent card with mana value 3 or less from your graveyard to the battlefield.\nIf this spell was cast from a graveyard, copy this spell and you may choose a new target for the copy.\nFlashback {5}{W}",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]
@@ -39,7 +52,7 @@ mod tests {
                 .as_ref()
                 .expect("spell effect exists")
                 .len(),
-            1
+            2
         );
     }
 

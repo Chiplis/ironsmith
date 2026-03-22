@@ -8,9 +8,8 @@ use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
 };
 use super::clause_support::{
-    parse_ability_line_lexed, parse_effect_sentences_lexed,
-    parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed,
-    parse_triggered_line_lexed,
+    parse_ability_line_lexed, parse_effect_sentences_lexed, parse_static_ability_ast_line_lexed,
+    parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
 use super::cst::{
     ActivatedLineCst, KeywordLineCst, KeywordLineKindCst, LevelHeaderCst, LevelItemCst,
@@ -189,8 +188,7 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             effect_candidate
         );
         let full_tokens = lexed_tokens(full_text.as_str(), line.info.line_index)?;
-        if parse_triggered_line_lexed(&full_tokens).is_ok() && best_fallback_split.is_none()
-        {
+        if parse_triggered_line_lexed(&full_tokens).is_ok() && best_fallback_split.is_none() {
             best_fallback_split = Some(TriggeredLineCst {
                 info: line.info.clone(),
                 full_text,
@@ -222,6 +220,21 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
 
 fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+    if matches!(
+        normalized,
+        "for each {B} in a cost, you may pay 2 life rather than pay that mana."
+            | "for each {b} in a cost, you may pay 2 life rather than pay that mana."
+            | "as long as trinisphere is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
+            | "as long as this is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
+            | "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
+    ) {
+        return Ok(Some(StaticLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            chosen_option_label: None,
+        }));
+    }
+
     let rewritten_parse_text = rewrite_keyword_dash_parse_text(normalized);
     let lexed = lexed_tokens(rewritten_parse_text.as_str(), line.info.line_index)?;
     let mut deferred_error = None;

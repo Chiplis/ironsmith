@@ -1,7 +1,25 @@
+use super::CardDefinitionBuilder;
+use crate::card::PowerToughness;
 use crate::cards::CardDefinition;
+use crate::ids::CardId;
+use crate::mana::{ManaCost, ManaSymbol};
+use crate::types::{CardType, Subtype, Supertype};
 
 pub fn yasharn_implacable_earth() -> CardDefinition {
-    crate::cards::handwritten_runtime::yasharn_implacable_earth()
+    CardDefinitionBuilder::new(CardId::new(), "Yasharn, Implacable Earth")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::White],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental, Subtype::Boar])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "When Yasharn, Implacable Earth enters the battlefield, search your library for a basic Forest card and a basic Plains card, reveal those cards, put them into your hand, then shuffle.\nPlayers can't pay life or sacrifice nonland permanents to cast spells or activate abilities.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

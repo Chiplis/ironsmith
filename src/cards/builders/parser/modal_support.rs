@@ -7,9 +7,7 @@ use crate::target::PlayerFilter;
 
 use super::LowercaseWordView;
 use super::activation_and_restrictions::infer_activated_functional_zones_lexed;
-use super::clause_support::{
-    parse_effect_sentences_lexed, parse_trigger_clause_lexed,
-};
+use super::clause_support::{parse_effect_sentences_lexed, parse_trigger_clause_lexed};
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 use super::keyword_static::parse_where_x_value_clause_lexed;
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_rewrite};

@@ -279,6 +279,12 @@ impl ReplacementOption {
     }
 }
 
+/// Build the replacement-choice label from the object applying the effect.
+pub fn replacement_option_description(game: &GameState, source: ObjectId) -> String {
+    game.current_name(source)
+        .unwrap_or_else(|| "Unknown object".to_string())
+}
+
 /// Specification for choosing a replacement effect to apply.
 #[derive(Debug, Clone)]
 pub struct ReplacementSpec {
@@ -317,7 +323,7 @@ impl DecisionSpec for ReplacementSpec {
         let options: Vec<SelectableOption> = self
             .options
             .iter()
-            .map(|o| SelectableOption::new(o.index, &o.description))
+            .map(|o| SelectableOption::new(o.index, &o.description).with_object(o.source))
             .collect();
 
         DecisionContext::SelectOptions(SelectOptionsContext::new(

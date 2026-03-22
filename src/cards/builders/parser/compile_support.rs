@@ -4301,6 +4301,32 @@ fn try_compile_player_resource_and_choice_effect(
             Effect::win_the_game,
             Effect::win_the_game_player,
         )?,
+        EffectAst::DemonicConsultation { chosen_name_tag } => (
+            vec![Effect::new(crate::effects::DemonicConsultationEffect::new(
+                chosen_name_tag.clone(),
+            ))],
+            Vec::new(),
+        ),
+        EffectAst::SavinesReclamationFlashbackCopy => (
+            vec![Effect::new(
+                crate::effects::SavinesReclamationEffect::copy_if_cast_from_graveyard(),
+            )],
+            Vec::new(),
+        ),
+        EffectAst::TaintedPact => (
+            vec![Effect::new(crate::effects::TaintedPactEffect)],
+            Vec::new(),
+        ),
+        EffectAst::ThassasOracle => (
+            vec![Effect::new(crate::effects::ThassasOracleEffect)],
+            Vec::new(),
+        ),
+        EffectAst::YasharnImplacableEarthSearch => (
+            vec![Effect::new(
+                crate::effects::YasharnImplacableEarthEffect::new(),
+            )],
+            Vec::new(),
+        ),
         EffectAst::PreventAllCombatDamage { duration } => (
             vec![Effect::prevent_all_combat_damage(duration.clone())],
             Vec::new(),

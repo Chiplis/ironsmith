@@ -459,6 +459,104 @@ fn parse_static_ability_ast_line_lowered(
 pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let lowered = lowercase_word_tokens(tokens);
+    let words = words(&lowered);
+    if matches!(
+        words.as_slice(),
+        [
+            "as",
+            "long",
+            "as",
+            "trinisphere",
+            "is",
+            "untapped",
+            "each",
+            "spell",
+            "that",
+            "would",
+            "cost",
+            "less",
+            "than",
+            "three",
+            "mana",
+            "to",
+            "cast",
+            "costs",
+            "three",
+            "mana",
+            "to",
+            "cast",
+        ] | [
+            "as", "long", "as", "this", "is", "untapped", "each", "spell", "that", "would", "cost",
+            "less", "than", "three", "mana", "to", "cast", "costs", "three", "mana", "to", "cast",
+        ]
+    ) {
+        return Ok(Some(vec![
+            StaticAbility::minimum_spell_total_mana(3).into(),
+        ]));
+    }
+    if matches!(
+        words.as_slice(),
+        [
+            "players",
+            "cant",
+            "pay",
+            "life",
+            "or",
+            "sacrifice",
+            "nonland",
+            "permanents",
+            "to",
+            "cast",
+            "spells",
+            "or",
+            "activate",
+            "abilities",
+        ] | [
+            "players",
+            "can't",
+            "pay",
+            "life",
+            "or",
+            "sacrifice",
+            "nonland",
+            "permanents",
+            "to",
+            "cast",
+            "spells",
+            "or",
+            "activate",
+            "abilities",
+        ]
+    ) {
+        return Ok(Some(vec![
+            StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate().into(),
+        ]));
+    }
+    if lowered.len() == 16
+        && lowered[0].is_word("for")
+        && lowered[1].is_word("each")
+        && lowered[2].kind == TokenKind::ManaGroup
+        && matches!(lowered[2].slice.as_str(), "{B}" | "{b}")
+        && lowered[3].is_word("in")
+        && lowered[4].is_word("a")
+        && lowered[5].is_word("cost")
+        && lowered[6].is_word("you")
+        && lowered[7].is_word("may")
+        && lowered[8].is_word("pay")
+        && lowered[9].is_word("2")
+        && lowered[10].is_word("life")
+        && lowered[11].is_word("rather")
+        && lowered[12].is_word("than")
+        && lowered[13].is_word("pay")
+        && lowered[14].is_word("that")
+        && lowered[15].is_word("mana")
+    {
+        return Ok(Some(vec![
+            StaticAbility::krrik_black_mana_may_be_paid_with_life().into(),
+        ]));
+    }
+
     if let Some(ability) = parse_activated_abilities_cant_be_activated_line_lexed(tokens)? {
         return Ok(Some(vec![ability.into()]));
     }
@@ -466,7 +564,6 @@ pub(crate) fn parse_static_ability_ast_line_lexed(
         return Ok(Some(vec![ability.into()]));
     }
 
-    let lowered = lowercase_word_tokens(tokens);
     parse_static_ability_ast_line_lowered(&lowered)
 }
 

@@ -1163,8 +1163,8 @@ fn rewrite_lexed_effect_sentence_matches_wrapper_pre_diagnostic_clause_helpers()
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify clause helper probe");
         let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-        let wrapper =
-            parse_effect_sentence_lexed(&compat).expect("wrapper clause helper sentence should parse");
+        let wrapper = parse_effect_sentence_lexed(&compat)
+            .expect("wrapper clause helper sentence should parse");
         let native =
             parse_effect_sentence_lexed(&lexed).expect("lexed clause helper sentence should parse");
 
@@ -1193,7 +1193,8 @@ fn rewrite_lexed_effect_sentence_matches_wrapper_where_x_clause() {
     let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
     let native = parse_effect_sentence_lexed(&lexed).expect("lexed where-x sentence should parse");
-    let wrapper = parse_effect_sentence_lexed(&compat).expect("wrapper where-x sentence should parse");
+    let wrapper =
+        parse_effect_sentence_lexed(&compat).expect("wrapper where-x sentence should parse");
 
     assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
@@ -1347,8 +1348,7 @@ fn rewrite_lexed_effect_sequence_preserves_for_each_player_doesnt_predicate() {
     let lexed =
         lex_line(text, 0).expect("rewrite lexer should classify for-each-player-doesnt sequence");
 
-    let parsed =
-        super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("ForEachPlayerDoesNot"), "{debug}");

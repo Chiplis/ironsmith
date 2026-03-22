@@ -52,6 +52,142 @@ fn lowercase_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     lowered
 }
 
+fn parse_exact_card_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let lowered = lowercase_word_tokens(tokens);
+    let sentence_words = words(&lowered);
+
+    if sentence_words.as_slice()
+        == [
+            "choose", "a", "card", "name", "exile", "the", "top", "six", "cards", "of", "your",
+            "library", "then", "reveal", "cards", "from", "the", "top", "of", "your", "library",
+            "until", "you", "reveal", "the", "chosen", "card", "put", "that", "card", "into",
+            "your", "hand", "and", "exile", "all", "other", "cards", "revealed", "this", "way",
+        ]
+    {
+        let tag = TagKey::from("chosen_name");
+        return Some(vec![
+            EffectAst::ChooseCardName {
+                player: PlayerAst::You,
+                filter: None,
+                tag: tag.clone(),
+            },
+            EffectAst::DemonicConsultation {
+                chosen_name_tag: tag,
+            },
+        ]);
+    }
+
+    if sentence_words.as_slice()
+        == [
+            "exile",
+            "the",
+            "top",
+            "card",
+            "of",
+            "your",
+            "library",
+            "you",
+            "may",
+            "put",
+            "that",
+            "card",
+            "into",
+            "your",
+            "hand",
+            "unless",
+            "it",
+            "has",
+            "the",
+            "same",
+            "name",
+            "as",
+            "another",
+            "card",
+            "exiled",
+            "this",
+            "way",
+            "repeat",
+            "this",
+            "process",
+            "until",
+            "you",
+            "put",
+            "a",
+            "card",
+            "into",
+            "your",
+            "hand",
+            "or",
+            "you",
+            "exile",
+            "two",
+            "cards",
+            "with",
+            "the",
+            "same",
+            "name",
+            "whichever",
+            "comes",
+            "first",
+        ]
+    {
+        return Some(vec![EffectAst::TaintedPact]);
+    }
+
+    if sentence_words.as_slice()
+        == [
+            "look", "at", "the", "top", "x", "cards", "of", "your", "library", "where", "x", "is",
+            "your", "devotion", "to", "blue", "put", "up", "to", "one", "of", "them", "on", "top",
+            "of", "your", "library", "and", "the", "rest", "on", "the", "bottom", "of", "your",
+            "library", "in", "a", "random", "order", "if", "x", "is", "greater", "than", "or",
+            "equal", "to", "the", "number", "of", "cards", "in", "your", "library", "you", "win",
+            "the", "game",
+        ]
+    {
+        return Some(vec![EffectAst::ThassasOracle]);
+    }
+
+    if sentence_words.as_slice()
+        == [
+            "if",
+            "this",
+            "spell",
+            "was",
+            "cast",
+            "from",
+            "a",
+            "graveyard",
+            "copy",
+            "this",
+            "spell",
+            "and",
+            "you",
+            "may",
+            "choose",
+            "a",
+            "new",
+            "target",
+            "for",
+            "the",
+            "copy",
+        ]
+    {
+        return Some(vec![EffectAst::SavinesReclamationFlashbackCopy]);
+    }
+
+    if sentence_words.as_slice()
+        == [
+            "search", "your", "library", "for", "a", "basic", "forest", "card", "and", "a",
+            "basic", "plains", "card", "reveal", "those", "cards", "put", "them", "into", "your",
+            "hand", "then", "shuffle",
+        ]
+    {
+        return Some(vec![EffectAst::YasharnImplacableEarthSearch]);
+    }
+
+    None
+}
+
 struct SentenceInput {
     lowered: OnceCell<Vec<OwnedLexToken>>,
     lexed: Option<Vec<OwnedLexToken>>,
@@ -2093,6 +2229,10 @@ fn parse_effect_sentences_from_sentence_inputs(
 pub(crate) fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = parse_exact_card_effect_bundle_lexed(tokens) {
+        return Ok(effects);
+    }
+
     let sentences = split_lexed_sentences(tokens)
         .into_iter()
         .map(SentenceInput::from_lexed)

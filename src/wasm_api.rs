@@ -23,7 +23,6 @@ use crate::decisions::context::DecisionContext;
 use crate::game_loop::{
     ActivationStage, CastStage, PendingPriorityContinuation, PriorityLoopState, PriorityResponse,
     advance_priority_with_dm, apply_decision_context_with_dm, apply_priority_response_with_dm,
-    run_priority_loop_with,
 };
 use crate::game_state::{GameState, StackEntry, Target};
 use crate::ids::{CardId, ObjectId, PlayerId, restore_id_counters, snapshot_id_counters};
@@ -6689,17 +6688,12 @@ impl WasmGame {
             )
             .map_err(|e| format!("{e}")),
             ReplayRoot::Advance => {
-                if nested_answers.is_empty() {
-                    advance_priority_with_dm(
-                        &mut self.game,
-                        &mut self.trigger_queue,
-                        &mut replay_dm,
-                    )
+                // Resume only until the next externally visible priority/decision boundary.
+                // Using run_priority_loop_with here would auto-pass any fresh pass-only
+                // windows after a nested answer (for example, after trigger ordering),
+                // which skips the per-trigger priority opportunities players must get.
+                advance_priority_with_dm(&mut self.game, &mut self.trigger_queue, &mut replay_dm)
                     .map_err(|e| format!("{e}"))
-                } else {
-                    run_priority_loop_with(&mut self.game, &mut self.trigger_queue, &mut replay_dm)
-                        .map_err(|e| format!("{e}"))
-                }
             }
             ReplayRoot::AddCardToZone {
                 player,
@@ -8556,7 +8550,7 @@ mod tests {
     use crate::object::CounterType;
     use crate::provenance::ProvNodeId;
     use crate::triggers::{Trigger, TriggerEvent, check_triggers};
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
     use crate::wasm_api::colors_for_context;
     use crate::zone::Zone;
     use serde::Deserialize;
@@ -12874,12 +12868,42 @@ mod tests {
 
         dispatch_select_options(&mut wasm, &[0, 1]);
 
-        for _ in 0..8 {
-            match wasm.pending_decision.as_ref() {
-                Some(DecisionContext::Priority(_)) => dispatch_pass_priority(&mut wasm),
-                _ => break,
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(ctx)) => {
+                assert_eq!(
+                    ctx.player, alice,
+                    "after ordering simultaneous triggers, the active player should receive the first new priority window"
+                );
+            }
+            other => {
+                panic!("expected a fresh priority window after ordering triggers, got {other:?}")
             }
         }
+        assert_eq!(
+            wasm.game.stack.len(),
+            2,
+            "ordering triggers should not auto-resolve any stack entries"
+        );
+
+        dispatch_pass_priority(&mut wasm);
+
+        match wasm.pending_decision.as_ref() {
+            Some(DecisionContext::Priority(ctx)) => {
+                assert_eq!(
+                    ctx.player,
+                    PlayerId::from_index(1),
+                    "one pass should hand priority to the opponent without resolving a trigger"
+                );
+            }
+            other => panic!("expected opponent priority after one pass, got {other:?}"),
+        }
+        assert_eq!(
+            wasm.game.stack.len(),
+            2,
+            "a single pass must not resolve the top trigger in multiplayer-style priority"
+        );
+
+        dispatch_pass_priority(&mut wasm);
 
         let first_boolean_source = match wasm.pending_decision.as_ref() {
             Some(DecisionContext::Boolean(ctx)) => {
@@ -12894,6 +12918,11 @@ mod tests {
             }
             other => panic!("expected first resolving boolean prompt, got {other:?}"),
         };
+        assert_eq!(
+            wasm.game.stack.len(),
+            1,
+            "exactly one trigger should have resolved after both players pass"
+        );
 
         dispatch_select_options(&mut wasm, &[0]);
 

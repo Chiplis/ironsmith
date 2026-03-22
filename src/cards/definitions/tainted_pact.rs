@@ -1,6 +1,10 @@
 //! Tainted Pact card definition.
 
+use super::CardDefinitionBuilder;
 use crate::cards::CardDefinition;
+use crate::ids::CardId;
+use crate::mana::{ManaCost, ManaSymbol};
+use crate::types::CardType;
 
 /// Tainted Pact - {1}{B}
 /// Instant
@@ -9,7 +13,16 @@ use crate::cards::CardDefinition;
 /// process until you put a card into your hand or you exile two cards with the
 /// same name, whichever comes first.
 pub fn tainted_pact() -> CardDefinition {
-    crate::cards::handwritten_runtime::tainted_pact()
+    CardDefinitionBuilder::new(CardId::new(), "Tainted Pact")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

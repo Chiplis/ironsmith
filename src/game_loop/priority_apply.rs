@@ -1049,10 +1049,9 @@ pub(super) fn apply_replacement_choice_response(
                         crate::decision::ReplacementOption {
                             index: i,
                             source: e.source,
-                            description: game
-                                .object(e.source)
-                                .map(|obj| format!("Apply replacement effect from {}", obj.name))
-                                .unwrap_or_else(|| "Apply replacement effect".to_string()),
+                            description: crate::decisions::specs::replacement_option_description(
+                                game, e.source,
+                            ),
                         }
                     })
                 })
@@ -1070,6 +1069,7 @@ pub(super) fn apply_replacement_choice_response(
                 .iter()
                 .map(|opt| {
                     crate::decisions::context::SelectableOption::new(opt.index, &opt.description)
+                        .with_object(opt.source)
                 })
                 .collect();
             let ctx = crate::decisions::context::SelectOptionsContext::new(

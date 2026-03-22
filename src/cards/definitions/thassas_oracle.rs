@@ -1,6 +1,11 @@
 //! Thassa's Oracle card definition.
 
+use super::CardDefinitionBuilder;
+use crate::card::PowerToughness;
 use crate::cards::CardDefinition;
+use crate::ids::CardId;
+use crate::mana::{ManaCost, ManaSymbol};
+use crate::types::{CardType, Subtype};
 
 /// Thassa's Oracle - {U}{U}
 /// Creature — Merfolk Wizard
@@ -11,7 +16,18 @@ use crate::cards::CardDefinition;
 /// rest on the bottom of your library in a random order. If X is greater than or equal to
 /// the number of cards in your library, you win the game.
 pub fn thassas_oracle() -> CardDefinition {
-    crate::cards::handwritten_runtime::thassas_oracle()
+    CardDefinitionBuilder::new(CardId::new(), "Thassa's Oracle")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Merfolk, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(1, 3))
+        .parse_text(
+            "Flying\nWhen Thassa's Oracle enters the battlefield, look at the top X cards of your library, where X is your devotion to blue. Put up to one of them on top of your library and the rest on the bottom of your library in a random order. If X is greater than or equal to the number of cards in your library, you win the game.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]

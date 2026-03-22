@@ -125,9 +125,7 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec
     }
 }
 
-pub(crate) fn parse_ability_line_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<Vec<KeywordAction>> {
+pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         let words_view = LowercaseWordView::new(tokens);
         let mut words = words_view.to_word_refs();

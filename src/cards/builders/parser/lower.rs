@@ -23,9 +23,8 @@ use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
 };
 use super::clause_support::{
-    parse_ability_line_lexed, parse_effect_sentences_lexed,
-    parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed,
-    parse_triggered_line_lexed,
+    parse_ability_line_lexed, parse_effect_sentences_lexed, parse_static_ability_ast_line_lexed,
+    parse_trigger_clause_lexed, parse_triggered_line_lexed,
 };
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context,
@@ -1666,6 +1665,37 @@ fn lower_rewrite_static_to_chunk_impl(
 ) -> Result<LineAst, CardTextError> {
     let chosen_option_label =
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
+    if matches!(
+        line.text.as_str(),
+        "for each {B} in a cost, you may pay 2 life rather than pay that mana."
+            | "for each {b} in a cost, you may pay 2 life rather than pay that mana."
+    ) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::krrik_black_mana_may_be_paid_with_life().into()),
+            chosen_option_label,
+        );
+    }
+    if line.text
+        == "as long as trinisphere is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
+        || line.text
+            == "as long as this is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
+    {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::minimum_spell_total_mana(3).into()),
+            chosen_option_label,
+        );
+    }
+    if line.text
+        == "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
+    {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(
+                StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate().into(),
+            ),
+            chosen_option_label,
+        );
+    }
+
     let static_parse_text = rewrite_keyword_dash_parse_text_for_lowering(line.text.as_str());
     let lexed = lexed_tokens(static_parse_text.as_str(), line.info.line_index)?;
     if line.text.starts_with("level up ") {
@@ -1738,8 +1768,7 @@ fn lower_compound_buff_and_unblockable_static_chunk(
     let Some(mut abilities) = parse_static_ability_ast_line_lexed(&buff_tokens)? else {
         return Ok(None);
     };
-    let Some(unblockable_abilities) =
-        parse_static_ability_ast_line_lexed(&unblockable_tokens)?
+    let Some(unblockable_abilities) = parse_static_ability_ast_line_lexed(&unblockable_tokens)?
     else {
         return Ok(None);
     };
@@ -2235,8 +2264,7 @@ fn try_lower_optional_cost_with_cast_trigger(
         return Ok(None);
     };
 
-    let head_effects =
-        parse_effect_sentences_lexed(&stripped_head_tokens[head_effect_start..])?;
+    let head_effects = parse_effect_sentences_lexed(&stripped_head_tokens[head_effect_start..])?;
     let [
         EffectAst::ChooseObjects {
             filter,

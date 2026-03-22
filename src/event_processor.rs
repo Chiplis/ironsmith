@@ -1900,7 +1900,7 @@ fn process_with_dm(
 ) -> TraitEventResult {
     use crate::decisions::{
         make_decision,
-        specs::{ReplacementOption, ReplacementSpec},
+        specs::{ReplacementOption, ReplacementSpec, replacement_option_description},
     };
 
     let mut current_event = game.ensure_event_provenance(event);
@@ -1926,10 +1926,7 @@ fn process_with_dm(
                                 ReplacementOption::new(
                                     idx,
                                     e.source,
-                                    e.matcher
-                                        .as_ref()
-                                        .map(|m| m.display())
-                                        .unwrap_or_else(|| "Unknown effect".to_string()),
+                                    replacement_option_description(game, e.source),
                                 )
                             })
                         })
@@ -2477,7 +2474,7 @@ pub fn process_etb_with_event_and_dm(
     use crate::ability::AbilityKind;
     use crate::decisions::{
         make_decision,
-        specs::{ReplacementOption, ReplacementSpec},
+        specs::{ReplacementOption, ReplacementSpec, replacement_option_description},
     };
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
@@ -2656,10 +2653,7 @@ pub fn process_etb_with_event_and_dm(
                             ReplacementOption::new(
                                 idx,
                                 e.source,
-                                e.matcher
-                                    .as_ref()
-                                    .map(|m| m.display())
-                                    .unwrap_or_else(|| "Unknown effect".to_string()),
+                                replacement_option_description(game, e.source),
                             )
                         })
                     })

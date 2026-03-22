@@ -7,7 +7,6 @@
 
 pub mod builders;
 pub mod definitions;
-mod handwritten_runtime;
 pub mod tokens;
 
 pub use builders::{CardDefinitionBuilder, ParseAnnotations, TextSpan};

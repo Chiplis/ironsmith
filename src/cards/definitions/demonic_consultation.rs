@@ -1,6 +1,10 @@
 //! Demonic Consultation card definition.
 
+use super::CardDefinitionBuilder;
 use crate::cards::CardDefinition;
+use crate::ids::CardId;
+use crate::mana::{ManaCost, ManaSymbol};
+use crate::types::CardType;
 
 /// Demonic Consultation - {B}
 /// Instant
@@ -8,7 +12,13 @@ use crate::cards::CardDefinition;
 /// cards from the top of your library until you reveal the chosen card. Put
 /// that card into your hand and exile all other cards revealed this way.
 pub fn demonic_consultation() -> CardDefinition {
-    crate::cards::handwritten_runtime::demonic_consultation()
+    CardDefinitionBuilder::new(CardId::new(), "Demonic Consultation")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose a card name. Exile the top six cards of your library, then reveal cards from the top of your library until you reveal the chosen card. Put that card into your hand and exile all other cards revealed this way.",
+        )
+        .expect("Card text should be supported")
 }
 
 #[cfg(test)]
