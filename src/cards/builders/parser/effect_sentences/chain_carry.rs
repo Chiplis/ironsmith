@@ -2,9 +2,7 @@
 
 use super::super::compile_support::effects_reference_it_tag;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
-use super::super::lexer::{
-    OwnedLexToken, TokenKind, lexed_tokens_from_compat, lexed_words, trim_lexed_commas,
-};
+use super::super::lexer::{OwnedLexToken, TokenKind, lexed_words, trim_lexed_commas};
 use super::super::native_tokens::LowercaseWordView;
 use super::super::permission_helpers::{
     parse_additional_land_plays_clause_lexed, parse_permission_clause_spec_lexed,
@@ -76,7 +74,7 @@ pub(crate) fn parse_effect_chain_lexed(
         return parse_effect_chain_lexed(stripped);
     }
 
-    let clause_words = crate::cards::builders::parse_rewrite::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
     let starts_with_each_opponent = clause_words.starts_with(&["each", "opponent"])
         || clause_words.starts_with(&["each", "opponents"]);
     let starts_with_each_player = clause_words.starts_with(&["each", "player"])
@@ -265,7 +263,7 @@ pub(crate) fn parse_effect_chain_with_sentence_primitives_lexed(
         return parse_effect_chain_with_sentence_primitives_lexed(&tokens[1..]);
     }
 
-    let clause_words = crate::cards::builders::parse_rewrite::lexed_words(tokens);
+    let clause_words = crate::cards::builders::parser::lexed_words(tokens);
     if starts_with_until_end_of_turn_trigger_clause(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported until-end-of-turn permission clause (clause: '{}')",
@@ -1473,67 +1471,58 @@ pub(crate) fn parse_leading_player_may_lexed(tokens: &[OwnedLexToken]) -> Option
 }
 
 pub(crate) fn find_verb(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    find_verb_lexed(&lexed)
+    find_verb_lexed(tokens)
 }
 
 pub(crate) fn parse_effect_chain(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    parse_effect_chain_lexed(&lexed)
+    parse_effect_chain_lexed(tokens)
 }
 
 pub(crate) fn parse_or_action_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    parse_or_action_clause_lexed(&lexed)
+    parse_or_action_clause_lexed(tokens)
 }
 
 pub(crate) fn parse_effect_chain_with_sentence_primitives(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    parse_effect_chain_with_sentence_primitives_lexed(&lexed)
+    parse_effect_chain_with_sentence_primitives_lexed(tokens)
 }
 
 pub(crate) fn parse_effect_chain_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    parse_effect_chain_inner_lexed(&lexed)
+    parse_effect_chain_inner_lexed(tokens)
 }
 
 pub(crate) fn parse_effect_clause_with_trailing_if(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    parse_effect_clause_with_trailing_if_lexed(&lexed)
+    parse_effect_clause_with_trailing_if_lexed(tokens)
 }
 
 pub(crate) fn collapse_token_copy_next_end_step_exile_followup(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
-    let lexed = lexed_tokens_from_compat(tokens);
-    collapse_token_copy_next_end_step_exile_followup_lexed(effects, &lexed);
+    collapse_token_copy_next_end_step_exile_followup_lexed(effects, tokens);
 }
 
 pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
-    let lexed = lexed_tokens_from_compat(tokens);
-    collapse_token_copy_next_end_step_sacrifice_followup_lexed(effects, &lexed);
+    collapse_token_copy_next_end_step_sacrifice_followup_lexed(effects, tokens);
 }
 
 pub(crate) fn collapse_token_copy_end_of_combat_exile_followup(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) {
-    let lexed = lexed_tokens_from_compat(tokens);
-    collapse_token_copy_end_of_combat_exile_followup_lexed(effects, &lexed);
+    collapse_token_copy_end_of_combat_exile_followup_lexed(effects, tokens);
 }
 
 pub(crate) fn maybe_apply_carried_player_with_clause(
@@ -1541,8 +1530,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause(
     carried_context: CarryContext,
     clause_tokens: &[OwnedLexToken],
 ) {
-    let lexed = lexed_tokens_from_compat(clause_tokens);
-    maybe_apply_carried_player_with_clause_lexed(effect, carried_context, &lexed);
+    maybe_apply_carried_player_with_clause_lexed(effect, carried_context, clause_tokens);
 }
 
 pub(crate) fn parse_leading_player_may(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {

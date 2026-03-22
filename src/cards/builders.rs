@@ -170,7 +170,7 @@ fn finalize_overload_definitions(
 
     let overload_builder = original_builder.clone();
     let (overloaded_definition, _) =
-        parse_rewrite::parse_text_with_annotations(overload_builder, rewritten_text, false)?;
+        parser::parse_text_with_annotations(overload_builder, rewritten_text, false)?;
     let overloaded_effects = overloaded_definition.spell_effect.unwrap_or_default();
 
     for method in &mut definition.alternative_casts {
@@ -833,7 +833,7 @@ impl TextSpan {
     }
 }
 
-pub(crate) use crate::cards::builders::parse_rewrite::OwnedLexToken;
+pub(crate) use crate::cards::builders::parser::OwnedLexToken;
 
 #[derive(Debug, Clone)]
 pub(crate) enum LineAst {
@@ -2349,8 +2349,8 @@ pub(crate) enum IfResultPredicate {
 
 const IT_TAG: &str = "__it__";
 
-mod parse_rewrite;
-pub(crate) use parse_rewrite::*;
+mod parser;
+pub(crate) use parser::*;
 
 mod card_ast;
 pub(crate) use card_ast::*;
@@ -2800,7 +2800,7 @@ impl CardDefinitionBuilder {
         let text = text.into();
         let original_builder = self.clone();
         let (definition, annotations) =
-            parse_rewrite::parse_text_with_annotations(self, text.clone(), false)?;
+            parser::parse_text_with_annotations(self, text.clone(), false)?;
         let definition = finalize_definition(definition, &original_builder, &text)?;
         Ok((definition, annotations))
     }
@@ -2814,7 +2814,7 @@ impl CardDefinitionBuilder {
         let text = text.into();
         let original_builder = self.clone();
         let (definition, annotations) =
-            parse_rewrite::parse_text_with_annotations(self, text.clone(), true)?;
+            parser::parse_text_with_annotations(self, text.clone(), true)?;
         let definition = finalize_definition(definition, &original_builder, &text)?;
         Ok((definition, annotations))
     }
@@ -12511,22 +12511,22 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
     }
 
     #[test]
-    fn parser_sentence_helpers_do_not_use_legacy_fixed_helper_tags() {
+    fn parser_sentence_helpers_do_not_use_retired_fixed_helper_tags() {
         for source in [
-            include_str!("builders/parse_rewrite/effect_sentences/dispatch_entry.rs"),
-            include_str!("builders/parse_rewrite/effect_sentences/dispatch_inner.rs"),
-            include_str!("builders/parse_rewrite/effect_sentences/search_library.rs"),
-            include_str!("builders/parse_rewrite/effect_sentences/sentence_primitives.rs"),
+            include_str!("builders/parser/effect_sentences/dispatch_entry.rs"),
+            include_str!("builders/parser/effect_sentences/dispatch_inner.rs"),
+            include_str!("builders/parser/effect_sentences/search_library.rs"),
+            include_str!("builders/parser/effect_sentences/sentence_primitives.rs"),
         ] {
-            for legacy in [
+            for retired_tag in [
                 "\"exiled_0\"",
                 "\"looked_0\"",
                 "\"chosen_0\"",
                 "\"revealed_0\"",
             ] {
                 assert!(
-                    !source.contains(legacy),
-                    "legacy fixed helper tag {legacy} should not appear in parser helpers"
+                    !source.contains(retired_tag),
+                    "retired fixed helper tag {retired_tag} should not appear in parser helpers"
                 );
             }
         }

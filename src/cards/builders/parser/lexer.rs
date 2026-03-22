@@ -196,10 +196,6 @@ pub(crate) fn lexed_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
     tokens.iter().filter_map(OwnedLexToken::as_word).collect()
 }
 
-pub(crate) fn lexed_tokens_from_compat(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    tokens.to_vec()
-}
-
 #[allow(dead_code)]
 pub(crate) fn trim_lexed_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut start = 0usize;

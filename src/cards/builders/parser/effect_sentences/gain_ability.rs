@@ -1123,7 +1123,7 @@ mod tests {
     }
 
     #[test]
-    fn lexed_target_gain_activated_ability_matches_legacy_clause() {
+    fn lexed_target_gain_activated_ability_matches_wrapper_clause() {
         let text = "Target creature gains {T}: Draw a card until end of turn.";
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify gain clause");
         let compat = tokenize_line(text, 0);
@@ -1131,17 +1131,17 @@ mod tests {
         let lexed_effect =
             parse_simple_gain_ability_clause_lexed(&lexed).expect("lexed gain clause should parse");
         let compat_effect =
-            parse_simple_gain_ability_clause(&compat).expect("legacy gain clause should parse");
+            parse_simple_gain_ability_clause(&compat).expect("wrapper gain clause should parse");
 
         assert_eq!(
             format!("{lexed_effect:?}"),
             format!("{compat_effect:?}"),
-            "lexed simple gain-ability clause should match legacy output"
+            "lexed simple gain-ability clause should match wrapper output"
         );
     }
 
     #[test]
-    fn lexed_target_lose_activated_ability_matches_legacy_clause() {
+    fn lexed_target_lose_activated_ability_matches_wrapper_clause() {
         let text = "Target creature loses {T}: Draw a card until end of turn.";
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify lose clause");
         let compat = tokenize_line(text, 0);
@@ -1149,12 +1149,12 @@ mod tests {
         let lexed_effect =
             parse_simple_lose_ability_clause_lexed(&lexed).expect("lexed lose clause should parse");
         let compat_effect =
-            parse_simple_lose_ability_clause(&compat).expect("legacy lose clause should parse");
+            parse_simple_lose_ability_clause(&compat).expect("wrapper lose clause should parse");
 
         assert_eq!(
             format!("{lexed_effect:?}"),
             format!("{compat_effect:?}"),
-            "lexed simple lose-ability clause should match legacy output"
+            "lexed simple lose-ability clause should match wrapper output"
         );
     }
 

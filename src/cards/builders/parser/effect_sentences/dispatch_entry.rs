@@ -58,7 +58,7 @@ struct SentenceInput {
 }
 
 impl SentenceInput {
-    fn from_legacy_tokens(tokens: Vec<OwnedLexToken>) -> Self {
+    fn from_tokens(tokens: Vec<OwnedLexToken>) -> Self {
         let lowered = OnceCell::new();
         let _ = lowered.set(tokens);
         Self {
@@ -1988,7 +1988,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             && sentence_tokens.as_slice() == sentences[sentence_idx].lowered()
         {
             if super::looks_like_multi_create_chain_lexed(lexed_sentence) {
-                crate::cards::builders::parse_rewrite::clause_support::rewrite_parse_effect_sentences(
+                crate::cards::builders::parser::clause_support::rewrite_parse_effect_sentences(
                         &sentence_tokens,
                     )?
             } else {
@@ -2114,7 +2114,7 @@ pub(crate) fn parse_effect_sentences(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let sentences = split_on_period(tokens)
         .into_iter()
-        .map(SentenceInput::from_legacy_tokens)
+        .map(SentenceInput::from_tokens)
         .collect::<Vec<_>>();
     parse_effect_sentences_from_sentence_inputs(sentences)
 }
@@ -2930,7 +2930,7 @@ pub(crate) fn parse_token_copy_followup_sentence(
 pub(crate) fn parse_token_copy_followup_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::cards::builders::parse_rewrite::lexed_words(tokens)
+    let filtered: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();

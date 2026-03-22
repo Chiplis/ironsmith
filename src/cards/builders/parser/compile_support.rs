@@ -716,8 +716,8 @@ pub(crate) fn compile_condition_from_predicate_ast_with_env(
     saved_last_object_tag: Option<&TagKey>,
 ) -> Result<Condition, CardTextError> {
     let mut ctx = EffectLoweringContext::new();
-    let legacy_refs: crate::cards::builders::ReferenceEnv = refs.clone().into();
-    ctx.apply_reference_env(&legacy_refs);
+    let reference_env: crate::cards::builders::ReferenceEnv = refs.clone().into();
+    ctx.apply_reference_env(&reference_env);
     let saved_last_tag = saved_last_object_tag.map(|tag| tag.as_str().to_string());
     compile_condition_from_predicate_ast(predicate, &mut ctx, &saved_last_tag)
 }
@@ -3762,8 +3762,8 @@ fn current_reference_env(ctx: &EffectLoweringContext) -> ReferenceEnv {
 }
 
 fn apply_local_reference_env(ctx: &mut EffectLoweringContext, env: &ReferenceEnv) {
-    let legacy_env: crate::cards::builders::ReferenceEnv = env.clone().into();
-    ctx.apply_reference_env(&legacy_env);
+    let reference_env: crate::cards::builders::ReferenceEnv = env.clone().into();
+    ctx.apply_reference_env(&reference_env);
 }
 
 fn try_compile_combat_and_damage_effect(

@@ -3,7 +3,7 @@ use crate::effect::{Until, Value};
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
-use super::lexer::{OwnedLexToken, lexed_tokens_from_compat, trim_lexed_commas};
+use super::lexer::{OwnedLexToken, trim_lexed_commas};
 use super::native_tokens::LowercaseWordView;
 use super::object_filters::{
     merge_spell_filters, parse_object_filter_lexed, parse_spell_filter_lexed,
@@ -182,15 +182,13 @@ fn parse_permission_subject_filter_tokens_lexed(
 pub(crate) fn parse_permission_clause_spec(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    parse_permission_clause_spec_lexed(&lexed)
+    parse_permission_clause_spec_lexed(tokens)
 }
 
 pub(crate) fn parse_unsupported_play_cast_permission_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    parse_unsupported_play_cast_permission_clause_lexed(&lexed)
+    parse_unsupported_play_cast_permission_clause_lexed(tokens)
 }
 
 pub(crate) fn parse_permission_clause_spec_lexed(
@@ -597,8 +595,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
 pub(crate) fn parse_additional_land_plays_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let lexed = lexed_tokens_from_compat(tokens);
-    parse_additional_land_plays_clause_lexed(&lexed)
+    parse_additional_land_plays_clause_lexed(tokens)
 }
 
 pub(crate) fn parse_additional_land_plays_clause_lexed(

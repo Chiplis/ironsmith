@@ -71,7 +71,7 @@ use super::util::{
 };
 use super::{
     LowercaseWordView, RewriteSemanticDocument, RewriteSemanticItem,
-    parse_text_with_annotations_rewrite,
+    parse_text_to_semantic_document,
 };
 
 fn rewrite_unsupported_line_ast(
@@ -1673,7 +1673,7 @@ fn lower_rewrite_static_to_chunk_impl(
             return Ok(LineAst::Ability(level_up));
         }
     }
-    let token_words = crate::cards::builders::parse_rewrite::lexer::lexed_words(&lexed);
+    let token_words = crate::cards::builders::parser::lexer::lexed_words(&lexed);
     if token_words.ends_with(&["untap", "during", "your", "untap", "step"])
         && token_words
             .iter()
@@ -1723,7 +1723,7 @@ fn lower_compound_buff_and_unblockable_static_chunk(
     line: &super::RewriteStaticLine,
 ) -> Result<Option<LineAst>, CardTextError> {
     let Some((buff_text, unblockable_text)) =
-        super::parse::split_compound_buff_and_unblockable_sentence(&line.text)
+        super::split_compound_buff_and_unblockable_sentence(&line.text)
     else {
         return Ok(None);
     };
@@ -1762,8 +1762,7 @@ fn lower_split_rewrite_static_chunk(
 
     let mut abilities = Vec::new();
     for sentence in sentences {
-        let normalized_sentence = normalize_legacy_style_static_sentence_rewrite(sentence);
-        let lexed = lexed_tokens(&normalized_sentence, line.info.line_index)?;
+        let lexed = lexed_tokens(sentence, line.info.line_index)?;
         if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(&lexed)? {
             abilities.push(ability.into());
             continue;
@@ -1780,17 +1779,6 @@ fn lower_split_rewrite_static_chunk(
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref()),
     )
     .map(Some)
-}
-
-fn normalize_legacy_style_static_sentence_rewrite(sentence: &str) -> String {
-    let normalized = sentence.trim().to_ascii_lowercase();
-    if let Some(rest) = normalized.strip_prefix("if ")
-        && let Some((condition, counter_tail)) = rest.split_once(", it enters with an additional ")
-        && let Some(counters) = counter_tail.strip_suffix(" counters on it")
-    {
-        return format!("this creature enters with {counters} counters on it if {condition}");
-    }
-    sentence.trim().to_string()
 }
 
 fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
@@ -2432,28 +2420,6 @@ fn activated_effect_may_be_mana_ability(effect_text: &str, line_index: usize) ->
         )
 }
 
-fn normalize_legacy_style_mana_effect_text(effect_text: &str) -> String {
-    let normalized = effect_text.trim().to_ascii_lowercase();
-    if normalized.starts_with("target player adds one mana of any color") {
-        return effect_text
-            .replacen("Target player adds", "Add", 1)
-            .replacen("target player adds", "add", 1);
-    }
-    if normalized
-        == "add an amount of {r} equal to the greatest power among creatures you control that entered this turn."
-        || normalized
-            == "add an amount of {r} equal to the greatest power among creatures you control that entered this turn"
-    {
-        return "add {r}.".to_string();
-    }
-    if normalized == "add an amount of {c} equal to x plus one."
-        || normalized == "add an amount of {c} equal to x plus one"
-    {
-        return "add {c}{x}.".to_string();
-    }
-    effect_text.to_string()
-}
-
 fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
     if cost.mana_cost().is_some_and(crate::mana::ManaCost::has_x) {
         return true;
@@ -2677,7 +2643,7 @@ fn parse_next_spell_cost_reduction_sentence_rewrite(tokens: &[OwnedLexToken]) ->
     })
 }
 
-fn parse_rewrite_activated_effects(
+fn parse_activated_effects(
     effect_text: &str,
     line_index: usize,
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -3039,7 +3005,6 @@ fn lower_rewrite_activated_to_chunk_impl(
         restrictions,
         mana_restrictions,
     } = split_rewrite_activated_effect_text(line);
-    let effect_text = normalize_legacy_style_mana_effect_text(&effect_text);
     if effect_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "rewrite activated lowering produced no parsed effect text for '{}'",
@@ -3047,7 +3012,7 @@ fn lower_rewrite_activated_to_chunk_impl(
         )));
     }
 
-    let normalized_cost = normalize_legacy_style_activated_cost(&line.cost, effect_text.as_str());
+    let normalized_cost = line.cost.clone();
     let ability_text = rewrite_activated_display_text(line);
 
     if effect_text.to_ascii_lowercase().contains("add x mana")
@@ -3103,7 +3068,7 @@ fn lower_rewrite_activated_to_chunk_impl(
     }
 
     if activated_effect_may_be_mana_ability(effect_text.as_str(), line.info.line_index) {
-        let effects_ast = normalize_mana_replacement_effects(parse_rewrite_activated_effects(
+        let effects_ast = normalize_mana_replacement_effects(parse_activated_effects(
             effect_text.as_str(),
             line.info.line_index,
         )?);
@@ -3157,7 +3122,7 @@ fn lower_rewrite_activated_to_chunk_impl(
         )));
     }
 
-    let effects_ast = parse_rewrite_activated_effects(effect_text.as_str(), line.info.line_index)?;
+    let effects_ast = parse_activated_effects(effect_text.as_str(), line.info.line_index)?;
     let cost_text = normalized_cost.display();
     let functional_zones =
         infer_rewrite_activated_functional_zones(line, cost_text.as_str(), effect_text.as_str())?;
@@ -3327,23 +3292,6 @@ fn optional_cost_tail_effect_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedL
         .position(|token| token.kind == TokenKind::Comma)?;
     let effect_tokens = trim_lexed_commas(tokens.get(comma_idx + 1..).unwrap_or_default());
     (!effect_tokens.is_empty()).then_some(effect_tokens)
-}
-
-fn normalize_legacy_style_activated_cost(cost: &TotalCost, effect_text: &str) -> TotalCost {
-    let display = cost.display().to_ascii_lowercase();
-    let effect_text = effect_text.trim().to_ascii_lowercase();
-    if effect_text.starts_with("this creature ")
-        && display.contains(
-            "choose exactly 1 a creature you control in the battlefield and tags it as 'put_counter_cost_",
-        )
-        && display.contains("put a -1/-1 counter on it")
-    {
-        return TotalCost::from_cost(Cost::add_counters(
-            crate::object::CounterType::MinusOneMinusOne,
-            1,
-        ));
-    }
-    cost.clone()
 }
 
 fn rewrite_item_to_normalized_item(
@@ -3798,11 +3746,11 @@ pub(crate) fn rewrite_lower_parsed_modal(
     Ok(builder)
 }
 
-pub(crate) fn parse_text_with_annotations_rewrite_lowered(
+pub(crate) fn parse_text_with_annotations_lowered(
     builder: CardDefinitionBuilder,
     text: String,
     allow_unsupported: bool,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    let (doc, _) = parse_text_with_annotations_rewrite(builder, text, allow_unsupported)?;
+    let (doc, _) = parse_text_to_semantic_document(builder, text, allow_unsupported)?;
     lower_rewrite_document(doc)
 }

@@ -51,7 +51,7 @@ pub(crate) fn display_text_for_tokens(
                 "t" => "{T}".to_string(),
                 "q" => "{Q}".to_string(),
                 _ if in_effect_text && numeric_like => word.to_string(),
-                _ => crate::cards::builders::parse_rewrite::util::parse_mana_symbol(word)
+                _ => crate::cards::builders::parser::util::parse_mana_symbol(word)
                     .map(|symbol| ManaCost::from_symbols(vec![symbol]).to_oracle())
                     .unwrap_or_else(|_| word.to_string()),
             };
@@ -77,7 +77,7 @@ pub(crate) fn display_text_for_tokens(
             capitalize_next_cost_action = false;
         } else if matches!(
             token.kind,
-            crate::cards::builders::parse_rewrite::lexer::TokenKind::ManaGroup
+            crate::cards::builders::parser::lexer::TokenKind::ManaGroup
         ) {
             let suppress_space = text.ends_with('}');
             if needs_space && !text.is_empty() && !suppress_space {

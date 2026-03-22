@@ -26,7 +26,18 @@ use super::lexer::{OwnedLexToken, TokenKind, lex_line};
 use super::native_tokens::LowercaseWordView;
 use super::object_filters::{parse_object_filter, split_on_or};
 
-fn push_legacy_compat_words(
+fn lowercase_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut lowered = tokens.to_vec();
+    for token in &mut lowered {
+        if let Some(word) = token.word_mut() {
+            *word = word.to_ascii_lowercase();
+        }
+    }
+    lowered
+}
+
+#[cfg(test)]
+fn push_tokenized_words(
     slice: &str,
     span: TextSpan,
     in_mana_braces: bool,
@@ -103,20 +114,21 @@ fn push_legacy_compat_words(
     flush(&mut buffer, out, &mut word_start, &mut word_end);
 }
 
-pub(crate) fn compat_tokens_from_lexed(lexed: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+#[cfg(test)]
+fn test_tokens_from_lexed(lexed: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut tokens = Vec::new();
     let mut idx = 0usize;
     while idx < lexed.len() {
         let token = &lexed[idx];
         match token.kind {
             TokenKind::Word => {
-                push_legacy_compat_words(token.slice.as_str(), token.span, false, &mut tokens);
+                push_tokenized_words(token.slice.as_str(), token.span, false, &mut tokens);
             }
             TokenKind::Tilde => tokens.push(OwnedLexToken::word("this", token.span)),
             TokenKind::ManaGroup => {
                 let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
                 if !inner.is_empty() {
-                    push_legacy_compat_words(
+                    push_tokenized_words(
                         inner,
                         TextSpan {
                             line: token.span.line,
@@ -136,7 +148,7 @@ pub(crate) fn compat_tokens_from_lexed(lexed: &[OwnedLexToken]) -> Vec<OwnedLexT
             {
                 let next = &lexed[idx + 1];
                 let combined = format!("-{}", next.slice);
-                push_legacy_compat_words(
+                push_tokenized_words(
                     combined.as_str(),
                     TextSpan {
                         line: token.span.line,
@@ -166,22 +178,10 @@ pub(crate) fn compat_tokens_from_lexed(lexed: &[OwnedLexToken]) -> Vec<OwnedLexT
     tokens
 }
 
-fn lowercase_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut lowered = tokens.to_vec();
-    for token in &mut lowered {
-        if let Some(word) = token.word_mut() {
-            *word = word.to_ascii_lowercase();
-        }
-    }
-    lowered
-}
-
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {
-    let Ok(lexed) = lex_line(line, line_index) else {
-        return Vec::new();
-    };
-    compat_tokens_from_lexed(&lexed)
+    let lexed = lex_line(line, line_index).expect("test tokenization helper should lex input");
+    test_tokens_from_lexed(&lexed)
 }
 
 pub(crate) fn words(tokens: &[OwnedLexToken]) -> Vec<&str> {
@@ -946,7 +946,7 @@ pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
 }
 
 pub(crate) fn parse_counter_type_from_tokens(tokens: &[OwnedLexToken]) -> Option<CounterType> {
-    let token_word_view = crate::cards::builders::parse_rewrite::native_tokens::LowercaseWordView::new(tokens);
+    let token_word_view = crate::cards::builders::parser::native_tokens::LowercaseWordView::new(tokens);
     let token_words = token_word_view.to_word_refs();
 
     if let Some(counter_idx) = token_words

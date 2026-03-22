@@ -9361,8 +9361,8 @@ pub(crate) fn parse_trigger_clause_lexed(
         Ok(None)
     }
 
-    let words = LowercaseWordView::new(tokens);
-    let words = words.to_word_refs();
+    let word_view = LowercaseWordView::new(tokens);
+    let words = word_view.to_word_refs();
     if words.is_empty() {
         return Err(CardTextError::ParseError(
             "empty trigger clause".to_string(),
@@ -9683,14 +9683,17 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::ThisLeavesBattlefield);
     }
 
-    if let Some(enters_idx) = tokens
+    if let Some(enters_word_idx) = words
         .iter()
-        .position(|token| token.is_word("enters") || token.is_word("enter"))
+        .position(|word| *word == "enters" || *word == "enter")
     {
+        let enters_token_idx = word_view
+            .token_index_for_word_index(enters_word_idx)
+            .unwrap_or(tokens.len());
         if words.ends_with(&["enters", "or", "leaves", "the", "battlefield"])
             || words.ends_with(&["enter", "or", "leave", "the", "battlefield"])
         {
-            let subject_tokens = &tokens[..enters_idx];
+            let subject_tokens = &tokens[..enters_token_idx];
             if subject_tokens
                 .first()
                 .is_some_and(|token| token.is_word("this"))
@@ -9702,8 +9705,8 @@ pub(crate) fn parse_trigger_clause_lexed(
             }
         }
 
-        let enters_origin = parse_enters_origin_clause_lexed(&words[enters_idx + 1..]);
-        if enters_idx == 0 {
+        let enters_origin = parse_enters_origin_clause_lexed(&words[enters_word_idx + 1..]);
+        if enters_word_idx == 0 {
             return Ok(if let Some((from, owner)) = enters_origin.clone() {
                 TriggerSpec::ThisEntersBattlefieldFromZone {
                     subject_filter: ObjectFilter::default(),
@@ -9715,7 +9718,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             });
         }
 
-        let subject_tokens = &tokens[..enters_idx];
+        let subject_tokens = &tokens[..enters_token_idx];
         if subject_tokens
             .first()
             .is_some_and(|token| token.is_word("this"))

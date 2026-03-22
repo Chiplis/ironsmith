@@ -222,8 +222,8 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
 
 fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
-    let legacy_parse_text = rewrite_keyword_dash_parse_text(normalized);
-    let lexed = lexed_tokens(legacy_parse_text.as_str(), line.info.line_index)?;
+    let rewritten_parse_text = rewrite_keyword_dash_parse_text(normalized);
+    let lexed = lexed_tokens(rewritten_parse_text.as_str(), line.info.line_index)?;
     let mut deferred_error = None;
 
     if normalized.starts_with("level up ") {
@@ -235,7 +235,7 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
             }));
         }
     }
-    let lexed_words = crate::cards::builders::parse_rewrite::lexer::lexed_words(&lexed);
+    let lexed_words = crate::cards::builders::parser::lexer::lexed_words(&lexed);
     if is_doesnt_untap_during_your_untap_step_words(lexed_words.as_slice()) {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
@@ -320,8 +320,7 @@ fn parse_split_static_item_count(
 
     let mut item_count = 0usize;
     for sentence in sentences {
-        let normalized_sentence = normalize_legacy_style_static_sentence(sentence);
-        let lexed = lexed_tokens(&normalized_sentence, line_index)?;
+        let lexed = lexed_tokens(sentence, line_index)?;
         if parse_if_this_spell_costs_less_to_cast_line_lexed(&lexed)?.is_some() {
             item_count += 1;
             continue;
@@ -337,17 +336,6 @@ fn parse_split_static_item_count(
     }
 
     Ok(Some(item_count))
-}
-
-fn normalize_legacy_style_static_sentence(sentence: &str) -> String {
-    let normalized = sentence.trim().to_ascii_lowercase();
-    if let Some(rest) = normalized.strip_prefix("if ")
-        && let Some((condition, counter_tail)) = rest.split_once(", it enters with an additional ")
-        && let Some(counters) = counter_tail.strip_suffix(" counters on it")
-    {
-        return format!("this creature enters with {counters} counters on it if {condition}");
-    }
-    sentence.trim().to_string()
 }
 
 pub(crate) fn split_compound_buff_and_unblockable_sentence(text: &str) -> Option<(String, String)> {
@@ -373,8 +361,8 @@ fn parse_keyword_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<KeywordLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
-    let legacy_parse_text = rewrite_keyword_dash_parse_text(normalized);
-    let tokens = lexed_tokens(legacy_parse_text.as_str(), line.info.line_index)?;
+    let rewritten_parse_text = rewrite_keyword_dash_parse_text(normalized);
+    let tokens = lexed_tokens(rewritten_parse_text.as_str(), line.info.line_index)?;
 
     let kind = if parse_additional_cost_kind(&tokens, normalized)? {
         Some(KeywordLineKindCst::AdditionalCostChoice)
@@ -1269,7 +1257,7 @@ fn parse_colon_nonactivation_statement_fallback(
     Ok(None)
 }
 
-pub(crate) fn parse_text_with_annotations_rewrite(
+pub(crate) fn parse_text_to_semantic_document(
     builder: CardDefinitionBuilder,
     text: String,
     allow_unsupported: bool,
@@ -1356,7 +1344,7 @@ pub(crate) fn parse_document_cst(
                             continue;
                         }
                         return Err(CardTextError::ParseError(format!(
-                            "rewrite parser does not yet support level header: '{}'",
+                            "parser does not yet support level header: '{}'",
                             line.info.raw_line
                         )));
                     }
@@ -1440,7 +1428,7 @@ pub(crate) fn parse_document_cst(
                             lines.push(RewriteLineCst::Static(static_line));
                         } else {
                             return Err(CardTextError::ParseError(format!(
-                                "rewrite parser could not split leading sentence before keyword ability: '{}'",
+                                "parser could not split leading sentence before keyword ability: '{}'",
                                 line.info.raw_line
                             )));
                         }
@@ -1448,7 +1436,7 @@ pub(crate) fn parse_document_cst(
                         lines.push(RewriteLineCst::Static(static_line));
                     } else {
                         return Err(CardTextError::ParseError(format!(
-                            "rewrite parser could not split leading sentence before keyword ability: '{}'",
+                            "parser could not split leading sentence before keyword ability: '{}'",
                             line.info.raw_line
                         )));
                     }
@@ -1456,13 +1444,13 @@ pub(crate) fn parse_document_cst(
                     let suffix_line = rewrite_line_normalized(line, suffix.as_str())?;
                     let Some((_label, body)) = split_label_prefix(suffix.as_str()) else {
                         return Err(CardTextError::ParseError(format!(
-                            "rewrite parser could not recover keyword activation suffix: '{}'",
+                            "parser could not recover keyword activation suffix: '{}'",
                             line.info.raw_line
                         )));
                     };
                     let Some((cost_raw, effect_raw)) = split_once_outside_quotes(body, ':') else {
                         return Err(CardTextError::ParseError(format!(
-                            "rewrite parser could not recover activation suffix: '{}'",
+                            "parser could not recover activation suffix: '{}'",
                             line.info.raw_line
                         )));
                     };
@@ -1791,7 +1779,7 @@ pub(crate) fn parse_document_cst(
                 }
 
                 return Err(CardTextError::ParseError(format!(
-                    "rewrite parser does not yet support line family: '{}'",
+                    "parser does not yet support line family: '{}'",
                     line.info.raw_line
                 )));
             }

@@ -20,7 +20,6 @@ mod modal_helpers;
 mod modal_support;
 mod native_tokens;
 mod object_filters;
-mod parse;
 mod parser_support;
 mod permission_helpers;
 mod preprocess;
@@ -33,8 +32,9 @@ mod shared_types;
 mod static_ability_helpers;
 mod util;
 mod value_helpers;
-
+mod document_parser;
 pub(crate) use activation_and_restrictions::*;
+pub(crate) use document_parser::*;
 pub(crate) use effect_pipeline::*;
 pub(crate) use effect_sentences::*;
 pub(crate) use ir::*;
@@ -45,7 +45,6 @@ pub(crate) use lexer::{LexCursor, OwnedLexToken, lex_line, lexed_words, split_le
 pub(crate) use lower::*;
 pub(crate) use native_tokens::{LowercaseWordView, TokInput};
 pub(crate) use object_filters::*;
-pub(crate) use parse::*;
 pub(crate) use parser_support::*;
 pub(crate) use permission_helpers::{PermissionClauseSpec, PermissionLifetime};
 pub(crate) use reference_model::*;
@@ -59,8 +58,10 @@ pub(crate) use util::{
     is_sentence_helper_tag, parse_counter_type_from_tokens, parse_counter_type_word, parse_number,
     parse_number_or_x_value, parse_target_phrase, replace_unbound_x_with_value, span_from_tokens,
     split_on_comma, split_on_comma_or_semicolon, split_on_period, starts_with_activation_cost,
-    tokenize_line, value_contains_unbound_x, words,
+    value_contains_unbound_x, words,
 };
+#[cfg(test)]
+pub(crate) use util::tokenize_line;
 
 #[cfg(test)]
 mod tests;

@@ -14,8 +14,8 @@ use super::{
     parse_cant_effect_sentence_lexed, parse_cost_reduction_line, parse_count_word_rewrite,
     parse_effect_sentence, parse_effect_sentence_lexed, parse_mana_symbol_group_rewrite,
     parse_mana_usage_restriction_sentence_lexed, parse_restriction_duration,
-    parse_restriction_duration_lexed, parse_text_with_annotations_rewrite,
-    parse_text_with_annotations_rewrite_lowered, parse_triggered_times_each_turn_lexed,
+    parse_restriction_duration_lexed, parse_text_to_semantic_document,
+    parse_text_with_annotations_lowered, parse_triggered_times_each_turn_lexed,
     parse_type_line_rewrite, split_lexed_sentences,
 };
 
@@ -234,7 +234,7 @@ fn rewrite_lexed_value_and_permission_helpers_match_existing_semantics() {
 }
 
 #[test]
-fn rewrite_lexed_object_filters_match_legacy_simple_shapes() {
+fn rewrite_lexed_object_filters_match_wrapper_simple_shapes() {
     for text in [
         "creatures you control",
         "artifact card in your graveyard",
@@ -242,74 +242,74 @@ fn rewrite_lexed_object_filters_match_legacy_simple_shapes() {
         "noncreature spells",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify filter text");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         let native = super::object_filters::parse_object_filter_lexed(&lexed, false)
             .expect("lexed object filter should parse");
-        let legacy = super::object_filters::parse_object_filter(&compat, false)
-            .expect("legacy object filter should parse");
+        let wrapper = super::object_filters::parse_object_filter(&compat, false)
+            .expect("wrapper object filter should parse");
 
-        assert_eq!(format!("{native:?}"), format!("{legacy:?}"), "{text}");
+        assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
     }
 }
 
 #[test]
-fn rewrite_lexed_object_filters_match_legacy_complex_phrase_shapes() {
+fn rewrite_lexed_object_filters_match_wrapper_complex_phrase_shapes() {
     let text =
         "creature card with mana value equal to the number of charge counters on this artifact";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify complex filter text");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
     let native = super::object_filters::parse_object_filter_lexed(&lexed, false)
         .expect("lexed object filter should parse");
-    let legacy = super::object_filters::parse_object_filter(&compat, false)
-        .expect("legacy object filter should parse");
+    let wrapper = super::object_filters::parse_object_filter(&compat, false)
+        .expect("wrapper object filter should parse");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_cant_sentence_matches_legacy_output() {
+fn rewrite_lexed_cant_sentence_matches_wrapper_output() {
     for text in [
         "Target artifact doesn't untap during its controller's next untap step.",
         "Target artifact does not untap during its controller's next untap step.",
     ] {
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify restriction sentence");
 
         let native =
             parse_cant_effect_sentence_lexed(&lexed).expect("lexed cant sentence should parse");
-        let legacy =
-            parse_cant_effect_sentence(&compat).expect("legacy cant sentence should parse");
+        let wrapper =
+            parse_cant_effect_sentence(&compat).expect("wrapper cant sentence should parse");
 
         assert_eq!(
             format!("{native:?}"),
-            format!("{legacy:?}"),
+            format!("{wrapper:?}"),
             "{text}"
         );
     }
 }
 
 #[test]
-fn rewrite_lexed_restriction_duration_matches_legacy_shapes() {
+fn rewrite_lexed_restriction_duration_matches_wrapper_shapes() {
     let text = "Target creature can't attack this turn.";
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify restriction duration");
 
     let native = parse_restriction_duration_lexed(&lexed)
         .expect("lexed restriction duration should parse")
         .expect("lexed restriction duration should be present");
-    let legacy = parse_restriction_duration(&compat)
-        .expect("legacy restriction duration should parse")
-        .expect("legacy restriction duration should be present");
+    let wrapper = parse_restriction_duration(&compat)
+        .expect("wrapper restriction duration should parse")
+        .expect("wrapper restriction duration should be present");
 
-    assert_eq!(native.0, legacy.0);
+    assert_eq!(native.0, wrapper.0);
     let native_word_view = LowercaseWordView::new(&native.1);
     let native_words = native_word_view.to_word_refs();
     assert_eq!(
         native_words,
-        crate::cards::builders::parse_rewrite::util::words(&legacy.1),
-        "lexed restriction duration remainder should match legacy words"
+        crate::cards::builders::parser::util::words(&wrapper.1),
+        "lexed restriction duration remainder should match wrapper words"
     );
 }
 
@@ -328,20 +328,19 @@ fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
 
 #[test]
 fn rewrite_runtime_sources_do_not_reintroduce_compat_token_bridges() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cards/builders/parse_rewrite");
-    let compat_reparse_allowed = [root.join("util.rs"), root.join("tests.rs")];
-    let compat_to_lexed_allowed = [
-        root.join("lexer.rs"),
-        root.join("permission_helpers.rs"),
-        root.join("effect_sentences/chain_carry.rs"),
-        root.join("tests.rs"),
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cards/builders/parser");
+    let removed_helper_names = [
+        format!("{}_{}", "compat_tokens_from", "lexed"),
+        format!("{}_{}", "lexed_tokens_from", "compat"),
     ];
     let mut files = Vec::new();
     collect_rust_files(&root, &mut files);
 
-    let mut compat_reparse_offenders = Vec::new();
-    let mut compat_to_lexed_offenders = Vec::new();
+    let mut offenders = Vec::new();
     for path in files {
+        if path.ends_with("tests.rs") {
+            continue;
+        }
         let source = fs::read_to_string(&path).expect("rewrite audit should read source file");
         let relative = path
             .strip_prefix(env!("CARGO_MANIFEST_DIR"))
@@ -349,31 +348,18 @@ fn rewrite_runtime_sources_do_not_reintroduce_compat_token_bridges() {
             .display()
             .to_string();
 
-        if source.contains("compat_tokens_from_lexed")
-            && !compat_reparse_allowed
-                .iter()
-                .any(|allowed_path| allowed_path == &path)
+        if removed_helper_names
+            .iter()
+            .any(|helper_name| source.contains(helper_name))
         {
-            compat_reparse_offenders.push(relative.clone());
-        }
-        if source.contains("lexed_tokens_from_compat")
-            && !compat_to_lexed_allowed
-                .iter()
-                .any(|allowed_path| allowed_path == &path)
-        {
-            compat_to_lexed_offenders.push(relative);
+            offenders.push(relative);
         }
     }
 
     assert!(
-        compat_reparse_offenders.is_empty(),
-        "runtime lexed-to-compat bridges should stay removed: {}",
-        compat_reparse_offenders.join(", ")
-    );
-    assert!(
-        compat_to_lexed_offenders.is_empty(),
-        "compat-to-lexed adapters should stay fenced to legacy entrypoints: {}",
-        compat_to_lexed_offenders.join(", ")
+        offenders.is_empty(),
+        "compat token bridge helpers should stay removed: {}",
+        offenders.join(", ")
     );
 }
 
@@ -460,18 +446,18 @@ fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
 }
 
 #[test]
-fn rewrite_lexed_simple_restriction_and_free_cast_wrappers_match_legacy_output() {
+fn rewrite_lexed_simple_restriction_and_free_cast_wrappers_match_wrapper_output() {
     let free_cast_text = "You may cast this spell without paying its mana cost";
     let free_cast_lexed =
         lex_line(free_cast_text, 0).expect("rewrite lexer should classify free-cast clause");
     let free_cast_compat =
-        crate::cards::builders::parse_rewrite::util::tokenize_line(free_cast_text, 0);
+        crate::cards::builders::parser::util::tokenize_line(free_cast_text, 0);
 
     let restriction_text = "Cast this spell only during combat.";
     let restriction_lexed =
         lex_line(restriction_text, 0).expect("rewrite lexer should classify cast restriction");
     let restriction_compat =
-        crate::cards::builders::parse_rewrite::util::tokenize_line(restriction_text, 0);
+        crate::cards::builders::parser::util::tokenize_line(restriction_text, 0);
 
     assert_eq!(
         format!(
@@ -492,28 +478,28 @@ fn rewrite_lexed_simple_restriction_and_free_cast_wrappers_match_legacy_output()
         format!(
             "{:?}",
             super::util::parse_cast_this_spell_only_line(&restriction_compat)
-                .expect("legacy cast restriction should parse")
+                .expect("wrapper cast restriction should parse")
         )
     );
 }
 
 #[test]
-fn rewrite_lexed_activation_keyword_wrappers_match_legacy_output() {
+fn rewrite_lexed_activation_keyword_wrappers_match_wrapper_output() {
     let cycling_text = "cycling {2}";
     let cycling_lexed =
         lex_line(cycling_text, 0).expect("rewrite lexer should classify cycling line");
     let cycling_compat =
-        crate::cards::builders::parse_rewrite::util::tokenize_line(cycling_text, 0);
+        crate::cards::builders::parser::util::tokenize_line(cycling_text, 0);
 
     let channel_text = "channel {1}{g}, discard this card: draw a card.";
     let channel_lexed =
         lex_line(channel_text, 0).expect("rewrite lexer should classify channel line");
     let channel_compat =
-        crate::cards::builders::parse_rewrite::util::tokenize_line(channel_text, 0);
+        crate::cards::builders::parser::util::tokenize_line(channel_text, 0);
 
     let equip_text = "equip {1}";
     let equip_lexed = lex_line(equip_text, 0).expect("rewrite lexer should classify equip line");
-    let equip_compat = crate::cards::builders::parse_rewrite::util::tokenize_line(equip_text, 0);
+    let equip_compat = crate::cards::builders::parser::util::tokenize_line(equip_text, 0);
 
     assert_eq!(
         format!(
@@ -522,7 +508,7 @@ fn rewrite_lexed_activation_keyword_wrappers_match_legacy_output() {
         ),
         format!(
             "{:?}",
-            super::parse_cycling_line(&cycling_compat).expect("legacy cycling should parse")
+            super::parse_cycling_line(&cycling_compat).expect("wrapper cycling should parse")
         )
     );
     assert_eq!(
@@ -532,7 +518,7 @@ fn rewrite_lexed_activation_keyword_wrappers_match_legacy_output() {
         ),
         format!(
             "{:?}",
-            super::parse_channel_line(&channel_compat).expect("legacy channel should parse")
+            super::parse_channel_line(&channel_compat).expect("wrapper channel should parse")
         )
     );
     assert_eq!(
@@ -542,13 +528,13 @@ fn rewrite_lexed_activation_keyword_wrappers_match_legacy_output() {
         ),
         format!(
             "{:?}",
-            super::parse_equip_line(&equip_compat).expect("legacy equip should parse")
+            super::parse_equip_line(&equip_compat).expect("wrapper equip should parse")
         )
     );
 }
 
 #[test]
-fn rewrite_lexed_optional_cost_keyword_wrappers_match_legacy_output() {
+fn rewrite_lexed_optional_cost_keyword_wrappers_match_wrapper_output() {
     for text in [
         "Buyback {3}",
         "Kicker {2}",
@@ -558,7 +544,7 @@ fn rewrite_lexed_optional_cost_keyword_wrappers_match_legacy_output() {
         "Entwine {2}",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify optional-cost keyword");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         let native = match text {
             t if t.starts_with("Buyback") => format!(
@@ -588,40 +574,40 @@ fn rewrite_lexed_optional_cost_keyword_wrappers_match_legacy_output() {
                 super::util::parse_entwine_line_lexed(&lexed).expect("lexed entwine should parse")
             ),
         };
-        let legacy = match text {
+        let wrapper = match text {
             t if t.starts_with("Buyback") => format!(
                 "{:?}",
-                super::util::parse_buyback_line(&compat).expect("legacy buyback should parse")
+                super::util::parse_buyback_line(&compat).expect("wrapper buyback should parse")
             ),
             t if t.starts_with("Kicker") => format!(
                 "{:?}",
-                super::util::parse_kicker_line(&compat).expect("legacy kicker should parse")
+                super::util::parse_kicker_line(&compat).expect("wrapper kicker should parse")
             ),
             t if t.starts_with("Multikicker") => format!(
                 "{:?}",
                 super::util::parse_multikicker_line(&compat)
-                    .expect("legacy multikicker should parse")
+                    .expect("wrapper multikicker should parse")
             ),
             t if t.starts_with("Squad") => format!(
                 "{:?}",
-                super::util::parse_squad_line(&compat).expect("legacy squad should parse")
+                super::util::parse_squad_line(&compat).expect("wrapper squad should parse")
             ),
             t if t.starts_with("Offspring") => format!(
                 "{:?}",
-                super::util::parse_offspring_line(&compat).expect("legacy offspring should parse")
+                super::util::parse_offspring_line(&compat).expect("wrapper offspring should parse")
             ),
             _ => format!(
                 "{:?}",
-                super::util::parse_entwine_line(&compat).expect("legacy entwine should parse")
+                super::util::parse_entwine_line(&compat).expect("wrapper entwine should parse")
             ),
         };
 
-        assert_eq!(native, legacy, "{text}");
+        assert_eq!(native, wrapper, "{text}");
     }
 }
 
 #[test]
-fn rewrite_lexed_alternative_cost_wrappers_match_legacy_output() {
+fn rewrite_lexed_alternative_cost_wrappers_match_wrapper_output() {
     for text in [
         "Madness {2}{R}",
         "Flashback {2}{R}",
@@ -630,7 +616,7 @@ fn rewrite_lexed_alternative_cost_wrappers_match_legacy_output() {
     ] {
         let lexed =
             lex_line(text, 0).expect("rewrite lexer should classify alternative-cost keyword");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         let native = match text {
             t if t.starts_with("Madness") => format!(
@@ -651,41 +637,41 @@ fn rewrite_lexed_alternative_cost_wrappers_match_legacy_output() {
                 super::util::parse_bestow_line_lexed(&lexed).expect("lexed bestow should parse")
             ),
         };
-        let legacy = match text {
+        let wrapper = match text {
             t if t.starts_with("Madness") => format!(
                 "{:?}",
-                super::util::parse_madness_line(&compat).expect("legacy madness should parse")
+                super::util::parse_madness_line(&compat).expect("wrapper madness should parse")
             ),
             t if t.starts_with("Flashback") => format!(
                 "{:?}",
-                super::util::parse_flashback_line(&compat).expect("legacy flashback should parse")
+                super::util::parse_flashback_line(&compat).expect("wrapper flashback should parse")
             ),
             t if t.starts_with("Warp") => format!(
                 "{:?}",
-                super::util::parse_warp_line(&compat).expect("legacy warp should parse")
+                super::util::parse_warp_line(&compat).expect("wrapper warp should parse")
             ),
             _ => format!(
                 "{:?}",
-                super::util::parse_bestow_line(&compat).expect("legacy bestow should parse")
+                super::util::parse_bestow_line(&compat).expect("wrapper bestow should parse")
             ),
         };
 
-        assert_eq!(native, legacy, "{text}");
+        assert_eq!(native, wrapper, "{text}");
     }
 }
 
 #[test]
-fn rewrite_lexed_spell_cost_alternative_wrappers_match_legacy_output() {
+fn rewrite_lexed_spell_cost_alternative_wrappers_match_wrapper_output() {
     let direct_text = "You may pay {1}{R} rather than pay this spell's mana cost.";
     let direct_lexed =
         lex_line(direct_text, 0).expect("rewrite lexer should classify direct alt-cost line");
-    let direct_compat = crate::cards::builders::parse_rewrite::util::tokenize_line(direct_text, 0);
+    let direct_compat = crate::cards::builders::parser::util::tokenize_line(direct_text, 0);
 
     let conditional_text = "If an opponent cast two or more spells this turn, you may pay {1}{R} rather than pay this spell's mana cost.";
     let conditional_lexed = lex_line(conditional_text, 0)
         .expect("rewrite lexer should classify conditional alt-cost line");
     let conditional_compat =
-        crate::cards::builders::parse_rewrite::util::tokenize_line(conditional_text, 0);
+        crate::cards::builders::parser::util::tokenize_line(conditional_text, 0);
 
     assert_eq!(
         format!(
@@ -699,7 +685,7 @@ fn rewrite_lexed_spell_cost_alternative_wrappers_match_legacy_output() {
         format!(
             "{:?}",
             super::util::parse_you_may_rather_than_spell_cost_line(&direct_compat, direct_text)
-                .expect("legacy direct alt-cost should parse")
+                .expect("wrapper direct alt-cost should parse")
         )
     );
     assert_eq!(
@@ -717,13 +703,13 @@ fn rewrite_lexed_spell_cost_alternative_wrappers_match_legacy_output() {
                 &conditional_compat,
                 conditional_text
             )
-            .expect("legacy conditional alt-cost should parse")
+            .expect("wrapper conditional alt-cost should parse")
         )
     );
 }
 
 #[test]
-fn rewrite_lexed_remaining_keyword_wrappers_match_legacy_output() {
+fn rewrite_lexed_remaining_keyword_wrappers_match_wrapper_output() {
     for text in [
         "Level up {2}{U}",
         "Morph {3}",
@@ -732,7 +718,7 @@ fn rewrite_lexed_remaining_keyword_wrappers_match_legacy_output() {
         "Reinforce 1 {2}{G}",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify keyword wrapper");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         let native = match text {
             t if t.starts_with("Level up") => format!(
@@ -756,37 +742,37 @@ fn rewrite_lexed_remaining_keyword_wrappers_match_legacy_output() {
                     .expect("lexed reinforce should parse")
             ),
         };
-        let legacy = match text {
+        let wrapper = match text {
             t if t.starts_with("Level up") => format!(
                 "{:?}",
-                super::util::parse_level_up_line(&compat).expect("legacy level up should parse")
+                super::util::parse_level_up_line(&compat).expect("wrapper level up should parse")
             ),
             t if t.starts_with("Morph") || t.starts_with("Megamorph") => format!(
                 "{:?}",
                 super::util::parse_morph_keyword_line(&compat)
-                    .expect("legacy morph should parse")
+                    .expect("wrapper morph should parse")
             ),
             t if t.starts_with("Transmute") => format!(
                 "{:?}",
                 super::util::parse_transmute_line(&compat)
-                    .expect("legacy transmute should parse")
+                    .expect("wrapper transmute should parse")
             ),
             _ => format!(
                 "{:?}",
                 super::util::parse_reinforce_line(&compat)
-                    .expect("legacy reinforce should parse")
+                    .expect("wrapper reinforce should parse")
             ),
         };
 
-        assert_eq!(native, legacy, "{text}");
+        assert_eq!(native, wrapper, "{text}");
     }
 }
 
 #[test]
-fn rewrite_lexed_number_and_additional_cost_wrappers_match_legacy_output() {
+fn rewrite_lexed_number_and_additional_cost_wrappers_match_wrapper_output() {
     for text in ["X", "Three"] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify numeric value");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         assert_eq!(
             super::util::parse_number_or_x_value_lexed(&lexed),
@@ -797,7 +783,7 @@ fn rewrite_lexed_number_and_additional_cost_wrappers_match_legacy_output() {
 
     let text = "Sacrifice a creature or discard a card";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify additional cost options");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
     assert_eq!(
         format!(
@@ -808,35 +794,35 @@ fn rewrite_lexed_number_and_additional_cost_wrappers_match_legacy_output() {
         format!(
             "{:?}",
             super::util::parse_additional_cost_choice_options(&compat)
-                .expect("legacy additional cost options should parse")
+                .expect("wrapper additional cost options should parse")
         )
     );
 }
 
 #[test]
-fn rewrite_lexed_search_library_sentence_matches_legacy_output() {
+fn rewrite_lexed_search_library_sentence_matches_wrapper_output() {
     for text in [
         "Search target player's library for an artifact card, reveal it, put it into your hand, then shuffle.",
         "Discard a card, then search your library for a creature card, reveal it, put it into your hand, then shuffle.",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify search-library text");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         let native = super::parse_search_library_sentence_lexed(&lexed)
             .expect("lexed search-library sentence should parse");
-        let legacy = super::parse_search_library_sentence(&compat)
-            .expect("legacy search-library sentence should parse");
+        let wrapper = super::parse_search_library_sentence(&compat)
+            .expect("wrapper search-library sentence should parse");
 
-        assert_eq!(format!("{native:?}"), format!("{legacy:?}"), "{text}");
+        assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
     }
 }
 
 #[test]
-fn rewrite_lexed_clause_and_sentence_wrapper_slices_match_legacy_output() {
+fn rewrite_lexed_clause_and_sentence_wrapper_slices_match_wrapper_output() {
     let gain_text = "Target creature gains flying until end of turn";
     let gain_lexed =
         lex_line(gain_text, 0).expect("rewrite lexer should classify gain-ability clause");
-    let gain_compat = crate::cards::builders::parse_rewrite::util::tokenize_line(gain_text, 0);
+    let gain_compat = crate::cards::builders::parser::util::tokenize_line(gain_text, 0);
 
     assert_eq!(
         format!(
@@ -847,7 +833,7 @@ fn rewrite_lexed_clause_and_sentence_wrapper_slices_match_legacy_output() {
         format!(
             "{:?}",
             super::parse_simple_gain_ability_clause(&gain_compat)
-                .expect("legacy gain-ability clause should parse")
+                .expect("wrapper gain-ability clause should parse")
         )
     );
 
@@ -857,7 +843,7 @@ fn rewrite_lexed_clause_and_sentence_wrapper_slices_match_legacy_output() {
         "Exile this creature with three time counters on it",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify sentence wrapper");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         let native = if text.starts_with("Return") {
             format!(
@@ -879,27 +865,27 @@ fn rewrite_lexed_clause_and_sentence_wrapper_slices_match_legacy_output() {
             )
         };
 
-        let legacy = if text.starts_with("Return") {
+        let wrapper = if text.starts_with("Return") {
             format!(
                 "{:?}",
                 super::parse_sentence_return_with_counters_on_it(&compat)
-                    .expect("legacy return sentence should parse")
+                    .expect("wrapper return sentence should parse")
             )
         } else if text.starts_with("Put") {
             format!(
                 "{:?}",
                 super::parse_sentence_put_onto_battlefield_with_counters_on_it(&compat)
-                    .expect("legacy put sentence should parse")
+                    .expect("wrapper put sentence should parse")
             )
         } else {
             format!(
                 "{:?}",
                 super::parse_sentence_exile_source_with_counters(&compat)
-                    .expect("legacy exile sentence should parse")
+                    .expect("wrapper exile sentence should parse")
             )
         };
 
-        assert_eq!(native, legacy, "{text}");
+        assert_eq!(native, wrapper, "{text}");
     }
 }
 
@@ -1025,7 +1011,7 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
 }
 
 #[test]
-fn rewrite_lexed_trigger_clause_tail_branches_match_legacy_output() {
+fn rewrite_lexed_trigger_clause_tail_branches_match_wrapper_output() {
     for text in [
         "one or more Goblins attack",
         "another creature blocks",
@@ -1033,31 +1019,31 @@ fn rewrite_lexed_trigger_clause_tail_branches_match_legacy_output() {
         "the creature it haunts dies",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify trigger tail probe");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         let native = super::activation_and_restrictions::parse_trigger_clause_lexed(&lexed);
-        let legacy = super::activation_and_restrictions::parse_trigger_clause(&compat);
+        let wrapper = super::activation_and_restrictions::parse_trigger_clause(&compat);
 
-        assert_eq!(format!("{native:?}"), format!("{legacy:?}"), "{text}");
+        assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
     }
 }
 
 #[test]
-fn rewrite_lexed_trigger_clause_unsupported_tail_matches_legacy_error() {
+fn rewrite_lexed_trigger_clause_unsupported_tail_matches_wrapper_error() {
     let text = "this weird thing dies";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify unsupported trigger");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
     let native = super::activation_and_restrictions::parse_trigger_clause_lexed(&lexed)
         .expect_err("lexed trigger clause should reject unsupported tail");
-    let legacy = super::activation_and_restrictions::parse_trigger_clause(&compat)
-        .expect_err("legacy trigger clause should reject unsupported tail");
+    let wrapper = super::activation_and_restrictions::parse_trigger_clause(&compat)
+        .expect_err("wrapper trigger clause should reject unsupported tail");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_trigger_clause_etb_edge_cases_match_legacy_output() {
+fn rewrite_lexed_trigger_clause_etb_edge_cases_match_wrapper_output() {
     for text in [
         "another creature enters the battlefield and whenever it attacks",
         "another creature enters the battlefield and attacks",
@@ -1066,141 +1052,155 @@ fn rewrite_lexed_trigger_clause_etb_edge_cases_match_legacy_output() {
     ] {
         let lexed =
             lex_line(text, 0).expect("rewrite lexer should classify etb edge-case trigger");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
         let native = super::activation_and_restrictions::parse_trigger_clause_lexed(&lexed);
-        let legacy = super::activation_and_restrictions::parse_trigger_clause(&compat);
+        let wrapper = super::activation_and_restrictions::parse_trigger_clause(&compat);
 
-        assert_eq!(format!("{native:?}"), format!("{legacy:?}"), "{text}");
+        assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
     }
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_multisentence_followups() {
+fn rewrite_lexed_triggered_line_handles_punctuation_before_enter_verb() {
+    let text = "Whenever one or more noncreature, nonland permanents you control enter, put a +1/+1 counter on target creature you control.";
+    let tokens = lex_line(text, 0)
+        .expect("rewrite lexer should classify comma-separated enter trigger line");
+
+    let parsed = super::clause_support::rewrite_parse_triggered_line_lexed(&tokens);
+
+    assert!(
+        matches!(parsed, Ok(crate::cards::builders::LineAst::Triggered { .. })),
+        "{parsed:?}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_multisentence_followups() {
     let text = "Exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify multisentence effect");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy effect sentence parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper effect sentence parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed effect sentence parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_comma_then_chain() {
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_comma_then_chain() {
     let text = "Discard your hand, then draw four cards.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify comma-then effect");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy effect sentence parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper effect sentence parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed effect sentence parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_sentence_matches_legacy_conditional_dispatch() {
+fn rewrite_lexed_effect_sentence_matches_wrapper_conditional_dispatch() {
     let text = "If you control an artifact, draw a card.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify conditional sentence");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy conditional sentence should parse");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper conditional sentence should parse");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed conditional sentence should parse");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_predicate_parser_matches_legacy_output() {
+fn rewrite_lexed_predicate_parser_matches_wrapper_output() {
     let text = "it's your turn";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
     let native = super::parse_predicate_lexed(&lexed).expect("lexed predicate should parse");
-    let legacy = super::conditionals::parse_predicate(&compat)
-        .expect("legacy predicate should parse");
+    let wrapper = super::conditionals::parse_predicate(&compat)
+        .expect("wrapper predicate should parse");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_sentence_matches_legacy_pre_diagnostic_clause_helpers() {
+fn rewrite_lexed_effect_sentence_matches_wrapper_pre_diagnostic_clause_helpers() {
     for text in [
         "The next time a red source of your choice would deal damage to you this turn, prevent that damage.",
         "Double target creature's power until end of turn.",
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify clause helper probe");
-        let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+        let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-        let legacy =
-            parse_effect_sentence(&compat).expect("legacy clause helper sentence should parse");
+        let wrapper =
+            parse_effect_sentence(&compat).expect("wrapper clause helper sentence should parse");
         let native =
             parse_effect_sentence_lexed(&lexed).expect("lexed clause helper sentence should parse");
 
-        assert_eq!(format!("{native:?}"), format!("{legacy:?}"), "{text}");
+        assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
     }
 }
 
 #[test]
-fn rewrite_lexed_effect_sentence_unsupported_diagnostic_matches_legacy_error() {
+fn rewrite_lexed_effect_sentence_unsupported_diagnostic_matches_wrapper_error() {
     let text = "The Ring tempts you.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify unsupported sentence");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
     let native = parse_effect_sentence_lexed(&lexed)
         .expect_err("lexed sentence should reject unsupported diagnostic probe");
-    let legacy = parse_effect_sentence(&compat)
-        .expect_err("legacy sentence should reject unsupported diagnostic probe");
+    let wrapper = parse_effect_sentence(&compat)
+        .expect_err("wrapper sentence should reject unsupported diagnostic probe");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_sentence_matches_legacy_where_x_clause() {
+fn rewrite_lexed_effect_sentence_matches_wrapper_where_x_clause() {
     let text = "Target creature gets +X/+0 until end of turn, where X is its power.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify where-x sentence");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
     let native =
         parse_effect_sentence_lexed(&lexed).expect("lexed where-x sentence should parse");
-    let legacy = parse_effect_sentence(&compat).expect("legacy where-x sentence should parse");
+    let wrapper = parse_effect_sentence(&compat).expect("wrapper where-x sentence should parse");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_sentence_matches_legacy_sacrifice_land_clause() {
+fn rewrite_lexed_effect_sentence_matches_wrapper_sacrifice_land_clause() {
     let text = "Sacrifice a land.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify sacrifice sentence");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy sacrifice sentence should parse");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper sacrifice sentence should parse");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed sacrifice sentence should parse");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_sentence_matches_legacy_sacrifice_all_non_ogres_clause() {
+fn rewrite_lexed_effect_sentence_matches_wrapper_sacrifice_all_non_ogres_clause() {
     let text = "Sacrifice all non-Ogre creatures you control.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify sacrifice-all sentence");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy sacrifice-all sentence should parse");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper sacrifice-all sentence should parse");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed sacrifice-all sentence should parse");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
@@ -1306,7 +1306,7 @@ fn rewrite_semantic_parse_supports_adamant_spent_to_cast_statement_line() -> Res
 {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Adamant Variant")
         .card_types(vec![CardType::Sorcery]);
-    let (doc, _) = parse_text_with_annotations_rewrite(
+    let (doc, _) = parse_text_to_semantic_document(
         builder,
         "Adamant — If at least three blue mana was spent to cast this spell, create a Food token."
             .to_string(),
@@ -1324,7 +1324,7 @@ fn rewrite_semantic_parse_supports_adamant_spent_to_cast_statement_line() -> Res
 fn rewrite_lowered_supports_adamant_spent_to_cast_statement_line() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Adamant Variant")
         .card_types(vec![CardType::Sorcery]);
-    let (definition, _) = parse_text_with_annotations_rewrite_lowered(
+    let (definition, _) = parse_text_with_annotations_lowered(
         builder,
         "Adamant — If at least three blue mana was spent to cast this spell, create a Food token."
             .to_string(),
@@ -1401,74 +1401,74 @@ fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanout() {
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_and_chain_split() {
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_and_chain_split() {
     let text = "Destroy target creature and draw a card.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify and-chain effect");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy effect sentence parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper effect sentence parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed effect sentence parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_missing_verb_damage_chain() {
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_missing_verb_damage_chain() {
     let text = "This creature deals 4 damage to target creature and 2 damage to that creature's controller.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify missing-verb damage chain");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy missing-verb damage parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper missing-verb damage parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed missing-verb damage parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_missing_verb_sacrifice_chain() {
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_missing_verb_sacrifice_chain() {
     let text = "Target player sacrifices an artifact and a land of their choice.";
     let lexed =
         lex_line(text, 0).expect("rewrite lexer should classify missing-verb sacrifice chain");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy missing-verb sacrifice parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper missing-verb sacrifice parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed missing-verb sacrifice parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_comma_action_chain() {
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_comma_action_chain() {
     let text = "Target player sacrifices a creature, discards a card, and loses 2 life.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify comma action chain");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy comma action parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper comma action parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed comma action parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_simple_draw_clause() {
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_simple_draw_clause() {
     let text = "Draw a card.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify simple draw effect");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy simple draw parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper simple draw parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed simple draw parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
@@ -1488,32 +1488,32 @@ fn rewrite_cost_reduction_line_rejects_unmodeled_activate_if_condition() {
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_simple_target_clause() {
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_simple_target_clause() {
     let text = "Destroy target creature.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify simple target effect");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy simple target parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper simple target parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed simple target parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
 fn rewrite_lexed_effect_entrypoint_keeps_permission_may_as_grant_not_wrapper() {
     let text = "You may play it this turn without paying its mana cost.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify permission sentence");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy permission sentence parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper permission sentence parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed permission sentence parser should succeed");
 
     let native_debug = format!("{native:?}");
-    assert_eq!(native_debug, format!("{legacy:?}"));
+    assert_eq!(native_debug, format!("{wrapper:?}"));
     assert!(
         !native_debug.contains("May"),
         "permission-granting may clause should not be wrapped as a May effect: {native_debug}"
@@ -1524,15 +1524,15 @@ fn rewrite_lexed_effect_entrypoint_keeps_permission_may_as_grant_not_wrapper() {
 fn rewrite_lexed_effect_entrypoint_keeps_additional_land_play_as_permission_not_wrapper() {
     let text = "You may play an additional land this turn.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify land-play permission");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy land-play permission parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper land-play permission parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed land-play permission parser should succeed");
 
     let native_debug = format!("{native:?}");
-    assert_eq!(native_debug, format!("{legacy:?}"));
+    assert_eq!(native_debug, format!("{wrapper:?}"));
     assert!(
         native_debug.contains("AdditionalLandPlays"),
         "expected additional land-play effect, got {native_debug}"
@@ -1544,17 +1544,17 @@ fn rewrite_lexed_effect_entrypoint_keeps_additional_land_play_as_permission_not_
 }
 
 #[test]
-fn rewrite_lexed_effect_entrypoint_matches_legacy_or_action_clause() {
+fn rewrite_lexed_effect_entrypoint_matches_wrapper_or_action_clause() {
     let text = "Destroy target creature or draw a card.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify or-action effect");
-    let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
+    let compat = crate::cards::builders::parser::util::tokenize_line(text, 0);
 
-    let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
-        .expect("legacy or-action parser should succeed");
+    let wrapper = super::clause_support::rewrite_parse_effect_sentences(&compat)
+        .expect("wrapper or-action parser should succeed");
     let native = super::clause_support::rewrite_parse_effect_sentences_lexed(&lexed)
         .expect("lexed or-action parser should succeed");
 
-    assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+    assert_eq!(format!("{native:?}"), format!("{wrapper:?}"));
 }
 
 #[test]
@@ -1566,7 +1566,7 @@ fn rewrite_count_word_parser_handles_digits_and_words() {
 #[test]
 fn rewrite_mana_symbol_group_parser_handles_hybrid_symbols() {
     let symbols = parse_mana_symbol_group_rewrite("{W/U}")
-        .expect("rewrite parser should parse hybrid mana group");
+        .expect("parser should parse hybrid mana group");
     assert_eq!(symbols, vec![ManaSymbol::White, ManaSymbol::Blue]);
 }
 
@@ -1608,11 +1608,11 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
     let bare_energy = parse_activation_cost_rewrite("{E}{E}")
         .expect("rewrite activation-cost parser should parse bare energy payment");
     let counter_add = parse_activation_cost_rewrite("Put a +1/+1 counter on this creature")
-        .expect("rewrite parser should parse add-counter cost");
+        .expect("parser should parse add-counter cost");
     let counter_remove = parse_activation_cost_rewrite("Remove a +1/+1 counter from this creature")
-        .expect("rewrite parser should parse remove-counter cost");
+        .expect("parser should parse remove-counter cost");
     let exile_hand = parse_activation_cost_rewrite("Exile a blue card from your hand")
-        .expect("rewrite parser should parse exile-from-hand cost");
+        .expect("parser should parse exile-from-hand cost");
 
     assert!(matches!(
         energy.segments.as_slice(),
@@ -1646,7 +1646,7 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
 }
 
 #[test]
-fn rewrite_activation_cost_parses_loyalty_shorthand_without_legacy_escape_hatch() {
+fn rewrite_activation_cost_parses_loyalty_shorthand_without_wrapper_escape_hatch() {
     let plus = parse_activation_cost_rewrite("+1")
         .expect("rewrite activation-cost parser should parse +1 loyalty shorthand");
     let minus = parse_activation_cost_rewrite("-2")
@@ -1693,7 +1693,7 @@ fn rewrite_lowered_simple_card_parses() -> Result<(), CardTextError> {
     let text = "Type: Creature — Spirit\n{1}: This creature gets +1/+1 until end of turn.";
     let builder = CardDefinitionBuilder::new(CardId::new(), "Shared Spirit");
     let (definition, _) =
-        parse_text_with_annotations_rewrite_lowered(builder, text.to_string(), false)?;
+        parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
     assert_eq!(definition.abilities.len(), 1);
     Ok(())
 }
@@ -1702,7 +1702,7 @@ fn rewrite_lowered_simple_card_parses() -> Result<(), CardTextError> {
 fn rewrite_lowered_mana_ability_preserves_fixed_mana_groups() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Shared Ring")
         .card_types(vec![CardType::Artifact]);
-    let (definition, _) = parse_text_with_annotations_rewrite_lowered(
+    let (definition, _) = parse_text_with_annotations_lowered(
         builder,
         "{T}: Add {C}{C}.".to_string(),
         false,
@@ -1731,7 +1731,7 @@ fn rewrite_semantic_parse_merges_multiline_spell_when_you_do_followup() -> Resul
 {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Followup Variant")
         .card_types(vec![CardType::Instant]);
-    let (doc, _) = parse_text_with_annotations_rewrite(
+    let (doc, _) = parse_text_to_semantic_document(
         builder,
         "Sacrifice a creature.\nWhen you do, draw two cards.".to_string(),
         false,
@@ -1748,7 +1748,7 @@ fn rewrite_semantic_parse_merges_multiline_spell_when_you_do_followup() -> Resul
 fn rewrite_semantic_parse_marks_plumb_additional_cost_as_non_choice() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
         .card_types(vec![CardType::Instant]);
-    let (doc, _) = parse_text_with_annotations_rewrite(
+    let (doc, _) = parse_text_to_semantic_document(
         builder,
         "As an additional cost to cast this spell, you may sacrifice one or more creatures. When you do, copy this spell for each creature sacrificed this way.\nYou draw a card and you lose 1 life.".to_string(),
         false,
@@ -1832,7 +1832,7 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
 
     for (builder, text) in cases {
         let (definition, _) =
-            match parse_text_with_annotations_rewrite_lowered(builder, text.to_string(), false) {
+            match parse_text_with_annotations_lowered(builder, text.to_string(), false) {
                 Ok(parsed) => parsed,
                 Err(err) => {
                     failures.push(format!(

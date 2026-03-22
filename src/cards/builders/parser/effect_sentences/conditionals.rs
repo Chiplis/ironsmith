@@ -1245,7 +1245,7 @@ pub(crate) fn split_leading_result_prefix_lexed(
     let comma_idx = trimmed.iter().position(|token| {
         matches!(
             token.kind,
-            crate::cards::builders::parse_rewrite::lexer::TokenKind::Comma
+            crate::cards::builders::parser::lexer::TokenKind::Comma
         )
     })?;
     if comma_idx <= 1 || comma_idx + 1 >= trimmed.len() {

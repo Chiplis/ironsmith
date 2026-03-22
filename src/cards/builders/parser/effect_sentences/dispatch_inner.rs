@@ -1979,15 +1979,15 @@ fn strip_labeled_conditional_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[
     if tokens[..if_idx].iter().any(|token| {
         !matches!(
             token.kind,
-            crate::cards::builders::parse_rewrite::lexer::TokenKind::Word
-                | crate::cards::builders::parse_rewrite::lexer::TokenKind::Dash
-                | crate::cards::builders::parse_rewrite::lexer::TokenKind::EmDash
+            crate::cards::builders::parser::lexer::TokenKind::Word
+                | crate::cards::builders::parser::lexer::TokenKind::Dash
+                | crate::cards::builders::parser::lexer::TokenKind::EmDash
         )
     }) {
         return None;
     }
 
-    let prefix_words = crate::cards::builders::parse_rewrite::lexed_words(&tokens[..if_idx]);
+    let prefix_words = crate::cards::builders::parser::lexed_words(&tokens[..if_idx]);
     if prefix_words.is_empty() {
         return None;
     }
@@ -2025,8 +2025,8 @@ fn strip_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[Owned
         .position(|token| {
             matches!(
                 token.kind,
-                crate::cards::builders::parse_rewrite::lexer::TokenKind::Dash
-                    | crate::cards::builders::parse_rewrite::lexer::TokenKind::EmDash
+                crate::cards::builders::parser::lexer::TokenKind::Dash
+                    | crate::cards::builders::parser::lexer::TokenKind::EmDash
             )
         })?;
     if !(1..=3).contains(&dash_idx) || dash_idx + 1 >= tokens.len() {
@@ -2035,15 +2035,15 @@ fn strip_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[Owned
     if tokens[..=dash_idx].iter().any(|token| {
         !matches!(
             token.kind,
-            crate::cards::builders::parse_rewrite::lexer::TokenKind::Word
-                | crate::cards::builders::parse_rewrite::lexer::TokenKind::Dash
-                | crate::cards::builders::parse_rewrite::lexer::TokenKind::EmDash
+            crate::cards::builders::parser::lexer::TokenKind::Word
+                | crate::cards::builders::parser::lexer::TokenKind::Dash
+                | crate::cards::builders::parser::lexer::TokenKind::EmDash
         )
     }) {
         return None;
     }
 
-    let prefix_words = crate::cards::builders::parse_rewrite::lexed_words(&tokens[..dash_idx]);
+    let prefix_words = crate::cards::builders::parser::lexed_words(&tokens[..dash_idx]);
     if prefix_words.is_empty() {
         return None;
     }
@@ -2247,9 +2247,9 @@ pub(crate) fn strip_labeled_conditional_prefix(
     if tokens[..if_idx].iter().any(|token| {
         !matches!(
             token.kind,
-            crate::cards::builders::parse_rewrite::lexer::TokenKind::Word
-                | crate::cards::builders::parse_rewrite::lexer::TokenKind::Dash
-                | crate::cards::builders::parse_rewrite::lexer::TokenKind::EmDash
+            crate::cards::builders::parser::lexer::TokenKind::Word
+                | crate::cards::builders::parser::lexer::TokenKind::Dash
+                | crate::cards::builders::parser::lexer::TokenKind::EmDash
         )
     }) {
         return None;
@@ -2418,7 +2418,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(
 pub(crate) fn parse_token_copy_modifier_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::cards::builders::parse_rewrite::lexed_words(tokens)
+    let filtered: Vec<&str> = crate::cards::builders::parser::lexed_words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
@@ -3287,7 +3287,7 @@ pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> 
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::parse_rewrite::lexed_words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.first().copied() != Some("exile") {
         return false;
     }
@@ -3331,7 +3331,7 @@ pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken])
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::cards::builders::parse_rewrite::lexed_words(tokens);
+    let words = crate::cards::builders::parser::lexed_words(tokens);
     if words.first().copied() != Some("sacrifice") {
         return false;
     }
@@ -4892,7 +4892,7 @@ pub(crate) fn parse_double_target_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let word_view =
-        crate::cards::builders::parse_rewrite::native_tokens::LowercaseWordView::new(tokens);
+        crate::cards::builders::parser::native_tokens::LowercaseWordView::new(tokens);
     let words = word_view.to_word_refs();
     if !words.starts_with(&["double", "target"]) {
         return Ok(None);

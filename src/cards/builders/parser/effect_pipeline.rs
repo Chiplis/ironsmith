@@ -137,5 +137,5 @@ pub(crate) fn parse_text_with_annotations(
     text: String,
     allow_unsupported: bool,
 ) -> Result<(CardDefinition, ParseAnnotations), CardTextError> {
-    super::parse_text_with_annotations_rewrite_lowered(builder, text, allow_unsupported)
+    super::parse_text_with_annotations_lowered(builder, text, allow_unsupported)
 }

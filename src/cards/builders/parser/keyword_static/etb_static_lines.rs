@@ -708,7 +708,7 @@ pub(crate) fn parse_where_x_value_clause(tokens: &[OwnedLexToken]) -> Option<Val
 }
 
 pub(crate) fn parse_where_x_value_clause_lexed(
-    tokens: &[crate::cards::builders::parse_rewrite::lexer::OwnedLexToken],
+    tokens: &[crate::cards::builders::parser::lexer::OwnedLexToken],
 ) -> Option<Value> {
     parse_where_x_value_clause(tokens)
 }

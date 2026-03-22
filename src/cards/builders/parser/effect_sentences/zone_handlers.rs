@@ -43,8 +43,8 @@ pub(crate) fn collapse_leading_signed_pt_modifier_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
     let sign = match tokens.first()?.kind {
-        crate::cards::builders::parse_rewrite::lexer::TokenKind::Dash => "-",
-        crate::cards::builders::parse_rewrite::lexer::TokenKind::Plus => "+",
+        crate::cards::builders::parser::lexer::TokenKind::Dash => "-",
+        crate::cards::builders::parser::lexer::TokenKind::Plus => "+",
         _ => return None,
     };
     let modifier = tokens.get(1)?.as_word()?;
@@ -3369,7 +3369,7 @@ pub(crate) fn apply_exile_subject_hand_owner_context(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::parse_rewrite::util::tokenize_line;
+    use crate::cards::builders::parser::util::tokenize_line;
 
     #[test]
     fn parse_graveyard_owner_prefix_handles_shared_phrases() {

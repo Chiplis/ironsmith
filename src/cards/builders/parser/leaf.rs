@@ -1338,7 +1338,7 @@ pub(crate) fn parse_type_line_rewrite(raw: &str) -> Result<TypeLineCst, CardText
 }
 
 pub(crate) fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostCst, CardTextError> {
-    let parse_rewrite_only = || -> Result<ActivationCostCst, CardTextError> {
+    let parser_only = || -> Result<ActivationCostCst, CardTextError> {
         if let Some((left, right)) = parse_shard_style_mana_or_tap_cost_rewrite(raw) {
             return Ok(ActivationCostCst {
                 raw: raw.trim().to_string(),
@@ -1419,7 +1419,7 @@ pub(crate) fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostC
         })
     };
 
-    match parse_rewrite_only() {
+    match parser_only() {
         Ok(cst) => Ok(cst),
         Err(rewrite_err) => {
             if let Some(segments) = parse_loyalty_shorthand_activation_cost_rewrite(raw) {

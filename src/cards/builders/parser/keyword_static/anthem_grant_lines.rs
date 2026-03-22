@@ -1916,7 +1916,7 @@ pub(crate) fn parse_anthem_clause(
 
     let modifier_tokens = &tokens[modifier_idx..tail_end];
     let modifier_word_view =
-        crate::cards::builders::parse_rewrite::native_tokens::LowercaseWordView::new(
+        crate::cards::builders::parser::native_tokens::LowercaseWordView::new(
             modifier_tokens,
         );
     let modifier_token = modifier_word_view.first().ok_or_else(|| {
