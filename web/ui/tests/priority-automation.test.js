@@ -46,3 +46,23 @@ test("local off-turn priority still auto-passes when the stack is empty", () => 
 
   assert.equal(holdReason, null);
 });
+
+test("opponent priority respects always-hold stops", () => {
+  const holdReason = priorityHoldReason({
+    autoPassEnabled: true,
+    holdRule: "always",
+    decision: {
+      kind: "priority",
+      player: 2,
+      actions: [{ kind: "pass_priority" }],
+    },
+    currentState: {
+      perspective: 1,
+      stack_size: 2,
+      phase: "FirstMain",
+    },
+    perspectiveMode: "opponent",
+  });
+
+  assert.equal(holdReason, "always hold");
+});

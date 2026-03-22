@@ -4,20 +4,21 @@ use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::parse_object_filter;
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
 use super::super::util::{
-    compat_tokens_from_lexed, is_article, is_source_reference_words, parse_card_type, parse_subject,
-    parse_target_phrase, parse_value, split_on_and, token_index_for_word_index, words,
+    compat_tokens_from_lexed, is_article, is_source_reference_words, parse_card_type,
+    parse_subject, parse_target_phrase, parse_value, split_on_and, token_index_for_word_index,
+    words,
 };
 use super::super::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
 };
-use super::sentence_helpers::*;
-use super::{
-    LeadingResultPrefixKind, TokenCopyFollowup, parse_effect_chain_lexed, parse_search_library_sentence,
-    parse_simple_gain_ability_clause, split_leading_result_prefix,
-};
 use super::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
     split_effect_chain_on_and_lexed,
+};
+use super::sentence_helpers::*;
+use super::{
+    LeadingResultPrefixKind, TokenCopyFollowup, parse_effect_chain_lexed,
+    parse_search_library_sentence, parse_simple_gain_ability_clause, split_leading_result_prefix,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -832,8 +833,7 @@ fn run_sentence_parse_rules_lexed(
         return Err(diag);
     }
 
-    if let Some((rule_id, effects)) = SENTENCE_POST_DIAGNOSTIC_PARSE_INDEX_LEXED.run_first(&view)?
-    {
+    if let Some((rule_id, effects)) = SENTENCE_POST_DIAGNOSTIC_PARSE_INDEX_LEXED.run_first(&view)? {
         return Ok((rule_id, effects));
     }
 
@@ -843,7 +843,10 @@ fn run_sentence_parse_rules_lexed(
     )))
 }
 
-fn sentence_has_each_player_lose_discard_sacrifice_chain(words: &[&str], _: &[OwnedLexToken]) -> bool {
+fn sentence_has_each_player_lose_discard_sacrifice_chain(
+    words: &[&str],
+    _: &[OwnedLexToken],
+) -> bool {
     words.starts_with(&["each", "player"])
         && words.contains(&"then")
         && (words.contains(&"lose") || words.contains(&"loses"))
@@ -871,7 +874,10 @@ fn sentence_has_put_one_of_them_into_hand_rest_clause(words: &[&str], _: &[Owned
         && (words.contains(&"graveyard") || words.contains(&"graveyards"))
 }
 
-fn sentence_has_loses_all_abilities_with_becomes_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
+fn sentence_has_loses_all_abilities_with_becomes_clause(
+    words: &[&str],
+    _: &[OwnedLexToken],
+) -> bool {
     let has_loses_all_abilities = (words.contains(&"lose") || words.contains(&"loses"))
         && words
             .windows(2)
@@ -879,14 +885,20 @@ fn sentence_has_loses_all_abilities_with_becomes_clause(words: &[&str], _: &[Own
     has_loses_all_abilities && words.contains(&"becomes")
 }
 
-fn sentence_has_spent_to_cast_this_spell_without_condition(words: &[&str], _: &[OwnedLexToken]) -> bool {
+fn sentence_has_spent_to_cast_this_spell_without_condition(
+    words: &[&str],
+    _: &[OwnedLexToken],
+) -> bool {
     let has_spent_to_cast_this_spell = words
         .windows(6)
         .any(|window| window == ["was", "spent", "to", "cast", "this", "spell"]);
     has_spent_to_cast_this_spell && !words.iter().any(|word| matches!(*word, "if" | "unless"))
 }
 
-fn sentence_has_would_enter_instead_replacement_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
+fn sentence_has_would_enter_instead_replacement_clause(
+    words: &[&str],
+    _: &[OwnedLexToken],
+) -> bool {
     words.iter().any(|word| *word == "would")
         && words
             .iter()
@@ -943,7 +955,10 @@ fn sentence_has_phase_out_until_leaves_clause(words: &[&str], _: &[OwnedLexToken
             .any(|window| window == ["leaves", "the", "battlefield"])
 }
 
-fn sentence_has_unsupported_investigate_for_each_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
+fn sentence_has_unsupported_investigate_for_each_clause(
+    words: &[&str],
+    _: &[OwnedLexToken],
+) -> bool {
     let is_for_each_vote_investigate = words.starts_with(&["for", "each"])
         && words.iter().any(|word| *word == "vote" || *word == "votes")
         && words
@@ -963,7 +978,10 @@ fn sentence_has_same_name_as_another_in_hand_clause(words: &[&str], _: &[OwnedLe
         && words.contains(&"hand")
 }
 
-fn sentence_has_for_each_mana_from_spent_to_cast_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
+fn sentence_has_for_each_mana_from_spent_to_cast_clause(
+    words: &[&str],
+    _: &[OwnedLexToken],
+) -> bool {
     words
         .windows(4)
         .any(|window| window == ["for", "each", "mana", "from"])
@@ -1049,7 +1067,10 @@ fn sentence_has_target_creature_token_player_planeswalker_clause(
         && words.contains(&"planeswalker")
 }
 
-fn sentence_has_if_you_sacrifice_an_island_this_way_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
+fn sentence_has_if_you_sacrifice_an_island_this_way_clause(
+    words: &[&str],
+    _: &[OwnedLexToken],
+) -> bool {
     words
         .windows(5)
         .any(|window| window == ["if", "you", "sacrifice", "an", "island"])
@@ -1086,7 +1107,10 @@ fn sentence_has_copy_spell_legendary_exception_clause(words: &[&str], _: &[Owned
         && (words.contains(&"except") || words.contains(&"isnt"))
 }
 
-fn sentence_has_return_each_creature_that_isnt_list_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {
+fn sentence_has_return_each_creature_that_isnt_list_clause(
+    words: &[&str],
+    _: &[OwnedLexToken],
+) -> bool {
     words.starts_with(&["return", "each", "creature", "that", "isnt"])
         && words.iter().filter(|word| **word == "or").count() >= 1
 }
@@ -1115,7 +1139,9 @@ fn sentence_has_unsupported_negated_untap_clause(words: &[&str], _: &[OwnedLexTo
         && (words.contains(&"step") || words.contains(&"steps"))
 }
 
-pub(crate) fn parse_effect_sentence(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+pub(crate) fn parse_effect_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
     // Generic support for trailing "where X is ..." clauses.
     //
     // Many Oracle texts define a computed X (not cost-derived X) using:
@@ -1331,10 +1357,12 @@ fn strip_labeled_conditional_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[
     if !(1..=3).contains(&if_idx) {
         return None;
     }
-    if tokens[..if_idx]
-        .iter()
-        .any(|token| !matches!(token.kind, crate::cards::builders::parse_rewrite::lexer::TokenKind::Word))
-    {
+    if tokens[..if_idx].iter().any(|token| {
+        !matches!(
+            token.kind,
+            crate::cards::builders::parse_rewrite::lexer::TokenKind::Word
+        )
+    }) {
         return None;
     }
 
@@ -1450,7 +1478,9 @@ pub(crate) fn is_enters_as_copy_clause(words: &[&str]) -> bool {
     has_enter_before_as_copy || has_enter_before_as_copy_no_article
 }
 
-pub(crate) fn strip_labeled_conditional_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+pub(crate) fn strip_labeled_conditional_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
     let if_idx = tokens.iter().position(|token| token.is_word("if"))?;
     if !(1..=3).contains(&if_idx) {
         return None;
@@ -1508,7 +1538,9 @@ pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
     has_untap && has_negation
 }
 
-pub(crate) fn parse_token_copy_modifier_sentence(tokens: &[OwnedLexToken]) -> Option<TokenCopyFollowup> {
+pub(crate) fn parse_token_copy_modifier_sentence(
+    tokens: &[OwnedLexToken],
+) -> Option<TokenCopyFollowup> {
     let filtered: Vec<&str> = words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
@@ -1878,10 +1910,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         return Ok(None);
     }
 
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.is_comma())
-    else {
+    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
 
@@ -2417,9 +2446,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
         return Ok(None);
     }
 
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.is_comma());
+    let comma_idx = tokens.iter().position(|token| token.is_comma());
     let remainder = if let Some(idx) = comma_idx {
         &tokens[idx + 1..]
     } else {
@@ -2446,12 +2473,15 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
     };
 
     let after_gets = &remainder[gets_idx + 1..];
-    let modifier_token = after_gets.first().and_then(OwnedLexToken::as_word).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing power/toughness modifier (clause: '{}')",
-            remainder_words.join(" ")
-        ))
-    })?;
+    let modifier_token = after_gets
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing power/toughness modifier (clause: '{}')",
+                remainder_words.join(" ")
+            ))
+        })?;
     let (power, toughness) = parse_pt_modifier(modifier_token)?;
 
     let duration = if remainder_words.contains(&"until")
@@ -2537,9 +2567,7 @@ pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken])
         || words[at_idx + 1..] == ["the", "end", "of", "combat"]
 }
 
-pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
+pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::cards::builders::parse_rewrite::lexed_words(tokens);
     if words.first().copied() != Some("sacrifice") {
         return false;
@@ -2628,7 +2656,9 @@ pub(crate) fn find_same_name_reference_span(
     Ok(None)
 }
 
-pub(crate) fn strip_same_controller_reference(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
+pub(crate) fn strip_same_controller_reference(
+    tokens: &[OwnedLexToken],
+) -> (Vec<OwnedLexToken>, bool) {
     let mut cleaned = Vec::with_capacity(tokens.len());
     let mut idx = 0usize;
     let mut same_controller = false;

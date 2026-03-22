@@ -9,7 +9,7 @@ use crate::cost::OptionalCost;
 use crate::{CardDefinition, TagKey};
 
 use super::reference_model::{
-    AnnotatedEffectSequence, LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports,
+    AnnotatedEffectSequence, ReferenceEnv, ReferenceExports, ReferenceImports,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

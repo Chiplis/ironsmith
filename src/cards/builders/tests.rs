@@ -12115,6 +12115,20 @@ fn parse_equip_with_once_each_turn_restriction() {
         .subtypes(vec![Subtype::Equipment])
         .parse_text("Equip {0}.\nActivate only once each turn.")
         .expect("equip with once-each-turn restriction should parse");
+    assert_eq!(
+        def.abilities.len(),
+        1,
+        "once-per-turn restriction line should attach to equip instead of adding a fallback static ability"
+    );
+    let ability = def.abilities.first().expect("expected equip ability");
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        panic!("expected equip to remain an activated ability");
+    };
+    let activation_debug = format!("{activated:#?}");
+    assert!(
+        activation_debug.contains("OncePerTurn"),
+        "expected rewrite restriction line to model the once-per-turn equip restriction, got {activation_debug}"
+    );
     let compiled = compiled_lines(&def).join(" ").to_ascii_lowercase();
     assert!(
         compiled.contains("equip {0}"),
@@ -17467,6 +17481,7 @@ fn oracle_render_regression_named_cards_compile_cleanly() {
             && boseiju.contains("artifact")
             && boseiju.contains("enchantment")
             && boseiju.contains("land")
+            && boseiju.contains("That permanent's controller may search their library")
             && boseiju.contains(
                 "This ability costs {1} less to activate for each legendary creature you control"
             ),

@@ -23,10 +23,7 @@ fn lower_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
     words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
 }
 
-fn parse_simple_object_filter_lexed(
-    tokens: &[OwnedLexToken],
-    other: bool,
-) -> Option<ObjectFilter> {
+fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Option<ObjectFilter> {
     let word_view = LowercaseWordView::new(tokens);
     let mut words: Vec<&str> = word_view
         .to_word_refs()
@@ -75,12 +72,15 @@ fn parse_simple_object_filter_lexed(
         words.truncate(new_len);
     };
 
-    let apply_owner_zone_suffix =
-        |filter: &mut ObjectFilter, owner: PlayerFilter, zone: Zone, words: &mut Vec<&str>, suffix_len: usize| {
-            filter.owner = Some(owner);
-            filter.zone = Some(zone);
-            trim_suffix(words, suffix_len);
-        };
+    let apply_owner_zone_suffix = |filter: &mut ObjectFilter,
+                                   owner: PlayerFilter,
+                                   zone: Zone,
+                                   words: &mut Vec<&str>,
+                                   suffix_len: usize| {
+        filter.owner = Some(owner);
+        filter.zone = Some(zone);
+        trim_suffix(words, suffix_len);
+    };
 
     if lower_words_end_with(&words, &["you", "control"]) {
         filter.controller = Some(PlayerFilter::You);
@@ -108,23 +108,11 @@ fn parse_simple_object_filter_lexed(
     } else if lower_words_end_with(&words, &["in", "your", "hand"])
         || lower_words_end_with(&words, &["from", "your", "hand"])
     {
-        apply_owner_zone_suffix(
-            &mut filter,
-            PlayerFilter::You,
-            Zone::Hand,
-            &mut words,
-            3,
-        );
+        apply_owner_zone_suffix(&mut filter, PlayerFilter::You, Zone::Hand, &mut words, 3);
     } else if lower_words_end_with(&words, &["in", "your", "library"])
         || lower_words_end_with(&words, &["from", "your", "library"])
     {
-        apply_owner_zone_suffix(
-            &mut filter,
-            PlayerFilter::You,
-            Zone::Library,
-            &mut words,
-            3,
-        );
+        apply_owner_zone_suffix(&mut filter, PlayerFilter::You, Zone::Library, &mut words, 3);
     } else if lower_words_end_with(&words, &["in", "graveyard"])
         || lower_words_end_with(&words, &["from", "graveyard"])
     {
@@ -3263,8 +3251,8 @@ pub(crate) fn split_on_or(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
     let mut current = Vec::new();
 
     for (idx, token) in tokens.iter().enumerate() {
-        let is_separator = token.is_comma()
-            || (token.is_word("or") && !is_comparison_or_delimiter(tokens, idx));
+        let is_separator =
+            token.is_comma() || (token.is_word("or") && !is_comparison_or_delimiter(tokens, idx));
         if is_separator {
             if !current.is_empty() {
                 segments.push(std::mem::take(&mut current));

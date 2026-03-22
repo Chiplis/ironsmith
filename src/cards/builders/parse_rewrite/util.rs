@@ -165,6 +165,7 @@ pub(crate) fn compat_tokens_from_lexed(lexed: &[OwnedLexToken]) -> Vec<OwnedLexT
     tokens
 }
 
+#[allow(dead_code)]
 pub(crate) fn tokenize_line(line: &str, line_index: usize) -> Vec<OwnedLexToken> {
     let Ok(lexed) = lex_line(line, line_index) else {
         return Vec::new();
@@ -461,7 +462,10 @@ pub(crate) fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (boo
     (has_sacrifice_reference, has_exile_reference)
 }
 
-pub(crate) fn token_index_for_word_index(tokens: &[OwnedLexToken], word_index: usize) -> Option<usize> {
+pub(crate) fn token_index_for_word_index(
+    tokens: &[OwnedLexToken],
+    word_index: usize,
+) -> Option<usize> {
     let mut seen_words = 0usize;
     for (idx, token) in tokens.iter().enumerate() {
         if token.as_word().is_none() {
@@ -1542,7 +1546,10 @@ pub(crate) fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
 }
 
 pub(crate) fn parse_value_expr(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
-    let words = tokens.iter().filter_map(OwnedLexToken::as_word).collect::<Vec<_>>();
+    let words = tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
     let (value, used_words) = parse_value_expr_words(&words)?;
     let used = token_index_for_word_index(tokens, used_words).unwrap_or(tokens.len());
     Some((value, used))
@@ -1728,7 +1735,9 @@ pub(crate) fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
     Some((value, 1))
 }
 
-pub(crate) fn parse_target_count_range_prefix(tokens: &[OwnedLexToken]) -> Option<(ChoiceCount, usize)> {
+pub(crate) fn parse_target_count_range_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<(ChoiceCount, usize)> {
     let (first, first_used) = parse_number(tokens)?;
     let or_idx = first_used;
     if !tokens.get(or_idx).is_some_and(|token| token.is_word("or")) {
@@ -2013,7 +2022,10 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             target_count = Some(choice_count_from_value(&value, true));
             idx += used;
         } else {
-            let next_word = tokens.get(idx).and_then(OwnedLexToken::as_word).unwrap_or("?");
+            let next_word = tokens
+                .get(idx)
+                .and_then(OwnedLexToken::as_word)
+                .unwrap_or("?");
             return Err(CardTextError::ParseError(format!(
                 "unsupported dynamic or missing target count after 'up to' (found '{next_word}' in clause: '{}')",
                 words(tokens).join(" ")
@@ -2945,7 +2957,9 @@ pub(crate) fn parse_madness_line_lexed(
     parse_madness_line(&compat)
 }
 
-pub(crate) fn parse_buyback_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_buyback_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<OptionalCost>, CardTextError> {
     if !tokens.first().is_some_and(|token| token.is_word("buyback")) {
         return Ok(None);
     }
@@ -3031,7 +3045,9 @@ pub(crate) fn parse_optional_cost_keyword_line(
     Ok(Some(constructor(total_cost)))
 }
 
-pub(crate) fn parse_kicker_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_kicker_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "kicker", OptionalCost::kicker)
 }
 
@@ -3055,7 +3071,9 @@ pub(crate) fn parse_multikicker_line_lexed(
     parse_multikicker_line(&compat)
 }
 
-pub(crate) fn parse_squad_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_squad_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "squad", OptionalCost::squad)
 }
 
@@ -3079,7 +3097,9 @@ pub(crate) fn parse_offspring_line_lexed(
     parse_offspring_line(&compat)
 }
 
-pub(crate) fn parse_entwine_line(tokens: &[OwnedLexToken]) -> Result<Option<OptionalCost>, CardTextError> {
+pub(crate) fn parse_entwine_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<OptionalCost>, CardTextError> {
     parse_optional_cost_keyword_line(tokens, "entwine", OptionalCost::entwine)
 }
 
@@ -3346,10 +3366,7 @@ pub(crate) fn parse_bestow_line(
         .unwrap_or_default()
         .to_vec();
     let tail_tokens = tokens.get(1 + consumed_mana_tokens..).unwrap_or_default();
-    if tail_tokens
-        .first()
-        .is_some_and(|token| token.is_comma())
-    {
+    if tail_tokens.first().is_some_and(|token| token.is_comma()) {
         let clause_end = tail_tokens
             .iter()
             .position(|token| token.is_period())
@@ -3835,7 +3852,11 @@ pub(crate) fn parse_you_may_rather_than_spell_cost_line(
         return Ok(None);
     }
     let cost_clause_end = (rather_idx + 1..tokens.len())
-        .rfind(|idx| tokens[*idx].as_word().is_some_and(|word| word == "cost" || word == "costs"))
+        .rfind(|idx| {
+            tokens[*idx]
+                .as_word()
+                .is_some_and(|word| word == "cost" || word == "costs")
+        })
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "alternative cost line missing terminal cost word (line: '{}')",
@@ -3984,10 +4005,7 @@ pub(crate) fn parse_if_conditional_alternative_cost_line(
         return Ok(None);
     }
 
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.is_comma())
-    else {
+    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
     let condition_tokens = trim_commas(&tokens[1..comma_idx]);

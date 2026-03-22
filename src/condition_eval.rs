@@ -21,6 +21,13 @@ fn source_was_cast(
     {
         return etb.from == Zone::Stack;
     }
+    if let Some(event) = triggering_event
+        && let Some(zc) = event.downcast::<crate::events::ZoneChangeEvent>()
+        && zc.to == Zone::Battlefield
+        && zc.objects.contains(&source)
+    {
+        return zc.from == Zone::Stack;
+    }
     game.turn_history.spell_cast_order(source).is_some()
 }
 

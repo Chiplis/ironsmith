@@ -1,7 +1,8 @@
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, ControlDurationAst, EffectAst, EventValueSpec, IT_TAG, ObjectRefAst, PlayerAst,
-    PredicateAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst, TextSpan, OwnedLexToken, Verb,
+    CardTextError, ControlDurationAst, EffectAst, EventValueSpec, IT_TAG, ObjectRefAst,
+    OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst, TagKey, TargetAst,
+    TextSpan, Verb,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::mana::ManaSymbol;
@@ -11,9 +12,7 @@ use crate::target::{
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-use super::super::activation_and_restrictions::{
-    parse_cycling_line, parse_devotion_value_from_add_clause,
-};
+use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use super::super::activation_helpers::parse_add_mana;
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
@@ -21,10 +20,10 @@ use super::super::keyword_static::{
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
-    is_article, is_source_reference_words, parse_card_type, parse_color, parse_mana_symbol,
-    parse_number, parse_number_word_u32, parse_target_count_range_prefix, parse_target_phrase,
-    parse_value, replace_unbound_x_with_value, span_from_tokens, token_index_for_word_index,
-    trim_commas, value_contains_unbound_x, words, wrap_target_count,
+    is_article, is_source_reference_words, parse_card_type, parse_mana_symbol, parse_number,
+    parse_number_word_u32, parse_target_count_range_prefix, parse_target_phrase, parse_value,
+    replace_unbound_x_with_value, span_from_tokens, token_index_for_word_index, trim_commas,
+    value_contains_unbound_x, words, wrap_target_count,
 };
 use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::parse_predicate;
@@ -647,7 +646,9 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     Ok(EffectAst::Goad { target })
 }
 
-pub(crate) fn parse_attach_object_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+pub(crate) fn parse_attach_object_phrase(
+    tokens: &[OwnedLexToken],
+) -> Result<TargetAst, CardTextError> {
     let object_words = words(tokens);
     let object_span = span_from_tokens(tokens);
     if object_words.is_empty() {
@@ -1016,7 +1017,9 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
     Ok(Some(EffectAst::DealDamage { amount, target }))
 }
 
-fn parse_divided_damage_target(target_tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+fn parse_divided_damage_target(
+    target_tokens: &[OwnedLexToken],
+) -> Result<TargetAst, CardTextError> {
     let Some(among_idx) = target_tokens
         .iter()
         .position(|token| token.is_word("among"))
@@ -1727,7 +1730,9 @@ pub(crate) fn parse_draw_card_prefixed_count_value(
     Ok(None)
 }
 
-pub(crate) fn parse_draw_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Value>, CardTextError> {
+pub(crate) fn parse_draw_equal_to_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Value>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["equal", "to"]) {
         return Ok(None);
@@ -1905,7 +1910,9 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     Ok(EffectAst::Counter { target })
 }
 
-pub(crate) fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+pub(crate) fn parse_counter_target_phrase(
+    tokens: &[OwnedLexToken],
+) -> Result<TargetAst, CardTextError> {
     if let Some(target) = parse_counter_ability_target_phrase(tokens)? {
         return Ok(target);
     }
@@ -2199,7 +2206,8 @@ fn parse_counter_ability_target_phrase(
 
             let mut parsed_type = false;
             while idx < clause_tokens.len() {
-                let Some(type_word) = clause_tokens.get(idx).and_then(OwnedLexToken::as_word) else {
+                let Some(type_word) = clause_tokens.get(idx).and_then(OwnedLexToken::as_word)
+                else {
                     idx += 1;
                     continue;
                 };
@@ -2448,7 +2456,9 @@ pub(crate) fn parse_life_amount(
     })
 }
 
-pub(crate) fn parse_life_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Value>, CardTextError> {
+pub(crate) fn parse_life_equal_to_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Value>, CardTextError> {
     let clause_words = words(tokens);
     if !clause_words.starts_with(&["life", "equal", "to"]) {
         return Ok(None);

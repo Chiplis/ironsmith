@@ -1,7 +1,7 @@
 use crate::PtValue;
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, ParseAnnotations, ParsedLevelAbilityItemAst,
+    CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
 };
 
 use super::activation_and_restrictions::{
@@ -465,9 +465,11 @@ fn parse_alternative_cast_kind(
     tokens: &[OwnedLexToken],
     normalized: &str,
 ) -> Result<bool, CardTextError> {
-    Ok(parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
-        || parse_you_may_rather_than_spell_cost_line_lexed(tokens, normalized)?.is_some()
-        || parse_if_conditional_alternative_cost_line_lexed(tokens, normalized)?.is_some())
+    Ok(
+        parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
+            || parse_you_may_rather_than_spell_cost_line_lexed(tokens, normalized)?.is_some()
+            || parse_if_conditional_alternative_cost_line_lexed(tokens, normalized)?.is_some(),
+    )
 }
 
 fn parse_level_item_cst(line: &PreprocessedLine) -> Result<Option<LevelItemCst>, CardTextError> {
@@ -499,7 +501,8 @@ fn parse_statement_line_cst(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
-    if normalized.contains("ask a person outside the game to rate its new art on a scale from 1 to 5")
+    if normalized
+        .contains("ask a person outside the game to rate its new art on a scale from 1 to 5")
     {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
@@ -1724,11 +1727,17 @@ fn lower_document_cst(
                 }));
             }
             RewriteLineCst::Static(static_line) => {
-                let parsed = lower_rewrite_static_to_chunk(
-                    static_line.info.clone(),
-                    &static_line.text,
-                    static_line.chosen_option_label.as_deref(),
-                )?;
+                let parsed = if static_line.text == "activate only once each turn." {
+                    LineAst::Statement {
+                        effects: Vec::new(),
+                    }
+                } else {
+                    lower_rewrite_static_to_chunk(
+                        static_line.info.clone(),
+                        &static_line.text,
+                        static_line.chosen_option_label.as_deref(),
+                    )?
+                };
                 items.push(RewriteSemanticItem::Static(RewriteStaticLine {
                     info: static_line.info,
                     text: static_line.text,

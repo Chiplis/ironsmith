@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst,
-    OwnedLexToken,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst, TagKey,
+    TargetAst,
 };
 use crate::effect::{Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -647,21 +647,19 @@ pub(crate) fn parse_for_each_opponent_clause(
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
-        let effect_token_start = if let Some(comma_idx) = inner_tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            comma_idx + 1
-        } else if let Some(this_way_idx) = inner_words
-            .windows(2)
-            .position(|pair| pair == ["this", "way"])
-        {
-            token_index_for_word_index(&inner_tokens, this_way_idx + 2)
-                .unwrap_or(inner_tokens.len())
-        } else {
-            token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
-                .unwrap_or(inner_tokens.len())
-        };
+        let effect_token_start =
+            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+                comma_idx + 1
+            } else if let Some(this_way_idx) = inner_words
+                .windows(2)
+                .position(|pair| pair == ["this", "way"])
+            {
+                token_index_for_word_index(&inner_tokens, this_way_idx + 2)
+                    .unwrap_or(inner_tokens.len())
+            } else {
+                token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
+                    .unwrap_or(inner_tokens.len())
+            };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -700,14 +698,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         || inner_words.starts_with(&["who", "do"])
         || inner_words.starts_with(&["who", "did"])
     {
-        let effect_token_start = if let Some(comma_idx) = inner_tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            comma_idx + 1
-        } else {
-            token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
-        };
+        let effect_token_start =
+            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+                comma_idx + 1
+            } else {
+                token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
+            };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -770,21 +766,19 @@ pub(crate) fn parse_for_each_opponent_clause(
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
-        let effect_token_start = if let Some(comma_idx) = inner_tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            comma_idx + 1
-        } else if let Some(this_way_idx) = inner_words
-            .windows(2)
-            .position(|pair| pair == ["this", "way"])
-        {
-            token_index_for_word_index(&inner_tokens, this_way_idx + 2)
-                .unwrap_or(inner_tokens.len())
-        } else {
-            token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
-                .unwrap_or(inner_tokens.len())
-        };
+        let effect_token_start =
+            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+                comma_idx + 1
+            } else if let Some(this_way_idx) = inner_words
+                .windows(2)
+                .position(|pair| pair == ["this", "way"])
+            {
+                token_index_for_word_index(&inner_tokens, this_way_idx + 2)
+                    .unwrap_or(inner_tokens.len())
+            } else {
+                token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
+                    .unwrap_or(inner_tokens.len())
+            };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -819,14 +813,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         || inner_words.starts_with(&["who", "do"])
         || inner_words.starts_with(&["who", "did"])
     {
-        let effect_token_start = if let Some(comma_idx) = inner_tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            comma_idx + 1
-        } else {
-            token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
-        };
+        let effect_token_start =
+            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+                comma_idx + 1
+            } else {
+                token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
+            };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -889,21 +881,19 @@ pub(crate) fn parse_for_each_opponent_clause(
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
-        let effect_token_start = if let Some(comma_idx) = inner_tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            comma_idx + 1
-        } else if let Some(this_way_idx) = inner_words
-            .windows(2)
-            .position(|pair| pair == ["this", "way"])
-        {
-            token_index_for_word_index(&inner_tokens, this_way_idx + 2)
-                .unwrap_or(inner_tokens.len())
-        } else {
-            token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
-                .unwrap_or(inner_tokens.len())
-        };
+        let effect_token_start =
+            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+                comma_idx + 1
+            } else if let Some(this_way_idx) = inner_words
+                .windows(2)
+                .position(|pair| pair == ["this", "way"])
+            {
+                token_index_for_word_index(&inner_tokens, this_way_idx + 2)
+                    .unwrap_or(inner_tokens.len())
+            } else {
+                token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
+                    .unwrap_or(inner_tokens.len())
+            };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -938,14 +928,12 @@ pub(crate) fn parse_for_each_opponent_clause(
         || inner_words.starts_with(&["who", "do"])
         || inner_words.starts_with(&["who", "did"])
     {
-        let effect_token_start = if let Some(comma_idx) = inner_tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            comma_idx + 1
-        } else {
-            token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
-        };
+        let effect_token_start =
+            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+                comma_idx + 1
+            } else {
+                token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
+            };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -1286,21 +1274,19 @@ pub(crate) fn parse_for_each_player_clause(
     if inner_words.first().copied() == Some("who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
-        let effect_token_start = if let Some(comma_idx) = inner_tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            comma_idx + 1
-        } else if let Some(this_way_idx) = inner_words
-            .windows(2)
-            .position(|pair| pair == ["this", "way"])
-        {
-            token_index_for_word_index(&inner_tokens, this_way_idx + 2)
-                .unwrap_or(inner_tokens.len())
-        } else {
-            token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
-                .unwrap_or(inner_tokens.len())
-        };
+        let effect_token_start =
+            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+                comma_idx + 1
+            } else if let Some(this_way_idx) = inner_words
+                .windows(2)
+                .position(|pair| pair == ["this", "way"])
+            {
+                token_index_for_word_index(&inner_tokens, this_way_idx + 2)
+                    .unwrap_or(inner_tokens.len())
+            } else {
+                token_index_for_word_index(&inner_tokens, negation_idx + negation_len)
+                    .unwrap_or(inner_tokens.len())
+            };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -1335,14 +1321,12 @@ pub(crate) fn parse_for_each_player_clause(
         || inner_words.starts_with(&["who", "do"])
         || inner_words.starts_with(&["who", "did"])
     {
-        let effect_token_start = if let Some(comma_idx) = inner_tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            comma_idx + 1
-        } else {
-            token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
-        };
+        let effect_token_start =
+            if let Some(comma_idx) = inner_tokens.iter().position(|token| token.is_comma()) {
+                comma_idx + 1
+            } else {
+                token_index_for_word_index(&inner_tokens, 2).unwrap_or(inner_tokens.len())
+            };
         let effect_tokens = trim_commas(&inner_tokens[effect_token_start..]);
         if effect_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(

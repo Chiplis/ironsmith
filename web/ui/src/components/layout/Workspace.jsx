@@ -24,6 +24,8 @@ const HAND_COLLAPSED_SHELL_HEIGHT = HAND_PEEK_HEIGHT;
 const HAND_LANE_HOVER_FUZZ = 6;
 const AUTO_REVEAL_ZONE_IDS = ["graveyard", "exile", "command"];
 const AUTO_REVEAL_DURATION_MS = 2000;
+const SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ = 18 * 18;
+
 function objectExistsInState(state, objectId) {
   if (!state || objectId == null) return false;
   const needle = String(objectId);
@@ -770,11 +772,7 @@ export default function Workspace({
 
       // Check if dropped over the table area (anywhere above the hand)
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      const isOverTable = el && (
-        el.closest("[data-drop-zone]") ||
-        el.closest(".table-gradient") ||
-        el.closest(".board-zone-bg")
-      );
+      const isOverTable = !!el?.closest("[data-drop-zone]");
 
       let isOverMobileSelfZoneDropTarget = false;
       if (nonDesktopViewport) {
@@ -802,6 +800,11 @@ export default function Workspace({
       if (ds.actions.length === 1) {
         const onlyAction = ds.actions[0];
         if (!currentActionIndices.has(Number(onlyAction?.index))) {
+          return;
+        }
+        const dx = Number(ds.currentX) - Number(ds.startX);
+        const dy = Number(ds.currentY) - Number(ds.startY);
+        if (!Number.isFinite(dx) || !Number.isFinite(dy) || ((dx * dx) + (dy * dy)) < SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ) {
           return;
         }
         window.__castParticles?.(e.clientX, e.clientY, ds.glowKind || "spell");

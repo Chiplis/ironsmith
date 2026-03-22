@@ -1,6 +1,7 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, PlayerAst, PreventNextTimeDamageSourceAst,
-    PreventNextTimeDamageTargetAst, SubjectAst, TagKey, TargetAst, TextSpan, OwnedLexToken, Verb,
+    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, OwnedLexToken, PlayerAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, SubjectAst, TagKey, TargetAst,
+    TextSpan, Verb,
 };
 use crate::effect::{Until, Value};
 use crate::static_abilities::StaticAbilityId;
@@ -11,7 +12,6 @@ use crate::{ChoiceCount, Supertype};
 use super::super::activation_and_restrictions::{
     starts_with_target_indicator, title_case_token_word,
 };
-use super::super::keyword_static::parse_ability_line;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     parse_card_type, parse_color, parse_counter_type_from_tokens, parse_counter_type_word,
@@ -19,9 +19,9 @@ use super::super::util::{
     span_from_tokens, token_index_for_word_index, trim_commas, words, wrap_target_count,
 };
 use super::chain_carry::find_verb;
+use super::parse_subtype_word;
 use super::sentence_primitives::parse_distribute_counters_sentence;
 use super::verb_dispatch::parse_effect_with_verb;
-use super::{Verb as LocalVerb, parse_subtype_word};
 
 pub(crate) fn extract_subject_player(subject: Option<SubjectAst>) -> Option<PlayerAst> {
     match subject {
@@ -504,7 +504,9 @@ pub(crate) fn parse_copy_spell_clause(
     }))
 }
 
-pub(crate) fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+pub(crate) fn parse_counter_target_phrase(
+    tokens: &[OwnedLexToken],
+) -> Result<TargetAst, CardTextError> {
     if let Some(target) = parse_counter_ability_target_phrase(tokens)? {
         return Ok(target);
     }
@@ -798,7 +800,8 @@ fn parse_counter_ability_target_phrase(
 
             let mut parsed_type = false;
             while idx < clause_tokens.len() {
-                let Some(type_word) = clause_tokens.get(idx).and_then(OwnedLexToken::as_word) else {
+                let Some(type_word) = clause_tokens.get(idx).and_then(OwnedLexToken::as_word)
+                else {
                     idx += 1;
                     continue;
                 };
@@ -1576,7 +1579,9 @@ pub(crate) fn parse_keyword_mechanic_clause(
     Ok(None)
 }
 
-pub(crate) fn parse_connive_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_connive_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     let Some(connive_idx) = tokens
         .iter()
         .rposition(|token| token.is_word("connive") || token.is_word("connives"))

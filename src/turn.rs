@@ -364,6 +364,10 @@ pub fn execute_draw_step_with(
         game.turn.priority_player = Some(active_player);
         return Vec::new();
     }
+    if game.should_skip_first_turn_draw(active_player) {
+        game.turn.priority_player = Some(active_player);
+        return Vec::new();
+    }
 
     // Check if player can draw (the draw step draw is the first draw of the turn)
     let current_draws = game.turn_history.cards_drawn_by_player(active_player);
@@ -746,6 +750,46 @@ mod tests {
             1
         );
         assert!(game.objects_in_zone(Zone::Command).is_empty());
+        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 1);
+    }
+
+    #[test]
+    fn execute_draw_step_skips_starting_players_first_draw_in_non_commander_game() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(9002), "First Turn Draw")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let _card_id = game.create_object_from_card(&card, alice, Zone::Library);
+
+        let mut dm = AlwaysNoDecisionMaker;
+        let events = execute_draw_step_with(&mut game, &mut dm);
+
+        assert!(events.is_empty(), "normal games should skip the opening draw");
+        assert_eq!(game.player(alice).expect("alice should exist").hand.len(), 0);
+        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 0);
+    }
+
+    #[test]
+    fn execute_draw_step_keeps_starting_players_first_draw_in_commander_game() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let commander = CardBuilder::new(CardId::from_raw(9003), "Opening Commander")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let commander_id = game.create_object_from_card(&commander, alice, Zone::Command);
+        game.set_as_commander(commander_id, alice);
+
+        let card = CardBuilder::new(CardId::from_raw(9004), "Commander First Turn Draw")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let _card_id = game.create_object_from_card(&card, alice, Zone::Library);
+
+        let mut dm = AlwaysNoDecisionMaker;
+        let events = execute_draw_step_with(&mut game, &mut dm);
+
+        assert_eq!(events.len(), 1, "commander games should keep the opening draw");
+        assert_eq!(game.player(alice).expect("alice should exist").hand.len(), 1);
         assert_eq!(game.turn_history.cards_drawn_by_player(alice), 1);
     }
 }

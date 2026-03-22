@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, ObjectRefAst, PlayerAst, PredicateAst, ReturnControllerAst,
-    SharedTypeConstraintAst, SubjectAst, TagKey, TargetAst, OwnedLexToken,
+    CardTextError, EffectAst, IT_TAG, ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst,
+    ReturnControllerAst, SharedTypeConstraintAst, SubjectAst, TagKey, TargetAst,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::mana::{ManaCost, ManaSymbol};
@@ -35,7 +37,9 @@ use super::for_each_helpers::parse_get_modifier_values_with_tail;
 use super::search_library::parse_restriction_duration;
 use super::sentence_primitives::find_color_choice_phrase;
 
-fn split_chosen_creature_type_qualifier(tokens: &[OwnedLexToken]) -> Option<(Vec<OwnedLexToken>, bool, bool)> {
+fn split_chosen_creature_type_qualifier(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, bool, bool)> {
     let words = words(tokens);
     let patterns: [(&[&str], bool, bool); 5] = [
         (
@@ -386,7 +390,9 @@ pub(crate) fn parse_discard(
     })
 }
 
-pub(crate) fn parse_discard_color_qualifier_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+pub(crate) fn parse_discard_color_qualifier_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
     let qualifier_words: Vec<&str> = words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
@@ -1323,7 +1329,11 @@ pub(crate) fn parse_mill(
                 "missing card keyword".to_string(),
             ));
         }
-        let trailing_words: Vec<&str> = rest.iter().skip(1).filter_map(OwnedLexToken::as_word).collect();
+        let trailing_words: Vec<&str> = rest
+            .iter()
+            .skip(1)
+            .filter_map(OwnedLexToken::as_word)
+            .collect();
         if !trailing_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing mill clause (clause: '{}')",
@@ -1482,7 +1492,9 @@ fn parse_spells_cast_this_turn_matching_count_value(tokens: &[OwnedLexToken]) ->
     None
 }
 
-pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
     let clause_words = words(tokens);
     if matches!(
         clause_words.as_slice(),
@@ -3182,7 +3194,9 @@ pub(crate) fn split_exile_face_down_suffix(tokens: &[OwnedLexToken]) -> (&[Owned
     (tokens, false)
 }
 
-pub(crate) fn split_exile_graveyard_replacement_suffix(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub(crate) fn split_exile_graveyard_replacement_suffix(
+    tokens: &[OwnedLexToken],
+) -> &[OwnedLexToken] {
     let Some(instead_idx) = tokens.iter().position(|token| token.is_word("instead")) else {
         return tokens;
     };
@@ -3240,7 +3254,9 @@ pub(crate) fn parse_graveyard_owner_prefix(words: &[&str]) -> Option<(PlayerAst,
     None
 }
 
-pub(crate) fn parse_target_player_graveyard_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+pub(crate) fn parse_target_player_graveyard_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
     let words = words(tokens);
     let (player, consumed) = parse_graveyard_owner_prefix(&words)?;
     if consumed != words.len() {

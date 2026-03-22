@@ -611,13 +611,16 @@ export function GameProvider({ children }) {
   }, [game, wasmRegistryCount, semanticThreshold, semanticStats]);
 
   const opponentHoldReason = useCallback(
-    (decision, currentState) => {
-      if (!autoPassEnabled) return "auto-pass disabled";
-      if (!decision || decision.kind !== "priority") return "not a priority decision";
-      if (decision.player === currentState?.perspective) return "not opponent priority";
-      return null;
-    },
-    [autoPassEnabled]
+    (decision, currentState) => (
+      priorityHoldReason({
+        autoPassEnabled,
+        holdRule,
+        decision,
+        currentState,
+        perspectiveMode: "opponent",
+      })
+    ),
+    [autoPassEnabled, holdRule]
   );
 
   const localTurnHoldReason = useCallback(

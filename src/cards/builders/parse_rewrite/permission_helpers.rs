@@ -1,9 +1,5 @@
-use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, PlayerAst, PreventNextTimeDamageSourceAst,
-    PreventNextTimeDamageTargetAst, TagKey,
-};
+use crate::cards::builders::{CardTextError, EffectAst, IT_TAG, PlayerAst, TagKey};
 use crate::effect::{Until, Value};
-use crate::static_abilities::StaticAbilityId;
 use crate::target::ObjectFilter;
 use crate::zone::Zone;
 
@@ -12,7 +8,7 @@ use super::native_tokens::LowercaseWordView;
 use super::object_filters::{
     merge_spell_filters, parse_object_filter_lexed, parse_spell_filter_lexed,
 };
-use super::util::{starts_with_until_end_of_turn, trim_commas, words};
+use super::util::{starts_with_until_end_of_turn, trim_commas};
 use super::value_helpers::parse_value_from_lexed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -435,7 +431,8 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             else {
                 continue;
             };
-            let filter_tokens = trim_lexed_commas(&tokens[filter_start_token_idx..filter_end_token_idx]);
+            let filter_tokens =
+                trim_lexed_commas(&tokens[filter_start_token_idx..filter_end_token_idx]);
             if filter_tokens.is_empty() {
                 continue;
             }
@@ -480,11 +477,13 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         else {
             return Ok(None);
         };
-        let Some(filter_end_token_idx) = clause_words.token_index_for_word_index(from_hand_word_idx)
+        let Some(filter_end_token_idx) =
+            clause_words.token_index_for_word_index(from_hand_word_idx)
         else {
             return Ok(None);
         };
-        let filter_tokens = trim_lexed_commas(&tokens[filter_start_token_idx..filter_end_token_idx]);
+        let filter_tokens =
+            trim_lexed_commas(&tokens[filter_start_token_idx..filter_end_token_idx]);
         let filter_words = LowercaseWordView::new(filter_tokens);
         let filter_refs = filter_words.to_word_refs();
         if filter_refs.is_empty()

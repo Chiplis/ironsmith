@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{
     CardDefinitionBuilder, EffectAst, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,

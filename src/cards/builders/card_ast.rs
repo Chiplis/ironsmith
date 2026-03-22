@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ability::ActivationTiming;
 use crate::effect::{EffectPredicate, Value};
 use crate::zone::Zone;

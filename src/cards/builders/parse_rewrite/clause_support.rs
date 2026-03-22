@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::cards::builders::{
     CardTextError, EffectAst, KeywordAction, LineAst, StaticAbilityAst, TriggerSpec,
 };
@@ -219,7 +221,10 @@ pub(crate) fn rewrite_parse_ability_line_lexed(
     }
 
     fn parse_flashback_keyword_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
-        if !tokens.first().is_some_and(|token| token.is_word("flashback")) {
+        if !tokens
+            .first()
+            .is_some_and(|token| token.is_word("flashback"))
+        {
             return None;
         }
         let mut idx = 1usize;
@@ -435,7 +440,9 @@ pub(crate) fn rewrite_parse_effect_sentences_lexed(
     super::effect_sentences::parse_effect_sentences_lexed(tokens)
 }
 
-pub(crate) fn rewrite_parse_triggered_line(tokens: &[OwnedLexToken]) -> Result<LineAst, CardTextError> {
+pub(crate) fn rewrite_parse_triggered_line(
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
     super::activation_and_restrictions::parse_triggered_line(tokens)
 }
 
@@ -459,7 +466,8 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
         if words.is_empty() {
             return false;
         }
-        let starts_with_conjunction = matches!(words.first().copied(), Some("or" | "and" | "and/or"));
+        let starts_with_conjunction =
+            matches!(words.first().copied(), Some("or" | "and" | "and/or"));
         let first_candidate = if starts_with_conjunction {
             words.get(1).copied()
         } else {
@@ -496,7 +504,10 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
             return false;
         };
         let typeish = parse_card_type(first_word).is_some()
-            || matches!(first_word, "artifact" | "artifacts" | "creature" | "creatures")
+            || matches!(
+                first_word,
+                "artifact" | "artifacts" | "creature" | "creatures"
+            )
             || matches!(first_word, "and" | "or");
         if !typeish {
             return false;
@@ -639,7 +650,9 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
         rewritten
     }
 
-    fn parse_triggered_times_each_turn_lexed_from_sentences(tokens: &[OwnedLexToken]) -> Option<u32> {
+    fn parse_triggered_times_each_turn_lexed_from_sentences(
+        tokens: &[OwnedLexToken],
+    ) -> Option<u32> {
         split_lexed_sentences(tokens)
             .iter()
             .find_map(|sentence| parse_triggered_times_each_turn_lexed(sentence))
@@ -658,7 +671,9 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
         .position(|token| token.kind == TokenKind::Comma)
         .or_else(|| tokens.iter().position(|token| token.is_word("then")))
     {
-        if tokens.get(split_idx).is_some_and(|token| token.kind == TokenKind::Comma)
+        if tokens
+            .get(split_idx)
+            .is_some_and(|token| token.kind == TokenKind::Comma)
             && tokens
                 .first()
                 .is_some_and(|token| token.is_word("whenever") || token.is_word("when"))
@@ -687,9 +702,10 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
                         }
                     })
                 } else if looks_like_trigger_numeric_list_tail_lexed(tail) {
-                    tail.iter().enumerate().rev().find_map(|(idx, token)| {
-                        (token.kind == TokenKind::Comma).then_some(idx)
-                    })
+                    tail.iter()
+                        .enumerate()
+                        .rev()
+                        .find_map(|(idx, token)| (token.kind == TokenKind::Comma).then_some(idx))
                 } else {
                     tail.iter()
                         .enumerate()
@@ -699,8 +715,7 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
                             }
                             let before_words_view = LowercaseWordView::new(&tail[..idx]);
                             let before_words = before_words_view.to_word_refs();
-                            if before_words.contains(&"spell") || before_words.contains(&"spells")
-                            {
+                            if before_words.contains(&"spell") || before_words.contains(&"spells") {
                                 Some(idx)
                             } else {
                                 None
@@ -808,7 +823,9 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
     )))
 }
 
-pub(crate) fn rewrite_parse_trigger_clause(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
+pub(crate) fn rewrite_parse_trigger_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<TriggerSpec, CardTextError> {
     super::activation_and_restrictions::parse_trigger_clause(tokens)
 }
 

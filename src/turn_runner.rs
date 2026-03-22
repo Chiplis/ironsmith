@@ -601,6 +601,10 @@ impl TurnRunner {
             game.turn.priority_player = Some(active_player);
             return RunnerProgress::Complete(Vec::new());
         }
+        if game.should_skip_first_turn_draw(active_player) {
+            game.turn.priority_player = Some(active_player);
+            return RunnerProgress::Complete(Vec::new());
+        }
 
         let current_draws = game.turn_history.cards_drawn_by_player(active_player);
         let is_first_draw = current_draws == 0;
@@ -1026,5 +1030,53 @@ mod tests {
             .unwrap();
         assert!(matches!(action, RunnerProgress::Complete(())));
         assert_eq!(game.objects_in_zone(crate::zone::Zone::Command).len(), 1);
+    }
+
+    #[test]
+    fn test_turn_runner_skips_starting_players_first_draw_in_non_commander_game() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(9102), "Normal Draw Skip")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let _card_id = game.create_object_from_card(&card, alice, crate::zone::Zone::Library);
+
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        runner.state = TurnState::Draw;
+
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(game.player(alice).expect("alice should exist").hand.len(), 0);
+        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 0);
+    }
+
+    #[test]
+    fn test_turn_runner_keeps_starting_players_first_draw_in_commander_game() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let commander =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(9103), "Turn One Commander")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let commander_id =
+            game.create_object_from_card(&commander, alice, crate::zone::Zone::Command);
+        game.set_as_commander(commander_id, alice);
+
+        let card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(9104), "Commander Draw")
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+        let _card_id = game.create_object_from_card(&card, alice, crate::zone::Zone::Library);
+
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        runner.state = TurnState::Draw;
+
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(game.player(alice).expect("alice should exist").hand.len(), 1);
+        assert_eq!(game.turn_history.cards_drawn_by_player(alice), 1);
     }
 }

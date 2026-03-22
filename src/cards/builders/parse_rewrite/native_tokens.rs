@@ -25,6 +25,7 @@ impl LowercaseWordView {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
         self.lower_words.is_empty()
     }

@@ -135,23 +135,6 @@ pub(crate) enum InsteadSemantics {
     NonReplacement,
 }
 
-pub(crate) fn classify_instead_followup_text(text: &str) -> InsteadSemantics {
-    let normalized = text.to_ascii_lowercase();
-
-    if !normalized.contains(" instead") {
-        return InsteadSemantics::NonReplacement;
-    }
-
-    if normalized.contains(" would ")
-        || normalized.contains(" instead of ")
-        || normalized.contains("the next time")
-    {
-        return InsteadSemantics::FutureReplacement;
-    }
-
-    InsteadSemantics::SelfReplacement
-}
-
 fn overload_rewritten_text(text: &str) -> Option<String> {
     let mut rewritten_lines = Vec::new();
     let mut saw_overload = false;
@@ -2365,9 +2348,6 @@ pub(crate) enum IfResultPredicate {
 }
 
 const IT_TAG: &str = "__it__";
-
-mod cost_components;
-pub(crate) use cost_components::*;
 
 mod parse_rewrite;
 pub(crate) use parse_rewrite::*;

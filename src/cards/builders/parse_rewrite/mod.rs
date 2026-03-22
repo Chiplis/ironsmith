@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 mod activation_and_restrictions;
 mod activation_helpers;
 mod clause_support;

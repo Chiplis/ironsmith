@@ -1,8 +1,8 @@
 use super::super::activation_and_restrictions::parse_triggered_line;
 use super::super::compile_support::compile_statement_effects;
 use super::super::lexer::{OwnedLexToken, lexed_words, trim_lexed_commas};
-use super::super::native_tokens::LowercaseWordView;
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
+use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::{parse_object_filter, split_on_or};
 use super::super::util::{
     compat_tokens_from_lexed, is_article, is_source_reference_words, parse_mana_symbol,
@@ -234,7 +234,8 @@ fn parse_simple_ability_modifier_clause_lexed(
     let is_pronoun_subject =
         implied_it_subject || matches!(subject_word_refs.as_slice(), ["it"] | ["they"] | ["them"]);
     if is_pronoun_subject {
-        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens));
+        let target =
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens));
         if losing {
             return Ok(Some(EffectAst::RemoveAbilitiesFromTarget {
                 target,
@@ -855,9 +856,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         return Ok(None);
     }
 
-    let has_colon = ability_tokens
-        .iter()
-        .any(|token| token.is_colon());
+    let has_colon = ability_tokens.iter().any(|token| token.is_colon());
     let looks_like_trigger = ability_tokens.first().is_some_and(|token| {
         token.is_word("when")
             || token.is_word("whenever")
@@ -1105,8 +1104,8 @@ mod tests {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify gain clause");
         let compat = tokenize_line(text, 0);
 
-        let lexed_effect = parse_simple_gain_ability_clause_lexed(&lexed)
-            .expect("lexed gain clause should parse");
+        let lexed_effect =
+            parse_simple_gain_ability_clause_lexed(&lexed).expect("lexed gain clause should parse");
         let compat_effect =
             parse_simple_gain_ability_clause(&compat).expect("legacy gain clause should parse");
 
@@ -1123,8 +1122,8 @@ mod tests {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify lose clause");
         let compat = tokenize_line(text, 0);
 
-        let lexed_effect = parse_simple_lose_ability_clause_lexed(&lexed)
-            .expect("lexed lose clause should parse");
+        let lexed_effect =
+            parse_simple_lose_ability_clause_lexed(&lexed).expect("lexed lose clause should parse");
         let compat_effect =
             parse_simple_lose_ability_clause(&compat).expect("legacy lose clause should parse");
 

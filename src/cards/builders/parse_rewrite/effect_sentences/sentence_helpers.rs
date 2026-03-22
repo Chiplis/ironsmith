@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 pub(crate) use super::super::activation_and_restrictions::{
     append_token_reminder_to_last_create_effect, build_may_cast_tagged_effect,
     effect_creates_any_token, effect_creates_eldrazi_spawn_or_scion, find_negation_span,
@@ -36,9 +38,9 @@ pub(crate) use super::super::util::{
 };
 pub(crate) use super::chain_carry::{
     collapse_token_copy_end_of_combat_exile_followup,
-    collapse_token_copy_next_end_step_exile_followup, find_verb,
-    explicit_player_for_carry, maybe_apply_carried_player, maybe_apply_carried_player_with_clause,
-    parse_effect_chain, parse_effect_chain_inner,
+    collapse_token_copy_next_end_step_exile_followup, explicit_player_for_carry, find_verb,
+    maybe_apply_carried_player, maybe_apply_carried_player_with_clause, parse_effect_chain,
+    parse_effect_chain_inner,
 };
 pub(crate) use super::clause_pattern_helpers::{
     extract_subject_player, parse_can_attack_as_though_no_defender_clause,
@@ -80,13 +82,11 @@ pub(crate) use super::search_library::{
 pub(crate) use super::sentence_primitives::{
     POST_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, POST_CONDITIONAL_SENTENCE_PRIMITIVES,
     PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX, PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
-    parse_sentence_exile_source_with_counters_lexed,
-    parse_sentence_put_onto_battlefield_with_counters_on_it_lexed,
-    parse_sentence_return_with_counters_on_it_lexed,
-    parse_sentence_exile_source_with_counters,
+    parse_sentence_exile_source_with_counters, parse_sentence_exile_source_with_counters_lexed,
     parse_sentence_put_onto_battlefield_with_counters_on_it,
-    parse_sentence_return_with_counters_on_it, run_sentence_primitives,
-    run_sentence_primitives_lexed, try_build_unless,
+    parse_sentence_put_onto_battlefield_with_counters_on_it_lexed,
+    parse_sentence_return_with_counters_on_it, parse_sentence_return_with_counters_on_it_lexed,
+    run_sentence_primitives, run_sentence_primitives_lexed, try_build_unless,
 };
 pub(crate) use super::zone_counter_helpers::{
     apply_exile_subject_hand_owner_context, apply_shuffle_subject_graveyard_owner_context,

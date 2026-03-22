@@ -8,10 +8,10 @@ use crate::types::{CardType, Subtype, Supertype};
 use super::{
     LexCursor, LowercaseWordView, RewriteKeywordLineKind, RewriteSemanticItem, lex_line,
     lexed_words, lower_activation_cost_cst, parse_activate_only_timing_lexed,
-    parse_activation_condition_lexed, parse_activation_cost_rewrite, parse_count_word_rewrite,
-    parse_cant_effect_sentence, parse_cant_effect_sentence_lexed, parse_restriction_duration,
-    parse_restriction_duration_lexed,
+    parse_activation_condition_lexed, parse_activation_cost_rewrite, parse_cant_effect_sentence,
+    parse_cant_effect_sentence_lexed, parse_cost_reduction_line, parse_count_word_rewrite,
     parse_mana_symbol_group_rewrite, parse_mana_usage_restriction_sentence_lexed,
+    parse_restriction_duration, parse_restriction_duration_lexed,
     parse_text_with_annotations_rewrite, parse_text_with_annotations_rewrite_lowered,
     parse_triggered_times_each_turn_lexed, parse_type_line_rewrite, split_lexed_sentences,
 };
@@ -233,8 +233,8 @@ fn rewrite_lexed_cant_sentence_matches_legacy_output() {
     let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify restriction sentence");
 
-    let native = parse_cant_effect_sentence_lexed(&lexed)
-        .expect("lexed cant sentence should parse");
+    let native =
+        parse_cant_effect_sentence_lexed(&lexed).expect("lexed cant sentence should parse");
     let legacy = parse_cant_effect_sentence(&compat).expect("legacy cant sentence should parse");
 
     assert_eq!(
@@ -329,11 +329,8 @@ fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants() {
 fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
     let flashback_tokens = lex_line("Flashback {2}{R}", 0)
         .expect("rewrite lexer should classify flashback keyword line");
-    let cost_probe_tokens = lex_line(
-        "If it is night, this spell costs {2} less to cast.",
-        0,
-    )
-    .expect("rewrite lexer should classify this-spell cost probe");
+    let cost_probe_tokens = lex_line("If it is night, this spell costs {2} less to cast.", 0)
+        .expect("rewrite lexer should classify this-spell cost probe");
 
     assert!(matches!(
         super::clause_support::rewrite_parse_ability_line_lexed(&flashback_tokens),
@@ -405,8 +402,11 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         .expect("rewrite lexer should classify dies trigger probe");
     let upkeep_tokens = lex_line("the beginning of your upkeep", 0)
         .expect("rewrite lexer should classify upkeep trigger probe");
-    let etb_tokens = lex_line("one or more goblins enter the battlefield under your control", 0)
-        .expect("rewrite lexer should classify etb trigger probe");
+    let etb_tokens = lex_line(
+        "one or more goblins enter the battlefield under your control",
+        0,
+    )
+    .expect("rewrite lexer should classify etb trigger probe");
     let spell_tokens = lex_line("you cast an aura, equipment, or vehicle spell", 0)
         .expect("rewrite lexer should classify spell-cast trigger probe");
 
@@ -435,8 +435,7 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
 
 #[test]
 fn rewrite_lexed_effect_entrypoint_matches_legacy_multisentence_followups() {
-    let text =
-        "Exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.";
+    let text = "Exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify multisentence effect");
     let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
 
@@ -493,7 +492,8 @@ fn rewrite_lexed_effect_entrypoint_matches_legacy_missing_verb_damage_chain() {
 #[test]
 fn rewrite_lexed_effect_entrypoint_matches_legacy_missing_verb_sacrifice_chain() {
     let text = "Target player sacrifices an artifact and a land of their choice.";
-    let lexed = lex_line(text, 0).expect("rewrite lexer should classify missing-verb sacrifice chain");
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify missing-verb sacrifice chain");
     let compat = crate::cards::builders::parse_rewrite::util::tokenize_line(text, 0);
 
     let legacy = super::clause_support::rewrite_parse_effect_sentences(&compat)
@@ -518,6 +518,7 @@ fn rewrite_lexed_effect_entrypoint_matches_legacy_comma_action_chain() {
     assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
 }
 
+#[test]
 fn rewrite_lexed_effect_entrypoint_matches_legacy_simple_draw_clause() {
     let text = "Draw a card.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify simple draw effect");
@@ -529,6 +530,22 @@ fn rewrite_lexed_effect_entrypoint_matches_legacy_simple_draw_clause() {
         .expect("lexed simple draw parser should succeed");
 
     assert_eq!(format!("{native:?}"), format!("{legacy:?}"));
+}
+
+#[test]
+fn rewrite_cost_reduction_line_rejects_unmodeled_activate_if_condition() {
+    let tokens = lex_line(
+        "this ability costs 1 less to activate if you control an artifact.",
+        0,
+    )
+    .expect("rewrite lexer should classify activated cost reduction");
+    let err = parse_cost_reduction_line(&tokens)
+        .expect_err("unmodeled activated cost reduction condition should fail");
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("unsupported activated-ability cost reduction condition"),
+        "expected explicit unsupported cost reduction condition, got {message}"
+    );
 }
 
 #[test]
@@ -875,19 +892,16 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
     let mut failures = Vec::new();
 
     for (builder, text) in cases {
-        let (definition, _) = match parse_text_with_annotations_rewrite_lowered(
-            builder,
-            text.to_string(),
-            false,
-        ) {
-            Ok(parsed) => parsed,
-            Err(err) => {
-                failures.push(format!(
-                    "former section-9 case failed to parse: {text}\n{err:?}"
-                ));
-                continue;
-            }
-        };
+        let (definition, _) =
+            match parse_text_with_annotations_rewrite_lowered(builder, text.to_string(), false) {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    failures.push(format!(
+                        "former section-9 case failed to parse: {text}\n{err:?}"
+                    ));
+                    continue;
+                }
+            };
         let has_fallback_text = crate::ability::extract_static_abilities(&definition.abilities)
             .iter()
             .any(|ability| {
@@ -902,11 +916,7 @@ fn rewrite_lowered_former_section9_cases_parse_without_fallback_text() -> Result
         );
     }
 
-    assert!(
-        failures.is_empty(),
-        "{}",
-        failures.join("\n\n")
-    );
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 
     Ok(())
 }

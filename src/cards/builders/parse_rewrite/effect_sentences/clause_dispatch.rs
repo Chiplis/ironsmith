@@ -4,11 +4,11 @@ use super::super::activation_and_restrictions::{
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause,
 };
-use super::super::lexer::OwnedLexToken;
 use super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
     parse_pt_modifier_values,
 };
+use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     compat_tokens_from_lexed, contains_until_end_of_turn, parse_card_type, parse_color,

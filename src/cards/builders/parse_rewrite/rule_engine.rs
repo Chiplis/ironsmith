@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::cards::builders::CardTextError;
 
 use super::lexer::{OwnedLexToken, TokenKind};
@@ -117,10 +119,7 @@ fn clause_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
     if tokens.iter().any(|token| token.is_comma()) {
         shape |= RULE_SHAPE_HAS_COMMA;
     }
-    if tokens
-        .iter()
-        .any(|token| token.is_semicolon())
-    {
+    if tokens.iter().any(|token| token.is_semicolon()) {
         shape |= RULE_SHAPE_HAS_SEMICOLON;
     }
     match words.first().copied().unwrap_or("") {
@@ -136,10 +135,16 @@ fn clause_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
 
 fn clause_shape_lexed(tokens: &[OwnedLexToken], words: &LowercaseWordView) -> u32 {
     let mut shape = 0u32;
-    if tokens.iter().any(|token| matches!(token.kind, TokenKind::Colon)) {
+    if tokens
+        .iter()
+        .any(|token| matches!(token.kind, TokenKind::Colon))
+    {
         shape |= RULE_SHAPE_HAS_COLON;
     }
-    if tokens.iter().any(|token| matches!(token.kind, TokenKind::Comma)) {
+    if tokens
+        .iter()
+        .any(|token| matches!(token.kind, TokenKind::Comma))
+    {
         shape |= RULE_SHAPE_HAS_COMMA;
     }
     if tokens
@@ -265,8 +270,8 @@ fn rule_matches_view<T>(rule: &RuleDef<T>, view: &ClauseView<'_>) -> bool {
 }
 
 fn lex_rule_matches_view<T>(rule: &LexRuleDef<T>, view: &LexClauseView<'_>) -> bool {
-    let head_matches = rule.heads.is_empty()
-        || rule.heads.iter().any(|candidate| *candidate == view.head());
+    let head_matches =
+        rule.heads.is_empty() || rule.heads.iter().any(|candidate| *candidate == view.head());
     if !head_matches {
         return false;
     }
@@ -396,8 +401,8 @@ fn lex_unsupported_rule_matches_view(
     rule: &LexUnsupportedRuleDef,
     view: &LexClauseView<'_>,
 ) -> bool {
-    let head_matches = rule.heads.is_empty()
-        || rule.heads.iter().any(|candidate| *candidate == view.head());
+    let head_matches =
+        rule.heads.is_empty() || rule.heads.iter().any(|candidate| *candidate == view.head());
     if !head_matches {
         return false;
     }

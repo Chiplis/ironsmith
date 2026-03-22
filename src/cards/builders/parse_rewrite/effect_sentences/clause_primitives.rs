@@ -14,22 +14,25 @@ use super::sentence_helpers::*;
 use super::{parse_mana_symbol, parse_restriction_duration};
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, ClashOpponentAst, EffectAst, GrantedAbilityAst, IT_TAG, LineAst, PlayerAst,
-    PredicateAst, ReferenceImports, RetargetModeAst, SubjectAst, TagKey, TargetAst, TextSpan,
-    OwnedLexToken, TriggerSpec,
+    CardTextError, ClashOpponentAst, EffectAst, GrantedAbilityAst, IT_TAG, LineAst, OwnedLexToken,
+    PlayerAst, PredicateAst, ReferenceImports, RetargetModeAst, SubjectAst, TagKey, TargetAst,
+    TextSpan, TriggerSpec,
 };
 use crate::effect::ChoiceCount;
 use crate::mana::ManaSymbol;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
-pub(crate) type ClausePrimitiveParser = fn(&[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError>;
+pub(crate) type ClausePrimitiveParser =
+    fn(&[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError>;
 
 pub(crate) struct ClausePrimitive {
     pub(crate) parser: ClausePrimitiveParser,
 }
 
-pub(crate) fn parse_retarget_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_retarget_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     if let Some(effect) = parse_choose_new_targets_clause(tokens)? {
         return Ok(Some(effect));
     }
@@ -305,7 +308,9 @@ pub(crate) fn parse_unless_pays_clause(
     Ok((player, mana))
 }
 
-pub(crate) fn parse_stack_retarget_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
+pub(crate) fn parse_stack_retarget_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<ObjectFilter, CardTextError> {
     let words = words(tokens);
     let has_ability = words
         .iter()
@@ -341,7 +346,9 @@ pub(crate) fn parse_stack_retarget_filter(tokens: &[OwnedLexToken]) -> Result<Ob
     Ok(filter)
 }
 
-pub(crate) fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn run_clause_primitives(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
         ClausePrimitive {
             parser: parse_choose_card_name_clause,
@@ -1035,7 +1042,9 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
     Ok(Some(EffectAst::DealDamageEqualToPower { source, target }))
 }
 
-pub(crate) fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_fight_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     let Some(fight_idx) = tokens
         .iter()
@@ -1112,7 +1121,9 @@ pub(crate) fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<Effe
     }))
 }
 
-pub(crate) fn parse_clash_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_clash_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = words(tokens);
     let Some(first) = clause_words.first().copied() else {
         return Ok(None);

@@ -36,9 +36,7 @@ use super::effect_pipeline::{
     NormalizedLineAst, NormalizedLineChunk, NormalizedModalAst, NormalizedModalModeAst,
     NormalizedParsedAbility, NormalizedPreparedAbility,
 };
-use super::keyword_static::{
-    parse_if_this_spell_costs_less_to_cast_line_lexed,
-};
+use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::lexer::{OwnedLexToken, TokenKind, lex_line, split_lexed_sentences, trim_lexed_commas};
 use super::lowering_support::{
     rewrite_apply_instead_followup_statement_to_last_ability, rewrite_lower_prepared_ability,
@@ -59,19 +57,17 @@ use super::restriction_support::{
 };
 use super::util::{
     classify_instead_followup_text, compat_tokens_from_lexed, find_first_sacrifice_cost_choice_tag,
-    find_last_exile_cost_choice_tag, parse_additional_cost_choice_options,
-    parse_additional_cost_choice_options_lexed, parse_bestow_line_lexed,
-    parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed, parse_entwine_line_lexed,
-    parse_escape_line_lexed, parse_flashback_line_lexed,
+    find_last_exile_cost_choice_tag, parse_additional_cost_choice_options_lexed,
+    parse_bestow_line_lexed, parse_buyback_line_lexed, parse_cast_this_spell_only_line_lexed,
+    parse_entwine_line_lexed, parse_escape_line_lexed, parse_flashback_line_lexed,
     parse_if_conditional_alternative_cost_line_lexed, parse_kicker_line_lexed,
     parse_level_up_line_lexed, parse_madness_line_lexed, parse_mana_symbol,
-    parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_number_or_x_value,
-    parse_number_or_x_value_lexed, parse_offspring_line_lexed, parse_reinforce_line_lexed,
-    parse_scryfall_mana_cost,
+    parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_number_or_x_value_lexed,
+    parse_offspring_line_lexed, parse_reinforce_line_lexed, parse_scryfall_mana_cost,
     parse_self_free_cast_alternative_cost_line_lexed, parse_squad_line_lexed,
     parse_transmute_line_lexed, parse_warp_line_lexed,
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
-    split_on_period, token_index_for_word_index, trim_commas, words,
+    token_index_for_word_index, trim_commas, words,
 };
 use super::{
     LowercaseWordView, RewriteSemanticDocument, RewriteSemanticItem,
@@ -1436,7 +1432,8 @@ fn lower_rewrite_statement_to_unsupported_chunk(
     line: &super::RewriteStatementLine,
 ) -> Option<LineAst> {
     let normalized = line.text.trim().to_ascii_lowercase();
-    if normalized.contains("ask a person outside the game to rate its new art on a scale from 1 to 5")
+    if normalized
+        .contains("ask a person outside the game to rate its new art on a scale from 1 to 5")
     {
         return Some(rewrite_unsupported_line_ast(
             line.info.raw_line.as_str(),
@@ -1695,16 +1692,6 @@ fn lower_rewrite_static_to_chunk_impl(
     if let Some(ability) = parse_if_this_spell_costs_less_to_cast_line_lexed(&lexed)? {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(ability.into()),
-            chosen_option_label,
-        );
-    }
-    if line.text == "activate only once each turn." {
-        return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbilities(vec![crate::cards::builders::StaticAbilityAst::Static(
-                crate::static_abilities::StaticAbility::keyword_fallback_text(
-                    "Activate only once each turn.",
-                ),
-            )]),
             chosen_option_label,
         );
     }
@@ -1984,14 +1971,13 @@ fn lower_rewrite_keyword_to_chunk_impl(
                     line.info.raw_line
                 ))
             })?;
-            let options = parse_additional_cost_choice_options_lexed(effect_tokens)?.ok_or_else(
-                || {
+            let options =
+                parse_additional_cost_choice_options_lexed(effect_tokens)?.ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "rewrite keyword lowering could not parse additional cost-choice '{}'",
                         line.info.raw_line
                     ))
-                },
-            )?;
+                })?;
             Ok(LineAst::AdditionalCostChoice { options })
         }
         super::RewriteKeywordLineKind::AlternativeCast => {
@@ -2319,6 +2305,7 @@ fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTok
     (!effect_tokens.is_empty()).then_some(effect_tokens)
 }
 
+#[allow(dead_code)]
 fn strip_modal_mode_label_for_parse(text: &str) -> &str {
     let trimmed = text.trim();
     let Some((label, body)) = trimmed.split_once('—') else {
@@ -2366,6 +2353,7 @@ fn lower_rewrite_modal_to_item(
     Ok(ParsedCardItem::Modal(ParsedModalAst { header, modes }))
 }
 
+#[allow(dead_code)]
 fn lower_rewrite_level_to_item(
     level: super::RewriteLevelHeader,
 ) -> Result<ParsedCardItem, CardTextError> {
@@ -2402,6 +2390,7 @@ fn lower_rewrite_level_to_item(
     }))
 }
 
+#[allow(dead_code)]
 fn lower_rewrite_saga_to_item(
     saga: super::RewriteSagaChapterLine,
 ) -> Result<ParsedCardItem, CardTextError> {
@@ -3353,7 +3342,7 @@ fn normalize_legacy_style_activated_cost(cost: &TotalCost, effect_text: &str) ->
 
 fn rewrite_item_to_normalized_item(
     item: RewriteSemanticItem,
-    allow_unsupported: bool,
+    _allow_unsupported: bool,
     state: &mut RewriteNormalizationState,
 ) -> Result<Option<NormalizedCardItem>, CardTextError> {
     match item {
@@ -3383,10 +3372,19 @@ fn rewrite_item_to_normalized_item(
             )?)))
         }
         RewriteSemanticItem::Static(line) => {
+            let mut restrictions = ParsedRestrictions::default();
+            let chunks = if line.text == "activate only once each turn." {
+                restrictions
+                    .activation
+                    .push("Activate only once each turn".to_string());
+                Vec::new()
+            } else {
+                vec![line.parsed]
+            };
             Ok(Some(NormalizedCardItem::Line(normalize_rewrite_line_ast(
                 line.info.clone(),
-                vec![line.parsed],
-                ParsedRestrictions::default(),
+                chunks,
+                restrictions,
                 state,
             )?)))
         }

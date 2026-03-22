@@ -17,6 +17,7 @@ const HAND_ROULETTE_EDGE_PADDING = 12;
 const HAND_ROULETTE_WRAP_GAP = 20;
 const HAND_ROULETTE_CYCLE_COUNT = 3;
 const HAND_ROULETTE_CENTER_CYCLE = 1;
+const HAND_DRAG_START_DISTANCE_SQ = 14 * 14;
 
 /** Map card_types array to a glow kind for hand display. */
 function handGlowFromTypes(cardTypes) {
@@ -520,7 +521,7 @@ export default function HandZone({
       if (!dt) return;
       const dx = me.clientX - dt.sx;
       const dy = me.clientY - dt.sy;
-      if (!dt.dragging && (dx * dx + dy * dy) > 64) {
+      if (!dt.dragging && (dx * dx + dy * dy) > HAND_DRAG_START_DISTANCE_SQ) {
         dt.dragging = true;
         if (
           dragScrollLockRef.current == null

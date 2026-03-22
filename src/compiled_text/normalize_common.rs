@@ -3399,10 +3399,18 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized == "Destroy target artifact or enchantment or creature with flying" {
         return "Destroy target artifact, enchantment, or creature with flying".to_string();
     }
-    if normalized
-        == "Destroy target opponent's nonbasic artifact or enchantment or land. an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles"
+    if normalized.starts_with(
+        "Destroy target opponent's nonbasic artifact or enchantment or land. an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+    )
     {
-        return "Destroy target artifact, enchantment, or nonbasic land an opponent controls. That player may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle".to_string();
+        return "Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle".to_string();
+    }
+    if let Some((prefix, _)) = normalized.split_once(
+        ": Destroy target opponent's nonbasic artifact or enchantment or land. an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+    ) {
+        return format!(
+            "{prefix}: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
+        );
     }
     if normalized
         == "Return target artifact or creature or enchantment or planeswalker to its owner's hand"

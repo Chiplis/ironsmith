@@ -462,9 +462,8 @@ pub(crate) fn parse_for_each_opponent_doesnt(
         return Ok(None);
     }
 
-    let effect_token_start = if let Some(comma_idx) = inner_tokens
-        .iter()
-        .position(|token| token.is_comma())
+    let effect_token_start = if let Some(comma_idx) =
+        inner_tokens.iter().position(|token| token.is_comma())
     {
         comma_idx + 1
     } else if let Some(this_way_idx) = inner_words
@@ -527,9 +526,8 @@ pub(crate) fn parse_for_each_player_doesnt(
         return Ok(None);
     }
 
-    let effect_token_start = if let Some(comma_idx) = inner_tokens
-        .iter()
-        .position(|token| token.is_comma())
+    let effect_token_start = if let Some(comma_idx) =
+        inner_tokens.iter().position(|token| token.is_comma())
     {
         comma_idx + 1
     } else if let Some(this_way_idx) = inner_words
@@ -750,9 +748,7 @@ pub(crate) fn parse_after_turn_sentence(
         return Ok(None);
     }
 
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.is_comma());
+    let comma_idx = tokens.iter().position(|token| token.is_comma());
     let remainder = if let Some(idx) = comma_idx {
         &tokens[idx + 1..]
     } else {
@@ -1059,7 +1055,11 @@ pub(crate) enum LeadingResultPrefixKind {
 
 pub(crate) fn split_leading_result_prefix(
     tokens: &[OwnedLexToken],
-) -> Option<(LeadingResultPrefixKind, IfResultPredicate, Vec<OwnedLexToken>)> {
+) -> Option<(
+    LeadingResultPrefixKind,
+    IfResultPredicate,
+    Vec<OwnedLexToken>,
+)> {
     let trimmed = trim_commas(tokens);
     let kind = if trimmed.first().is_some_and(|token| token.is_word("if")) {
         LeadingResultPrefixKind::If
@@ -1069,9 +1069,7 @@ pub(crate) fn split_leading_result_prefix(
         return None;
     };
 
-    let comma_idx = trimmed
-        .iter()
-        .position(|token| token.is_comma())?;
+    let comma_idx = trimmed.iter().position(|token| token.is_comma())?;
     if comma_idx <= 1 || comma_idx + 1 >= trimmed.len() {
         return None;
     }
@@ -1092,7 +1090,11 @@ pub(crate) fn split_leading_result_prefix(
 
 pub(crate) fn split_leading_result_prefix_lexed(
     tokens: &[OwnedLexToken],
-) -> Option<(LeadingResultPrefixKind, IfResultPredicate, Vec<OwnedLexToken>)> {
+) -> Option<(
+    LeadingResultPrefixKind,
+    IfResultPredicate,
+    Vec<OwnedLexToken>,
+)> {
     let trimmed = trim_lexed_commas(tokens);
     let kind = if trimmed.first().is_some_and(|token| token.is_word("if")) {
         LeadingResultPrefixKind::If
@@ -1102,9 +1104,12 @@ pub(crate) fn split_leading_result_prefix_lexed(
         return None;
     };
 
-    let comma_idx = trimmed
-        .iter()
-        .position(|token| matches!(token.kind, crate::cards::builders::parse_rewrite::lexer::TokenKind::Comma))?;
+    let comma_idx = trimmed.iter().position(|token| {
+        matches!(
+            token.kind,
+            crate::cards::builders::parse_rewrite::lexer::TokenKind::Comma
+        )
+    })?;
     if comma_idx <= 1 || comma_idx + 1 >= trimmed.len() {
         return None;
     }
@@ -2604,7 +2609,10 @@ pub(crate) fn parse_mana_spent_to_cast_predicate(
         return None;
     }
 
-    let amount_tokens = vec![OwnedLexToken::word(words[2].to_string(), TextSpan::synthetic())];
+    let amount_tokens = vec![OwnedLexToken::word(
+        words[2].to_string(),
+        TextSpan::synthetic(),
+    )];
     let (amount, _) = parse_number(&amount_tokens)?;
 
     let mut idx = 3;

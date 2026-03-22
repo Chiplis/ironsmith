@@ -477,6 +477,18 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
     return true;
   }, [setStatus, updateMultiplayer]);
 
+  const reportSyncFailure = useCallback(
+    (body, resyncReason = "", fallbackStatus = body) => {
+      emitSyncFailureNotice("Sync failed", body);
+      if (resyncReason && requestResync(resyncReason)) {
+        return true;
+      }
+      setStatus(fallbackStatus, true);
+      return false;
+    },
+    [requestResync, setStatus]
+  );
+
   const applyStateResync = useCallback(
     async (message) => {
       const matchPayload = message?.match;
@@ -614,11 +626,11 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           return;
         case "action_error":
           updateMultiplayer((prev) => ({ ...prev, submittingAction: false }));
-          emitSyncFailureNotice(
-            "Sync failed",
-            message.reason || "Action rejected by multiplayer host"
+          reportSyncFailure(
+            message.reason || "Action rejected by multiplayer host",
+            "Host rejected the local action. Resyncing with host...",
+            message.reason || "Action rejected"
           );
-          setStatus(message.reason || "Action rejected", true);
           return;
         case "match_start":
           await applyMatchStart(message);
@@ -641,13 +653,11 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
           const session = multiplayerRef.current;
           if (nextSequence <= session.lastAppliedSequence) return;
           if (nextSequence !== session.lastAppliedSequence + 1) {
-            emitSyncFailureNotice(
-              "Sync failed",
-              `Action order mismatch. Expected ${session.lastAppliedSequence + 1}, received ${nextSequence}.`
+            reportSyncFailure(
+              `Action order mismatch. Expected ${session.lastAppliedSequence + 1}, received ${nextSequence}.`,
+              "Multiplayer action order mismatch. Resyncing with host...",
+              "Multiplayer action order mismatch"
             );
-            if (!requestResync("Multiplayer action order mismatch. Resyncing with host...")) {
-              setStatus("Multiplayer action order mismatch", true);
-            }
             return;
           }
 
@@ -666,11 +676,11 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
               ...prev,
               submittingAction: false,
             }));
-            emitSyncFailureNotice(
-              "Sync failed",
-              err instanceof Error ? err.message : String(err)
+            const resynced = reportSyncFailure(
+              err instanceof Error ? err.message : String(err),
+              "Failed to apply synced action. Resyncing with host..."
             );
-            if (!requestResync("Failed to apply synced action. Resyncing with host...")) {
+            if (!resynced) {
               throw err;
             }
           }
@@ -685,7 +695,7 @@ export function usePeerLobby({ game, setState, setStatus, applySyncedCommand }) 
       applyStateResync,
       applySyncedCommand,
       leaveLobby,
-      requestResync,
+      reportSyncFailure,
       setStatus,
       updateMultiplayer,
     ]

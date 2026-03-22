@@ -72,7 +72,10 @@ pub(crate) fn parse_cant_effect_sentence_lexed(
             "restriction clause missing body".to_string(),
         ));
     }
-    if clause_tokens.first().is_some_and(|token| token.is_word("if")) {
+    if clause_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if"))
+    {
         return Ok(None);
     }
 
@@ -146,7 +149,9 @@ pub(crate) fn parse_restriction_duration_lexed(
     }
 
     if starts_with_until_end_of_turn(&all_words) {
-        let remainder = if let Some(idx) = tokens.iter().position(|token| token.kind == TokenKind::Comma)
+        let remainder = if let Some(idx) = tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::Comma)
         {
             trim_lexed_commas(&tokens[idx + 1..]).to_vec()
         } else {
@@ -156,7 +161,9 @@ pub(crate) fn parse_restriction_duration_lexed(
     }
 
     if all_words.starts_with(&["until", "your", "next", "turn"]) {
-        let remainder = if let Some(idx) = tokens.iter().position(|token| token.kind == TokenKind::Comma)
+        let remainder = if let Some(idx) = tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::Comma)
         {
             trim_lexed_commas(&tokens[idx + 1..]).to_vec()
         } else {
@@ -176,7 +183,10 @@ pub(crate) fn parse_restriction_duration_lexed(
         if !as_long_duration {
             return Ok(None);
         }
-        let Some(comma_idx) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else {
+        let Some(comma_idx) = tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::Comma)
+        else {
             return Err(CardTextError::ParseError(
                 "missing comma after duration prefix".to_string(),
             ));
@@ -248,7 +258,9 @@ pub(crate) fn parse_restriction_duration_lexed(
     let suffix_idx = (0..all_words.len().saturating_sub(3))
         .find(|&idx| all_words[idx..].starts_with(&["for", "as", "long", "as"]));
     if let Some(word_idx) = suffix_idx {
-        let token_idx = words.token_index_for_word_index(word_idx).unwrap_or(tokens.len());
+        let token_idx = words
+            .token_index_for_word_index(word_idx)
+            .unwrap_or(tokens.len());
         let suffix_words = words.to_word_refs();
         let suffix_words = &suffix_words[word_idx..];
         let remains_tapped_duration = suffix_words.contains(&"remains")
@@ -742,7 +754,9 @@ pub(crate) fn parse_search_library_sentence(
             if !search_tokens[idx].is_comma() {
                 continue;
             }
-            let next_word = search_tokens[idx + 1..].iter().find_map(OwnedLexToken::as_word);
+            let next_word = search_tokens[idx + 1..]
+                .iter()
+                .find_map(OwnedLexToken::as_word);
             if matches!(next_word, Some("put" | "reveal" | "then")) {
                 end = idx;
                 break;
@@ -1841,7 +1855,9 @@ pub(crate) fn parse_earthbend_sentence(
     Ok(Some(EffectAst::Earthbend { counters: count }))
 }
 
-pub(crate) fn parse_enchant_sentence(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+pub(crate) fn parse_enchant_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = words(tokens);
     if words.is_empty() || words[0] != "enchant" {
         return Ok(None);
@@ -1931,9 +1947,7 @@ pub(crate) fn parse_restriction_duration(
     }
 
     if starts_with_until_end_of_turn(&all_words) {
-        let comma_idx = tokens
-            .iter()
-            .position(|token| token.is_comma());
+        let comma_idx = tokens.iter().position(|token| token.is_comma());
         let remainder = if let Some(idx) = comma_idx {
             &tokens[idx + 1..]
         } else {
@@ -1943,9 +1957,7 @@ pub(crate) fn parse_restriction_duration(
     }
 
     if all_words.starts_with(&["until", "your", "next", "turn"]) {
-        let comma_idx = tokens
-            .iter()
-            .position(|token| token.is_comma());
+        let comma_idx = tokens.iter().position(|token| token.is_comma());
         let remainder = if let Some(idx) = comma_idx {
             &tokens[idx + 1..]
         } else {
@@ -1965,10 +1977,7 @@ pub(crate) fn parse_restriction_duration(
         if !as_long_duration {
             return Ok(None);
         }
-        let Some(comma_idx) = tokens
-            .iter()
-            .position(|token| token.is_comma())
-        else {
+        let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
             return Err(CardTextError::ParseError(
                 "missing comma after duration prefix".to_string(),
             ));
@@ -2109,7 +2118,9 @@ fn has_source_remains_tapped_duration(tokens: &[OwnedLexToken]) -> bool {
 fn has_source_remains_tapped_duration_lexed(tokens: &[OwnedLexToken]) -> bool {
     let word_view = LowercaseWordView::new(tokens);
     let words = word_view.to_word_refs();
-    words.windows(4).any(|window| window == ["for", "as", "long", "as"])
+    words
+        .windows(4)
+        .any(|window| window == ["for", "as", "long", "as"])
         && words.contains(&"remains")
         && words.contains(&"tapped")
         && (words.contains(&"this")
@@ -2128,9 +2139,7 @@ pub(crate) fn parse_play_from_graveyard_sentence(
         return Ok(None);
     }
 
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.is_comma());
+    let comma_idx = tokens.iter().position(|token| token.is_comma());
     let remainder = if let Some(idx) = comma_idx {
         &tokens[idx + 1..]
     } else {
@@ -2187,9 +2196,7 @@ pub(crate) fn parse_exile_instead_of_graveyard_sentence(
         return Ok(None);
     }
 
-    let comma_idx = tokens
-        .iter()
-        .position(|token| token.is_comma());
+    let comma_idx = tokens.iter().position(|token| token.is_comma());
     let remainder = if let Some(idx) = comma_idx {
         &tokens[idx + 1..]
     } else {

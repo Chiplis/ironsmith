@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { animate, cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
+import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
 import { fetchScryfallCardMeta, scryfallImageUrl } from "@/lib/scryfall";
 import { ManaCostIcons } from "@/lib/mana-symbols";
@@ -377,6 +378,8 @@ export default function GameCard({
     && variant !== "stack"
     && debugSimilarityLabel != null
   );
+  const debouncedOnClick = debounceClick(onClick);
+  const debouncedOnPointerDown = debouncePointerDown(onPointerDown);
 
   useEffect(() => {
     if (!inspectorDebug || !game || !name || semanticScoreCache.has(name)) return undefined;
@@ -723,9 +726,9 @@ export default function GameCard({
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
       title={suppressTooltip ? undefined : (groupSize > 1 ? `${name} (${groupSize} grouped permanents)` : name)}
-      onClick={onClick}
+      onClick={debouncedOnClick}
       onContextMenu={onContextMenu}
-      onPointerDown={onPointerDown}
+      onPointerDown={debouncedOnPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onPointerLeave={onPointerLeave}

@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 use crate::cards::builders::IfResultPredicate;
 
 pub(crate) use super::util::{

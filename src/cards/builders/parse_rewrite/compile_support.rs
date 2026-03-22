@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[allow(unused_imports)]
 use crate::ability;
 #[allow(unused_imports)]
@@ -61,10 +63,10 @@ use super::lowering_support::{
 };
 use super::reference_helpers::{
     choose_spec_targets_object, infer_player_filter_from_object_filter,
-    object_filter_as_tagged_reference, resolve_attach_object_spec, resolve_choose_spec_it_tag,
-    resolve_it_tag, resolve_it_tag_key, resolve_non_target_player_filter,
-    resolve_restriction_it_tag, resolve_target_spec_with_choices, resolve_unless_player_filter,
-    resolve_value_it_tag, watch_tag_from_filter,
+    object_filter_as_tagged_reference, resolve_attach_object_spec, resolve_it_tag,
+    resolve_it_tag_key, resolve_non_target_player_filter, resolve_restriction_it_tag,
+    resolve_target_spec_with_choices, resolve_unless_player_filter, resolve_value_it_tag,
+    watch_tag_from_filter,
 };
 use super::reference_model::{
     AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, ReferenceEnv, ReferenceExports,

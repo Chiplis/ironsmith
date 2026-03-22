@@ -1,11 +1,9 @@
-use std::cell::OnceCell;
 use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::OwnedLexToken;
 use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
-    compat_tokens_from_lexed,
-    is_article, is_source_reference_words, parse_card_type, parse_color,
+    compat_tokens_from_lexed, is_article, is_source_reference_words, parse_card_type, parse_color,
     parse_counter_type_from_tokens, split_on_and, split_on_period, token_index_for_word_index,
     words,
 };
@@ -52,6 +50,7 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOp
 use crate::types::{CardType, Subtype};
 #[allow(unused_imports)]
 use crate::zone::Zone;
+use std::cell::OnceCell;
 use std::sync::LazyLock;
 
 pub(crate) type SentencePrimitiveParser =
@@ -175,7 +174,8 @@ pub(crate) fn run_sentence_primitives_lexed(
     if let Some(candidate_indices) = index.by_head.get(head) {
         for &idx in candidate_indices {
             tried[idx] = true;
-            if let Some(effects) = run_sentence_primitive_lexed(&primitives[idx], tokens, &compat)? {
+            if let Some(effects) = run_sentence_primitive_lexed(&primitives[idx], tokens, &compat)?
+            {
                 return Ok(Some(effects));
             }
         }
@@ -767,10 +767,7 @@ pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
     if !clause_words.starts_with(&["for", "each", "kind", "of", "counter", "on"]) {
         return Ok(None);
     }
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.is_comma())
-    else {
+    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
     if comma_idx <= 6 || comma_idx + 1 >= tokens.len() {
@@ -1491,10 +1488,7 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
         return Ok(None);
     }
 
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.is_comma())
-    else {
+    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
     if comma_idx <= 1 || comma_idx + 1 >= tokens.len() {
@@ -2832,10 +2826,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
 
     let target_tokens = trim_commas(&tokens[1..to_idx]);
     let has_multi_separator = target_tokens.iter().any(|token| {
-        token.is_word("and")
-            || token.is_comma()
-            || token.is_word("or")
-            || token.is_word("and/or")
+        token.is_word("and") || token.is_comma() || token.is_word("or") || token.is_word("and/or")
     });
     if !has_multi_separator {
         return Ok(None);
@@ -2967,10 +2958,7 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
         return Ok(None);
     }
 
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.is_comma())
-    else {
+    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
     if comma_idx == 0 || comma_idx + 1 >= tokens.len() {
@@ -4033,10 +4021,7 @@ pub(crate) fn parse_sentence_unless_pays(
     // Rewrite by parsing the effect tail after the first comma and wrapping it
     // in the parsed unless-payment clause.
     if unless_idx == 0 {
-        let comma_idx = match tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
+        let comma_idx = match tokens.iter().position(|token| token.is_comma()) {
             Some(idx) => idx,
             None => return Ok(None),
         };
@@ -4235,7 +4220,10 @@ pub(crate) fn try_build_unless(
     unless_idx: usize,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let after_unless = &tokens[unless_idx + 1..];
-    let after_words: Vec<&str> = after_unless.iter().filter_map(OwnedLexToken::as_word).collect();
+    let after_words: Vec<&str> = after_unless
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect();
 
     // Determine the player from the "unless" clause
     let (player, action_token_start) = if after_words.starts_with(&["you"]) {
@@ -4299,7 +4287,10 @@ pub(crate) fn try_build_unless(
     }
 
     let action_tokens = &after_unless[action_token_idx..];
-    let action_words: Vec<&str> = action_tokens.iter().filter_map(OwnedLexToken::as_word).collect();
+    let action_words: Vec<&str> = action_tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect();
 
     // "unless [player] pays N life" should compile as an unless-action branch
     // where the deciding player loses life.

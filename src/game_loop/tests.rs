@@ -10720,6 +10720,540 @@ fn test_sundering_eruption_lets_target_controller_search_after_land_dies() {
 }
 
 #[test]
+fn test_boseiju_channel_lets_destroyed_permanent_controller_search_for_land() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::cards::definitions::{basic_forest, command_tower};
+    use crate::executor::{ExecutionContext, ResolvedTarget, execute_effect};
+    use crate::ids::CardId;
+    use crate::ids::ObjectId;
+
+    struct AcceptAndChooseFirstDecisionMaker;
+    impl DecisionMaker for AcceptAndChooseFirstDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let boseiju = CardDefinitionBuilder::new(CardId::new(), "Boseiju, Who Endures")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "{T}: Add {G}.\n\
+             Channel — {1}{G}, Discard this card: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle.\n\
+             This ability costs {1} less to activate for each legendary creature you control.",
+        )
+        .expect("Boseiju text should parse");
+
+    let source_id = game.create_object_from_definition(&boseiju, alice, Zone::Hand);
+    let target_land_id = game.create_object_from_definition(&command_tower(), bob, Zone::Battlefield);
+    let library_basic_id = game.create_object_from_definition(&basic_forest(), bob, Zone::Library);
+    let bob_library_before = game.player(bob).expect("bob exists").library.len();
+
+    let activated = game
+        .object(source_id)
+        .expect("Boseiju object should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if ability.functions_in(&Zone::Hand) => {
+                Some(activated.clone())
+            }
+            _ => None,
+        })
+        .expect("Boseiju should have a hand-zone channel ability");
+
+    let mut dm = AcceptAndChooseFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new_default(source_id, alice)
+        .with_decision_maker(&mut dm)
+        .with_targets(vec![ResolvedTarget::Object(target_land_id)]);
+    ctx.snapshot_targets(&game);
+
+    for effect in &activated.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("channel effect should resolve");
+    }
+
+    let bob_battlefield_has_forest = game.battlefield.iter().any(|&id| {
+        game.object(id)
+            .map(|obj| obj.name == "Forest" && obj.controller == bob)
+            .unwrap_or(false)
+    });
+    assert!(
+        bob_battlefield_has_forest,
+        "Boseiju should let the destroyed permanent's controller find a basic land"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player.graveyard.iter().any(|&id| {
+            game.object(id)
+                .map(|obj| obj.name == "Command Tower" && obj.owner == bob)
+                .unwrap_or(false)
+        })),
+        "the destroyed nonbasic land should be in Bob's graveyard"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        bob_library_before - 1,
+        "Boseiju should remove the searched land from Bob's library"
+    );
+    assert!(
+        game.object(library_basic_id).is_none(),
+        "the searched land should become a new battlefield object"
+    );
+}
+
+#[test]
+fn test_boseiju_channel_activation_flow_preserves_land_search_after_destroying_target() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::cards::definitions::{basic_forest, command_tower};
+    use crate::decision::{GameProgress, LegalAction};
+    use crate::ids::CardId;
+
+    struct AcceptAndChooseFirstDecisionMaker;
+    impl DecisionMaker for AcceptAndChooseFirstDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let boseiju = CardDefinitionBuilder::new(CardId::new(), "Boseiju, Who Endures")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "{T}: Add {G}.\n\
+             Channel — {1}{G}, Discard this card: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle.\n\
+             This ability costs {1} less to activate for each legendary creature you control.",
+        )
+        .expect("Boseiju text should parse");
+
+    let source_id = game.create_object_from_definition(&boseiju, alice, Zone::Hand);
+    let ability_index = game
+        .object(source_id)
+        .expect("Boseiju should exist in hand")
+        .abilities
+        .iter()
+        .position(|ability| {
+            matches!(
+                ability.kind,
+                AbilityKind::Activated(_) if ability.functions_in(&Zone::Hand)
+            )
+        })
+        .expect("Boseiju should expose its channel ability from hand");
+    let target_land_id = game.create_object_from_definition(&command_tower(), bob, Zone::Battlefield);
+    let library_basic_id = game.create_object_from_definition(&basic_forest(), bob, Zone::Library);
+    let bob_library_before = game.player(bob).expect("bob exists").library.len();
+
+    if let Some(player) = game.player_mut(alice) {
+        player.mana_pool.add(ManaSymbol::Green, 2);
+    }
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AcceptAndChooseFirstDecisionMaker;
+
+    let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+        source: source_id,
+        ability_index,
+    });
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &activate,
+        &mut dm,
+    )
+    .expect("Boseiju activation should start");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {}
+        other => panic!("expected Boseiju to choose its target first, got {other:?}"),
+    }
+
+    let choose_target = PriorityResponse::Targets(vec![Target::Object(target_land_id)]);
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &choose_target,
+        &mut dm,
+    )
+    .expect("Boseiju should accept its target");
+
+    let next_cost_ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(
+            ctx,
+        )) => ctx,
+        other => panic!("expected Boseiju to ask for its next cost, got {other:?}"),
+    };
+
+    let discard_cost_index = next_cost_ctx
+        .options
+        .iter()
+        .find(|opt| opt.description.to_ascii_lowercase().contains("discard"))
+        .map(|opt| opt.index)
+        .expect("expected Boseiju to offer its discard cost");
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(discard_cost_index),
+        &mut dm,
+    )
+    .expect("Boseiju should let us pay discard first");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(_),
+        ) => {
+            apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::CardCostChoice(source_id),
+                &mut dm,
+            )
+            .expect("discarding Boseiju should finish the activation flow");
+        }
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_)) => {
+        }
+        other => panic!(
+            "expected Boseiju activation to either auto-pay discard or ask for it, got {other:?}"
+        ),
+    }
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Boseiju's channel ability should be on the stack after paying costs"
+    );
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Boseiju channel ability should resolve");
+
+    let bob_battlefield_has_forest = game.battlefield.iter().any(|&id| {
+        game.object(id)
+            .map(|obj| obj.name == "Forest" && obj.controller == bob)
+            .unwrap_or(false)
+    });
+    assert!(
+        bob_battlefield_has_forest,
+        "Boseiju should still let the destroyed permanent's controller search during real activation"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player.graveyard.iter().any(|&id| {
+            game.object(id)
+                .map(|obj| obj.name == "Command Tower" && obj.owner == bob)
+                .unwrap_or(false)
+        })),
+        "the destroyed nonbasic land should end up in Bob's graveyard"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        bob_library_before - 1,
+        "the searched land should leave Bob's library after channel resolves"
+    );
+    assert!(
+        game.object(library_basic_id).is_none(),
+        "the searched land should enter as a new battlefield object"
+    );
+}
+
+#[test]
+fn test_boseiju_channel_assigns_multiplayer_search_prompt_to_destroyed_controller() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::cards::definitions::{basic_forest, ornithopter};
+    use crate::decision::{GameProgress, LegalAction};
+    use crate::ids::CardId;
+
+    struct CaptureSearchPromptDecisionMaker {
+        search_prompt_player: Option<PlayerId>,
+        saw_forest_candidate: bool,
+    }
+
+    impl DecisionMaker for CaptureSearchPromptDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx.candidates.iter().any(|candidate| candidate.name == "Forest") {
+                self.search_prompt_player = Some(ctx.player);
+                self.saw_forest_candidate = ctx.candidates.iter().any(|candidate| {
+                    candidate.legal && candidate.name == "Forest"
+                });
+            }
+
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let boseiju = CardDefinitionBuilder::new(CardId::new(), "Boseiju, Who Endures")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "{T}: Add {G}.\n\
+             Channel — {1}{G}, Discard this card: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle.\n\
+             This ability costs {1} less to activate for each legendary creature you control.",
+        )
+        .expect("Boseiju text should parse");
+
+    let source_id = game.create_object_from_definition(&boseiju, alice, Zone::Hand);
+    let ability_index = game
+        .object(source_id)
+        .expect("Boseiju should exist in hand")
+        .abilities
+        .iter()
+        .position(|ability| {
+            matches!(
+                ability.kind,
+                AbilityKind::Activated(_) if ability.functions_in(&Zone::Hand)
+            )
+        })
+        .expect("Boseiju should expose its channel ability from hand");
+    let target_artifact_id = game.create_object_from_definition(&ornithopter(), bob, Zone::Battlefield);
+    let bob_library_before = game.player(bob).expect("bob exists").library.len();
+    game.create_object_from_definition(&basic_forest(), bob, Zone::Library);
+
+    if let Some(player) = game.player_mut(alice) {
+        player.mana_pool.add(ManaSymbol::Green, 2);
+    }
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = CaptureSearchPromptDecisionMaker {
+        search_prompt_player: None,
+        saw_forest_candidate: false,
+    };
+
+    let activate = PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+        source: source_id,
+        ability_index,
+    });
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &activate,
+        &mut dm,
+    )
+    .expect("Boseiju activation should start");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {}
+        other => panic!("expected Boseiju to choose its target first, got {other:?}"),
+    }
+
+    let choose_target = PriorityResponse::Targets(vec![Target::Object(target_artifact_id)]);
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &choose_target,
+        &mut dm,
+    )
+    .expect("Boseiju should accept its multiplayer target");
+
+    let next_cost_ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(
+            ctx,
+        )) => ctx,
+        other => panic!("expected Boseiju to ask for its next cost, got {other:?}"),
+    };
+
+    let discard_cost_index = next_cost_ctx
+        .options
+        .iter()
+        .find(|opt| opt.description.to_ascii_lowercase().contains("discard"))
+        .map(|opt| opt.index)
+        .expect("expected Boseiju to offer its discard cost");
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(discard_cost_index),
+        &mut dm,
+    )
+    .expect("Boseiju should let us pay discard first");
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(_),
+        ) => {
+            apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::CardCostChoice(source_id),
+                &mut dm,
+            )
+            .expect("discarding Boseiju should finish the activation flow");
+        }
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_)) => {
+        }
+        other => panic!(
+            "expected Boseiju activation to either auto-pay discard or ask for it, got {other:?}"
+        ),
+    }
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Boseiju channel ability should resolve in multiplayer");
+
+    assert_eq!(
+        dm.search_prompt_player,
+        Some(bob),
+        "Boseiju should hand the search prompt to the destroyed permanent's controller in multiplayer"
+    );
+    assert!(
+        dm.saw_forest_candidate,
+        "the destroyed permanent's controller should be offered their legal basic land search"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        bob_library_before,
+        "Bob should end up with the searched Forest removed from library after resolving the prompt"
+    );
+}
+
+#[test]
+fn test_the_one_ring_prevents_combat_damage_until_your_next_turn() {
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::ids::CardId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let one_ring = CardDefinitionBuilder::new(CardId::new(), "The One Ring")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("When The One Ring enters the battlefield, if you cast it, you gain protection from everything until your next turn.")
+        .expect("The One Ring trigger text should parse");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = AutoPassDecisionMaker;
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let ring_id = game.create_object_from_definition(&one_ring, alice, Zone::Stack);
+    let (ring_stable_id, ring_name) = game
+        .object(ring_id)
+        .map(|object| (object.stable_id, object.name.clone()))
+        .expect("The One Ring spell should exist");
+    game.push_to_stack(StackEntry::new(ring_id, alice).with_source_info(ring_stable_id, ring_name));
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("The One Ring should resolve");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "The One Ring should queue its enters trigger after resolving from the stack"
+    );
+
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("The One Ring trigger should be put on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("The One Ring trigger should resolve");
+
+    assert!(
+        game.prevention_effects.shields().iter().any(|shield| {
+            matches!(shield.protected, crate::prevention::PreventionTarget::Player(player) if player == alice)
+        }),
+        "The One Ring should create a prevention shield for its controller"
+    );
+
+    game.turn.turn_number += 1;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+
+    let attacker_id = create_creature(&mut game, "Ring Breaker", bob, 4, 4);
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_id,
+        target: AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(attacker_id, Vec::new());
+
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(events.len(), 1, "combat damage should still be assigned");
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "The One Ring should prevent combat damage dealt before Alice's next turn"
+    );
+}
+
+#[test]
 fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     use crate::cards::definitions::{basic_forest, grizzly_bears};
     use crate::executor::{ExecutionContext, execute_effect};

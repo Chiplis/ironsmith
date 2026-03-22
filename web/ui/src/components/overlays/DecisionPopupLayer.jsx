@@ -983,6 +983,7 @@ function PriorityActionStrip({
               style={{ textOverflow: "clip" }}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
+                if (event.pointerType && event.pointerType !== "mouse") return;
                 // Match decision option buttons so a pointer sequence that
                 // started on a mana pip cannot finish as a click on a newly
                 // rendered priority action under the cursor.

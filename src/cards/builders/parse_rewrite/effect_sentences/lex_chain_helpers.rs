@@ -1,15 +1,17 @@
+#![allow(dead_code)]
+
 use super::super::clause_support::rewrite_parse_ability_line_lexed;
 use super::super::keyword_static::parse_ability_line;
 use super::super::lexer::{OwnedLexToken, TokenKind, lexed_words, trim_lexed_commas};
 use super::super::util::{trim_commas, words};
 use super::chain_carry::{Verb, find_verb};
-use super::clause_primitives::{
-    parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
-    parse_must_block_if_able_clause,
-};
 use super::clause_pattern_helpers::{
     parse_can_attack_as_though_no_defender_clause, parse_prevent_all_damage_clause,
     parse_prevent_next_damage_clause,
+};
+use super::clause_primitives::{
+    parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
+    parse_must_block_if_able_clause,
 };
 
 pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
@@ -153,7 +155,10 @@ fn should_keep_and_for_token_rules(current: &[OwnedLexToken], remaining: &[Owned
     starts_with_inline_token_rules_tail(&remaining_words)
 }
 
-fn should_keep_and_for_attachment_object_list(current: &[OwnedLexToken], remaining: &[OwnedLexToken]) -> bool {
+fn should_keep_and_for_attachment_object_list(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -185,7 +190,10 @@ fn should_keep_and_for_attachment_object_list(current: &[OwnedLexToken], remaini
         || current_words.starts_with(&["gain", "control", "of", "all"])
 }
 
-fn should_keep_and_for_each_player_may_clause(current: &[OwnedLexToken], remaining: &[OwnedLexToken]) -> bool {
+fn should_keep_and_for_each_player_may_clause(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -217,7 +225,10 @@ fn should_keep_and_for_each_player_may_clause(current: &[OwnedLexToken], remaini
     true
 }
 
-fn should_keep_and_for_put_rest_clause(current: &[OwnedLexToken], remaining: &[OwnedLexToken]) -> bool {
+fn should_keep_and_for_put_rest_clause(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
     if current.is_empty() || remaining.is_empty() {
         return false;
     }
@@ -556,9 +567,7 @@ fn is_must_block_if_able_clause_words_lexed(words: &[&str]) -> bool {
     ) || tail.ends_with(&["if", "able"])
 }
 
-pub(crate) fn split_effect_chain_on_and_lexed(
-    tokens: &[OwnedLexToken],
-) -> Vec<&[OwnedLexToken]> {
+pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     let mut segments = Vec::new();
     let mut start = 0usize;
 
@@ -570,9 +579,9 @@ pub(crate) fn split_effect_chain_on_and_lexed(
         let remaining = trim_lexed_commas(&tokens[idx + 1..]);
         let prev_word = current.iter().rev().find_map(OwnedLexToken::as_word);
         let next_word = remaining.iter().find_map(OwnedLexToken::as_word);
-        let is_color_pair = prev_word.zip(next_word).is_some_and(|(left, right)| {
-            is_basic_color_word(left) && is_basic_color_word(right)
-        });
+        let is_color_pair = prev_word
+            .zip(next_word)
+            .is_some_and(|(left, right)| is_basic_color_word(left) && is_basic_color_word(right));
         if is_color_pair
             || should_keep_and_for_token_rules_lexed(current, remaining)
             || should_keep_and_for_attachment_object_list_lexed(current, remaining)
@@ -655,7 +664,9 @@ pub(crate) fn segment_has_effect_head(tokens: &[OwnedLexToken]) -> bool {
     find_verb(tokens).is_some() || has_effect_head_without_verb(tokens)
 }
 
-pub(crate) fn split_segments_on_comma_then(segments: Vec<Vec<OwnedLexToken>>) -> Vec<Vec<OwnedLexToken>> {
+pub(crate) fn split_segments_on_comma_then(
+    segments: Vec<Vec<OwnedLexToken>>,
+) -> Vec<Vec<OwnedLexToken>> {
     let back_ref_words = ["that", "it", "them", "its"];
     let mut result = Vec::new();
     for segment in segments {
@@ -671,9 +682,7 @@ pub(crate) fn split_segments_on_comma_then(segments: Vec<Vec<OwnedLexToken>>) ->
             || segment_words.starts_with(&["for", "each", "opponents"]);
         let mut split_point = None;
         for i in 0..segment.len().saturating_sub(1) {
-            if segment[i].is_comma()
-                && segment.get(i + 1).is_some_and(|t| t.is_word("then"))
-            {
+            if segment[i].is_comma() && segment.get(i + 1).is_some_and(|t| t.is_word("then")) {
                 let before_then = &segment[..i];
                 let before_words = words(before_then);
                 let starts_with_clash =
@@ -801,7 +810,9 @@ pub(crate) fn split_segments_on_comma_then(segments: Vec<Vec<OwnedLexToken>>) ->
     result
 }
 
-pub(crate) fn split_segments_on_comma_effect_head(segments: Vec<Vec<OwnedLexToken>>) -> Vec<Vec<OwnedLexToken>> {
+pub(crate) fn split_segments_on_comma_effect_head(
+    segments: Vec<Vec<OwnedLexToken>>,
+) -> Vec<Vec<OwnedLexToken>> {
     let mut result = Vec::new();
     for segment in segments {
         let mut start = 0usize;
@@ -871,7 +882,8 @@ pub(crate) fn split_segments_on_comma_then_lexed(
     let mut result = Vec::new();
     for segment in segments {
         let segment_words = lexed_words(segment);
-        let starts_with_for_each_player_or_opponent = segment_words.starts_with(&["each", "player"])
+        let starts_with_for_each_player_or_opponent = segment_words
+            .starts_with(&["each", "player"])
             || segment_words.starts_with(&["each", "players"])
             || segment_words.starts_with(&["each", "opponent"])
             || segment_words.starts_with(&["each", "opponents"])
@@ -909,7 +921,9 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     || rewrite_parse_ability_line_lexed(after_then).is_some()
                     || has_nonverb_effect_head;
                 let allow_backref_split = has_back_ref
-                    && after_words.first().is_some_and(|word| *word == "put" || *word == "double")
+                    && after_words
+                        .first()
+                        .is_some_and(|word| *word == "put" || *word == "double")
                     && after_words
                         .iter()
                         .any(|word| *word == "counter" || *word == "counters");
@@ -1024,7 +1038,8 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
                 continue;
             }
             let before_has_verb = find_verb_lexed(before).is_some();
-            let after_starts_effect = find_verb_lexed(after).is_some_and(|(_, verb_idx)| verb_idx == 0)
+            let after_starts_effect = find_verb_lexed(after)
+                .is_some_and(|(_, verb_idx)| verb_idx == 0)
                 || has_effect_head_without_verb_lexed(after);
             let before_words = lexed_words(before);
             let after_words = lexed_words(after);
@@ -1032,7 +1047,9 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
                 || before_words.first() == Some(&"during"))
                 && (before_words.contains(&"whenever")
                     || before_words.contains(&"when")
-                    || before_words.windows(2).any(|window| window == ["at", "the"]));
+                    || before_words
+                        .windows(2)
+                        .any(|window| window == ["at", "the"]));
             if before_words.first() == Some(&"unless") || duration_trigger_prefix {
                 continue;
             }

@@ -1,7 +1,7 @@
 use crate::cards::TextSpan;
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, PlayerAst, PredicateAst, SubjectAst, TargetAst,
-    OwnedLexToken,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
+    SubjectAst, TargetAst,
 };
 use crate::effect::EventValueSpec;
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -181,7 +181,9 @@ fn parse_referential_counter_count_value(tokens: &[OwnedLexToken]) -> Option<(Va
     Some((Value::CountersOn(Box::new(source_spec), counter_type), idx))
 }
 
-fn parse_put_counter_count_value(tokens: &[OwnedLexToken]) -> Result<(Value, usize), CardTextError> {
+fn parse_put_counter_count_value(
+    tokens: &[OwnedLexToken],
+) -> Result<(Value, usize), CardTextError> {
     let clause = words(tokens).join(" ");
     let words_all = words(tokens);
 
@@ -512,12 +514,8 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     if first_desc.is_empty() || second_desc.is_empty() {
         return Ok(None);
     }
-    if first_desc
-        .iter()
-        .any(|token| token.is_comma())
-        || second_desc
-            .iter()
-            .any(|token| token.is_comma())
+    if first_desc.iter().any(|token| token.is_comma())
+        || second_desc.iter().any(|token| token.is_comma())
     {
         return Ok(None);
     }

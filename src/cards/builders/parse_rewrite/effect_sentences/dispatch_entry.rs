@@ -5,14 +5,13 @@ use super::super::keyword_static::parse_where_x_value_clause;
 use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
-    compat_tokens_from_lexed, is_article, parse_number, parse_subject, parse_target_phrase, span_from_tokens,
-    token_index_for_word_index, trim_commas, words,
+    compat_tokens_from_lexed, is_article, parse_number, parse_subject, parse_target_phrase,
+    span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::sentence_helpers::*;
 use super::{
     parse_effect_sentence, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
-    parse_token_copy_modifier_sentence,
-    trim_edge_punctuation,
+    parse_token_copy_modifier_sentence, trim_edge_punctuation,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -27,11 +26,19 @@ use crate::target::{
 use crate::zone::Zone;
 use std::cell::OnceCell;
 
-type PairSentenceRule = fn(&[OwnedLexToken], &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
-type TripleSentenceRule =
-    fn(&[OwnedLexToken], &[OwnedLexToken], &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
-type QuadSentenceRule =
-    fn(&[OwnedLexToken], &[OwnedLexToken], &[OwnedLexToken], &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
+type PairSentenceRule =
+    fn(&[OwnedLexToken], &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError>;
+type TripleSentenceRule = fn(
+    &[OwnedLexToken],
+    &[OwnedLexToken],
+    &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError>;
+type QuadSentenceRule = fn(
+    &[OwnedLexToken],
+    &[OwnedLexToken],
+    &[OwnedLexToken],
+    &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError>;
 
 struct SentenceInput {
     compat: OnceCell<Vec<OwnedLexToken>>,
@@ -42,7 +49,10 @@ impl SentenceInput {
     fn from_compat(tokens: Vec<OwnedLexToken>) -> Self {
         let compat = OnceCell::new();
         let _ = compat.set(tokens);
-        Self { compat, lexed: None }
+        Self {
+            compat,
+            lexed: None,
+        }
     }
 
     fn from_lexed(tokens: &[OwnedLexToken]) -> Self {
@@ -247,10 +257,7 @@ fn parse_delayed_dies_exile_top_power_choose_play(
         return Ok(None);
     }
 
-    let Some(comma_idx) = first_tokens
-        .iter()
-        .position(|token| token.is_comma())
-    else {
+    let Some(comma_idx) = first_tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
     let action_tokens = trim_commas(&first_tokens[comma_idx + 1..]);
@@ -752,7 +759,9 @@ fn parse_counted_looked_cards_into_your_hand_words(words: &[&str]) -> Option<u32
     None
 }
 
-fn parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(tokens: &[OwnedLexToken]) -> Option<u32> {
+fn parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(
+    tokens: &[OwnedLexToken],
+) -> Option<u32> {
     let trimmed = trim_commas(tokens);
     let clause_words = words(&trimmed);
     if !clause_words.starts_with(&["if", "this", "spell", "was", "kicked"]) {
@@ -1253,7 +1262,10 @@ fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFil
                         Some("card" | "cards")
                     )
                 {
-                    segment.push(OwnedLexToken::word("card".to_string(), TextSpan::synthetic()));
+                    segment.push(OwnedLexToken::word(
+                        "card".to_string(),
+                        TextSpan::synthetic(),
+                    ));
                 }
                 let parsed = parse_object_filter(&segment, false)
                     .ok()
@@ -1450,10 +1462,7 @@ fn parse_if_no_card_into_hand_this_way_sentence(
         return Ok(None);
     }
 
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.is_comma())
-    else {
+    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
     if comma_idx + 1 >= tokens.len() {
@@ -1467,7 +1476,9 @@ fn parse_if_no_card_into_hand_this_way_sentence(
     Ok(Some(effects))
 }
 
-fn parse_if_you_dont_sentence(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+fn parse_if_you_dont_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words: Vec<&str> = words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))
@@ -1478,10 +1489,7 @@ fn parse_if_you_dont_sentence(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Eff
         return Ok(None);
     }
 
-    let Some(comma_idx) = tokens
-        .iter()
-        .position(|token| token.is_comma())
-    else {
+    let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
     if comma_idx + 1 >= tokens.len() {
@@ -1824,30 +1832,31 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
-        let mut sentence_effects =
-            if let Some(followup) = parse_token_copy_followup_sentence(&sentence_tokens) {
-                if try_apply_token_copy_followup(&mut effects, followup)? {
-                    parser_trace(
-                        "parse_effect_sentences:token-copy-followup",
-                        &sentence_tokens,
-                    );
-                    sentence_idx += 1;
-                    continue;
-                }
-                apply_unapplied_token_copy_followup(sentence, &sentence_tokens, followup)?
-            } else if let Some(lexed_sentence) = sentences[sentence_idx].lexed.as_deref()
-                && sentence_tokens.as_slice() == sentences[sentence_idx].compat()
-            {
-                if super::looks_like_multi_create_chain_lexed(lexed_sentence) {
-                    crate::cards::builders::parse_rewrite::clause_support::rewrite_parse_effect_sentences(
+        let mut sentence_effects = if let Some(followup) =
+            parse_token_copy_followup_sentence(&sentence_tokens)
+        {
+            if try_apply_token_copy_followup(&mut effects, followup)? {
+                parser_trace(
+                    "parse_effect_sentences:token-copy-followup",
+                    &sentence_tokens,
+                );
+                sentence_idx += 1;
+                continue;
+            }
+            apply_unapplied_token_copy_followup(sentence, &sentence_tokens, followup)?
+        } else if let Some(lexed_sentence) = sentences[sentence_idx].lexed.as_deref()
+            && sentence_tokens.as_slice() == sentences[sentence_idx].compat()
+        {
+            if super::looks_like_multi_create_chain_lexed(lexed_sentence) {
+                crate::cards::builders::parse_rewrite::clause_support::rewrite_parse_effect_sentences(
                         &sentence_tokens,
                     )?
-                } else {
-                    parse_effect_sentence_lexed(lexed_sentence)?
-                }
             } else {
-                parse_effect_sentence(&sentence_tokens)?
-            };
+                parse_effect_sentence_lexed(lexed_sentence)?
+            }
+        } else {
+            parse_effect_sentence(&sentence_tokens)?
+        };
         if wraps_as_if_did_not {
             sentence_effects = vec![EffectAst::IfResult {
                 predicate: IfResultPredicate::DidNot,
@@ -1900,7 +1909,10 @@ fn parse_effect_sentences_from_sentence_inputs(
                 *predicate = IfResultPredicate::DidNot;
             }
             if let Some(previous_target) = primary_damage_target_from_effect(previous_effect) {
-                replace_it_damage_target_in_effects(if_result_effects.as_mut_slice(), &previous_target);
+                replace_it_damage_target_in_effects(
+                    if_result_effects.as_mut_slice(),
+                    &previous_target,
+                );
             }
         }
         let sentence_text = words(&sentence_tokens).join(" ");
@@ -1957,7 +1969,9 @@ fn parse_effect_sentences_from_sentence_inputs(
     Ok(effects)
 }
 
-pub(crate) fn parse_effect_sentences(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+pub(crate) fn parse_effect_sentences(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
     let sentences = split_on_period(tokens)
         .into_iter()
         .map(SentenceInput::from_compat)
@@ -2595,7 +2609,9 @@ pub(crate) fn most_recent_extra_turn_player(effects: &[EffectAst]) -> Option<Pla
     })
 }
 
-pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(
+    tokens: &[OwnedLexToken],
+) -> Vec<OwnedLexToken> {
     let clause_words = words(tokens);
     // Generic "When one or more ... this way, ..." follow-ups are semantically
     // "If you do, ..." against the immediately previous effect result.
@@ -2606,10 +2622,7 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(tokens: &[OwnedLex
         || clause_words.starts_with(&["whenever", "one", "or", "more"]))
         && has_this_way
     {
-        let Some(comma_idx) = tokens
-            .iter()
-            .position(|token| token.is_comma())
-        else {
+        let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
             return tokens.to_vec();
         };
         let mut rewritten = Vec::new();
@@ -2640,7 +2653,9 @@ pub(crate) fn rewrite_when_one_or_more_this_way_clause_prefix(tokens: &[OwnedLex
     tokens.to_vec()
 }
 
-pub(crate) fn strip_otherwise_sentence_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+pub(crate) fn strip_otherwise_sentence_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
     if !tokens
         .first()
         .is_some_and(|token| token.is_word("otherwise"))
@@ -2667,7 +2682,9 @@ pub(crate) fn strip_otherwise_sentence_prefix(tokens: &[OwnedLexToken]) -> Optio
     }
 }
 
-pub(crate) fn rewrite_otherwise_referential_subject(tokens: Vec<OwnedLexToken>) -> Vec<OwnedLexToken> {
+pub(crate) fn rewrite_otherwise_referential_subject(
+    tokens: Vec<OwnedLexToken>,
+) -> Vec<OwnedLexToken> {
     let clause_words = words(&tokens);
     let is_referential_get = clause_words.len() >= 3
         && clause_words[0] == "that"
@@ -2723,7 +2740,9 @@ fn token_copy_followup_container_effects_mut(
     }
 }
 
-pub(crate) fn parse_token_copy_followup_sentence(tokens: &[OwnedLexToken]) -> Option<TokenCopyFollowup> {
+pub(crate) fn parse_token_copy_followup_sentence(
+    tokens: &[OwnedLexToken],
+) -> Option<TokenCopyFollowup> {
     let filtered: Vec<&str> = words(tokens)
         .into_iter()
         .filter(|word| !is_article(word))

@@ -4435,6 +4435,19 @@ impl GameState {
         self.players.iter().filter(|p| p.is_in_game()).count()
     }
 
+    /// Returns true when the match is using commander designations.
+    pub fn is_commander_game(&self) -> bool {
+        self.players.iter().any(|player| !player.commanders.is_empty())
+    }
+
+    /// Returns true if this player's turn-one draw-step draw should be skipped.
+    pub fn should_skip_first_turn_draw(&self, player_id: PlayerId) -> bool {
+        self.turn.turn_number == 1
+            && self.turn.active_player == player_id
+            && self.turn_order.first().copied() == Some(player_id)
+            && !self.is_commander_game()
+    }
+
     // =========================================================================
     // Object Dual-Identity Helpers (id vs stable_id)
     // =========================================================================

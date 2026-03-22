@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use logos::Logos;
 
 use crate::cards::builders::{CardTextError, TextSpan};
@@ -101,10 +103,12 @@ impl OwnedLexToken {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn synthetic_word(slice: impl Into<String>) -> Self {
         Self::word(slice, TextSpan::synthetic())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn synthetic_comma() -> Self {
         Self::comma(TextSpan::synthetic())
     }

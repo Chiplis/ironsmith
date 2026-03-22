@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::Value;
 use crate::target::{ChooseSpec, PlayerFilter};
@@ -200,7 +202,9 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     ))
 }
 
-pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
     let clause_words = words(tokens);
     if matches!(
         clause_words.as_slice(),
@@ -414,7 +418,9 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
     let filter_start_token_idx = clause_words.token_index_for_word_index(filter_start_word_idx)?;
     let operator_token_idx = clause_words.token_index_for_word_index(operator_word_idx)?;
     let filter_tokens = trim_lexed_commas(&tokens[filter_start_token_idx..operator_token_idx]);
-    let base_value = if let Some(value) = parse_spells_cast_this_turn_matching_count_value_lexed(filter_tokens) {
+    let base_value = if let Some(value) =
+        parse_spells_cast_this_turn_matching_count_value_lexed(filter_tokens)
+    {
         value
     } else {
         Value::Count(parse_object_filter_lexed(filter_tokens, false).ok()?)
@@ -562,8 +568,7 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
     } else if clause_words.get(idx) == Some("toughness") {
         idx += 1;
         "toughness"
-    } else if clause_words.get(idx) == Some("mana") && clause_words.get(idx + 1) == Some("value")
-    {
+    } else if clause_words.get(idx) == Some("mana") && clause_words.get(idx + 1) == Some("value") {
         idx += 2;
         "mana_value"
     } else {

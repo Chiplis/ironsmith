@@ -2,17 +2,16 @@ use super::activation_and_restrictions::parse_cycling_line;
 use super::activation_and_restrictions::{
     parse_ability_phrase, parse_activated_line, parse_activation_cost, parse_triggered_line,
 };
-use super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
-use super::native_tokens::LowercaseWordView;
 use super::keyword_static_helpers::*;
+use super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
+use super::native_tokens::LowercaseWordView;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::util::{
     compat_tokens_from_lexed, is_source_reference_words, parse_card_type, parse_color,
-    parse_counter_type_from_tokens,
-    parse_counter_type_word, parse_flashback_keyword_line, parse_subtype_flexible, parse_value,
-    parse_zone_word, split_on_and, split_on_comma_or_semicolon, split_on_period, trim_commas,
-    words,
+    parse_counter_type_from_tokens, parse_counter_type_word, parse_flashback_keyword_line,
+    parse_subtype_flexible, parse_value, parse_zone_word, split_on_and,
+    split_on_comma_or_semicolon, split_on_period, trim_commas, words,
 };
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
@@ -1687,7 +1686,9 @@ fn parse_trigger_duplication_source_filter(
     parse_object_filter(&tokens, false)
 }
 
-fn parse_trigger_duplication_event_matcher(tokens: &[OwnedLexToken]) -> Result<Trigger, CardTextError> {
+fn parse_trigger_duplication_event_matcher(
+    tokens: &[OwnedLexToken],
+) -> Result<Trigger, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
     let phrase_words = words(&tokens);
 
@@ -1909,10 +1910,7 @@ pub(crate) fn parse_trigger_duplication_line_ast(
     let tokens = trim_edge_punctuation(tokens);
     let token_words = words(&tokens);
     if token_words.starts_with(&["as", "long", "as"]) {
-        let Some(comma_idx) = tokens
-            .iter()
-            .position(|token| token.is_comma())
-        else {
+        let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) else {
             return Ok(None);
         };
         let condition = parse_static_condition_clause(&tokens[3..comma_idx])?;
@@ -2277,9 +2275,10 @@ pub(crate) fn parse_characteristic_defining_pt_line(
         let start_word_idx = equal_word_idx + 2;
         if let Some(start_token_idx) = token_index_for_word_index(tokens, start_word_idx) {
             let mut tail_tokens = &tokens[start_token_idx..];
-            while tail_tokens.last().is_some_and(|token| {
-                token.is_word("respectively") || token.is_period()
-            }) {
+            while tail_tokens
+                .last()
+                .is_some_and(|token| token.is_word("respectively") || token.is_period())
+            {
                 tail_tokens = &tail_tokens[..tail_tokens.len().saturating_sub(1)];
             }
             if !tail_tokens.is_empty() {
@@ -2382,7 +2381,10 @@ pub(crate) fn parse_characteristic_defining_pt_line(
     )))
 }
 
-fn parse_characteristic_defining_relative_value(tokens: &[OwnedLexToken], base: &Value) -> Option<Value> {
+fn parse_characteristic_defining_relative_value(
+    tokens: &[OwnedLexToken],
+    base: &Value,
+) -> Option<Value> {
     let trimmed = trim_edge_punctuation(tokens);
     let words = words(&trimmed);
     if !words.starts_with(&["that", "number"]) {
@@ -2465,7 +2467,10 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
     }
 
     let mut equal_prefixed = Vec::with_capacity(trimmed.len() + 2);
-    equal_prefixed.push(OwnedLexToken::word("equal".to_string(), TextSpan::synthetic()));
+    equal_prefixed.push(OwnedLexToken::word(
+        "equal".to_string(),
+        TextSpan::synthetic(),
+    ));
     equal_prefixed.push(OwnedLexToken::word("to".to_string(), TextSpan::synthetic()));
     equal_prefixed.extend(trimmed.iter().cloned());
 
@@ -2777,6 +2782,7 @@ pub(crate) fn parse_spell_cost_increase_per_target_beyond_first_line(
     )))
 }
 
+#[allow(dead_code)]
 pub(crate) fn parse_if_this_spell_costs_less_to_cast_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2844,7 +2850,10 @@ pub(crate) fn parse_if_this_spell_costs_less_to_cast_line_lexed(
         return Ok(None);
     }
 
-    let Some(comma_idx) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else {
+    let Some(comma_idx) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)
+    else {
         return Ok(None);
     };
     let condition_tokens = trim_lexed_commas(&tokens[1..comma_idx]);
@@ -3319,7 +3328,9 @@ pub(crate) fn parse_this_spell_cost_condition(
     None
 }
 
-fn parse_conjoined_this_spell_cost_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
+fn parse_conjoined_this_spell_cost_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ConditionExpr> {
     let words = words(tokens);
     let and_positions = words
         .iter()
@@ -5688,34 +5699,32 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
     }
 
     let working_tokens_storage = if line_words.starts_with(&["as", "long", "as"]) {
-        let (condition_end_idx, remainder_start_idx) = if let Some(comma_idx) = tokens
-            .iter()
-            .position(|token| token.is_comma())
-        {
-            if comma_idx <= 3 {
-                return Ok(None);
-            }
-            (comma_idx, comma_idx + 1)
-        } else {
-            let Some(split_word_idx) = (4..line_words.len()).find(|word_idx| {
-                let tail = &line_words[*word_idx..];
-                let Some(prefix_len) = max_hand_size_subject_prefix_len(tail) else {
-                    return false;
+        let (condition_end_idx, remainder_start_idx) =
+            if let Some(comma_idx) = tokens.iter().position(|token| token.is_comma()) {
+                if comma_idx <= 3 {
+                    return Ok(None);
+                }
+                (comma_idx, comma_idx + 1)
+            } else {
+                let Some(split_word_idx) = (4..line_words.len()).find(|word_idx| {
+                    let tail = &line_words[*word_idx..];
+                    let Some(prefix_len) = max_hand_size_subject_prefix_len(tail) else {
+                        return false;
+                    };
+                    tail.get(prefix_len..prefix_len + 4)
+                        == Some(["maximum", "hand", "size", "is"].as_slice())
+                }) else {
+                    return Ok(None);
                 };
-                tail.get(prefix_len..prefix_len + 4)
-                    == Some(["maximum", "hand", "size", "is"].as_slice())
-            }) else {
-                return Ok(None);
+                let split_token_idx = token_index_for_word_index(tokens, split_word_idx)
+                    .ok_or_else(|| {
+                        CardTextError::ParseError(format!(
+                            "unable to map delirium hand-size subject split (clause: '{}')",
+                            line_words.join(" ")
+                        ))
+                    })?;
+                (split_token_idx, split_token_idx)
             };
-            let split_token_idx =
-                token_index_for_word_index(tokens, split_word_idx).ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unable to map delirium hand-size subject split (clause: '{}')",
-                        line_words.join(" ")
-                    ))
-                })?;
-            (split_token_idx, split_token_idx)
-        };
 
         let condition_tokens = trim_commas(&tokens[3..condition_end_idx]);
         let Some((metric, threshold)) =
