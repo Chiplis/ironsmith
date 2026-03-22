@@ -226,6 +226,11 @@ function decisionReferencesObject(decision, objectId) {
   return false;
 }
 
+function objectInspectableInCurrentContext(state, decision, objectId) {
+  if (objectId == null) return false;
+  return objectExistsInState(state, objectId) || decisionReferencesObject(decision, objectId);
+}
+
 export default function RightRail({
   pinnedObjectId,
   suppressFallback = false,
@@ -284,11 +289,11 @@ export default function RightRail({
     )
     : pinnedInspectorObjectId;
   const directHoveredInspectorObjectId = (
-    hoveredObjectId != null && objectExistsInState(state, hoveredObjectId)
+    hoveredObjectId != null && objectInspectableInCurrentContext(state, decision, hoveredObjectId)
       ? String(hoveredObjectId)
       : null
   );
-  const relevantHoveredObjectId = linkedInspectorObjectId ?? directHoveredInspectorObjectId;
+  const relevantHoveredObjectId = directHoveredInspectorObjectId ?? linkedInspectorObjectId;
   const fallbackDecisionObjectId = suppressFallback ? null : (resolvingCastObjectId ?? topStackObjectId);
   // During focused decision steps, keep the resolving stack object as a fallback.
   // Live hover should always win, even if the current decision does not reference it.
@@ -299,7 +304,7 @@ export default function RightRail({
   const selectedObjectId = focusedDecision
     ? decisionLockedObjectId
     : (relevantHoveredObjectId ?? relevantPinnedObjectId ?? fallbackDecisionObjectId);
-  const validSelectedObjectId = objectExistsInState(state, selectedObjectId)
+  const validSelectedObjectId = objectInspectableInCurrentContext(state, decision, selectedObjectId)
     ? selectedObjectId
     : null;
   const selectedObjectLocation = useMemo(() => {
