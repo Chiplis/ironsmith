@@ -8304,6 +8304,25 @@ pub(super) fn trim_cycling_punctuation(word: &str) -> &str {
     word.trim_matches(|ch: char| matches!(ch, ',' | '.' | ';'))
 }
 
+fn normalize_granted_cycling_surface_text(text: &str) -> String {
+    let mut normalized_words = Vec::new();
+    let mut expecting_cost = false;
+
+    for word in text.split_whitespace() {
+        let trimmed = trim_cycling_punctuation(word);
+        if expecting_cost && is_cycling_cost_word(trimmed) {
+            let rendered_cost = trimmed.to_ascii_uppercase().replace(['{', '}'], "");
+            normalized_words.push(word.replacen(trimmed, &rendered_cost, 1));
+            continue;
+        }
+
+        normalized_words.push(word.to_string());
+        expecting_cost = trimmed.ends_with("cycling");
+    }
+
+    normalized_words.join(" ")
+}
+
 pub(super) fn render_cycling_cost_token(word: &str) -> String {
     let upper = word.to_ascii_uppercase();
     if upper.starts_with('{') && upper.ends_with('}') {
@@ -8429,7 +8448,15 @@ pub(super) fn describe_ability(
                 ) || normalized.contains('"')
                     || lower.contains("cycling ");
                 if prefer_source_surface && !normalized.is_empty() {
-                    return vec![format!("Static ability {index}: {normalized}")];
+                    let granted_cycling_surface = if (lower.contains(" has ")
+                        || lower.contains(" have "))
+                        && lower.contains("cycling ")
+                    {
+                        normalize_granted_cycling_surface_text(&normalized)
+                    } else {
+                        normalized
+                    };
+                    return vec![format!("Static ability {index}: {granted_cycling_surface}")];
                 }
             }
             vec![format!(

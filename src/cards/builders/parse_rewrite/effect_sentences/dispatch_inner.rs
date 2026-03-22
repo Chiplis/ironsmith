@@ -1838,6 +1838,16 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(stripped) = strip_labeled_conditional_prefix_lexed(tokens) {
         return parse_conditional_sentence_lexed(stripped);
     }
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(mut effects) = run_sentence_primitives_lexed(
+            tokens,
+            PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
+            &PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        )?
+    {
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
     if tokens.first().is_some_and(|token| token.is_word("if")) {
         return parse_conditional_sentence_lexed(tokens);
     }
@@ -2093,6 +2103,17 @@ pub(crate) fn parse_effect_sentence_inner(
     if let Some(stripped) = strip_labeled_conditional_prefix(tokens) {
         parser_trace("parse_effect_sentence:conditional-labeled", stripped);
         return parse_conditional_sentence(stripped);
+    }
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(mut effects) = run_sentence_primitives(
+            tokens,
+            PRE_CONDITIONAL_SENTENCE_PRIMITIVES,
+            &PRE_CONDITIONAL_SENTENCE_PRIMITIVE_INDEX,
+        )?
+    {
+        parser_trace("parse_effect_sentence:if-primitive", tokens);
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
     }
     if tokens.first().is_some_and(|token| token.is_word("if")) {
         parser_trace("parse_effect_sentence:conditional", tokens);

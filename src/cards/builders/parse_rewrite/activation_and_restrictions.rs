@@ -24,8 +24,8 @@ use super::lexer::{OwnedLexToken, TokenKind};
 use super::native_tokens::LowercaseWordView;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed, parse_spell_filter};
 use super::util::{
-    is_source_reference_words, mana_pips_from_token, parse_card_type,
-    parse_color, parse_counter_type_from_tokens, parse_non_type, parse_number,
+    is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
+    parse_counter_type_from_tokens, parse_non_type, parse_number,
     parse_number_word_u32, parse_target_count_range_prefix, parse_target_phrase, span_from_tokens,
     split_on_and, split_on_period, trim_commas, words,
 };
@@ -12066,7 +12066,20 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let mut reminder_words = words(tokens);
+    let reminder_word_storage = tokens
+        .iter()
+        .filter_map(|token| match token.kind {
+            TokenKind::ManaGroup => {
+                let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
+                (!inner.is_empty()).then(|| inner.to_ascii_lowercase())
+            }
+            _ => token.as_word().map(|word| word.to_ascii_lowercase()),
+        })
+        .collect::<Vec<_>>();
+    let mut reminder_words = reminder_word_storage
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     let mut prepend_with = false;
     if reminder_words.starts_with(&["it", "has"]) || reminder_words.starts_with(&["they", "have"]) {
         reminder_words = reminder_words[2..].to_vec();
