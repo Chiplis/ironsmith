@@ -92,6 +92,53 @@ export function buildObjectControllerById(state) {
   return map;
 }
 
+export function buildInspectableObjectIdSet(state) {
+  const ids = new Set();
+
+  for (const player of state?.players || []) {
+    for (const zone of [
+      player?.battlefield || [],
+      player?.hand_cards || [],
+      player?.graveyard_cards || [],
+      player?.exile_cards || [],
+      player?.command_cards || [],
+    ]) {
+      for (const card of zone) {
+        if (card?.id != null) {
+          ids.add(String(card.id));
+        }
+        for (const memberId of card?.member_ids || []) {
+          if (memberId != null) {
+            ids.add(String(memberId));
+          }
+        }
+      }
+    }
+  }
+
+  for (const stackObject of getVisibleStackObjects(state)) {
+    if (stackObject?.id != null) {
+      ids.add(String(stackObject.id));
+    }
+    if (stackObject?.inspect_object_id != null) {
+      ids.add(String(stackObject.inspect_object_id));
+    }
+  }
+
+  for (const card of state?.viewed_cards?.cards || []) {
+    if (card?.id != null) {
+      ids.add(String(card.id));
+    }
+  }
+  for (const cardId of state?.viewed_cards?.card_ids || []) {
+    if (cardId != null) {
+      ids.add(String(cardId));
+    }
+  }
+
+  return ids;
+}
+
 export function getObjectAccent(state, objectId, explicitControllerId = null) {
   if (objectId == null) return null;
   const controllerById = buildObjectControllerById(state);

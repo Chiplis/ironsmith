@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
-import { useHoveredObjectId } from "@/context/HoverContext";
+import { useHover } from "@/context/HoverContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { getPlayerAccent } from "@/lib/player-colors";
+import { buildInspectableObjectIdSet } from "@/lib/decision-object-meta";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { X, ArrowRight } from "lucide-react";
 import DecisionSummary from "./DecisionSummary";
@@ -175,6 +176,9 @@ function ActiveRequirementTargets({
   canSelectMore,
   selectedTargets = [],
   hoveredObjectId,
+  hoverCard,
+  clearHover,
+  inspectableObjectIds,
   onSelectTarget,
   onSkipRequirement,
   showSkip,
@@ -282,6 +286,11 @@ function ActiveRequirementTargets({
       target.kind === "player"
         ? target.name || `Player ${target.player}`
         : target.name || `Object ${target.object}`;
+    const objectId = targetObjectId(target);
+    const hoverObjectId =
+      objectId != null && inspectableObjectIds?.has(String(objectId))
+        ? String(objectId)
+        : null;
     return (
       <Button
         key={`${listKey}:${tIdx}`}
@@ -317,6 +326,8 @@ function ActiveRequirementTargets({
             targetButtonRefs.current.delete(listKey);
           }
         }}
+        onMouseEnter={() => hoverObjectId && hoverCard?.(hoverObjectId)}
+        onMouseLeave={() => hoverObjectId && clearHover?.()}
       >
         {label}
       </Button>
@@ -438,7 +449,11 @@ export default function TargetsDecision({
     stripLayout
     && typeof window !== "undefined"
     && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
-  const hoveredObjectId = useHoveredObjectId();
+  const { hoveredObjectId, hoverCard, clearHover } = useHover();
+  const inspectableObjectIds = useMemo(
+    () => buildInspectableObjectIdSet(state),
+    [state],
+  );
   const requirements = useMemo(() => decision.requirements || [], [decision.requirements]);
   const { objectNames: objectNamesById, playerNames: playerNamesById } = useMemo(
     () => buildTargetNameMaps(state),
@@ -835,6 +850,9 @@ export default function TargetsDecision({
                     canSelectMore={canSelectMore}
                     selectedTargets={reqSelections}
                     hoveredObjectId={hoveredObjectId}
+                    hoverCard={hoverCard}
+                    clearHover={clearHover}
+                    inspectableObjectIds={inspectableObjectIds}
                     onSelectTarget={handleSelectTarget}
                     onSkipRequirement={handleSkipRequirement}
                     showSkip={isActive && (isOptional || currentMet) && !allDone}

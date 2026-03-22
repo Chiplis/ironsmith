@@ -11117,6 +11117,46 @@ fn render_single_sacrifice_cost_does_not_duplicate_article() {
 }
 
 #[test]
+fn render_subtype_sacrifice_cost_uses_oracle_like_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Goblin Variant")
+        .parse_text("{R}, Sacrifice a Goblin: This creature deals 2 damage to any target.")
+        .expect("single goblin sacrifice activated cost should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("{r}, sacrifice a goblin you control:"),
+        "expected oracle-like goblin sacrifice rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("choose exactly 1"),
+        "expected sacrifice choice scaffolding to be hidden, got {joined}"
+    );
+    assert!(
+        !joined.contains("sacrifice a permanent"),
+        "expected generic sacrifice fallback to be hidden, got {joined}"
+    );
+}
+
+#[test]
+fn render_multi_subtype_sacrifice_cost_uses_oracle_like_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Goblin Warrens Variant")
+        .parse_text("{2}{R}, Sacrifice two Goblins: Create three 1/1 red Goblin creature tokens.")
+        .expect("multi-goblin sacrifice activated cost should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("{2}{r}, sacrifice two goblins you control:"),
+        "expected oracle-like multi-goblin sacrifice rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("sacrifice two permanent"),
+        "expected generic multi-sacrifice fallback to be hidden, got {joined}"
+    );
+}
+
+#[test]
 fn render_sacrifice_artifact_or_land_cost_uses_oracle_article() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Scrapchomper Variant")
         .parse_text("{1}{R}, {T}, Sacrifice an artifact or land: Draw a card.")
@@ -11127,6 +11167,119 @@ fn render_sacrifice_artifact_or_land_cost_uses_oracle_article() {
         joined.contains("sacrifice an artifact or land"),
         "expected oracle-like sacrifice article rendering, got {joined}"
     );
+}
+
+#[test]
+fn render_scheming_symmetry_keeps_targeted_players_and_search_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Scheming Symmetry Variant")
+        .parse_text(
+            "Choose two target players. Each of them searches their library for a card, then shuffles and puts that card on top.",
+        )
+        .expect("scheming symmetry should parse");
+    let debug = format!("{:?}", def.spell_effect);
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        debug.contains("SearchLibraryEffect")
+            && debug.contains("chooser: IteratedPlayer")
+            && debug.contains("player: IteratedPlayer")
+            && debug.contains("destination: Library")
+            && !debug.contains("ChooseObjectsEffect"),
+        "expected compact per-target library search effect, got {debug}"
+    );
+    assert!(
+        joined.contains("choose two target players"),
+        "expected chosen target players to remain visible, got {joined}; debug={debug}"
+    );
+    assert!(
+        joined.contains("each of those players searches their library for a card")
+            && joined.contains("then shuffles and puts that card on top"),
+        "expected unambiguous per-target-player search rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("you searches"),
+        "expected target-player carry instead of defaulting to you, got {joined}"
+    );
+    assert!(
+        !joined.contains("in any order"),
+        "expected single-card top placement to avoid in-any-order fallback, got {joined}"
+    );
+}
+
+#[test]
+fn render_scholarship_sponsor_keeps_each_player_search_subject() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Scholarship Sponsor Variant")
+        .parse_text(
+            "When this creature enters, each player who controls fewer lands than the player who controls the most lands searches their library for a number of basic land cards less than or equal to the difference, puts those cards onto the battlefield tapped, then shuffles.",
+        )
+        .expect("scholarship sponsor should parse");
+    let debug = format!("{:?}", def.spell_effect);
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        !joined.contains("you searches"),
+        "expected per-player search subject instead of defaulting to you, got {joined}; debug={debug}"
+    );
+}
+
+#[test]
+fn render_rock_slide_distributed_damage_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rock Slide Variant")
+        .parse_text(
+            "Rock Slide deals X damage divided as you choose among any number of target attacking or blocking creatures without flying.",
+        )
+        .expect("rock slide should parse");
+    let joined = crate::compiled_text::compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "deal x damage divided as you choose among any number of target attacking or blocking creatures without flying"
+        ),
+        "expected distributed-damage rendering, got {joined}"
+    );
+    assert!(
+        !joined.contains("unsupported effect"),
+        "expected supported distributed-damage rendering, got {joined}"
+    );
+}
+
+#[test]
+fn fabricate_cards_stay_semantically_aligned_with_compiled_lines() {
+    for (name, oracle) in [
+        (
+            "Visionary Augmenter Variant",
+            "Fabricate 2 (When this creature enters, put two +1/+1 counters on it or create two 1/1 colorless Servo artifact creature tokens.)",
+        ),
+        (
+            "Weaponcraft Enthusiast Variant",
+            "Fabricate 2 (When this creature enters, put two +1/+1 counters on it or create two 1/1 colorless Servo artifact creature tokens.)",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .parse_text(oracle)
+            .expect("fabricate card should parse");
+        let compiled = crate::compiled_text::compiled_lines(&def);
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            crate::semantic_compare::compare_semantics_scored(
+                oracle,
+                &compiled,
+                Some(crate::semantic_compare::EmbeddingConfig {
+                    dims: 384,
+                    mismatch_threshold: 0.99,
+                }),
+            );
+        assert!(
+            similarity >= 0.99,
+            "expected fabricate compiled lines to preserve semantics, got score={similarity}, lines={compiled:?}"
+        );
+        assert!(
+            !mismatch,
+            "expected fabricate compiled lines to avoid mismatch, got lines={compiled:?}"
+        );
+    }
 }
 
 #[test]

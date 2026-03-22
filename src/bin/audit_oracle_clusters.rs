@@ -2520,6 +2520,64 @@ mod tests {
     }
 
     #[test]
+    fn test_compare_semantics_normalizes_sacrifice_cost_choice_scaffolding() {
+        let oracle = "{1}{R}, Sacrifice a Goblin: This creature deals 4 damage to target creature.";
+        let compiled = vec![
+            "Activated ability 1: {1}{R}, Sacrifice a Goblin you control: This creature deals 4 damage to target creature."
+                .to_string(),
+        ];
+        let (oracle_coverage, compiled_coverage, similarity, _line_delta, mismatch) =
+            compare_semantics(
+                "Arms Dealer",
+                oracle,
+                &compiled,
+                Some(EmbeddingConfig {
+                    dims: 384,
+                    mismatch_threshold: 0.99,
+                }),
+            );
+        assert_eq!(oracle_coverage, 1.0);
+        assert_eq!(compiled_coverage, 1.0);
+        assert!(
+            similarity >= 0.99,
+            "expected high similarity, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for normalized sacrifice cost"
+        );
+    }
+
+    #[test]
+    fn test_compare_semantics_normalizes_multi_sacrifice_cost_choice_scaffolding() {
+        let oracle = "{2}{R}, Sacrifice two Goblins: Create three 1/1 red Goblin creature tokens.";
+        let compiled = vec![
+            "Activated ability 1: {2}{R}, Sacrifice two Goblins you control: Create three 1/1 red Goblin creature tokens."
+                .to_string(),
+        ];
+        let (oracle_coverage, compiled_coverage, similarity, _line_delta, mismatch) =
+            compare_semantics(
+                "Goblin Warrens",
+                oracle,
+                &compiled,
+                Some(EmbeddingConfig {
+                    dims: 384,
+                    mismatch_threshold: 0.99,
+                }),
+            );
+        assert_eq!(oracle_coverage, 1.0);
+        assert_eq!(compiled_coverage, 1.0);
+        assert!(
+            similarity >= 0.99,
+            "expected high similarity, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for normalized multi-sacrifice cost"
+        );
+    }
+
+    #[test]
     fn test_split_common_semantic_conjunctions_strips_multiple_ability_labels() {
         let clauses = semantic_clauses(
             "Static ability 4: Each player draws a card.\nTriggered ability 7: This creature deals 2 damage.\nKeyword ability 1: Flying",

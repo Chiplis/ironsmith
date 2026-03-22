@@ -909,7 +909,20 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     {
         normalized = "Daybound/Nightbound".to_string();
     }
+    if let Some(rest) = normalized.strip_prefix("Scavenge ")
+        && normalized_lower.contains(", exile this card from your graveyard:")
+        && normalized_lower.contains(
+            "put a number of +1/+1 counters equal to this card's power on target creature",
+        )
+        && let Some((cost, _)) = rest.split_once(' ')
+    {
+        normalized = format!("Scavenge {}", cost.trim());
+    }
     let normalized_lower = normalized.to_ascii_lowercase();
+    let normalized_compact = normalized_lower
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     if normalized_lower.starts_with(
         "whenever this creature attacks the player with the most life or tied for most life, put a +1/+1 counter on this creature",
     ) {
@@ -952,6 +965,12 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     {
         normalized = format!("Ninjutsu {}", cost.trim());
     }
+    if let Some((cost, _)) = normalized.split_once(", Exile this card from your graveyard:")
+        && normalized_compact.contains("put this creature's power +1/+1 counter")
+        && normalized_compact.contains("activate only as a sorcery")
+    {
+        normalized = format!("Scavenge {}", cost.trim());
+    }
     if normalized_lower.starts_with(
         "whenever this creature attacks, untap target defending player's creature. target defending player's creature gains blocks each combat if able until end of combat",
     ) {
@@ -963,23 +982,40 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     {
         normalized = "Daybound/Nightbound".to_string();
     }
-    if normalized_lower
+    if normalized_compact
         .trim_end_matches('.')
         .starts_with("when this creature enters, choose one — • this creature enters with a +1/+1 counter on it. • this creature gains haste until end of turn")
-        || normalized_lower
+        || normalized_compact
             .trim_end_matches('.')
             .starts_with("when this creature enters, choose one - • this creature enters with a +1/+1 counter on it. • this creature gains haste until end of turn")
+        || normalized_compact
+            .trim_end_matches('.')
+            .starts_with("when this permanent enters, choose one — • this creature enters with a +1/+1 counter on it. • this creature gains haste until end of turn")
+        || normalized_compact
+            .trim_end_matches('.')
+            .starts_with("when this permanent enters, choose one - • this creature enters with a +1/+1 counter on it. • this creature gains haste until end of turn")
     {
         normalized = "Riot".to_string();
     }
-    if normalized_lower
+    if normalized_compact
         .trim_end_matches('.')
         .starts_with("when this creature enters, choose one — • put two +1/+1 counters on this creature. • create two 1/1 colorless servo artifact creature tokens")
-        || normalized_lower
+        || normalized_compact
             .trim_end_matches('.')
             .starts_with("when this creature enters, choose one - • put two +1/+1 counters on this creature. • create two 1/1 colorless servo artifact creature tokens")
+        || normalized_compact
+            .trim_end_matches('.')
+            .starts_with("when this permanent enters, choose one — • put two +1/+1 counters on this creature. • create two 1/1 colorless servo artifact creature tokens")
+        || normalized_compact
+            .trim_end_matches('.')
+            .starts_with("when this permanent enters, choose one - • put two +1/+1 counters on this creature. • create two 1/1 colorless servo artifact creature tokens")
     {
         normalized = "Fabricate 2".to_string();
+    }
+    if normalized_compact.trim_end_matches('.').starts_with(
+        "whenever this creature attacks, for each opponent other than defending player, you may create a token that's a copy of this creature, tapped, attacking that player or a planeswalker they control, and exile at end of combat",
+    ) {
+        normalized = "Myriad".to_string();
     }
     if normalized_lower.starts_with(
         "whenever this creature deals combat damage to a player, if this creature isn't renowned, put ",
@@ -4434,7 +4470,11 @@ pub fn compare_semantics_scored(
     let merged_mana_lines = merge_simple_mana_add_compiled_lines(&stripped_lines);
     let merged_blockability_lines = merge_blockability_compiled_lines(&merged_mana_lines);
     let compiled_normalized_lines = merge_transform_compiled_lines(&merged_blockability_lines);
-    let raw_compiled_clauses = compiled_normalized_lines
+    let flattened_compiled_lines = compiled_normalized_lines
+        .iter()
+        .map(|line| line.replace('\n', " "))
+        .collect::<Vec<_>>();
+    let raw_compiled_clauses = flattened_compiled_lines
         .iter()
         .flat_map(|line| semantic_clauses(line))
         .flat_map(|clause| split_compiled_activation_restriction_clauses(&clause))
@@ -5778,6 +5818,48 @@ Pay 3 life: Add {R}.";
         assert!(
             !mismatch,
             "expected no mismatch for fabricate keyword scaffolding"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_scavenge_keyword_scaffolding() {
+        let oracle = "Scavenge {5}{G} ({5}{G}, Exile this card from your graveyard: Put a number of +1/+1 counters equal to this card's power on target creature. Scavenge only as a sorcery.)";
+        let compiled = vec![String::from(
+            "Activated ability 1: {5}{G}, Exile this card from your graveyard: Put this creature's power +1/+1 counter(s) on target creature. Activate only as a sorcery.",
+        )];
+        let compiled_clauses = super::semantic_clauses_for_compare(&compiled.join("\n"));
+        assert_eq!(
+            compiled_clauses,
+            vec![String::from("Scavenge {5}{G}")],
+            "expected compiled scavenge scaffolding to normalize to keyword form"
+        );
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected scavenge keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for scavenge keyword scaffolding"
+        );
+    }
+
+    #[test]
+    fn compare_semantics_normalizes_myriad_keyword_scaffolding() {
+        let oracle = "Myriad (Whenever this creature attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)";
+        let compiled = vec![String::from(
+            "Triggered ability 1: Whenever this creature attacks, for each opponent other than defending player, you may Create a token that's a copy of this creature, tapped, attacking that player or a planeswalker they control, and exile at end of combat.",
+        )];
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected myriad keyword normalization to stay above strict threshold, got {similarity}"
+        );
+        assert!(
+            !mismatch,
+            "expected no mismatch for myriad keyword scaffolding"
         );
     }
 

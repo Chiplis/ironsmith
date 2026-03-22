@@ -991,6 +991,23 @@ pub(crate) fn player_owner_filter_from_target_for_carry(target: &TargetAst) -> O
     }
 }
 
+fn player_target_carry_context(target: &TargetAst) -> Option<CarryContext> {
+    match target {
+        TargetAst::Player(filter, _) => {
+            player_ast_from_filter_for_carry(filter).map(CarryContext::Player)
+        }
+        TargetAst::WithCount(inner, count) => {
+            let inner_context = player_target_carry_context(inner.as_ref())?;
+            if count.min > 1 && count.max == Some(count.min) {
+                Some(CarryContext::ForEachTargetPlayers(*count))
+            } else {
+                Some(inner_context)
+            }
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
     if matches!(effect, EffectAst::ForEachPlayer { .. }) {
         return Some(CarryContext::ForEachPlayer);
@@ -1002,10 +1019,9 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
         return Some(CarryContext::ForEachOpponent);
     }
     if let EffectAst::TargetOnly { target } = effect
-        && let TargetAst::Player(filter, _) = target
-        && let Some(player) = player_ast_from_filter_for_carry(filter)
+        && let Some(context) = player_target_carry_context(target)
     {
-        return Some(CarryContext::Player(player));
+        return Some(context);
     }
     if let EffectAst::Exile { target, .. } | EffectAst::ExileUntilSourceLeaves { target, .. } =
         effect
@@ -1025,6 +1041,7 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
 
     let player = match effect {
         EffectAst::Draw { player, .. }
+        | EffectAst::ChooseObjects { player, .. }
         | EffectAst::DiscardHand { player }
         | EffectAst::Discard { player, .. }
         | EffectAst::GainLife { player, .. }
@@ -1050,6 +1067,17 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
         | EffectAst::CreateTokenCopy { player, .. }
         | EffectAst::CreateTokenCopyFromSource { player, .. }
         | EffectAst::CreateTokenWithMods { player, .. } => *player,
+        EffectAst::SearchLibrary {
+            chooser, player, ..
+        } => {
+            if !matches!(chooser, PlayerAst::Implicit) {
+                *chooser
+            } else if !matches!(player, PlayerAst::Implicit) {
+                *player
+            } else {
+                return None;
+            }
+        }
         _ => return None,
     };
 
@@ -1063,6 +1091,7 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
 pub(crate) fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::Draw { player, .. }
+        | EffectAst::ChooseObjects { player, .. }
         | EffectAst::DiscardHand { player }
         | EffectAst::Discard { player, .. }
         | EffectAst::GainLife { player, .. }
@@ -1090,6 +1119,9 @@ pub(crate) fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
         | EffectAst::CreateTokenWithMods { player, .. } => {
             matches!(*player, PlayerAst::Implicit)
         }
+        EffectAst::SearchLibrary {
+            chooser, player, ..
+        } => matches!(*chooser, PlayerAst::Implicit) || matches!(*player, PlayerAst::Implicit),
         _ => false,
     }
 }
@@ -1107,6 +1139,7 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
             };
             match effect {
                 EffectAst::Draw { player, .. }
+                | EffectAst::ChooseObjects { player, .. }
                 | EffectAst::DiscardHand { player }
                 | EffectAst::Discard { player, .. }
                 | EffectAst::GainLife { player, .. }
@@ -1131,6 +1164,16 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
                 | EffectAst::CreateTokenCopy { player, .. }
                 | EffectAst::CreateTokenCopyFromSource { player, .. }
                 | EffectAst::CreateTokenWithMods { player, .. } => {
+                    if matches!(*player, PlayerAst::Implicit) {
+                        *player = carried_player;
+                    }
+                }
+                EffectAst::SearchLibrary {
+                    chooser, player, ..
+                } => {
+                    if matches!(*chooser, PlayerAst::Implicit) {
+                        *chooser = carried_player;
+                    }
                     if matches!(*player, PlayerAst::Implicit) {
                         *player = carried_player;
                     }

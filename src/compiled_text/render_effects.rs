@@ -14,6 +14,11 @@ fn choose_search_zones(choose: &crate::effects::ChooseObjectsEffect) -> Option<V
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    let preserve_target_only_players = effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::ForPlayersEffect>()
+            .is_some_and(|for_players| for_players.filter == PlayerFilter::target_player())
+    });
     let has_non_target_only = effects.iter().any(|effect| {
         effect
             .downcast_ref::<crate::effects::TargetOnlyEffect>()
@@ -22,10 +27,28 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     let filtered = effects
         .iter()
         .filter(|effect| {
-            !(has_non_target_only
+            if !(has_non_target_only
                 && effect
                     .downcast_ref::<crate::effects::TargetOnlyEffect>()
                     .is_some())
+            {
+                return true;
+            }
+
+            if preserve_target_only_players
+                && effect
+                    .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                    .is_some_and(|target_only| {
+                        matches!(
+                            target_only.target,
+                            ChooseSpec::Player(_) | ChooseSpec::WithCount(_, _)
+                        )
+                    })
+            {
+                return true;
+            }
+
+            false
         })
         .collect::<Vec<_>>();
 
@@ -3441,10 +3464,14 @@ pub(super) fn describe_may_search_library_and_or_nonlibrary(
     let actor_text = describe_player_filter(actor);
     let actor_sentence = capitalize_first(&actor_text);
     let possessive = describe_possessive_player_filter(&search.player);
-    let filter_desc = if is_generic_owned_card_search_filter(&search.filter) {
+    let mut display_filter = search.filter.clone();
+    if display_filter.owner.as_ref() == Some(&search.player) {
+        display_filter.owner = None;
+    }
+    let filter_desc = if is_generic_owned_card_search_filter(&display_filter) {
         "a card".to_string()
     } else {
-        describe_search_selection_with_cards(&search.filter.description())
+        describe_search_selection_with_cards(&display_filter.description())
     };
 
     let mut text = format!(
@@ -5081,6 +5108,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&deal_damage.target)
         );
     }
+    if let Some(distributed) = effect.downcast_ref::<crate::effects::DealDistributedDamageEffect>()
+    {
+        return format!(
+            "Deal {} damage divided as you choose among {}",
+            describe_value(&distributed.amount),
+            describe_choose_spec(&distributed.target)
+        );
+    }
     if let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() {
         return format!(
             "{} fights {}",
@@ -6044,10 +6079,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Zone::Stack => "onto the stack",
             Zone::Command => "into the command zone",
         };
-        let filter_desc = if is_generic_owned_card_search_filter(&search_library.filter) {
+        let mut display_filter = search_library.filter.clone();
+        if display_filter.owner.as_ref() == Some(&search_library.player) {
+            display_filter.owner = None;
+        }
+        let filter_desc = if is_generic_owned_card_search_filter(&display_filter) {
             "a card".to_string()
         } else {
-            describe_search_selection_with_cards(&search_library.filter.description())
+            describe_search_selection_with_cards(&display_filter.description())
         };
         if search_library.reveal && search_library.destination != Zone::Battlefield {
             return format!(

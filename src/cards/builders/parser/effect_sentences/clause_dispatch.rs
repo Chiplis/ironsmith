@@ -153,6 +153,21 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         });
     }
 
+    if matches!(clause_words.first().copied(), Some("choose" | "chooses"))
+        && clause_words.contains(&"target")
+        && (clause_words.contains(&"player") || clause_words.contains(&"players"))
+        && let Ok(target) = parse_target_phrase(&tokens[1..])
+    {
+        let is_player_target = match &target {
+            TargetAst::Player(_, _) => true,
+            TargetAst::WithCount(inner, _) => matches!(inner.as_ref(), TargetAst::Player(_, _)),
+            _ => false,
+        };
+        if is_player_target {
+            return Ok(EffectAst::TargetOnly { target });
+        }
+    }
+
     if let Some((chooser, choose_filter, random, exclude_previous_choices)) =
         parse_you_choose_player_clause(tokens)?
     {

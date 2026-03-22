@@ -31,6 +31,9 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
     if let Some(rewritten) = normalize_choose_exact_return_cost_clause(&normalized) {
         normalized = rewritten;
     }
+    if let Some(rewritten) = normalize_choose_exact_sacrifice_cost_clause(&normalized) {
+        normalized = rewritten;
+    }
     if let Some(rewritten) = normalize_choose_exact_exile_cost_clause(&normalized) {
         normalized = rewritten;
     }

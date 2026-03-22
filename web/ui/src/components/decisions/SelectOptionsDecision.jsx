@@ -19,6 +19,7 @@ import DecisionSummary from "./DecisionSummary";
 import HighlightedDecisionText from "./HighlightedDecisionText";
 import { getPlayerAccent } from "@/lib/player-colors";
 import {
+  buildInspectableObjectIdSet,
   buildObjectControllerById,
   buildObjectNameById,
 } from "@/lib/decision-object-meta";
@@ -157,6 +158,12 @@ function optionHoverObjectId(decision, opt, selectedObjectId = null) {
     return String(decision.source_id);
   }
   return null;
+}
+
+function inspectableHoverObjectId(inspectableObjectIds, objectId) {
+  if (objectId == null) return null;
+  const normalizedId = String(objectId);
+  return inspectableObjectIds.has(normalizedId) ? normalizedId : null;
 }
 
 function useAnimatedRows(rows, showRows, hideDelayMs = 180) {
@@ -945,9 +952,14 @@ function OrderingDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, triggerOrderingState, moveTriggerOrderingItem } = useGame();
+  const { dispatch, state, triggerOrderingState, moveTriggerOrderingItem } = useGame();
+  const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = decision.options || [];
+  const inspectableObjectIds = useMemo(
+    () => buildInspectableObjectIdSet(state),
+    [state],
+  );
   const trivialOrdering = options.length <= 1;
   const triggerOrdering = isTriggerOrderingDecision(decision);
   const triggerOrderingKey = buildTriggerOrderingKey(decision);
@@ -1032,6 +1044,10 @@ function OrderingDecision({
       {order.map((optIndex, pos) => {
         const opt = options.find((o) => o.index === optIndex);
         if (!opt) return null;
+        const hoverObjectId = inspectableHoverObjectId(
+          inspectableObjectIds,
+          opt.object_id,
+        );
         return (
           <div
             key={optIndex}
@@ -1041,6 +1057,8 @@ function OrderingDecision({
                 ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
                 : "decision-option-row decision-option-row--panel",
             )}
+            onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
+            onMouseLeave={() => hoverObjectId && clearHover()}
           >
             <span className="decision-order-index w-4 shrink-0 text-center text-[11px] font-bold">
               {pos + 1}
@@ -1159,10 +1177,15 @@ function DistributeDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch, setStatus } = useGame();
+  const { dispatch, setStatus, state } = useGame();
+  const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = decision.options || [];
   const total = Number(decision.max || 0);
+  const inspectableObjectIds = useMemo(
+    () => buildInspectableObjectIdSet(state),
+    [state],
+  );
   const [counts, setCounts] = useState(() =>
     Object.fromEntries(options.map((opt) => [opt.index, 0])),
   );
@@ -1208,35 +1231,43 @@ function DistributeDecision({
           : "flex flex-col gap-0.5",
       )}
     >
-      {options.map((opt) => (
-        <label
-          key={opt.index}
-          className={cn(
-            "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
-            stripLayout
-              ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
-              : "decision-option-row decision-option-row--panel",
-          )}
-        >
-          <span className="flex-1 min-w-0">
-            <SymbolText text={normalizeDecisionText(opt.description)} />
-          </span>
-          <Input
-            type="number"
-            className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
-            min={0}
-            max={Number(opt.max_count ?? total)}
-            value={counts[opt.index] || 0}
-            onChange={(e) =>
-              setCounts((prev) => ({
-                ...prev,
-                [opt.index]: Number(e.target.value) || 0,
-              }))
-            }
-            disabled={!canAct || opt.legal === false}
-          />
-        </label>
-      ))}
+      {options.map((opt) => {
+        const hoverObjectId = inspectableHoverObjectId(
+          inspectableObjectIds,
+          opt.object_id,
+        );
+        return (
+          <label
+            key={opt.index}
+            className={cn(
+              "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
+              stripLayout
+                ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+                : "decision-option-row decision-option-row--panel",
+            )}
+            onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
+            onMouseLeave={() => hoverObjectId && clearHover()}
+          >
+            <span className="flex-1 min-w-0">
+              <SymbolText text={normalizeDecisionText(opt.description)} />
+            </span>
+            <Input
+              type="number"
+              className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
+              min={0}
+              max={Number(opt.max_count ?? total)}
+              value={counts[opt.index] || 0}
+              onChange={(e) =>
+                setCounts((prev) => ({
+                  ...prev,
+                  [opt.index]: Number(e.target.value) || 0,
+                }))
+              }
+              disabled={!canAct || opt.legal === false}
+            />
+          </label>
+        );
+      })}
     </div>
   );
 
@@ -1306,10 +1337,15 @@ function CountersDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch } = useGame();
+  const { dispatch, state } = useGame();
+  const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = decision.options || [];
   const maxTotal = Number(decision.max || 0);
+  const inspectableObjectIds = useMemo(
+    () => buildInspectableObjectIdSet(state),
+    [state],
+  );
   const [counts, setCounts] = useState(() =>
     Object.fromEntries(options.map((opt) => [opt.index, 0])),
   );
@@ -1351,35 +1387,43 @@ function CountersDecision({
           : "flex flex-col gap-0.5",
       )}
     >
-      {options.map((opt) => (
-        <label
-          key={opt.index}
-          className={cn(
-            "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
-            stripLayout
-              ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
-              : "decision-option-row decision-option-row--panel",
-          )}
-        >
-          <span className="flex-1 min-w-0">
-            <SymbolText text={normalizeDecisionText(opt.description)} />
-          </span>
-          <Input
-            type="number"
-            className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
-            min={0}
-            max={Number(opt.max_count ?? maxTotal)}
-            value={counts[opt.index] || 0}
-            onChange={(e) =>
-              setCounts((prev) => ({
-                ...prev,
-                [opt.index]: Number(e.target.value) || 0,
-              }))
-            }
-            disabled={!canAct || opt.legal === false}
-          />
-        </label>
-      ))}
+      {options.map((opt) => {
+        const hoverObjectId = inspectableHoverObjectId(
+          inspectableObjectIds,
+          opt.object_id,
+        );
+        return (
+          <label
+            key={opt.index}
+            className={cn(
+              "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
+              stripLayout
+                ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+                : "decision-option-row decision-option-row--panel",
+            )}
+            onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
+            onMouseLeave={() => hoverObjectId && clearHover()}
+          >
+            <span className="flex-1 min-w-0">
+              <SymbolText text={normalizeDecisionText(opt.description)} />
+            </span>
+            <Input
+              type="number"
+              className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
+              min={0}
+              max={Number(opt.max_count ?? maxTotal)}
+              value={counts[opt.index] || 0}
+              onChange={(e) =>
+                setCounts((prev) => ({
+                  ...prev,
+                  [opt.index]: Number(e.target.value) || 0,
+                }))
+              }
+              disabled={!canAct || opt.legal === false}
+            />
+          </label>
+        );
+      })}
     </div>
   );
 
@@ -1449,10 +1493,15 @@ function RepeatableDecision({
   hideDescription = false,
   layout = "panel",
 }) {
-  const { dispatch } = useGame();
+  const { dispatch, state } = useGame();
+  const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
   const options = decision.options || [];
   const maxTotal = Number(decision.max || 0);
+  const inspectableObjectIds = useMemo(
+    () => buildInspectableObjectIdSet(state),
+    [state],
+  );
   const [counts, setCounts] = useState(() =>
     Object.fromEntries(options.map((opt) => [opt.index, 0])),
   );
@@ -1495,35 +1544,43 @@ function RepeatableDecision({
           : "flex flex-col gap-0.5",
       )}
     >
-      {options.map((opt) => (
-        <label
-          key={opt.index}
-          className={cn(
-            "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
-            stripLayout
-              ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
-              : "decision-option-row decision-option-row--panel",
-          )}
-        >
-          <span className="flex-1 min-w-0">
-            <SymbolText text={normalizeDecisionText(opt.description)} />
-          </span>
-          <Input
-            type="number"
-            className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
-            min={0}
-            max={Number(opt.max_count ?? maxTotal)}
-            value={counts[opt.index] || 0}
-            onChange={(e) =>
-              setCounts((prev) => ({
-                ...prev,
-                [opt.index]: Number(e.target.value) || 0,
-              }))
-            }
-            disabled={!canAct || opt.legal === false}
-          />
-        </label>
-      ))}
+      {options.map((opt) => {
+        const hoverObjectId = inspectableHoverObjectId(
+          inspectableObjectIds,
+          opt.object_id,
+        );
+        return (
+          <label
+            key={opt.index}
+            className={cn(
+              "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
+              stripLayout
+                ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+                : "decision-option-row decision-option-row--panel",
+            )}
+            onMouseEnter={() => hoverObjectId && hoverCard(hoverObjectId)}
+            onMouseLeave={() => hoverObjectId && clearHover()}
+          >
+            <span className="flex-1 min-w-0">
+              <SymbolText text={normalizeDecisionText(opt.description)} />
+            </span>
+            <Input
+              type="number"
+              className="decision-inline-input h-6 w-16 text-[13px] bg-transparent text-center"
+              min={0}
+              max={Number(opt.max_count ?? maxTotal)}
+              value={counts[opt.index] || 0}
+              onChange={(e) =>
+                setCounts((prev) => ({
+                  ...prev,
+                  [opt.index]: Number(e.target.value) || 0,
+                }))
+              }
+              disabled={!canAct || opt.legal === false}
+            />
+          </label>
+        );
+      })}
     </div>
   );
 

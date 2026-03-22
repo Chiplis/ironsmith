@@ -546,6 +546,8 @@ pub(crate) fn parse_search_library_sentence(
         }
         subject_tokens = &[];
     }
+    let subject_words = words(subject_tokens);
+    let wrap_each_target_player = subject_words == ["each", "of", "them"];
     let chooser = match parse_subject(subject_tokens) {
         SubjectAst::Player(player) => player,
         _ => PlayerAst::Implicit,
@@ -756,7 +758,9 @@ pub(crate) fn parse_search_library_sentence(
         .iter()
         .position(|token| token.is_word("for"))
         .unwrap_or(3);
-    let put_idx = search_tokens.iter().position(|token| token.is_word("put"));
+    let put_idx = search_tokens
+        .iter()
+        .position(|token| token.is_word("put") || token.is_word("puts"));
     let exile_idx = search_tokens.iter().enumerate().find_map(|(idx, token)| {
         if !(token.is_word("exile") || token.is_word("exiles")) {
             return None;
@@ -1083,7 +1087,10 @@ pub(crate) fn parse_search_library_sentence(
     } else {
         false
     };
-    let shuffle = words_all.contains(&"shuffle") && !trailing_discard_before_shuffle;
+    let shuffle = words_all
+        .iter()
+        .any(|word| matches!(*word, "shuffle" | "shuffles"))
+        && !trailing_discard_before_shuffle;
     let split_battlefield_and_hand = put_idx.is_some()
         && words_all.contains(&"battlefield")
         && words_all.contains(&"hand")
@@ -1291,6 +1298,13 @@ pub(crate) fn parse_search_library_sentence(
     if !leading_effects.is_empty() {
         leading_effects.extend(effects);
         return Ok(Some(leading_effects));
+    }
+
+    if wrap_each_target_player {
+        effects = vec![EffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::target_player(),
+            effects,
+        }];
     }
 
     Ok(Some(effects))

@@ -547,6 +547,17 @@ pub(super) fn normalize_for_each_clause_surface(text: String) -> String {
             discard_tail.trim_end_matches('.')
         );
     }
+    if let Some(rest) = text.strip_prefix(
+        "Choose two target players. For each target player, Search that player's library for ",
+    ) {
+        return format!(
+            "Choose two target players. Each of those players searches their library for {}",
+            rest.replace(
+                ", then shuffle and put that card on top",
+                ", then shuffles and puts that card on top"
+            )
+        );
+    }
     if let Some((prefix, rest)) = text
         .split_once("For each target player, that player ")
         .or_else(|| text.split_once("for each target player, that player "))
@@ -2025,6 +2036,9 @@ pub(super) fn normalize_compiled_post_pass_effect(text: &str) -> String {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_choose_exact_return_cost_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_choose_exact_sacrifice_cost_clause(&normalized) {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_choose_exact_exile_cost_clause(&normalized) {
@@ -3622,6 +3636,28 @@ pub(super) fn normalize_choose_exact_return_cost_clause(text: &str) -> Option<St
     };
     let clause = format!("Return {subject} to {owner_tail}");
     Some(format!("{prefix}{clause}{tail}"))
+}
+
+pub(super) fn normalize_choose_exact_sacrifice_cost_clause(text: &str) -> Option<String> {
+    let marker = " and tags it as 'sacrifice_cost_0', ";
+    let (head, after) = split_once_ascii_ci(text, marker)?;
+    let choose_idx = head.to_ascii_lowercase().rfind("choose exactly ")?;
+    let prefix = &head[..choose_idx];
+    let choose_tail = &head[choose_idx + "choose exactly ".len()..];
+    let (count_token, rest) = choose_tail.split_once(' ')?;
+    let count = count_token.parse::<usize>().ok()?;
+    let descriptor = rest
+        .strip_suffix(" in the battlefield")
+        .or_else(|| rest.strip_suffix(" in the battlefields"))
+        .unwrap_or(rest)
+        .trim();
+    let subject = render_choose_exact_subject(descriptor, count);
+
+    let after = after.trim_start();
+    let colon_idx = after.find(':')?;
+    let tail = &after[colon_idx..];
+
+    Some(format!("{prefix}Sacrifice {subject}{tail}"))
 }
 
 pub(super) fn normalize_choose_exact_exile_cost_clause(text: &str) -> Option<String> {

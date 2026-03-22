@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import PhaseTrack from "@/components/board/PhaseTrack";
 import { ChevronLeft, ChevronRight, Github } from "lucide-react";
-import AddCardSheet from "./AddCardSheet";
 import TopbarMenuSheet from "./TopbarMenuSheet";
 
 const pill = "stone-pill text-[13px] uppercase cursor-pointer hover:brightness-110 transition-all select-none";
@@ -341,18 +340,6 @@ export default function Topbar({
                   <Github className="size-3.5" />
                 </a>
               </Button>
-              <AddCardSheet
-                onAddCardFailure={onAddCardFailure}
-                trigger={(
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="stone-pill topbar-add-card-trigger rounded-none px-2.5 text-[#d8c8a7] hover:text-[#fff1cd]"
-                  >
-                    Add Card
-                  </Button>
-                )}
-              />
             </>
           ) : null}
           <TopbarMenuSheet
