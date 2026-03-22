@@ -8,7 +8,7 @@ use crate::target::PlayerFilter;
 use super::LowercaseWordView;
 use super::activation_and_restrictions::infer_activated_functional_zones_lexed;
 use super::clause_support::{
-    rewrite_parse_effect_sentences_lexed, rewrite_parse_trigger_clause_lexed,
+    parse_effect_sentences_lexed, parse_trigger_clause_lexed,
 };
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 use super::keyword_static::parse_where_x_value_clause_lexed;
@@ -148,7 +148,7 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
         if comma_idx > start_idx {
             let trigger_tokens = &tokens[start_idx..comma_idx];
             if !trigger_tokens.is_empty() {
-                trigger = Some(rewrite_parse_trigger_clause_lexed(trigger_tokens)?);
+                trigger = Some(parse_trigger_clause_lexed(trigger_tokens)?);
             }
         }
         effect_start_idx = comma_idx + 1;
@@ -333,7 +333,7 @@ fn parse_modal_header_prefix_effects(
         return Ok((Vec::new(), modal_gate));
     }
 
-    let effects = rewrite_parse_effect_sentences_lexed(prefix_tokens)?;
+    let effects = parse_effect_sentences_lexed(prefix_tokens)?;
     if effects.is_empty() {
         return Err(CardTextError::ParseError(
             "modal header prefix produced no effects".to_string(),

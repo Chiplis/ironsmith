@@ -1,5 +1,5 @@
 use super::super::activation_and_restrictions::parse_single_word_keyword_action;
-use super::super::clause_support::rewrite_parse_triggered_line_lexed;
+use super::super::clause_support::parse_triggered_line_lexed;
 use super::super::compile_support::compile_statement_effects;
 use super::super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
@@ -901,7 +901,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         };
         parsed
     } else {
-        match rewrite_parse_triggered_line_lexed(&ability_tokens)? {
+        match parse_triggered_line_lexed(&ability_tokens)? {
             LineAst::Triggered {
                 trigger,
                 effects,

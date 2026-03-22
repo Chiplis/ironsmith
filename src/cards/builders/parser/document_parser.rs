@@ -8,9 +8,9 @@ use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
 };
 use super::clause_support::{
-    rewrite_parse_ability_line_lexed, rewrite_parse_effect_sentences_lexed,
-    rewrite_parse_static_ability_ast_line_lexed, rewrite_parse_trigger_clause_lexed,
-    rewrite_parse_triggered_line_lexed,
+    parse_ability_line_lexed, parse_effect_sentences_lexed,
+    parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed,
+    parse_triggered_line_lexed,
 };
 use super::cst::{
     ActivatedLineCst, KeywordLineCst, KeywordLineKindCst, LevelHeaderCst, LevelItemCst,
@@ -159,9 +159,9 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
         }
 
         let trigger_probe = lexed_tokens(trigger_text.as_str(), line.info.line_index)
-            .and_then(|tokens| rewrite_parse_trigger_clause_lexed(&tokens));
+            .and_then(|tokens| parse_trigger_clause_lexed(&tokens));
         let effect_probe = lexed_tokens(effect_candidate, line.info.line_index)
-            .and_then(|tokens| rewrite_parse_effect_sentences_lexed(&tokens));
+            .and_then(|tokens| parse_effect_sentences_lexed(&tokens));
         let trigger_is_supported = trigger_probe.is_ok();
         if trigger_is_supported && effect_probe.is_ok() {
             if best_supported_split.is_none() {
@@ -189,7 +189,7 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
             effect_candidate
         );
         let full_tokens = lexed_tokens(full_text.as_str(), line.info.line_index)?;
-        if rewrite_parse_triggered_line_lexed(&full_tokens).is_ok() && best_fallback_split.is_none()
+        if parse_triggered_line_lexed(&full_tokens).is_ok() && best_fallback_split.is_none()
         {
             best_fallback_split = Some(TriggeredLineCst {
                 info: line.info.clone(),
@@ -207,7 +207,7 @@ fn parse_triggered_line_cst(line: &PreprocessedLine) -> Result<TriggeredLineCst,
     }
 
     let full_tokens = lexed_tokens(&normalized, line.info.line_index)?;
-    match rewrite_parse_triggered_line_lexed(&full_tokens) {
+    match parse_triggered_line_lexed(&full_tokens) {
         Ok(_) => Ok(TriggeredLineCst {
             info: line.info.clone(),
             full_text: normalized.to_string(),
@@ -269,7 +269,7 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
     }
 
     if !should_skip_keyword_action_static_probe(normalized)
-        && let Some(_actions) = rewrite_parse_ability_line_lexed(&lexed)
+        && let Some(_actions) = parse_ability_line_lexed(&lexed)
     {
         return Ok(Some(StaticLineCst {
             info: line.info.clone(),
@@ -278,7 +278,7 @@ fn parse_static_line_cst(line: &PreprocessedLine) -> Result<Option<StaticLineCst
         }));
     }
 
-    match rewrite_parse_static_ability_ast_line_lexed(&lexed) {
+    match parse_static_ability_ast_line_lexed(&lexed) {
         Ok(Some(_abilities)) => {
             return Ok(Some(StaticLineCst {
                 info: line.info.clone(),
@@ -325,11 +325,11 @@ fn parse_split_static_item_count(
             item_count += 1;
             continue;
         }
-        if let Some(actions) = rewrite_parse_ability_line_lexed(&lexed) {
+        if let Some(actions) = parse_ability_line_lexed(&lexed) {
             item_count += actions.len();
             continue;
         }
-        let Some(abilities) = rewrite_parse_static_ability_ast_line_lexed(&lexed)? else {
+        let Some(abilities) = parse_static_ability_ast_line_lexed(&lexed)? else {
             return Ok(None);
         };
         item_count += abilities.len();
@@ -465,7 +465,7 @@ fn parse_level_item_cst(line: &PreprocessedLine) -> Result<Option<LevelItemCst>,
     let lexed = lexed_tokens(normalized, line.info.line_index)?;
 
     if !should_skip_keyword_action_static_probe(normalized)
-        && let Some(_actions) = rewrite_parse_ability_line_lexed(&lexed)
+        && let Some(_actions) = parse_ability_line_lexed(&lexed)
     {
         return Ok(Some(LevelItemCst {
             info: line.info.clone(),
@@ -474,7 +474,7 @@ fn parse_level_item_cst(line: &PreprocessedLine) -> Result<Option<LevelItemCst>,
         }));
     }
 
-    if let Some(_abilities) = rewrite_parse_static_ability_ast_line_lexed(&lexed)? {
+    if let Some(_abilities) = parse_static_ability_ast_line_lexed(&lexed)? {
         return Ok(Some(LevelItemCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -513,7 +513,7 @@ fn parse_statement_line_cst(
     }
     let parse_text = rewrite_statement_parse_text(normalized);
     let lexed = lexed_tokens(parse_text.as_str(), line.info.line_index)?;
-    let effects = match rewrite_parse_effect_sentences_lexed(&lexed) {
+    let effects = match parse_effect_sentences_lexed(&lexed) {
         Ok(effects) => effects,
         Err(err)
             if looks_like_statement_line(normalized)
@@ -1937,7 +1937,7 @@ fn lower_document_cst(
                             )
                             .trim();
                             let effects_ast = lexed_tokens(parse_text, mode.info.line_index)
-                                .and_then(|tokens| rewrite_parse_effect_sentences_lexed(&tokens))?;
+                                .and_then(|tokens| parse_effect_sentences_lexed(&tokens))?;
                             Ok(RewriteModalMode {
                                 info: mode.info,
                                 text: mode.text,
@@ -1959,7 +1959,7 @@ fn lower_document_cst(
                             let parsed = match item.kind {
                                 LevelItemKindCst::KeywordActions => {
                                     let tokens = lexed_tokens(item.text.as_str(), item.info.line_index)?;
-                                    let actions = rewrite_parse_ability_line_lexed(&tokens).ok_or_else(|| {
+                                    let actions = parse_ability_line_lexed(&tokens).ok_or_else(|| {
                                         CardTextError::ParseError(format!(
                                             "rewrite level lowering could not parse keyword line '{}'",
                                             item.info.raw_line
@@ -1971,7 +1971,7 @@ fn lower_document_cst(
                                     let tokens =
                                         lexed_tokens(item.text.as_str(), item.info.line_index)?;
                                     let abilities =
-                                        rewrite_parse_static_ability_ast_line_lexed(&tokens)?
+                                        parse_static_ability_ast_line_lexed(&tokens)?
                                             .ok_or_else(|| {
                                                 CardTextError::ParseError(format!(
                                                     "rewrite level lowering could not parse static line '{}'",
@@ -2000,7 +2000,7 @@ fn lower_document_cst(
             }
             RewriteLineCst::SagaChapter(saga) => {
                 let effects_ast = lexed_tokens(saga.text.as_str(), saga.info.line_index)
-                    .and_then(|tokens| rewrite_parse_effect_sentences_lexed(&tokens))?;
+                    .and_then(|tokens| parse_effect_sentences_lexed(&tokens))?;
                 items.push(RewriteSemanticItem::SagaChapter(RewriteSagaChapterLine {
                     info: saga.info,
                     chapters: saga.chapters,

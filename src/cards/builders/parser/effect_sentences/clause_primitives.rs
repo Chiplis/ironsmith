@@ -1,4 +1,4 @@
-use super::super::clause_support::rewrite_parse_triggered_line_lexed;
+use super::super::clause_support::parse_triggered_line_lexed;
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -848,7 +848,7 @@ pub(crate) fn parse_until_duration_triggered_clause(
     }
 
     let (trigger, effects, max_triggers_per_turn) =
-        match rewrite_parse_triggered_line_lexed(&trigger_tokens)? {
+        match parse_triggered_line_lexed(&trigger_tokens)? {
             LineAst::Triggered {
                 trigger,
                 effects,

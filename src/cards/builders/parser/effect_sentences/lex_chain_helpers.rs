@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::super::clause_support::rewrite_parse_ability_line_lexed;
+use super::super::clause_support::parse_ability_line_lexed;
 use super::super::keyword_static::parse_ability_line;
 use super::super::lexer::{OwnedLexToken, TokenKind, lexed_words, trim_lexed_commas};
 use super::super::util::{trim_commas, words};
@@ -921,7 +921,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     )
                 });
                 let has_effect_head = find_verb_lexed(after_then).is_some()
-                    || rewrite_parse_ability_line_lexed(after_then).is_some()
+                    || parse_ability_line_lexed(after_then).is_some()
                     || has_nonverb_effect_head;
                 let allow_backref_split = has_back_ref
                     && after_words

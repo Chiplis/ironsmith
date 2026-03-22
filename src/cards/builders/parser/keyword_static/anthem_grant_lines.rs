@@ -2781,7 +2781,7 @@ fn parse_triggered_granted_ability(
     }
 
     let ability =
-        match crate::cards::builders::parser::clause_support::rewrite_parse_triggered_line_lexed(
+        match crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(
             &trigger_tokens,
         )? {
             LineAst::Triggered {
@@ -3848,7 +3848,7 @@ pub(crate) fn parse_filter_has_granted_ability_line(
     } else if let Some(parsed) = parse_cycling_line(&ability_tokens)? {
         granted_object_abilities.push((parsed, display_text_for_tokens(&ability_tokens, false)));
     } else if looks_like_trigger {
-        match crate::cards::builders::parser::clause_support::rewrite_parse_triggered_line_lexed(
+        match crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(
             &ability_tokens,
         )? {
             LineAst::Triggered {

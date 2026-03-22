@@ -9,7 +9,6 @@ use crate::target::PlayerFilter;
 use super::activation_and_restrictions::{
     parse_ability_phrase, parse_single_word_keyword_action, parse_triggered_times_each_turn_lexed,
 };
-use super::keyword_static::parse_static_ability_ast_line_lexed;
 use super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
 use super::native_tokens::LowercaseWordView;
 use super::util::{
@@ -126,7 +125,7 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec
     }
 }
 
-pub(crate) fn rewrite_parse_ability_line_lexed(
+pub(crate) fn parse_ability_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
@@ -428,13 +427,13 @@ pub(crate) fn rewrite_parse_ability_line_lexed(
     }
 }
 
-pub(crate) fn rewrite_parse_effect_sentences_lexed(
+pub(crate) fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     super::effect_sentences::parse_effect_sentences_lexed(tokens)
 }
 
-pub(crate) fn rewrite_parse_triggered_line_lexed(
+pub(crate) fn parse_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     let clause_word_view = LowercaseWordView::new(tokens);
@@ -703,7 +702,7 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
             let split_idx = start_idx + effect_start_rel;
             let effects_tokens = trim_commas(&tokens[split_idx..]);
             if !effects_tokens.is_empty()
-                && let Ok(effects) = rewrite_parse_effect_sentences_lexed(&effects_tokens)
+                && let Ok(effects) = parse_effect_sentences_lexed(&effects_tokens)
             {
                 return Ok(LineAst::Triggered {
                     trigger: TriggerSpec::ThisBecomesBlocked,
@@ -734,8 +733,8 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
             let trigger_tokens = trim_commas(&tokens[start_idx..split_idx]);
             let effects_tokens = trim_commas(&tokens[split_idx..]);
             if !effects_tokens.is_empty()
-                && let Ok(trigger) = rewrite_parse_trigger_clause_lexed(&trigger_tokens)
-                && let Ok(effects) = rewrite_parse_effect_sentences_lexed(&effects_tokens)
+                && let Ok(trigger) = parse_trigger_clause_lexed(&trigger_tokens)
+                && let Ok(effects) = parse_effect_sentences_lexed(&effects_tokens)
             {
                 return Ok(LineAst::Triggered {
                     trigger,
@@ -814,7 +813,7 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
                         trigger_tokens,
                         &tokens[split_idx + 1..],
                     );
-                    let effects = rewrite_parse_effect_sentences_lexed(&effects_tokens)?;
+                    let effects = parse_effect_sentences_lexed(&effects_tokens)?;
                     return Ok(LineAst::Triggered {
                         trigger,
                         effects,
@@ -924,12 +923,12 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
 
         let (trigger_tokens, max_triggers_from_trigger_clause) =
             trim_first_time_each_turn_suffix_lexed(&tokens[start_idx..split_idx]);
-        if let Ok(trigger) = rewrite_parse_trigger_clause_lexed(trigger_tokens) {
+        if let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens) {
             let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
                 trigger_tokens,
                 &tokens[split_idx + 1..],
             );
-            match rewrite_parse_effect_sentences_lexed(&effects_tokens) {
+            match parse_effect_sentences_lexed(&effects_tokens) {
                 Ok(effects) => {
                     let mut max_triggers_per_turn =
                         parse_triggered_times_each_turn_lexed_from_sentences(&effects_tokens);
@@ -955,19 +954,19 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
         if effects_tokens.is_empty() {
             continue;
         }
-        if let Ok(trigger) = rewrite_parse_trigger_clause_lexed(trigger_tokens) {
+        if let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens) {
             let rewritten_effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
                 trigger_tokens,
                 effects_tokens,
             );
             let effects =
-                rewrite_parse_effect_sentences_lexed(&rewritten_effects_tokens).or_else(|_| {
+                parse_effect_sentences_lexed(&rewritten_effects_tokens).or_else(|_| {
                     let Some(stripped) = super::activation_and_restrictions::
                         maybe_strip_leading_damage_subject_tokens(&rewritten_effects_tokens)
                     else {
                         return Err(CardTextError::ParseError(String::new()));
                     };
-                    rewrite_parse_effect_sentences_lexed(stripped)
+                    parse_effect_sentences_lexed(stripped)
                 });
             if let Ok(effects) = effects {
                 let mut max_triggers_per_turn =
@@ -991,14 +990,14 @@ pub(crate) fn rewrite_parse_triggered_line_lexed(
     )))
 }
 
-pub(crate) fn rewrite_parse_trigger_clause_lexed(
+pub(crate) fn parse_trigger_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
     super::activation_and_restrictions::parse_trigger_clause_lexed(tokens)
 }
 
-pub(crate) fn rewrite_parse_static_ability_ast_line_lexed(
+pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    parse_static_ability_ast_line_lexed(tokens)
+    super::keyword_static::parse_static_ability_ast_line_lexed(tokens)
 }

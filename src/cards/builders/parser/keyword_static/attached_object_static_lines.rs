@@ -873,7 +873,7 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
         return Ok(None);
     }
     let triggered =
-        match crate::cards::builders::parser::clause_support::rewrite_parse_triggered_line_lexed(
+        match crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(
             &trigger_tokens,
         )? {
             LineAst::Triggered {
@@ -1133,7 +1133,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
         trigger,
         effects,
         max_triggers_per_turn,
-    } = crate::cards::builders::parser::clause_support::rewrite_parse_triggered_line_lexed(
+    } = crate::cards::builders::parser::clause_support::parse_triggered_line_lexed(
         &ability_tokens,
     )? {
         let parsed = parsed_triggered_ability(

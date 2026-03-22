@@ -18,7 +18,7 @@ use crate::zone::Zone;
 use crate::{ChoiceCount, PowerToughness, PtValue, TagKey};
 
 use super::activation_and_restrictions::{parse_ability_phrase, parse_activation_cost};
-use super::clause_support::rewrite_parse_effect_sentences_lexed;
+use super::clause_support::parse_effect_sentences_lexed;
 use super::effect_sentences::{find_verb, parse_subtype_word, parse_supertype_word};
 use super::keyword_static::keyword_action_to_static_ability;
 use super::keyword_static::parse_this_spell_cost_condition;
@@ -3971,7 +3971,7 @@ pub(crate) fn parse_additional_cost_choice_options(
 
     let mut options = Vec::new();
     for option in normalized_options {
-        let effects = rewrite_parse_effect_sentences_lexed(&option)?;
+        let effects = parse_effect_sentences_lexed(&option)?;
         if effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "additional cost option parsed to no effects (clause: '{}')",

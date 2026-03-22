@@ -23,9 +23,9 @@ use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
 };
 use super::clause_support::{
-    rewrite_parse_ability_line_lexed, rewrite_parse_effect_sentences_lexed,
-    rewrite_parse_static_ability_ast_line_lexed, rewrite_parse_trigger_clause_lexed,
-    rewrite_parse_triggered_line_lexed,
+    parse_ability_line_lexed, parse_effect_sentences_lexed,
+    parse_static_ability_ast_line_lexed, parse_trigger_clause_lexed,
+    parse_triggered_line_lexed,
 };
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context,
@@ -90,7 +90,7 @@ fn parse_effect_sentences_from_text(
     line_index: usize,
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let tokens = lexed_tokens(text, line_index)?;
-    rewrite_parse_effect_sentences_lexed(&tokens)
+    parse_effect_sentences_lexed(&tokens)
 }
 
 fn parse_trigger_clause_from_text(
@@ -98,12 +98,12 @@ fn parse_trigger_clause_from_text(
     line_index: usize,
 ) -> Result<TriggerSpec, CardTextError> {
     let tokens = lexed_tokens(text, line_index)?;
-    rewrite_parse_trigger_clause_lexed(&tokens)
+    parse_trigger_clause_lexed(&tokens)
 }
 
 fn parse_triggered_line_from_text(text: &str, line_index: usize) -> Result<LineAst, CardTextError> {
     let tokens = lexed_tokens(text, line_index)?;
-    rewrite_parse_triggered_line_lexed(&tokens)
+    parse_triggered_line_lexed(&tokens)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1695,11 +1695,11 @@ fn lower_rewrite_static_to_chunk_impl(
         return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
     }
     if !should_skip_keyword_action_static_probe(&line.text)
-        && let Some(actions) = rewrite_parse_ability_line_lexed(&lexed)
+        && let Some(actions) = parse_ability_line_lexed(&lexed)
     {
         return Ok(LineAst::Abilities(actions));
     }
-    match rewrite_parse_static_ability_ast_line_lexed(&lexed) {
+    match parse_static_ability_ast_line_lexed(&lexed) {
         Ok(Some(abilities)) => {
             return wrap_chosen_option_static_chunk(
                 LineAst::StaticAbilities(abilities),
@@ -1729,17 +1729,17 @@ fn lower_compound_buff_and_unblockable_static_chunk(
     };
 
     let full_line_tokens = lexed_tokens(line.text.as_str(), line.info.line_index)?;
-    if let Some(abilities) = rewrite_parse_static_ability_ast_line_lexed(&full_line_tokens)? {
+    if let Some(abilities) = parse_static_ability_ast_line_lexed(&full_line_tokens)? {
         return Ok(Some(LineAst::StaticAbilities(abilities)));
     }
 
     let buff_tokens = lexed_tokens(buff_text.as_str(), line.info.line_index)?;
     let unblockable_tokens = lexed_tokens(unblockable_text.as_str(), line.info.line_index)?;
-    let Some(mut abilities) = rewrite_parse_static_ability_ast_line_lexed(&buff_tokens)? else {
+    let Some(mut abilities) = parse_static_ability_ast_line_lexed(&buff_tokens)? else {
         return Ok(None);
     };
     let Some(unblockable_abilities) =
-        rewrite_parse_static_ability_ast_line_lexed(&unblockable_tokens)?
+        parse_static_ability_ast_line_lexed(&unblockable_tokens)?
     else {
         return Ok(None);
     };
@@ -1767,7 +1767,7 @@ fn lower_split_rewrite_static_chunk(
             abilities.push(ability.into());
             continue;
         }
-        if let Some(parsed) = rewrite_parse_static_ability_ast_line_lexed(&lexed)? {
+        if let Some(parsed) = parse_static_ability_ast_line_lexed(&lexed)? {
             abilities.extend(parsed);
             continue;
         }
@@ -1950,7 +1950,7 @@ fn lower_rewrite_keyword_to_chunk_impl(
                     line.info.raw_line
                 ))
             })?;
-            let effects = rewrite_parse_effect_sentences_lexed(effect_tokens)?;
+            let effects = parse_effect_sentences_lexed(effect_tokens)?;
             Ok(LineAst::AdditionalCost { effects })
         }
         super::RewriteKeywordLineKind::AdditionalCostChoice => {
@@ -2093,7 +2093,7 @@ fn lower_rewrite_keyword_to_chunk_impl(
             }),
         super::RewriteKeywordLineKind::Squad => {
             if let Some(effect_tokens) = optional_cost_tail_effect_tokens(&tokens)
-                && let Ok(effects) = rewrite_parse_effect_sentences_lexed(effect_tokens)
+                && let Ok(effects) = parse_effect_sentences_lexed(effect_tokens)
                 && !effects.is_empty()
             {
                 return Ok(LineAst::Statement { effects });
@@ -2236,7 +2236,7 @@ fn try_lower_optional_cost_with_cast_trigger(
     };
 
     let head_effects =
-        rewrite_parse_effect_sentences_lexed(&stripped_head_tokens[head_effect_start..])?;
+        parse_effect_sentences_lexed(&stripped_head_tokens[head_effect_start..])?;
     let [
         EffectAst::ChooseObjects {
             filter,
@@ -2273,7 +2273,7 @@ fn try_lower_optional_cost_with_cast_trigger(
     )
     .repeatable();
     let followup_tokens = lexed_tokens(followup, line.info.line_index)?;
-    let mut effects = rewrite_parse_effect_sentences_lexed(&followup_tokens)?;
+    let mut effects = parse_effect_sentences_lexed(&followup_tokens)?;
     rewrite_copy_count_to_times_paid_label_rewrite(&mut effects, &label);
     let followup_word_view = LowercaseWordView::new(&followup_tokens);
     let followup_words = followup_word_view.to_word_refs();
@@ -2357,7 +2357,7 @@ fn lower_rewrite_level_to_item(
         let tokens = lexed_tokens(item.text.as_str(), item.info.line_index)?;
         match item.kind {
             super::RewriteLevelItemKind::KeywordActions => {
-                let Some(actions) = rewrite_parse_ability_line_lexed(&tokens) else {
+                let Some(actions) = parse_ability_line_lexed(&tokens) else {
                     return Err(CardTextError::ParseError(format!(
                         "rewrite level lowering could not parse keyword line '{}'",
                         item.info.raw_line
@@ -2366,7 +2366,7 @@ fn lower_rewrite_level_to_item(
                 items.push(ParsedLevelAbilityItemAst::KeywordActions(actions));
             }
             super::RewriteLevelItemKind::StaticAbilities => {
-                let Some(abilities) = rewrite_parse_static_ability_ast_line_lexed(&tokens)? else {
+                let Some(abilities) = parse_static_ability_ast_line_lexed(&tokens)? else {
                     return Err(CardTextError::ParseError(format!(
                         "rewrite level lowering could not parse static line '{}'",
                         item.info.raw_line
@@ -2653,7 +2653,7 @@ fn parse_activated_effects(
     {
         return Ok(effects);
     }
-    if let Ok(effects) = rewrite_parse_effect_sentences_lexed(&lexed) {
+    if let Ok(effects) = parse_effect_sentences_lexed(&lexed) {
         return Ok(effects);
     }
 
@@ -2675,7 +2675,7 @@ fn parse_activated_effects(
             effects.push(effect);
             continue;
         }
-        effects.extend(rewrite_parse_effect_sentences_lexed(&sentence_lexed)?);
+        effects.extend(parse_effect_sentences_lexed(&sentence_lexed)?);
     }
     Ok(effects)
 }
@@ -2744,7 +2744,7 @@ fn lower_rewrite_pact_statement_to_chunk(
         .collect::<Vec<_>>();
     if raw_segments.len() == 3 {
         let first_tokens = lexed_tokens(raw_segments[0], line.info.line_index)?;
-        let first_effects = rewrite_parse_effect_sentences_lexed(&first_tokens)?;
+        let first_effects = parse_effect_sentences_lexed(&first_tokens)?;
         if !first_effects.is_empty() {
             let upkeep_raw = raw_segments[1].trim();
             let upkeep_segment = lexed_tokens(upkeep_raw, line.info.line_index)?;
@@ -2876,7 +2876,7 @@ fn lower_rewrite_pact_statement_to_chunk(
     let mana_word_end = marker_start + marker_len + mana_word_len;
     let mana_token_end = token_index_for_word_index(&tokens, mana_word_end).unwrap_or(tokens.len());
 
-    let first_effects = rewrite_parse_effect_sentences_lexed(&tokens[..first_token_end])?;
+    let first_effects = parse_effect_sentences_lexed(&tokens[..first_token_end])?;
     if first_effects.is_empty() {
         return Ok(None);
     }
