@@ -7036,10 +7036,10 @@ textarea,
     min-height: 100%;
     background:
       radial-gradient(110% 88% at 50% -4%, rgba(252, 218, 168, 0.12), transparent 40%),
-      linear-gradient(180deg, rgba(6, 4, 3, 0.08), rgba(0, 0, 0, 0.18)),
-      url("/theme/mobile-board-bg.svg");
-    background-size: auto, auto, 116% auto;
-    background-position: 0 0, 0 0, center bottom;
+      linear-gradient(180deg, rgba(6, 4, 3, 0.08), rgba(0, 0, 0, 0.18));
+    background-size: auto, auto;
+    background-position: 0 0, 0 0;
+    background-repeat: no-repeat;
   }
 
   .mobile-battle-scene-vignette {
@@ -7831,6 +7831,10 @@ textarea,
     gap: var(--mobile-battle-section-gap);
     width: 100%;
     height: 100%;
+    background-image: url("/theme/table.webp");
+    background-position: center top;
+    background-repeat: no-repeat;
+    background-size: 100% auto;
     padding-inline: var(--mobile-battle-scene-padding);
     padding-bottom: 0;
     box-sizing: border-box;
