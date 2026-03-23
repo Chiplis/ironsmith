@@ -77,23 +77,39 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         None
     }
 
+    fn unwrap_tag_wrappers<'a>(effect: &'a Effect) -> &'a Effect {
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return unwrap_tag_wrappers(&tag_all.effect);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return unwrap_tag_wrappers(&tagged.effect);
+        }
+        effect
+    }
+
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < filtered.len() {
-        fn unwrap_implicit_tag_all<'a>(effect: &'a Effect) -> &'a Effect {
-            if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>()
-                && is_implicit_reference_tag(tag_all.tag.as_str())
-            {
-                return &tag_all.effect;
-            }
-            effect
-        }
-
-        fn is_exile_up_to_one_target_type(
+        fn choose_up_to_one_target_type(
             effect: &Effect,
             card_type: crate::types::CardType,
-        ) -> bool {
-            let effect = unwrap_implicit_tag_all(effect);
+        ) -> Option<&str> {
+            let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            let count = &choose.count;
+            if count.min != 0 || count.max != Some(1) {
+                return None;
+            }
+            if choose_primary_zone(choose) != Some(Zone::Battlefield) {
+                return None;
+            }
+            if choose.filter.card_types != vec![card_type] {
+                return None;
+            }
+            Some(choose.tag.as_str())
+        }
+
+        fn is_move_to_exile_of_tag(effect: &Effect, tag: &str) -> bool {
+            let effect = unwrap_tag_wrappers(effect);
             let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
             else {
                 return false;
@@ -101,45 +117,86 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             if move_to_zone.zone != Zone::Exile {
                 return false;
             }
-            let ChooseSpec::WithCount(inner, count) = &move_to_zone.target else {
-                return false;
+            matches!(&move_to_zone.target, ChooseSpec::Tagged(effect_tag) if effect_tag.as_str() == tag)
+        }
+
+        fn is_consult_reveal_put_battlefield_then_bottom(
+            for_each: &crate::effects::ForEachTaggedEffect,
+        ) -> bool {
+            let effects = if for_each.effects.len() == 1 {
+                if let Some(sequence) =
+                    for_each.effects[0].downcast_ref::<crate::effects::SequenceEffect>()
+                {
+                    sequence.effects.as_slice()
+                } else {
+                    for_each.effects.as_slice()
+                }
+            } else {
+                for_each.effects.as_slice()
             };
-            if count.min != 0 || count.max != Some(1) {
+
+            if effects.len() != 3 {
                 return false;
             }
-            let ChooseSpec::Target(target_inner) = inner.as_ref() else {
+
+            let Some(consult) =
+                effects[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()
+            else {
                 return false;
             };
-            let ChooseSpec::Object(filter) = target_inner.as_ref() else {
+            if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
+                return false;
+            }
+            if consult.stop_rule != crate::effects::ConsultTopOfLibraryStopRule::FirstMatch {
+                return false;
+            }
+
+            let move_effect = unwrap_tag_wrappers(&effects[1]);
+            let Some(move_to_zone) = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            else {
                 return false;
             };
-            filter.zone == Some(Zone::Battlefield) && filter.card_types == vec![card_type]
+            if move_to_zone.zone != Zone::Battlefield || move_to_zone.to_top {
+                return false;
+            }
+            if !matches!(
+                &move_to_zone.target,
+                ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+            ) {
+                return false;
+            }
+
+            let Some(remainder) = effects[2]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            else {
+                return false;
+            };
+            remainder.tag == consult.all_tag
+                && remainder.keep_tagged.as_ref() == Some(&consult.match_tag)
+                && remainder.order == crate::effects::consult_helpers::LibraryBottomOrder::Random
         }
 
         // Compact Chaotic Transformation-style prefix:
         // Exile up to one target [type] ... and/or ... then ForEachTagged helper-tag reveal-until.
-        if idx + 5 < filtered.len()
-            && is_exile_up_to_one_target_type(filtered[idx], crate::types::CardType::Artifact)
-            && is_exile_up_to_one_target_type(filtered[idx + 1], crate::types::CardType::Creature)
-            && is_exile_up_to_one_target_type(
-                filtered[idx + 2],
-                crate::types::CardType::Enchantment,
-            )
-            && is_exile_up_to_one_target_type(
-                filtered[idx + 3],
-                crate::types::CardType::Planeswalker,
-            )
-            && is_exile_up_to_one_target_type(filtered[idx + 4], crate::types::CardType::Land)
+        if idx + 6 < filtered.len()
+            && let Some(exiled_tag) =
+                choose_up_to_one_target_type(filtered[idx], crate::types::CardType::Artifact)
+            && choose_up_to_one_target_type(filtered[idx + 1], crate::types::CardType::Creature)
+                == Some(exiled_tag)
+            && choose_up_to_one_target_type(filtered[idx + 2], crate::types::CardType::Enchantment)
+                == Some(exiled_tag)
+            && choose_up_to_one_target_type(filtered[idx + 3], crate::types::CardType::Planeswalker)
+                == Some(exiled_tag)
+            && choose_up_to_one_target_type(filtered[idx + 4], crate::types::CardType::Land)
+                == Some(exiled_tag)
+            && is_move_to_exile_of_tag(filtered[idx + 5], exiled_tag)
             && let Some(for_each) =
-                filtered[idx + 5].downcast_ref::<crate::effects::ForEachTaggedEffect>()
-            && crate::cards::builders::is_sentence_helper_tag(for_each.tag.as_str(), "exiled")
-            && for_each.effects.len() == 1
-            && for_each.effects[0]
-                .downcast_ref::<crate::effects::SequenceEffect>()
-                .is_some()
+                filtered[idx + 6].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && for_each.tag.as_str() == exiled_tag
+            && is_consult_reveal_put_battlefield_then_bottom(for_each)
         {
             parts.push("Exile up to one target artifact, up to one target creature, up to one target enchantment, up to one target planeswalker, and/or up to one target land. For each permanent exiled this way, its controller reveals cards from the top of their library until they reveal a card that shares a card type with it, puts that card onto the battlefield, then shuffles".to_string());
-            idx += 6;
+            idx += 7;
             continue;
         }
 
@@ -4611,11 +4668,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(for_each_tagged) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
         let tag = for_each_tagged.tag.as_str();
-        let subject = if tag.starts_with("destroyed_") {
+        let subject = if tag.starts_with("destroyed_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "destroyed")
+        {
             "For each object destroyed this way".to_string()
-        } else if tag.starts_with("exiled_") {
+        } else if tag.starts_with("exiled_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "exiled")
+        {
             "For each object exiled this way".to_string()
-        } else if tag.starts_with("sacrificed_") {
+        } else if tag.starts_with("sacrificed_")
+            || crate::cards::builders::is_sentence_helper_tag(tag, "sacrificed")
+        {
             "For each object sacrificed this way".to_string()
         } else if tag.is_empty() {
             "For each tagged object".to_string()

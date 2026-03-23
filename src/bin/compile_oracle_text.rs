@@ -1,119 +1,13 @@
 use std::env;
-use std::fs;
 use std::io::{self, Read};
 
 use ironsmith::cards::CardDefinitionBuilder;
 use ironsmith::compiled_text::{compiled_lines, oracle_like_lines};
 use ironsmith::ids::CardId;
-use serde_json::Value;
-
-#[derive(Debug, Clone)]
-struct CardInput {
-    name: String,
-    oracle_text: String,
-    metadata_lines: Vec<String>,
-}
-
-fn value_to_string(value: &Value) -> Option<String> {
-    if value.is_null() {
-        return None;
-    }
-    if let Some(value) = value.as_str() {
-        return Some(value.to_string());
-    }
-    Some(value.to_string())
-}
-
-fn get_first_face(card: &Value) -> Option<&Value> {
-    card.get("card_faces")
-        .and_then(Value::as_array)
-        .and_then(|faces| faces.first())
-}
-
-fn pick_field(card: &Value, face: Option<&Value>, key: &str) -> Option<String> {
-    if let Some(value) = card.get(key).and_then(value_to_string) {
-        return Some(value);
-    }
-    face.and_then(|value| value.get(key))
-        .and_then(value_to_string)
-}
-
-fn build_parse_input(metadata_lines: &[String], oracle_text: &str) -> String {
-    let mut lines = metadata_lines.to_vec();
-    if !oracle_text.trim().is_empty() {
-        lines.push(oracle_text.trim().to_string());
-    }
-    lines.join("\n")
-}
-
-fn build_card_input(card: &Value) -> Option<CardInput> {
-    let face = get_first_face(card);
-    let name = pick_field(card, face, "name")?.trim().to_string();
-    if name.is_empty() {
-        return None;
-    }
-
-    let oracle_text = pick_field(card, face, "oracle_text")?.trim().to_string();
-    if oracle_text.is_empty() {
-        return None;
-    }
-
-    let mana_cost = pick_field(card, face, "mana_cost");
-    let type_line = pick_field(card, face, "type_line");
-    let power = pick_field(card, face, "power");
-    let toughness = pick_field(card, face, "toughness");
-    let loyalty = pick_field(card, face, "loyalty");
-    let defense = pick_field(card, face, "defense");
-
-    let mut metadata_lines = Vec::new();
-    if let Some(mana_cost) = mana_cost.filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Mana cost: {}", mana_cost.trim()));
-    }
-    if let Some(type_line) = type_line.filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Type: {}", type_line.trim()));
-    }
-    if let (Some(power), Some(toughness)) = (power, toughness) {
-        if !power.trim().is_empty() && !toughness.trim().is_empty() {
-            metadata_lines.push(format!(
-                "Power/Toughness: {}/{}",
-                power.trim(),
-                toughness.trim()
-            ));
-        }
-    }
-    if let Some(loyalty) = loyalty.filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Loyalty: {}", loyalty.trim()));
-    }
-    if let Some(defense) = defense.filter(|value| !value.trim().is_empty()) {
-        metadata_lines.push(format!("Defense: {}", defense.trim()));
-    }
-
-    Some(CardInput {
-        name,
-        oracle_text,
-        metadata_lines,
-    })
-}
-
-fn load_card_input_by_name(cards_path: &str, name: &str) -> Result<Option<CardInput>, String> {
-    let contents = fs::read_to_string(cards_path)
-        .map_err(|err| format!("failed to read cards file '{cards_path}': {err}"))?;
-    let cards: Value = serde_json::from_str(&contents)
-        .map_err(|err| format!("failed to parse cards file '{cards_path}': {err}"))?;
-    let Some(entries) = cards.as_array() else {
-        return Err(format!(
-            "cards file '{cards_path}' is not a top-level JSON array"
-        ));
-    };
-
-    Ok(entries.iter().find_map(|card| {
-        let input = build_card_input(card)?;
-        input
-            .name
-            .eq_ignore_ascii_case(name.trim())
-            .then_some(input)
-    }))
-}
+use ironsmith_tools::{
+    CardStatusDb, build_parse_input, compile_snapshot_from_payload, default_db_path,
+    load_card_by_name,
+};
 
 fn text_includes_metadata(text: &str) -> bool {
     text.lines().map(str::trim).any(|line| {
@@ -148,6 +42,8 @@ fn main() -> Result<(), String> {
     let mut allow_unsupported = false;
     let mut detailed = false;
     let mut raw = false;
+    let mut db_path = default_db_path().display().to_string();
+    let mut no_db = false;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -183,9 +79,17 @@ fn main() -> Result<(), String> {
             "--raw" => {
                 raw = true;
             }
+            "--db-path" => {
+                db_path = args
+                    .next()
+                    .ok_or_else(|| "--db-path requires a value".to_string())?;
+            }
+            "--no-db" => {
+                no_db = true;
+            }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --name <value>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, and/or --stacktrace"
+                    "unknown argument '{arg}'. expected --name <value>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --db-path <path>, --no-db, and/or --stacktrace"
                 ));
             }
         }
@@ -211,21 +115,24 @@ fn main() -> Result<(), String> {
 
     let input_text = read_input_text(text_arg)?;
     let card_input = if name != "Parser Probe" {
-        load_card_input_by_name(&cards_path, &name)?
+        load_card_by_name(&cards_path, &name).map_err(|err| err.to_string())?
     } else {
         None
     };
+    let should_write_db = !no_db && input_text.is_none() && card_input.is_some();
 
-    let (name, oracle_text, parse_input) = match (input_text, card_input) {
+    let (name, oracle_text, parse_input, db_payload) = match (input_text, card_input) {
         (Some(text), Some(card)) if !text_includes_metadata(&text) => {
             let parse_input = build_parse_input(&card.metadata_lines, &text);
-            (card.name, text.trim().to_string(), parse_input)
+            (card.name, text.trim().to_string(), parse_input, None)
         }
-        (Some(text), Some(card)) => (card.name, card.oracle_text, text),
-        (Some(text), None) => (name, text.clone(), text),
+        (Some(text), Some(card)) => (card.name, card.oracle_text, text, None),
+        (Some(text), None) => (name, text.clone(), text, None),
         (None, Some(card)) => {
+            let name = card.name.clone();
+            let oracle_text = card.oracle_text.clone();
             let parse_input = build_parse_input(&card.metadata_lines, &card.oracle_text);
-            (card.name, card.oracle_text, parse_input)
+            (name, oracle_text, parse_input, Some(card))
         }
         (None, None) => {
             return Err(
@@ -272,6 +179,23 @@ fn main() -> Result<(), String> {
         for line in lines {
             println!("- {}", line.trim());
         }
+    }
+
+    if should_write_db && let Some(payload) = db_payload.as_ref() {
+        let db = CardStatusDb::open(&db_path).map_err(|err| err.to_string())?;
+        let snapshot = compile_snapshot_from_payload(payload);
+        let inserted = db
+            .insert_snapshot_if_changed(&snapshot)
+            .map_err(|err| err.to_string())?;
+        eprintln!(
+            "[INFO] {} card status snapshot in {}",
+            if inserted {
+                "stored"
+            } else {
+                "skipped unchanged"
+            },
+            db_path
+        );
     }
 
     Ok(())

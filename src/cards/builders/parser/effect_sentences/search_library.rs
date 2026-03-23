@@ -2,16 +2,17 @@ use super::super::lexer::{OwnedLexToken, TokenKind, lex_line, trim_lexed_commas}
 use super::super::native_tokens::LowercaseWordView;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed, split_on_or};
 use super::super::util::{
-    is_article, parse_number, parse_subject, parse_target_phrase, parse_zone_word,
-    span_from_tokens, token_index_for_word_index, trim_commas, words,
+    helper_tag_for_tokens, is_article, parse_number, parse_subject, parse_target_phrase,
+    parse_zone_word, span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::sentence_helpers::*;
 use super::{
     find_verb, parse_effect_chain, parse_effect_chain_with_sentence_primitives, parse_effect_clause,
 };
 use crate::cards::builders::{
-    CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, PlayerAst, ReturnControllerAst,
-    SubjectAst, TagKey, TargetAst, TextSpan,
+    CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
+    TagKey, TargetAst, TextSpan,
 };
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
@@ -1797,19 +1798,35 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
 
     let filter_tokens = lex_line("a permanent that shares a card type with it", 0)?;
     let filter = parse_object_filter_lexed(&filter_tokens, false)?;
+    let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
+    let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
     Ok(Some(vec![EffectAst::ForEachTagged {
         tag: IT_TAG.into(),
-        effects: vec![EffectAst::SearchLibrary {
-            filter,
-            destination: Zone::Battlefield,
-            chooser: PlayerAst::Implicit,
-            player: PlayerAst::Implicit,
-            reveal: true,
-            shuffle: true,
-            count: ChoiceCount::up_to(1),
-            tapped: false,
-        }],
+        effects: vec![
+            EffectAst::ConsultTopOfLibrary {
+                player: PlayerAst::Implicit,
+                mode: LibraryConsultModeAst::Reveal,
+                filter,
+                stop_rule: LibraryConsultStopRuleAst::FirstMatch,
+                all_tag: revealed_tag.clone(),
+                match_tag: matched_tag.clone(),
+            },
+            EffectAst::MoveToZone {
+                target: TargetAst::Tagged(matched_tag.clone(), None),
+                zone: Zone::Battlefield,
+                to_top: false,
+                battlefield_controller: ReturnControllerAst::Preserve,
+                battlefield_tapped: false,
+                attached_to: None,
+            },
+            EffectAst::PutTaggedRemainderOnBottomOfLibrary {
+                tag: revealed_tag,
+                keep_tagged: Some(matched_tag),
+                order: LibraryBottomOrderAst::Random,
+                player: PlayerAst::Implicit,
+            },
+        ],
     }]))
 }
 

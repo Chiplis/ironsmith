@@ -45,6 +45,8 @@ pub mod static_ability_processor;
 pub mod tag;
 pub mod target;
 pub mod targeting;
+#[cfg(feature = "tooling")]
+pub mod tooling;
 pub(crate) mod trigger_identity;
 pub mod triggers;
 pub mod turn;

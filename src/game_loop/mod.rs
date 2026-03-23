@@ -116,5 +116,6 @@ pub(crate) use self::priority_mana::{
 };
 pub(crate) use self::targeting::{
     drain_pending_trigger_events, extract_target_requirements_for_effect_with_state,
-    spell_has_legal_targets_with_modes, spell_has_legal_targets_with_modes_and_view,
+    spell_has_legal_targets_with_mode_preview, spell_has_legal_targets_with_modes,
+    spell_has_legal_targets_with_modes_and_view,
 };

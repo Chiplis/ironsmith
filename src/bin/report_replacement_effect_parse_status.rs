@@ -9,6 +9,7 @@ use ironsmith::cards::{
 use ironsmith::compiled_text::compiled_lines;
 use ironsmith::ids::CardId;
 use ironsmith::semantic_compare::compare_semantics_scored;
+use ironsmith_tools::{CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path};
 use serde_json::Value;
 
 #[derive(Debug)]
@@ -17,6 +18,8 @@ struct Args {
     cards_path: String,
     out_csv: String,
     limit: Option<usize>,
+    db_path: String,
+    no_db: bool,
 }
 
 #[derive(Debug)]
@@ -53,6 +56,8 @@ fn parse_args() -> Result<Args, String> {
     let mut cards_path = "replacement_effect_cards_strict_oracle_subset.json".to_string();
     let mut out_csv = "replacement_effect_cards_parse_report.csv".to_string();
     let mut limit = None;
+    let mut db_path = default_db_path().display().to_string();
+    let mut no_db = false;
 
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -81,14 +86,22 @@ fn parse_args() -> Result<Args, String> {
                         .map_err(|err| format!("invalid --limit '{raw}': {err}"))?,
                 );
             }
+            "--db-path" => {
+                db_path = iter
+                    .next()
+                    .ok_or_else(|| "--db-path requires a path".to_string())?;
+            }
+            "--no-db" => {
+                no_db = true;
+            }
             "-h" | "--help" => {
                 return Err(
-                    "usage: cargo run --bin report_replacement_effect_parse_status -- [--names <path>] [--cards <path>] [--out <path>] [--limit <n>]".to_string(),
+                    "usage: cargo run --bin report_replacement_effect_parse_status -- [--names <path>] [--cards <path>] [--out <path>] [--limit <n>] [--db-path <path>] [--no-db]".to_string(),
                 );
             }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --names/--cards/--out/--limit"
+                    "unknown argument '{arg}'. expected --names/--cards/--out/--limit/--db-path/--no-db"
                 ));
             }
         }
@@ -99,6 +112,8 @@ fn parse_args() -> Result<Args, String> {
         cards_path,
         out_csv,
         limit,
+        db_path,
+        no_db,
     })
 }
 
@@ -286,6 +301,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args().map_err(std::io::Error::other)?;
     let names = read_names(&args.names_path)?;
     let cards_by_name = load_cards(&args.cards_path)?;
+    let db = if args.no_db {
+        None
+    } else {
+        Some(CardStatusDb::open(&args.db_path)?)
+    };
 
     let original_allow_unsupported = env::var("IRONSMITH_PARSER_ALLOW_UNSUPPORTED").ok();
 
@@ -344,7 +364,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             compiled_lines_count: 0,
         };
 
-        match strict_result {
+        let snapshot = match strict_result {
             ParseOutcome::Success(definition) => {
                 row.parsed = true;
                 row.parse_strict = true;
@@ -371,6 +391,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     parse_correct_count += 1;
                 }
                 parse_ok_count += 1;
+                CompilationSnapshot::from_definition_result(
+                    name,
+                    &payload.oracle_text,
+                    ParseStatus::StrictCompiled,
+                    None,
+                    Some(&definition),
+                )
             }
             ParseOutcome::Error(err) => {
                 row.parse_error_strict = err;
@@ -395,16 +422,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         parse_ok_count += 1;
                         parse_unsupported_count += 1;
+                        CompilationSnapshot::from_definition_result(
+                            name,
+                            &payload.oracle_text,
+                            ParseStatus::CompiledWithAllowUnsupported,
+                            None,
+                            Some(&definition),
+                        )
                     }
                     ParseOutcome::Error(allow_err) => {
                         row.status = "does_not_parse".to_string();
                         row.parse_error_allow_unsupported = allow_err;
                         parse_fail_count += 1;
+                        CompilationSnapshot::from_definition_result(
+                            name,
+                            &payload.oracle_text,
+                            ParseStatus::ParseFailed,
+                            Some(row.parse_error_strict.clone()),
+                            None,
+                        )
                     }
                 }
             }
-        }
+        };
 
+        if let Some(db) = db.as_ref() {
+            db.insert_snapshot_if_changed(&snapshot)?;
+        }
         rows.push(row);
     }
 
@@ -427,6 +471,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("- Parses but semantic mismatch: {semantic_mismatch_count}");
     println!("- Missing card data: {missing_card_data_count}");
     println!("- CSV: {}", args.out_csv);
+    if !args.no_db {
+        println!("- DB: {}", args.db_path);
+    }
 
     Ok(())
 }

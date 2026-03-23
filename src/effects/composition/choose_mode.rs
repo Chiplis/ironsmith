@@ -126,6 +126,7 @@ impl EffectExecutor for ChooseModeEffect {
                 .min_choose_count
                 .clone()
                 .unwrap_or_else(|| self.choose_count.clone()),
+            allow_repeated_modes: self.allow_repeated_modes,
         })
     }
 }

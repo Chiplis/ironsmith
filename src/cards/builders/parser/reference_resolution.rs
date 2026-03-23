@@ -2,15 +2,16 @@ use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
+use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
 
 #[cfg(test)]
+use crate::TagKey;
+#[cfg(test)]
 use crate::cards::builders::{
     ObjectRefAst, PredicateAst, PreventNextTimeDamageSourceAst, RetargetModeAst,
 };
-#[cfg(test)]
-use crate::{ChooseSpec, TagKey};
 
 use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,
@@ -209,11 +210,31 @@ fn maybe_tag_target(
 ) -> Result<(), CardTextError> {
     let refs = lowering_reference_frame(frame);
     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
-    if frame.auto_tag_object_targets && choose_spec_targets_object(&spec) {
-        frame.last_object_tag = Some(next_reference_tag(id_gen, prefix));
+    if frame.auto_tag_object_targets
+        && let Some(tag) = propagated_or_generated_object_tag(&spec, id_gen, prefix)
+    {
+        frame.last_object_tag = Some(tag);
     }
     track_target_player(target, frame);
     Ok(())
+}
+
+fn propagated_or_generated_object_tag(
+    spec: &ChooseSpec,
+    id_gen: &mut IdGenContext,
+    prefix: &str,
+) -> Option<String> {
+    if !choose_spec_targets_object(spec) {
+        return None;
+    }
+
+    match spec.base() {
+        ChooseSpec::Tagged(tag) => Some(tag.as_str().to_string()),
+        ChooseSpec::Object(_) | ChooseSpec::SpecificObject(_) | ChooseSpec::Source => {
+            Some(next_reference_tag(id_gen, prefix))
+        }
+        _ => None,
+    }
 }
 
 fn advance_effects_preserving_last_effect(
@@ -418,16 +439,20 @@ fn advance_reference_frame_for_effect(
         EffectAst::ReturnToBattlefield { target, .. } => {
             let refs = lowering_reference_frame(frame);
             let (spec, _) = resolve_target_spec_with_choices(&target, &refs)?;
-            if frame.auto_tag_object_targets && choose_spec_targets_object(&spec) {
-                frame.last_object_tag = Some(next_reference_tag(id_gen, "returned"));
+            if frame.auto_tag_object_targets
+                && let Some(tag) = propagated_or_generated_object_tag(&spec, id_gen, "returned")
+            {
+                frame.last_object_tag = Some(tag);
             }
         }
         EffectAst::MoveToLibraryNthFromTop { target, .. }
         | EffectAst::MoveToZone { target, .. } => {
             let refs = lowering_reference_frame(frame);
             let (spec, _) = resolve_target_spec_with_choices(&target, &refs)?;
-            if frame.auto_tag_object_targets && choose_spec_targets_object(&spec) {
-                frame.last_object_tag = Some(next_reference_tag(id_gen, "moved"));
+            if frame.auto_tag_object_targets
+                && let Some(tag) = propagated_or_generated_object_tag(&spec, id_gen, "moved")
+            {
+                frame.last_object_tag = Some(tag);
             }
         }
         EffectAst::RegisterZoneReplacement { target, .. } => {

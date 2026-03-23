@@ -4647,6 +4647,47 @@ impl<D: DecisionMaker + ?Sized> DecisionMaker for Box<D> {
 #[derive(Debug, Default)]
 pub struct AutoPassDecisionMaker;
 
+fn auto_select_option_indices(
+    ctx: &crate::decisions::context::SelectOptionsContext,
+    desired_count: usize,
+) -> Vec<usize> {
+    let legal: Vec<&crate::decisions::context::SelectableOption> =
+        ctx.options.iter().filter(|o| o.legal).collect();
+    if legal.is_empty() || desired_count == 0 {
+        return Vec::new();
+    }
+
+    let mut selected = Vec::new();
+    let mut counts: HashMap<usize, usize> = HashMap::new();
+
+    while selected.len() < desired_count {
+        let mut added = false;
+        for option in &legal {
+            let current = counts.get(&option.index).copied().unwrap_or(0);
+            let limit = if option.repeatable {
+                option
+                    .max_count
+                    .map(|count| count as usize)
+                    .unwrap_or(usize::MAX)
+            } else {
+                1
+            };
+            if current >= limit {
+                continue;
+            }
+            selected.push(option.index);
+            counts.insert(option.index, current + 1);
+            added = true;
+            break;
+        }
+        if !added {
+            break;
+        }
+    }
+
+    selected
+}
+
 impl DecisionMaker for AutoPassDecisionMaker {
     fn decide_boolean(
         &mut self,
@@ -4687,13 +4728,7 @@ impl DecisionMaker for AutoPassDecisionMaker {
         ctx: &crate::decisions::context::SelectOptionsContext,
     ) -> Vec<usize> {
         // Auto-pass: select minimum required, using first legal options
-        let legal: Vec<usize> = ctx
-            .options
-            .iter()
-            .filter(|o| o.legal)
-            .map(|o| o.index)
-            .collect();
-        legal.into_iter().take(ctx.min).collect()
+        auto_select_option_indices(ctx, ctx.min)
     }
 
     fn decide_text(
@@ -4855,14 +4890,7 @@ impl DecisionMaker for SelectFirstDecisionMaker {
         ctx: &crate::decisions::context::SelectOptionsContext,
     ) -> Vec<usize> {
         // Select first: select first legal option (up to max)
-        let legal: Vec<usize> = ctx
-            .options
-            .iter()
-            .filter(|o| o.legal)
-            .map(|o| o.index)
-            .collect();
-        let count = ctx.max.min(legal.len());
-        legal.into_iter().take(count).collect()
+        auto_select_option_indices(ctx, ctx.max)
     }
 
     fn decide_order(

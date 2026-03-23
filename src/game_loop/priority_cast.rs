@@ -669,13 +669,12 @@ pub(super) fn check_modes_or_continue(
             .iter()
             .enumerate()
             .map(|(i, desc)| {
-                let selected_mode = [i];
-                let legal = spell_has_legal_targets_with_modes(
+                let legal = spell_has_legal_targets_with_mode_preview(
                     game,
                     &spell_effects,
                     player,
                     Some(source),
-                    Some(&selected_mode),
+                    &[i],
                 );
                 crate::decisions::specs::ModeOption::with_legality(i, desc.clone(), legal)
             })
@@ -697,6 +696,7 @@ pub(super) fn check_modes_or_continue(
                         mode_options,
                         min_modes,
                         max_modes,
+                        modal_spec.allow_repeated_modes,
                     ),
                 },
             ),

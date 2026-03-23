@@ -26,6 +26,8 @@ pub struct ModalSpec {
     pub max_modes: Value,
     /// Minimum number of modes that must be chosen.
     pub min_modes: Value,
+    /// Whether the same mode can be chosen more than once.
+    pub allow_repeated_modes: bool,
 }
 
 /// Trait for executing effects.

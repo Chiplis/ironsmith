@@ -393,12 +393,13 @@ pub(super) fn effect_mode_has_legal_targets_with_view(
     })
 }
 
-pub(super) fn choose_mode_has_legal_targets_with_view(
+fn choose_mode_has_legal_targets_internal_with_view(
     game: &GameState,
     choose_mode: &crate::effects::ChooseModeEffect,
     caster: PlayerId,
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
+    require_full_selection: bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
     let (min_modes, max_modes) = resolve_modal_mode_counts(game, source_id, choose_mode);
@@ -428,7 +429,11 @@ pub(super) fn choose_mode_has_legal_targets_with_view(
             selected_count += 1;
         }
 
-        return selected_count >= min_modes && selected_count <= max_modes;
+        return if require_full_selection {
+            selected_count >= min_modes && selected_count <= max_modes
+        } else {
+            selected_count <= max_modes
+        };
     }
 
     let legal_mode_count = choose_mode
@@ -448,33 +453,14 @@ pub(super) fn choose_mode_has_legal_targets_with_view(
     }
 }
 
-pub(super) fn spell_effect_has_legal_targets_with_view(
-    game: &GameState,
-    effect: &Effect,
-    caster: PlayerId,
-    source_id: Option<ObjectId>,
-    chosen_modes: Option<&[usize]>,
-    view: &crate::derived_view::DerivedGameView<'_>,
-) -> bool {
-    let mut consumed_modal_selection = false;
-    spell_effect_has_legal_targets_internal_with_view(
-        game,
-        effect,
-        caster,
-        source_id,
-        chosen_modes,
-        &mut consumed_modal_selection,
-        view,
-    )
-}
-
-pub(super) fn spell_effect_has_legal_targets_internal_with_view(
+fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     game: &GameState,
     effect: &Effect,
     caster: PlayerId,
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
+    require_full_mode_selection: bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
@@ -484,12 +470,13 @@ pub(super) fn spell_effect_has_legal_targets_internal_with_view(
         } else {
             None
         };
-        return choose_mode_has_legal_targets_with_view(
+        return choose_mode_has_legal_targets_internal_with_view(
             game,
             choose_mode,
             caster,
             source_id,
             modes_for_this_choose_mode,
+            require_full_mode_selection,
             view,
         );
     }
@@ -513,6 +500,48 @@ pub(super) fn spell_effect_has_legal_targets_internal_with_view(
     }
 
     true
+}
+
+pub(super) fn spell_effect_has_legal_targets_with_view(
+    game: &GameState,
+    effect: &Effect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let mut consumed_modal_selection = false;
+    spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+        game,
+        effect,
+        caster,
+        source_id,
+        chosen_modes,
+        &mut consumed_modal_selection,
+        true,
+        view,
+    )
+}
+
+pub(super) fn spell_effect_has_legal_targets_internal_with_view(
+    game: &GameState,
+    effect: &Effect,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    consumed_modal_selection: &mut bool,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+        game,
+        effect,
+        caster,
+        source_id,
+        chosen_modes,
+        consumed_modal_selection,
+        true,
+        view,
+    )
 }
 
 pub(super) fn extract_target_requirements_from_effect_internal(
@@ -644,6 +673,50 @@ pub(crate) fn spell_has_legal_targets_with_modes(
         chosen_modes,
         &view,
     )
+}
+
+pub(crate) fn spell_has_legal_targets_with_mode_preview(
+    game: &GameState,
+    effects: &[Effect],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: &[usize],
+) -> bool {
+    let view = crate::derived_view::DerivedGameView::new(game);
+    spell_has_legal_targets_with_mode_preview_and_view(
+        game,
+        effects,
+        caster,
+        source_id,
+        chosen_modes,
+        &view,
+    )
+}
+
+pub(crate) fn spell_has_legal_targets_with_mode_preview_and_view(
+    game: &GameState,
+    effects: &[Effect],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: &[usize],
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let mut consumed_modal_selection = false;
+    for effect in effects {
+        if !spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+            game,
+            effect,
+            caster,
+            source_id,
+            Some(chosen_modes),
+            &mut consumed_modal_selection,
+            false,
+            view,
+        ) {
+            return false;
+        }
+    }
+    true
 }
 
 pub(crate) fn spell_has_legal_targets_with_modes_and_view(

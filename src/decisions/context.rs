@@ -372,6 +372,10 @@ pub struct SelectableOption {
     pub description: String,
     /// Whether this option is currently legal to select.
     pub legal: bool,
+    /// Whether this option can be selected more than once.
+    pub repeatable: bool,
+    /// Maximum times this option can be selected when repeatable.
+    pub max_count: Option<u32>,
     /// Optional object this option is associated with for richer UI rendering.
     pub object_id: Option<ObjectId>,
 }
@@ -383,6 +387,8 @@ impl SelectableOption {
             index,
             description: description.into(),
             legal: true,
+            repeatable: false,
+            max_count: Some(1),
             object_id: None,
         }
     }
@@ -393,8 +399,16 @@ impl SelectableOption {
             index,
             description: description.into(),
             legal,
+            repeatable: false,
+            max_count: Some(1),
             object_id: None,
         }
+    }
+
+    pub fn with_repeatability(mut self, repeatable: bool, max_count: Option<u32>) -> Self {
+        self.repeatable = repeatable;
+        self.max_count = max_count;
+        self
     }
 
     pub fn with_object(mut self, object_id: ObjectId) -> Self {

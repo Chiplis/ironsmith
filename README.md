@@ -332,6 +332,7 @@ Here is the most important repository structure at a glance:
 - [`src/bin/`](src/bin): source for the binaries listed below
 - [`scripts/`](scripts): Python helpers for Scryfall streaming and registry generation
 - [`reports/`](reports): generated parser/error/cluster reports
+- `reports/engine-status.sqlite3`: default SQLite index for canonical compilation history and imported card tags
 
 ## Available Binary Utilities
 
@@ -389,6 +390,14 @@ The repo ships several useful binaries. Most of them live in the `ironsmith-tool
   - Package: `ironsmith-tools`
   - Purpose: orchestrate parser report regeneration, including semantic audit artifacts and cluster/error CSVs
 
+- `sync_card_status_db`
+  - Package: `ironsmith-tools`
+  - Purpose: compile canonical `cards.json` entries and append only changed rows into the SQLite status DB
+
+- `import_card_tags`
+  - Package: `ironsmith-tools`
+  - Purpose: import tag research CSVs into the SQLite status DB as current `(card_name, tag)` rows
+
 - `export_cedh_support_report`
   - Package: root `ironsmith` crate
   - Purpose: fetch cEDH event/deck data and generate support coverage reports for popular cards
@@ -415,7 +424,34 @@ You will typically want:
 - `pnpm` for the React UI
 - a local `cards.json` dump for bulk parsing, registry generation, and several audit tools
 
-`cards.json` is intentionally gitignored, along with most generated reports and CSV/JSON outputs.
+`cards.json` is intentionally gitignored, along with most generated reports, CSV/JSON outputs, and the SQLite engine status DB.
+
+### SQLite Queries
+
+Once the DB has been populated, a few useful queries are:
+
+```sql
+SELECT card_name, similarity_score, semantic_mismatch
+FROM latest_card_compilation
+ORDER BY similarity_score ASC
+LIMIT 20;
+```
+
+```sql
+SELECT lcc.card_name, lcc.similarity_score, ct.tag
+FROM latest_card_compilation AS lcc
+JOIN card_tagging AS ct ON ct.card_name = lcc.card_name
+WHERE ct.tag = 'consult'
+ORDER BY lcc.similarity_score ASC, lcc.card_name ASC;
+```
+
+```sql
+SELECT ot.tag
+FROM oracle_tag AS ot
+LEFT JOIN card_tagging AS ct ON ct.tag = ot.tag
+WHERE ct.tag IS NULL
+ORDER BY ot.tag ASC;
+```
 
 ### Common Commands
 
@@ -437,6 +473,47 @@ Probe the parser for a single card:
 cargo run -p ironsmith-tools --bin compile_oracle_text -- \
   --name "Lightning Bolt" \
   --text $'Mana cost: {R}\nType: Instant\nLightning Bolt deals 3 damage to any target.'
+```
+
+Sync the SQLite engine status index from canonical cards:
+
+```bash
+cargo run -p ironsmith-tools --bin sync_card_status_db -- \
+  --cards cards.json \
+  --db-path reports/engine-status.sqlite3
+```
+
+Import tag research CSVs into the SQLite index:
+
+```bash
+cargo run -p ironsmith-tools --bin import_card_tags -- \
+  --csv reports/cards/oracle-tag-research-consult-20260323T141838Z.csv \
+  --db-path reports/engine-status.sqlite3
+```
+
+Sync the canonical functional oracle tag catalog from Scryfall:
+
+```bash
+cargo run -p ironsmith-tools --bin sync_oracle_tags -- \
+  --db-path reports/engine-status.sqlite3
+```
+
+Populate `card_tagging` from Tagger’s oracle-card memberships:
+
+```bash
+cargo run -p ironsmith-tools --bin sync_card_tagging -- \
+  --cards cards.json \
+  --db-path reports/engine-status.sqlite3
+```
+
+Resume from the 100th oracle tag and process the next 250 tags:
+
+```bash
+cargo run -p ironsmith-tools --bin sync_card_tagging -- \
+  --cards cards.json \
+  --db-path reports/engine-status.sqlite3 \
+  --start 100 \
+  --limit 250
 ```
 
 Batch-parse card blocks from `cards.json`:

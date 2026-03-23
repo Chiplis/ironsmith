@@ -1552,7 +1552,7 @@ impl DecisionView {
                             let (repeatable, max_count) = if is_optional_cost_choice {
                                 optional_cost_selection_metadata(game, options.source, opt.index)
                             } else {
-                                (false, None)
+                                (opt.repeatable, opt.max_count)
                             };
                             let visible_object_id = opt
                                 .object_id
@@ -1596,8 +1596,8 @@ impl DecisionView {
                         index: mode.index,
                         description: mode.description.clone(),
                         legal: mode.legal,
-                        repeatable: false,
-                        max_count: Some(1),
+                        repeatable: modes.spec.allow_repeated_modes,
+                        max_count: Some(modes.spec.max_modes.min(u32::MAX as usize) as u32),
                         object_id: None,
                         object_controller: None,
                     })
@@ -2228,12 +2228,35 @@ impl DecisionMaker for WasmReplayDecisionMaker {
             }
             _ => {
                 self.capture_once_for_game(game, DecisionContext::SelectOptions(ctx.clone()));
-                ctx.options
-                    .iter()
-                    .filter(|option| option.legal)
-                    .map(|option| option.index)
-                    .take(ctx.min)
-                    .collect()
+                let mut selected = Vec::new();
+                let mut counts: std::collections::HashMap<usize, usize> =
+                    std::collections::HashMap::new();
+                let legal: Vec<_> = ctx.options.iter().filter(|option| option.legal).collect();
+                while selected.len() < ctx.min {
+                    let mut added = false;
+                    for option in &legal {
+                        let current = counts.get(&option.index).copied().unwrap_or(0);
+                        let limit = if option.repeatable {
+                            option
+                                .max_count
+                                .map(|count| count as usize)
+                                .unwrap_or(usize::MAX)
+                        } else {
+                            1
+                        };
+                        if current >= limit {
+                            continue;
+                        }
+                        selected.push(option.index);
+                        counts.insert(option.index, current + 1);
+                        added = true;
+                        break;
+                    }
+                    if !added {
+                        break;
+                    }
+                }
+                selected
             }
         }
     }

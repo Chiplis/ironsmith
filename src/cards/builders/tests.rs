@@ -10767,6 +10767,60 @@ fn parse_exile_name_and_target_supports_exiling_source_and_target() {
 }
 
 #[test]
+fn parse_chaotic_transformation_reuses_single_exiled_helper_tag() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Chaotic Transformation Variant")
+        .parse_text(
+            "Exile up to one target artifact, up to one target creature, up to one target enchantment, up to one target planeswalker, and/or up to one target land. For each permanent exiled this way, its controller reveals cards from the top of their library until they reveal a card that shares a card type with it, puts that card onto the battlefield, then shuffles.",
+        )
+        .expect("Chaotic Transformation pattern should parse");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let rendered = compiled_lines(&def).join(" ");
+
+    let needle = "__sentence_helper_exiled_";
+    let mut tags = std::collections::BTreeSet::new();
+    let mut rest = spell_debug.as_str();
+    while let Some(idx) = rest.find(needle) {
+        let after = &rest[idx..];
+        let end = after
+            .find('\'')
+            .or_else(|| after.find(' '))
+            .unwrap_or(after.len());
+        tags.insert(after[..end].to_string());
+        rest = &after[needle.len()..];
+    }
+
+    assert!(
+        !tags.is_empty(),
+        "expected Chaotic Transformation lowering to use an exiled helper tag, got {spell_debug}"
+    );
+    assert_eq!(
+        tags.len(),
+        1,
+        "expected a single shared exiled helper tag throughout Chaotic Transformation compile, got {tags:?} in {rendered}"
+    );
+    assert!(
+        spell_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected reveal-until consult lowering, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected consult remainder bottoming, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("SearchLibraryEffect"),
+        "expected consult lowering instead of generic search, got {spell_debug}"
+    );
+    let normalized = rendered.to_ascii_lowercase();
+    assert!(
+        normalized.contains("for each permanent exiled this way")
+            && normalized.contains("reveals cards from the top of their library until they reveal a card that shares a card type with it")
+            && normalized.contains("puts that card onto the battlefield")
+            && normalized.contains("then shuffles"),
+        "expected oracle-like Chaotic Transformation rendering, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_target_opponent_exiles_card_from_their_hand_uses_hand_choice() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Skullcap Snail Variant")
         .parse_text("Target opponent exiles a card from their hand.")

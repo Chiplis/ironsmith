@@ -14,6 +14,7 @@ use ironsmith::semantic_compare::{
     compare_semantics_scored as shared_compare_semantics_scored,
     semantic_clauses_for_compare as shared_semantic_clauses,
 };
+use ironsmith_tools::{CardStatusDb, CompilationSnapshot, ParseStatus, default_db_path};
 
 mod tooling_paths;
 
@@ -38,6 +39,8 @@ struct Args {
     cluster_csv_out: Option<String>,
     parse_errors_csv_out: Option<String>,
     parse_error_summary_csv_out: Option<String>,
+    db_path: String,
+    no_db: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -185,6 +188,8 @@ fn parse_args() -> Result<Args, String> {
     let mut cluster_csv_out = None;
     let mut parse_errors_csv_out = None;
     let mut parse_error_summary_csv_out = None;
+    let mut db_path = default_db_path().display().to_string();
+    let mut no_db = false;
 
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -307,9 +312,17 @@ fn parse_args() -> Result<Args, String> {
                         "--parse-error-summary-csv-out requires a path".to_string()
                     })?);
             }
+            "--db-path" => {
+                db_path = iter
+                    .next()
+                    .ok_or_else(|| "--db-path requires a path".to_string())?;
+            }
+            "--no-db" => {
+                no_db = true;
+            }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. supported: --cards <path> --limit <n> --min-cluster-size <n> --top-clusters <n> --examples <n> --json-out <path> --parser-trace --trace-name <substring> --allow-unsupported --use-embeddings --embedding-dims <n> --embedding-threshold <f32> --mismatch-names-out <path> --false-positive-names <path> --failures-out <path> --audits-out <path> --cluster-csv-out <path> --parse-errors-csv-out <path> --parse-error-summary-csv-out <path>"
+                    "unknown argument '{arg}'. supported: --cards <path> --limit <n> --min-cluster-size <n> --top-clusters <n> --examples <n> --json-out <path> --parser-trace --trace-name <substring> --allow-unsupported --use-embeddings --embedding-dims <n> --embedding-threshold <f32> --mismatch-names-out <path> --false-positive-names <path> --failures-out <path> --audits-out <path> --cluster-csv-out <path> --parse-errors-csv-out <path> --parse-error-summary-csv-out <path> --db-path <path> --no-db"
                 ));
             }
         }
@@ -335,6 +348,8 @@ fn parse_args() -> Result<Args, String> {
         cluster_csv_out,
         parse_errors_csv_out,
         parse_error_summary_csv_out,
+        db_path,
+        no_db,
     })
 }
 
@@ -1913,6 +1928,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(path) => read_name_set(path)?,
         None => HashSet::new(),
     };
+    let db = if args.no_db {
+        None
+    } else {
+        Some(CardStatusDb::open(&args.db_path)?)
+    };
 
     let mut audits = Vec::new();
     for card_input in cards {
@@ -1937,7 +1957,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let parse_result = CardDefinitionBuilder::new(CardId::new(), &card_input.name)
             .parse_text(card_input.parse_input.clone());
 
-        let audit = match parse_result {
+        let (audit, snapshot) = match parse_result {
             Ok(definition) => {
                 let has_unimplemented = generated_definition_has_unimplemented_content(&definition);
                 let compiled = compiled_lines(&definition);
@@ -1953,36 +1973,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &compiled,
                     embedding_cfg,
                 );
-                CardAudit {
-                    name: card_input.name,
-                    oracle_text: card_input.oracle_text,
-                    cluster_key,
-                    parse_error: None,
-                    compiled_lines: compiled,
-                    oracle_coverage,
-                    compiled_coverage,
-                    similarity_score,
-                    line_delta,
-                    semantic_mismatch,
-                    semantic_false_positive: false,
-                    has_unimplemented,
-                }
+                (
+                    CardAudit {
+                        name: card_input.name.clone(),
+                        oracle_text: card_input.oracle_text.clone(),
+                        cluster_key,
+                        parse_error: None,
+                        compiled_lines: compiled,
+                        oracle_coverage,
+                        compiled_coverage,
+                        similarity_score,
+                        line_delta,
+                        semantic_mismatch,
+                        semantic_false_positive: false,
+                        has_unimplemented,
+                    },
+                    CompilationSnapshot::from_definition_result(
+                        &card_input.name,
+                        &card_input.oracle_text,
+                        if args.allow_unsupported {
+                            ParseStatus::CompiledWithAllowUnsupported
+                        } else {
+                            ParseStatus::StrictCompiled
+                        },
+                        None,
+                        Some(&definition),
+                    ),
+                )
             }
-            Err(err) => CardAudit {
-                name: card_input.name,
-                oracle_text: card_input.oracle_text,
-                cluster_key,
-                parse_error: Some(format!("{err:?}")),
-                compiled_lines: Vec::new(),
-                oracle_coverage: 0.0,
-                compiled_coverage: 0.0,
-                similarity_score: 0.0,
-                line_delta: 0,
-                semantic_mismatch: false,
-                semantic_false_positive: false,
-                has_unimplemented: false,
-            },
+            Err(err) => {
+                let parse_error = format!("{err:?}");
+                (
+                    CardAudit {
+                        name: card_input.name.clone(),
+                        oracle_text: card_input.oracle_text.clone(),
+                        cluster_key,
+                        parse_error: Some(parse_error.clone()),
+                        compiled_lines: Vec::new(),
+                        oracle_coverage: 0.0,
+                        compiled_coverage: 0.0,
+                        similarity_score: 0.0,
+                        line_delta: 0,
+                        semantic_mismatch: false,
+                        semantic_false_positive: false,
+                        has_unimplemented: false,
+                    },
+                    CompilationSnapshot::from_definition_result(
+                        &card_input.name,
+                        &card_input.oracle_text,
+                        ParseStatus::ParseFailed,
+                        Some(parse_error),
+                        None,
+                    ),
+                )
+            }
         };
+        if let Some(db) = db.as_ref() {
+            db.insert_snapshot_if_changed(&snapshot)?;
+        }
         audits.push(audit);
     }
 
@@ -2198,6 +2246,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     } else {
         println!("- Embedding audit: disabled");
+    }
+    if !args.no_db {
+        println!("- DB: {}", args.db_path);
     }
     println!("- Total clusters: {}", ranked.len());
     println!("- Reporting up to {} clusters", args.top_clusters);

@@ -426,8 +426,10 @@ export default function SelectOptionsDecision({
     (opt) => opt.repeatable,
   );
   if (decision.repeatable || hasRepeatableOption) {
+    const repeatableDecisionKey = `${decision.description || ""}|${decision.source_id || ""}|${decision.min || 0}|${decision.max || 0}|${optionsSignature(decision.options || [])}`;
     return (
       <RepeatableDecision
+        key={repeatableDecisionKey}
         decision={decision}
         canAct={canAct}
         inlineSubmit={inlineSubmit}
@@ -1604,8 +1606,9 @@ function RepeatableDecision({
   const { dispatch, state } = useGame();
   const { hoverCard, clearHover } = useHover();
   const stripLayout = layout === "strip";
-  const options = decision.options || [];
+  const options = useMemo(() => decision.options || [], [decision.options]);
   const maxTotal = Number(decision.max || 0);
+  const min = decision.min || 0;
   const inspectableObjectIds = useMemo(
     () => buildInspectableObjectIdSet(state),
     [state],
@@ -1625,7 +1628,6 @@ function RepeatableDecision({
     });
     return expanded;
   };
-  const min = decision.min || 0;
   const canSubmit = canAct && total >= min && total <= maxTotal;
   const submitLabel = `Submit (${total})`;
   const handleSubmit = useCallback(() => {
@@ -1711,7 +1713,7 @@ function RepeatableDecision({
                 />
               </div>
             )}
-            <SectionHeader text="Repeat" />
+            <SectionHeader text={`Select ${min === maxTotal ? min : `${min}-${maxTotal}`}`} />
             {rows}
           </div>
         </div>
@@ -1725,7 +1727,7 @@ function RepeatableDecision({
                 layout={layout}
               />
             )}
-            <SectionHeader text="Repeat" />
+            <SectionHeader text={`Select ${min === maxTotal ? min : `${min}-${maxTotal}`}`} />
             {rows}
           </div>
         </ScrollArea>

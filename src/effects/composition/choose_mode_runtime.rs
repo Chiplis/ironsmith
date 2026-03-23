@@ -4,7 +4,7 @@ use crate::ability::AbilityKind;
 use crate::decisions::{ModesSpec, make_decision, specs::ModeOption};
 use crate::effect::{EffectMode, EffectOutcome, ExecutionFact};
 use crate::effects::helpers::resolve_value;
-use crate::executor::{ExecutionContext, ExecutionError, execute_effect};
+use crate::executor::{ExecutionContext, ExecutionError, execute_effect, rebase_target_scope};
 use crate::game_state::GameState;
 use crate::game_state::TargetAssignment;
 use crate::ids::{ObjectId, PlayerId};
@@ -158,7 +158,13 @@ pub(crate) fn run_choose_mode(
             ));
         }
 
-        let spec = ModesSpec::new(ctx.source, mode_options, min_modes, max_modes);
+        let spec = ModesSpec::new(
+            ctx.source,
+            mode_options,
+            min_modes,
+            max_modes,
+            effect.allow_repeated_modes,
+        );
         make_decision(
             game,
             &mut ctx.decision_maker,
@@ -218,10 +224,13 @@ pub(crate) fn run_choose_mode(
                     &available_assignments,
                     &mut assignment_cursor,
                 );
-                let outcome = ctx
-                    .with_temp_target_assignments(inner_target_assignments, |ctx| {
+                let (inner_targets, inner_target_assignments) =
+                    rebase_target_scope(&ctx.targets, &inner_target_assignments);
+                let outcome = ctx.with_temp_targets(inner_targets, |ctx| {
+                    ctx.with_temp_target_assignments(inner_target_assignments, |ctx| {
                         execute_effect(game, inner, ctx)
-                    })?;
+                    })
+                })?;
                 outcomes.push(outcome);
             }
         }
@@ -238,12 +247,21 @@ mod tests {
     use crate::effects::ChooseModeEffect;
     use crate::game_state::TargetAssignment;
     use crate::ids::CardId;
-    use crate::target::ChooseSpec;
-    use crate::types::CardType;
+    use crate::target::{ChooseSpec, PlayerFilter};
+    use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    fn squirrel_token() -> crate::cards::CardDefinition {
+        crate::cards::CardDefinitionBuilder::new(CardId::from_raw(6_100), "Squirrel")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Squirrel])
+            .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+            .build()
     }
 
     #[test]
@@ -328,5 +346,68 @@ mod tests {
 
         assert!(!game.battlefield.contains(&creature));
         assert!(!game.battlefield.contains(&land));
+    }
+
+    #[test]
+    fn choose_mode_scopes_player_targets_for_filter_based_inner_effects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+
+        let token_count_before = game
+            .battlefield
+            .iter()
+            .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+            .count();
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_chosen_modes(Some(vec![0, 1]))
+            .with_targets(vec![
+                crate::executor::ResolvedTarget::Player(alice),
+                crate::executor::ResolvedTarget::Player(bob),
+            ])
+            .with_target_assignments(vec![
+                TargetAssignment {
+                    spec: ChooseSpec::target_player(),
+                    range: 0..1,
+                },
+                TargetAssignment {
+                    spec: ChooseSpec::target_player(),
+                    range: 1..2,
+                },
+            ]);
+
+        let effect = ChooseModeEffect::choose_exactly(
+            2,
+            vec![
+                EffectMode::new(
+                    "Target player creates a Squirrel",
+                    vec![Effect::create_tokens_player(
+                        squirrel_token(),
+                        1,
+                        PlayerFilter::target_player(),
+                    )],
+                ),
+                EffectMode::new(
+                    "Target player gains 3 life",
+                    vec![Effect::new(crate::effects::GainLifeEffect::target_player(
+                        3,
+                    ))],
+                ),
+            ],
+        );
+
+        run_choose_mode(&effect, &mut game, &mut ctx).expect("choose mode resolves");
+
+        let token_count_after = game
+            .battlefield
+            .iter()
+            .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+            .count();
+
+        assert_eq!(token_count_after, token_count_before + 1);
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert_eq!(game.player(bob).expect("bob").life, 23);
     }
 }

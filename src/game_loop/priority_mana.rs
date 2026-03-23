@@ -3335,6 +3335,10 @@ pub(crate) fn apply_decision_context_with_dm<D: DecisionMaker>(
                         m.description.clone(),
                         m.legal,
                     )
+                    .with_repeatability(
+                        modes_ctx.spec.allow_repeated_modes,
+                        Some(modes_ctx.spec.max_modes.min(u32::MAX as usize) as u32),
+                    )
                 })
                 .collect();
             let select_ctx = crate::decisions::context::SelectOptionsContext::new(

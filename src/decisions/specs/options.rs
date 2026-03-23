@@ -69,6 +69,8 @@ pub struct ModesSpec {
     pub min_modes: usize,
     /// Maximum number of modes to choose.
     pub max_modes: usize,
+    /// Whether the same mode may be chosen multiple times.
+    pub allow_repeated_modes: bool,
 }
 
 impl ModesSpec {
@@ -78,24 +80,26 @@ impl ModesSpec {
         modes: Vec<ModeOption>,
         min_modes: usize,
         max_modes: usize,
+        allow_repeated_modes: bool,
     ) -> Self {
         Self {
             source,
             modes,
             min_modes,
             max_modes,
+            allow_repeated_modes,
         }
     }
 
     /// Create a spec for choosing exactly one mode.
     pub fn single(source: ObjectId, modes: Vec<ModeOption>) -> Self {
-        Self::new(source, modes, 1, 1)
+        Self::new(source, modes, 1, 1, false)
     }
 
     /// Create a spec for "choose one or more" modes.
     pub fn one_or_more(source: ObjectId, modes: Vec<ModeOption>) -> Self {
         let max = modes.len();
-        Self::new(source, modes, 1, max)
+        Self::new(source, modes, 1, max, false)
     }
 }
 
@@ -122,13 +126,23 @@ impl DecisionSpec for ModesSpec {
     }
 
     fn default_response(&self, _strategy: FallbackStrategy) -> Vec<usize> {
-        // Default: choose first legal mode(s)
-        self.modes
+        let legal_indices: Vec<usize> = self
+            .modes
             .iter()
             .filter(|m| m.legal)
-            .take(self.min_modes)
             .map(|m| m.index)
-            .collect()
+            .collect();
+        if !self.allow_repeated_modes || legal_indices.len() >= self.min_modes {
+            return legal_indices.into_iter().take(self.min_modes).collect();
+        }
+
+        let mut selected = Vec::new();
+        let mut cursor = 0usize;
+        while selected.len() < self.min_modes && !legal_indices.is_empty() {
+            selected.push(legal_indices[cursor % legal_indices.len()]);
+            cursor += 1;
+        }
+        selected
     }
 
     fn build_context(
@@ -140,7 +154,13 @@ impl DecisionSpec for ModesSpec {
         let options: Vec<SelectableOption> = self
             .modes
             .iter()
-            .map(|m| SelectableOption::with_legality(m.index, m.description.clone(), m.legal))
+            .map(|m| {
+                SelectableOption::with_legality(m.index, m.description.clone(), m.legal)
+                    .with_repeatability(
+                        self.allow_repeated_modes,
+                        Some(self.max_modes.min(u32::MAX as usize) as u32),
+                    )
+            })
             .collect();
 
         DecisionContext::SelectOptions(SelectOptionsContext::new(
@@ -772,6 +792,19 @@ mod tests {
             spec.primitive(),
             DecisionPrimitive::SelectOptions { min: 1, max: 1 }
         ));
+        assert!(!spec.allow_repeated_modes);
+    }
+
+    #[test]
+    fn test_modes_spec_default_response_repeats_when_allowed() {
+        let source = ObjectId::from_raw(1);
+        let modes = vec![ModeOption::new(0, "Gain 3 life")];
+        let spec = ModesSpec::new(source, modes, 2, 2, true);
+
+        assert_eq!(
+            spec.default_response(FallbackStrategy::FirstOption),
+            vec![0, 0]
+        );
     }
 
     #[test]

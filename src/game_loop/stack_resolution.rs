@@ -1,4 +1,5 @@
 use super::*;
+use crate::executor::rebase_target_scope;
 use crate::triggers::Trigger;
 
 pub(super) fn active_target_assignments_for_effect(
@@ -203,8 +204,12 @@ pub(crate) fn execute_resolution_program(
                 valid_target_assignments,
                 &mut assignment_cursor,
             );
-            let outcome = ctx.with_temp_target_assignments(effect_target_assignments, |ctx| {
-                execute_effect(game, effect, ctx)
+            let (effect_targets, effect_target_assignments) =
+                rebase_target_scope(&ctx.targets, &effect_target_assignments);
+            let outcome = ctx.with_temp_targets(effect_targets, |ctx| {
+                ctx.with_temp_target_assignments(effect_target_assignments, |ctx| {
+                    execute_effect(game, effect, ctx)
+                })
             });
             if let Ok(outcome) = outcome {
                 all_events.extend(outcome.events);

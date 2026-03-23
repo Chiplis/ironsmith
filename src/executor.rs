@@ -86,6 +86,27 @@ pub enum ResolvedTarget {
     Player(PlayerId),
 }
 
+/// Rebase a scoped set of target assignments onto a local targets slice.
+pub fn rebase_target_scope(
+    targets: &[ResolvedTarget],
+    target_assignments: &[TargetAssignment],
+) -> (Vec<ResolvedTarget>, Vec<TargetAssignment>) {
+    let mut local_targets = Vec::new();
+    let mut local_assignments = Vec::with_capacity(target_assignments.len());
+
+    for assignment in target_assignments {
+        let start = local_targets.len();
+        local_targets.extend_from_slice(&targets[assignment.range.clone()]);
+        let end = local_targets.len();
+        local_assignments.push(TargetAssignment {
+            spec: assignment.spec.clone(),
+            range: start..end,
+        });
+    }
+
+    (local_targets, local_assignments)
+}
+
 /// Context for effect execution.
 pub struct ExecutionContext<'a> {
     /// The source object (spell/ability on stack).

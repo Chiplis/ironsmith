@@ -14,6 +14,7 @@ use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::ObjectKind;
 use crate::static_abilities::StaticAbility;
+use crate::target::PlayerFilter;
 use crate::triggers::Trigger;
 use crate::types::CardType;
 
@@ -1442,6 +1443,63 @@ fn test_distinct_object_target_clauses_resolve_against_their_own_selected_target
 }
 
 #[test]
+fn test_distinct_player_target_clauses_resolve_against_their_own_selected_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let squirrel = CardDefinitionBuilder::new(CardId::from_raw(5_101), "Squirrel")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Squirrel])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let token_count_before = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+        .count();
+
+    let spell_card = CardBuilder::new(CardId::from_raw(5_102), "Player Split Effects")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_def = crate::cards::CardDefinition::spell(
+        spell_card,
+        vec![
+            Effect::create_tokens_player(squirrel, 1, PlayerFilter::target_player()),
+            Effect::new(crate::effects::GainLifeEffect::target_player(3)),
+        ],
+    );
+    let spell_id = game.create_object_from_definition(&spell_def, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Player(alice), Target::Player(bob)])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target_player(),
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target_player(),
+                    range: 1..2,
+                },
+            ]),
+    );
+
+    super::resolve_stack_entry(&mut game).expect("spell should resolve");
+
+    let token_count_after = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|obj| obj.controller == alice))
+        .count();
+
+    assert_eq!(token_count_after, token_count_before + 1);
+    assert_eq!(game.player(alice).expect("alice exists").life, 20);
+    assert_eq!(game.player(bob).expect("bob exists").life, 23);
+}
+
+#[test]
 fn test_stack_resolution_keeps_distinct_target_clause_assignments_when_one_target_goes_invalid() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -1735,6 +1793,209 @@ fn test_spell_has_legal_targets_with_mode_selection_respects_selected_mode_legal
         spell_has_legal_targets_with_modes(&game, &effects, alice, None, Some(&counter_mode)),
         "counter mode should become legal when a spell is available to target"
     );
+}
+
+#[test]
+fn test_spell_has_legal_targets_with_mode_preview_allows_partial_choose_two_selection() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let effects = vec![Effect::choose_exactly(
+        2,
+        vec![
+            crate::effect::EffectMode {
+                description: "Counter target spell".to_string(),
+                effects: vec![Effect::counter(ChooseSpec::spell())],
+            },
+            crate::effect::EffectMode {
+                description: "Gain 3 life".to_string(),
+                effects: vec![Effect::gain_life(3)],
+            },
+            crate::effect::EffectMode {
+                description: "Draw a card".to_string(),
+                effects: vec![Effect::draw(1)],
+            },
+        ],
+    )];
+
+    let counter_mode = [0usize];
+    let gain_mode = [1usize];
+    let draw_mode = [2usize];
+
+    assert!(
+        spell_has_legal_targets(&game, &effects, alice, None),
+        "choose-two modal spell should be castable when two non-targeting modes are available"
+    );
+    assert!(
+        !spell_has_legal_targets_with_mode_preview(&game, &effects, alice, None, &counter_mode),
+        "counter mode preview should be illegal without a spell on the stack"
+    );
+    assert!(
+        spell_has_legal_targets_with_mode_preview(&game, &effects, alice, None, &gain_mode),
+        "preview should allow picking one legal mode before the full choose-two set is complete"
+    );
+    assert!(
+        spell_has_legal_targets_with_mode_preview(&game, &effects, alice, None, &draw_mode),
+        "additional legal non-targeting modes should also preview as selectable"
+    );
+    assert!(
+        !spell_has_legal_targets_with_modes(&game, &effects, alice, None, Some(&gain_mode)),
+        "final validation should still reject incomplete choose-two selections"
+    );
+
+    let card = CardBuilder::new(CardId::from_raw(1_000), "Target Spell")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+            crate::mana::ManaSymbol::Blue,
+        ]]))
+        .build();
+    let target_spell = game.create_object_from_card(&card, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+
+    let counter_and_gain = [0usize, 1usize];
+    assert!(
+        spell_has_legal_targets_with_mode_preview(&game, &effects, alice, None, &counter_mode),
+        "counter mode preview should become legal once a spell is available to target"
+    );
+    assert!(
+        spell_has_legal_targets_with_modes(&game, &effects, alice, None, Some(&counter_and_gain)),
+        "final validation should accept a complete legal choose-two selection"
+    );
+}
+
+#[test]
+fn test_casting_choose_two_spell_keeps_non_targeting_modes_clickable_in_modes_context() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let modal_def = CardDefinitionBuilder::new(CardId::new(), "Choose Two Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![Effect::choose_exactly(
+            2,
+            vec![
+                crate::effect::EffectMode {
+                    description: "Gain 3 life".to_string(),
+                    effects: vec![Effect::gain_life(3)],
+                },
+                crate::effect::EffectMode {
+                    description: "Draw a card".to_string(),
+                    effects: vec![Effect::draw(1)],
+                },
+                crate::effect::EffectMode {
+                    description: "Gain 4 life".to_string(),
+                    effects: vec![Effect::gain_life(4)],
+                },
+            ],
+        )])
+        .build();
+    let modal_spell = game.create_object_from_definition(&modal_def, alice, Zone::Hand);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: modal_spell,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting the choose-two spell should reach the mode chooser");
+
+    let ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(ctx)) => {
+            ctx
+        }
+        other => panic!("expected modal choice decision, got {other:?}"),
+    };
+
+    assert_eq!(ctx.spec.min_modes, 2);
+    assert_eq!(ctx.spec.max_modes, 2);
+    assert_eq!(ctx.spec.modes.len(), 3);
+    assert!(
+        ctx.spec.modes.iter().all(|mode| mode.legal),
+        "individually legal non-targeting modes should remain clickable in the choose-two prompt: {:?}",
+        ctx.spec
+            .modes
+            .iter()
+            .map(|mode| (mode.index, mode.description.as_str(), mode.legal))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_casting_repeated_mode_spell_exposes_repeatable_modes_and_accepts_duplicates() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let modal_def = CardDefinitionBuilder::new(CardId::new(), "Repeatable Mode Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![Effect::choose_exactly_allow_repeated_modes(
+            2,
+            vec![
+                crate::effect::EffectMode {
+                    description: "Gain 3 life".to_string(),
+                    effects: vec![Effect::gain_life(3)],
+                },
+                crate::effect::EffectMode {
+                    description: "Draw a card".to_string(),
+                    effects: vec![Effect::draw(1)],
+                },
+            ],
+        )])
+        .build();
+    let modal_spell = game.create_object_from_definition(&modal_def, alice, Zone::Hand);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: modal_spell,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("casting the repeatable-mode spell should reach the mode chooser");
+
+    let ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(ctx)) => {
+            ctx
+        }
+        other => panic!("expected modal choice decision, got {other:?}"),
+    };
+
+    assert!(ctx.spec.allow_repeated_modes);
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![0, 0]),
+    )
+    .expect("choosing the same mode twice should be accepted when repeats are allowed");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("the repeated-mode spell should be on the stack after mode selection");
+    assert_eq!(stack_entry.chosen_modes.as_deref(), Some(&[0, 0][..]));
 }
 
 #[test]

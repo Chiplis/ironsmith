@@ -150,6 +150,10 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                         m.description.clone(),
                         m.legal,
                     )
+                    .with_repeatability(
+                        ctx.spec.allow_repeated_modes,
+                        Some(ctx.spec.max_modes.min(u32::MAX as usize) as u32),
+                    )
                 })
                 .collect();
             let select_ctx = super::context::SelectOptionsContext::new(

@@ -7,7 +7,7 @@ use crate::effects::helpers::resolve_value;
 use crate::executor::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::Object;
-use crate::target::PlayerFilter;
+use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
 
 use super::lifecycle::{
@@ -65,6 +65,8 @@ pub struct CreateTokenEffect {
     pub count: Value,
     /// Who controls the tokens.
     pub controller: PlayerFilter,
+    /// Cached target spec when the token recipient is chosen via targeting.
+    pub controller_target: Option<ChooseSpec>,
     /// Whether the tokens enter tapped.
     pub enters_tapped: bool,
     /// Whether the tokens enter attacking.
@@ -85,6 +87,7 @@ impl PartialEq for CreateTokenEffect {
         self.token.card.name == other.token.card.name
             && self.count == other.count
             && self.controller == other.controller
+            && self.controller_target == other.controller_target
             && self.enters_tapped == other.enters_tapped
             && self.enters_attacking == other.enters_attacking
             && self.exile_at_end_of_combat == other.exile_at_end_of_combat
@@ -97,10 +100,17 @@ impl PartialEq for CreateTokenEffect {
 impl CreateTokenEffect {
     /// Create a new create token effect.
     pub fn new(token: CardDefinition, count: impl Into<Value>, controller: PlayerFilter) -> Self {
+        let controller_target = match &controller {
+            PlayerFilter::Target(filter) => {
+                Some(ChooseSpec::target(ChooseSpec::Player((**filter).clone())))
+            }
+            _ => None,
+        };
         Self {
             token,
             count: count.into(),
             controller,
+            controller_target,
             enters_tapped: false,
             enters_attacking: false,
             exile_at_end_of_combat: false,
@@ -219,6 +229,14 @@ impl EffectExecutor for CreateTokenEffect {
         }
 
         Ok(EffectOutcome::with_objects(created_ids).with_events(events))
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        self.controller_target.as_ref()
+    }
+
+    fn target_description(&self) -> &'static str {
+        "player to create tokens"
     }
 }
 
