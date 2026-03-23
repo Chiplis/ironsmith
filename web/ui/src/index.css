@@ -125,6 +125,49 @@
       linear-gradient(180deg, #070b10 0%, #0a0f15 100%);
   }
 }
+/* ---- Battlefield Perspective Tilt ---- */
+
+/* Board container must establish 3D context */
+.battlefield-zones-shell,
+.battlefield-zone-strip,
+.battlefield-zone-entry[data-zone-id="battlefield"] {
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  perspective-origin: 50% 50%;
+}
+
+/* All battlefield rows inherit 3D context */
+.battlefield-row {
+  transform-style: preserve-3d;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Legacy row transforms are reset here so the mobile lane block is the only tilt source. */
+.battlefield-panel--opponents .battlefield-row[data-bf-side="top"][data-bf-row-index="0"],
+.battlefield-panel--opponents .battlefield-row:first-of-type,
+.battlefield-panel--opponents .battlefield-row[data-bf-side="top"][data-bf-row-index="1"],
+.battlefield-panel--opponents .battlefield-row:last-of-type,
+.battlefield-panel--opponents .battlefield-zone-entry[data-zone-id="battlefield"] .battlefield-row,
+[data-my-zone] .battlefield-row[data-bf-side="bottom"][data-bf-row-index="1"],
+.battlefield-panel--self .battlefield-row:first-of-type,
+[data-my-zone] .battlefield-row[data-bf-side="bottom"][data-bf-row-index="0"],
+.battlefield-panel--self .battlefield-row:last-of-type,
+.battlefield-panel--self .battlefield-zone-entry[data-zone-id="battlefield"] .battlefield-row {
+  transform: none;
+  transform-origin: center center;
+}
+
+/* ---- Prevent overflow from perspective tilt ---- */
+.battlefield-zone-entry[data-zone-id="battlefield"] {
+  overflow: hidden;
+}
+
+/* Cards inside tilted rows must not inherit extra 3d shift */
+.battlefield-row .game-card.field-card {
+  transform-style: flat;
+  backface-visibility: hidden;
+}
 
 /* ---- Game Card ---- */
 .game-card {
@@ -217,7 +260,7 @@
 
 .game-card-surface::before {
   content: "";
-  @apply absolute inset-0 pointer-events-none;
+
   inset: -8%;
   z-index: 1;
   opacity: 0;
@@ -608,7 +651,6 @@
 .game-card::before,
 .game-card::after {
   content: "";
-  @apply absolute inset-0 pointer-events-none;
   z-index: -1;
   opacity: 0;
   transform-origin: 50% 50%;
@@ -654,7 +696,6 @@
 }
 
 .game-card-shade {
-  @apply absolute inset-0 pointer-events-none;
   z-index: 1;
   background: linear-gradient(180deg, rgba(4, 8, 14, 0.08), rgba(4, 8, 14, 0.45));
 }
@@ -706,6 +747,158 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.08),
     inset 0 0 18px rgba(var(--glow-rgb, 255, 255, 255), 0.08),
     inset 0 0 14px rgba(0, 0, 0, 0.26);
+}
+
+.game-card.field-card.battlefield-token-card {
+  --battlefield-token-scale: 1.18;
+  --battlefield-token-highlight-1: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+  --battlefield-token-highlight-2: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+  border-radius: 24px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.game-card.field-card.battlefield-token-card.card-circuit-active {
+  box-shadow: none;
+}
+
+.game-card.field-card.battlefield-token-card:hover {
+  box-shadow: none;
+}
+
+.game-card.field-card.battlefield-token-card .game-card-surface {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0px, calc(var(--bf-card-width, 124px) * 0.01), 2px);
+  pointer-events: none;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: scale(var(--battlefield-token-scale));
+  transform-origin: center;
+  filter:
+    drop-shadow(0 12px 18px rgba(0, 0, 0, 0.42))
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.28))
+    var(--battlefield-token-highlight-1)
+    var(--battlefield-token-highlight-2);
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-base {
+  stroke: #222a32;
+  stroke-width: 2.2;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-base-edge {
+  fill: none;
+  stroke: rgba(236, 241, 246, 0.68);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-ring {
+  stroke: #151a20;
+  stroke-width: 3.2;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-inner-ring {
+  fill: none;
+  stroke: rgba(230, 236, 242, 0.62);
+  stroke-width: 2.2;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-ring-glint {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.58);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.92;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-main-badge {
+  stroke: rgba(8, 10, 14, 0.98);
+  stroke-width: 2.2;
+  filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.08)) drop-shadow(0 3px 4px rgba(0, 0, 0, 0.34));
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-main-text,
+.game-card.field-card.battlefield-token-card .battlefield-token-side-text {
+  fill: #f4f7fb;
+  font-family: "Bahnschrift", "Avenir Next Condensed", "Segoe UI", sans-serif;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  paint-order: stroke fill;
+  stroke: rgba(8, 11, 16, 0.98);
+  stroke-width: 2.6px;
+  stroke-linejoin: round;
+  text-rendering: geometricPrecision;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-symbol {
+  fill: none;
+  stroke: #f4f7fb;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-mana-symbol {
+  overflow: visible;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-choice-half {
+  opacity: 0.48;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-choice-divider {
+  stroke: rgba(244, 247, 251, 0.94);
+  stroke-width: 1.5;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-choice-indicator {
+  fill: none;
+  stroke: rgba(244, 247, 251, 0.86);
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-main-text {
+  font-size: 18px;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-side-badge {
+  stroke: rgba(8, 10, 14, 0.98);
+  stroke-width: 2.1;
+  filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.08)) drop-shadow(0 3px 4px rgba(0, 0, 0, 0.32));
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-side-text {
+  font-size: 13px;
+}
+
+.game-card.field-card.battlefield-token-card .battlefield-token-main-divider,
+.game-card.field-card.battlefield-token-card .battlefield-token-side-divider {
+  fill: none;
+  stroke: rgba(208, 217, 226, 0.8);
+  stroke-width: 1.1;
+  stroke-linecap: round;
 }
 
 .battlefield-frame {
@@ -2264,6 +2457,154 @@
     0 0 18px 6px rgba(255, 255, 255, 0.7),
     0 0 36px 12px rgba(255, 255, 255, 0.35),
     inset 0 0 10px 4px rgba(255, 255, 255, 0.4) !important;
+}
+
+.game-card.field-card.battlefield-token-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .actionable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .action-link,
+  .inspected,
+  .selected,
+  .blocker-selected,
+  .attack-active,
+  .blocker-attacker-active
+) {
+  box-shadow: none !important;
+}
+
+.game-card.field-card.battlefield-token-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .actionable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .action-link,
+  .inspected,
+  .selected,
+  .blocker-selected,
+  .attack-active,
+  .blocker-attacker-active
+) .battlefield-token-svg {
+  --battlefield-token-highlight-1: drop-shadow(0 0 10px rgba(var(--glow-rgb), 0.34));
+  --battlefield-token-highlight-2: drop-shadow(0 0 22px rgba(var(--glow-rgb), 0.18));
+}
+
+.game-card.field-card.battlefield-token-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .actionable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .action-link,
+  .inspected,
+  .selected,
+  .blocker-selected,
+  .attack-active,
+  .blocker-attacker-active
+):hover .battlefield-token-svg,
+.game-card.field-card.battlefield-token-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .actionable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .action-link,
+  .inspected,
+  .selected,
+  .blocker-selected,
+  .attack-active,
+  .blocker-attacker-active
+).hovered .battlefield-token-svg {
+  --battlefield-token-highlight-1: drop-shadow(0 0 12px rgba(var(--glow-rgb), 0.46));
+  --battlefield-token-highlight-2: drop-shadow(0 0 28px rgba(var(--glow-rgb), 0.24));
+}
+
+.game-card.field-card.battlefield-token-card:is(
+  .glow-land,
+  .glow-spell,
+  .glow-mana,
+  .glow-ability,
+  .glow-extra,
+  .glow-instant,
+  .glow-sorcery,
+  .glow-creature,
+  .glow-enchantment,
+  .glow-battle,
+  .glow-artifact,
+  .glow-planeswalker,
+  .playable,
+  .actionable,
+  .target-legal,
+  .attack-candidate,
+  .blocker-candidate,
+  .attack-selected,
+  .action-link,
+  .inspected,
+  .selected,
+  .blocker-selected,
+  .attack-active,
+  .blocker-attacker-active
+) .battlefield-token-ring {
+  stroke: rgba(var(--glow-rgb), 0.86);
+}
+
+.game-card.field-card.battlefield-token-card.card-circuit-active .card-circuit-overlay {
+  opacity: 0 !important;
 }
 
 .game-card.hand-card.card-circuit-replaces-glow::before,
@@ -4166,6 +4507,7 @@ body {
 .battlefield-row > :not(.battlefield-slot) {
   position: relative;
   z-index: 1;
+  overflow: visible;
 }
 
 .deck-zone-pile {
@@ -7037,6 +7379,21 @@ textarea,
       + var(--mobile-battle-opponent-band-height)
       + (var(--mobile-battle-section-gap) / 2)
     );
+    --mobile-battle-board-perspective: 1380px;
+    --mobile-battle-board-tilt: 42deg;
+    --mobile-battle-board-horizon: calc(var(--mobile-battle-divider-top) - 8px);
+    --mobile-battle-depth-opponent-back: -152px;
+    --mobile-battle-depth-opponent-front: -96px;
+    --mobile-battle-depth-self-back: 8px;
+    --mobile-battle-depth-self-front: 72px;
+    --mobile-battle-scale-opponent-back: 0.91;
+    --mobile-battle-scale-opponent-front: 0.96;
+    --mobile-battle-scale-self-back: 0.99;
+    --mobile-battle-scale-self-front: 1.02;
+    --mobile-battle-width-opponent-back: 84%;
+    --mobile-battle-width-opponent-front: 90%;
+    --mobile-battle-width-self-back: 96%;
+    --mobile-battle-width-self-front: 100%;
     min-height: 100%;
     background:
       radial-gradient(110% 88% at 50% -4%, rgba(252, 218, 168, 0.12), transparent 40%),
@@ -7296,6 +7653,8 @@ textarea,
   .mobile-battle-my-zone .battlefield-row-card {
     border-radius: 8px;
     overflow: hidden;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
   }
 
   .mobile-battle-opponent-slot .battlefield-row-card .battlefield-frame,
@@ -7406,7 +7765,7 @@ textarea,
     transform:
       translate3d(var(--card-translate-x), calc(var(--card-translate-y) + 26px), 0)
       rotate(var(--card-rotate))
-      scale(var(--card-scale));
+      scale(calc(var(--card-scale) * 0.99));
     transform-origin: 50% 100%;
   }
 
@@ -7445,7 +7804,7 @@ textarea,
     transform:
       translate3d(var(--card-translate-x), calc(var(--card-translate-y) + 32px), 0)
       rotate(var(--card-rotate))
-      scale(calc(var(--card-scale) * 0.96));
+      scale(calc(var(--card-scale) * 0.97));
     transform-origin: 50% 100%;
   }
 
@@ -7842,6 +8201,10 @@ textarea,
     padding-inline: var(--mobile-battle-scene-padding);
     padding-bottom: 0;
     box-sizing: border-box;
+    perspective: var(--mobile-battle-board-perspective);
+    perspective-origin: 50% var(--mobile-battle-board-horizon);
+    transform-style: preserve-3d;
+    isolation: isolate;
   }
 
   .mobile-battle-top-spacer {
@@ -7856,6 +8219,8 @@ textarea,
     min-width: 0;
     min-height: 0;
     align-content: start;
+    overflow: visible;
+    transform-style: preserve-3d;
   }
 
   .mobile-battle-control-band {
@@ -8015,7 +8380,13 @@ textarea,
     margin-top: calc((var(--mobile-battle-control-height) - 8px) * -1);
   }
 
+  /* Shared 3D board: every lane lives in the same perspective scene and only varies by depth. */
   .mobile-battle-lane {
+    --mobile-battle-lane-shift-x: 0px;
+    --mobile-battle-lane-shift-y: 0px;
+    --mobile-battle-lane-shift-z: 0px;
+    --mobile-battle-lane-scale: 1;
+    --mobile-battle-lane-origin: center center;
     position: relative;
     min-width: 0;
     overflow: hidden;
@@ -8023,18 +8394,34 @@ textarea,
     background:
       linear-gradient(180deg, rgba(255, 240, 214, 0.03), rgba(8, 10, 14, 0.08));
     box-shadow: inset 0 0 0 1px rgba(255, 245, 214, 0.04);
+    transform:
+      translate3d(
+        var(--mobile-battle-lane-shift-x),
+        var(--mobile-battle-lane-shift-y),
+        var(--mobile-battle-lane-shift-z)
+      )
+      rotateX(var(--mobile-battle-board-tilt))
+      scale(var(--mobile-battle-lane-scale));
+    transform-origin: var(--mobile-battle-lane-origin);
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
   }
 
   .mobile-battle-lane-track {
     min-width: 0;
+    overflow: visible;
+    transform-style: preserve-3d;
   }
 
   .mobile-battle-lane .battlefield-row {
     padding: 0 !important;
     min-height: 100%;
     height: 100%;
+    gap: 0 !important;
     background: transparent !important;
     box-shadow: none !important;
+    transform: none !important;
+    transform-style: preserve-3d;
   }
 
   .mobile-battle-lane .battlefield-row::before,
@@ -8046,11 +8433,113 @@ textarea,
     opacity: 0 !important;
     box-shadow: none !important;
     background: transparent !important;
+    pointer-events: none !important;
   }
 
   .mobile-battle-lane .battlefield-row-card {
-    border-radius: 8px;
-    overflow: hidden;
+    position: relative;
+    z-index: 2;
+    margin-inline: -3px;
+    border-radius: 24px;
+    overflow: visible;
+    pointer-events: auto;
+  }
+
+  .mobile-battle-lane .battlefield-row-card .battlefield-token-shell {
+    padding: 0;
+  }
+
+  .mobile-battle-lane .battlefield-row-card .battlefield-token-svg {
+    --battlefield-token-scale: 1.3;
+  }
+
+  .mobile-battle-lane .battlefield-row-card .battlefield-token-main-text {
+    font-size: 21px;
+    stroke-width: 3px;
+  }
+
+  .mobile-battle-lane .battlefield-row-card .battlefield-token-side-text {
+    font-size: 14.5px;
+    stroke-width: 2.7px;
+  }
+
+  .mobile-battle-opponent-band {
+    overflow: visible;
+    transform-style: preserve-3d;
+  }
+
+  .mobile-battle-opponent-band > .mobile-battle-lane:nth-child(1) {
+    overflow: visible;
+    --mobile-battle-lane-shift-y: 20px;
+    --mobile-battle-lane-shift-z: var(--mobile-battle-depth-opponent-back);
+    --mobile-battle-lane-scale: var(--mobile-battle-scale-opponent-back);
+    --mobile-battle-lane-origin: center bottom;
+  }
+
+  .mobile-battle-opponent-band > .mobile-battle-lane:nth-child(1) .mobile-battle-lane-track {
+    overflow: visible;
+  }
+
+  .mobile-battle-opponent-band > .mobile-battle-lane:nth-child(1) .battlefield-row {
+    width: var(--mobile-battle-width-opponent-back);
+    margin-inline: auto;
+  }
+
+  .mobile-battle-opponent-band > .mobile-battle-lane:nth-child(2) {
+    overflow: visible;
+    --mobile-battle-lane-shift-y: 15px;
+    --mobile-battle-lane-shift-z: var(--mobile-battle-depth-opponent-front);
+    --mobile-battle-lane-scale: var(--mobile-battle-scale-opponent-front);
+    --mobile-battle-lane-origin: center bottom;
+  }
+
+  .mobile-battle-opponent-band > .mobile-battle-lane:nth-child(2) .mobile-battle-lane-track {
+    overflow: visible;
+  }
+
+  .mobile-battle-opponent-band > .mobile-battle-lane:nth-child(2) .battlefield-row {
+    width: var(--mobile-battle-width-opponent-front);
+    margin-inline: auto;
+  }
+
+  .mobile-battle-self-band {
+    transform-style: preserve-3d;
+  }
+
+  .mobile-battle-self-band > .mobile-battle-lane--self-back {
+    overflow: visible;
+    --mobile-battle-lane-shift-y: 2px;
+    --mobile-battle-lane-shift-z: var(--mobile-battle-depth-self-back);
+    --mobile-battle-lane-scale: var(--mobile-battle-scale-self-back);
+    --mobile-battle-lane-origin: center top;
+  }
+
+  .mobile-battle-self-band > .mobile-battle-lane--self-back .mobile-battle-lane-track,
+  .mobile-battle-self-band > .mobile-battle-lane--self-back .battlefield-row {
+    overflow: visible;
+  }
+
+  .mobile-battle-self-band > .mobile-battle-lane--self-back .battlefield-row {
+    width: var(--mobile-battle-width-self-back);
+    margin-inline: auto;
+  }
+
+  .mobile-battle-self-band > .mobile-battle-lane--self-front {
+    overflow: visible;
+    --mobile-battle-lane-shift-y: 6px;
+    --mobile-battle-lane-shift-z: var(--mobile-battle-depth-self-front);
+    --mobile-battle-lane-scale: var(--mobile-battle-scale-self-front);
+    --mobile-battle-lane-origin: center top;
+  }
+
+  .mobile-battle-self-band > .mobile-battle-lane--self-front .mobile-battle-lane-track,
+  .mobile-battle-self-band > .mobile-battle-lane--self-front .battlefield-row {
+    overflow: visible;
+  }
+
+  .mobile-battle-self-band > .mobile-battle-lane--self-front .battlefield-row {
+    width: var(--mobile-battle-width-self-front);
+    margin-inline: auto;
   }
 
   .mobile-battle-lane .battlefield-row-card .battlefield-frame {
@@ -8114,7 +8603,6 @@ textarea,
 
   .mobile-battle-lane--self-back {
     align-self: start;
-    transform: none;
   }
 
   .mobile-battle-bottom-utility {
@@ -9069,16 +9557,6 @@ textarea,
     letter-spacing: 0;
   }
 
-  .mobile-battle-inspect-overlay-backdrop {
-    position: absolute;
-    inset: 0;
-    z-index: 134;
-    border: 0;
-    background:
-      linear-gradient(180deg, rgba(2, 4, 8, 0.42), rgba(3, 5, 9, 0.58));
-    pointer-events: auto;
-  }
-
   .mobile-battle-action-popover-backdrop {
     position: absolute;
     inset: 0;
@@ -9179,29 +9657,41 @@ textarea,
   }
 
   .mobile-battle-inspect-overlay {
-    position: absolute;
+    position: fixed;
     inset: 0;
-    z-index: 135;
+    z-index: 420;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     padding:
-      max(10px, env(safe-area-inset-top))
+      max(14px, calc(env(safe-area-inset-top) + 6px))
       max(12px, env(safe-area-inset-right))
       max(12px, env(safe-area-inset-bottom))
       max(12px, env(safe-area-inset-left));
+    pointer-events: auto;
+  }
+
+  .mobile-battle-inspect-overlay-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background:
+      linear-gradient(180deg, rgba(2, 4, 8, 0.42), rgba(3, 5, 9, 0.62));
     pointer-events: none;
   }
 
   .mobile-battle-inspect-overlay-shell {
     position: relative;
+    isolation: isolate;
+    z-index: 1;
     width: min(56vw, 360px);
     max-width: calc(100vw - 24px);
     max-height: calc(100vh - 24px);
     display: flex;
     flex-direction: column;
     gap: 0;
-    padding: 12px;
+    margin-top: clamp(2px, 1.5vh, 14px);
+    padding: 8px;
     border-radius: 22px;
     border: 1px solid rgba(217, 186, 131, 0.18);
     background:
@@ -9216,9 +9706,10 @@ textarea,
 
   .mobile-battle-inspect-overlay-stage {
     position: relative;
+    z-index: 1;
     min-height: 0;
-    height: min(58vh, 228px);
-    max-height: calc(100vh - 48px);
+    height: min(62vh, 248px);
+    max-height: calc(100vh - 20px);
     overflow: hidden;
     border-radius: 16px;
   }
@@ -9228,28 +9719,8 @@ textarea,
     height: 100% !important;
   }
 
-  .mobile-battle-inspect-overlay-close {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    border: 1px solid rgba(191, 148, 124, 0.22);
-    border-radius: 999px;
-    background:
-      linear-gradient(180deg, rgba(47, 34, 31, 0.96), rgba(16, 12, 13, 0.96));
-    color: #efd4c7;
-    font-family: "Optima", "Avenir Next", "Segoe UI", "Candara", sans-serif;
-    font-size: 13px;
-    font-weight: 700;
-    box-shadow:
-      0 10px 22px rgba(0, 0, 0, 0.24),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  .mobile-battle-scene[data-inspector-open="true"] > *:not(.mobile-battle-inspect-overlay) {
+    pointer-events: none !important;
   }
 
   .topbar-shell {
